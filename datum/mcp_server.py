@@ -88,6 +88,12 @@ def get_global_current_state() -> str:
     path = Path("CURRENT_STATE.md")
     return path.read_text() if path.exists() else "No CURRENT_STATE.md found."
 
+@mcp.resource("datum://global/memory")
+def get_global_memory() -> str:
+    """Get docs/MEMORY.md to understand factory engineering conventions, daily drivers, and past pitfalls."""
+    path = Path("docs/MEMORY.md")
+    return path.read_text() if path.exists() else "No MEMORY.md found."
+
 # -----------------------------------------------------------------------------
 # Tools (The Factory Floor)
 # -----------------------------------------------------------------------------
