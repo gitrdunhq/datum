@@ -4,6 +4,13 @@ Every agent in the DATUM pipeline operates under a typed contract. The orchestra
 
 These are **hard contracts**, not style guidelines. If the orchestrator sends a malformed brief, the agent must reject it. If the agent returns a malformed result, the orchestrator must not process it. Soft failures here cascade into silent correctness bugs.
 
+## Zero-Chat Handoffs (Context Isolation)
+
+To prevent the "Telephone Game" where orchestrators degrade fidelity by paraphrasing sub-agent outputs:
+- **Agents communicate strictly via the File System.** (e.g., writing to `SPEC.md`, reading `diff.patch`).
+- **No massive prompt injections.** Orchestrators must NEVER inject massive codebase contexts, full PR diffs, or raw transcripts directly into the dispatch prompt. Instead, orchestrators pass the absolute file path (or MCP resource URI) to the context, and the sub-agent reads it independently.
+- This isolates context windows, radically reduces token drift, and ensures sub-agents operate on pristine, untampered primary sources.
+
 ## TDD Protocol (Dead Programmers Society)
 
 The RED → GREEN → REFACTOR cycle is an unbreakable contract. RED must write a failing test that asserts a specific property. GREEN must write ONLY the minimal code to make RED pass. REFACTOR may clean up, but must not weaken the test. Any agent found skipping a step, writing the test and implementation simultaneously, or weakening tests will trigger an immediate orchestrator halt.
