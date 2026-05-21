@@ -23,6 +23,7 @@ SCHEMA_VERSION = "1.0.0"
 PHASES = [
     "triage",
     "discovery",
+    "prior_art",
     "competitive",
     "stakeholder",
     "requirements",

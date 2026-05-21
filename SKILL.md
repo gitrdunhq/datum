@@ -140,12 +140,13 @@ For `datum product go` or `datum product <phase>`, use `.datum/product_state.jso
 |---|---|---|
 | Triage | `datum/references/p1-triage.md` | Initial ideation/request |
 | Discovery | `datum/references/p2-discovery.md` | `docs/ideation/TRIAGE.md` present |
+| Prior Art | `datum/references/p2c-prior-art.md` | OPTIONAL. Search memory/web for existing solutions. |
 | Competitive | `datum/references/p2a-competitive.md` | OPTIONAL. Agent decides based on context, or user requests. |
 | Stakeholder | `datum/references/p2b-stakeholder.md` | OPTIONAL. Agent decides based on context, or user requests. |
 | Requirements | `datum/references/p3-requirements.md` | `docs/ideation/DISCOVERY.md` present |
 | Handoff | `datum/references/p4-handoff.md` | `docs/ideation/PRD.md` present |
 
-*Note on Optional Phases:* After `Discovery`, the agent must reason whether the project context warrants `Competitive` analysis or `Stakeholder` mapping. If it does, transition into those phases. If unclear, ask the user. If they are not needed, skip directly to `Requirements`.
+*Note on Optional Phases:* After `Discovery`, the agent must reason whether the project context warrants `Prior Art` research, `Competitive` analysis or `Stakeholder` mapping. If it does, transition into those phases. If unclear, ask the user. If they are not needed, skip directly to `Requirements`.
 
 For **Act**, also load:
 - `datum/references/agent-contracts.md` — typed brief/result schemas for all agent roles
