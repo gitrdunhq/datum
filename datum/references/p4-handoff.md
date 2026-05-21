@@ -3,7 +3,8 @@
 **Goal:** Create the strict contract (`docs/TICKET.md`) that acts as the hard boundary between Product Ideation and the Engineering Factory Floor.
 
 ## Context
-The Engineering Pipeline (`datum go`) relies on `docs/TICKET.md` as its absolute source of truth. It does not care about ideation notes. The ticket must be perfect.
+**CORE PHILOSOPHY: DETERMINISM IS PARAMOUNT. LLM IS FOR REASONING AND CREATIVITY.**
+The Engineering Pipeline (`datum go`) relies on `docs/TICKET.md` as its absolute source of truth. It does not care about ideation notes, vibes, or creative guesses. The pipeline orchestration is 100% deterministic. The LLM's job here is to use its reasoning and creativity to translate messy human needs into an unambiguous, rigid contract.
 
 ## Process
 1. Read `docs/ideation/PRD.md`.

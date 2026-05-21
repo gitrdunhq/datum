@@ -40,6 +40,16 @@ Phrase triggers work on tools without slash commands:
 
 ---
 
+## Core Philosophy: Determinism is Paramount
+
+**DATUM strictly separates orchestration from generation.**
+- **Determinism (The Factory Floor):** State management, phase transitions, routing, and gates are 100% deterministic, enforced by Python scripts (`uv run scripts/datum.py`) and JSON state files. The pipeline structure cannot be improvised.
+- **LLM (The Worker):** The LLM is reserved *exclusively* for reasoning, creativity, and executing work within the rigid bounds of a single phase. The LLM does not decide *how* the pipeline works; it merely executes the current phase and calls the deterministic tools to advance state.
+
+If you ever find yourself using the LLM to guess the current phase, parse unstructured history, or skip steps, you have violated the DATUM contract. Rely on the scripts.
+
+---
+
 ## Dispatcher Logic
 
 When DATUM is invoked, execute this sequence before doing any phase work:
