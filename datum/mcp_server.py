@@ -76,6 +76,12 @@ def get_epic_properties() -> str:
         
     return "No PROPERTIES.md found."
 
+@mcp.resource("datum://global/roadmap")
+def get_global_roadmap() -> str:
+    """Get the strategic ROADMAP.md to evaluate upcoming features and leap-risk."""
+    path = Path("docs/ROADMAP.md")
+    return path.read_text() if path.exists() else "No ROADMAP.md found."
+
 # -----------------------------------------------------------------------------
 # Tools (The Factory Floor)
 # -----------------------------------------------------------------------------
@@ -125,6 +131,18 @@ def datum_log_telemetry(phase: str, model: str, input_tokens: int, output_tokens
     
     save_state(state)
     return json.dumps({"ok": True, "message": f"Logged {input_tokens + output_tokens} tokens for {model}"})
+
+@mcp.tool()
+def datum_update_roadmap(content: str) -> str:
+    """Update the global ROADMAP.md file after slotting a new feature during Triage.
+    
+    Args:
+        content: The complete markdown content to overwrite docs/ROADMAP.md with.
+    """
+    path = Path("docs/ROADMAP.md")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    return json.dumps({"ok": True, "message": "ROADMAP.md successfully updated."})
 
 def main():
     api_key = os.environ.get("DATUM_API_KEY")
