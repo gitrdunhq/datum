@@ -1,67 +1,88 @@
 #!/usr/bin/env python3
 """
-State manager for DATUM skill. Reads and writes .datum/state.json.
+State manager for DATUM skill. Reads and writes .datum/state.db (SQLite).
 
 Usage:
-  python3 scripts/state.py read
-  python3 scripts/state.py write --phase <phase> --status <status>
-  python3 scripts/state.py transition --to <phase>
-  python3 scripts/state.py init --run-id <run_id>
-  python3 scripts/state.py archive --run-id <run_id>
-  python3 scripts/state.py lane-update --lane <id> --stage <stage> --status <status> [--sha <sha>]
+  python3 scripts/datum.py datum.state read
+  python3 scripts/datum.py datum.state write --phase <phase> --status <status>
+  python3 scripts/datum.py datum.state transition --to <phase>
+  python3 scripts/datum.py datum.state init --run-id <run_id>
+  python3 scripts/datum.py datum.state archive --run-id <run_id>
+  python3 scripts/datum.py datum.state log-tokens --phase <phase> --model <model> --input <N> --output <N>
 """
 
 import argparse
 import json
+import sqlite3
 import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-STATE_FILE = Path(".datum/state.json")
+DB_FILE = Path(".datum/state.db")
 RUNS_DIR = Path(".datum/runs")
 SCHEMA_VERSION = "1.0.0"
 
 PHASES = [
-    "discovery",
-    "refine",
-    "plan",
-    "triage",
-    "deepen",
-    "properties",
-    "act",
-    "validate",
-    "review",
-    "pr_comments",
-    "closeout",
+    "discovery", "refine", "plan", "triage", "deepen", "properties",
+    "act", "validate", "review", "pr_comments", "closeout"
 ]
 
 VALID_STATUSES = {"pending", "in_progress", "completed", "failed", "closeout_pending"}
 VALID_STAGES = {"RED", "GREEN", "REFACTOR", "queued", "completed", "failed_terminal"}
 
+def init_db():
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("PRAGMA journal_mode=WAL") # Handle concurrent writes
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS kv_state (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS token_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phase TEXT,
+                model TEXT,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
 
 def load_state() -> dict:
-    if not STATE_FILE.exists():
+    if not DB_FILE.exists():
         return {}
-    with STATE_FILE.open() as f:
-        return json.load(f)
-
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
+        row = cur.fetchone()
+        if row:
+            return json.loads(row[0])
+    return {}
 
 def save_state(state: dict) -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    init_db()
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
-    tmp = STATE_FILE.with_suffix(".tmp")
-    with tmp.open("w") as f:
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO kv_state (key, value) VALUES ('current', ?)",
+            (json.dumps(state),)
+        )
+        conn.commit()
+        
+    # Write-through cache for backwards compatibility with legacy scripts
+    json_path = Path(".datum/state.json")
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with json_path.open("w") as f:
         json.dump(state, f, indent=2)
-    tmp.replace(STATE_FILE)
-
 
 def next_epic_number() -> int:
     if not RUNS_DIR.exists():
         return 1
-    existing = [
-        d.name for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("epic-")
-    ]
+    existing = [d.name for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("epic-")]
     if not existing:
         return 1
     numbers = []
@@ -71,14 +92,12 @@ def next_epic_number() -> int:
             numbers.append(int(parts[1]))
     return max(numbers, default=0) + 1
 
-
 def cmd_read(args: argparse.Namespace) -> None:
     state = load_state()
     if not state:
-        print(json.dumps({"error": "no_state", "message": "No .datum/state.json found"}))
+        print(json.dumps({"error": "no_state", "message": "No .datum/state.db found"}))
         sys.exit(1)
     print(json.dumps(state, indent=2))
-
 
 def cmd_init(args: argparse.Namespace) -> None:
     n = next_epic_number()
@@ -108,8 +127,13 @@ def cmd_init(args: argparse.Namespace) -> None:
         "updated_at": now.isoformat(),
     }
     save_state(state)
+    
+    # Clear out old telemetry for new init
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("DELETE FROM token_metrics")
+        conn.commit()
+        
     print(json.dumps({"ok": True, "run_id": run_id}))
-
 
 def cmd_write(args: argparse.Namespace) -> None:
     state = load_state()
@@ -140,7 +164,6 @@ def cmd_write(args: argparse.Namespace) -> None:
     save_state(state)
     print(json.dumps({"ok": True}))
 
-
 def cmd_transition(args: argparse.Namespace) -> None:
     state = load_state()
     if not state:
@@ -152,7 +175,6 @@ def cmd_transition(args: argparse.Namespace) -> None:
     state["current_phase"] = args.to
     save_state(state)
     print(json.dumps({"ok": True, "current_phase": args.to}))
-
 
 def cmd_lane_update(args: argparse.Namespace) -> None:
     state = load_state()
@@ -193,27 +215,17 @@ def cmd_lane_update(args: argparse.Namespace) -> None:
     save_state(state)
     print(json.dumps({"ok": True}))
 
-
 def cmd_log_tokens(args: argparse.Namespace) -> None:
-    state = load_state()
-    if not state:
-        print(json.dumps({"error": "no_state"}))
-        sys.exit(1)
-
-    if "model_log" not in state:
-        state["model_log"] = []
-
-    state["model_log"].append({
-        "phase": args.phase,
-        "model": args.model,
-        "input_tokens": args.input,
-        "output_tokens": args.output,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-    save_state(state)
+    # We no longer read/write the full state JSON for token telemetry!
+    # This prevents IO bottlenecks and lock contention.
+    init_db()
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(
+            "INSERT INTO token_metrics (phase, model, input_tokens, output_tokens) VALUES (?, ?, ?, ?)",
+            (args.phase, args.model, args.input, args.output)
+        )
+        conn.commit()
     print(json.dumps({"ok": True}))
-
 
 def cmd_archive(args: argparse.Namespace) -> None:
     state = load_state()
@@ -225,14 +237,13 @@ def cmd_archive(args: argparse.Namespace) -> None:
     archive_dir = RUNS_DIR / run_id
     archive_dir.mkdir(parents=True, exist_ok=True)
 
-    if STATE_FILE.exists():
-        shutil.copy(STATE_FILE, archive_dir / "state.json")
+    if DB_FILE.exists():
+        shutil.copy(DB_FILE, archive_dir / "state.db")
 
     print(json.dumps({"ok": True, "archived_to": str(archive_dir)}))
 
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="DATUM state manager")
+    parser = argparse.ArgumentParser(description="DATUM state manager (SQLite)")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("read")
@@ -279,7 +290,6 @@ def main() -> None:
         "archive": cmd_archive,
     }
     cmds[args.command](args)
-
 
 if __name__ == "__main__":
     main()

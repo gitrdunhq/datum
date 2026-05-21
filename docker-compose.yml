@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  datum-mcp:
+    build: .
+    container_name: datum-mcp-server
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount .datum and docs so the container shares the actual epic state with the host
+      - ./.datum:/app/.datum
+      - ./docs:/app/docs
+    environment:
+      - PYTHONUNBUFFERED=1

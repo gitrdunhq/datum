@@ -17,12 +17,27 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    state_path = Path(f".datum/runs/{args.run_id}/state.json")
-    if not state_path.exists():
-        state_path = Path(".datum/state.json")
+    import sqlite3
 
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
-    model_log = state.get("model_log", [])
+    db_path = Path(f".datum/runs/{args.run_id}/state.db")
+    if not db_path.exists():
+        db_path = Path(".datum/state.db")
+        
+    model_log = []
+    if db_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            # Handle backward compatibility if token_metrics doesn't exist in older DBs
+            try:
+                cur = conn.execute("SELECT phase, model, input_tokens, output_tokens FROM token_metrics")
+                for row in cur.fetchall():
+                    model_log.append({
+                        "phase": row[0],
+                        "model": row[1],
+                        "input_tokens": row[2],
+                        "output_tokens": row[3]
+                    })
+            except sqlite3.OperationalError:
+                pass
 
     per_phase: dict[str, dict] = {}
     per_model: dict[str, dict] = {}

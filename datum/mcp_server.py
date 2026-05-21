@@ -112,8 +112,9 @@ def datum_log_telemetry(phase: str, model: str, input_tokens: int, output_tokens
     return json.dumps({"ok": True, "message": f"Logged {input_tokens + output_tokens} tokens for {model}"})
 
 def main():
-    # FastMCP uses stdio by default for local desktop integrations
-    mcp.run(transport="stdio")
+    # Use SSE transport for remote/Docker access
+    print("Starting DATUM MCP Server on HTTP/SSE port 8000...")
+    mcp.run(transport="sse", host="0.0.0.0", port=8000)
 
 if __name__ == "__main__":
     main()
