@@ -13,6 +13,12 @@ app = typer.Typer(
 )
 console = Console()
 
+product_app = typer.Typer(
+    name="product",
+    help="DATUM V3 - Product (Pre-Dev) Orchestrator",
+)
+app.add_typer(product_app, name="product")
+
 @app.command()
 def floor():
     """Render the live Manager Factory Floor dashboard."""
@@ -113,6 +119,25 @@ def install(dry_run: bool = typer.Option(False, "--dry-run", help="Simulate inst
     except Exception as e:
         console.print(f"[bold red]Installation failed: {e}[/bold red]")
         sys.exit(1)
+
+@product_app.command("status")
+def product_status(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """Show the live pipeline status for the active product run."""
+    from datum.product_state import load_state
+    state = load_state()
+    if json_output:
+        console.print(json.dumps(state, indent=2))
+    else:
+        if not state:
+            console.print("No active product run. Run 'datum product go' to start.")
+            return
+        console.print(f"Product Run ID: [bold]{state.get('run_id')}[/bold]")
+        console.print(f"Current Phase: [blue]{state.get('current_phase')}[/blue]")
+        console.print("Phases:")
+        for phase, data in state.get("phases", {}).items():
+            status = data.get("status", "pending")
+            color = "green" if status == "completed" else "yellow" if status == "in_progress" else "dim"
+            console.print(f"  - {phase}: [{color}]{status}[/{color}]")
 
 def main():
     """Main entrypoint for the uv-managed script."""

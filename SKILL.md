@@ -28,6 +28,11 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum closeout [<run_id>] [--resume] [--synth-only]
 /datum rollback <run_id>   Revert a merged epic and re-enter at PR Comments
 /datum update "<request>" Post a /datum update comment on the open PR
+
+### Product Pipeline (Pre-Dev)
+/datum product go       Run Product Ideation (Triage -> Discovery -> Requirements -> Handoff)
+/datum product <phase>  Run a single Product phase (triage, discovery, requirements, handoff)
+/datum product status   Print current Product phase and run ID
 ```
 
 Phrase triggers work on tools without slash commands:
@@ -117,6 +122,16 @@ Load the phase reference doc and execute it:
 | Review | `datum/references/06-review.md` | Validate gate passed | `datum/references/domain-wisdom.md` |
 | PR Comments | `datum/references/07-pr-comments.md` | PR open | — |
 | Closeout | `datum/references/08-closeout.md` | PR merged | — |
+
+**Product Pipeline (Pre-Dev) Phases:**
+For `datum product go` or `datum product <phase>`, use `.datum/product_state.json` and `uv run scripts/datum.py datum.product_state`:
+
+| Phase | Reference Doc | Entry Condition |
+|---|---|---|
+| Triage | `datum/references/p1-triage.md` | Initial ideation/request |
+| Discovery | `datum/references/p2-discovery.md` | `docs/ideation/TRIAGE.md` present |
+| Requirements | `datum/references/p3-requirements.md` | `docs/ideation/DISCOVERY.md` present |
+| Handoff | `datum/references/p4-handoff.md` | `docs/ideation/PRD.md` present |
 
 For **Act**, also load:
 - `datum/references/agent-contracts.md` — typed brief/result schemas for all agent roles
