@@ -30,6 +30,8 @@ Before any analysis, classify the ticket's ambiguity level. This controls how mu
 For each code symbol, API, or module referenced in docs/TICKET.md:
 - If GitNexus is available: run `gitnexus context <symbol>` to confirm it exists and understand its current shape
 - If degraded: use AST or grep to locate the symbol; record "unverified by impact graph" in state
+- **Run Impact Analysis**: You MUST execute the `datum/references/impact-analysis.md` playbook to assess the blast radius (d=1, d=2).
+- **CRITICAL Risk Check**: If the Impact Analysis yields a CRITICAL risk, you MUST immediately invoke the Highest Model available as an Advisor (e.g. o1/o3-mini) to review the impact graph and recommend safeguards. Record these in the SPEC.
 
 If any referenced symbol does not exist: halt with a clarifying question to the user. Do not proceed with a broken assumption.
 
@@ -80,6 +82,7 @@ docs/SPEC.md sections:
 5. Non-functional requirements
 6. Out of scope
 7. Open questions (should be empty before gate passes)
+8. Blast Radius & Impact Analysis (explicit list of WILL BREAK upstream dependencies and Advisor safeguards if CRITICAL)
 ```
 
 ### 4. Gate
