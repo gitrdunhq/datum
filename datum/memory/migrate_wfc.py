@@ -2,7 +2,7 @@
 
 Usage:
     from datum.memory.migrate_wfc import migrate_jsonl_to_sqlite
-    migrate_jsonl_to_sqlite(old_dir=Path("datum/memory"), db_path=Path("~/.datum/projects/datum/memory/memory.db"))
+    migrate_jsonl_to_sqlite(old_dir=Path("wfc/memory"), db_path=Path("~/.wfc/projects/wfc/memory/memory.db"))
 
     # Registered automatically from MemoryStore.__init__
     from datum.memory.migrate_wfc import run_migrations, EXPECTED_SCHEMA_VERSION

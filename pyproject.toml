@@ -13,6 +13,13 @@ dependencies = [
     "rich>=13.7.0"
 ]
 
+[project.optional-dependencies]
+memory = [
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.0.0",
+    "scikit-learn>=1.0.0"
+]
+
 [project.scripts]
 datum = "datum.cli:app"
 

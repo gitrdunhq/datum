@@ -10,14 +10,14 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from datum.scripts.knowledge.chunker import KnowledgeChunk, KnowledgeChunker
-from datum.scripts.knowledge.embeddings import (
+from datum.memory.chunker import KnowledgeChunk, KnowledgeChunker
+from datum.memory.embeddings import (
     EmbeddingModelMismatchError,
     EmbeddingProvider,
     get_embedding_provider,
 )
-from datum.scripts.memory._strict import is_memory_strict
-from datum.scripts.memory._trace import memory_traced
+from datum.memory._strict import is_memory_strict
+from datum.memory._trace import memory_traced
 from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +35,13 @@ class VectorStore:
     """ChromaDB-backed persistent vector store."""
 
     def __init__(self, store_dir: Path) -> None:
-        import chromadb
+        try:
+            import chromadb
+        except ImportError:
+            raise ImportError(
+                "Missing memory dependencies. "
+                "Run: uv tool install .[memory] or pip install .[memory]"
+            ) from None
 
         store_dir.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=str(store_dir))
