@@ -34,6 +34,10 @@ TEST RESULTS      — full test runner output (not redacted)
 
 If REFACTOR attempts any of these, the pre-commit hook rejects the commit with a diagnostic. The agent retries with the violation in its brief.
 
+**NO EMBEDDED LANGUAGES.** REFACTOR must never inline raw SQL, GraphQL, or HTML within application code files (e.g. within python/swift files).
+- ❌ No raw SQL strings like `cursor.execute("SELECT * FROM users")`
+- ✅ Always import statements from dedicated `.sql`, `.graphql`, or template files.
+
 **Do not add new tests.** If REFACTOR discovers a missing AC that the current tests don't cover, it must:
 1. Log the gap to `brief_defects.json`: `{ "task_id": "task-001", "missing_ac": "...", "surfaced_by_stage": "REFACTOR" }`
 2. Signal the orchestrator to spawn a new RED-GREEN cycle for the missing AC
