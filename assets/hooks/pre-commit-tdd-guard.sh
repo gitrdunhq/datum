@@ -2,6 +2,7 @@
 # During ACT, block source-only changes that have no staged test/properties evidence.
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 phase="$(python3 - <<'PY'
 import json

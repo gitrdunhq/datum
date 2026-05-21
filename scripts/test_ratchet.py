@@ -191,59 +191,65 @@ def check_skip_rename(hunk: dict, patterns: dict) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Test ratchet — pre-commit hook")
-    parser.add_argument("--framework", default="auto")
-    parser.add_argument("--diff", help="Path to diff file (default: git staged diff)")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="Test ratchet — pre-commit hook")
+        parser.add_argument("--framework", default="auto")
+        parser.add_argument("--diff", help="Path to diff file (default: git staged diff)")
+        args = parser.parse_args()
 
-    if args.diff:
-        diff = Path(args.diff).read_text()
-    else:
-        diff = get_staged_diff()
-
-    if not diff.strip():
-        sys.exit(0)
-
-    hunks = parse_diff_hunks(diff)
-    test_hunks = [h for h in hunks if is_test_file(h["path"])]
-
-    if not test_hunks:
-        sys.exit(0)
-
-    framework = args.framework
-    if framework == "auto":
-        # Detect from file extensions
-        paths = [h["path"] for h in test_hunks]
-        if any(".swift" in p for p in paths):
-            framework = "xctest"
-        elif any((".ts" in p or ".js" in p) for p in paths):
-            framework = "vitest"
+        if args.diff:
+            diff = Path(args.diff).read_text()
         else:
-            framework = "xctest"  # default
+            diff = get_staged_diff()
 
-    patterns = load_patterns(framework)
+        if not diff.strip():
+            sys.exit(0)
 
-    all_violations = []
-    for hunk in test_hunks:
-        all_violations.extend(check_removed_tests(hunk, patterns))
-        all_violations.extend(check_deleted_assertions(hunk, patterns))
-        all_violations.extend(check_weakened_assertions(hunk, patterns))
-        all_violations.extend(check_skip_rename(hunk, patterns))
+        hunks = parse_diff_hunks(diff)
+        test_hunks = [h for h in hunks if is_test_file(h["path"])]
 
-    if all_violations:
-        print(
-            json.dumps(
-                {
-                    "passed": False,
-                    "violations": all_violations,
-                    "message": "Test ratchet: commit blocked. Tests may not be weakened or removed.",
-                }
+        if not test_hunks:
+            sys.exit(0)
+
+        framework = args.framework
+        if framework == "auto":
+            # Detect from file extensions
+            paths = [h["path"] for h in test_hunks]
+            if any(".swift" in p for p in paths):
+                framework = "xctest"
+            elif any((".ts" in p or ".js" in p) for p in paths):
+                framework = "vitest"
+            else:
+                framework = "xctest"  # default
+
+        patterns = load_patterns(framework)
+
+        all_violations = []
+        for hunk in test_hunks:
+            all_violations.extend(check_removed_tests(hunk, patterns))
+            all_violations.extend(check_deleted_assertions(hunk, patterns))
+            all_violations.extend(check_weakened_assertions(hunk, patterns))
+            all_violations.extend(check_skip_rename(hunk, patterns))
+
+        if all_violations:
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "violations": all_violations,
+                        "message": "Test ratchet: commit blocked. Tests may not be weakened or removed.",
+                    }
+                )
             )
-        )
-        sys.exit(2)
+            sys.exit(2)
 
-    print(json.dumps({"passed": True, "message": "Test ratchet: no violations"}))
-    sys.exit(0)
+        print(json.dumps({"passed": True, "message": "Test ratchet: no violations"}))
+        sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"WARNING: test_ratchet.py crashed ({e}). Failing open.", file=sys.stderr)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

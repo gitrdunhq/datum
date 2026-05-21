@@ -30,6 +30,8 @@ Run: `python3 scripts/language_detect.py`
 
 Note: package manager, test framework, linter, formatter. These inform ACT phase tool selection.
 
+**Context7 MCP Protocol:** If the project uses frameworks, SDKs, or libraries that are unfamiliar or whose APIs might have drifted, you MUST use the Context7 MCP (`resolve-library-id` followed by `query-docs`) to fetch current, authoritative documentation. Do not guess API surfaces or rely on stale training data.
+
 ### 4. Security seam identification
 
 Scan for security-critical boundaries. This feeds directly into the GitNexus risk context for Plan phase.

@@ -27,6 +27,7 @@ HOOK_MAP: dict[str, str] = {
     "pre-commit-file-size.sh": "pre-commit",
     "pre-commit-tdd-guard.sh": "pre-commit",
     "pre-commit-banned-patterns.sh": "pre-commit",
+    "pre-commit-guard-main.py": "pre-commit",
 }
 
 # For tools that support PreToolUse hooks (Claude Code), we also write to .claude/settings.json

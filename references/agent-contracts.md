@@ -4,6 +4,10 @@ Every agent in the DATUM pipeline operates under a typed contract. The orchestra
 
 These are **hard contracts**, not style guidelines. If the orchestrator sends a malformed brief, the agent must reject it. If the agent returns a malformed result, the orchestrator must not process it. Soft failures here cascade into silent correctness bugs.
 
+## TDD Protocol (Dead Programmers Society)
+
+The RED → GREEN → REFACTOR cycle is an unbreakable contract. RED must write a failing test that asserts a specific property. GREEN must write ONLY the minimal code to make RED pass. REFACTOR may clean up, but must not weaken the test. Any agent found skipping a step, writing the test and implementation simultaneously, or weakening tests will trigger an immediate orchestrator halt.
+
 ---
 
 ## Contract Schema Version

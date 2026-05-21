@@ -61,6 +61,10 @@ review_dimensions:
     weight: 1
     required: false
     pass: "Key events logged with structured fields per OBS properties."
+  - id: "dps"
+    weight: 5
+    required: true
+    pass: "Dead Programmers Society rules are enforced. All code follows Fail-Open pattern where applicable."
 
 # Evidence requirements for the Review agent.
 evidence_requirements:

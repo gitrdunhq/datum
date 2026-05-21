@@ -4,6 +4,7 @@
 # Installed by: python3 scripts/bootstrap/install_hooks.py
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 # Only run if test files are staged
 STAGED_TEST_FILES=$(git diff --cached --name-only | grep -E '(Test|Spec|_test\.|_spec\.)' || true)

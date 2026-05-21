@@ -17,7 +17,7 @@ The `pass_policy` determines gate verdict — if absent, default to requiring no
 
 Default domains (used when no quality profile exists):
 
-Each domain is reviewed by a separate subagent. Agents fill structured JSON packets (see `assets/schemas/packet.schema.json`).
+Instead of spawning concurrent agents per domain, **a single Review Agent** runs a rigorous multi-pass checklist, producing one unified JSON packet of findings (see `assets/schemas/packet.schema.json`).
 
 | Domain | Focus |
 |---|---|
@@ -30,14 +30,14 @@ Each domain is reviewed by a separate subagent. Agents fill structured JSON pack
 
 ## Steps
 
-### 1. Prepare review packets
+### 1. Prepare review packet
 
-For each domain, create a pre-filled JSON packet:
+Create a pre-filled JSON packet envelope for the single agent:
 ```json
 {
   "schema_version": "1.0",
-  "domain": "security",
-  "output_path": ".datum/runs/<RUN_ID>/review-packets/security.json",
+  "domain": "unified",
+  "output_path": ".datum/runs/<RUN_ID>/review-packets/unified.json",
   "diff": "<the diff>",
   "spec_summary": "<relevant SPEC sections>",
   "properties": "<relevant PROPERTIES>",
@@ -45,11 +45,12 @@ For each domain, create a pre-filled JSON packet:
 }
 ```
 
-### 2. Dispatch reviewers concurrently
+### 2. Multi-Pass Review Execution
 
-Spawn one subagent per domain. Each reads its packet and produces findings.
+Spawn **one single Review Agent**. The agent must conduct the review in sequential passes corresponding to the domains (correctness, properties, security, etc.). 
+For each pass, the agent reads the context and appends any discovered issues to the single unified packet.
 
-Each finding:
+Each finding in the packet:
 ```json
 {
   "id": "SEC-001",
@@ -62,6 +63,11 @@ Each finding:
 ```
 
 If GitNexus available: run `gitnexus impact` on each `high` or `medium` finding's file to confirm blast radius matches severity. Downgrade findings where blast radius is local-only.
+
+### 2.5 Deduplication and Minority Protection
+
+Run `python3 scripts/dedupe.py --input .datum/runs/<RUN_ID>/review-packets/unified.json`.
+This script ensures that if the agent surfaced duplicate findings across different passes (e.g. a performance issue that was also flagged as an architecture issue), they are consolidated. Crucially, it enforces **Minority Protection Rules**: if a security or property invariant finding looks similar to a general correctness finding, the higher-severity/domain-specific finding is strictly protected and never collapsed into a generic finding.
 
 ### 3. Validate packets
 

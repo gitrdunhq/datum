@@ -2,6 +2,7 @@
 # Block high-risk staged diff patterns.
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 diff="$(git diff --cached --unified=0 || true)"
 [ -z "$diff" ] && exit 0

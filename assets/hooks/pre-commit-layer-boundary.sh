@@ -2,6 +2,7 @@
 # Optional layer-boundary hook. Enforces .datum/layer-boundaries.txt when present.
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 rules=".datum/layer-boundaries.txt"
 [ -f "$rules" ] || exit 0

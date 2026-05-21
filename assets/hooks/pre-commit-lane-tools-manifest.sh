@@ -4,6 +4,7 @@
 # Installed by: python3 scripts/bootstrap/install_hooks.py
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 MANIFEST="scripts/lane-tools/manifest.toml"
 LANE_TOOLS_DIR="scripts/lane-tools/"

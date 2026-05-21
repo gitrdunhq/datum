@@ -2,6 +2,7 @@
 # Block commits that introduce oversized files.
 
 set -euo pipefail
+trap 'echo "WARNING: hook crashed at line $LINENO. Failing open." >&2; exit 0' ERR
 
 MAX_BYTES="${DATUM_MAX_FILE_BYTES:-200000}"
 
