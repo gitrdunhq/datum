@@ -18,7 +18,7 @@ from typing import Any
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from path_utils import assets_dir
+from datum.path_utils import assets_dir
 
 SCHEMA_DIR = assets_dir() / "schemas"
 FIXTURE_CASES = [

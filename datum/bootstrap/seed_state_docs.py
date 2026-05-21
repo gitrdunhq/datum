@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from path_utils import assets_dir
+from datum.path_utils import assets_dir
 
 
 def main() -> None:

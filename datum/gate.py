@@ -20,8 +20,8 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from contracts import validate_payload, validate_value
-from path_utils import assets_dir, existing_review_packets_dir
+from datum.contracts import validate_payload, validate_value
+from datum.path_utils import assets_dir, existing_review_packets_dir
 
 
 def load_config() -> dict:

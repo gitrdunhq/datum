@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from path_utils import collector_marker, closeout_raw_dir, state_for_run  # noqa: E402
+from datum.path_utils import collector_marker, closeout_raw_dir, state_for_run  # noqa: E402
 
 
 def load_manifest() -> dict:

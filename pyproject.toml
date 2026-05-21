@@ -1,0 +1,24 @@
+[project]
+name = "datum"
+version = "2.0.0"
+description = "DATUM V2 Agentic Production Line Orchestrator"
+authors = [
+    {name = "Gitrdun HQ"}
+]
+readme = "DATUM.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0"
+]
+
+[project.scripts]
+datum = "datum.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["datum"]

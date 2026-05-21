@@ -14,8 +14,8 @@ from typing import Any
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from path_utils import assets_dir
-from contracts import validate_value
+from datum.path_utils import assets_dir
+from datum.contracts import validate_value
 
 ARTIFACT_SCHEMA_PATH = assets_dir() / "schemas/artifact.schema.json"
 

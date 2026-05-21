@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from path_utils import assets_dir
+from datum.path_utils import assets_dir
 
 def load_prompt_with_injection(base_file: Path) -> str:
     content = base_file.read_text()

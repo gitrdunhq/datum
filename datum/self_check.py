@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from path_utils import skill_root
+from datum.path_utils import skill_root
 
 ROOT = skill_root()
 DOC_GLOBS = ["SKILL.md", "references/*.md"]

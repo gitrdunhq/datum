@@ -21,7 +21,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum resume      Resume from .datum/state.json after interruption
 /datum status      Print current phase, RUN_ID, lane progress, last failure
 /datum init        Bootstrap hooks, linter, GitNexus, CURRENT_STATE.md, ROADMAP.md
-/datum doctor      Run `python3 scripts/self_check.py` before a workflow run
+/datum doctor      Run `python3 -m datum.self_check` before a workflow run
 /datum migrate     Upgrade state/artifact schemas across skill versions
 /datum archive     Force-archive current RUN_ID
 /datum reset       Discard current RUN_ID state (with confirmation)
@@ -41,7 +41,7 @@ When DATUM is invoked, execute this sequence before doing any phase work:
 
 ### 0. Self-check Runtime Contracts
 
-Run: `python3 scripts/self_check.py`
+Run: `python3 -m datum.self_check`
 
 If it fails, halt before touching the target repo. A failing self-check means the skill's
 documented scripts, schemas, hooks, or contract fixtures drifted from the executable assets.
@@ -53,7 +53,7 @@ Model tier names resolve to actual model IDs via `[models]` table.
 
 ### 2. Read State
 
-Run: `python3 scripts/state.py read`
+Run: `python3 -m datum.state read`
 
 If state is absent or `run_id` is missing, detect entry point from artifacts.
 
@@ -85,7 +85,7 @@ Generate a new `run_id`: `epic-{N}-{YYYYMMDD}-{hhmmss}` where N is the next epic
 
 ### 3. Detect Language
 
-Run: `python3 scripts/language_detect.py`
+Run: `python3 -m datum.language_detect`
 
 Returns the primary language. Maps to a language override file:
 - `swift` → `references/04-act-swift.md`
@@ -133,7 +133,7 @@ For **Act**, also load:
 - `references/pipeline-dispatch.md`
 - `references/gitnexus-playbook.md` (if gitnexus_available)
 
-After each phase completes, run: `python3 scripts/gate.py <phase> [--yolo]`
+After each phase completes, run: `python3 -m datum.gate <phase> [--yolo]`
 On gate pass: update state, archive artifacts, transition to next phase.
 On gate fail: halt and surface the gate verdict to the user.
 
@@ -180,7 +180,7 @@ Gates are enforced by `scripts/gate.py`. Each gate has a policy from config:
 
 Location: `.datum/state.json`
 Schema: `assets/schemas/state.schema.json`
-Managed by: `python3 scripts/state.py <read|write|transition|archive>`
+Managed by: `python3 -m datum.state <read|write|transition|archive>`
 
 Key fields used by the dispatcher:
 
@@ -206,7 +206,7 @@ Key fields used by the dispatcher:
 ## Artifact Archival
 
 All phase outputs are archived to `.datum/runs/<RUN_ID>/`.
-Run: `python3 scripts/archive.py <run_id> <artifact_path>` after each phase.
+Run: `python3 -m datum.archive <run_id> <artifact_path>` after each phase.
 
 `.datum/` is gitignored except for artifacts explicitly committed:
 `docs/SPEC.md`, `TASKS.md`, `docs/PROPERTIES.md`, `CHANGELOG.md`, `CURRENT_STATE.md`,
@@ -253,11 +253,11 @@ and log the degradation.
 ## Bootstrap (`datum init`)
 
 Run `datum init` on a fresh repo to set up:
-1. `python3 scripts/bootstrap/setup_symlinks.py` — symlink to skill assets
-2. `python3 scripts/bootstrap/install_hooks.py` — pre-commit hook suite
-3. `python3 scripts/bootstrap/install_linter_rules.py` — project linter config
-4. `python3 scripts/bootstrap/seed_state_docs.py` — CURRENT_STATE.md, ROADMAP.md stubs
-5. `python3 scripts/bootstrap/gitnexus_setup.py` — GitNexus analyze (if available)
+1. `python3 -m datum.bootstrap.setup_symlinks` — symlink to skill assets
+2. `python3 -m datum.bootstrap.install_hooks` — pre-commit hook suite
+3. `python3 -m datum.bootstrap.install_linter_rules` — project linter config
+4. `python3 -m datum.bootstrap.seed_state_docs` — CURRENT_STATE.md, ROADMAP.md stubs
+5. `python3 -m datum.bootstrap.gitnexus_setup` — GitNexus analyze (if available)
 
 All bootstrap steps require a single human approval gate before execution.
 After approval, each step runs and confirms success before the next begins.
@@ -280,7 +280,7 @@ Full templates and a worked example are in `references/brief-builder.md`. Requir
 
 **GREEN brief — minimum to pass without seeing the test:**
 1. Same SPEC, PROPERTIES (task-filtered), task entry, GitNexus context, lane-tools README as RED
-2. Run `python3 scripts/test_signal.py --framework <detected>` on the raw runner output → attach the `TestSignal` JSON
+2. Run `python3 -m datum.test_signal --framework <detected>` on the raw runner output → attach the `TestSignal` JSON
 3. If `status = "redaction_failed"`: **halt the lane** — do not dispatch GREEN
 4. **Exclude:** test source files, test names, RED brief, RED commit message, anything from `Tests/`
 
@@ -328,7 +328,7 @@ A lane failure never auto-propagates to halt other lanes — the decision always
 
 ## `datum status` — Live Pipeline View
 
-`datum status` runs `python3 scripts/status_render.py` which reads `.datum/state.json` and renders:
+`datum status` runs `python3 -m datum.status_render` which reads `.datum/state.json` and renders:
 
 ```
 datum/epic-3 │ phase: ACT │ 5 lanes │ 2 in-flight │ 1 completed │ cap: 7
@@ -350,7 +350,7 @@ task-005  ── RED    ── committed   ──
 gitnexus: degraded (grep/AST fallback)   flakies: 0/3
 ```
 
-Run: `python3 scripts/status_render.py [--json]` for the raw JSON version.
+Run: `python3 -m datum.status_render [--json]` for the raw JSON version.
 The `--json` form is used by CI and by other scripts; the rendered form is for humans.
 
 ---
@@ -364,7 +364,7 @@ Quick reference:
 - `REASONING` failures → enter retry ladder (same brief → Reasoning tier → verbose Reasoning)
 - `UNKNOWN` failures → enter retry ladder conservatively, log new pattern
 
-Run: `python3 scripts/diagnose_failure.py <log_path>` to classify before retrying.
+Run: `python3 -m datum.diagnose_failure <log_path>` to classify before retrying.
 
 **Rollback (`datum rollback <run_id>`):**
 
@@ -376,13 +376,13 @@ pass on the reverted branch), then PR Comments. Does NOT re-run ACT.
 
 `datum resume` reads `.datum/state.json` and resumes exactly where execution stopped. Protocol:
 
-1. Run `python3 scripts/state.py read` — confirm state is valid and has a `run_id`
+1. Run `python3 -m datum.state read` — confirm state is valid and has a `run_id`
 2. Check `current_phase`: resume at that phase's reference doc
 3. For ACT specifically:
    - Lanes with `stage = completed` or `status = committed` for a stage: **do not re-run**
    - Lanes with `stage = in_progress`: re-classify as `queued` and re-dispatch (the previous agent crashed without committing)
    - Lanes with `stage = queued` or `blocked_on_*`: resume scheduler from current DAG state
-   - Re-start the commit queue: `python3 scripts/commit_queue.py --run-id <RUN_ID>`
+   - Re-start the commit queue: `python3 -m datum.commit_queue --run-id <RUN_ID>`
 4. For Closeout specifically: use `datum closeout --resume <run_id>` — each stage checks its `.done` marker and skips completed steps
 5. Artifacts already committed to the branch are safe — `git log` is the ground truth; state.json reflects it
 
@@ -397,7 +397,7 @@ mid-session exit phrases during an active DATUM run, write a handoff summary bef
 session closes. This is distinct from Closeout — it captures interruption state, not
 post-merge state.
 
-Run: `python3 scripts/state.py read` to get current state, then write to memory:
+Run: `python3 -m datum.state read` to get current state, then write to memory:
 
 ```
 Session handoff — DATUM in-flight
@@ -419,5 +419,5 @@ state-read step when no `run_id` is present in state.
 
 ## Version Migration
 
-`datum migrate` runs `python3 scripts/migrate.py` which reads the current `skill_version`
+`datum migrate` runs `python3 -m datum.migrate` which reads the current `skill_version`
 from state and applies incremental migrations to reach the current skill version.

@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover - py3.10 fallback
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from path_utils import assets_dir
+from datum.path_utils import assets_dir
 
 STATE_FILE = Path(".datum/state.json")
 CONFIG_FILE = assets_dir() / "config.toml.default"
