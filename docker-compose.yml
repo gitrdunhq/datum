@@ -11,3 +11,4 @@ services:
       - ./docs:/app/docs
     environment:
       - PYTHONUNBUFFERED=1
+      - DATUM_API_KEY=dev_secret_key_123

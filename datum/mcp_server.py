@@ -1,8 +1,23 @@
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
+import uvicorn
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, api_key: str):
+        super().__init__(app)
+        self.api_key = api_key
+
+    async def dispatch(self, request, call_next):
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or auth_header != f"Bearer {self.api_key}":
+            return JSONResponse({"error": "Unauthorized", "message": "Invalid or missing API Key"}, status_code=401)
+        return await call_next(request)
 
 from datum.state import load_state, save_state, PHASES
 
@@ -112,9 +127,15 @@ def datum_log_telemetry(phase: str, model: str, input_tokens: int, output_tokens
     return json.dumps({"ok": True, "message": f"Logged {input_tokens + output_tokens} tokens for {model}"})
 
 def main():
-    # Use SSE transport for remote/Docker access
-    print("Starting DATUM MCP Server on HTTP/SSE port 8000...")
-    mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    api_key = os.environ.get("DATUM_API_KEY")
+    if not api_key:
+        print("Starting in UNSECURE mode (no DATUM_API_KEY set)...")
+        mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    else:
+        print("Starting in SECURE mode with API Key auth on HTTP/SSE port 8000...")
+        app = mcp.sse_app()
+        app.add_middleware(APIKeyAuthMiddleware, api_key=api_key)
+        uvicorn.run(app, host="0.0.0.0", port=8000)
 
 if __name__ == "__main__":
     main()
