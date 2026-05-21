@@ -94,6 +94,27 @@ def migrate(dry_run: bool = typer.Option(False, "--dry-run", help="Simulate migr
     else:
         console.print("[bold green]✓ Migration successful.[/bold green]")
 
+@app.command()
+def install(dry_run: bool = typer.Option(False, "--dry-run", help="Simulate installation without making changes")):
+    """Install a stable snapshot of the DATUM skill globally for AI Agents."""
+    import sys
+    from datum.bootstrap.install_skill import install_skill_snapshot
+    
+    console.print("[bold blue]Installing DATUM Agent Skill globally...[/bold blue]")
+    try:
+        actions = install_skill_snapshot(dry_run)
+        for action in actions:
+            console.print(f"[yellow]• {action}[/yellow]")
+            
+        if dry_run:
+            console.print("[bold green]Dry run complete. No changes made.[/bold green]")
+        else:
+            console.print("[bold green]✓ DATUM skill successfully installed and linked across all agents![/bold green]")
+            console.print("\n[dim]To use the skill, your agent will need access to run 'python3 -m datum' (usually handled via a global pip/uv installation of this project).[/dim]")
+    except Exception as e:
+        console.print(f"[bold red]Installation failed: {e}[/bold red]")
+        sys.exit(1)
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()
