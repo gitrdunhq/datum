@@ -10,15 +10,15 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from wfc.scripts.knowledge.chunker import KnowledgeChunk, KnowledgeChunker
-from wfc.scripts.knowledge.embeddings import (
+from datum.scripts.knowledge.chunker import KnowledgeChunk, KnowledgeChunker
+from datum.scripts.knowledge.embeddings import (
     EmbeddingModelMismatchError,
     EmbeddingProvider,
     get_embedding_provider,
 )
-from wfc.scripts.memory._strict import is_memory_strict
-from wfc.scripts.memory._trace import memory_traced
-from wfc.shared.logging import get_logger
+from datum.scripts.memory._strict import is_memory_strict
+from datum.scripts.memory._trace import memory_traced
+from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -163,7 +163,7 @@ class RAGEngine:
         if store_dir is None:
             raise ValueError(
                 "RAGEngine requires an explicit store_dir. "
-                "Use Path.home() / '.wfc' / 'projects' / repo_name / 'knowledge'."
+                "Use Path.home() / '.datum' / 'projects' / repo_name / 'knowledge'."
             )
         self.store_dir = store_dir
         self.store_dir.mkdir(parents=True, exist_ok=True)
@@ -219,7 +219,7 @@ class RAGEngine:
 
         Args:
             reviewers_dir: Path to the reviewers directory.
-                Defaults to wfc/reviewers/ relative to the project root.
+                Defaults to datum/reviewers/ relative to the project root.
 
         Returns:
             Dict mapping reviewer_id to number of chunks indexed.
@@ -277,7 +277,7 @@ class RAGEngine:
             raise EmbeddingModelMismatchError(
                 f"embedding provider mismatch: index built with {old_provider!r}, "
                 f"current provider is {type(self.provider).__name__!r}. "
-                "Run `wfc helpers rag-reindex` to rebuild all embeddings."
+                "Run `datum rag-reindex` to rebuild all embeddings."
             )
         query_embedding = self.provider.embed_query(query_text)
         collection_name = f"reviewer_{reviewer_id}"
@@ -347,7 +347,7 @@ class RAGEngine:
         if stored_provider != current:
             logger.warning(
                 "embedding provider mismatch: index built with %r, current provider is %r. "
-                "Run `wfc helpers rag-reindex` to rebuild all embeddings.",
+                "Run `datum rag-reindex` to rebuild all embeddings.",
                 stored_provider,
                 current,
             )

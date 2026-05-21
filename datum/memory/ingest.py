@@ -90,7 +90,7 @@ class LedgerProtocol(Protocol):
 def classify_scope(
     artifact_type: str,
     parsed_data: dict[str, Any],
-    project_name: str = "wfc",
+    project_name: str = "datum",
 ) -> str:
     """Return the scope string for a parsed entry.
 

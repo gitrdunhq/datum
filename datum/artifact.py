@@ -81,7 +81,7 @@ def self_test() -> int:
         {
             "datum_version": "1.0",
             "type": "lane_plan",
-            "owner": "wfc-pm",
+            "owner": "datum-orchestrator",
             "status": "ok",
             "payload": {"tasks": []},
         }
@@ -100,7 +100,7 @@ def self_test() -> int:
         {
             "datum_version": "1.0",
             "type": "lane_plan",
-            "owner": "wfc-pm",
+            "owner": "datum-orchestrator",
             "status": "unknown",
             "payload": {},
         }

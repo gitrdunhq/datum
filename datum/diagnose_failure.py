@@ -51,7 +51,7 @@ _BUILTIN_ENVIRONMENTAL = [
         "stub_not_committed",
         "Wait for upstream stub commit",
     ),
-    (r"warning:.*auto-correctable", "lint_fixable", "Run: wfc lint --fix; re-verify"),
+    (r"warning:.*auto-correctable", "lint_fixable", "Run: datum lint --fix; re-verify"),
     (
         r"exit code 124",
         "subagent_timeout",
@@ -80,7 +80,7 @@ _BUILTIN_ENVIRONMENTAL = [
     (
         r"format.*check.*failed|reformatted \d+ files",
         "format_mismatch",
-        "Run: wfc format; re-verify",
+        "Run: datum format; re-verify",
     ),
 ]
 

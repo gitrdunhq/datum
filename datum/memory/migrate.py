@@ -1,11 +1,11 @@
 """Schema migration registry and one-time JSONL → SQLite migration.
 
 Usage:
-    from wfc.scripts.memory.migrate import migrate_jsonl_to_sqlite
-    migrate_jsonl_to_sqlite(old_dir=Path("wfc/memory"), db_path=Path("~/.wfc/projects/wfc/memory/memory.db"))
+    from datum.scripts.memory.migrate import migrate_jsonl_to_sqlite
+    migrate_jsonl_to_sqlite(old_dir=Path("datum/memory"), db_path=Path("~/.datum/projects/datum/memory/memory.db"))
 
     # Registered automatically from MemoryStore.__init__
-    from wfc.scripts.memory.migrate import run_migrations, EXPECTED_SCHEMA_VERSION
+    from datum.scripts.memory.migrate import run_migrations, EXPECTED_SCHEMA_VERSION
 
 `MemoryStore` is imported lazily inside the function bodies to break the
 circular import: `store.py` imports `EXPECTED_SCHEMA_VERSION` and
@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from wfc.shared.logging import get_logger
+from datum.shared.logging import get_logger
 
 if TYPE_CHECKING:
     from .store import MemoryStore
@@ -340,7 +340,7 @@ def migrate_knowledge_to_chromadb(
         Dict mapping reviewer_id to the number of chunks indexed.
         Reviewers without a KNOWLEDGE.md are omitted from the result.
     """
-    from wfc.scripts.knowledge.rag_engine import RAGEngine
+    from datum.scripts.knowledge.rag_engine import RAGEngine
 
     reviewers_dir = Path(reviewers_dir).expanduser()
     store_dir = Path(store_dir).expanduser()

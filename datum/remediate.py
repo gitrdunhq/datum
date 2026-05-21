@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-remediate.py — Meta Remediation Engine (WFC Port)
+remediate.py — Meta Remediation Engine (DATUM Native)
 
 Ingests blocked review findings or security scan results and generates a structured
 Remediation Package (Decision Table, Compatibility Rules, Wave Backlog) to guide

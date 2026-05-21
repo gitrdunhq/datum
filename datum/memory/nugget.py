@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from wfc.memory.hrr import (
+from datum.memory.hrr import (
     bind,
     make_role_keys,
     make_vocab_keys,
@@ -31,13 +31,13 @@ from wfc.memory.hrr import (
     unbind,
     unbind_batch,
 )
-from wfc.shared.file_io import load_json, save_json
-from wfc.shared.logging import get_logger
+from datum.shared.file_io import load_json, save_json
+from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-DEFAULT_SAVE_DIR = os.path.expanduser("~/.wfc/memory")
+DEFAULT_SAVE_DIR = os.path.expanduser("~/.datum/memory")
 SAVE_VERSION = 3
 
 MAX_D = 131072

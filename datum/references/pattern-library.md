@@ -62,13 +62,13 @@ fix_hint = "Wait for upstream stub commit; re-dispatch when stub lands"
 regex = "warning:.*auto-correctable"
 classification = "ENVIRONMENTAL"
 cause = "lint_fixable"
-fix_hint = "Run: wfc lint --fix; re-verify"
+fix_hint = "Run: datum lint --fix; re-verify"
 
 [[patterns]]
 regex = "reformatted \\d+ files|format.*check.*failed"
 classification = "ENVIRONMENTAL"
 cause = "format_mismatch"
-fix_hint = "Run: wfc format; re-verify"
+fix_hint = "Run: datum format; re-verify"
 
 [[patterns]]
 regex = "exit code 124"
