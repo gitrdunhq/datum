@@ -25,24 +25,39 @@ def main() -> None:
     model_log = state.get("model_log", [])
 
     per_phase: dict[str, dict] = {}
+    per_model: dict[str, dict] = {}
     total_input = total_output = 0
 
     for entry in model_log:
         phase = entry.get("phase", "unknown")
+        model = entry.get("model", "unknown")
         inp = entry.get("input_tokens", 0)
         out = entry.get("output_tokens", 0)
+        
         total_input += inp
         total_output += out
+        
         if phase not in per_phase:
-            per_phase[phase] = {"input": 0, "output": 0}
+            per_phase[phase] = {"input": 0, "output": 0, "models": {}}
         per_phase[phase]["input"] += inp
         per_phase[phase]["output"] += out
+        
+        if model not in per_phase[phase]["models"]:
+            per_phase[phase]["models"][model] = {"input": 0, "output": 0}
+        per_phase[phase]["models"][model]["input"] += inp
+        per_phase[phase]["models"][model]["output"] += out
+
+        if model not in per_model:
+            per_model[model] = {"input": 0, "output": 0}
+        per_model[model]["input"] += inp
+        per_model[model]["output"] += out
 
     data = {
         "total_input": total_input,
         "total_output": total_output,
         "total": total_input + total_output,
         "per_phase": per_phase,
+        "per_model": per_model,
     }
 
     out_path = Path(f".datum/runs/{args.run_id}/closeout-raw/token_metrics.json")

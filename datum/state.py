@@ -194,6 +194,27 @@ def cmd_lane_update(args: argparse.Namespace) -> None:
     print(json.dumps({"ok": True}))
 
 
+def cmd_log_tokens(args: argparse.Namespace) -> None:
+    state = load_state()
+    if not state:
+        print(json.dumps({"error": "no_state"}))
+        sys.exit(1)
+
+    if "model_log" not in state:
+        state["model_log"] = []
+
+    state["model_log"].append({
+        "phase": args.phase,
+        "model": args.model,
+        "input_tokens": args.input,
+        "output_tokens": args.output,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+    save_state(state)
+    print(json.dumps({"ok": True}))
+
+
 def cmd_archive(args: argparse.Namespace) -> None:
     state = load_state()
     run_id = args.run_id or (state.get("run_id") if state else None)
@@ -237,6 +258,12 @@ def main() -> None:
     lane_p.add_argument("--sha")
     lane_p.add_argument("--retries", type=int)
 
+    log_p = subparsers.add_parser("log-tokens")
+    log_p.add_argument("--phase", required=True)
+    log_p.add_argument("--model", required=True)
+    log_p.add_argument("--input", type=int, required=True)
+    log_p.add_argument("--output", type=int, required=True)
+
     arch_p = subparsers.add_parser("archive")
     arch_p.add_argument("--run-id")
 
@@ -248,6 +275,7 @@ def main() -> None:
         "write": cmd_write,
         "transition": cmd_transition,
         "lane-update": cmd_lane_update,
+        "log-tokens": cmd_log_tokens,
         "archive": cmd_archive,
     }
     cmds[args.command](args)

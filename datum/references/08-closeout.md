@@ -81,6 +81,8 @@ python3 scripts/closeout/archive.py          # copies state.json to runs dir, cl
 `collect_token_metrics.py` produces `token-metrics.json`:
 - Total tokens for the epic (input + output)
 - Per-phase breakdown
+- Per-model overall token consumption
+- Phase-by-model split (which models handled which phases, and their token ROI)
 - Per-stage breakdown within ACT
 - Per-lane breakdown
 - Comparison to prior epic: total delta, per-LOC delta
