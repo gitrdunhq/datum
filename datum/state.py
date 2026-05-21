@@ -26,6 +26,8 @@ PHASES = [
     "discovery",
     "refine",
     "plan",
+    "triage",
+    "deepen",
     "properties",
     "act",
     "validate",

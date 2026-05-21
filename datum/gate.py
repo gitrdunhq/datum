@@ -166,6 +166,30 @@ def gate_plan(yolo: bool, config: dict) -> None:
 
     pass_gate("Plan gate passed")
 
+def gate_triage(yolo: bool, config: dict) -> None:
+    routing_path = Path(".datum/routing.json")
+    if not routing_path.exists():
+        fail("routing.json not found. Triage subagent must write decision to .datum/routing.json")
+        
+    with routing_path.open() as f:
+        routing = json.load(f)
+        
+    if routing.get("decision") not in ("deepen", "properties"):
+        fail("Invalid routing decision. Must be 'deepen' or 'properties'.")
+        
+    pass_gate("Triage gate passed")
+
+def gate_deepen(yolo: bool, config: dict) -> None:
+    tasks_path = Path("TASKS.md")
+    if not tasks_path.exists():
+        fail("TASKS.md not found")
+        
+    content = tasks_path.read_text()
+    if "## Research Findings" not in content and "## Research" not in content:
+        fail("TASKS.md missing '## Research Findings' section. Deepen phase must append evidence.")
+        
+    pass_gate("Deepen gate passed")
+
 
 def gate_properties(yolo: bool, config: dict) -> None:
     props_path = Path("PROPERTIES.md")
@@ -379,6 +403,8 @@ def gate_validate_profiles(config: dict) -> None:
 GATES = {
     "refine": gate_refine,
     "plan": gate_plan,
+    "triage": gate_triage,
+    "deepen": gate_deepen,
     "properties": gate_properties,
     "validate": gate_validate,
     "review": gate_review,

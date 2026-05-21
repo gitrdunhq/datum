@@ -10,32 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from datum.path_utils import assets_dir
 
 def setup_symlinks(dry_run: bool) -> list[str]:
-    actions = []
-    
-    skill_assets = assets_dir()
-    project_assets = Path.cwd() / "assets"
-    
-    if not project_assets.exists():
-        if not dry_run:
-            project_assets.symlink_to(skill_assets)
-        actions.append(f"Created assets -> {skill_assets}")
-    else:
-        actions.append("assets symlink already exists")
-        
-    gitignore = Path.cwd() / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if "\n/assets" not in content and "^/assets" not in content and "assets" not in content.splitlines():
-            if not dry_run:
-                with gitignore.open("a") as f:
-                    f.write("\n# DATUM assets symlink\n/assets\n")
-            actions.append("Added /assets to .gitignore")
-    else:
-        if not dry_run:
-            gitignore.write_text("# DATUM assets symlink\n/assets\n")
-        actions.append("Created .gitignore and added /assets")
-        
-    return actions
+    return ["Symlinks are no longer required. Assets are centrally packaged."]
 
 def main() -> None:
     import argparse
