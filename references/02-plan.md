@@ -5,6 +5,7 @@
 ## Inputs
 
 - `docs/epics/<branch>/SPEC.md` — refined requirements (resolve branch: `git rev-parse --abbrev-ref HEAD`)
+- `docs/research/<branch>-findings.md` or `docs/adr/` — **Must be promoted from 01.5-research.md if uncertainty was high.**
 - GitNexus `impact` on each proposed change site (if available)
 - `CURRENT_STATE.md` (if present)
 

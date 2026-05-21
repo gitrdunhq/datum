@@ -53,6 +53,13 @@ def main() -> None:
             adr_template.write_text(src_template.read_text())
             seeded.append(str(adr_template))
 
+    practice_dir = Path("docs/practice")
+    practice_dir.mkdir(parents=True, exist_ok=True)
+    practice_readme = practice_dir / "README.md"
+    if not practice_readme.exists():
+        practice_readme.write_text("# Practice Ledger\n\nRecord manual manager interventions and roadmap decisions here before formal tooling is built to automate them.\n")
+        seeded.append(str(practice_readme))
+
     print(json.dumps({"ok": True, "seeded": seeded}))
 
 
