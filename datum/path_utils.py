@@ -12,8 +12,8 @@ STATE_FILE = DATUM_DIR / "state.json"
 
 
 def skill_root() -> Path:
-    """Absolute path to the skill root (parent of scripts/)."""
-    return Path(__file__).parent.parent
+    """Absolute path to the skill root (the datum package)."""
+    return Path(__file__).parent
 
 
 def assets_dir() -> Path:

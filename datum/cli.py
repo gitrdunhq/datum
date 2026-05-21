@@ -54,6 +54,46 @@ def init():
         console.print(f"[bold red]Bootstrap failed: {e}[/bold red]")
         sys.exit(1)
 
+@app.command()
+def migrate(dry_run: bool = typer.Option(False, "--dry-run", help="Simulate migration without making changes")):
+    """Migrate legacy .wfc repositories to .datum and upgrade schemas."""
+    import sys
+    from datum.migrate import migrate_wfc_directory, load_state, migrate_state, current_skill_version, save_state, STATE_SCHEMA
+    
+    console.print("[bold blue]Starting DATUM Migration...[/bold blue]")
+    dir_changes = migrate_wfc_directory(dry_run)
+    for c in dir_changes:
+        console.print(f"[yellow]• {c}[/yellow]")
+        
+    state = load_state()
+    if not state and not dir_changes:
+        console.print("[green]No legacy .wfc/ directory or .datum/state.json found. Nothing to do.[/green]")
+        return
+        
+    migrated, changes = migrate_state(state, current_skill_version())
+    for c in changes:
+        console.print(f"[yellow]• {c}[/yellow]")
+        
+    if not dry_run and state:
+        save_state(migrated)
+        
+    try:
+        from datum.contracts import validate_value
+        errors = validate_value(STATE_SCHEMA, migrated) if migrated else []
+    except Exception as exc:
+        errors = [str(exc)]
+        
+    if errors:
+        console.print("[bold red]Migration completed with validation errors:[/bold red]")
+        for e in errors:
+            console.print(f"  - {e}")
+        sys.exit(1)
+        
+    if dry_run:
+        console.print("[bold green]Dry run complete. No changes made.[/bold green]")
+    else:
+        console.print("[bold green]✓ Migration successful.[/bold green]")
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()
