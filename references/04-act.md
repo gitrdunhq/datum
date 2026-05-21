@@ -38,6 +38,14 @@ Before starting any lane:
 At every stage boundary before dispatching new lanes, check for the drift flag:
 `.datum/runs/<RUN_ID>/.spec-drift-detected` — if present, pause dispatch and surface to user.
 
+## Concurrent Sidecars (Orchestration Port)
+
+Alongside the main Red-Green-Refactor loop, the pipeline dispatches two continuous sidecars:
+1. **wfc-security (Threat Modeler):** Performs continuous STRIDE threat modeling, dependency risk analysis, and secrets scanning on all file changes committed by the REFACTOR agent.
+2. **wfc-docs (Docs Scaffolder):** Automatically scaffolds and updates inline documentation, READMEs, and component interfaces concurrently as the REFACTOR agent commits code.
+
+These sidecars run asynchronously and log their findings to `.datum/runs/<RUN_ID>/sidecars/`.
+
 ## Pipeline execution
 
 Read `references/pipeline-dispatch.md` for the full scheduler logic. Summary:
@@ -101,9 +109,11 @@ See `references/pipeline-dispatch.md` §Commit Queue for the patch format and se
 
 <!-- inject: references/04-act-edge-cases.md -->
 
-## Sync point
+## Delivery Gate & Sync Point
 
 Pipeline ends when all lanes are `completed` or `failed_terminal`.
+**Delivery Gate:** A lane cannot be marked `completed` if the `wfc-security` sidecar has logged `high_critical_count > 0` for that lane's changes. The pipeline MUST block and await remediation.
+
 At sync point: collect diagnostic packets for any failed lanes.
 Transition to Validate phase.
 

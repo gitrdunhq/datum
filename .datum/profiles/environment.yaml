@@ -1,0 +1,30 @@
+id: "local-dev"
+cwd: ""  # filled by rpa init
+
+commands:
+  # Customize for your repo's toolchain
+  test_unit: "swift test --filter Unit"
+  test_integration: "swift test --filter Integration"
+  build: "swift build"
+  lint: "swiftlint --strict"
+  format: "swift-format lint --recursive Sources/"
+
+executor:
+  default_model: "standard"
+
+required_checks:
+  shell: "auto"
+
+constraints:
+  network: "approval_required"
+  secrets_policy: "never_read_env"
+  destructive_commands: "deny"
+
+pr:
+  base: "main"
+  comments:
+    enabled: true
+    reply: true
+
+worktree:
+  cleanup: true

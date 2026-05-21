@@ -79,15 +79,21 @@ Run `python3 scripts/render.py --packets .datum/runs/<RUN_ID>/review-packets/ --
 
 The renderer is a script, not an LLM. It aggregates findings, sorts by severity, and produces a deterministic markdown report.
 
-### 5. Gate
+### 5. Satisfaction Loop & Gate (Orchestration Port)
 
 Run `python3 scripts/gate.py review [--yolo]`
 
-- If any `high` severity findings exist: halt; surface for user decision
-- If `medium` findings only and yolo active: log and proceed
+**Satisfaction Loop (Max 3 Iterations):**
+If any `high` or `critical` severity findings exist (from Review or the concurrent Security Sidecar):
+1. **Iteration Count:** Check `.datum/runs/<RUN_ID>/.review-iteration`. If missing, set to 1. If >= 3, **HALT** and produce an "Escalation to Chief of Staff" payload. Do not loop infinitely.
+2. **Remediation Package:** If iteration < 3, run `python3 scripts/remediate.py --run-id <RUN_ID> --findings .datum/runs/<RUN_ID>/review-packets/unified.json` to generate `REMEDIATION-PACKAGE.md`.
+3. **Dispatch Fixes:** Automatically dispatch targeted RED-GREEN-REFACTOR loops for the wave backlog inside the remediation package.
+4. Increment `.review-iteration` and re-run Review and Security Sidecar.
+
+- If `medium` findings only and yolo active: log and proceed.
 - Present REVIEW-REPORT.md to user if `validate_human_review = required`
 
-On pass: archive packets and report, update state, transition to PR.
+On pass (0 high/critical findings): archive packets and report, update state, transition to PR.
 
 ## Outputs
 

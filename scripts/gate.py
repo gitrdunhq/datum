@@ -247,12 +247,37 @@ def gate_review(yolo: bool, config: dict) -> None:
         fail(f"review-packets/ directory not found: {packets_dir}")
 
     # Check for high-severity findings
-    if report_path.exists():
-        content = report_path.read_text()
-        if "severity: high" in content.lower() or "**high**" in content.lower():
+    content = report_path.read_text() if report_path.exists() else ""
+    if "severity: high" in content.lower() or "**high**" in content.lower() or "severity: critical" in content.lower() or "**critical**" in content.lower():
+        # Satisfaction Loop Logic
+        state_path = Path(".datum/state.json")
+        run_id = "default"
+        if state_path.exists():
+            import json
+            run_id = json.loads(state_path.read_text()).get("run_id", "default")
+        
+        iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
+        iteration = 1
+        if iter_file.exists():
+            iteration = int(iter_file.read_text().strip())
+        
+        if iteration >= 3:
             fail(
-                "REVIEW-REPORT.md contains high-severity findings — resolve before proceeding"
+                "REVIEW-REPORT.md contains HIGH/CRITICAL findings after 3 iterations. "
+                "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding.",
+                hard=True
             )
+        else:
+            import subprocess
+            print(f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package...")
+            subprocess.run([
+                "python3", "scripts/remediate.py", 
+                "--run-id", run_id, 
+                "--findings", f".datum/runs/{run_id}/review-packets/unified.json"
+            ])
+            iter_file.parent.mkdir(parents=True, exist_ok=True)
+            iter_file.write_text(str(iteration + 1))
+            fail(f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry.")
 
     pass_gate("Review gate passed")
 

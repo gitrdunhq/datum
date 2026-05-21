@@ -44,6 +44,15 @@ def main() -> None:
             rm.write_text("# Roadmap\n\n## In Progress\n\n## Planned\n\n## Completed\n")
         seeded.append(str(rm))
 
+    adr_dir = Path("docs/adr")
+    adr_dir.mkdir(parents=True, exist_ok=True)
+    adr_template = adr_dir / "000-template.md"
+    if not adr_template.exists():
+        src_template = assets_dir() / "templates/000-madr-template.md"
+        if src_template.exists():
+            adr_template.write_text(src_template.read_text())
+            seeded.append(str(adr_template))
+
     print(json.dumps({"ok": True, "seeded": seeded}))
 
 
