@@ -1,0 +1,61 @@
+id: "default"
+
+required_checks:
+  - id: "tests"
+    preferred_commands:
+      - "swift test --parallel"
+      # - "xcodebuild test -scheme YourApp"
+      # - "npm test"
+      # - "go test ./..."
+      # - "uv run pytest"
+    required: true
+  - id: "lint"
+    preferred_commands:
+      - "swiftlint --strict"
+      # - "npm run lint"
+      # - "uv run ruff check ."
+    required: true
+  - id: "format"
+    preferred_commands:
+      - "swift-format lint --recursive Sources/"
+      # - "npm run format:check"
+      # - "uv run black --check ."
+    required: false
+
+review_dimensions:
+  - id: "acceptance"
+    weight: 5
+    required: true
+    pass: "Every AC has implementation evidence or an explicit waived reason."
+  - id: "properties"
+    weight: 4
+    required: true
+    pass: "All PROPERTIES.md invariants are demonstrably held."
+  - id: "security"
+    weight: 3
+    required: true
+    pass: "No OWASP top-10 finding. No secrets or PII in logs."
+  - id: "performance"
+    weight: 2
+    required: false
+    pass: "No N+1 queries or unbounded operations in hot paths."
+  - id: "architecture"
+    weight: 2
+    required: false
+    pass: "Tier boundaries respected. No new coupling across layers."
+  - id: "observability"
+    weight: 1
+    required: false
+    pass: "Key events logged with structured fields per OBS properties."
+
+evidence_requirements:
+  file_line_references: true
+  command_outputs: true
+
+pass_policy:
+  required_dimensions_must_pass: true
+  min_score: 75
+  unresolved_high_findings_allowed: 0
+  blocking_severities:
+    - critical
+    - high

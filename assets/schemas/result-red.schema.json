@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DATUM RED Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "agent_role", "task_id", "status", "acceptance_criteria"],
+  "properties": {
+    "contract_version": { "const": "1.0" },
+    "agent_role": { "const": "RED" },
+    "task_id": { "type": "string", "pattern": "^task-\\d+$" },
+    "status": { "type": "string", "enum": ["done", "failed", "hard_stop"] },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "satisfied"],
+        "properties": {
+          "id": { "type": "string" },
+          "satisfied": { "type": "boolean" },
+          "evidence": { "type": "string" },
+          "reason": { "type": "string" },
+          "skeleton_function": { "type": "string" }
+        }
+      }
+    },
+    "commits": { "type": "array" },
+    "verified_red": { "type": "boolean" },
+    "failure_property_id": { "type": ["string", "null"] },
+    "failure_message": { "type": "string" },
+    "reason": { "type": "string" },
+    "retryable": { "type": "boolean" }
+  }
+}

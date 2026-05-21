@@ -1,0 +1,29 @@
+# Lane-tools manifest — declares permissions and timeouts for each tool.
+# The lane-tools-runner enforces these at runtime.
+# Pre-commit hook rejects new scripts without a corresponding entry here.
+
+# Template for new entries:
+#
+# [tools.tool_name]
+# path = "tool_name.py"
+# description = "One-line description visible to agents via README.md"
+# permissions = { network = false, write = [], read = ["src/", "tests/"] }
+# timeout_seconds = 30
+# added_in_epic = 1
+# added_in_lane = "task-NNN"
+
+[tools.find_callers]
+path = "find_callers.py"
+description = "Find likely call/reference sites for a symbol without loading whole files."
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 30
+added_in_epic = 1
+added_in_lane = "bootstrap"
+
+[tools.filter_gitnexus_output]
+path = "filter_gitnexus_output.py"
+description = "Reduce GitNexus output to compact file, line, confidence records."
+permissions = { network = false, write = [], read = [] }
+timeout_seconds = 10
+added_in_epic = 1
+added_in_lane = "bootstrap"

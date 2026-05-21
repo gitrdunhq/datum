@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Closeout Data",
+  "type": "object",
+  "required": ["run_id","epic_number","merge_sha","merge_timestamp","git","tasks","token_metrics"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "epic_number": { "type": "integer", "minimum": 1 },
+    "merge_sha": { "type": "string" },
+    "merge_timestamp": { "type": "string", "format": "date-time" },
+    "git": {
+      "type": "object",
+      "properties": {
+        "commits": { "type": "array" },
+        "files_touched": { "type": "array", "items": { "type": "string" } },
+        "loc_added": { "type": "integer" },
+        "loc_removed": { "type": "integer" },
+        "loc_net": { "type": "integer" },
+        "per_stage_commit_counts": { "type": "object" }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer" },
+        "completed": { "type": "integer" },
+        "failed_terminal": { "type": "integer" },
+        "say_do_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "per_stage_retries": { "type": "object" }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "task_id": { "type": "string" },
+          "final_status": { "type": "string" },
+          "retries": { "type": "object" },
+          "brief_defects": { "type": "array" }
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "pr_url": { "type": "string" },
+        "pr_number": { "type": "integer" },
+        "review_comments_total": { "type": "integer" },
+        "review_comments_resolved": { "type": "integer" },
+        "closed_issues": { "type": "array" }
+      }
+    },
+    "lane_tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "description": { "type": "string" },
+          "added_in_lane": { "type": "string" },
+          "times_used_this_epic": { "type": "integer" }
+        }
+      }
+    },
+    "brief_defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id","missing_ac","surfaced_by_stage"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "missing_ac": { "type": "string" },
+          "surfaced_by_stage": { "type": "string" }
+        }
+      }
+    },
+    "solutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "pattern": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "token_metrics": {
+      "type": "object",
+      "properties": {
+        "total_input": { "type": "integer" },
+        "total_output": { "type": "integer" },
+        "per_phase": { "type": "object" },
+        "per_stage_act": { "type": "object" },
+        "per_lane": { "type": "object" },
+        "vs_prior_epic": { "type": "object" }
+      }
+    },
+    "gitnexus_diff": {
+      "type": "object",
+      "properties": {
+        "pre_impact_summary": { "type": "string" },
+        "post_impact_summary": { "type": "string" },
+        "blast_radius_delta": { "type": "string" }
+      }
+    }
+  }
+}

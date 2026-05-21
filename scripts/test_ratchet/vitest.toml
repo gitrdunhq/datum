@@ -1,0 +1,51 @@
+# Vitest / Jest pattern lists for test_ratchet.py
+
+test_declarations = [
+  "\\bit\\s*\\(",                  # it('...',
+  "\\btest\\s*\\(",                # test('...',
+  "\\bdescribe\\s*\\(",            # describe('...',
+]
+
+assertion_patterns = [
+  "\\.toBe\\(",
+  "\\.toEqual\\(",
+  "\\.toStrictEqual\\(",
+  "\\.toMatchObject\\(",
+  "\\.toHaveBeenCalledWith\\(",
+  "\\.toThrow\\(",
+  "\\.toMatchSnapshot\\(",
+  "expect\\(",
+]
+
+skip_patterns = [
+  "\\bit\\.skip\\s*\\(",           # it.skip(
+  "\\btest\\.skip\\s*\\(",         # test.skip(
+  "\\bxit\\s*\\(",                 # xit( (Jasmine-style)
+  "\\bxtest\\s*\\(",               # xtest(
+  "\\bdescribe\\.skip\\s*\\(",     # describe.skip(
+  "\\.todo\\s*\\(",                # test.todo(
+]
+
+[[strict_to_loose]]
+strict = "\\.toEqual\\("
+loose  = "\\.toBeDefined\\("
+
+[[strict_to_loose]]
+strict = "\\.toEqual\\("
+loose  = "\\.toBeTruthy\\("
+
+[[strict_to_loose]]
+strict = "\\.toStrictEqual\\("
+loose  = "\\.toEqual\\("
+
+[[strict_to_loose]]
+strict = "\\.toHaveBeenCalledWith\\("
+loose  = "\\.toHaveBeenCalled\\("
+
+[[strict_to_loose]]
+strict = "\\.toThrow\\("
+loose  = "\\.not\\.toThrow\\("
+
+[[strict_to_loose]]
+strict = "\\.toBe\\("
+loose  = "\\.toBeDefined\\("

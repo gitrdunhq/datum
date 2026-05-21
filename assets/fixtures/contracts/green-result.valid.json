@@ -1,0 +1,23 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "GREEN",
+  "task_id": "task-001",
+  "status": "done",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "satisfied": true,
+      "evidence": "Sources/RecordingError.swift:1"
+    }
+  ],
+  "commits": [
+    {
+      "type": "implementation",
+      "files": ["Sources/RecordingError.swift"],
+      "patch": "diff --git a/Sources/RecordingError.swift b/Sources/RecordingError.swift",
+      "message": "green(task-001): implement SAFE-001"
+    }
+  ],
+  "verified_green": true,
+  "attempt": 1
+}

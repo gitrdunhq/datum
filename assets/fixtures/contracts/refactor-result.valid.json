@@ -1,0 +1,33 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "REFACTOR",
+  "task_id": "task-001",
+  "status": "done",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "satisfied": true,
+      "evidence": "Sources/RecordingError.swift:1"
+    }
+  ],
+  "commits": [
+    {
+      "type": "refactor",
+      "files": ["Sources/RecordingError.swift"],
+      "patch": "diff --git a/Sources/RecordingError.swift b/Sources/RecordingError.swift",
+      "message": "refactor(task-001): complete SAFE-001"
+    }
+  ],
+  "verified_green": true,
+  "ac_checklist": [
+    {
+      "ac": "AC1",
+      "satisfied": true,
+      "evidence": "Sources/RecordingError.swift:1"
+    }
+  ],
+  "missing_acs": [],
+  "lane_tools_added": [],
+  "brief_defects": [],
+  "proof_of_work_path": ".datum/runs/epic-1-20260101-120000/proof-of-work/task-001.md"
+}

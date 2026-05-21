@@ -1,0 +1,150 @@
+{
+  "skill_name": "datum",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a TICKET.md in my repo describing a new feature. How do I kick off the DATUM workflow? I want to run through the full cycle.",
+      "expected_output": "Explanation of `datum go` with TICKET.md as entry point, mention of Refine phase as first step, reference to 01-refine.md loading, mention of gate.py running after phase.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "identifies-refine-as-entry-phase",
+          "description": "Response identifies Refine as the first phase when TICKET.md is present",
+          "check": "mentions 'Refine' or 'refine' as the entry phase"
+        },
+        {
+          "name": "references-01-refine-doc",
+          "description": "Response references the 01-refine.md reference document being loaded",
+          "check": "mentions '01-refine.md' or 'references/01-refine'"
+        },
+        {
+          "name": "names-gate-validator",
+          "description": "Response mentions gate.py or gate validation running after the phase",
+          "check": "mentions 'gate.py' or 'gate validator' or 'gate passes'"
+        },
+        {
+          "name": "names-datum-go-subcommand",
+          "description": "Response explicitly names the 'datum go' subcommand",
+          "check": "mentions 'datum go'"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run datum status — I want to see where we are in the current epic.",
+      "expected_output": "Invokes state.py read, reads .datum/state.json, reports RUN_ID, current phase, in-flight count, last failure.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "invokes-state-py",
+          "description": "Response mentions running state.py or python3 scripts/state.py",
+          "check": "mentions 'state.py' or 'scripts/state.py'"
+        },
+        {
+          "name": "names-state-json",
+          "description": "Response names the .datum/state.json file as the source",
+          "check": "mentions '.datum/state.json' or 'state.json'"
+        },
+        {
+          "name": "reports-run-id",
+          "description": "Response mentions RUN_ID as one of the reported fields",
+          "check": "mentions 'RUN_ID' or 'run_id'"
+        },
+        {
+          "name": "reports-lane-progress",
+          "description": "Response mentions per-lane progress or in-flight count",
+          "check": "mentions 'lane' or 'in-flight' or 'in_flight'"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want to use datum yolo on this feature — I trust my tests and want to skip the review gates. Walk me through what yolo mode actually bypasses versus what always stops the run no matter what.",
+      "expected_output": "Lists specific named hard stops (at least 5). Explains hook/subprocess enforcement. Distinguishes skippable gates from hard stops. Does NOT claim yolo bypasses all gates.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "names-5-or-more-hard-stops",
+          "description": "Response names at least 5 specific hard stop identifiers from the config",
+          "check": "contains at least 5 of: tests_red_after_3x_retry, hook_blocked_write, merge_conflict, git_push_rejected, schema_validation_failed, gitnexus_high_risk_unconfirmed, gitnexus_unavailable_high_change_volume, external_dependency_install_proposed, test_ratchet_violation, lane_tool_sandbox_violation"
+        },
+        {
+          "name": "explains-enforcement-layer",
+          "description": "Response explains that hard stops are enforced by hooks/subprocess layer, not agent compliance",
+          "check": "mentions 'hook' or 'subprocess' enforcement of hard stops"
+        },
+        {
+          "name": "distinguishes-gate-policies",
+          "description": "Response distinguishes required/skippable_if_complete/skipped gate policies",
+          "check": "mentions 'skippable_if_complete' or distinguishes which gates are bypassed vs not"
+        },
+        {
+          "name": "plan-approval-always-required",
+          "description": "Response notes plan_human_approval is never bypassed even in yolo",
+          "check": "mentions plan approval or plan gate as always required"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The GREEN agent for task-003 just failed for the third time. What happens next and how does the skill decide whether to escalate the model?",
+      "expected_output": "Mentions diagnose_failure.py running first. ENVIRONMENTAL vs REASONING classification. Environmental failures don't consume retry budget. Same-agent retry forbidden for GREEN. Reasoning tier on attempt 2. Lane halts (not whole pipeline) post-3x.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "mentions-diagnose-failure-script",
+          "description": "Response mentions diagnose_failure.py running before retry decision",
+          "check": "mentions 'diagnose_failure.py' or 'diagnose_failure'"
+        },
+        {
+          "name": "environmental-vs-reasoning-classification",
+          "description": "Response explains ENVIRONMENTAL vs REASONING failure classification",
+          "check": "mentions 'ENVIRONMENTAL' and 'REASONING' classification"
+        },
+        {
+          "name": "environmental-no-retry-increment",
+          "description": "Response notes environmental failures don't consume retry budget",
+          "check": "mentions retry counter NOT incremented for environmental failures"
+        },
+        {
+          "name": "same-agent-retry-forbidden-green",
+          "description": "Response states same-agent retry is forbidden for GREEN (fresh context required)",
+          "check": "mentions 'same-agent retry' forbidden or 'new agent' per attempt for GREEN"
+        },
+        {
+          "name": "lane-halts-not-pipeline",
+          "description": "Response clarifies only the lane halts, not the whole pipeline",
+          "check": "mentions only the lane halts or other lanes continue"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "datum init — I'm setting this up on a fresh repo for the first time. What does init do and in what order?",
+      "expected_output": "Lists all 4 bootstrap scripts by name in order. Mentions single human approval gate. Mentions GitNexus graceful skip if unavailable.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "names-all-4-bootstrap-scripts",
+          "description": "Response names all 4 bootstrap scripts: install_hooks.py, install_linter_rules.py, seed_state_docs.py, gitnexus_setup.py",
+          "check": "mentions all of: install_hooks, install_linter_rules, seed_state_docs, gitnexus_setup"
+        },
+        {
+          "name": "single-human-approval-gate",
+          "description": "Response mentions the single human approval gate before bootstrap runs",
+          "check": "mentions 'human approval' or 'human gate' or 'single approval' required before bootstrap"
+        },
+        {
+          "name": "sequential-execution",
+          "description": "Response conveys that steps run in sequence, each confirming before the next",
+          "check": "mentions sequential order or each step confirms before next"
+        },
+        {
+          "name": "gitnexus-graceful-skip",
+          "description": "Response mentions GitNexus step gracefully skips if unavailable",
+          "check": "mentions GitNexus unavailable or graceful skip or optional"
+        }
+      ]
+    }
+  ]
+}

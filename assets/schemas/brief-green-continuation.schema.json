@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DATUM GREEN Continuation Brief",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "agent_role",
+    "turn_type",
+    "task_id",
+    "turn",
+    "green_max_turns",
+    "test_signal",
+    "diff_since_last_attempt",
+    "message"
+  ],
+  "properties": {
+    "contract_version": { "const": "1.0" },
+    "agent_role": { "const": "GREEN" },
+    "turn_type": { "const": "continuation" },
+    "task_id": { "type": "string", "pattern": "^task-\\d+$" },
+    "turn": { "type": "integer", "minimum": 2 },
+    "green_max_turns": { "type": "integer", "minimum": 2 },
+    "test_signal": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["fail", "compile_error", "runtime_error"] }
+      }
+    },
+    "diff_since_last_attempt": { "type": "string" },
+    "message": { "type": "string", "minLength": 1 }
+  }
+}

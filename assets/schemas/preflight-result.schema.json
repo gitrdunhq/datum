@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Preflight Result",
+  "type": "object",
+  "required": ["task_id", "language", "framework", "outputs"],
+  "properties": {
+    "task_id": { "type": "string", "pattern": "^task-\\d+$" },
+    "language": { "type": "string" },
+    "framework": { "type": "string" },
+    "no_skeletons_reason": {
+      "type": ["string", "null"],
+      "description": "If set, no skeletons were produced and lane proceeds to RED normally"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ac_id", "path", "kind", "purpose", "property_id"],
+        "properties": {
+          "ac_id": { "type": "string" },
+          "path": { "type": "string", "description": "Relative path to the skeleton test file" },
+          "kind": { "type": "string", "enum": ["xctest", "swift-testing", "vitest", "jest", "pytest", "go-test"] },
+          "purpose": { "type": "string" },
+          "property_id": { "type": "string" },
+          "function_name": { "type": "string", "description": "Exact test function name — RED must not rename" },
+          "skeleton_written": { "type": "boolean" },
+          "implementation_required": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

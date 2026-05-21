@@ -1,0 +1,16 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "GREEN",
+  "turn_type": "continuation",
+  "task_id": "task-001",
+  "turn": 2,
+  "green_max_turns": 3,
+  "test_signal": {
+    "status": "fail",
+    "assertion_failures": [],
+    "compile_errors": [],
+    "runtime_errors": []
+  },
+  "diff_since_last_attempt": "diff --git a/file b/file",
+  "message": "The previous attempt did not pass. Updated signal above."
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Executor Result — Per-AC Verdict",
+  "description": "Formal output schema for all ACT agent roles. Every AC must be reported by ID with a machine-verifiable verdict and evidence.",
+  "type": "object",
+  "required": ["contract_version", "agent_role", "task_id", "status", "acceptance_criteria"],
+  "properties": {
+    "contract_version": { "type": "string" },
+    "agent_role": { "type": "string", "enum": ["RED", "GREEN", "REFACTOR", "ADVERSARIAL"] },
+    "task_id": { "type": "string", "pattern": "^task-\\d+$" },
+    "status": {
+      "type": "string",
+      "enum": ["done", "done_with_risks", "failed", "missing_ac", "hard_stop"]
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Every AC from the task brief must appear here — no omissions.",
+      "items": {
+        "type": "object",
+        "required": ["id", "satisfied"],
+        "properties": {
+          "id": { "type": "string", "description": "Matches AC ID from TASKS.md (AC1, AC2, ...)" },
+          "satisfied": { "type": "boolean" },
+          "evidence": {
+            "type": "string",
+            "description": "File:line reference or test output excerpt proving satisfaction"
+          },
+          "skeleton_function": {
+            "type": "string",
+            "description": "Test function name from preflight-result.json that proves this AC"
+          },
+          "reason": {
+            "type": "string",
+            "description": "If satisfied=false: why not satisfied. If this is a RED result: why the test fails for the right reason."
+          }
+        }
+      }
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "files", "patch", "message"],
+        "properties": {
+          "type": { "type": "string", "enum": ["stub", "test", "implementation", "refactor"] },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "patch": { "type": "string", "description": "Unified diff" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "verified_red": {
+      "type": "boolean",
+      "description": "RED only: test_signal.py returned fail with property_id present"
+    },
+    "verified_green": {
+      "type": "boolean",
+      "description": "GREEN/REFACTOR: test_signal.py returned pass"
+    },
+    "risks": {
+      "type": "array",
+      "description": "For done_with_risks status: residual concerns that need supervisor attention",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "description": { "type": "string" },
+          "mitigation": { "type": "string" }
+        }
+      }
+    },
+    "proof_of_work_path": {
+      "type": ["string", "null"],
+      "description": "REFACTOR only: path to proof-of-work.md in the run archive"
+    },
+    "missing_acs": {
+      "type": "array",
+      "description": "ACs found missing during REFACTOR review — triggers new RED-GREEN cycle",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ac": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "lane_tools_added": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "turn": { "type": "integer", "minimum": 1, "description": "GREEN multi-turn: which turn produced this result" }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "GREEN",
+  "task_id": "task-001",
+  "run_id": "epic-1-20260101-120000",
+  "spec_excerpt": "Recordings must require permission.",
+  "properties": [
+    {
+      "id": "SAFE-001",
+      "category": "SAFETY",
+      "predicate": "Recording never starts without permission."
+    }
+  ],
+  "acceptance_criteria": ["AC1: Permission denial is returned before recording starts."],
+  "files_to_write": ["Sources/RecordingError.swift"],
+  "language": "swift",
+  "framework": "xctest",
+  "test_signal": {
+    "status": "fail",
+    "assertion_failures": [
+      {
+        "property_id": "SAFE-001",
+        "assertion_message": "permission denial missing",
+        "expected": null,
+        "actual": null
+      }
+    ],
+    "compile_errors": [],
+    "runtime_errors": []
+  },
+  "gitnexus_context": null,
+  "lane_tools_readme": "No lane tools yet.",
+  "attempt": 1
+}

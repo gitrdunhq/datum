@@ -1,0 +1,24 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "RED",
+  "task_id": "task-001",
+  "run_id": "epic-1-20260101-120000",
+  "spec_excerpt": "Recordings must require permission.",
+  "properties": [
+    {
+      "id": "SAFE-001",
+      "category": "SAFETY",
+      "predicate": "Recording never starts without permission."
+    }
+  ],
+  "acceptance_criteria": ["AC1: Permission denial is returned before recording starts."],
+  "files_to_write": ["Tests/RecordingTests.swift"],
+  "red_note": "Write a failing test for SAFE-001.",
+  "introduces_stubs": true,
+  "stub_files": ["Sources/RecordingError.swift"],
+  "language": "swift",
+  "framework": "xctest",
+  "gitnexus_context": null,
+  "upstream_stubs": [],
+  "lane_tools_readme": "No lane tools yet."
+}

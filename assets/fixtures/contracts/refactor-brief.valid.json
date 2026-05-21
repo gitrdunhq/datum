@@ -1,0 +1,34 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "REFACTOR",
+  "task_id": "task-001",
+  "run_id": "epic-1-20260101-120000",
+  "spec_excerpt": "Recordings must require permission.",
+  "properties": [
+    {
+      "id": "SAFE-001",
+      "category": "SAFETY",
+      "predicate": "Recording never starts without permission."
+    }
+  ],
+  "acceptance_criteria": ["AC1: Permission denial is returned before recording starts."],
+  "files_to_write": ["Sources/RecordingError.swift"],
+  "language": "swift",
+  "framework": "xctest",
+  "implementation_files": [
+    {
+      "path": "Sources/RecordingError.swift",
+      "content": "enum RecordingError: Error { case permissionDenied }"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "Tests/RecordingTests.swift",
+      "content": "test body"
+    }
+  ],
+  "test_results": "All tests passed",
+  "gitnexus_impact": null,
+  "lane_tools_readme": "No lane tools yet.",
+  "brief_defects_so_far": []
+}

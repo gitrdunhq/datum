@@ -1,0 +1,24 @@
+{
+  "contract_version": "1.0",
+  "agent_role": "RED",
+  "task_id": "task-001",
+  "status": "done",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "satisfied": false,
+      "reason": "RED test fails before implementation."
+    }
+  ],
+  "commits": [
+    {
+      "type": "test",
+      "files": ["Tests/RecordingTests.swift"],
+      "patch": "diff --git a/Tests/RecordingTests.swift b/Tests/RecordingTests.swift",
+      "message": "red(task-001): failing test for SAFE-001"
+    }
+  ],
+  "verified_red": true,
+  "failure_property_id": "SAFE-001",
+  "failure_message": "permission denial missing"
+}

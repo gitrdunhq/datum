@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Review Packet",
+  "type": "object",
+  "required": ["schema_version", "domain", "output_path", "findings"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "domain": {
+      "type": "string",
+      "enum": ["correctness", "properties", "security", "performance", "architecture", "observability"]
+    },
+    "output_path": { "type": "string" },
+    "diff": { "type": "string" },
+    "spec_summary": { "type": "string" },
+    "properties": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low", "info"] },
+          "file": { "type": "string" },
+          "line": { "type": ["integer", "null"] },
+          "description": { "type": "string" },
+          "suggestion": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+# XCTest / Swift Testing pattern lists for test_ratchet.py
+
+# Patterns that match test function declarations
+test_declarations = [
+  "func test\\w+\\(",              # XCTest: func testFoo()
+  "@Test\\b",                      # Swift Testing: @Test
+  "func test\\w+.*async",          # Async test methods
+]
+
+# Patterns that match assertion lines
+assertion_patterns = [
+  "#expect\\(",
+  "XCTAssert\\w*\\(",
+  "XCTFail\\(",
+  "#require\\(",
+  "Issue\\.record\\(",
+]
+
+# Skip/disable patterns (test renamed to disabled)
+skip_patterns = [
+  "func xtest\\w+\\(",             # xtest prefix (common disable pattern)
+  "\\.disabled\\b",                # .disabled trait
+  "@Test.*disabled",
+  "// DISABLED",
+  "XCTSkip\\(",
+  "throw XCTSkip",
+]
+
+# Strict-to-loose assertion pairs
+# Each entry: strict = tighter assertion, loose = weaker assertion
+# The ratchet flags diffs where a strict assertion is replaced by its loose equivalent
+[[strict_to_loose]]
+strict = "XCTAssertEqual\\("
+loose  = "XCTAssertNotNil\\("
+
+[[strict_to_loose]]
+strict = "XCTAssertEqual\\("
+loose  = "XCTAssert\\("
+
+[[strict_to_loose]]
+strict = "#expect\\(.*==.*\\)"
+loose  = "#expect\\(.*!=\\s*nil\\)"
+
+[[strict_to_loose]]
+strict = "XCTAssertThrowsError\\("
+loose  = "XCTAssertNoThrow\\("
+
+[[strict_to_loose]]
+strict = "XCTAssertIdentical\\("
+loose  = "XCTAssertEqual\\("

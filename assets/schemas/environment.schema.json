@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Environment Profile",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": { "type": "string" },
+    "cwd": { "type": "string", "description": "Absolute path to the repository" },
+    "commands": {
+      "type": "object",
+      "description": "Named local commands agents can reference by name",
+      "additionalProperties": { "type": "string" }
+    },
+    "executor": {
+      "type": "object",
+      "properties": {
+        "default_model": { "type": "string", "enum": ["reasoning", "standard", "fast"] }
+      }
+    },
+    "required_checks": {
+      "type": "object",
+      "properties": {
+        "shell": { "type": "string", "enum": ["auto", "sh", "bash", "cmd", "powershell"], "default": "auto" }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "network": { "type": "string", "enum": ["allow", "approval_required", "deny"], "default": "approval_required" },
+        "secrets_policy": { "type": "string", "enum": ["allow", "never_read_env", "deny_all"], "default": "never_read_env" },
+        "destructive_commands": { "type": "string", "enum": ["allow", "warn", "deny"], "default": "deny" }
+      }
+    },
+    "pr": {
+      "type": "object",
+      "properties": {
+        "base": { "type": "string", "default": "main" },
+        "comments": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "reply": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "properties": {
+        "cleanup": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}
