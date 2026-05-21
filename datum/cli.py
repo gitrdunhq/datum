@@ -110,7 +110,7 @@ def install(dry_run: bool = typer.Option(False, "--dry-run", help="Simulate inst
             console.print("[bold green]Dry run complete. No changes made.[/bold green]")
         else:
             console.print("[bold green]✓ DATUM skill successfully installed and linked across all agents![/bold green]")
-            console.print("\n[dim]To use the skill, your agent will need access to run 'python3 -m datum' (usually handled via a global pip/uv installation of this project).[/dim]")
+            console.print("\n[dim]Your agents will use the self-contained 'uv run scripts/datum.py' execution wrapper. No global installation needed![/dim]")
     except Exception as e:
         console.print(f"[bold red]Installation failed: {e}[/bold red]")
         sys.exit(1)

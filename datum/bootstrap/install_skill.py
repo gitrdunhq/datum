@@ -13,8 +13,9 @@ def install_skill_snapshot(dry_run: bool = False) -> list[str]:
     source_root = Path(__file__).resolve().parent.parent.parent
     skill_md = source_root / "SKILL.md"
     datum_pkg = source_root / "datum"
+    scripts_dir = source_root / "scripts"
     
-    if not skill_md.exists() or not datum_pkg.exists():
+    if not skill_md.exists() or not datum_pkg.exists() or not scripts_dir.exists():
         raise RuntimeError(f"Must run install from a valid DATUM repository. Missing files in {source_root}")
         
     agents_skills_dir = Path.home() / ".agents" / "skills"
@@ -33,6 +34,14 @@ def install_skill_snapshot(dry_run: bool = False) -> list[str]:
         shutil.copytree(
             datum_pkg, 
             target_datum_dir / "datum", 
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            dirs_exist_ok=True
+        )
+        
+        # Copy the scripts directory
+        shutil.copytree(
+            scripts_dir,
+            target_datum_dir / "scripts",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
             dirs_exist_ok=True
         )
