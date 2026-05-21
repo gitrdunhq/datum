@@ -33,7 +33,7 @@ For each code symbol, API, or module referenced in docs/TICKET.md:
 
 If any referenced symbol does not exist: halt with a clarifying question to the user. Do not proceed with a broken assumption.
 
-### 2. Identify gaps
+### Step 2: Identify gaps
 
 A docs/SPEC.md is sufficient when it answers all of:
 1. What user-visible behavior changes?

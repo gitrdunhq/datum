@@ -65,6 +65,14 @@ Use `assets/templates/PROPERTIES.md` as base. Include:
 2. Traceability table
 3. Per-task property assignment (RED agents read this to know which property their test must prove)
 
+### 4.5. Generate Observability Definitions
+
+For every valid, quantitative property in `PROPERTIES.md` (e.g. PERFORMANCE, SAFETY errors), translate it into observability definitions.
+Write the output to the `observability/` folder at the root of the repo:
+- `observability/metrics/` (Metric registration snippets)
+- `observability/alerts/` (Alert rules/conditions)
+- `observability/dashboards/` (Dashboard panel JSON fragments)
+
 ### 5. Gate
 
 Run `python3 scripts/gate.py properties [--yolo]`
@@ -73,7 +81,8 @@ Validates:
 1. All 11 categories have at least one property (or a justified exclusion note)
 2. Every task in TASKS.md has at least one assigned property
 3. Every property has a testable predicate (no vague "must work correctly" non-predicates)
-4. If `properties_human_review = skippable_if_complete`: LLM judge evaluates completeness
+4. Every quantitative property (latency, throughput, counters) has a mapped definition in the `observability/` folder.
+5. If `properties_human_review = skippable_if_complete`: LLM judge evaluates completeness
 
 On pass: write `docs/epics/<branch>/PROPERTIES.md`, update state.
 On fail: surface the coverage gaps, iterate.

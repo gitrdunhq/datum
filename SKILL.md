@@ -148,6 +148,9 @@ For `datum product go` or `datum product <phase>`, use `.datum/product_state.jso
 
 *Note on Optional Phases:* After `Discovery`, the agent must reason whether the project context warrants `Prior Art` research, `Competitive` analysis or `Stakeholder` mapping. If it does, transition into those phases. If unclear, ask the user. If they are not needed, skip directly to `Requirements`.
 
+**Cross-Cutting Capabilities (Always Active):**
+- `datum/references/cross-cutting-visual.md` — Read this anytime you need to present complex topological data or >3 column tables.
+
 For **Act**, also load:
 - `datum/references/agent-contracts.md` — typed brief/result schemas for all agent roles
 - `datum/references/brief-builder.md` — step-by-step context construction per role

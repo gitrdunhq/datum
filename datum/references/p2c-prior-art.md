@@ -8,7 +8,7 @@ This is an OPTIONAL phase. Run this phase when tackling a problem that likely ha
 ## Process
 1. Read `docs/ideation/DISCOVERY.md`.
 2. Search local memory (e.g., past `solutions/`, `domain-wisdom.md`, or previous PRDs) for related work.
-3. Search the internet for established patterns, APIs, libraries, or architectures that solve this exact problem.
+3. **Web Research (wfc-researcher):** Actively use your WebSearch and WebFetch tools to search the internet for established patterns, APIs, libraries, or architectures that solve this exact problem. Do not hallucinate; pull live documentation and live articles.
 4. Extract the best practices and identify what parts of the wheel we can borrow versus what we need to build custom.
 
 ## Output
