@@ -1,6 +1,5 @@
 import typer
 from rich.console import Console
-from rich.panel import Panel
 
 from datum.floor import render_floor
 from datum.rules_doctor import do_preflight
@@ -41,7 +40,7 @@ def init():
     """Bootstrap the repository for DATUM execution."""
     # We will import the bootstrap scripts dynamically so they don't load immediately
     # unless init is called.
-    from datum.bootstrap import setup_symlinks, install_hooks, install_linter_rules, seed_state_docs
+    from datum.bootstrap import seed_state_docs
     import sys
     
     console.print("[bold green]Bootstrapping DATUM...[/bold green]")

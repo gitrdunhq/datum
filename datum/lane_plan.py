@@ -183,7 +183,6 @@ def main() -> None:
         print(json.dumps({"error": f"Failed to parse {args.input}: {str(e)}"}))
         sys.exit(1)
 
-    import sys
     sys.path.insert(0, str(Path(__file__).parent))
     from path_utils import assets_dir
     schema_path = assets_dir() / "schemas/tasks.schema.json"

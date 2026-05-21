@@ -7,7 +7,6 @@ Reads `.datum/events.jsonl` and renders a live CLI view of what agents are doing
 
 import json
 from pathlib import Path
-import datetime
 
 EVENTS_FILE = Path(".datum/events.jsonl")
 

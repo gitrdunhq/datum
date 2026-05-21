@@ -7,7 +7,6 @@ from pathlib import Path
 
 # Fix relative imports from bootstrap/ to scripts/
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from datum.path_utils import assets_dir
 
 def setup_symlinks(dry_run: bool) -> list[str]:
     return ["Symlinks are no longer required. Assets are centrally packaged."]

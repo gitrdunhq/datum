@@ -6,7 +6,6 @@ All agent actions and stage transitions are appended to a JSONL log.
 
 import json
 import time
-import os
 from pathlib import Path
 from typing import Any
 

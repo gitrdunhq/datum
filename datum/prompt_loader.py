@@ -27,7 +27,7 @@ def resolve_resource_path(doc_path: str) -> str:
         elif doc_path.startswith("assets/"):
             resource_name = doc_path.replace("assets/", "")
             return resources.files("datum.assets").joinpath(resource_name).read_text()
-    except Exception as e:
+    except Exception:
         pass
         
     return None
