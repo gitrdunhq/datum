@@ -41,7 +41,7 @@ Validate against `assets/schemas/closeout-data.schema.json`.
 The synthesis agent reads `closeout-data.json` as its primary input. Every factual claim must be grounded in that file. No reading other source files for fresh data — the collated JSON is the data boundary.
 
 Produce in order (each depends on previous):
-1. `CURRENT_STATE.md` — full rewrite of project state post-epic
+1. `CURRENT_STATE.md` — full rewrite of project state post-epic (See `datum/references/current-state.md`)
 2. `ROADMAP.md` — epic moved to Completed; recalculate downstream dependencies
 3. `CHANGELOG.md` — append entries for what shipped, with key numbers
 4. `RETRO.md` — metrics, observations, brief-defects summary, lane-tools summary, token trend

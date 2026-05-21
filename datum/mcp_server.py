@@ -82,6 +82,12 @@ def get_global_roadmap() -> str:
     path = Path("docs/ROADMAP.md")
     return path.read_text() if path.exists() else "No ROADMAP.md found."
 
+@mcp.resource("datum://global/current-state")
+def get_global_current_state() -> str:
+    """Get CURRENT_STATE.md to instantly orient agents on what shipped, what's next, and what's in flight."""
+    path = Path("CURRENT_STATE.md")
+    return path.read_text() if path.exists() else "No CURRENT_STATE.md found."
+
 # -----------------------------------------------------------------------------
 # Tools (The Factory Floor)
 # -----------------------------------------------------------------------------
