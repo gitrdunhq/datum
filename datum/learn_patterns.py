@@ -20,7 +20,7 @@ from pathlib import Path
 
 RUNS_DIR = Path(".datum/runs")
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PATTERN_LIBRARY = REPO_ROOT / "references" / "pattern-library.md"
+PATTERN_LIBRARY = REPO_ROOT / "skills" / "datum-workflow" / "references" / "pattern-library.md"
 
 
 def load_unknown_failures() -> list[dict]:

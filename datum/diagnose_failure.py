@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PATTERN_LIBRARY = REPO_ROOT / "references" / "pattern-library.md"
+PATTERN_LIBRARY = REPO_ROOT / "skills" / "datum-workflow" / "references" / "pattern-library.md"
 
 # ── Built-in fallback patterns ────────────────────────────────────────────────
 # Used when pattern-library.md is absent. Tuples are (regex, cause) for

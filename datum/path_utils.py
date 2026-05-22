@@ -12,8 +12,8 @@ STATE_FILE = DATUM_DIR / "state.json"
 
 
 def skill_root() -> Path:
-    """Absolute path to the skill root (the repository root)."""
-    return Path(__file__).resolve().parent.parent
+    """Absolute path to the skill root."""
+    return Path(__file__).resolve().parent.parent / "skills" / "datum-workflow"
 
 
 def assets_dir() -> Path:

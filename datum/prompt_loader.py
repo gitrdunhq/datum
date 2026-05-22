@@ -21,7 +21,7 @@ def resolve_resource_path(doc_path: str) -> str:
         
     # Fall back to the repository root
     repo_root = Path(__file__).resolve().parent.parent
-    repo_target = repo_root / doc_path
+    repo_target = repo_root / "skills" / "datum-workflow" / doc_path
     if repo_target.exists():
         return repo_target.read_text()
         
@@ -54,7 +54,7 @@ def main():
         else:
             try:
                 repo_root = Path(__file__).resolve().parent.parent
-                target = repo_root / "references" / f"{args.phase}.md"
+                target = repo_root / "skills" / "datum-workflow" / "references" / f"{args.phase}.md"
                 if not target.exists():
                     raise FileNotFoundError
                 content = target.read_text()
