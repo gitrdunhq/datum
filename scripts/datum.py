@@ -14,7 +14,7 @@ import runpy
 from pathlib import Path
 
 # Ensure the 'datum' package is available
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 def main():
     # If the first argument starts with 'datum.', act like python -m
