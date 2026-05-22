@@ -1,0 +1,40 @@
+{
+  "skill_name": "gitnexus-bug-hunt",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Use GitNexus to do a full bug hunt on my codebase. I want to find anything that could crash or freeze in production — concurrency issues, silent error swallowing, dangerous initialization patterns. The repo is indexed as bodyGuy.",
+      "expected_output": "Structured findings report covering all 4 hunt categories with specific symbols, severity levels, and fix recommendations.",
+      "files": [],
+      "assertions": [
+        {"id": "A1", "text": "Report contains severity labels (Critical/High/Medium) on findings"},
+        {"id": "A2", "text": "Report covers ≥2 of the 4 named hunt categories"},
+        {"id": "A3", "text": "Report names specific symbols or file paths"},
+        {"id": "A4", "text": "Every finding includes a Fix/recommendation"},
+        {"id": "A5", "text": "Report includes a coverage/what-was-checked section"}
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "My app sometimes freezes under load. Can you use GitNexus to trace where blocking calls are happening on the cooperative thread pool? Repo name is bodyGuy.",
+      "expected_output": "Hunt 2 executed with query→impact tool sequence, findings identify async→sync boundary violations with fixes.",
+      "files": [],
+      "assertions": [
+        {"id": "B1", "text": "Report investigates async/cooperative thread + blocking call patterns"},
+        {"id": "B2", "text": "Report shows upstream caller tracing (impact analysis)"},
+        {"id": "B3", "text": "At least one finding names a specific symbol with a fix"}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Before we ship, do a security-focused architecture audit using GitNexus on the bodyGuy repo. I'm worried about path traversal, SQL injection, or any place where untrusted input reaches a dangerous operation.",
+      "expected_output": "Hunt 4 (input→sink) executed with Cypher queries, concrete security findings with file/symbol locations and severity.",
+      "files": [],
+      "assertions": [
+        {"id": "C1", "text": "Report investigates input→sink patterns (path traversal, SQL, injection)"},
+        {"id": "C2", "text": "At least one finding includes a specific file or symbol location"},
+        {"id": "C3", "text": "Report uses differentiated severity levels"}
+      ]
+    }
+  ]
+}

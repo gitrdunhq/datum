@@ -48,6 +48,24 @@ def install_skill_snapshot(dry_run: bool = False) -> list[str]:
         
     actions.append(f"Copied stable snapshot of DATUM to {target_datum_dir}")
     
+    # Install standalone skills from the skills/ directory
+    standalone_skills_dir = source_root / "skills"
+    installed_standalone = []
+    if standalone_skills_dir.exists() and standalone_skills_dir.is_dir():
+        for skill_path in standalone_skills_dir.iterdir():
+            if skill_path.is_dir():
+                target_skill_dir = agents_skills_dir / skill_path.name
+                if not dry_run:
+                    if target_skill_dir.exists():
+                        shutil.rmtree(target_skill_dir)
+                    shutil.copytree(
+                        skill_path,
+                        target_skill_dir,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+                    )
+                actions.append(f"Copied standalone skill {skill_path.name} to {target_skill_dir}")
+                installed_standalone.append((skill_path.name, target_skill_dir))
+    
     # Now create symlinks for other agents
     other_agents = [
         Path.home() / ".claude" / "skills",
@@ -58,6 +76,8 @@ def install_skill_snapshot(dry_run: bool = False) -> list[str]:
     for agent_dir in other_agents:
         if not dry_run:
             agent_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Symlink main datum skill
             link_path = agent_dir / "datum"
             if link_path.is_symlink() or link_path.exists():
                 if link_path.is_dir() and not link_path.is_symlink():
@@ -65,6 +85,18 @@ def install_skill_snapshot(dry_run: bool = False) -> list[str]:
                 else:
                     link_path.unlink()
             link_path.symlink_to(target_datum_dir)
+            
+            # Symlink standalone skills
+            for skill_name, target_dir in installed_standalone:
+                skill_link = agent_dir / skill_name
+                if skill_link.is_symlink() or skill_link.exists():
+                    if skill_link.is_dir() and not skill_link.is_symlink():
+                        shutil.rmtree(skill_link)
+                    else:
+                        skill_link.unlink()
+                skill_link.symlink_to(target_dir)
+                actions.append(f"Symlinked {target_dir} -> {agent_dir}/{skill_name}")
+                
         actions.append(f"Symlinked {target_datum_dir} -> {agent_dir}/datum")
         
     return actions
