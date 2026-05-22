@@ -22,4 +22,4 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 
 # Start the SSE MCP Server
-CMD ["python3", "scripts/datum.py", "datum.mcp_server"]
+CMD ["python3", "scripts/datum.py", "datum.mcp.server"]
