@@ -17,6 +17,10 @@ The RED → GREEN → REFACTOR cycle is an unbreakable contract. RED must write 
 
 All `message` fields in the `commits` array MUST strictly adhere to the Conventional Commits format (e.g., `feat(scope): ...`, `fix(scope): ...`, `test(scope): ...`, `refactor(scope): ...`). The orchestrator validates this with a regex and will reject the result if the commit message does not start with a valid type.
 
+## Communicating TODOs and Stubs
+
+Temporary stubs, fakes, shims, and compatibility fallbacks are permitted, but they **must be explicitly communicated and documented**. Any TODO, FIXME, or stub left in the codebase must be reported in the `tech_debt` array of your result payload. Silent tech debt is a contract violation.
+
 ## Coding Steering (DPS)
 
 All agents must strictly obey the rules outlined in `datum/references/coding-steering.md`. This includes Defensive Programming Standards (DPS), security safeguards, and AI discipline. The orchestrator injects these rules into the brief via the `coding_steering` field. Agents that violate these constraints (e.g. by using forbidden shell commands or swallowing errors) will have their results rejected.
@@ -212,6 +216,13 @@ Forbidden fields:
   ],
   "verified_green": true,
   "attempt": 1,
+  "tech_debt": [
+    {
+      "file": "Sources/Domain/RecordingError.swift",
+      "description": "Hardcoded stub implementation for startRecording",
+      "removal_condition": "Implement AVFoundation bindings in a future task"
+    }
+  ],
   "acceptance_criteria": [
     {"id": "AC1", "satisfied": true, "evidence": "Sources/Domain/RecordingError.swift:42"}
   ]
@@ -324,6 +335,7 @@ No exclusions — REFACTOR is the only agent permitted to see test source.
   "missing_acs": [],
   "lane_tools_added": [],
   "brief_defects": [],
+  "tech_debt": [],
   "acceptance_criteria": [
     {"id": "AC1", "satisfied": true, "evidence": "Sources/Domain/RecordingError.swift:42"}
   ]

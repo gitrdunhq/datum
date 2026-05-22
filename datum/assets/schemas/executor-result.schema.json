@@ -76,6 +76,19 @@
         }
       }
     },
+    "tech_debt": {
+      "type": "array",
+      "description": "Any TODOs, FIXMEs, shims, or temporary stubs left in the codebase MUST be explicitly declared here.",
+      "items": {
+        "type": "object",
+        "required": ["file", "description", "removal_condition"],
+        "properties": {
+          "file": { "type": "string" },
+          "description": { "type": "string", "description": "What is stubbed/shimmed and why" },
+          "removal_condition": { "type": "string", "description": "What needs to happen for this to be removed/fixed" }
+        }
+      }
+    },
     "proof_of_work_path": {
       "type": ["string", "null"],
       "description": "REFACTOR only: path to proof-of-work.md in the run archive"
