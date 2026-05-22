@@ -19,7 +19,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 RUNS_DIR = Path(".datum/runs")
-PATTERN_LIBRARY = Path("references/pattern-library.md")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PATTERN_LIBRARY = REPO_ROOT / "references" / "pattern-library.md"
 
 
 def load_unknown_failures() -> list[dict]:

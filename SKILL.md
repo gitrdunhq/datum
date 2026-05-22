@@ -63,7 +63,7 @@ documented scripts, schemas, hooks, or contract fixtures drifted from the execut
 
 ### 1. Load Config
 
-Read `.datum/config.toml` if it exists; fall back to `datum/assets/config.toml.default`.
+Read `.datum/config.toml` if it exists; fall back to `assets/config.toml.default`.
 Model tier names resolve to actual model IDs via `[models]` table.
 
 ### 2. Read State
@@ -103,10 +103,10 @@ Generate a new `run_id`: `epic-{N}-{YYYYMMDD}-{hhmmss}` where N is the next epic
 Run: `uv run scripts/datum.py datum.language_detect`
 
 Returns the primary language. Maps to a language override file:
-- `swift` → `datum/references/04-act-swift.md`
-- `typescript` | `javascript` → `datum/references/04-act-typescript.md`
-- `go` → `datum/references/04-act-go.md`
-- `python` → `datum/references/04-act-python.md`
+- `swift` → `references/04-act-swift.md`
+- `typescript` | `javascript` → `references/04-act-typescript.md`
+- `go` → `references/04-act-go.md`
+- `python` → `references/04-act-python.md`
 - Other → no language override (ACT agents use generic patterns)
 
 ### 4. Check GitNexus Availability
@@ -123,48 +123,48 @@ Load the phase reference doc and execute it:
 
 | Phase | Reference Doc | Entry Condition | Extra references |
 |---|---|---|---|
-| Discovery | `datum/references/00-discovery.md` | Explicit `/datum discovery` | — |
-| Refine | `datum/references/01-refine.md` | docs/TICKET.md present | — |
-| Plan | `datum/references/02-plan.md` | docs/SPEC.md present | `datum/references/domain-wisdom.md` |
-| Properties | `datum/references/03-properties.md` | TASKS.md present, no docs/PROPERTIES.md | — |
-| Act | `datum/references/04-act.md` | TASKS.md + docs/PROPERTIES.md present | — |
-| Validate | `datum/references/05-validate.md` | All lanes complete | — |
-| Review | `datum/references/06-review.md` | Validate gate passed | `datum/references/domain-wisdom.md` |
-| PR Comments | `datum/references/07-pr-comments.md` | PR open | — |
-| Closeout | `datum/references/08-closeout.md` | PR merged | — |
+| Discovery | `references/00-discovery.md` | Explicit `/datum discovery` | — |
+| Refine | `references/01-refine.md` | docs/TICKET.md present | — |
+| Plan | `references/02-plan.md` | docs/SPEC.md present | `references/domain-wisdom.md` |
+| Properties | `references/03-properties.md` | TASKS.md present, no docs/PROPERTIES.md | — |
+| Act | `references/04-act.md` | TASKS.md + docs/PROPERTIES.md present | — |
+| Validate | `references/05-validate.md` | All lanes complete | — |
+| Review | `references/06-review.md` | Validate gate passed | `references/domain-wisdom.md` |
+| PR Comments | `references/07-pr-comments.md` | PR open | — |
+| Closeout | `references/08-closeout.md` | PR merged | — |
 
 **Product Pipeline (Pre-Dev) Phases:**
 For `datum product go` or `datum product <phase>`, use `.datum/product_state.json` and `uv run scripts/datum.py datum.product_state`:
 
 | Phase | Reference Doc | Entry Condition |
 |---|---|---|
-| Triage | `datum/references/p1-triage.md` | Initial ideation/request |
-| Discovery | `datum/references/p2-discovery.md` | `docs/ideation/TRIAGE.md` present |
-| Prior Art | `datum/references/p2c-prior-art.md` | OPTIONAL. Search memory/web for existing solutions. |
-| Competitive | `datum/references/p2a-competitive.md` | OPTIONAL. Agent decides based on context, or user requests. |
-| Stakeholder | `datum/references/p2b-stakeholder.md` | OPTIONAL. Agent decides based on context, or user requests. |
-| Requirements | `datum/references/p3-requirements.md` | `docs/ideation/DISCOVERY.md` present |
-| Handoff | `datum/references/p4-handoff.md` | `docs/ideation/PRD.md` present |
+| Triage | `references/p1-triage.md` | Initial ideation/request |
+| Discovery | `references/p2-discovery.md` | `docs/ideation/TRIAGE.md` present |
+| Prior Art | `references/p2c-prior-art.md` | OPTIONAL. Search memory/web for existing solutions. |
+| Competitive | `references/p2a-competitive.md` | OPTIONAL. Agent decides based on context, or user requests. |
+| Stakeholder | `references/p2b-stakeholder.md` | OPTIONAL. Agent decides based on context, or user requests. |
+| Requirements | `references/p3-requirements.md` | `docs/ideation/DISCOVERY.md` present |
+| Handoff | `references/p4-handoff.md` | `docs/ideation/PRD.md` present |
 
 *Note on Optional Phases:* After `Discovery`, the agent must reason whether the project context warrants `Prior Art` research, `Competitive` analysis or `Stakeholder` mapping. If it does, transition into those phases. If unclear, ask the user. If they are not needed, skip directly to `Requirements`.
 
 **Cross-Cutting Capabilities (Always Active):**
-- `datum/references/cross-cutting-visual.md` — Read this anytime you need to present complex topological data or >3 column tables.
+- `references/cross-cutting-visual.md` — Read this anytime you need to present complex topological data or >3 column tables.
 
 For **Act**, also load:
-- `datum/references/agent-contracts.md` — typed brief/result schemas for all agent roles
-- `datum/references/brief-builder.md` — step-by-step context construction per role
-- `datum/references/04-act-red-brief.md`, `datum/references/04-act-green-brief.md`, `datum/references/04-act-refactor-brief.md`
-- `datum/references/04-act-green-multiturn.md` — multi-turn GREEN continuation protocol
-- `datum/references/04-act-adversarial-brief.md` — adversarial agent run after REFACTOR
-- `datum/references/04-act-completed-with-risks.md` — middle verdict when ACs pass but risks remain
-- `datum/references/04-act-skeleton-preflight.md` — per-lane skeleton creator before RED
-- `datum/references/proof-of-work.md` — required REFACTOR output alongside the commit
-- `datum/references/spec-drift.md` — mid-ACT spec change detection and resolution
-- `datum/references/quality-profiles.md` — repo-specific review dimensions (.datum/profiles/)
+- `references/agent-contracts.md` — typed brief/result schemas for all agent roles
+- `references/brief-builder.md` — step-by-step context construction per role
+- `references/04-act-red-brief.md`, `references/04-act-green-brief.md`, `references/04-act-refactor-brief.md`
+- `references/04-act-green-multiturn.md` — multi-turn GREEN continuation protocol
+- `references/04-act-adversarial-brief.md` — adversarial agent run after REFACTOR
+- `references/04-act-completed-with-risks.md` — middle verdict when ACs pass but risks remain
+- `references/04-act-skeleton-preflight.md` — per-lane skeleton creator before RED
+- `references/proof-of-work.md` — required REFACTOR output alongside the commit
+- `references/spec-drift.md` — mid-ACT spec change detection and resolution
+- `references/quality-profiles.md` — repo-specific review dimensions (.datum/profiles/)
 - Language override if detected
-- `datum/references/pipeline-dispatch.md`
-- `datum/references/gitnexus-playbook.md` (if gitnexus_available)
+- `references/pipeline-dispatch.md`
+- `references/gitnexus-playbook.md` (if gitnexus_available)
 
 After each phase completes, run: `uv run scripts/datum.py datum.gate <phase> [--yolo]`
 On gate pass: update state, archive artifacts, transition to next phase.
@@ -174,7 +174,7 @@ On gate fail: halt and surface the gate verdict to the user.
 
 ## Gate Policy
 
-Gates are enforced by `datum/scripts/gate.py`. Each gate has a policy from config:
+Gates are enforced by `scripts/gate.py`. Each gate has a policy from config:
 
 | Policy | Behavior |
 |---|---|
@@ -212,7 +212,7 @@ Gates are enforced by `datum/scripts/gate.py`. Each gate has a policy from confi
 ## State File
 
 Location: `.datum/state.json`
-Schema: `datum/assets/schemas/state.schema.json`
+Schema: `assets/schemas/state.schema.json`
 Managed by: `uv run scripts/datum.py datum.state <read|write|transition|archive>`
 
 Key fields used by the dispatcher:
@@ -249,22 +249,22 @@ Run: `uv run scripts/datum.py datum.archive <run_id> <artifact_path>` after each
 
 ## Token Efficiency
 
-Agents have agency to write reusable helpers to `datum/scripts/lane-tools/`. Before starting
-any lane, load the `datum/scripts/lane-tools/README.md` into the agent's brief so it knows
-what tools already exist. After adding a tool, update the README and `datum/scripts/lane-tools/manifest.toml`.
+Agents have agency to write reusable helpers to `scripts/lane-tools/`. Before starting
+any lane, load the `scripts/lane-tools/README.md` into the agent's brief so it knows
+what tools already exist. After adding a tool, update the README and `scripts/lane-tools/manifest.toml`.
 
 Prefer structured tools over grep scans:
 - Symbol lookup → GitNexus `context` or `impact`
 - Caller discovery → GitNexus `impact` or an AST-based lane-tool
-- Schema validation → run `datum/scripts/gate.py`, not LLM string matching
+- Schema validation → run `scripts/gate.py`, not LLM string matching
 
-See `datum/references/token-efficiency.md` for per-phase notes and lane-tooling agency rules.
+See `references/token-efficiency.md` for per-phase notes and lane-tooling agency rules.
 
 ---
 
 ## GitNexus Integration
 
-See `datum/references/gitnexus-playbook.md` for the full call table.
+See `references/gitnexus-playbook.md` for the full call table.
 
 In degraded mode (GitNexus unavailable):
 - Risk assessment uses heuristic volume threshold only
@@ -277,7 +277,7 @@ In degraded mode (GitNexus unavailable):
 ## Cross-Tool Portability
 
 This SKILL.md is tool-agnostic. Tool-specific subagent primitive names are in
-`datum/assets/config.toml.default` under `[tools]`. The dispatcher uses whichever primitive
+`assets/config.toml.default` under `[tools]`. The dispatcher uses whichever primitive
 the active tool supports. Tools without parallel subagent primitives run lanes sequentially
 and log the degradation.
 
@@ -301,13 +301,13 @@ After approval, each step runs and confirms success before the next begins.
 
 Before dispatching any ACT agent, the orchestrator builds its brief. The brief is the agent's entire working context — what it can see determines what it can do. **Get the brief wrong and the three-agent contract breaks down.**
 
-Full templates and a worked example are in `datum/references/brief-builder.md`. Required reading before dispatching any lane agent.
+Full templates and a worked example are in `references/brief-builder.md`. Required reading before dispatching any lane agent.
 
 **RED brief — minimum for red-phase isolation:**
 1. Filter `docs/PROPERTIES.md` to only the property IDs assigned to this task (traceability table lookup)
 2. Extract only the task's own entry from `TASKS.md` (title, ACs, files, red_note, introduces_stubs)
 3. Fetch `gitnexus context` for each symbol the test will reference — attach the output directly
-4. Append `datum/scripts/lane-tools/README.md` in full
+4. Append `scripts/lane-tools/README.md` in full
 5. For each dependency lane that has a stub commit: attach the stub file content
 6. **Exclude:** any file in the test directory, implementation files for this task, other lanes' outputs
 
@@ -390,7 +390,7 @@ The `--json` form is used by CI and by other scripts; the rendered form is for h
 
 ## Error Recovery
 
-See `datum/references/recovery-modes.md` for the full failure classification tree.
+See `references/recovery-modes.md` for the full failure classification tree.
 
 Quick reference:
 - `ENVIRONMENTAL` failures → fix in place at same model tier, retry counter NOT incremented
@@ -401,7 +401,7 @@ Run: `uv run scripts/datum.py datum.diagnose_failure <log_path>` to classify bef
 
 **Rollback (`datum rollback <run_id>`):**
 
-See `datum/references/rollback.md` for the full 9-step protocol.
+See `references/rollback.md` for the full 9-step protocol.
 Short form: creates a revert commit, opens a new PR, and re-enters at Validate (confirm tests
 pass on the reverted branch), then PR Comments. Does NOT re-run ACT.
 

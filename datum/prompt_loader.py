@@ -13,22 +13,17 @@ from importlib import resources
 
 def resolve_resource_path(doc_path: str) -> str:
     """Resolve a relative doc_path (like 'references/02-plan.md' or 'assets/schema.md')
-    by checking `.datum/` for local overrides first, then falling back to packaged assets."""
+    by checking `.datum/` for local overrides first, then falling back to repo assets."""
     
     local_target = Path(".datum") / doc_path
     if local_target.exists():
         return local_target.read_text()
         
-    # Check if we can find it in the datum package
-    try:
-        if doc_path.startswith("references/"):
-            resource_name = doc_path.replace("references/", "")
-            return resources.files("datum.references").joinpath(resource_name).read_text()
-        elif doc_path.startswith("assets/"):
-            resource_name = doc_path.replace("assets/", "")
-            return resources.files("datum.assets").joinpath(resource_name).read_text()
-    except Exception:
-        pass
+    # Fall back to the repository root
+    repo_root = Path(__file__).resolve().parent.parent
+    repo_target = repo_root / doc_path
+    if repo_target.exists():
+        return repo_target.read_text()
         
     return None
 
@@ -58,9 +53,13 @@ def main():
             content = local_override.read_text()
         else:
             try:
-                content = resources.files("datum.references").joinpath(f"{args.phase}.md").read_text()
+                repo_root = Path(__file__).resolve().parent.parent
+                target = repo_root / "references" / f"{args.phase}.md"
+                if not target.exists():
+                    raise FileNotFoundError
+                content = target.read_text()
             except Exception:
-                print(f"Phase reference {args.phase}.md not found in packaged datum.references", file=sys.stderr)
+                print(f"Phase reference {args.phase}.md not found in references/", file=sys.stderr)
                 sys.exit(1)
     elif args.file:
         target = Path(args.file)

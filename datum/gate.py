@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from datum.contracts import validate_payload, validate_value
 from datum.models.lane_plan_schema import DatumLanePlan
 from datum.models.packet_schema import ReviewPacket
-from datum.path_utils import assets_dir, existing_review_packets_dir
+from datum.path_utils import assets_dir, templates_dir, existing_review_packets_dir
 
 
 def load_config() -> dict:
@@ -374,7 +374,7 @@ def _profile_path(name: str) -> Path:
     repo_path = Path(".datum/profiles") / name
     if repo_path.exists():
         return repo_path
-    return assets_dir() / "templates" / name
+    return templates_dir() / name
 
 
 def gate_validate_profiles(config: dict) -> None:

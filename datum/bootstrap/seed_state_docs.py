@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from datum.path_utils import assets_dir
+from datum.path_utils import assets_dir, templates_dir
 
 
 def main() -> None:
@@ -19,14 +19,14 @@ def main() -> None:
     for profile in ("quality.yaml", "environment.yaml"):
         dest = profiles_dir / profile
         if not dest.exists():
-            template = assets_dir() / f"templates/{profile}"
+            template = templates_dir() / f"{profile}"
             if template.exists():
                 dest.write_text(template.read_text())
                 seeded.append(str(dest))
 
     cs = Path("CURRENT_STATE.md")
     if not cs.exists():
-        template = assets_dir() / "templates/CURRENT_STATE.md"
+        template = templates_dir() / "CURRENT_STATE.md"
         if template.exists():
             cs.write_text(template.read_text())
         else:
@@ -37,7 +37,7 @@ def main() -> None:
 
     rm = Path("ROADMAP.md")
     if not rm.exists():
-        template = assets_dir() / "templates/ROADMAP.md"
+        template = templates_dir() / "ROADMAP.md"
         if template.exists():
             rm.write_text(template.read_text())
         else:
@@ -48,7 +48,7 @@ def main() -> None:
     adr_dir.mkdir(parents=True, exist_ok=True)
     adr_template = adr_dir / "000-template.md"
     if not adr_template.exists():
-        src_template = assets_dir() / "templates/000-madr-template.md"
+        src_template = templates_dir() / "000-madr-template.md"
         if src_template.exists():
             adr_template.write_text(src_template.read_text())
             seeded.append(str(adr_template))

@@ -12,13 +12,17 @@ STATE_FILE = DATUM_DIR / "state.json"
 
 
 def skill_root() -> Path:
-    """Absolute path to the skill root (the datum package)."""
-    return Path(__file__).parent
+    """Absolute path to the skill root (the repository root)."""
+    return Path(__file__).resolve().parent.parent
 
 
 def assets_dir() -> Path:
     """Absolute path to the skill assets directory."""
     return skill_root() / "assets"
+
+def templates_dir() -> Path:
+    """Absolute path to the skill templates directory."""
+    return skill_root() / "templates"
 
 
 def load_state() -> dict:

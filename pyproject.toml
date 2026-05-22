@@ -33,6 +33,3 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["datum"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"datum/references" = "datum/references"
-"datum/assets" = "datum/assets"
