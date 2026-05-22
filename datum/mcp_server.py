@@ -160,7 +160,8 @@ def main():
     api_key = os.environ.get("DATUM_API_KEY")
     if not api_key:
         print("Starting in UNSECURE mode (no DATUM_API_KEY set)...")
-        mcp.run(transport="sse", host="0.0.0.0", port=8000)
+        app = mcp.sse_app()
+        uvicorn.run(app, host="0.0.0.0", port=8000)
     else:
         print("Starting in SECURE mode with API Key auth on HTTP/SSE port 8000...")
         app = mcp.sse_app()
