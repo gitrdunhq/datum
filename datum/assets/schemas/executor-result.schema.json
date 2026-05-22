@@ -46,7 +46,11 @@
           "type": { "type": "string", "enum": ["stub", "test", "implementation", "refactor"] },
           "files": { "type": "array", "items": { "type": "string" } },
           "patch": { "type": "string", "description": "Unified diff" },
-          "message": { "type": "string" }
+          "message": { 
+            "type": "string",
+            "pattern": "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([\\w\\-\\.]+\\))?!?: .+",
+            "description": "Must follow Conventional Commits format (e.g. feat(task-001): added x)"
+          }
         }
       }
     },

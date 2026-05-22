@@ -11,9 +11,11 @@ To prevent the "Telephone Game" where orchestrators degrade fidelity by paraphra
 - **No massive prompt injections.** Orchestrators must NEVER inject massive codebase contexts, full PR diffs, or raw transcripts directly into the dispatch prompt. Instead, orchestrators pass the absolute file path (or MCP resource URI) to the context, and the sub-agent reads it independently.
 - This isolates context windows, radically reduces token drift, and ensures sub-agents operate on pristine, untampered primary sources.
 
-## TDD Protocol (Dead Programmers Society)
-
 The RED → GREEN → REFACTOR cycle is an unbreakable contract. RED must write a failing test that asserts a specific property. GREEN must write ONLY the minimal code to make RED pass. REFACTOR may clean up, but must not weaken the test. Any agent found skipping a step, writing the test and implementation simultaneously, or weakening tests will trigger an immediate orchestrator halt.
+
+## Conventional Commits
+
+All `message` fields in the `commits` array MUST strictly adhere to the Conventional Commits format (e.g., `feat(scope): ...`, `fix(scope): ...`, `test(scope): ...`, `refactor(scope): ...`). The orchestrator validates this with a regex and will reject the result if the commit message does not start with a valid type.
 
 ## Coding Steering (DPS)
 
@@ -110,13 +112,13 @@ Required on success:
       "type": "stub",
       "files": ["Sources/Domain/RecordingError.swift"],
       "patch": "<unified diff>",
-      "message": "stub(task-001): declare RecordingError public API"
+      "message": "chore(task-001): declare RecordingError public API stub"
     },
     {
       "type": "test",
       "files": ["Tests/Unit/Domain/RecordingTests.swift"],
       "patch": "<unified diff>",
-      "message": "red(task-001): failing test for SAFE-001"
+      "message": "test(task-001): failing test for SAFE-001"
     }
   ],
   "verified_red": true,
@@ -205,7 +207,7 @@ Forbidden fields:
       "type": "implementation",
       "files": ["Sources/Domain/RecordingError.swift"],
       "patch": "<unified diff>",
-      "message": "green(task-001): minimum implementation for SAFE-001"
+      "message": "feat(task-001): minimum implementation for SAFE-001"
     }
   ],
   "verified_green": true,
