@@ -15,6 +15,10 @@ To prevent the "Telephone Game" where orchestrators degrade fidelity by paraphra
 
 The RED → GREEN → REFACTOR cycle is an unbreakable contract. RED must write a failing test that asserts a specific property. GREEN must write ONLY the minimal code to make RED pass. REFACTOR may clean up, but must not weaken the test. Any agent found skipping a step, writing the test and implementation simultaneously, or weakening tests will trigger an immediate orchestrator halt.
 
+## Coding Steering (DPS)
+
+All agents must strictly obey the rules outlined in `datum/references/coding-steering.md`. This includes Defensive Programming Standards (DPS), security safeguards, and AI discipline. The orchestrator injects these rules into the brief via the `coding_steering` field. Agents that violate these constraints (e.g. by using forbidden shell commands or swallowing errors) will have their results rejected.
+
 ---
 
 ## Contract Schema Version
@@ -81,7 +85,8 @@ Required fields. Rejection if any is absent or null:
   "upstream_stubs": [
     { "file": "Sources/Domain/RecordingError.swift", "content": "..." }
   ],
-  "lane_tools_readme": "<full README.md content>"
+  "lane_tools_readme": "<full README.md content>",
+  "coding_steering": "<full coding-steering.md content>"
 }
 ```
 
@@ -171,6 +176,7 @@ Required fields:
   },
   "gitnexus_context": "...",
   "lane_tools_readme": "...",
+  "coding_steering": "...",
   "attempt": 1
 }
 ```
@@ -280,6 +286,7 @@ that these fields are absent before sending.
   "test_results": "<full runner output>",
   "gitnexus_impact": "...",
   "lane_tools_readme": "...",
+  "coding_steering": "...",
   "brief_defects_so_far": []
 }
 ```
