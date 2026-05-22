@@ -23,8 +23,9 @@ Instead of a single sequential agent, the Pipeline Orchestrator spawns **N paral
 
 ### Step 1: Prepare Context (Zero-Chat Handoff)
 The Orchestrator MUST NOT inject the diff into the agent prompts.
-1. Generate the diff: `git diff main...HEAD > .datum/runs/<RUN_ID>/diff.patch`
-2. Prepare empty JSON packets for each domain in `.datum/runs/<RUN_ID>/review-packets/`
+1. **Pre-Review Rebase**: Navigate to the worktree (`cd .datum/worktrees/<RUN_ID>`), run `git fetch origin main`, and `git rebase origin/main` to ensure the Swarm does not review stale code against a shifting trunk.
+2. Generate the diff: `git diff main...HEAD > .datum/runs/<RUN_ID>/diff.patch`
+3. Prepare empty JSON packets for each domain in `.datum/runs/<RUN_ID>/review-packets/`
 
 ### Step 2: Fan-Out (Parallel Execution)
 Spawn all agents simultaneously. Give each agent this exact instruction:

@@ -15,6 +15,9 @@ This document consolidates 12 fragmented Claude rule files into a single, token-
 - **DPS-203**: **Structured Errors**. Errors must never be silently swallowed. API errors must return `{ code, message, correlationId }`.
 - **DPS-204**: **No Silent Fallbacks**. Never use `??` or `||` to mask data that shouldn't be missing. Throw and fail fast instead.
 
+## Feature Flags & Rollbacks
+- **DPS-300**: **Mandatory Feature Flags**. All agent-generated features must be gated behind a feature flag (defaulting to OFF). This ensures that if the agent hallucinates or introduces a production regression, the feature can be disabled instantly without requiring a massive `git revert` or emergency hotfix.
+
 ## Testing & TDD
 - **TDD-001**: **Red-Green Mandatory**. Always write the failing test first (RED), confirm the failure, then write code (GREEN). Post-hoc testing is forbidden.
 - **TDD-002**: **Strong Assertions**. Tests must verify specific business outcomes. If deleting the function body doesn't fail the test, the test is worthless.
