@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "947d47dc2b12",
+  "strategy": "manual-commit",
+  "branch": "feat/xgrammar-plugin",
+  "checkpoints_count": 13,
+  "files_touched": [
+    "Record-Foundation/Sources/Domain/Summarization/SummaryConfig.swift",
+    "Record-Foundation/Sources/Utilities/HardwareBoundaryProfiler.swift",
+    "Record-ML/Sources/MLInfrastructure/Summarization/MLXSummarizationPlugin.swift",
+    "Record-ML/Sources/MLInfrastructure/Summarization/XGrammarSummarizationPlugin.swift",
+    "Tools/ProofHarness/Sources/Compare.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/run-all.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/94/7d47dc2b12/0/metadata.json",
+      "transcript": "/94/7d47dc2b12/0/full.jsonl",
+      "content_hash": "/94/7d47dc2b12/0/content_hash.txt",
+      "prompt": "/94/7d47dc2b12/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1281,
+    "cache_creation_tokens": 1769708,
+    "cache_read_tokens": 135504579,
+    "output_tokens": 206042,
+    "api_call_count": 496
+  }
+}
