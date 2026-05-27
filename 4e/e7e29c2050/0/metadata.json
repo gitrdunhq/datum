@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4ee7e29c2050",
+  "session_id": "3d7f19a0-1248-4dfc-ac21-9b38f8ee059a",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-27T22:02:42.327273Z",
+  "branch": "datum/epic-23-telemetry-duckdb",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBSQL.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e6cdffa0721e",
+  "token_usage": {
+    "input_tokens": 1355,
+    "cache_creation_tokens": 1825401,
+    "cache_read_tokens": 161356998,
+    "output_tokens": 230161,
+    "api_call_count": 548
+  },
+  "session_metrics": {
+    "turn_count": 22
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-27T22:02:42.261172Z",
+    "agent_lines": 26,
+    "agent_removed": 0,
+    "human_added": 19,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 45,
+    "total_lines_changed": 55,
+    "agent_percentage": 47.27272727272727,
+    "metric_version": 2
+  }
+}

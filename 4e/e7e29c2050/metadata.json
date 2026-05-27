@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4ee7e29c2050",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-23-telemetry-duckdb",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBSQL.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4e/e7e29c2050/0/metadata.json",
+      "transcript": "/4e/e7e29c2050/0/full.jsonl",
+      "content_hash": "/4e/e7e29c2050/0/content_hash.txt",
+      "prompt": "/4e/e7e29c2050/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1355,
+    "cache_creation_tokens": 1825401,
+    "cache_read_tokens": 161356998,
+    "output_tokens": 230161,
+    "api_call_count": 548
+  }
+}
