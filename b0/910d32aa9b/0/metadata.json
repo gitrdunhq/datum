@@ -1,0 +1,95 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "b0910d32aa9b",
+  "session_id": "3d7f19a0-1248-4dfc-ac21-9b38f8ee059a",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-27T21:59:16.959208Z",
+  "branch": "datum/epic-23-telemetry-duckdb",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "Record-ML/Package.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e6cdffa0721e",
+  "token_usage": {
+    "input_tokens": 1352,
+    "cache_creation_tokens": 1820458,
+    "cache_read_tokens": 160839018,
+    "output_tokens": 229276,
+    "api_call_count": 547
+  },
+  "session_metrics": {
+    "turn_count": 22
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-27T21:59:16.894775Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 51,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 51,
+    "total_lines_changed": 51,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
