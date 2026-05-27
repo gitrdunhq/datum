@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "3624768ec65a",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-23-telemetry-duckdb",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "Record-Foundation/Sources/Domain/Summarization/SummaryConfig.swift",
+    "Record-Foundation/Sources/Utilities/HardwareBoundaryProfiler.swift",
+    "Record-ML/Package.swift",
+    "Record-ML/Sources/MLInfrastructure/Summarization/XGrammarSummarizationPlugin.swift",
+    "Tools/ProofHarness/Package.swift",
+    "Tools/ProofHarness/Sources/Compare.swift",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/run-all.sh",
+    "scripts/hooks/no-unchecked-sendable.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/36/24768ec65a/0/metadata.json",
+      "transcript": "/36/24768ec65a/0/full.jsonl",
+      "content_hash": "/36/24768ec65a/0/content_hash.txt",
+      "prompt": "/36/24768ec65a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1390,
+    "cache_creation_tokens": 1851673,
+    "cache_read_tokens": 174723158,
+    "output_tokens": 237597,
+    "api_call_count": 573
+  }
+}
