@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "20a2e2fbb3e2",
+  "session_id": "3d7f19a0-1248-4dfc-ac21-9b38f8ee059a",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-27T20:08:44.05641Z",
+  "branch": "feat/xgrammar-plugin",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Record-Foundation/Sources/ProofHarness/ChatViewReport.swift",
+    "Record-Foundation/Sources/ProofHarness/ConversationFormatter.swift",
+    "Record-Foundation/Sources/ProofHarness/DER.swift",
+    "Record-Foundation/Sources/ProofHarness/DTW.swift",
+    "Record-Foundation/Sources/ProofHarness/PipelineRunner.swift",
+    "Record-Foundation/Sources/ProofHarness/ProofHarness.swift",
+    "Record-Foundation/Sources/ProofHarness/ResultPrinter.swift",
+    "Record-Foundation/Sources/ProofHarness/SentenceAligner.swift",
+    "Record-Foundation/Sources/ProofHarness/Terminal.swift",
+    "Record-Foundation/Sources/ProofHarness/WebReport.swift",
+    "Tools/ProofHarness/Sources/ChatViewReport.swift",
+    "Tools/ProofHarness/Sources/ConversationFormatter.swift",
+    "Tools/ProofHarness/Sources/DER.swift",
+    "Tools/ProofHarness/Sources/DTW.swift",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/Sources/ResultPrinter.swift",
+    "Tools/ProofHarness/Sources/SentenceAligner.swift",
+    "Tools/ProofHarness/Sources/Terminal.swift",
+    "Tools/ProofHarness/Sources/WebReport.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e6cdffa0721e",
+  "token_usage": {
+    "input_tokens": 1167,
+    "cache_creation_tokens": 849019,
+    "cache_read_tokens": 98175825,
+    "output_tokens": 174270,
+    "api_call_count": 409
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-27T20:08:44.00971Z",
+    "agent_lines": 1499,
+    "agent_removed": 1503,
+    "human_added": 481,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 1983,
+    "total_lines_changed": 3487,
+    "agent_percentage": 86.09119587037569,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

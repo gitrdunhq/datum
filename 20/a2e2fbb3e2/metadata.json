@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "20a2e2fbb3e2",
+  "strategy": "manual-commit",
+  "branch": "feat/xgrammar-plugin",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Record-Foundation/Sources/ProofHarness/ChatViewReport.swift",
+    "Record-Foundation/Sources/ProofHarness/ConversationFormatter.swift",
+    "Record-Foundation/Sources/ProofHarness/DER.swift",
+    "Record-Foundation/Sources/ProofHarness/DTW.swift",
+    "Record-Foundation/Sources/ProofHarness/PipelineRunner.swift",
+    "Record-Foundation/Sources/ProofHarness/ProofHarness.swift",
+    "Record-Foundation/Sources/ProofHarness/ResultPrinter.swift",
+    "Record-Foundation/Sources/ProofHarness/SentenceAligner.swift",
+    "Record-Foundation/Sources/ProofHarness/Terminal.swift",
+    "Record-Foundation/Sources/ProofHarness/WebReport.swift",
+    "Tools/ProofHarness/Sources/ChatViewReport.swift",
+    "Tools/ProofHarness/Sources/ConversationFormatter.swift",
+    "Tools/ProofHarness/Sources/DER.swift",
+    "Tools/ProofHarness/Sources/DTW.swift",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/Sources/ResultPrinter.swift",
+    "Tools/ProofHarness/Sources/SentenceAligner.swift",
+    "Tools/ProofHarness/Sources/Terminal.swift",
+    "Tools/ProofHarness/Sources/WebReport.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/20/a2e2fbb3e2/0/metadata.json",
+      "transcript": "/20/a2e2fbb3e2/0/full.jsonl",
+      "content_hash": "/20/a2e2fbb3e2/0/content_hash.txt",
+      "prompt": "/20/a2e2fbb3e2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1167,
+    "cache_creation_tokens": 849019,
+    "cache_read_tokens": 98175825,
+    "output_tokens": 174270,
+    "api_call_count": 409
+  }
+}
