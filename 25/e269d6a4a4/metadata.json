@@ -4,9 +4,7 @@
   "strategy": "manual-commit",
   "branch": "datum/epic-14",
   "checkpoints_count": 2,
-  "files_touched": [
-    "scripts/transcript_to_html.py"
-  ],
+  "files_touched": null,
   "sessions": [
     {
       "metadata": "/25/e269d6a4a4/0/metadata.json",
@@ -16,10 +14,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 931,
-    "cache_creation_tokens": 3757163,
-    "cache_read_tokens": 220683287,
-    "output_tokens": 203559,
-    "api_call_count": 704
+    "input_tokens": 942,
+    "cache_creation_tokens": 4259098,
+    "cache_read_tokens": 224801199,
+    "output_tokens": 205206,
+    "api_call_count": 713
   }
 }
