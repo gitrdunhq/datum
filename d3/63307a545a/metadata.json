@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "d363307a545a",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-1",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "CLAUDE.md",
+    "CODEX.md",
+    "COPILOT.md",
+    "CURRENT_STATE.md",
+    "GEMINI.md",
+    "KIRO.md",
+    "ROADMAP.md",
+    "SKILL.md",
+    "TASKS.md",
+    "assets/config.toml.default",
+    "datum/analyze_properties.py",
+    "datum/classify.py",
+    "datum/cli.py",
+    "datum/gate.py",
+    "datum/landscape.py",
+    "datum/lane_plan.py",
+    "docs/architecture/INVARIANTS.md",
+    "docs/epics/datum/epic-1/PROPERTIES.md",
+    "docs/epics/datum/epic-1/QUESTIONS.md",
+    "docs/epics/datum/epic-1/SPEC.md",
+    "docs/epics/datum/epic-1/TASKS.md",
+    "docs/epics/datum/epic-1/TICKET.md",
+    "docs/epics/datum/epic-1/tasks.json",
+    "observability/alerts/pipeline-enhancements.json",
+    "observability/metrics/pipeline-enhancements.json",
+    "references/00-discovery.md",
+    "references/01-refine.md",
+    "references/02-plan.md",
+    "tasks.json",
+    "templates/QUESTIONS.md",
+    "templates/SPEC.md",
+    "tests/test_classify.py",
+    "tests/test_landscape.py",
+    "tests/test_units.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d3/63307a545a/0/metadata.json",
+      "transcript": "/d3/63307a545a/0/full.jsonl",
+      "content_hash": "/d3/63307a545a/0/content_hash.txt",
+      "prompt": "/d3/63307a545a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 281,
+    "cache_creation_tokens": 617448,
+    "cache_read_tokens": 27869448,
+    "output_tokens": 80854,
+    "api_call_count": 192
+  }
+}

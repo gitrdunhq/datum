@@ -1,0 +1,205 @@
+hello. this should be merged up now
+
+---
+
+yes
+
+---
+
+/datum init
+
+---
+
+5 Ideas Worth Taking from AIDLC
+
+1. Overconfidence Prevention (datum has nothing like this)
+
+AIDLC discovered their agents were skipping clarifying questions and making assumptions. They fixed it with an explicit doctrine:
+
+▎ Old: "Only ask questions if absolutely necessary"
+▎ New: "When in doubt, ask the question — overconfidence leads to poor outcomes"
+
+They enforce: no stage proceeds with ambiguity, vague answers ("depends", "not sure", "mix of") trigger mandatory follow-up questions, and there's a red-flag checklist for detecting when the agent is being overconfident.
+
+Gap in datum: Datum's Refine/Plan phases can blow past ambiguity if the agent is confident. There's no structural check that says "did you actually validate your assumptions, or did you just pattern-match from the codebase?"
+
+What to take: Add an overconfidence gate between Plan and Act. Before datum advances to Act, the agent must self-audit: list the 3 biggest assumptions in the SPEC, explain why each is safe, and flag any that are actually guesses. If any are guesses, they become questions before the gate opens.
+
+2. Adaptive Depth (datum treats every epic the same)
+
+AIDLC scales artifact detail to problem complexity:
+
+- Bug fix? Concise requirements.md, minimal design
+- System migration? 10+ rounds of questions, comprehensive traceability
+
+Their principle: "Create exactly the detail needed for the problem — no more, no less."
+
+Gap in datum: A one-line typo fix goes through the same 9-phase ceremony as a greenfield subsystem. There's no complexity gate that says "this is a trivial change, skip Properties and compress Act into a single lane."
+
+What to take: Add a complexity classifier in Discovery. Three tiers:
+- Patch (< 50 lines, single file cluster) → Skip Properties, single-lane Act, lightweight review
+- Feature (standard) → Full pipeline as-is
+- System (cross-cutting, new subsystem, multi-package) → Extended Plan with units of work, all properties mandatory
+
+3. Units of Work / Parallel Decomposition (datum's missing piece for your 3-dev team)
+
+AIDLC has a dedicated stage that decomposes work into parallelizable units with:
+- unit-of-work.md — unit definitions and responsibilities
+- unit-of-work-dependency.md — dependency matrix between units
+- unit-of-work-story-map.md — which stories map to which units
+
+Each unit then goes through its own design→code→test cycle independently.
+
+Gap in datum: TASKS.md is a flat list. There's no concept of "these 3 tasks can be done by 3 different devs in parallel" vs "task 4 blocks on tasks 1-3." With 3 devs in 3 cities, this is exactly what you need.
+
+What to take: Add a Units phase between Plan and Act. Datum decomposes the SPEC into independent units of work, maps tasks to units, and generates a dependency graph. Each dev picks a unit and runs their own Act cycle. Units merge in dependency order.
+
+4. Reverse Engineering for Brownfield (datum assumes you know the codebase)
+
+AIDLC auto-detects brownfield projects and generates:
+- Architecture diagram (Mermaid)
+- Business context with business transaction inventory
+- Code structure with design patterns found
+- API documentation
+- Component inventory
+- Tech stack inventory
+- Code quality assessment
+- Dependency graph
+
+All of this happens before requirements analysis.
+
+Gap in datum: Datum's Discovery phase is a light scan. When a new dev on your team picks up an epic in the-record-suite, they have to understand 74K+ symbols and 300 execution flows. Datum doesn't generate a "here's what this codebase is and how it works" artifact.
+
+What to take: Make Discovery generate a LANDSCAPE.md for first-time-on-repo developers. Not every epic — cache it and only regenerate when the codebase has changed significantly. GitNexus is already indexing this data; the artifact is just a human-readable rendering of what GitNexus knows.
+
+5. File-Based Questions with [Answer]: Tags (better than conversational Q&A)
+
+AIDLC puts all clarifying questions in markdown files with [Answer]: tags. The human fills in answers in the file, not in chat. Benefits:
+- Questions and answers are committed artifacts, not lost in chat history
+- Multiple questions can be answered in batch
+- Follow-ups reference the same file
+- Audit trail of what was asked and answered
+
+Gap in datum: Datum's Refine phase is conversational — questions and answers live in the chat transcript and disappear when the session ends. If a different dev picks up the epic, they can't see what was asked and decided.
+
+What to take: During Refine, generate a QUESTIONS.md in docs/epics/<branch>/ with structured questions and [Answer]: tags. Commit it. When answers come in, commit the updated file. The decision log is now a first-class artifact that survives sessions and is visible to all 3 devs.
+
+---
+What NOT to Take
+
+- Their stateless approach — datum's state machine is strictly better
+- Their "say 'Using AI-DLC' to activate" — skill-based activation is cleaner
+- Their single-model, no-tiering — your model tiering is a real advantage
+- Their unstructured artifacts — your templated SPEC/PROPERTIES/TASKS are more consistent
+
+The TLDR: AIDLC is weaker as a system but stronger at three things datum underserves — humility (overconfidence prevention), proportionality (adaptive depth), and parallelism (units of work). All three matter more now that you have 3 devs. 
+
+https://raw.githubusercontent.com/awslabs/aidlc-workflows/main/aidlc-rules/aws-aidlc-rules/core-workflow.md
+
+---
+
+ylooks good.
+
+---
+
+and things are deterministic as possibnle?
+
+---
+
+yes
+
+---
+
+did we deepen
+
+---
+
+please keep track of all this because i need you to fix these transgressions of yours to be miminzed.
+
+yes properties
+
+---
+
+yes
+
+---
+
+<task-notification>
+<task-id>a1acbf07cd4394852</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/a1acbf07cd4394852.output</output-file>
+<status>completed</status>
+<summary>Agent "Act: task-008 units extension" completed</summary>
+<result>Good, the formatter just adjusted some whitespace. Now I need to update `render_tasks_md`, `build_lane_plan`, and `main` to support units. Let me do all three edits.</result>
+<usage><total_tokens>41161</total_tokens><tool_uses>15</tool_uses><duration_ms>177950</duration_ms></usage>
+</task-notification>
+
+---
+
+what the fuck man, why did you rbeak that rule
+
+---
+
+<task-notification>
+<task-id>a828d172220af8b21</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/a828d172220af8b21.output</output-file>
+<status>completed</status>
+<summary>Agent "Act: task-004 gate enhancements" completed</summary>
+<result>The formatter removed the top-level `import subprocess` because it thought only the local import at line 477 was needed. But `resolve_epic_dir()` at line 65 uses `subprocess.run()` without importing it. I need to add it back at the top level.</result>
+<usage><total_tokens>54550</total_tokens><tool_uses>18</tool_uses><duration_ms>188918</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>afaea54fb00a15e23</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/afaea54fb00a15e23.output</output-file>
+<status>completed</status>
+<summary>Agent "Act: task-009 discovery ref doc" completed</summary>
+<result>All four changes applied to `/Volumes/Extra/repos/gitrdunhq/datum/references/00-discovery.md`:
+
+1. **Steps 2a and 2b inserted** before the existing step 2 — landscape generation via `uv run datum landscape` (with `--force` flag note), then GitNexus enrichment with marker-bounded append semantics.
+2. **Outputs section updated** — replaced "No archived artifacts (Discovery is read-only)" with the `docs/LANDSCAPE.md` entry noting it's optional and not generated every epic.
+3. **Skip condition updated** — added `AND docs/LANDSCAPE.md exists` as the third condition alongside the 7-day freshness and unfamiliar subsystems checks.</result>
+<usage><total_tokens>25826</total_tokens><tool_uses>4</tool_uses><duration_ms>25763</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a10a98d797bcb5060</task-id>
+<tool-use-id>toolu_01ExaUdwVooE767RGD5udbjr</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/a10a98d797bcb5060.output</output-file>
+<status>completed</status>
+<summary>Agent "Act: task-010 SKILL.md update" completed</summary>
+<result>All 5 changes are applied. Here's a summary of what was done to `/Volumes/Extra/repos/gitrdunhq/datum/SKILL.md`:
+
+1. **Commands section** — Added `/datum classify` and `/datum landscape` after `/datum rollback`.
+
+2. **Dispatcher step 2.5** — Added "Classify Complexity" block immediately after the artifact detection table, with the Patch/Feature/System routing table and the override note.
+
+3. **Gates section** — Added a blockquote note after the full gates table (not mid-table) explaining the Plan gate's Assumption Audit check and QUESTIONS.md warning.
+
+4. **Artifacts section** — Added a new `## Artifacts` section between "Brief Construction" and "Error Recovery" with the 6-row artifact table.
+
+5. **Dispatch table** — Added a "Notes" column to the table header and populated the Plan row with the System-tier unit decomposition note. All other rows have empty Notes cells to maintain valid table structure.</result>
+<usage><total_tokens>32116</total_tokens><tool_uses>10</tool_uses><duration_ms>66349</duration_ms></usage>
+</task-notification>
+
+---
+
+review
+
+---
+
+the revierw phase is supposed to kick off a fix phase if ther eis medium and high and crits and file the lows
+
+---
+
+but you can fix those inline
+
+---
+
+1 file
