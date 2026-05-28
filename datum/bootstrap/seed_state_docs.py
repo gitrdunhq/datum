@@ -10,8 +10,78 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from datum.path_utils import templates_dir
 
 
+def seed_hooks() -> list[str]:
+    """Copy all datum hooks to the target project's .datum/hooks/."""
+    from datum.path_utils import assets_dir
+
+    src_hooks = assets_dir() / "hooks"
+    if not src_hooks.exists():
+        return []
+
+    dest_hooks = Path(".datum/hooks")
+    dest_hooks.mkdir(parents=True, exist_ok=True)
+    seeded = []
+    for hook in src_hooks.glob("*.sh"):
+        dest = dest_hooks / hook.name
+        if not dest.exists() or dest.read_text() != hook.read_text():
+            dest.write_text(hook.read_text())
+            dest.chmod(0o755)
+            seeded.append(str(dest))
+    for hook in src_hooks.glob("*.py"):
+        dest = dest_hooks / hook.name
+        if not dest.exists() or dest.read_text() != hook.read_text():
+            dest.write_text(hook.read_text())
+            seeded.append(str(dest))
+    return seeded
+
+
+def seed_config() -> list[str]:
+    """Seed .datum/config.toml from defaults if missing."""
+    from datum.path_utils import assets_dir
+
+    config_dest = Path(".datum/config.toml")
+    if config_dest.exists():
+        return []
+
+    default_src = assets_dir() / "config.toml.default"
+    if not default_src.exists():
+        return []
+
+    config_dest.parent.mkdir(parents=True, exist_ok=True)
+    config_dest.write_text(default_src.read_text())
+    return [str(config_dest)]
+
+
+def seed_lane_tools() -> list[str]:
+    """Create scripts/lane-tools/ directory with README."""
+    from datum.path_utils import skill_root
+
+    lt_dir = Path("scripts/lane-tools")
+    lt_dir.mkdir(parents=True, exist_ok=True)
+    seeded = []
+
+    src_readme = skill_root() / "scripts" / "lane-tools" / "README.md"
+    dest_readme = lt_dir / "README.md"
+    if not dest_readme.exists() and src_readme.exists():
+        dest_readme.write_text(src_readme.read_text())
+        seeded.append(str(dest_readme))
+
+    src_manifest = skill_root() / "scripts" / "lane-tools" / "manifest.toml"
+    dest_manifest = lt_dir / "manifest.toml"
+    if not dest_manifest.exists() and src_manifest.exists():
+        dest_manifest.write_text(src_manifest.read_text())
+        seeded.append(str(dest_manifest))
+
+    return seeded
+
+
 def main() -> None:
     seeded = []
+
+    # Seed hooks, config, and lane-tools
+    seeded.extend(seed_hooks())
+    seeded.extend(seed_config())
+    seeded.extend(seed_lane_tools())
 
     # Seed quality profiles
     profiles_dir = Path(".datum/profiles")
