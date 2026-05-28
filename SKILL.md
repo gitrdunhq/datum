@@ -23,6 +23,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum classify    Auto-classify epic complexity (Patch/Feature/System)
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
 /datum mermaid     Generate Mermaid diagrams — ALWAYS activates on "mermaid", "diagram", "visualize"
+/datum dream       Memory consolidation — staleness audit + transcript extraction + pruning
 ```
 
 ## Rule: Determinism

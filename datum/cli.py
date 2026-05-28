@@ -213,6 +213,101 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+@app.command()
+def dream(
+    memory_dir: str = typer.Option("", help="Override memory directory path"),
+    audit_only: bool = typer.Option(
+        False, "--audit-only", help="Only run staleness audit"
+    ),
+    extract_only: bool = typer.Option(
+        False, "--extract-only", help="Only run transcript extraction"
+    ),
+):
+    """Run memory consolidation — staleness audit + transcript extraction."""
+
+    if not memory_dir:
+        cwd = Path.cwd()
+        project_hash = str(cwd).replace("/", "-")
+        memory_dir = str(Path.home() / ".claude" / "projects" / project_hash / "memory")
+
+    mem_path = Path(memory_dir)
+    if not mem_path.is_dir():
+        console.print(
+            f"[yellow]No memory directory at {memory_dir} — nothing to consolidate.[/yellow]"
+        )
+        return
+
+    from datum.memory_audit import audit_directory
+
+    console.print("[bold blue]Phase 0: Staleness audit...[/bold blue]")
+    stale = audit_directory(mem_path)
+    if stale:
+        console.print(f"[yellow]Found {len(stale)} stale memories:[/yellow]")
+        for s in stale:
+            console.print(
+                f"  {s['name']} ({s['type']}, {s['age_days']}d old) → [bold]{s['action']}[/bold]"
+            )
+    else:
+        console.print("  ✓ No stale memories")
+
+    if audit_only:
+        console.print(json.dumps(stale, indent=2))
+        return
+
+    transcripts_dir = mem_path.parent
+    transcripts = sorted(
+        transcripts_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
+    )[:2]
+
+    if not transcripts:
+        console.print("[yellow]No transcripts found — skipping extraction.[/yellow]")
+        return
+
+    from datum.memory_extract import _extract_from_transcript
+
+    console.print(
+        f"\n[bold blue]Phase 2: Extracting from {len(transcripts)} transcript(s)...[/bold blue]"
+    )
+    all_candidates = []
+    for t in transcripts:
+        all_candidates.extend(_extract_from_transcript(t))
+
+    high = [c for c in all_candidates if c["confidence"] == "high"]
+    medium = [c for c in all_candidates if c["confidence"] == "medium"]
+
+    console.print(
+        f"  {len(high)} high-confidence, {len(medium)} medium-confidence candidates"
+    )
+
+    if extract_only:
+        console.print(
+            json.dumps(
+                {
+                    "high_confidence": high,
+                    "medium_confidence": medium,
+                    "total": len(all_candidates),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if high:
+        console.print("\n[bold green]High-confidence (auto-write):[/bold green]")
+        for c in high[:10]:
+            console.print(f"  [{c['suggested_type']}] {c['source_quote'][:100]}...")
+
+    if medium:
+        console.print("\n[yellow]Medium-confidence (review):[/yellow]")
+        for c in medium[:10]:
+            console.print(f"  [{c['suggested_type']}] {c['source_quote'][:100]}...")
+
+    console.print(
+        f"\n[bold green]✓ Dream complete. "
+        f"{len(stale)} stale, {len(high)} high, {len(medium)} medium candidates.[/bold green]"
+    )
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()
