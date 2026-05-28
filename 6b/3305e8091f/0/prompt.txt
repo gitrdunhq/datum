@@ -87,7 +87,3 @@ yes make it optional for now a beta feature
 ---
 
 datum I dont like that you pr and closeout on your own. i should be the gate
-
----
-
-commit and push
