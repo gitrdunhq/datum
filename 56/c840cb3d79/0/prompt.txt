@@ -203,7 +203,3 @@ ok now the gemma thing should never be a shell command, always a subagent
 ---
 
 memory isnt gonna cut it.
-
----
-
-thew TODO app that coding tools seems to have access too
