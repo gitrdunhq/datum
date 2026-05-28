@@ -15,6 +15,7 @@
 
 ## Completed
 
+- Epic 18 — Multi-turn local LLM + ACI + lane tools (direct-to-main, Claude×Gemini pair) — 2026-05-28
 - Epic 17 — datum-tui beta (factory floor dashboard) — 2026-05-28 — PR #41
 - Epic 16 — `datum init` seeds hooks/config/lane-tools — 2026-05-28 — PR #40
 - Epic 15 — Enforce local LLM via subagent only — 2026-05-28 — PR #39

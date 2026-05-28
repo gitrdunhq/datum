@@ -1,7 +1,7 @@
 # Current State
 
 **Last updated:** 2026-05-28
-**Epic:** 17 — datum-tui beta
+**Epic:** 18 — Multi-turn local LLM + ACI
 
 ---
 
@@ -31,10 +31,11 @@ Seventeen epics across two sessions:
 15. **Epic 15** (PR #39) — Enforce local LLM via subagent only: hook blocks shell, AGENTS.md mandates Agent tool.
 16. **Epic 16** (PR #40) — `datum init` seeds hooks, config, and lane-tools to every initted repo.
 17. **Epic 17** (PR #41) — datum-tui beta: Textual factory floor dashboard + OpenRouter TUI reference implementation.
+18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags. Pair-programmed Claude×Gemini across 6 rounds.
 
 ## Active work
 
-None. Epic 17 merged. Pipeline idle.
+None. Epic 18 committed to main. Pipeline idle.
 
 ## Known issues
 
@@ -50,7 +51,10 @@ None. Epic 17 merged. Pipeline idle.
 - All user-facing commands: `datum <command>` (CLI wrapper at `~/.local/bin/datum`)
 - `datum floor` launches the Textual TUI dashboard (reads `.datum/` state files, loosely coupled)
 - Local LLM: MLX Gemma 4 26B via Python API only (never shell). Grammar-constrained output via outlines.
+- Multi-turn: plan→execute→synthesize with two-pass DCCD, N-sample voting, few-shot prompting
+- ACI: local model can execute lane tools (read-only by default, write tools gated separately)
+- Lane tools: read_file, list_dir, grep_search, run_command, read_file_range — manifest-gated with resource limits
 - Memory: `datum dream` runs staleness audit + MLX semantic extraction (Jina v5)
-- `datum init` bootstraps repos: hooks, config.toml, lane-tools, AGENTS.md
+- `datum init` bootstraps repos: hooks, config.toml, lane-tools, AGENTS.md (now includes local LLM docs)
 - Gate artifact resolution: `resolve_artifact()` SSOT — epic dir first, root fallback
 - Model tiers: config.toml is the authority; every subagent spawn must include explicit `model:` param

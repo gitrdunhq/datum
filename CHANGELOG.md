@@ -2,6 +2,38 @@
 
 All notable changes to DATUM are documented here.
 
+## [Epic 18] — 2026-05-28
+
+### Added
+- **Multi-turn local LLM orchestration**: plan→execute→synthesize loop with per-phase config overrides
+  - Two-pass DCCD generation (arxiv 2603.03305): freeform draft then grammar-constrained extraction
+  - Self-consistency voting (RASC, NAACL 2025): N-sample majority vote replaces self-reported confidence
+  - Few-shot prompting (arxiv 2605.02363): example JSON injected into every prompt
+  - Grammar-tight schemas: `StepResult.recommendation` is a Literal enum, all fields capped at 80 chars
+  - Temperature scheduling: fixed, rising, falling, u_curve modes across turns
+  - Parameterized quality gates: char flood, n-gram repetition, lexical diversity — all config-driven
+- **Agent-Computer Interface (ACI)**: local model can execute tools autonomously
+  - Read/write tool tiers with `enable_write_tools` gate (off by default)
+  - Command injection blocking: `BLOCKED_COMMANDS` frozenset + shell operator detection
+  - Path sandboxing: all string args checked against repo root, blocks escape attempts
+  - `<untrusted>` XML tagging on tool output for prompt injection defense
+  - Progressive disclosure: truncation with explicit `System Note` hinting
+- **Lane tools**: `read_file.py`, `list_dir.py`, `grep_search.py`, `run_command.py`, `read_file_range.py`
+  - All registered in `manifest.toml` with permissions and timeouts
+- **CLI pipeline flags** (closes #44): `--system`, `--json`, `--max-tokens`, `--temperature`, `--strip-thinking`, `--multi-turn`, `--phase`, `--mt-turns`, `--mt-confidence`, `--mt-schedule`, `--mt-timeout`
+- `datum init` now seeds AGENTS.md with full local LLM multi-turn documentation
+- Multi-turn status display in `datum local-llm` (no args)
+
+### Changed
+- `datum/schemas.py`: added `StepPlan`, `StepResult`, `StepAction`, `ToolCall` schemas
+- `datum/local_llm.py`: +903 lines — multi-turn engine, two-pass, voting, quality gates, ACI loop
+- `datum/cli.py`: full pipeline flag suite + multi-turn interactive testing
+- `assets/config.toml.default`: `[multi_turn]` section with 15 parameters + per-phase overrides + quality gates
+
+### Stats
+- 13 files changed, +1,554 / -16 lines
+- Pair-programmed across 6 rounds between Claude (Opus 4.6) and Gemini (3.1 Pro)
+
 ## [Epic 17] — 2026-05-28
 
 ### Added
