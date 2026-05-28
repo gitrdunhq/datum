@@ -198,6 +198,24 @@ def landscape(
     console.print(f"[bold green]✓ docs/LANDSCAPE.md ({status})[/bold green]")
 
 
+@app.command()
+def bugfile(
+    module: str = typer.Argument(
+        ..., help="Module that hit the bug (e.g. gate, lane_plan)"
+    ),
+    message: str = typer.Argument(..., help="One-line error description"),
+    trace: str = typer.Option("", help="Full traceback or error output"),
+):
+    """File a GitHub issue for a DATUM pipeline bug (self-healing)."""
+    from datum.report_bug import report_bug
+
+    url = report_bug(module, message, {"trace": trace} if trace else None)
+    if url:
+        console.print(f"[bold green]✓ Filed: {url}[/bold green]")
+    else:
+        console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()

@@ -3,10 +3,30 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import traceback
 from pathlib import Path
+
+_MAX_BODY_LEN = 4000
+_SECRET_PATTERNS = re.compile(
+    r"(ghp_[A-Za-z0-9]{20,})"
+    r"|(gho_[A-Za-z0-9]{20,})"
+    r"|(ghs_[A-Za-z0-9]{20,})"
+    r"|(sk-[A-Za-z0-9]{20,})"
+    r"|(key-[A-Za-z0-9]{20,})"
+    r"|(AKIA[A-Z0-9]{16})"
+    r"|(xox[bpsar]-[A-Za-z0-9\-]{20,})"
+)
+
+
+def _sanitize(text: str) -> str:
+    text = text.replace(str(Path.home()), "~")
+    text = _SECRET_PATTERNS.sub("[REDACTED]", text)
+    if len(text) > _MAX_BODY_LEN:
+        text = text[:_MAX_BODY_LEN] + "\n\n... [truncated]"
+    return text
 
 
 def report_bug(
@@ -17,9 +37,11 @@ def report_bug(
     """File a GitHub issue for an unexpected DATUM error.
 
     Returns the issue URL on success, None on failure (never raises).
+    All output is sanitized: home paths replaced with ~, secrets redacted,
+    body capped at 4000 chars.
     """
-    title = f"[datum-bug] {module}: {_one_line(error)}"
-    body = _build_body(module, error, context)
+    title = f"[datum-bug] {module}: {_sanitize(_one_line(error))}"
+    body = _sanitize(_build_body(module, error, context))
 
     try:
         existing = subprocess.run(
@@ -40,8 +62,7 @@ def report_bug(
             env=_clean_env(),
         )
         if existing.returncode == 0:
-            issues = json.loads(existing.stdout)
-            for issue in issues:
+            for issue in json.loads(existing.stdout):
                 if issue.get("title") == title:
                     return None
 
@@ -97,7 +118,10 @@ def _build_body(module: str, error: Exception | str, context: dict | None) -> st
             pass
 
     if context:
-        parts.append(f"**Context:**\n```json\n{json.dumps(context, indent=2)}\n```")
+        ctx_str = json.dumps(context, indent=2)
+        if len(ctx_str) > 1000:
+            ctx_str = ctx_str[:1000] + "\n... [truncated]"
+        parts.append(f"**Context:**\n```json\n{ctx_str}\n```")
 
     return "\n\n".join(parts)
 
@@ -106,5 +130,11 @@ def _clean_env() -> dict:
     import os
 
     env = os.environ.copy()
-    env.pop("GITHUB_TOKEN", None)
+    for key in list(env):
+        low = key.lower()
+        if any(
+            s in low
+            for s in ("token", "secret", "key", "password", "credential", "auth")
+        ):
+            del env[key]
     return env

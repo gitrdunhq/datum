@@ -131,7 +131,7 @@ These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/
 - `REASONING` → retry ladder: standard → reasoning → reasoning+verbose
 - See `references/recovery-modes.md`
 
-**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), call `datum.report_bug.report_bug(module, error, context)` to auto-file a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy on what qualifies as a bug vs expected behavior.
+**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `uv run datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
 
 ## Resume
 

@@ -25,11 +25,10 @@ When DATUM hits an **unexpected** error during execution — script crash, missi
 
 **How to file:**
 ```bash
-unset GITHUB_TOKEN && gh issue create \
-  --title "[datum-bug] <module>: <one-line description>" \
-  --label "datum-bug" \
-  --body "<error trace, state snapshot, what phase was running, reproduction steps>"
+uv run datum bugfile <module> "<one-line description>" --trace "<traceback>"
 ```
+
+This deduplicates against open issues, attaches the current `.datum/state.json` snapshot, and labels with `datum-bug`. Agents and scripts can also call `datum.report_bug.report_bug(module, error, context)` directly from Python.
 
 **Then:** Continue if the error is non-fatal (log it and proceed). Halt if fatal (missing script, broken state).
 
