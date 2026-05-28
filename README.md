@@ -12,6 +12,12 @@ This clones the repo, installs a `datum` CLI wrapper, and registers with all det
 
 **Prerequisites:** git, [uv](https://docs.astral.sh/uv/), Python >= 3.12
 
+After install, enable shell autocompletion:
+
+```bash
+datum --install-completion    # autodetects bash/zsh/fish/powershell
+```
+
 ## Quick Start
 
 ```bash
@@ -19,6 +25,8 @@ datum status          # pipeline status
 datum doctor          # self-check contracts
 datum classify        # auto-classify epic complexity
 datum landscape       # generate codebase architecture scaffold
+datum floor           # launch the TUI factory floor dashboard
+datum local-llm       # local LLM status + multi-turn config
 datum bugfile gate "something broke"  # self-healing: auto-file a bug
 ```
 
@@ -42,6 +50,28 @@ Three pipeline shapes based on complexity:
 - **Feature** (standard): Full pipeline
 - **System** (cross-cutting): Extended pipeline with units of work for parallel dev teams
 
+## Local LLM
+
+Route pipeline phases to a local MLX model (Gemma 4 26B on Apple Silicon) for cost-free inference. The retry ladder escalates to Claude on failure.
+
+```bash
+datum local-llm                          # status + config
+datum local-llm what does this code do   # no quotes needed
+datum local-llm --stats                  # tokens, throughput, savings
+datum local-llm -m --phase triage "triage this change..."  # multi-turn mode
+```
+
+Multi-turn orchestration (opt-in via `config.toml`):
+- **Two-pass DCCD** — freeform draft then grammar-constrained extraction
+- **Self-consistency voting** — N-sample majority vote replaces self-reported confidence
+- **Few-shot prompting** — example JSON injected for format compliance
+- **Grammar-tight schemas** — Literal enums force decisions, 80-char field caps prevent degeneration
+- **Quality gates** — char flood, n-gram repetition, lexical diversity checks
+- **ACI tool execution** — local model can read files, grep, list dirs, run commands (write tools gated separately)
+- **Temperature scheduling** — fixed, rising, falling, u_curve modes across turns
+
+All parameters configurable per-phase in `config.toml` under `[multi_turn]`.
+
 ## Managing Your Install
 
 ```bash
@@ -57,4 +87,5 @@ bash install.sh --uninstall
 - [Full Skill Reference](docs/DATUM.md) — phases, gates, config, reference docs
 - [Workflow Diagram](docs/datum-workflow.md) — mermaid flowcharts of the pipeline
 - [CURRENT_STATE.md](CURRENT_STATE.md) — what shipped last
+- [CHANGELOG.md](CHANGELOG.md) — release history
 - [ROADMAP.md](ROADMAP.md) — what's next
