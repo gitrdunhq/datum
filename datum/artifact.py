@@ -18,6 +18,7 @@ from datum.path_utils import assets_dir
 from datum.contracts import validate_value
 
 ARTIFACT_SCHEMA = "artifact.schema.json"
+ARTIFACT_SCHEMA_PATH = assets_dir() / "schemas" / ARTIFACT_SCHEMA
 
 
 @dataclass
@@ -31,7 +32,9 @@ class ArtifactEnvelope:
     def __post_init__(self) -> None:
         # DPS-1: Boundary Validation
         if not isinstance(self.datum_version, str):
-            raise TypeError(f"datum_version must be str, got {type(self.datum_version)}")
+            raise TypeError(
+                f"datum_version must be str, got {type(self.datum_version)}"
+            )
         if not isinstance(self.type, str):
             raise TypeError(f"type must be str, got {type(self.type)}")
         if not isinstance(self.owner, str):

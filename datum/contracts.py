@@ -73,7 +73,7 @@ def validate_value(schema_path: Path | str, payload: Any) -> list[str]:
         # Format Pydantic errors nicely
         errors = []
         for err in exc.errors():
-            loc = ".".join(str(l) for l in err["loc"])
+            loc = ".".join(str(part) for part in err["loc"])
             errors.append(f"{loc}: {err['msg']}")
         return errors
     except Exception as exc:
