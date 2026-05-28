@@ -36,6 +36,8 @@ venv/
 .coverage
 .antigravitycli/
 .temp/
+.claude/
+scripts/transcript-demo.html
 
 # Datum
 .datum/*
