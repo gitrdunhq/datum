@@ -22,6 +22,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum rollback    Revert a merged epic. See references/rollback.md.
 /datum classify    Auto-classify epic complexity (Patch/Feature/System)
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
+/datum mermaid     Generate Mermaid diagrams — ALWAYS activates on "mermaid", "diagram", "visualize"
 ```
 
 ## Rule: Determinism
@@ -146,6 +147,33 @@ Run ID / Phase / Branch / Lane summary / Decisions / Next action
 ```
 
 Write to: `~/.claude/projects/<slug>/memory/datum-session-<timestamp>.md`
+
+## Mermaid Diagrams
+
+**Trigger:** Always activates on "mermaid", "diagram", "visualize", "draw the flow", "sequence diagram", "architecture diagram", or `/datum mermaid`.
+
+Built-in diagram and design-doc capability. References and templates are part of the datum package:
+
+| Resource | Use for |
+|----------|---------|
+| `references/mermaid-diagram-guide.md` | Syntax reference for all diagram types |
+| `references/sequence-diagrams.md` | Sequence diagram patterns |
+| `references/activity-diagrams.md` | Activity/flowchart patterns |
+| `references/architecture-diagrams.md` | C4 and architecture patterns |
+| `references/deployment-diagrams.md` | Infrastructure diagrams |
+| `references/diagram-legibility.md` | High-contrast styling rules |
+| `references/unicode-symbols.md` | Semantic unicode for diagram labels |
+| `references/troubleshooting.md` | Mermaid syntax error fixes |
+| `references/resilient-workflow.md` | Validate-before-embed workflow |
+
+**Templates:** `templates/system-design-template.md`, `templates/architecture-design-template.md`, `templates/api-design-template.md`, `templates/feature-design-template.md`, `templates/database-design-template.md`
+
+**Scripts:** `scripts/resilient_diagram.py` (validate), `scripts/mermaid_to_image.py` (render PNG), `scripts/extract_mermaid.py` (extract from markdown)
+
+**Rules:**
+1. NEVER embed a diagram without validating it first via `uv run python scripts/resilient_diagram.py`
+2. ALWAYS use high-contrast styling and unicode semantic symbols
+3. PREFER design templates from `templates/` when creating design documents
 
 ## Cross-Tool
 
