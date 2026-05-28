@@ -3,23 +3,9 @@
   "checkpoint_id": "24118d5d4e0c",
   "strategy": "manual-commit",
   "branch": "datum/epic-19",
-  "checkpoints_count": 3,
+  "checkpoints_count": 1,
   "files_touched": [
-    ".datum/config.toml",
-    "TASKS.md",
-    "assets/schemas/task.schema.json",
-    "assets/schemas/tasks.schema.json",
-    "datum/cli.py",
-    "datum/models/walkthrough_schema.py",
-    "datum/walkthrough.py",
-    "docs/epics/datum/epic-19/QUESTIONS.md",
-    "docs/epics/datum/epic-19/SPEC.md",
-    "docs/epics/datum/epic-19/TASKS.md",
-    "docs/epics/datum/epic-19/TICKET.md",
-    "docs/epics/datum/epic-19/tasks.json",
-    "tasks.json",
-    "templates/WALKTHROUGH.md",
-    "tests/test_walkthrough.py"
+    "datum/cli.py"
   ],
   "sessions": [
     {
@@ -27,31 +13,13 @@
       "transcript": "/24/118d5d4e0c/0/full.jsonl",
       "content_hash": "/24/118d5d4e0c/0/content_hash.txt",
       "prompt": "/24/118d5d4e0c/0/prompt.txt"
-    },
-    {
-      "metadata": "/24/118d5d4e0c/1/metadata.json",
-      "transcript": "/24/118d5d4e0c/1/full.jsonl",
-      "content_hash": "/24/118d5d4e0c/1/content_hash.txt",
-      "prompt": "/24/118d5d4e0c/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1181,
-    "cache_creation_tokens": 1266622,
-    "cache_read_tokens": 44349990,
-    "output_tokens": 132601,
-    "api_call_count": 319
-  },
-  "combined_attribution": {
-    "calculated_at": "2026-05-28T16:58:10.171223Z",
-    "agent_lines": 715,
-    "agent_removed": 296,
-    "human_added": 0,
-    "human_modified": 0,
-    "human_removed": 0,
-    "total_committed": 715,
-    "total_lines_changed": 1011,
-    "agent_percentage": 100,
-    "metric_version": 2
+    "input_tokens": 309,
+    "cache_creation_tokens": 1141195,
+    "cache_read_tokens": 37167520,
+    "output_tokens": 91163,
+    "api_call_count": 233
   }
 }
