@@ -1,0 +1,77 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "24118d5d4e0c",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T16:58:10.099598Z",
+  "branch": "datum/epic-19",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".datum/config.toml",
+    "TASKS.md",
+    "assets/schemas/task.schema.json",
+    "assets/schemas/tasks.schema.json",
+    "datum/cli.py",
+    "datum/models/walkthrough_schema.py",
+    "datum/walkthrough.py",
+    "docs/epics/datum/epic-19/QUESTIONS.md",
+    "docs/epics/datum/epic-19/SPEC.md",
+    "docs/epics/datum/epic-19/TASKS.md",
+    "docs/epics/datum/epic-19/TICKET.md",
+    "docs/epics/datum/epic-19/tasks.json",
+    "tasks.json",
+    "templates/WALKTHROUGH.md",
+    "tests/test_walkthrough.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "bf1fd132f24b",
+  "token_usage": {
+    "input_tokens": 872,
+    "cache_creation_tokens": 125427,
+    "cache_read_tokens": 7182470,
+    "output_tokens": 41438,
+    "api_call_count": 86
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T16:58:10.085545Z",
+    "agent_lines": 587,
+    "agent_removed": 296,
+    "human_added": 120,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 715,
+    "total_lines_changed": 1011,
+    "agent_percentage": 87.33926805143423,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 470,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "docs/LANDSCAPE.md": 470
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 632,
+      "agent_lines_removed": 1
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 965,
+      "agent_lines_removed": 301
+    }
+  ]
+}
