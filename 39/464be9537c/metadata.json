@@ -3,7 +3,7 @@
   "checkpoint_id": "39464be9537c",
   "strategy": "manual-commit",
   "branch": "datum/epic-13",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": null,
   "sessions": [
     {
@@ -14,10 +14,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 812,
-    "cache_creation_tokens": 3707373,
-    "cache_read_tokens": 178673491,
-    "output_tokens": 183903,
-    "api_call_count": 618
+    "input_tokens": 830,
+    "cache_creation_tokens": 3712887,
+    "cache_read_tokens": 183361132,
+    "output_tokens": 186236,
+    "api_call_count": 628
   }
 }
