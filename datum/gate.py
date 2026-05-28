@@ -80,6 +80,17 @@ def resolve_epic_dir() -> Path:
     return Path(f"docs/epics/{branch}")
 
 
+def resolve_artifact(name: str) -> Path:
+    """SSOT for artifact path resolution: epic dir first, root fallback."""
+    epic_path = resolve_epic_dir() / name
+    if epic_path.exists():
+        return epic_path
+    root_path = Path(name)
+    if root_path.exists():
+        return root_path
+    return epic_path
+
+
 def check_questions_answered(content: str) -> list[str]:
     """Check all [Answer]: lines in content for non-empty answers.
 
@@ -233,10 +244,7 @@ def check_assumption_audit(
 
 
 def gate_refine(yolo: bool, config: dict) -> None:
-    epic_dir = resolve_epic_dir()
-    spec = epic_dir / "SPEC.md"
-    if not spec.exists():
-        spec = Path("SPEC.md")
+    spec = resolve_artifact("SPEC.md")
     if not spec.exists():
         fail("SPEC.md not found")
 
@@ -259,7 +267,7 @@ def gate_refine(yolo: bool, config: dict) -> None:
             fail("SPEC.md has unresolved open questions or TODOs")
 
     # Check QUESTIONS.md for unanswered entries
-    questions_path = epic_dir / "QUESTIONS.md"
+    questions_path = resolve_artifact("QUESTIONS.md")
     if questions_path.exists():
         q_errors = check_questions_answered(questions_path.read_text())
         if q_errors:
@@ -283,7 +291,7 @@ def gate_refine(yolo: bool, config: dict) -> None:
 
 
 def gate_plan(yolo: bool, config: dict) -> None:
-    tasks_path = Path("TASKS.md")
+    tasks_path = resolve_artifact("TASKS.md")
     lane_plan_path = Path(".datum/lane-plan.json")
 
     if not tasks_path.exists():
@@ -336,11 +344,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 )
 
     # Overconfidence gate: check Assumption Audit in SPEC.md
-    epic_dir = resolve_epic_dir()
-    spec_path = epic_dir / "SPEC.md"
-    if not spec_path.exists():
-        spec_path = Path("SPEC.md")
-    questions_path = epic_dir / "QUESTIONS.md"
+    spec_path = resolve_artifact("SPEC.md")
+    questions_path = resolve_artifact("QUESTIONS.md")
 
     if spec_path.exists():
         spec_content = spec_path.read_text()
@@ -393,7 +398,7 @@ def gate_triage(yolo: bool, config: dict) -> None:
 
 
 def gate_deepen(yolo: bool, config: dict) -> None:
-    tasks_path = Path("TASKS.md")
+    tasks_path = resolve_artifact("TASKS.md")
     if not tasks_path.exists():
         fail("TASKS.md not found")
 
@@ -407,7 +412,7 @@ def gate_deepen(yolo: bool, config: dict) -> None:
 
 
 def gate_properties(yolo: bool, config: dict) -> None:
-    props_path = Path("PROPERTIES.md")
+    props_path = resolve_artifact("PROPERTIES.md")
     if not props_path.exists():
         fail("PROPERTIES.md not found")
 

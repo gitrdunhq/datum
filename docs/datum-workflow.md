@@ -15,11 +15,12 @@ flowchart TD
     DetectEntry{"📋 Detect Entry Point"}
     OfferInit["⚙️ Offer datum init"]
 
-    Refine["📝 Refine — TICKET to SPEC"]
+    Refine["📝 Refine — TICKET to SPEC + QUESTIONS.md"]
     RefineGate{"🔐 Refine Gate"}
+    Classify{"📊 Classify — Patch/Feature/System"}
 
-    Plan["📋 Plan — SPEC to TASKS"]
-    PlanGate{"🔐 Plan Gate — ALWAYS required"}
+    Plan["📋 Plan — SPEC to TASKS (+ units for System)"]
+    PlanGate{"🔐 Plan Gate + Overconfidence Check"}
 
     Triage{"📊 Triage — Deepen or Skip?"}
     Deepen["🔍 Deepen — Codebase Evidence Gathering"]
@@ -55,7 +56,7 @@ flowchart TD
     DetectEntry -->|"Nothing"| OfferInit
 
     Refine --> RefineGate
-    RefineGate -->|Pass| Plan
+    RefineGate -->|Pass| Classify --> Plan
     RefineGate -->|"Gaps found"| Refine
 
     Plan --> PlanGate
@@ -82,7 +83,7 @@ flowchart TD
     classDef neutral fill:#F0F0F0,stroke:#000,stroke-width:2px,color:black
 
     class Start,Done startEnd
-    class BranchCheck,DetectEntry,RefineGate,PlanGate,Triage,MergeGate gate
+    class BranchCheck,DetectEntry,RefineGate,Classify,PlanGate,Triage,MergeGate gate
     class Refine,Plan,Deepen,Properties,Architect,Act,Validate,Review,CreatePR,PRComments,Closeout,Merged phase
     class HaltCheck error
     class SelfCheck,ReadState,CreateBranch,OfferInit neutral
@@ -160,12 +161,14 @@ flowchart TD
 
 | Phase | Input | Output | Gate |
 |-------|-------|--------|------|
-| **Branch Guard** | Current branch | Feature branch `datum/epic-N` | Hard — auto-creates branch |
-| **Refine** | `docs/epics/$BRANCH/TICKET.md` | `docs/epics/$BRANCH/SPEC.md` | Skippable in yolo |
-| **Plan** | SPEC.md | `TASKS.md` + `tasks.json` + `lane-plan.json` | **Always required** |
-| **Triage** | TASKS.md | `.datum/routing.json` (`deepen` or `properties`) | **Always required** |
-| **Deepen** | TASKS.md + codebase | `## Research Findings` appended to TASKS.md | Skipped if Triage routes to `properties` |
-| **Properties** | SPEC + TASKS (+ findings if deepened) | `docs/epics/$BRANCH/PROPERTIES.md` | Skippable in yolo |
+| **Branch Guard** | Current branch | Feature branch `datum/epic-N` (auto-incremented) | Hard — auto-creates branch |
+| **Discovery** | CURRENT_STATE.md | Orientation context + `docs/LANDSCAPE.md` (optional) | — |
+| **Refine** | `docs/epics/$BRANCH/TICKET.md` | `SPEC.md` (with Assumption Audit + Classification Metadata) + `QUESTIONS.md` | Skippable in yolo |
+| **Classify** | SPEC.md Classification Metadata | Pipeline shape: Patch→Express, Feature→Standard, System→Extended | Auto (user override at Plan gate) |
+| **Plan** | SPEC.md | `TASKS.md` + `tasks.json` + `lane-plan.json` (+ units for System-tier) | **Always required** + overconfidence gate |
+| **Triage** | TASKS.md | `.datum/routing.json` (`deepen` or `properties`) | **Always required** — never skipped |
+| **Deepen** | TASKS.md + codebase (GitNexus-first) | `## Research Findings` appended to TASKS.md | Skipped if Triage routes to `properties` |
+| **Properties** | SPEC + TASKS (+ findings if deepened) | `docs/epics/$BRANCH/PROPERTIES.md` | Skippable in yolo (skipped for Patch tier) |
 | **Architect** | Properties | ADRs + C4 diagrams | Blocks if significant decisions lack ADRs |
 | **Act** | TASKS + PROPERTIES | Committed code per lane | Retry ladder per lane |
 | **Validate** | All lanes complete | Test results | Skippable in yolo |
