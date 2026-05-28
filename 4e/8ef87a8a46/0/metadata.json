@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4e8ef87a8a46",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T23:48:42.521034Z",
+  "branch": "datum/epic-23",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "cf0b4e1e9f52",
+  "token_usage": {
+    "input_tokens": 1169,
+    "cache_creation_tokens": 1294532,
+    "cache_read_tokens": 61221878,
+    "output_tokens": 154445,
+    "api_call_count": 308
+  },
+  "session_metrics": {
+    "turn_count": 29
+  }
+}
