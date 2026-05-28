@@ -45,7 +45,7 @@ Produce in order (each depends on previous):
 2. `ROADMAP.md` — epic moved to Completed; recalculate downstream dependencies
 3. `CHANGELOG.md` — append entries for what shipped, with key numbers
 4. `RETRO.md` — metrics, observations, brief-defects summary, lane-tools summary, token trend
-5. `Memory Consolidation` — generate episodic memories and update `docs/MEMORY.md` index (See `datum/references/dream.md`)
+5. `Memory Consolidation` — run `datum dream` for the full pass: staleness audit, transcript extraction, episodic detection, memory write/update, index pruning. See `references/dream.md`.
 6. `follow-ups.json` — gaps as machine-readable entries for issue tracker
 
 **Resumption:** If synthesis fails partway through, completed artifacts are preserved. On `--resume`:
