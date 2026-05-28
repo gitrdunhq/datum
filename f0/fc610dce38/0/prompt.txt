@@ -235,3 +235,7 @@ yes a beta snd its own folder csnf be tightly. coupled
 ---
 
 no jisg thag 1 skill
+
+---
+
+ok use the skill foe the tui
