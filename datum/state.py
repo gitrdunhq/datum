@@ -24,17 +24,118 @@ RUNS_DIR = Path(".datum/runs")
 SCHEMA_VERSION = "1.0.0"
 
 PHASES = [
-    "discovery", "refine", "plan", "triage", "deepen", "properties",
-    "act", "validate", "review", "pr_comments", "closeout"
+    "discovery",
+    "refine",
+    "plan",
+    "triage",
+    "deepen",
+    "properties",
+    "act",
+    "validate",
+    "review",
+    "pr_comments",
+    "closeout",
 ]
 
 VALID_STATUSES = {"pending", "in_progress", "completed", "failed", "closeout_pending"}
 VALID_STAGES = {"RED", "GREEN", "REFACTOR", "queued", "completed", "failed_terminal"}
+PROTECTED_BRANCHES = {"main", "master"}
+
+
+def current_branch() -> str | None:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def ensure_feature_branch() -> str:
+    import subprocess
+
+    branch = current_branch()
+    if branch not in PROTECTED_BRANCHES:
+        return branch
+
+    n = next_epic_number()
+    new_branch = f"datum/epic-{n}"
+    result = subprocess.run(
+        ["git", "checkout", "-b", new_branch],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(
+            json.dumps(
+                {
+                    "error": "branch_create_failed",
+                    "branch": branch,
+                    "message": f"On '{branch}' and failed to create '{new_branch}': {result.stderr.strip()}",
+                }
+            )
+        )
+        sys.exit(2)
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "action": "branch_created",
+                "from": branch,
+                "to": new_branch,
+                "message": f"Created feature branch '{new_branch}' (DATUM never works on {branch})",
+            }
+        ),
+        file=sys.stderr,
+    )
+    return new_branch
+
+
+def load_config() -> dict:
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    config_path = Path(".datum/config.toml")
+    if not config_path.exists():
+        from datum.path_utils import assets_dir
+
+        config_path = assets_dir() / "config.toml.default"
+    if not config_path.exists():
+        return {}
+    return tomllib.loads(config_path.read_text())
+
+
+def resolve_tier(phase: str, run_state: dict | None = None) -> dict:
+    config = load_config()
+    models = config.get("models", {})
+    phases = models.get("phases", {})
+
+    tier_name = phases.get(phase, "standard")
+
+    if (
+        config.get("pipeline", {}).get("deepen_downshift", False)
+        and run_state
+        and run_state.get("phases", {}).get("deepen", {}).get("status") == "completed"
+        and phase in ("act_red", "act_green", "act_refactor")
+    ):
+        tier_name = "fast"
+
+    model_id = models.get(tier_name, tier_name)
+
+    return {"phase": phase, "tier": tier_name, "model": model_id}
+
 
 def init_db():
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("PRAGMA journal_mode=WAL") # Handle concurrent writes
+        conn.execute("PRAGMA journal_mode=WAL")  # Handle concurrent writes
         conn.execute("""
             CREATE TABLE IF NOT EXISTS kv_state (
                 key TEXT PRIMARY KEY,
@@ -53,6 +154,7 @@ def init_db():
         """)
         conn.commit()
 
+
 def load_state() -> dict:
     if not DB_FILE.exists():
         return {}
@@ -63,26 +165,30 @@ def load_state() -> dict:
             return json.loads(row[0])
     return {}
 
+
 def save_state(state: dict) -> None:
     init_db()
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO kv_state (key, value) VALUES ('current', ?)",
-            (json.dumps(state),)
+            (json.dumps(state),),
         )
         conn.commit()
-        
+
     # Write-through cache for backwards compatibility with legacy scripts
     json_path = Path(".datum/state.json")
     json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w") as f:
         json.dump(state, f, indent=2)
 
+
 def next_epic_number() -> int:
     if not RUNS_DIR.exists():
         return 1
-    existing = [d.name for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("epic-")]
+    existing = [
+        d.name for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("epic-")
+    ]
     if not existing:
         return 1
     numbers = []
@@ -92,14 +198,18 @@ def next_epic_number() -> int:
             numbers.append(int(parts[1]))
     return max(numbers, default=0) + 1
 
+
 def cmd_read(args: argparse.Namespace) -> None:
+    ensure_feature_branch()
     state = load_state()
     if not state:
         print(json.dumps({"error": "no_state", "message": "No .datum/state.db found"}))
         sys.exit(1)
     print(json.dumps(state, indent=2))
 
+
 def cmd_init(args: argparse.Namespace) -> None:
+    ensure_feature_branch()
     n = next_epic_number()
     now = datetime.now(timezone.utc)
     run_id = args.run_id or f"epic-{n}-{now.strftime('%Y%m%d-%H%M%S')}"
@@ -127,13 +237,14 @@ def cmd_init(args: argparse.Namespace) -> None:
         "updated_at": now.isoformat(),
     }
     save_state(state)
-    
+
     # Clear out old telemetry for new init
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("DELETE FROM token_metrics")
         conn.commit()
-        
+
     print(json.dumps({"ok": True, "run_id": run_id}))
+
 
 def cmd_write(args: argparse.Namespace) -> None:
     state = load_state()
@@ -164,6 +275,7 @@ def cmd_write(args: argparse.Namespace) -> None:
     save_state(state)
     print(json.dumps({"ok": True}))
 
+
 def cmd_transition(args: argparse.Namespace) -> None:
     state = load_state()
     if not state:
@@ -175,6 +287,7 @@ def cmd_transition(args: argparse.Namespace) -> None:
     state["current_phase"] = args.to
     save_state(state)
     print(json.dumps({"ok": True, "current_phase": args.to}))
+
 
 def cmd_lane_update(args: argparse.Namespace) -> None:
     state = load_state()
@@ -215,6 +328,7 @@ def cmd_lane_update(args: argparse.Namespace) -> None:
     save_state(state)
     print(json.dumps({"ok": True}))
 
+
 def cmd_log_tokens(args: argparse.Namespace) -> None:
     # We no longer read/write the full state JSON for token telemetry!
     # This prevents IO bottlenecks and lock contention.
@@ -222,10 +336,11 @@ def cmd_log_tokens(args: argparse.Namespace) -> None:
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(
             "INSERT INTO token_metrics (phase, model, input_tokens, output_tokens) VALUES (?, ?, ?, ?)",
-            (args.phase, args.model, args.input, args.output)
+            (args.phase, args.model, args.input, args.output),
         )
         conn.commit()
     print(json.dumps({"ok": True}))
+
 
 def cmd_archive(args: argparse.Namespace) -> None:
     state = load_state()
@@ -241,6 +356,7 @@ def cmd_archive(args: argparse.Namespace) -> None:
         shutil.copy(DB_FILE, archive_dir / "state.db")
 
     print(json.dumps({"ok": True, "archived_to": str(archive_dir)}))
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="DATUM state manager (SQLite)")
@@ -290,6 +406,7 @@ def main() -> None:
         "archive": cmd_archive,
     }
     cmds[args.command](args)
+
 
 if __name__ == "__main__":
     main()

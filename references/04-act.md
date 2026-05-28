@@ -31,7 +31,7 @@ Before starting any lane:
    "test_signal.py does not support framework X. Extend the parser or skip ACT for this repo."
 3. Confirm no pending flakies above the configured threshold (default: 3). If exceeded: halt.
 4. Start the commit queue process: `python3 scripts/commit_queue.py --run-id <RUN_ID>`
-5. Record docs/SPEC.md hash and start the drift detector sidecar:
+5. Record docs/epics/$BRANCH/SPEC.md hash and start the drift detector sidecar:
    `python3 scripts/spec_drift_detector.py --run-id <RUN_ID> --interval 60 &`
    See `references/spec-drift.md` for how drift is classified and resolved.
 

@@ -1,4 +1,4 @@
-# tested-by: tests/skills/wfc-coding-steering/test_miner.py
+# tested-by: tests/skills/datum-coding-steering/test_miner.py
 """
 Deterministic evidence mining for coding steering.
 """

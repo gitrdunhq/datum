@@ -21,8 +21,6 @@ from pathlib import Path
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
 from datum.contracts import validate_payload, validate_value
-from datum.models.lane_plan_schema import DatumLanePlan
-from datum.models.packet_schema import ReviewPacket
 from datum.path_utils import assets_dir, templates_dir, existing_review_packets_dir
 
 
@@ -131,7 +129,10 @@ def gate_plan(yolo: bool, config: dict) -> None:
         if "red_note" not in lane:
             fail(f"Lane {lid} missing 'red_note' in lane-plan.json")
         if "task_complexity" not in lane:
-            print(f"⚠️ Warning: Lane {lid} lacks explicit task_complexity. Defaulting to 'behavioral'.", file=sys.stderr)
+            print(
+                f"⚠️ Warning: Lane {lid} lacks explicit task_complexity. Defaulting to 'behavioral'.",
+                file=sys.stderr,
+            )
         if "acceptance_criteria" not in lane or not lane["acceptance_criteria"]:
             fail(f"Lane {lid} missing acceptance_criteria")
         for dep in lane.get("depends_on", []):
@@ -168,28 +169,34 @@ def gate_plan(yolo: bool, config: dict) -> None:
 
     pass_gate("Plan gate passed")
 
+
 def gate_triage(yolo: bool, config: dict) -> None:
     routing_path = Path(".datum/routing.json")
     if not routing_path.exists():
-        fail("routing.json not found. Triage subagent must write decision to .datum/routing.json")
-        
+        fail(
+            "routing.json not found. Triage subagent must write decision to .datum/routing.json"
+        )
+
     with routing_path.open() as f:
         routing = json.load(f)
-        
+
     if routing.get("decision") not in ("deepen", "properties"):
         fail("Invalid routing decision. Must be 'deepen' or 'properties'.")
-        
+
     pass_gate("Triage gate passed")
+
 
 def gate_deepen(yolo: bool, config: dict) -> None:
     tasks_path = Path("TASKS.md")
     if not tasks_path.exists():
         fail("TASKS.md not found")
-        
+
     content = tasks_path.read_text()
     if "## Research Findings" not in content and "## Research" not in content:
-        fail("TASKS.md missing '## Research Findings' section. Deepen phase must append evidence.")
-        
+        fail(
+            "TASKS.md missing '## Research Findings' section. Deepen phase must append evidence."
+        )
+
     pass_gate("Deepen gate passed")
 
 
@@ -274,36 +281,52 @@ def gate_review(yolo: bool, config: dict) -> None:
 
     # Check for high-severity findings
     content = report_path.read_text() if report_path.exists() else ""
-    if "severity: high" in content.lower() or "**high**" in content.lower() or "severity: critical" in content.lower() or "**critical**" in content.lower():
+    if (
+        "severity: high" in content.lower()
+        or "**high**" in content.lower()
+        or "severity: critical" in content.lower()
+        or "**critical**" in content.lower()
+    ):
         # Satisfaction Loop Logic
         state_path = Path(".datum/state.json")
         run_id = "default"
         if state_path.exists():
             import json
+
             run_id = json.loads(state_path.read_text()).get("run_id", "default")
-        
+
         iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
         iteration = 1
         if iter_file.exists():
             iteration = int(iter_file.read_text().strip())
-        
+
         if iteration >= 3:
             fail(
                 "REVIEW-REPORT.md contains HIGH/CRITICAL findings after 3 iterations. "
                 "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding.",
-                hard=True
+                hard=True,
             )
         else:
             import subprocess
-            print(f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package...")
-            subprocess.run([
-                "python3", "scripts/remediate.py", 
-                "--run-id", run_id, 
-                "--findings", f".datum/runs/{run_id}/review-packets/unified.json"
-            ])
+
+            print(
+                f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package..."
+            )
+            subprocess.run(
+                [
+                    "python3",
+                    "scripts/remediate.py",
+                    "--run-id",
+                    run_id,
+                    "--findings",
+                    f".datum/runs/{run_id}/review-packets/unified.json",
+                ]
+            )
             iter_file.parent.mkdir(parents=True, exist_ok=True)
             iter_file.write_text(str(iteration + 1))
-            fail(f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry.")
+            fail(
+                f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry."
+            )
 
     pass_gate("Review gate passed")
 
@@ -415,6 +438,10 @@ GATES = {
 
 
 def main() -> None:
+    from datum.state import ensure_feature_branch
+
+    ensure_feature_branch()
+
     parser = argparse.ArgumentParser(description="DATUM gate validator")
     parser.add_argument("phase")
     parser.add_argument("--yolo", action="store_true")

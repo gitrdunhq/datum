@@ -6,7 +6,7 @@ REFACTOR is the final agent in the lane. It has full context and is responsible 
 
 Everything:
 ```
-docs/SPEC.md           — full requirements doc
+docs/epics/$BRANCH/SPEC.md           — full requirements doc
 docs/PROPERTIES.md     — all properties for this task
 TASK ENTRY        — full AC list, files, red_note
 GITNEXUS CONTEXT  — impact analysis for all files in this lane

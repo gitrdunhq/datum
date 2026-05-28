@@ -1,4 +1,4 @@
-# Cross-Cutting Skill: Visual Explainers (wfc-visual)
+# Cross-Cutting Skill: Visual Explainers (datum-visual)
 
 **Goal:** Automatically generate visual diagrams (Mermaid, HTML) whenever presenting complex architectures, diffs, plans, or comparisons.
 

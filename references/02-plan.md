@@ -1,6 +1,6 @@
 # Phase: Plan
 
-**Goal:** Decompose docs/SPEC.md into a topologically-sorted, machine-readable TASKS.md where every task has a clear scope, acceptance criteria, file set, and RED note.
+**Goal:** Decompose docs/epics/$BRANCH/SPEC.md into a topologically-sorted, machine-readable TASKS.md where every task has a clear scope, acceptance criteria, file set, and RED note.
 
 ## Inputs
 
@@ -87,7 +87,7 @@ Task shape (see `assets/schemas/task.schema.json`):
 ### 3. Topological sort
 
 Order tasks so dependencies come first. Tasks with no dependencies can run in parallel.
-**Goal:** Decompose docs/SPEC.md into a topologically-sorted, machine-readable `tasks.json` (validating against `assets/schemas/tasks.schema.json`) where every task has a clear scope, acceptance criteria, file set, and RED note. `TASKS.md` is then automatically generated from this JSON.
+**Goal:** Decompose docs/epics/$BRANCH/SPEC.md into a topologically-sorted, machine-readable `tasks.json` (validating against `assets/schemas/tasks.schema.json`) where every task has a clear scope, acceptance criteria, file set, and RED note. `TASKS.md` is then automatically generated from this JSON.
 ...
 ### 4. Write tasks.json
 

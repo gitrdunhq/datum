@@ -28,6 +28,8 @@ from datum.models.result_adversarial_schema import DatumAdversarialResult
 from datum.models.lane_plan_schema import DatumLanePlan
 from datum.models.packet_schema import ReviewPacket
 from datum.models.artifact_schema import ArtifactEnvelope
+from datum.models.quality_schema import QualityProfile
+from datum.models.environment_schema import EnvironmentProfile
 
 # Map schema filenames to their Pydantic classes for the CLI
 SCHEMA_MAP = {
@@ -42,6 +44,8 @@ SCHEMA_MAP = {
     "lane-plan.schema.json": DatumLanePlan,
     "packet.schema.json": ReviewPacket,
     "artifact.schema.json": ArtifactEnvelope,
+    "quality.schema.json": QualityProfile,
+    "environment.schema.json": EnvironmentProfile,
 }
 
 FIXTURE_CASES = [
@@ -54,13 +58,14 @@ FIXTURE_CASES = [
     ("result-refactor.schema.json", "refactor-result.valid.json"),
 ]
 
+
 def validate_value(schema_path: Path | str, payload: Any) -> list[str]:
     """Validate a python dictionary against a model."""
     schema_name = Path(schema_path).name
     model = SCHEMA_MAP.get(schema_name)
     if not model:
         return [f"Unknown schema: {schema_name}"]
-    
+
     try:
         model.model_validate(payload)
         return []
@@ -73,6 +78,7 @@ def validate_value(schema_path: Path | str, payload: Any) -> list[str]:
         return errors
     except Exception as exc:
         return [str(exc)]
+
 
 def validate_payload(schema_path: Path | str, payload_path: Path) -> list[str]:
     """Validate a JSON file against a model."""
@@ -114,7 +120,9 @@ def main() -> None:
     validate_p = subparsers.add_parser("validate")
     validate_p.add_argument("--schema", required=True)
     validate_p.add_argument("--input", required=True)
-    validate_p.add_argument("--enveloped", action="store_true", help="Require Artifact envelope")
+    validate_p.add_argument(
+        "--enveloped", action="store_true", help="Require Artifact envelope"
+    )
 
     subparsers.add_parser("self-test")
 
@@ -124,10 +132,11 @@ def main() -> None:
 
     input_path = Path(args.input)
     schema_name = Path(args.schema).name
-    
+
     if hasattr(args, "enveloped") and args.enveloped:
         try:
             from artifact import ArtifactEnvelope as OldArtifactEnvelope
+
             env = OldArtifactEnvelope.from_json(input_path.read_text())
             errors = validate_value(schema_name, env.payload)
         except Exception as e:

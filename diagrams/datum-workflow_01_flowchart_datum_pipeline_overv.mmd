@@ -1,0 +1,61 @@
+flowchart TD
+    Start(["⚡ datum go"])
+    BranchCheck{"🔐 On main/master?"}
+    CreateBranch["🔀 Create datum/epic-N branch"]
+    SelfCheck["🧪 Self-Check Contracts"]
+    HaltCheck["❌ HARD STOP — Assets Drifted"]
+    ReadState["💾 Read State + Detect Language"]
+    DetectEntry{"📋 Detect Entry Point"}
+    OfferInit["⚙️ Offer datum init"]
+    Refine["📝 Refine — TICKET to SPEC"]
+    RefineGate{"🔐 Refine Gate"}
+    Plan["📋 Plan — SPEC to TASKS"]
+    PlanGate{"🔐 Plan Gate — ALWAYS required"}
+    Triage{"📊 Triage — Deepen or Skip?"}
+    Deepen["🔍 Deepen — Evidence Gathering"]
+    Properties["🛡️ Properties — SAFETY, LIVENESS, INVARIANT"]
+    Architect["🏗️ Architect Gate — ADR + C4"]
+    Act["⚙️ Act — Red-Green-Refactor"]
+    Validate["🧪 Validate — Full Test Suite"]
+    Review["🔍 Review — Multi-Domain"]
+    CreatePR["📤 Create PR"]
+    MergeGate{"🔐 Merge — ALWAYS required"}
+    PRComments["💬 PR Comments — Triage + Fix"]
+    Merged["✅ PR Merged"]
+    Closeout["📊 Closeout — Retro + Tag"]
+    Done(["✅ Done"])
+    Start --> BranchCheck
+    BranchCheck -->|Yes| CreateBranch --> SelfCheck
+    BranchCheck -->|No| SelfCheck
+    SelfCheck -->|Fail| HaltCheck
+    SelfCheck -->|Pass| ReadState
+    ReadState --> DetectEntry
+    DetectEntry -->|"TICKET.md found"| Refine
+    DetectEntry -->|"SPEC.md found"| Plan
+    DetectEntry -->|"TASKS.md found"| Act
+    DetectEntry -->|"PR URL"| PRComments
+    DetectEntry -->|"Nothing"| OfferInit
+    Refine --> RefineGate
+    RefineGate -->|Pass| Plan
+    RefineGate -->|"Gaps found"| Refine
+    Plan --> PlanGate
+    PlanGate -->|Approved| Triage
+    PlanGate -->|Rejected| Plan
+    Triage -->|"Complex"| Deepen --> Properties
+    Triage -->|"Trivial"| Properties
+    Properties --> Architect --> Act
+    Act --> Validate --> Review --> CreatePR --> MergeGate
+    MergeGate -->|Approved| Merged
+    MergeGate -->|"Comments"| PRComments
+    PRComments --> MergeGate
+    Merged --> Closeout --> Done
+    classDef startEnd fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
+    classDef gate fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:black
+    classDef phase fill:#90EE90,stroke:#2E7D2E,stroke-width:2px,color:darkgreen
+    classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
+    classDef neutral fill:#F0F0F0,stroke:#000,stroke-width:2px,color:black
+    class Start,Done startEnd
+    class BranchCheck,DetectEntry,RefineGate,PlanGate,Triage,MergeGate gate
+    class Refine,Plan,Deepen,Properties,Architect,Act,Validate,Review,CreatePR,PRComments,Closeout,Merged phase
+    class HaltCheck error
+    class SelfCheck,ReadState,CreateBranch,OfferInit neutral

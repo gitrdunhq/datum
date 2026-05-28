@@ -7,7 +7,7 @@ The RED agent's epistemic role is to write a test that proves a property fails w
 Every RED brief contains exactly these sections (no more):
 
 ```
-docs/SPEC.md           — full requirements doc
+docs/epics/$BRANCH/SPEC.md           — full requirements doc
 docs/PROPERTIES.md     — filtered to the properties assigned to THIS task only
 TASK ENTRY        — the task's title, AC list, files, red_note, introduces_stubs flag
 GITNEXUS CONTEXT  — context for each symbol the test will reference (if available)
