@@ -1,0 +1,29 @@
+ok lets try use datum local-llm to do a more complicated feature fromn our gh issues'
+
+---
+
+A
+
+---
+
+yes i approve as long as GEMMA is doing
+
+---
+
+hows fhe code wuality
+
+---
+
+yes please do that
+
+---
+
+yes
+
+---
+
+option 2
+
+---
+
+does mlx have kv cache we should use
