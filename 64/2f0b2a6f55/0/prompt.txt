@@ -27,7 +27,3 @@ option 2
 ---
 
 does mlx have kv cache we should use
-
----
-
-yes
