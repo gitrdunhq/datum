@@ -167,3 +167,11 @@ yes
 ---
 
 ok have our gemma thing do something and show the output. have it develop a script that parses the claude jsonl and formats it for html
+
+---
+
+and with grammar we can force
+
+---
+
+yes
