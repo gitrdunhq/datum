@@ -1,0 +1,80 @@
+/datum init
+
+---
+
+entire has to go to repo sorry and then contunue
+
+---
+
+are you setup for local datum llm?
+
+---
+
+yes
+
+---
+
+branch and merge
+
+---
+
+what changes? we are the only ones working
+
+---
+
+go
+
+---
+
+just merge i mean
+
+---
+
+yes
+
+---
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+   modified:   .test-metrics/timings.duckdb
+   modified:   Data/diarization-fixtures/chat-meeting-15min.html
+   modified:   Data/diarization-fixtures/chat-meeting-30min.html
+   modified:   Data/diarization-fixtures/chat-meeting-60min.html
+   modified:   Data/diarization-fixtures/proof-report.html
+   modified:   Data/diarization-fixtures/report.json
+   modified:   docs/planning/roles/team-scaling.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+   .datum/local-llm-metrics.jsonl
+   .graphifyignore
+   Data/diarization-fixtures/chat-bNrbSSv7OxY.html
+   Data/diarization-fixtures/chat-k8K6wQLxooU.html
+   Data/diarization-fixtures/chat-lBVtvOpU80Q.html
+   Data/diarization-fixtures/chat-rOqgRiNMVqg.html
+   ONBOARDING.md
+   Tools/ProofHarness/.runs/
+   docs/adr/ADR-009-local-first-privacy-and-security-guardrails.md
+   docs/adr/ADR-010-concurrent-safety-and-actor-isolation.md
+   docs/adr/ADR-011-data-integrity-and-idempotent-persistence.md
+   docs/architecture/AUDIO-HOT-PATH.md
+   docs/architecture/INVARIANTS.md
+   docs/epics/datum-epic-23-telemetry-duckdb/
+   docs/planning/product/MARS-thesis.md
+   docs/planning/product/NEO-testing-roadmap.md
+   docs/planning/roles/csm-role.md
+   docs/planning/roles/distribution-sre.md
+   docs/planning/roles/privacy-commercial-counsel.md
+   docs/planning/roles/product-marketing-manager.md
+   docs/planning/roles/qa-automation-engineer.md
+   docs/planning/roles/support-department.md
+   graphify-code/
+   graphify-out/
+   graphify-tests/
+   onboarding.sh
+   scripts/analyze_properties.py
+   scripts/graphify_suite.sh
+   scripts/nightly_graph.sh
+
+plkease check this in jesus

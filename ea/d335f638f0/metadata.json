@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "ead335f638f0",
+  "strategy": "manual-commit",
+  "branch": "chore/test-metrics",
+  "checkpoints_count": 7,
+  "files_touched": [
+    ".test-metrics/timings.duckdb"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ea/d335f638f0/0/metadata.json",
+      "transcript": "/ea/d335f638f0/0/full.jsonl",
+      "content_hash": "/ea/d335f638f0/0/content_hash.txt",
+      "prompt": "/ea/d335f638f0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1457,
+    "cache_creation_tokens": 85062,
+    "cache_read_tokens": 6878509,
+    "output_tokens": 15825,
+    "api_call_count": 95
+  }
+}
