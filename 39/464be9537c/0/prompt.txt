@@ -127,3 +127,11 @@ should the atum state be checked in? [Image #7] also the scripts should be centr
 ---
 
 it should check if thge poerson has mac before it enablers that as truew for beta (wont allow linux or windows)
+
+---
+
+datum should install a hook that block pip and forces uv
+
+---
+
+can it rewrite pip to uv?
