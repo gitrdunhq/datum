@@ -1,0 +1,131 @@
+ok lets try use datum local-llm to do a more complicated feature fromn our gh issues'
+
+---
+
+A
+
+---
+
+yes i approve as long as GEMMA is doing
+
+---
+
+hows fhe code wuality
+
+---
+
+yes please do that
+
+---
+
+yes
+
+---
+
+option 2
+
+---
+
+does mlx have kv cache we should use
+
+---
+
+yes
+
+---
+
+does kv cache allow for bigger models
+
+---
+
+fuck lets try it. make its downlosding to this drife yoh sre on
+
+---
+
+check if its done downloading
+
+---
+
+<task-notification>
+<task-id>b26xuqvzj</task-id>
+<tool-use-id>toolu_01U52up1XeEpP8Y2esmSR1Yy</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/b26xuqvzj.output</output-file>
+<status>completed</status>
+<summary>Background command "Start download with hf CLI to /Volumes/Extra/mlx-models" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+letd branch wnd select a frwture to build out
+
+---
+
+48
+
+---
+
+42 and 48 same go
+
+---
+
+no need ro migrste
+
+---
+
+lets go
+
+---
+
+the 79b did this???
+
+---
+
+79b wint work lets drop 79b
+
+---
+
+<task-notification>
+<task-id>bttzb82av</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/bttzb82av.output</output-file>
+<status>completed</status>
+<summary>Background command "Verify Qwen3-30B loads from Extra drive" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+lets try
+
+---
+
+check if the 8bit is done downloading
+
+---
+
+<task-notification>
+<task-id>bcm3a0n1f</task-id>
+<tool-use-id>toolu_01LugC1JbwGfLP2XMYT3wuji</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/bcm3a0n1f.output</output-file>
+<status>completed</status>
+<summary>Background command "Download Qwen3-30B-A3B-8bit to Extra drive" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+ok develop with it
+
+---
+
+anther
+
+---
+
+whats the license
+
+---
+
+should we vendor it in or form
+
+---
+
+all 3!

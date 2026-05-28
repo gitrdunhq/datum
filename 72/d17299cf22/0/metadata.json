@@ -1,0 +1,103 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "72d17299cf22",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T23:22:03.637761Z",
+  "branch": "datum/epic-22",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "datum/gate.py",
+    "tests/test_gate_fixes.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "d5557cd42fba",
+  "token_usage": {
+    "input_tokens": 1147,
+    "cache_creation_tokens": 1284928,
+    "cache_read_tokens": 55214566,
+    "output_tokens": 148447,
+    "api_call_count": 290
+  },
+  "session_metrics": {
+    "turn_count": 28
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T23:22:03.599124Z",
+    "agent_lines": 47,
+    "agent_removed": 2,
+    "human_added": 3,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 53,
+    "total_lines_changed": 55,
+    "agent_percentage": 89.0909090909091,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 189,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 332,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 332,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 332,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    }
+  ]
+}
