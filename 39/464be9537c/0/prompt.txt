@@ -115,35 +115,3 @@ Usage: datum [OPTIONS] COMMAND [ARGS]...
 Try 'datum --help' for help.
 ╭─ Error ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ No such option '--version'.
-
----
-
-push and merge
-
----
-
-should the atum state be checked in? [Image #7] also the scripts should be central in the .agent/skill/datum no?
-
----
-
-it should check if thge poerson has mac before it enablers that as truew for beta (wont allow linux or windows)
-
----
-
-datum should install a hook that block pip and forces uv
-
----
-
-can it rewrite pip to uv?
-
----
-
-[Image #9] why is veering like this
-
----
-
-[Image #10]
-
----
-
-any other weird spots like that use our tooling
