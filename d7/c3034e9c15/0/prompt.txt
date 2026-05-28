@@ -69,7 +69,3 @@ letd branch wnd select a frwture to build out
 ---
 
 no need ro migrste
-
----
-
-lets go
