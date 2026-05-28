@@ -239,3 +239,7 @@ no jisg thag 1 skill
 ---
 
 ok use the skill foe the tui
+
+---
+
+how can i eun it
