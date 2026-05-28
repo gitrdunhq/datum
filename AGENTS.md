@@ -7,6 +7,8 @@ All agents operating in this repository must adhere strictly to the following in
 2. **Push Back:** Assume proposed architectures have flaws. Highlight edge cases, coupling risks, and maintenance burdens before agreeing to build them.
 3. **Neutral Tone:** Keep responses analytical, detached, and focused strictly on the technical tradeoffs.
 4. **Answer Directly:** Do not pad responses with validation. State the facts, present the tradeoffs, and ask for the technical decision.
+5. **Tasks Always Active:** When running DATUM, ALWAYS maintain tasks via TaskCreate/TaskUpdate. Create a task for each pipeline phase and each Act lane. Mark `in_progress` when starting, `completed` when done. The task list is the live status board — if a user asks "where are we", the task list answers it. Never ignore the task tool reminders.
+6. **Local LLM = Subagent Only:** When a pipeline phase uses local Gemma inference, ALWAYS spawn a subagent (Agent tool with `model: "sonnet"`) that imports and calls `datum.local_llm.run_phase()` from Python. NEVER invoke `datum local-llm` via Bash. The subagent handles the inference, checks the `escalated` flag, and returns the result. If `escalated=True`, the orchestrator retries with Claude. The `datum local-llm` CLI exists for human testing at the terminal — agents must not use it.
 
 ## Self-Healing: Auto-File Bugs
 
