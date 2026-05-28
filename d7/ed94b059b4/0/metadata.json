@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "d7ed94b059b4",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T23:48:52.351103Z",
+  "branch": "datum/epic-23",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/assets/schemas/task.schema.json",
+    "datum/assets/schemas/tasks.schema.json",
+    "docs/epics/datum/epic-21/QUESTIONS.md",
+    "docs/epics/datum/epic-21/SPEC.md",
+    "docs/epics/datum/epic-21/TICKET.md",
+    "docs/epics/datum/epic-22/QUESTIONS.md",
+    "docs/epics/datum/epic-22/SPEC.md",
+    "docs/epics/datum/epic-22/TICKET.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "cf0b4e1e9f52",
+  "token_usage": {
+    "input_tokens": 1170,
+    "cache_creation_tokens": 1294858,
+    "cache_read_tokens": 61559566,
+    "output_tokens": 154587,
+    "api_call_count": 309
+  },
+  "session_metrics": {
+    "turn_count": 29
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T23:48:52.303216Z",
+    "agent_lines": 263,
+    "agent_removed": 0,
+    "human_added": 503,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 766,
+    "total_lines_changed": 766,
+    "agent_percentage": 34.33420365535248,
+    "metric_version": 2
+  }
+}

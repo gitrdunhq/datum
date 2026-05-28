@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "d7ed94b059b4",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-23",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/assets/schemas/task.schema.json",
+    "datum/assets/schemas/tasks.schema.json",
+    "docs/epics/datum/epic-21/QUESTIONS.md",
+    "docs/epics/datum/epic-21/SPEC.md",
+    "docs/epics/datum/epic-21/TICKET.md",
+    "docs/epics/datum/epic-22/QUESTIONS.md",
+    "docs/epics/datum/epic-22/SPEC.md",
+    "docs/epics/datum/epic-22/TICKET.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d7/ed94b059b4/0/metadata.json",
+      "transcript": "/d7/ed94b059b4/0/full.jsonl",
+      "content_hash": "/d7/ed94b059b4/0/content_hash.txt",
+      "prompt": "/d7/ed94b059b4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1170,
+    "cache_creation_tokens": 1294858,
+    "cache_read_tokens": 61559566,
+    "output_tokens": 154587,
+    "api_call_count": 309
+  }
+}
