@@ -17,7 +17,7 @@ Before decomposing tasks, read two sources of prior-epic intelligence:
 
 **Brief defects:**
 ```
-python3 scripts/learn_patterns.py --brief-defects
+datum learn-patterns --brief-defects
 ```
 If recurring AC gaps appear (e.g., "timeout handling" or "error logging" chronically missing), write more explicit RED notes for tasks in those categories this epic.
 
@@ -123,7 +123,7 @@ Output the decomposed tasks as a JSON array in `tasks.json`. Ensure every field 
 
 ### 5. Build lane-plan.json and TASKS.md
 
-Run `python3 scripts/lane_plan.py --input tasks.json --output .datum/lane-plan.json`
+Run `datum lane-plan --input tasks.json --output .datum/lane-plan.json`
 
 This script validates the JSON, performs the topological sort, and produces:
 - `TASKS.md` — rendered human-readable version of the plan (root, for DATUM execution engine)
@@ -147,7 +147,7 @@ Before running the gate, the agent MUST complete the `## Assumption Audit` secti
 - For `guess` entries: add `Resolves: Q<N>` pointing to an answered question in QUESTIONS.md
 - If the Refine phase generated zero questions, note this — the gate will emit a warning
 
-Run `python3 scripts/gate.py plan [--yolo]`
+Run `datum gate plan [--yolo]`
 
 Validates:
 1. Every task has `acceptance_criteria`, `files`, `red_note`
@@ -170,6 +170,6 @@ On fail: surface the validation errors and rework.
 
 ## Failure modes
 
-- TASKS.md not topo-sorted → `lane_plan.py --validate` exits 1; skill rewrites
+- TASKS.md not topo-sorted → `datum lane-plan --validate` exits 1; skill rewrites
 - TASKS.md missing RED note per task → gate exits 1; skill rewrites
 - Circular dependency detected → halt, surface the cycle, ask user how to resolve

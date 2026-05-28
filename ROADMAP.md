@@ -6,14 +6,19 @@
 
 ## In Progress
 
-None
+- Epic 8 — Documentation cleanup: all prose uses `datum <command>`, no `uv run` exposure
 
 ## Planned
 
-- Epic 3 — Pre-existing lint cleanup (Patch) — 6 ruff violations in untouched files (artifact.py, contracts.py, prompt_loader.py)
-- Epic 4 — Express pipeline reference doc — codify `0x-express.md` for Patch-tier routing
+- CLI subcommand wrappers for internal pipeline commands (gate, test-signal, skeleton, commit-queue, etc.)
+- Self-healing integration into gate.py try/except paths (auto-call `report_bug` on crashes)
 
 ## Completed
 
-- Epic 2 — Post-Epic-1 Hardening — 2026-05-27 — PR #26
-- Epic 1 — AIDLC-Inspired Pipeline Enhancements — 2026-05-27 — PR #25
+- Epic 7 — Rock-solid installer — 2026-05-27 — PR #31
+- Epic 6 — Mermaid diagram skill ingested — 2026-05-27 — PR #30
+- Epic 5 — Self-healing (`datum bugfile`) — 2026-05-27 — PR #29
+- Epic 4 — Express pipeline reference doc — 2026-05-27 — PR #28
+- Epic 3 — Lint cleanup — 2026-05-27 — PR #27
+- Epic 2 — Post-epic-1 hardening — 2026-05-27 — PR #26
+- Epic 1 — AIDLC-inspired pipeline enhancements — 2026-05-27 — PR #25

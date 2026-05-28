@@ -1,43 +1,37 @@
 # Current State
 
 **Last updated:** 2026-05-27
-**Epic:** 2 — Post-Epic-1 Hardening
+**Epic:** 8 — Documentation Cleanup
 
 ---
 
 ## What shipped
 
-Epic 1 added five structural improvements from AWS AIDLC analysis:
+Seven epics shipped in one session:
 
-1. **Overconfidence gate** — `gate_plan()` validates `## Assumption Audit` in SPEC.md. Guess-status entries must cross-reference answered questions in QUESTIONS.md. Warns on zero Refine questions.
-2. **Adaptive depth classifier** — `datum classify` reads `## Classification Metadata` from SPEC.md, auto-routes to Patch (Express), Feature (Standard), or System (Extended) pipeline.
-3. **Units of work** — `lane_plan.py` accepts `{"tasks": [...], "units": {...}}` input with inter-unit dependency validation. System-tier Plan produces unit groupings.
-4. **LANDSCAPE.md** — `datum landscape` generates filesystem scaffold (tech stack, LOC, module docstrings). GitNexus enrichment during Discovery.
-5. **QUESTIONS.md** — File-based Q&A with `[Answer]:` tags. Generated during Refine, appended during Plan, committed as epic artifact.
-
-Also: `analyze_properties.py` for cross-epic invariant mining, `install_skill.py` path fix, gate path resolution from `docs/epics/<branch>/`.
-
-Epic 2 fixed four friction points from epic-1:
-
-1. **SSOT path resolution** — `resolve_artifact()` replaces 6 copy-pasted fallback patterns in gate.py
-2. **Triage enforcement** — SKILL.md marks Plan→Triage as non-skippable
-3. **GitNexus-first Deepen** — 02.8-deepen.md mandates GitNexus→OpenGrep→grep priority
-4. **Branch auto-increment** — `next_epic_number()` checks `docs/epics/` alongside `.datum/runs/`
-5. **Workflow docs** — Updated mermaid flowchart and phase summary with all epic-1 features
+1. **Epic 1** (PR #25) — AIDLC-inspired pipeline enhancements: overconfidence gate, adaptive depth classifier, units of work, LANDSCAPE.md, QUESTIONS.md. 45 new tests.
+2. **Epic 2** (PR #26) — Post-epic-1 hardening: SSOT path resolution (`resolve_artifact()`), Triage enforcement, GitNexus-first Deepen, branch auto-increment.
+3. **Epic 3** (PR #27) — Lint cleanup: 6 ruff violations across artifact.py, contracts.py, prompt_loader.py.
+4. **Epic 4** (PR #28) — Express pipeline reference doc (`0x-express.md`) for Patch-tier routing.
+5. **Epic 5** (PR #29) — Self-healing: `datum bugfile` CLI + `report_bug()` with sanitized output (home paths, tokens, secrets redacted).
+6. **Epic 6** (PR #30) — Mermaid diagram skill ingested: 9 reference docs, 5 design templates, 3 scripts.
+7. **Epic 7** (PR #31) — Rock-solid installer: prerequisite checks (git/uv/Python), `~/.local/bin/datum` CLI wrapper, README.md, consolidated symlink registration.
 
 ## Active work
 
-None — main is clean.
+Epic 8 — documentation cleanup: replacing all `uv run`/`python3 scripts/` references with `datum <command>` CLI syntax.
 
 ## Known issues
 
-- 3 low-severity issues filed: #22 (opaque `_contracts()` indexing), #23 (duplicated render logic in lane_plan.py), #24 (inline-only answer checking in gate)
-- 2 pre-existing test failures in `test_datum_hardening.py` from pydantic-core version mismatch in system Python
-- Express pipeline reference doc (`0x-express.md`) not yet created — currently handled by convention
+- 3 low-severity issues: #22 (opaque `_contracts()` indexing), #23 (duplicated render in lane_plan.py), #24 (inline-only answer check in gate)
+- 2 pre-existing test failures in test_datum_hardening.py (pydantic-core version mismatch)
+- Several `datum <subcommand>` CLI commands referenced in docs don't have CLI wrappers yet (gate, test-signal, skeleton, commit-queue, etc.) — they run via `scripts/datum.py` internally
 
 ## Architecture notes
 
-- Gates now resolve artifacts from `docs/epics/<branch>/` with root fallback for backward compat
-- `datum.contracts` import is lazy in gate.py to avoid pydantic chain in test imports
-- SKILL.md mandates explicit `model:` param on every subagent spawn — config tiers are the authority
-- SPEC.md template now has 9 sections (added Assumption Audit + Classification Metadata)
+- All user-facing commands: `datum <command>` (CLI wrapper at `~/.local/bin/datum`)
+- Internal pipeline execution: `datum <module>` maps to `uv run scripts/datum.py datum.<module>` transparently
+- Gate artifact resolution: `resolve_artifact()` SSOT — epic dir first, root fallback
+- Model tiers: config.toml.default is the authority; every subagent spawn must include explicit `model:` param
+- SPEC.md template: 9 sections (including Assumption Audit + Classification Metadata)
+- Mermaid diagrams: built-in, triggered on "mermaid"/"diagram"/"visualize"

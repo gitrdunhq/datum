@@ -147,7 +147,7 @@ cause = "wrong_interpretation"
 
 ## How to add patterns
 
-Run `python3 scripts/learn_patterns.py --review` after any epic with UNKNOWN failures.
+Run `datum learn-patterns --review` after any epic with UNKNOWN failures.
 The script reads `.datum/runs/*/unknown-failures.json` files, clusters by similarity,
 and prints proposed TOML entries for this file. Review them, paste the ones that
 look correct into the appropriate section above, and commit.

@@ -11,11 +11,11 @@ each tool are declared in `manifest.toml`.
 
 ## find_callers.py
 Find likely call/reference sites for a symbol without loading whole files.
-Usage: `python3 scripts/lane-tools-runner.py find_callers <symbol_name>`
+Usage: `datum lane-tool find_callers <symbol_name>`
 
 ## filter_gitnexus_output.py
 Reduce GitNexus output to compact file, line, confidence records.
-Usage: `gitnexus impact <symbol> | python3 scripts/lane-tools/filter_gitnexus_output.py`
+Usage: `gitnexus impact <symbol> | datum lane-tool filter_gitnexus_output`
 
 ---
 

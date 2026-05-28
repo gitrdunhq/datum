@@ -6,7 +6,7 @@ Apply when language is `python`. Supplements `references/04-act.md`.
 
 **Default:** pytest.
 
-Run tests via: `uv run pytest` (never bare `pytest`).
+Run tests via: `datum test` (never bare `pytest`).
 
 ## RED agent — Python specifics
 
@@ -45,13 +45,13 @@ def start_recording(self) -> "RecordingHandle":
     return self._create_handle()
 ```
 
-Use `structlog` for logging. Use `httpx` for HTTP. Run through `uv run`.
+Use `structlog` for logging. Use `httpx` for HTTP.
 
 ## REFACTOR agent — Python specifics
 
 - Add type hints to all public methods (use `from __future__ import annotations` at top of file)
 - Replace print() with `structlog.get_logger().info(...)` 
-- Apply `black` formatting, `ruff` linting: `uv run black . && uv run ruff check --fix .`
+- Apply `black` formatting, `ruff` linting: `black . && ruff check --fix .`
 - Boundary validation with pydantic models at entry points
 
 ## Commit convention

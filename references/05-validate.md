@@ -17,7 +17,7 @@ If any lanes failed terminally, surface their diagnostic packets and ask the use
 
 Run the project's full test suite against the integrated work branch. This is a holistic run, not per-lane.
 
-Interpret results with `python3 scripts/test_signal.py` (for structured output) or directly from the runner.
+Interpret results with `datum test-signal` (for structured output) or directly from the runner.
 
 If any test is RED: halt. Surface the specific failures. Do not open a PR against a red test suite.
 
@@ -43,7 +43,7 @@ For each task in TASKS.md that completed successfully, verify its acceptance cri
 
 ### 5. Gate
 
-Run `python3 scripts/gate.py validate [--yolo]`
+Run `datum gate validate [--yolo]`
 
 Validates:
 1. Full test suite is green

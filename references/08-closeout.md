@@ -21,18 +21,18 @@ Each script runs independently and writes a `.collect-<name>.done` marker on com
 
 Run in parallel:
 ```bash
-python3 scripts/closeout/collect_git.py --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
-python3 scripts/closeout/collect_tasks.py --run-id <RUN_ID>
-python3 scripts/closeout/collect_platform.py --run-id <RUN_ID>
-python3 scripts/closeout/collect_lane_tools.py --run-id <RUN_ID>
-python3 scripts/closeout/collect_brief_defects.py --run-id <RUN_ID>
-python3 scripts/closeout/collect_wait_times.py --run-id <RUN_ID> # Value Stream Mapping
-python3 scripts/closeout/collect_token_metrics.py --run-id <RUN_ID>
-python3 scripts/closeout/collect_gitnexus_diff.py --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
-python3 scripts/closeout/detect_solutions.py --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
+datum closeout-collect-git --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
+datum closeout-collect-tasks --run-id <RUN_ID>
+datum closeout-collect-platform --run-id <RUN_ID>
+datum closeout-collect-lane-tools --run-id <RUN_ID>
+datum closeout-collect-brief-defects --run-id <RUN_ID>
+datum closeout-collect-wait-times --run-id <RUN_ID> # Value Stream Mapping
+datum closeout-collect-token-metrics --run-id <RUN_ID>
+datum closeout-collect-gitnexus-diff --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
+datum closeout-detect-solutions --run-id <RUN_ID> --base-sha <BASE_SHA> --merge-sha <MERGE_SHA>
 ```
 
-Then: `python3 scripts/closeout/collate.py --run-id <RUN_ID> --merge-sha <MERGE_SHA> --epic-number <N>` produces `closeout-data.json`.
+Then: `datum closeout-collate --run-id <RUN_ID> --merge-sha <MERGE_SHA> --epic-number <N>` produces `closeout-data.json`.
 
 Validate against `assets/schemas/closeout-data.schema.json`.
 
@@ -61,11 +61,11 @@ If the user manually edited an artifact between crash and resume: treat the on-d
 Each step writes its own success marker:
 
 ```bash
-python3 scripts/closeout/commit_closeout.py  # skips if closeout commit already exists
-python3 scripts/closeout/tag_epic.py         # skips if tag exists; never overwrites
-python3 scripts/closeout/file_followups.py   # dedup_key per entry; checks tracker first
-python3 scripts/closeout/gitnexus_reindex.py # async, non-blocking
-python3 scripts/closeout/archive.py          # copies state.json to runs dir, clears live state
+datum closeout-commit       # skips if closeout commit already exists
+datum closeout-tag          # skips if tag exists; never overwrites
+datum closeout-followups    # dedup_key per entry; checks tracker first
+datum closeout-reindex      # async, non-blocking
+datum closeout-archive      # copies state.json to runs dir, clears live state
 ```
 
 ## Failure isolation

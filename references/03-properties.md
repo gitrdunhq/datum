@@ -75,7 +75,7 @@ Write the output to the `observability/` folder at the root of the repo:
 
 ### 5. Gate
 
-Run `python3 scripts/gate.py properties [--yolo]`
+Run `datum gate properties [--yolo]`
 
 Validates:
 1. All 11 categories have at least one property (or a justified exclusion note)

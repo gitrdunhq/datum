@@ -135,7 +135,7 @@ can version-control their review expectations.
 
 ## How profiles are used
 
-**Review phase:** `scripts/render.py` reads `quality.yaml` when rendering `REVIEW-REPORT.md`.
+**Review phase:** `datum render` reads `quality.yaml` when rendering `REVIEW-REPORT.md`.
 Instead of hard-coded 6 domains, it uses the `review_dimensions` from the profile.
 The `pass_policy` determines whether the Review gate passes or fails.
 
@@ -151,7 +151,7 @@ the lane-tools README, replacing hard-coded command names in briefs.
 ## Validation
 
 ```
-python3 scripts/gate.py validate-profiles
+datum gate validate-profiles
 ```
 
 Validates both profiles against their schemas. Called during `datum init` and

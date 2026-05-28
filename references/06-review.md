@@ -45,17 +45,17 @@ Each finding in the packet:
 
 ### Step 3: Fan-In (Lead Synthesis & Deduplication)
 Once all sub-agents complete, the Lead Reviewer (or deterministic script) synthesizes the packets.
-Run `python3 scripts/dedupe.py --input-dir .datum/runs/<RUN_ID>/review-packets/`.
+Run `datum dedupe --input-dir .datum/runs/<RUN_ID>/review-packets/`.
 - Consolidates duplicate findings.
 - **Minority Protection:** If Security/Architecture flags something Correctness missed, the specialized finding is strictly protected.
 
 ### Step 4: Validate & Render
-Run `python3 scripts/gate.py validate-packets`.
-Run `python3 scripts/render.py --packets .datum/runs/<RUN_ID>/review-packets/ --output REVIEW-REPORT.md`
+Run `datum gate validate-packets`.
+Run `datum render --packets .datum/runs/<RUN_ID>/review-packets/ --output REVIEW-REPORT.md`
 
 ### Step 5: Satisfaction Loop (Saga Integration)
 If `high` or `critical` findings exist:
-1. **Remediation Package:** Run `python3 scripts/remediate.py`.
+1. **Remediation Package:** Run `datum remediate`.
 2. **Loop:** Automatically dispatch targeted RED-GREEN-REFACTOR fixes.
 3. **Saga Constraint:** Max 3 loops. If it fails on the 3rd loop, trigger the `04-Act` Saga Compensation (`git reset --hard`), increment the global `epic_retry_count`, and start the epic over. See `sagas.md`.
 

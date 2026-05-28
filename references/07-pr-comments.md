@@ -56,13 +56,13 @@ For `discuss` verdicts: post the clarifying question and mark as pending.
 
 Confirm all threads are resolved or have a pending reply. Surface unresolved `discuss` threads to user.
 
-Run `python3 scripts/gate.py pr-comments [--yolo]`
+Run `datum gate pr-comments [--yolo]`
 
 On pass: archive `triage.json`, update state. Record `pr_author_login` in state from the PR metadata.
 
 Start the PR comment monitor sidecar:
 ```
-python3 scripts/pr_comment_monitor.py --run-id <RUN_ID> --interval 60 &
+datum pr-monitor --run-id <RUN_ID> --interval 60 &
 ```
 
 The monitor polls for `/datum <command>` comments. Only the PR author's commands are accepted
@@ -75,7 +75,7 @@ The monitor polls for `/datum <command>` comments. Only the PR author's commands
 Comments from other authors are silently processed without action. A brief acknowledgement
 is posted as a reply (`environment.yaml` `pr.comments.reply` controls this).
 
-See `scripts/pr_comment_monitor.py` for the full trust boundary implementation.
+See `datum pr-monitor` for the full trust boundary implementation.
 
 ## Outputs
 
