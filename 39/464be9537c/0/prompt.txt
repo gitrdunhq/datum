@@ -119,3 +119,7 @@ Try 'datum --help' for help.
 ---
 
 push and merge
+
+---
+
+should the atum state be checked in? [Image #7] also the scripts should be central in the .agent/skill/datum no?
