@@ -121,11 +121,11 @@ def install(
         False, "--dry-run", help="Simulate installation without making changes"
     )
 ):
-    """Install a stable snapshot of the DATUM skill globally for AI Agents."""
+    """Register DATUM with all detected AI coding tools via symlinks."""
     import sys
     from datum.bootstrap.install_skill import install_skill_snapshot
 
-    console.print("[bold blue]Installing DATUM Agent Skill globally...[/bold blue]")
+    console.print("[bold blue]Registering DATUM with AI tools...[/bold blue]")
     try:
         actions = install_skill_snapshot(dry_run)
         for action in actions:
@@ -135,13 +135,10 @@ def install(
             console.print("[bold green]Dry run complete. No changes made.[/bold green]")
         else:
             console.print(
-                "[bold green]✓ DATUM skill successfully installed and linked across all agents![/bold green]"
-            )
-            console.print(
-                "\n[dim]Your agents will use the self-contained 'uv run scripts/datum.py' execution wrapper. No global installation needed![/dim]"
+                "[bold green]✓ DATUM registered across all detected AI tools.[/bold green]"
             )
     except Exception as e:
-        console.print(f"[bold red]Installation failed: {e}[/bold red]")
+        console.print(f"[bold red]Registration failed: {e}[/bold red]")
         sys.exit(1)
 
 
