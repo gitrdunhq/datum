@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "fdd31b9e4cbc",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-5",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "AGENTS.md",
+    "SKILL.md",
+    "datum/report_bug.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fd/d31b9e4cbc/0/metadata.json",
+      "transcript": "/fd/d31b9e4cbc/0/full.jsonl",
+      "content_hash": "/fd/d31b9e4cbc/0/content_hash.txt",
+      "prompt": "/fd/d31b9e4cbc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 3335,
+    "cache_read_tokens": 2429966,
+    "output_tokens": 2733,
+    "api_call_count": 8
+  }
+}
