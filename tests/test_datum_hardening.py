@@ -198,6 +198,7 @@ class TestSkillAssets(unittest.TestCase):
     def test_all_phase_references_exist(self) -> None:
         required = [
             "00-discovery.md",
+            "0x-express.md",
             "01-refine.md",
             "01.5-research.md",
             "02-plan.md",
