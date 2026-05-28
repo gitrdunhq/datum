@@ -3,7 +3,6 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from datum.floor import render_floor
 from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 import json
@@ -43,8 +42,16 @@ console = Console()
 
 @app.command()
 def floor():
-    """Render the live Manager Factory Floor dashboard."""
-    render_floor()
+    """Launch the Factory Floor TUI dashboard."""
+    import subprocess
+    import sys
+    from datum.path_utils import skill_root
+
+    tui_app = skill_root() / "datum-tui" / "app.py"
+    if not tui_app.exists():
+        console.print(f"[red]TUI not found at {tui_app}[/red]")
+        raise typer.Exit(1)
+    sys.exit(subprocess.call([sys.executable, str(tui_app)]))
 
 
 @app.command()
