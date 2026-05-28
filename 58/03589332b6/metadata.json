@@ -5,7 +5,9 @@
   "branch": "datum/epic-5",
   "checkpoints_count": 0,
   "files_touched": [
-    "datum/report_bug.py"
+    "AGENTS.md",
+    "SKILL.md",
+    "datum/cli.py"
   ],
   "sessions": [
     {
@@ -16,10 +18,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 15,
-    "cache_creation_tokens": 8993,
-    "cache_read_tokens": 2907367,
-    "output_tokens": 4483,
-    "api_call_count": 9
+    "input_tokens": 12,
+    "cache_creation_tokens": 15723,
+    "cache_read_tokens": 2528499,
+    "output_tokens": 1612,
+    "api_call_count": 8
   }
 }
