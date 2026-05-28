@@ -73,13 +73,3 @@ but if we have agentic loops that fix and check, we could theoritically do it?
 ---
 
 yes make it optional for now a beta feature
-
----
-
-<task-notification>
-<task-id>bwe5lxfc1</task-id>
-<tool-use-id>toolu_01EomWG3DSUEMVTrUstR3mtM</tool-use-id>
-<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/bwe5lxfc1.output</output-file>
-<status>completed</status>
-<summary>Background command "Test inference again" completed (exit code 0)</summary>
-</task-notification>
