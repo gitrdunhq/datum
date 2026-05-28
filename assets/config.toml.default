@@ -162,6 +162,56 @@ max_tokens   = 131072
 temperature  = 0.3
 phases       = ["triage", "act_skeleton", "act_red", "act_green", "act_refactor", "validate", "sidecar_docs", "sidecar_security", "closeout_collectors"]
 
+# ── Multi-Turn Orchestration ─────────────────────────────────────────────────
+# Enables multi-step reasoning loops for local LLM phases.
+# Gemma plans → executes steps → synthesizes, all locally.
+# Every parameter is overridable per-phase via [multi_turn.phase_overrides.<phase>].
+[multi_turn]
+enabled               = false          # master switch for multi-turn mode
+max_turns             = 5              # max reasoning turns before escalation (1-10)
+timeout_s             = 300            # total wall-clock budget for all turns
+turn_timeout_s        = 90             # max wall-clock per individual turn
+confidence_threshold  = 0.8            # exit early if agreement >= this (0.0-1.0)
+temperature_schedule  = "fixed"        # "fixed" | "rising" | "falling" | "u_curve"
+temperature_min       = 0.2            # floor for scheduled temperature
+temperature_max       = 0.7            # ceiling for scheduled temperature
+context_reserve_pct   = 20             # % of context window reserved for synthesis
+planning_turn         = true           # turn 0 produces a step plan (StepPlan schema)
+verification_turn     = true           # final turn synthesizes into phase schema
+two_pass              = true           # DCCD: freeform draft → grammar extraction (arxiv 2603.03305)
+consistency_samples   = 1              # N samples for majority voting (1 for speed, bump to 3 for critical phases)
+few_shot              = true           # inject example JSON in prompts (arxiv 2605.02363)
+phases                = []             # phases that use multi-turn (empty = none)
+enable_tool_execution = true           # allows the agent to execute read-only tools via lane_tools_runner
+enable_write_tools    = false          # DANGEROUS: allows write_to_file, replace_file_content (off by default)
+max_tool_turns        = 10             # maximum number of tool execution turns before forced escalation
+allowed_tools         = ["read_file", "list_dir", "grep_search", "run_command"] # default: read-only tools only
+allowed_write_dirs    = []             # array of extra allowed absolute paths if enable_write_tools is true
+
+[multi_turn.quality_gates]
+char_flood_pct        = 0.3            # max allowed percentage of a single character in the tail
+ngram_size            = 3              # n-gram size for repetition detection
+max_count             = 4              # max allowed repeating n-grams
+diversity_ratio       = 0.25           # minimum unique token ratio
+
+# Per-phase overrides. Any key from [multi_turn] can be overridden here.
+# Example: triage gets more turns and a rising temperature to explore options.
+[multi_turn.phase_overrides.triage]
+max_turns             = 3
+temperature_schedule  = "rising"
+confidence_threshold  = 0.7
+
+[multi_turn.phase_overrides.validate]
+max_turns             = 4
+planning_turn         = false
+verification_turn     = true
+confidence_threshold  = 0.9
+
+[multi_turn.phase_overrides.act_skeleton]
+max_turns             = 6
+timeout_s             = 420
+temperature_schedule  = "u_curve"
+
 # ── Stack Lock ────────────────────────────────────────────────────────────────
 [stack_lock]
 language                    = ""

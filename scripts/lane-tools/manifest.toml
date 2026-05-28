@@ -27,3 +27,43 @@ permissions = { network = false, write = [], read = [] }
 timeout_seconds = 10
 added_in_epic = 1
 added_in_lane = "bootstrap"
+
+[tools.read_file]
+path = "read_file.py"
+description = "Read the contents of a file."
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 1
+added_in_lane = "aci-loop"
+
+[tools.read_file_range]
+path = "read_file_range.py"
+description = "Read specific lines from a file."
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 1
+added_in_lane = "aci-loop"
+
+[tools.list_dir]
+path = "list_dir.py"
+description = "List contents of a directory."
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 1
+added_in_lane = "aci-loop"
+
+[tools.grep_search]
+path = "grep_search.py"
+description = "Search for a pattern in files."
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 30
+added_in_epic = 1
+added_in_lane = "aci-loop"
+
+[tools.run_command]
+path = "run_command.py"
+description = "Execute a shell command."
+permissions = { network = true, write = ["."], read = ["."] }
+timeout_seconds = 60
+added_in_epic = 1
+added_in_lane = "aci-loop"

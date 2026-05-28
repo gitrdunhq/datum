@@ -38,6 +38,7 @@ def main_callback(
 
 
 console = Console()
+console_err = Console(stderr=True)
 
 
 @app.command()
@@ -245,12 +246,57 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+def _strip_thinking(text: str) -> str:
+    if "<channel|>" in text:
+        return text.split("<channel|>", 1)[1].strip()
+    if "<|channel>" in text:
+        return ""
+    return text
+
+
 @app.command(name="local-llm")
 def local_llm_cmd(
     prompt: str = typer.Argument("", help="Prompt to send (empty = show status)"),
     stats: bool = typer.Option(False, "--stats", help="Show inference metrics"),
+    system: str = typer.Option(
+        "", "--system", "-s", help="System prompt prepended to messages"
+    ),
+    max_tokens: int = typer.Option(
+        0, "--max-tokens", "-n", help="Override max output tokens (0 = use config)"
+    ),
+    temperature: float = typer.Option(
+        -1.0, "--temperature", "-t", help="Override temperature (-1 = use config)"
+    ),
+    output_json: bool = typer.Option(
+        False, "--json", help="Output full result as JSON (for pipelines)"
+    ),
+    strip_thinking: bool = typer.Option(
+        True,
+        "--strip-thinking/--no-strip-thinking",
+        help="Strip model thinking channel from output",
+    ),
+    multi_turn: bool = typer.Option(
+        False, "--multi-turn", "-m", help="Force multi-turn mode for this prompt"
+    ),
+    phase: str = typer.Option(
+        "", "--phase", "-p", help="Simulate a pipeline phase (for multi-turn testing)"
+    ),
+    mt_max_turns: int = typer.Option(
+        0, "--mt-turns", help="Override multi-turn max turns (0 = use config)"
+    ),
+    mt_confidence: float = typer.Option(
+        -1.0, "--mt-confidence", help="Override confidence threshold (-1 = use config)"
+    ),
+    mt_schedule: str = typer.Option(
+        "",
+        "--mt-schedule",
+        help="Override temperature schedule (fixed/rising/falling/u_curve)",
+    ),
+    mt_timeout: int = typer.Option(
+        0, "--mt-timeout", help="Override total timeout seconds (0 = use config)"
+    ),
 ):
-    """Test local LLM inference via MLX (beta)."""
+    """Local LLM inference via MLX. Use --json for pipeline integration."""
     from datum.local_llm import is_available, load_config, chat
 
     config = load_config()
@@ -274,6 +320,8 @@ def local_llm_cmd(
     if not prompt:
         import platform
 
+        from datum.local_llm import _load_multi_turn_config
+
         console.print("[bold]Local LLM status:[/bold]")
         console.print(f"  Platform: {platform.system()} {platform.machine()}")
         console.print(f"  MLX available: {is_available()}")
@@ -290,6 +338,31 @@ def local_llm_cmd(
         console.print(f"  Model: {config.get('model', 'not set')}")
         console.print(f"  Max tokens: {config.get('max_tokens')}")
         console.print(f"  Phases: {config.get('phases', [])}")
+
+        mt_config = _load_multi_turn_config("_global")
+        console.print("\n[bold]Multi-turn orchestration:[/bold]")
+        console.print(f"  Enabled: {mt_config.get('enabled', False)}")
+        console.print(f"  Max turns: {mt_config.get('max_turns', 5)}")
+        console.print(f"  Timeout: {mt_config.get('timeout_s', 300)}s")
+        console.print(f"  Turn timeout: {mt_config.get('turn_timeout_s', 90)}s")
+        console.print(
+            f"  Confidence threshold: {mt_config.get('confidence_threshold', 0.8)}"
+        )
+        console.print(
+            f"  Temperature schedule: {mt_config.get('temperature_schedule', 'fixed')}"
+        )
+        console.print(f"  Planning turn: {mt_config.get('planning_turn', True)}")
+        console.print(
+            f"  Verification turn: {mt_config.get('verification_turn', True)}"
+        )
+        console.print(
+            f"  Retry on low confidence: {mt_config.get('retry_on_low_confidence', True)}"
+        )
+        console.print(f"  Context reserve: {mt_config.get('context_reserve_pct', 20)}%")
+        mt_phases = mt_config.get("phases", [])
+        console.print(
+            f"  Multi-turn phases: {mt_phases if mt_phases else '[dim]none[/dim]'}"
+        )
         return
 
     if not is_available():
@@ -303,18 +376,118 @@ def local_llm_cmd(
             )
         raise typer.Exit(1)
 
-    console.print(f"[dim]Loading {config['model']}...[/dim]")
-    messages = [{"role": "user", "content": prompt}]
+    resolved_max_tokens = (
+        max_tokens if max_tokens > 0 else config.get("max_tokens", 8192)
+    )
+    resolved_temperature = (
+        temperature if temperature >= 0 else config.get("temperature", 0.3)
+    )
+
+    if multi_turn or phase:
+        from datum.local_llm import multi_turn_phase
+
+        resolved_phase = phase or "triage"
+        mt_overrides: dict = {"enabled": True}
+        if mt_max_turns > 0:
+            mt_overrides["max_turns"] = mt_max_turns
+        if mt_confidence >= 0:
+            mt_overrides["confidence_threshold"] = mt_confidence
+        if mt_schedule:
+            mt_overrides["temperature_schedule"] = mt_schedule
+        if mt_timeout > 0:
+            mt_overrides["timeout_s"] = mt_timeout
+        if resolved_phase not in config.get("phases", []):
+            mt_overrides.setdefault("phases", [resolved_phase])
+
+        if not output_json:
+            console_err.print(
+                f"[dim]Multi-turn mode · phase={resolved_phase} · "
+                f"loading {config['model']}...[/dim]"
+            )
+
+        result = multi_turn_phase(
+            resolved_phase,
+            prompt,
+            max_tokens=resolved_max_tokens,
+            mt_overrides=mt_overrides,
+        )
+
+        if output_json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            turns = result.get("turns", [])
+            for t in turns:
+                turn_type = t.get("type", "?")
+                turn_num = t.get("turn", "?")
+                if turn_type == "plan":
+                    console.print(f"\n[bold cyan]Turn {turn_num} (plan):[/bold cyan]")
+                    console.print(json.dumps(t.get("data", {}), indent=2))
+                elif turn_type == "step":
+                    data = t.get("data", {})
+                    agreement = t.get("agreement", data.get("confidence", 0))
+                    color = (
+                        "green"
+                        if agreement >= 0.8
+                        else "yellow" if agreement >= 0.5 else "red"
+                    )
+                    samples_info = (
+                        f" samples={t['samples']}" if t.get("samples") else ""
+                    )
+                    console.print(
+                        f"\n[bold]Turn {turn_num} "
+                        f"({data.get('action', '?')}):[/bold] "
+                        f"[{color}]agreement={agreement}[/{color}]"
+                        f"[dim]{samples_info}[/dim]"
+                    )
+                    if data.get("finding"):
+                        console.print(f"  Finding: {data['finding']}")
+                    if data.get("evidence"):
+                        console.print(f"  Evidence: {data['evidence']}")
+                    if data.get("recommendation"):
+                        console.print(
+                            f"  Recommendation: [bold]{data['recommendation']}[/bold]"
+                        )
+                elif turn_type == "synthesis":
+                    console.print("\n[bold magenta]Synthesis turn:[/bold magenta]")
+
+            if result.get("escalated"):
+                console.print(f"\n[red]Escalated: {result.get('reason', '?')}[/red]")
+            else:
+                console.print("\n[green]Completed locally[/green]")
+
+            console.print(
+                f"\n[dim]{len(turns)} turns, "
+                f"{result.get('total_tokens', 0)} tokens, "
+                f"{result.get('total_time_s', 0)}s[/dim]"
+            )
+        return
+
+    if not output_json:
+        console_err.print(f"[dim]Loading {config['model']}...[/dim]")
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
     result = chat(
         messages,
         model_id=config["model"],
-        max_tokens=config.get("max_tokens", 8192),
-        temperature=config.get("temperature", 0.3),
+        max_tokens=resolved_max_tokens,
+        temperature=resolved_temperature,
     )
-    console.print(f"\n{result['text']}")
-    console.print(
-        f"\n[dim]{result['tokens']} tokens, {result['time_s']}s, {result['model']}[/dim]"
-    )
+
+    if strip_thinking:
+        result["text"] = _strip_thinking(result["text"])
+
+    if output_json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(f"\n{result['text']}")
+        console.print(
+            f"\n[dim]{result['tokens']} tokens, "
+            f"{result['time_s']}s, {result['model']}[/dim]"
+        )
 
 
 @app.command()

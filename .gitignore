@@ -43,3 +43,4 @@ scripts/transcript-demo.html
 .datum/*
 !.datum/config.toml
 !.datum/profiles/
+HEY_*.md
