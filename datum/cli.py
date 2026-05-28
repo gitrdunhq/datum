@@ -8,11 +8,36 @@ from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 import json
 
+__version__ = "2.0.0"
+
+
+def _version_callback(value: bool):
+    if value:
+        print(f"datum {__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="datum",
     help="DATUM V2 - Agentic Production Line Orchestrator",
     add_completion=False,
 )
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit",
+    ),
+):
+    pass
+
+
 console = Console()
 
 
@@ -238,8 +263,20 @@ def local_llm_cmd(
         return
 
     if not prompt:
+        import platform
+
         console.print("[bold]Local LLM status:[/bold]")
+        console.print(f"  Platform: {platform.system()} {platform.machine()}")
         console.print(f"  MLX available: {is_available()}")
+        if not is_available():
+            if platform.system() != "Darwin" or platform.machine() != "arm64":
+                console.print(
+                    "  [yellow]Local LLM requires Apple Silicon (macOS arm64)[/yellow]"
+                )
+            else:
+                console.print(
+                    "  [yellow]Install MLX: pip install datum[memory][/yellow]"
+                )
         console.print(f"  Enabled: {config.get('enabled', False)}")
         console.print(f"  Model: {config.get('model', 'not set')}")
         console.print(f"  Max tokens: {config.get('max_tokens')}")
@@ -247,9 +284,14 @@ def local_llm_cmd(
         return
 
     if not is_available():
-        console.print(
-            "[red]MLX not available. Install: pip install datum[memory][/red]"
-        )
+        import platform
+
+        if platform.system() != "Darwin" or platform.machine() != "arm64":
+            console.print("[red]Local LLM requires Apple Silicon (macOS arm64)[/red]")
+        else:
+            console.print(
+                "[red]MLX not available. Install: pip install datum[memory][/red]"
+            )
         raise typer.Exit(1)
 
     console.print(f"[dim]Loading {config['model']}...[/dim]")

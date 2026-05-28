@@ -120,6 +120,7 @@ install_cli_wrapper() {
   mkdir -p "$BIN_DIR"
   cat > "${BIN_DIR}/datum" <<WRAPPER
 #!/usr/bin/env bash
+export DATUM_PROJECT_DIR="\$(pwd)"
 exec uv run --directory "${target_dir}" datum "\$@"
 WRAPPER
   chmod +x "${BIN_DIR}/datum"
@@ -166,6 +167,17 @@ install_from_github() {
     fi
     git clone --depth 1 "https://github.com/${GITHUB_REPO}.git" "$INSTALL_DIR" --quiet
     echo "✓ Installed $(git -C "$INSTALL_DIR" rev-parse --short HEAD) → $INSTALL_DIR"
+  fi
+
+  # Install Python deps into the datum venv
+  echo "Installing Python dependencies..."
+  uv pip install --directory "$INSTALL_DIR" -e "$INSTALL_DIR" --quiet 2>/dev/null || true
+
+  # On Apple Silicon, install MLX extras for local LLM
+  if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+    echo "Apple Silicon detected — installing MLX extras..."
+    uv pip install --directory "$INSTALL_DIR" -e "${INSTALL_DIR}[memory]" --quiet 2>/dev/null || \
+      echo "  ⚠ MLX extras failed (non-fatal). Install manually: cd $INSTALL_DIR && uv pip install -e '.[memory]'"
   fi
 }
 
