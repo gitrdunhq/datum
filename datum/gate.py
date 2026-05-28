@@ -31,10 +31,14 @@ def _contracts():
 
 
 def load_config() -> dict:
-    config_path = Path(".datum/config.toml")
+    import os
+
+    project_dir = os.environ.get("DATUM_PROJECT_DIR", ".")
+    project_config = Path(project_dir) / ".datum/config.toml"
+    local_config = Path(".datum/config.toml")
     default_path = assets_dir() / "config.toml.default"
 
-    for path in (config_path, default_path):
+    for path in (project_config, local_config, default_path):
         if path.exists():
             try:
                 import tomllib  # type: ignore[import]

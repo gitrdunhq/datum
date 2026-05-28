@@ -100,7 +100,13 @@ def seed_agents_md() -> list[str]:
             "All agent instructions live in [AGENTS.md](AGENTS.md). Read that file."
         )
         if redirect_line not in content:
-            path.write_text(TOOL_REDIRECT.format(tool_name=tool_name))
+            if content.strip():
+                # Prepend redirect to existing content, don't nuke it
+                path.write_text(
+                    TOOL_REDIRECT.format(tool_name=tool_name) + "\n" + content
+                )
+            else:
+                path.write_text(TOOL_REDIRECT.format(tool_name=tool_name))
             seeded.append(str(path))
 
     return seeded

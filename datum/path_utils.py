@@ -1,14 +1,45 @@
 #!/usr/bin/env python3
-"""Shared path helpers for DATUM runtime artifacts."""
+"""Shared path helpers for DATUM runtime artifacts.
+
+SSOT for all path resolution. Every .datum/ path goes through project_root().
+The CLI wrapper sets DATUM_PROJECT_DIR to the user's cwd before switching
+to the datum repo via --directory. All paths resolve relative to the project,
+not the datum package.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-DATUM_DIR = Path(".datum")
-RUNS_DIR = DATUM_DIR / "runs"
-STATE_FILE = DATUM_DIR / "state.json"
+
+def project_root() -> Path:
+    """The target project's root — where .datum/ and docs/ live."""
+    return Path(os.environ.get("DATUM_PROJECT_DIR", "."))
+
+
+def datum_dir() -> Path:
+    return project_root() / ".datum"
+
+
+def runs_dir() -> Path:
+    return datum_dir() / "runs"
+
+
+def state_file() -> Path:
+    return datum_dir() / "state.json"
+
+
+def __getattr__(name: str):
+    """Lazy module attributes — resolve at access time, not import time."""
+    if name == "DATUM_DIR":
+        return datum_dir()
+    if name == "RUNS_DIR":
+        return runs_dir()
+    if name == "STATE_FILE":
+        return state_file()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def skill_root() -> Path:
@@ -27,10 +58,11 @@ def templates_dir() -> Path:
 
 
 def load_state() -> dict:
-    if not STATE_FILE.exists():
+    sf = state_file()
+    if not sf.exists():
         return {}
     try:
-        return json.loads(STATE_FILE.read_text())
+        return json.loads(sf.read_text())
     except json.JSONDecodeError:
         return {}
 
@@ -42,18 +74,18 @@ def current_run_id() -> str | None:
 
 
 def run_dir(run_id: str) -> Path:
-    return RUNS_DIR / run_id
+    return runs_dir() / run_id
 
 
 def review_packets_dir(run_id: str | None = None) -> Path:
     resolved = run_id or current_run_id()
     if resolved:
         return run_dir(resolved) / "review-packets"
-    return DATUM_DIR / "review-packets"
+    return datum_dir() / "review-packets"
 
 
 def legacy_review_packets_dir() -> Path:
-    return DATUM_DIR / "review-packets"
+    return datum_dir() / "review-packets"
 
 
 def existing_review_packets_dir(run_id: str | None = None) -> Path:
@@ -76,4 +108,4 @@ def collector_marker(run_id: str, name: str) -> Path:
 
 def state_for_run(run_id: str) -> Path:
     archived = run_dir(run_id) / "state.json"
-    return archived if archived.exists() else STATE_FILE
+    return archived if archived.exists() else state_file()

@@ -21,13 +21,17 @@ _model_cache: dict = {}
 DEFAULTS = {
     "enabled": False,
     "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
-    "max_tokens": 8192,
+    "max_tokens": 131072,
     "temperature": 0.3,
     "phases": ["triage", "act_skeleton", "validate", "sidecar_docs"],
 }
 
 
 def is_available() -> bool:
+    import platform
+
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        return False
     try:
         import mlx_lm  # noqa: F401
 
@@ -163,8 +167,15 @@ def get_metrics_summary() -> dict:
 
 
 def load_config() -> dict:
-    """Load local_llm config from .datum/config.toml or default."""
-    for config_path in [Path(".datum/config.toml"), Path("assets/config.toml.default")]:
+    """Load local_llm config from project's .datum/config.toml or default."""
+    import os
+
+    project_dir = os.environ.get("DATUM_PROJECT_DIR", ".")
+    for config_path in [
+        Path(project_dir) / ".datum/config.toml",
+        Path(".datum/config.toml"),
+        Path("assets/config.toml.default"),
+    ]:
         if not config_path.exists():
             continue
         try:
