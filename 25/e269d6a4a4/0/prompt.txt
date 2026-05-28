@@ -179,3 +179,7 @@ yes
 ---
 
 @scripts/transcript-demo.html its blank though
+
+---
+
+ok so like this thing is good . it can do sonnet work and can loop if we have to. we can monitor context right? for it?
