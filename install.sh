@@ -24,6 +24,7 @@ set -euo pipefail
 GITHUB_REPO="gitrdunhq/datum"
 INSTALL_DIR="${HOME}/.agents/skills/datum"
 SKILL_NAME="datum"
+BIN_DIR="${HOME}/.local/bin"
 
 # ── Tool Registry ──────────────────────────────────────────────────────────────
 # Format: "flag|display_name|skills_dir|detect_binary"
@@ -55,6 +56,98 @@ entry_for_flag() {
 }
 
 all_flags() { for e in "${TOOL_REGISTRY[@]}"; do _field "$e" 0; done; }
+
+# ── Prerequisite checks ─────────────────────────────────────────────────────
+
+check_prerequisites() {
+  local failed=false
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "✗ git not found."
+    echo "  Install: https://git-scm.com/downloads"
+    failed=true
+  fi
+
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "✗ uv not found. datum requires uv for Python environment management."
+    echo "  Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    failed=true
+  fi
+
+  local python_cmd=""
+  if command -v python3 >/dev/null 2>&1; then
+    python_cmd="python3"
+  elif command -v python >/dev/null 2>&1; then
+    python_cmd="python"
+  fi
+
+  if [ -z "$python_cmd" ]; then
+    echo "✗ Python not found. datum requires Python >= 3.12."
+    echo "  macOS:  brew install python@3.12"
+    echo "  Ubuntu: sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt install python3.12"
+    failed=true
+  else
+    local py_version
+    py_version=$($python_cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    local py_major py_minor
+    py_major=$(echo "$py_version" | cut -d. -f1)
+    py_minor=$(echo "$py_version" | cut -d. -f2)
+    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 12 ]; }; then
+      echo "✗ Python $py_version found, but datum requires >= 3.12."
+      echo "  macOS:  brew install python@3.12"
+      echo "  Ubuntu: sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt install python3.12"
+      failed=true
+    else
+      echo "✓ Python $py_version"
+    fi
+  fi
+
+  if $failed; then
+    echo ""
+    echo "Fix the above and re-run: bash install.sh"
+    exit 1
+  fi
+
+  echo "✓ git $(git --version | cut -d' ' -f3)"
+  echo "✓ uv $(uv --version 2>/dev/null | head -1)"
+  echo ""
+}
+
+# ── Post-install verification ────────────────────────────────────────────────
+
+install_cli_wrapper() {
+  local target_dir="$1"
+  mkdir -p "$BIN_DIR"
+  cat > "${BIN_DIR}/datum" <<WRAPPER
+#!/usr/bin/env bash
+exec uv run --directory "${target_dir}" datum "\$@"
+WRAPPER
+  chmod +x "${BIN_DIR}/datum"
+
+  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
+    echo ""
+    echo "⚠ ${BIN_DIR} is not on your PATH. Add it:"
+    echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc  # or ~/.zshrc"
+  fi
+  echo "✓ CLI wrapper installed: ${BIN_DIR}/datum"
+}
+
+verify_install() {
+  local dir="$1"
+  echo ""
+  echo "Verifying install..."
+  if uv run --directory "$dir" datum doctor 2>/dev/null | grep -q '"status": "pass"'; then
+    echo "✓ datum doctor passed"
+  else
+    echo "⚠ datum doctor did not pass cleanly. This may be OK for first install."
+    echo "  Debug with: datum doctor"
+  fi
+  echo ""
+  echo "Try it:"
+  echo "  datum status"
+  echo "  datum classify"
+  echo "  datum doctor"
+}
 
 # ── GitHub install ───────────────────────────────────────────────────────────
 
@@ -202,6 +295,12 @@ if $UNINSTALL; then
   exit 0
 fi
 
+# ── Prerequisite gate ─────────────────────────────────────────────────────────
+
+if ! $DEV_MODE; then
+  check_prerequisites
+fi
+
 # ── Build target list ─────────────────────────────────────────────────────────
 
 target_entries=()
@@ -246,8 +345,12 @@ done
 
 echo ""
 if $DEV_MODE; then
+  install_cli_wrapper "$(cd "$(dirname "$0")" && pwd)"
   echo "Source: $(cd "$(dirname "$0")" && pwd) (local dev repo)"
 else
+  install_cli_wrapper "$LINK_TARGET"
   echo "Installed: $INSTALL_DIR"
+  verify_install "$LINK_TARGET"
 fi
+echo ""
 echo "Active immediately — no reload needed."
