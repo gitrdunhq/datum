@@ -219,7 +219,7 @@ def local_llm_cmd(
     stats: bool = typer.Option(False, "--stats", help="Show inference metrics"),
 ):
     """Test local LLM inference via MLX (beta)."""
-    from datum.local_llm import is_available, load_config
+    from datum.local_llm import is_available, load_config, chat
 
     config = load_config()
 
@@ -257,7 +257,7 @@ def local_llm_cmd(
     result = chat(
         messages,
         model_id=config["model"],
-        max_tokens=config.get("max_tokens", 4096),
+        max_tokens=config.get("max_tokens", 8192),
         temperature=config.get("temperature", 0.3),
     )
     console.print(f"\n{result['text']}")
