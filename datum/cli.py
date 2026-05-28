@@ -254,6 +254,8 @@ def local_llm_cmd(
         m = get_metrics_summary()
         console.print("[bold]Local LLM metrics:[/bold]")
         console.print(f"  Total calls: {m['total_calls']}")
+        console.print(f"  Escalated to Claude: {m.get('escalated', 0)}")
+        console.print(f"  Success rate: {m.get('success_rate_pct', 0)}%")
         console.print(f"  Total tokens: {m['total_tokens']}")
         console.print(f"  Total time: {m['total_time_s']}s")
         console.print(f"  Avg tokens/sec: {m.get('avg_tokens_per_sec', 0)}")

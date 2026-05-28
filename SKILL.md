@@ -134,7 +134,13 @@ These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/
 - `REASONING` → retry ladder: local (if enabled) → standard → reasoning → reasoning+verbose
 - See `references/recovery-modes.md`
 
-**Local LLM (beta):** When `[local_llm] enabled = true` in config, fast-tier phases (triage, skeleton, validate, docs sidecar) attempt local MLX inference first. On failure, the retry ladder escalates to Claude. Zero cost for tasks Gemma handles. See `datum local-llm` for status.
+**Gemma-First Flow:** When `[local_llm] enabled = true` in config, most phases attempt local MLX inference (Gemma 4 26B) before Claude. The retry ladder: local → standard (Sonnet) → reasoning (Opus). Features:
+- **Context monitoring** — checks prompt fits in 128K window before inference
+- **Repetition detection** — aborts and escalates if output loops (n-gram detection)
+- **Grammar-constrained output** — `datum.local_llm.structured(prompt, Schema)` via outlines forces valid JSON
+- **Escalation signal** — model outputs `ESCALATE` or pipeline detects failure → bumps to Claude
+- **Metrics** — `datum local-llm --stats` tracks calls, tokens, escalation rate, estimated savings
+- Phases routed locally: triage, skeleton, RED, GREEN, REFACTOR, validate, sidecars, closeout collectors
 
 **Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
 
