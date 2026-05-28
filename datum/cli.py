@@ -213,6 +213,59 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+@app.command(name="local-llm")
+def local_llm_cmd(
+    prompt: str = typer.Argument("", help="Prompt to send (empty = show status)"),
+    stats: bool = typer.Option(False, "--stats", help="Show inference metrics"),
+):
+    """Test local LLM inference via MLX (beta)."""
+    from datum.local_llm import is_available, load_config
+
+    config = load_config()
+
+    if stats:
+        from datum.local_llm import get_metrics_summary
+
+        m = get_metrics_summary()
+        console.print("[bold]Local LLM metrics:[/bold]")
+        console.print(f"  Total calls: {m['total_calls']}")
+        console.print(f"  Total tokens: {m['total_tokens']}")
+        console.print(f"  Total time: {m['total_time_s']}s")
+        console.print(f"  Avg tokens/sec: {m.get('avg_tokens_per_sec', 0)}")
+        console.print(
+            f"  [bold green]Estimated savings: ${m.get('estimated_savings_usd', 0)}[/bold green]"
+        )
+        return
+
+    if not prompt:
+        console.print("[bold]Local LLM status:[/bold]")
+        console.print(f"  MLX available: {is_available()}")
+        console.print(f"  Enabled: {config.get('enabled', False)}")
+        console.print(f"  Model: {config.get('model', 'not set')}")
+        console.print(f"  Max tokens: {config.get('max_tokens')}")
+        console.print(f"  Phases: {config.get('phases', [])}")
+        return
+
+    if not is_available():
+        console.print(
+            "[red]MLX not available. Install: pip install datum[memory][/red]"
+        )
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Loading {config['model']}...[/dim]")
+    messages = [{"role": "user", "content": prompt}]
+    result = chat(
+        messages,
+        model_id=config["model"],
+        max_tokens=config.get("max_tokens", 4096),
+        temperature=config.get("temperature", 0.3),
+    )
+    console.print(f"\n{result['text']}")
+    console.print(
+        f"\n[dim]{result['tokens']} tokens, {result['time_s']}s, {result['model']}[/dim]"
+    )
+
+
 @app.command()
 def dream(
     memory_dir: str = typer.Option("", help="Override memory directory path"),

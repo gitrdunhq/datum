@@ -151,6 +151,17 @@ patch_max_clusters   = 1
 system_min_clusters  = 6
 system_min_loc_with_api = 500
 
+# ── Local LLM (Beta) ─────────────────────────────────────────────────────────
+# Opt-in: route fast-tier tasks to local MLX model instead of Claude.
+# Requires: pip install datum[memory] (mlx + mlx-lm)
+# The retry ladder escalates to Claude if local inference fails.
+[local_llm]
+enabled      = false
+model        = "mlx-community/gemma-4-26b-a4b-it-4bit"
+max_tokens   = 8192
+temperature  = 0.3
+phases       = ["triage", "act_skeleton", "validate", "sidecar_docs"]
+
 # ── Stack Lock ────────────────────────────────────────────────────────────────
 [stack_lock]
 language                    = ""
