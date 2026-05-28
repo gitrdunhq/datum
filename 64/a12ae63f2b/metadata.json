@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "64a12ae63f2b",
+  "strategy": "manual-commit",
+  "branch": "chore/epic-23-closeout",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "CURRENT_STATE.md",
+    "docs/CHANGELOG.md",
+    "docs/retros/RETRO-epic-23-20260528.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/64/a12ae63f2b/0/metadata.json",
+      "transcript": "/64/a12ae63f2b/0/full.jsonl",
+      "content_hash": "/64/a12ae63f2b/0/content_hash.txt",
+      "prompt": "/64/a12ae63f2b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1415,
+    "cache_creation_tokens": 1885345,
+    "cache_read_tokens": 184936190,
+    "output_tokens": 243711,
+    "api_call_count": 591
+  }
+}

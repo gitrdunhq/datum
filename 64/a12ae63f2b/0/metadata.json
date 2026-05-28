@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "64a12ae63f2b",
+  "session_id": "3d7f19a0-1248-4dfc-ac21-9b38f8ee059a",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T00:07:09.538487Z",
+  "branch": "chore/epic-23-closeout",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "CURRENT_STATE.md",
+    "docs/CHANGELOG.md",
+    "docs/retros/RETRO-epic-23-20260528.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e6cdffa0721e",
+  "token_usage": {
+    "input_tokens": 1415,
+    "cache_creation_tokens": 1885345,
+    "cache_read_tokens": 184936190,
+    "output_tokens": 243711,
+    "api_call_count": 591
+  },
+  "session_metrics": {
+    "turn_count": 28
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T00:07:09.467982Z",
+    "agent_lines": 164,
+    "agent_removed": 26,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 164,
+    "total_lines_changed": 190,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
