@@ -184,18 +184,16 @@ def save_state(state: dict) -> None:
 
 
 def next_epic_number() -> int:
-    if not RUNS_DIR.exists():
-        return 1
-    existing = [
-        d.name for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("epic-")
-    ]
-    if not existing:
-        return 1
-    numbers = []
-    for name in existing:
-        parts = name.split("-")
-        if len(parts) >= 2 and parts[1].isdigit():
-            numbers.append(int(parts[1]))
+    numbers: list[int] = []
+    for source in [RUNS_DIR, Path("docs/epics/datum")]:
+        if not source.exists():
+            continue
+        for d in source.iterdir():
+            if not d.is_dir() or not d.name.startswith("epic-"):
+                continue
+            parts = d.name.split("-")
+            if len(parts) >= 2 and parts[1].isdigit():
+                numbers.append(int(parts[1]))
     return max(numbers, default=0) + 1
 
 
