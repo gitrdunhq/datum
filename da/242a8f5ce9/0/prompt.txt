@@ -109,3 +109,7 @@ check if the 8bit is done downloading
 <status>completed</status>
 <summary>Background command "Download Qwen3-30B-A3B-8bit to Extra drive" completed (exit code 0)</summary>
 </task-notification>
+
+---
+
+ok develop with it
