@@ -1,0 +1,28 @@
+{
+  "metrics": [
+    {
+      "property_id": "PERF-001",
+      "name": "datum.classify.duration_ms",
+      "type": "histogram",
+      "description": "Time to execute datum classify command",
+      "unit": "milliseconds",
+      "threshold": 2000
+    },
+    {
+      "property_id": "PERF-002",
+      "name": "datum.landscape.duration_ms",
+      "type": "histogram",
+      "description": "Time to execute datum landscape command (full scan)",
+      "unit": "milliseconds",
+      "threshold": 30000
+    },
+    {
+      "property_id": "PERF-003",
+      "name": "datum.landscape.cache_hit_duration_ms",
+      "type": "histogram",
+      "description": "Time to return cached landscape result",
+      "unit": "milliseconds",
+      "threshold": 1000
+    }
+  ]
+}

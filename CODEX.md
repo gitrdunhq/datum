@@ -1,3 +1,3 @@
-# Claude Code Instructions
+# Codex Instructions
 
 All agent instructions live in [AGENTS.md](AGENTS.md). Read that file.

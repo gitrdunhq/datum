@@ -20,6 +20,8 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum status      Print phase, RUN_ID, lane progress, last failure.
 /datum init        Bootstrap repo: hooks, linter, AGENTS.md, CURRENT_STATE.md, ROADMAP.md.
 /datum rollback    Revert a merged epic. See references/rollback.md.
+/datum classify    Auto-classify epic complexity (Patch/Feature/System)
+/datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
 ```
 
 ## Rule: Determinism
@@ -48,26 +50,38 @@ Execute in order before any phase work:
 
 Epic artifacts always live at `docs/epics/<branch>/`. Never `docs/TICKET.md`.
 
+**2.5. Classify Complexity** — After SPEC.md is detected, run `uv run datum classify`. Routes:
+
+| Tier | Criteria | Pipeline |
+|---|---|---|
+| Patch | < 50 LOC, ≤ 1 cluster, no new public API | Express (`0x-express.md`) |
+| Feature | Standard scope | Standard (full pipeline) |
+| System | > 5 clusters, or new subsystem, or multi-package | Extended (units in Plan, all Properties, architect sidecar) |
+
+User can override at `plan_human_approval` gate.
+
 **3. Detect Language** — `uv run scripts/datum.py datum.language_detect`. Maps to `references/04-act-{lang}.md`.
 
 **4. Resolve Tier** — `resolve_tier(phase)` returns `{phase, tier, model}` from config. See `references/model-tiers.md`.
 
+**MANDATORY: Every subagent spawn MUST include an explicit `model:` parameter.** Read `[models.phases]` to get the tier name (e.g., `act_red = "standard"`), then resolve it via `[models]` (e.g., `standard = "claude-sonnet-4-6"`). Map to Agent parameter: `reasoning` → `model: "opus"`, `standard` → `model: "sonnet"`, `fast` → `model: "haiku"`. Never rely on the default model. The config is the authority.
+
 **5. Dispatch Phase** — Load the reference doc, execute it, run the gate.
 
-| Phase | Reference | Gate |
-|---|---|---|
-| Discovery | `00-discovery.md` | — |
-| Refine | `01-refine.md` | skippable |
-| Plan | `02-plan.md` | **required** |
-| Triage | `02.5-triage.md` | **required** |
-| Deepen | `02.8-deepen.md` | skipped if triage routes to properties |
-| Properties | `03-properties.md` | skippable |
-| Architect | `03.5-architect.md` | blocks if ADRs missing |
-| Act | `04-act.md` | per-lane retry ladder |
-| Validate | `05-validate.md` | skippable |
-| Review | `06-review.md` | max 3 iterations |
-| PR Comments | `07-pr-comments.md` | — |
-| Closeout | `08-closeout.md` | — |
+| Phase | Reference | Gate | Notes |
+|---|---|---|---|
+| Discovery | `00-discovery.md` | — | |
+| Refine | `01-refine.md` | skippable | |
+| Plan | `02-plan.md` | **required** | System-tier epics include unit decomposition (step 2.5 in 02-plan.md), grouping tasks into parallelizable units of work. |
+| Triage | `02.5-triage.md` | **required** | |
+| Deepen | `02.8-deepen.md` | skipped if triage routes to properties | |
+| Properties | `03-properties.md` | skippable | |
+| Architect | `03.5-architect.md` | blocks if ADRs missing | |
+| Act | `04-act.md` | per-lane retry ladder | |
+| Validate | `05-validate.md` | skippable | |
+| Review | `06-review.md` | max 3 iterations | |
+| PR Comments | `07-pr-comments.md` | — | |
+| Closeout | `08-closeout.md` | — | |
 
 After each phase: `uv run scripts/datum.py datum.gate <phase> [--yolo]`
 
@@ -84,6 +98,8 @@ For Act, also load: `agent-contracts.md`, `brief-builder.md`, `04-act-red-brief.
 | `validate_human_review` | skippable_if_complete | skipped |
 | `merge_human_approval` | **required** | **halts** |
 
+> Plan gate also checks: `## Assumption Audit` in SPEC.md (fails if missing or has unresolved guesses). Emits warning if Refine generated zero questions in QUESTIONS.md.
+
 Hard stops never bypass: `tests_red_after_3x_retry`, `hook_blocked_write`, `merge_conflict`, `git_push_rejected`, `schema_validation_failed`, `test_ratchet_violation`, `lane_tool_sandbox_violation`, `external_dependency_install_proposed`.
 
 ## Brief Construction
@@ -93,6 +109,19 @@ The brief is the agent's entire context. Get it wrong and the contract breaks. R
 - **RED**: task entry, filtered PROPERTIES, GitNexus context, lane-tools README, stub deps. Exclude: test dir, implementation files, other lanes.
 - **GREEN**: same as RED + redacted TestSignal JSON. Exclude: test source, test names, RED output.
 - **REFACTOR**: everything. Full SPEC, PROPERTIES, tests, implementation, GitNexus impact.
+
+## Artifacts
+
+These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/runs/<RUN_ID>/`:
+
+| Artifact | Phase | Purpose |
+|---|---|---|
+| `TICKET.md` | Input | Original request |
+| `SPEC.md` | Refine | Refined requirements + Assumption Audit + Classification Metadata |
+| `QUESTIONS.md` | Refine + Plan | Structured Q&A with [Answer]: tags |
+| `TASKS.md` | Plan | Implementation plan (root = execution copy, epic dir = archive) |
+| `PROPERTIES.md` | Properties | 11-category invariant set |
+| `LANDSCAPE.md` | Discovery | Codebase architecture scaffold (project-level, not per-epic) |
 
 ## Error Recovery
 

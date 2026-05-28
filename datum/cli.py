@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -141,6 +143,59 @@ def install(
     except Exception as e:
         console.print(f"[bold red]Installation failed: {e}[/bold red]")
         sys.exit(1)
+
+
+@app.command()
+def classify(
+    spec_path: str = typer.Option("SPEC.md", help="Path to SPEC.md"),
+):
+    """Classify epic complexity and determine pipeline shape."""
+    import subprocess
+
+    from datum.classify import classify as do_classify
+    from datum.classify import parse_classification_metadata
+
+    def _resolve_epic_dir():
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return Path(f"docs/epics/{branch}")
+
+    epic_dir = _resolve_epic_dir()
+    epic_spec = epic_dir / spec_path
+    if epic_spec.exists():
+        spec_text = epic_spec.read_text()
+    elif Path(spec_path).exists():
+        spec_text = Path(spec_path).read_text()
+    else:
+        console.print(
+            f"[bold red]SPEC.md not found at {epic_spec} or {spec_path}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    metadata = parse_classification_metadata(spec_text)
+    config = {}  # TODO: load [classification] from config.toml
+    result = do_classify(metadata, config)
+    console.print(json.dumps(result, indent=2))
+
+
+@app.command()
+def landscape(
+    force: bool = typer.Option(False, "--force", help="Regenerate even if cached"),
+):
+    """Generate docs/LANDSCAPE.md from filesystem analysis."""
+    from datum.landscape import generate_scaffold
+
+    result = generate_scaffold(Path("."), force=force)
+
+    out_path = Path("docs/LANDSCAPE.md")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(result["markdown"])
+
+    status = "cache hit" if result["cache_hit"] else "generated"
+    console.print(f"[bold green]✓ docs/LANDSCAPE.md ({status})[/bold green]")
 
 
 def main():
