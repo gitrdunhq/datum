@@ -24,6 +24,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
 /datum mermaid     Generate Mermaid diagrams — ALWAYS activates on "mermaid", "diagram", "visualize"
 /datum dream       Memory consolidation — staleness audit + transcript extraction + pruning
+/datum local-llm   Test local MLX inference (beta) — status check or prompt test
 ```
 
 ## Rule: Determinism
@@ -130,8 +131,10 @@ These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/
 ## Error Recovery
 
 - `ENVIRONMENTAL` → fix in place, same tier, counter not incremented
-- `REASONING` → retry ladder: standard → reasoning → reasoning+verbose
+- `REASONING` → retry ladder: local (if enabled) → standard → reasoning → reasoning+verbose
 - See `references/recovery-modes.md`
+
+**Local LLM (beta):** When `[local_llm] enabled = true` in config, fast-tier phases (triage, skeleton, validate, docs sidecar) attempt local MLX inference first. On failure, the retry ladder escalates to Claude. Zero cost for tasks Gemma handles. See `datum local-llm` for status.
 
 **Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
 
