@@ -123,3 +123,7 @@ push and merge
 ---
 
 should the atum state be checked in? [Image #7] also the scripts should be central in the .agent/skill/datum no?
+
+---
+
+it should check if thge poerson has mac before it enablers that as truew for beta (wont allow linux or windows)
