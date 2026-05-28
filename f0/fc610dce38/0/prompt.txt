@@ -243,3 +243,7 @@ ok use the skill foe the tui
 ---
 
 how can i eun it
+
+---
+
+yes
