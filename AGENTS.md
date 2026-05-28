@@ -8,6 +8,31 @@ All agents operating in this repository must adhere strictly to the following in
 3. **Neutral Tone:** Keep responses analytical, detached, and focused strictly on the technical tradeoffs.
 4. **Answer Directly:** Do not pad responses with validation. State the facts, present the tradeoffs, and ask for the technical decision.
 
+## Self-Healing: Auto-File Bugs
+
+When DATUM hits an **unexpected** error during execution — script crash, missing file the pipeline expected to exist, schema validation failure on a file DATUM itself wrote, subprocess exit code != 0 on a DATUM script — the agent MUST file a GitHub issue before continuing or halting.
+
+**What qualifies as a bug (file it):**
+- A DATUM script (`gate.py`, `lane_plan.py`, `classify.py`, etc.) crashes with a traceback
+- A gate fails on an artifact DATUM itself generated (not user-authored)
+- A file referenced in SKILL.md or a reference doc doesn't exist
+- `datum doctor` or `datum status` returns an error
+
+**What is NOT a bug (don't file it):**
+- A gate fails because the user hasn't filled in an artifact yet (expected behavior)
+- Tests fail on user code (that's the pipeline working correctly)
+- The user cancels or overrides a phase
+
+**How to file:**
+```bash
+unset GITHUB_TOKEN && gh issue create \
+  --title "[datum-bug] <module>: <one-line description>" \
+  --label "datum-bug" \
+  --body "<error trace, state snapshot, what phase was running, reproduction steps>"
+```
+
+**Then:** Continue if the error is non-fatal (log it and proceed). Halt if fatal (missing script, broken state).
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

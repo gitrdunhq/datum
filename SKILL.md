@@ -131,6 +131,8 @@ These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/
 - `REASONING` → retry ladder: standard → reasoning → reasoning+verbose
 - See `references/recovery-modes.md`
 
+**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), call `datum.report_bug.report_bug(module, error, context)` to auto-file a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy on what qualifies as a bug vs expected behavior.
+
 ## Resume
 
 `datum resume` reads state and continues where it stopped. Completed phases are not re-run. ACT lanes with `in_progress` are re-queued. See `references/recovery-modes.md`.
