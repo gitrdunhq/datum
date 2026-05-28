@@ -87,7 +87,7 @@ Every AC must be testable. If it can't become a property, it's not precise enoug
 
 ### 5. Gate
 
-Run: `uv run scripts/datum.py datum.gate refine [--yolo]`
+Run: `datum gate refine [--yolo]`
 
 On pass: SPEC written to `docs/epics/<branch>/SPEC.md`, state updated.
 On fail: gap list surfaced, return to step 2.

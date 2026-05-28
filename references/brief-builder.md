@@ -107,7 +107,7 @@ fix the test until the failure is meaningful — do not submit until the reason 
 | Input | How to get it |
 |---|---|
 | docs/epics/$BRANCH/SPEC.md sections, PROPERTIES (task-filtered), task entry, GitNexus context, lane-tools README | Same as RED |
-| TestSignal JSON | `python3 scripts/test_signal.py --framework <detected> --input <runner_log>` |
+| TestSignal JSON | `datum test-signal --framework <detected> --input <runner_log>` |
 
 **Pre-dispatch check:** if `test_signal.py` returns `{"status": "redaction_failed"}`, **halt the lane** — do not dispatch GREEN. Log the halt; surface to user.
 

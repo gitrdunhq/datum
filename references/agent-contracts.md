@@ -151,7 +151,7 @@ On failure:
 **Orchestrator actions on RED result:**
 - `status: done` AND `verified_red: true` → submit commits to commit queue; advance lane to GREEN
 - `status: done` AND `verified_red: false` → treat as reasoning failure; run retry ladder
-- `status: failed` AND `retryable: true` → run `diagnose_failure.py`; decide ENVIRONMENTAL or REASONING
+- `status: failed` AND `retryable: true` → run `datum diagnose`; decide ENVIRONMENTAL or REASONING
 - `status: failed` AND `retryable: false` → halt lane; surface to user
 
 ---
@@ -369,20 +369,16 @@ If REFACTOR finds a missing AC, it must **not** write the test. Instead:
 The orchestrator must validate every brief before dispatch and every result before acting on it:
 
 ```bash
-python3 scripts/contracts.py validate \
-  --schema assets/schemas/brief-red.schema.json \
-  --input .datum/runs/<RUN_ID>/briefs/task-001-red.json
+datum contracts validate --schema assets/schemas/brief-red.schema.json --input .datum/runs/<RUN_ID>/briefs/task-001-red.json
 
-python3 scripts/contracts.py validate \
-  --schema assets/schemas/result-green.schema.json \
-  --input .datum/runs/<RUN_ID>/results/task-001-green.json
+datum contracts validate --schema assets/schemas/result-green.schema.json --input .datum/runs/<RUN_ID>/results/task-001-green.json
 ```
 
 On `ContractViolationError`:
 - **Brief violation (outbound)**: Bug in the orchestrator. Log the error, halt the lane, surface with "orchestrator produced malformed brief for task-XXX". Do not dispatch the malformed brief.
 - **Result violation (inbound)**: Agent returned an invalid response. Treat as a reasoning failure; enter retry ladder. On 3x: halt lane with "agent returned contract-violating result".
 
-The schemas referenced above (`brief-red.schema.json`, etc.) in `assets/schemas/` define the exact fields, types, and required/forbidden sets. They are the authoritative source; this doc is the human-readable companion. Run `python3 scripts/contracts.py self-test` to validate bundled fixtures.
+The schemas referenced above (`brief-red.schema.json`, etc.) in `assets/schemas/` define the exact fields, types, and required/forbidden sets. They are the authoritative source; this doc is the human-readable companion. Run `datum contracts self-test` to validate bundled fixtures.
 
 ---
 

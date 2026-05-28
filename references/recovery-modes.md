@@ -2,7 +2,7 @@
 
 ## Diagnosis First
 
-Before any retry, run `python3 scripts/diagnose_failure.py <log_path>`.
+Before any retry, run `datum diagnose <log_path>`.
 The classifier returns one of: `ENVIRONMENTAL`, `REASONING`, `UNKNOWN`.
 
 This distinction matters because escalating the model tier for an environmental failure wastes tokens and doesn't fix the root cause.

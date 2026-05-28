@@ -35,11 +35,11 @@ Execute in order before any phase work:
 
 **0. Branch Guard** — If on `main`/`master`, auto-create `datum/epic-{N}` and switch. No exceptions.
 
-**0.5. Self-check** — `uv run scripts/datum.py datum.self_check`. If it fails, halt.
+**0.5. Self-check** — `datum doctor`. If it fails, halt.
 
 **1. Load Config** — `.datum/config.toml`, falling back to `assets/config.toml.default`.
 
-**2. Read State** — `uv run scripts/datum.py datum.state read`. If no state, detect entry:
+**2. Read State** — `datum status --json`. If no state, detect entry:
 
 | Artifact | Entry |
 |---|---|
@@ -51,7 +51,7 @@ Execute in order before any phase work:
 
 Epic artifacts always live at `docs/epics/<branch>/`. Never `docs/TICKET.md`.
 
-**2.5. Classify Complexity** — After SPEC.md is detected, run `uv run datum classify`. Routes:
+**2.5. Classify Complexity** — After SPEC.md is detected, run `datum classify`. Routes:
 
 | Tier | Criteria | Pipeline |
 |---|---|---|
@@ -61,7 +61,7 @@ Epic artifacts always live at `docs/epics/<branch>/`. Never `docs/TICKET.md`.
 
 User can override at `plan_human_approval` gate.
 
-**3. Detect Language** — `uv run scripts/datum.py datum.language_detect`. Maps to `references/04-act-{lang}.md`.
+**3. Detect Language** — `datum language-detect`. Maps to `references/04-act-{lang}.md`.
 
 **4. Resolve Tier** — `resolve_tier(phase)` returns `{phase, tier, model}` from config. See `references/model-tiers.md`.
 
@@ -86,7 +86,7 @@ User can override at `plan_human_approval` gate.
 
 **Sequencing rule:** After Plan gate passes, the next phase is ALWAYS Triage. Never skip directly to Properties or Act. Triage evaluates the plan and routes to Deepen or Properties. This is non-negotiable — skipping Triage in epic-1 caused the pipeline to miss evidence gathering.
 
-After each phase: `uv run scripts/datum.py datum.gate <phase> [--yolo]`
+After each phase: `datum gate <phase> [--yolo]`
 
 For Act, also load: `agent-contracts.md`, `brief-builder.md`, `04-act-red-brief.md`, `04-act-green-brief.md`, `04-act-refactor-brief.md`, `04-act-adversarial-brief.md`, `04-act-skeleton-preflight.md`, `pipeline-dispatch.md`, `proof-of-work.md`, `spec-drift.md`, `quality-profiles.md`, language override, `gitnexus-playbook.md` (if available).
 
@@ -132,7 +132,7 @@ These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/
 - `REASONING` → retry ladder: standard → reasoning → reasoning+verbose
 - See `references/recovery-modes.md`
 
-**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `uv run datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
+**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
 
 ## Resume
 
@@ -171,7 +171,7 @@ Built-in diagram and design-doc capability. References and templates are part of
 **Scripts:** `scripts/resilient_diagram.py` (validate), `scripts/mermaid_to_image.py` (render PNG), `scripts/extract_mermaid.py` (extract from markdown)
 
 **Rules:**
-1. NEVER embed a diagram without validating it first via `uv run python scripts/resilient_diagram.py`
+1. NEVER embed a diagram without validating it first via `datum mermaid validate`
 2. ALWAYS use high-contrast styling and unicode semantic symbols
 3. PREFER design templates from `templates/` when creating design documents
 

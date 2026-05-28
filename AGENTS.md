@@ -25,7 +25,7 @@ When DATUM hits an **unexpected** error during execution — script crash, missi
 
 **How to file:**
 ```bash
-uv run datum bugfile <module> "<one-line description>" --trace "<traceback>"
+datum bugfile <module> "<one-line description>" --trace "<traceback>"
 ```
 
 This deduplicates against open issues, attaches the current `.datum/state.json` snapshot, and labels with `datum-bug`. Agents and scripts can also call `datum.report_bug.report_bug(module, error, context)` directly from Python.

@@ -38,7 +38,7 @@ The scheduler (`scripts/pipeline_scheduler.py`) enforces five rules simultaneous
 
 ## Commit Queue
 
-The commit queue (`scripts/commit_queue.py`) is a single Python process:
+The commit queue (`datum commit-queue`) is a single Python process:
 - Spawned at pipeline start, shut down at pipeline end
 - Listens on a Unix socket: `.datum/runs/<RUN_ID>/commit-queue.sock`
 - Maintains a FIFO queue ordered by stage completion time

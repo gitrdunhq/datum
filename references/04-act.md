@@ -16,8 +16,7 @@
 
 For each lane before RED dispatches:
 ```
-python3 scripts/skeleton_creator.py --task-id <id> --language <detected_lang> \
-  --output .datum/runs/<RUN_ID>/preflight-<id>.json
+datum skeleton --task-id <id> --language <detected_lang> --output .datum/runs/<RUN_ID>/preflight-<id>.json
 ```
 Writes named test functions (one per AC) into the test files. RED fills assertion bodies; it
 does not invent function names or file structure. If `no_skeletons_reason` is set, skip and
@@ -30,9 +29,9 @@ Before starting any lane:
 2. Confirm `scripts/test_signal.py` supports the detected test framework. If not, halt:
    "test_signal.py does not support framework X. Extend the parser or skip ACT for this repo."
 3. Confirm no pending flakies above the configured threshold (default: 3). If exceeded: halt.
-4. Start the commit queue process: `python3 scripts/commit_queue.py --run-id <RUN_ID>`
+4. Start the commit queue process: `datum commit-queue --run-id <RUN_ID>`
 5. Record docs/epics/$BRANCH/SPEC.md hash and start the drift detector sidecar:
-   `python3 scripts/spec_drift_detector.py --run-id <RUN_ID> --interval 60 &`
+   `datum spec-drift --run-id <RUN_ID> --interval 60 &`
    See `references/spec-drift.md` for how drift is classified and resolved.
 
 At every stage boundary before dispatching new lanes, check for the drift flag:
@@ -54,7 +53,7 @@ Read `references/pipeline-dispatch.md` for the full scheduler logic. Summary:
 2. Start eligible lanes (no unresolved dependencies, no file-ownership conflicts, under cap)
 3. For each lane, run: RED → verify RED → GREEN → verify GREEN → REFACTOR → verify REFACTOR
 4. As lanes complete stages and commit, unblock waiting lanes
-5. Retry failed stages via `python3 scripts/diagnose_failure.py` before escalating
+5. Retry failed stages via `datum diagnose` before escalating
 6. Cap at `in_flight_cap` concurrent agents (default: 7)
 
 *Note on Task Complexity:* If `task_complexity` is `structural` (e.g., pure additive skeleton, deleting a file), the lane bypasses RED and GREEN stages completely. It goes straight to the REFACTOR stage to implement the structural change in a single pass. If `behavioral`, the full RED-GREEN-REFACTOR cycle runs.
@@ -93,9 +92,9 @@ For `behavioral` tasks, each lane runs three agents in strict sequence. For `str
 ## Stage verification
 
 After each stage, verify:
-- RED: `python3 scripts/test_signal.py` → status must be `fail` with property_id present
-- GREEN: `python3 scripts/test_signal.py` → status must be `pass`
-- REFACTOR: `python3 scripts/test_signal.py` → status must be `pass`; also run linter + formatter
+- RED: `datum test-signal` → status must be `fail` with property_id present
+- GREEN: `datum test-signal` → status must be `pass`
+- REFACTOR: `datum test-signal` → status must be `pass`; also run linter + formatter
 
 ## Commit flow
 

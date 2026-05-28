@@ -22,7 +22,7 @@ ticket instead and run the normal cycle.
 
 ## The 9-step protocol
 
-Run: `python3 scripts/rollback.py --run-id <run_id>`
+Run: `datum rollback --run-id <run_id>`
 
 ```
 1. Load closeout-data.json for the run_id → get merge_sha, work_branch, PR URL

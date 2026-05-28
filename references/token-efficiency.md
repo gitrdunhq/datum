@@ -71,7 +71,7 @@ Format:
 
 ## find_callers.py
 AST-based caller finder. Use instead of grep+read for impact lookups.
-Usage: python3 scripts/lane-tools/find_callers.py <symbol_name>
+Usage: datum lane-tool find_callers <symbol_name>
 
 ## filter_gitnexus_output.py
 Reduces gitnexus impact output to {file, line, confidence} fields.

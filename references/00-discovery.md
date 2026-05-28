@@ -16,11 +16,11 @@ If they exist, read: `CURRENT_STATE.md`, `ROADMAP.md`. These are the primary sou
 
 ### 2a. Generate LANDSCAPE.md
 
-Run: `uv run datum landscape`
+Run: `datum landscape`
 
 This generates docs/LANDSCAPE.md with a base scaffold (tech stack, file tree with LOC, module descriptions). If the content hash matches the last run, it returns a cached result.
 
-To force regeneration: `uv run datum landscape --force`
+To force regeneration: `datum landscape --force`
 
 ### 2b. Enrich LANDSCAPE.md with GitNexus (if available)
 
@@ -44,7 +44,7 @@ If GitNexus is unavailable: read the top-level README, then scan for a docs/ or 
 
 ### 3. Language and toolchain detection
 
-Run: `python3 scripts/language_detect.py`
+Run: `datum language-detect`
 
 Note: package manager, test framework, linter, formatter. These inform ACT phase tool selection.
 

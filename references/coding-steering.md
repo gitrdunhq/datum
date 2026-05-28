@@ -33,7 +33,7 @@ This document consolidates 12 fragmented Claude rule files into a single, token-
 
 ## Python Specifics
 - **PY-001**: **Toolchain**. Python 3.12+, `uv`, `black`, `ruff`, `pytest`, `httpx`, `structlog`, `orjson`.
-- **PY-002**: **Execution**. Never use bare `python` or `pytest`. Always use `uv run python` and `uv run pytest`.
+- **PY-002**: **Execution**. Never use bare `python` or `pytest`. Always use `datum test` for tests. For Python execution, use the project's configured runner.
 
 ## Safeguard & Security
 - **SEC-001**: **No Dynamic Execution**. `eval()`, `os.system()`, `shell=True` are blocked via PreToolUse hooks.

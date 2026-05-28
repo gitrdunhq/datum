@@ -72,7 +72,7 @@ Skeleton preflight runs per-lane, after Plan and before RED dispatch:
 lane_plan.json ready
     │
     ├─ For each lane with introduces_stubs = false (and no upstream dependency):
-    │   python3 scripts/skeleton_creator.py --task-id <id> --language <lang>
+    │   datum skeleton --task-id <id> --language <lang>
     │   → writes test file skeleton to worktree
     │   → writes preflight-result.json
     │   → annotates each AC with skeleton path

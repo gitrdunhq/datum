@@ -110,8 +110,8 @@ Wire classify and landscape commands into datum/cli.py. Add [classification] sec
   - datum/cli.py gains classify command: reads SPEC.md, calls classify(), prints JSON result
   - datum/cli.py gains landscape command with --force flag: calls generate_scaffold(), writes docs/LANDSCAPE.md
   - assets/config.toml.default gains [classification] section: patch_max_loc, patch_max_clusters, system_min_clusters, system_min_loc_with_api
-  - uv run datum classify --help works
-  - uv run datum landscape --help works
+  - datum classify --help works
+  - datum landscape --help works
 - **Files**: datum/cli.py, assets/config.toml.default
 - **Depends on**: task-005, task-006
 - **RED Note**: Test datum classify --help exits 0. Test datum landscape --help exits 0. Test config.toml.default contains [classification] section with threshold keys.
