@@ -5,7 +5,7 @@ Beta TUI for the DATUM factory floor. Loosely coupled — reads `.datum/` state 
 ## Run
 
 ```bash
-python datum-tui/app.py
+datum floor
 ```
 
 ## Architecture
