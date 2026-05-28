@@ -1,0 +1,18 @@
+{
+  "alerts": [
+    {
+      "property_id": "PERF-001",
+      "name": "classify_slow",
+      "condition": "datum.classify.duration_ms > 2000",
+      "severity": "warning",
+      "description": "datum classify exceeded 2s SLO"
+    },
+    {
+      "property_id": "PERF-002",
+      "name": "landscape_slow",
+      "condition": "datum.landscape.duration_ms > 30000",
+      "severity": "warning",
+      "description": "datum landscape full scan exceeded 30s SLO"
+    }
+  ]
+}

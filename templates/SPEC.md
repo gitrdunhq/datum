@@ -60,3 +60,23 @@
 <!-- Must be empty before the gate passes -->
 
 *(none)*
+
+## 8. Assumption Audit
+
+<!-- Every assumption the spec relies on. Track whether it's confirmed or a guess. -->
+
+| # | Assumption | Justification | Status | Resolves |
+|---|---|---|---|---|
+| 1 | [State the assumption] | [Why it's safe or why it's a guess] | confirmed/guess | Q<N> or n/a |
+
+## 9. Classification Metadata
+
+<!-- Complexity signals used by the gate to select the right workflow. -->
+
+```yaml
+estimated_files: 0
+estimated_loc: 0
+clusters_touched: 0
+new_public_api: false
+dependency_additions: []
+```

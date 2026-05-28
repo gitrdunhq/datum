@@ -144,6 +144,13 @@ opencode    = { subagent = "agent",    slash = false }
 kiro        = { subagent = "spawn",    slash = false }
 gemini_cli  = { subagent = "subagent", slash = false }
 
+# ── Classification ───────────────────────────────────────────────────────────
+[classification]
+patch_max_loc        = 50
+patch_max_clusters   = 1
+system_min_clusters  = 6
+system_min_loc_with_api = 500
+
 # ── Stack Lock ────────────────────────────────────────────────────────────────
 [stack_lock]
 language                    = ""

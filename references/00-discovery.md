@@ -14,6 +14,24 @@
 
 If they exist, read: `CURRENT_STATE.md`, `ROADMAP.md`. These are the primary sources of project orientation. Do not re-derive what is already documented.
 
+### 2a. Generate LANDSCAPE.md
+
+Run: `uv run datum landscape`
+
+This generates docs/LANDSCAPE.md with a base scaffold (tech stack, file tree with LOC, module descriptions). If the content hash matches the last run, it returns a cached result.
+
+To force regeneration: `uv run datum landscape --force`
+
+### 2b. Enrich LANDSCAPE.md with GitNexus (if available)
+
+If GitNexus is available, enrich docs/LANDSCAPE.md with architecture data:
+- Query `gitnexus_query("architecture")` for cluster information
+- Query `gitnexus_query("entry points")` for execution flow entry points
+- Append findings between `<!-- gitnexus:start -->` and `<!-- gitnexus:end -->` markers in LANDSCAPE.md
+- Do NOT overwrite the CLI-generated scaffold sections above the markers
+
+If GitNexus is unavailable, the CLI scaffold stands alone as the complete LANDSCAPE.md.
+
 ### 2. GitNexus survey (if available)
 
 ```
@@ -73,8 +91,8 @@ This summary is used as context for the Refine phase, not archived independently
 ## Outputs
 
 - Orientation context for the executor (internal)
-- No archived artifacts (Discovery is read-only)
+- `docs/LANDSCAPE.md` — optional, generated on first run or when stale (not generated every epic)
 
 ## Skip condition
 
-If CURRENT_STATE.md was updated in the last 7 days and the ticket does not reference unfamiliar subsystems, skip Discovery and proceed directly to Refine.
+If CURRENT_STATE.md was updated in the last 7 days, the ticket does not reference unfamiliar subsystems, AND docs/LANDSCAPE.md exists, skip Discovery and proceed directly to Refine.

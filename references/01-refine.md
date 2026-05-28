@@ -45,7 +45,14 @@ SPEC is sufficient when it answers:
 5. What are the acceptance criteria per requirement?
 6. What existing behavior must remain unchanged?
 
-Batch gaps as questions. Wait for answers.
+Write all questions to `docs/epics/<branch>/QUESTIONS.md` using `templates/QUESTIONS.md` format:
+- Add a `## Refine — YYYY-MM-DD` header
+- Number questions sequentially: `### Q1: [Category] Question text?`
+- Include `> context` blocks explaining why each question matters
+- Leave `[Answer]:` tags empty for the human to fill
+- Commit the file and wait for answers
+
+If zero questions arise (Trivial or Low ambiguity), still create QUESTIONS.md with an empty Refine section and a note: "No clarifying questions needed — intent is clear."
 
 In yolo mode with `skippable_if_complete` policy: ask LLM judge if the ticket answers all 6. If yes, proceed. If no, surface gaps and wait.
 
@@ -71,6 +78,10 @@ Use `assets/templates/SPEC.md` as base. All sections required:
 6. Out of scope
 7. Open questions (empty before gate passes)
 8. Blast radius + impact analysis
+9. Assumption Audit (table: #, Assumption, Justification, Status, Resolves)
+10. Classification Metadata (estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions)
+
+Classification Metadata must be filled before the Refine gate — the classifier reads these fields to determine pipeline shape.
 
 Every AC must be testable. If it can't become a property, it's not precise enough.
 
@@ -85,3 +96,4 @@ On fail: gap list surfaced, return to step 2.
 
 - `docs/epics/<branch>/TICKET.md` — original ticket, preserved
 - `docs/epics/<branch>/SPEC.md` — refined requirements, ready for Plan
+- `docs/epics/<branch>/QUESTIONS.md` — clarifying questions from Refine (and later Plan)

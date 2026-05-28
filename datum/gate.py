@@ -15,13 +15,19 @@ Exit codes:
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from datum.contracts import validate_payload, validate_value
 from datum.path_utils import assets_dir, templates_dir, existing_review_packets_dir
+
+
+def _contracts():
+    from datum.contracts import validate_payload, validate_value
+
+    return validate_payload, validate_value
 
 
 def load_config() -> dict:
@@ -56,11 +62,181 @@ def pass_gate(message: str = "gate passed") -> None:
     sys.exit(0)
 
 
+# ── Helper functions ────────────────────────────────────────────────────────
+
+
+def resolve_epic_dir() -> Path:
+    """Return docs/epics/<branch>/ based on current git branch."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        branch = result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        branch = "unknown"
+    return Path(f"docs/epics/{branch}")
+
+
+def check_questions_answered(content: str) -> list[str]:
+    """Check all [Answer]: lines in content for non-empty answers.
+
+    Returns a list of error strings for unanswered questions.
+    """
+    errors: list[str] = []
+    lines = content.split("\n")
+    current_question: str | None = None
+
+    for line in lines:
+        # Track current question header (### Q1: ...)
+        q_match = re.match(r"^###\s+(Q\d+):", line)
+        if q_match:
+            current_question = q_match.group(1)
+            continue
+
+        # Check [Answer]: lines
+        a_match = re.match(r"^\[Answer\]:\s*(.*)", line)
+        if a_match:
+            answer_text = a_match.group(1).strip()
+            if not answer_text and current_question:
+                errors.append(f"{current_question}: unanswered (empty [Answer]:)")
+            current_question = None
+
+    return errors
+
+
+def check_assumption_audit(
+    spec_content: str,
+    questions_content: str | None,
+    overconfidence_enabled: bool = True,
+) -> tuple[list[str], list[str]]:
+    """Validate the Assumption Audit section in a SPEC.
+
+    Returns (errors, warnings).
+    - errors: hard failures that block the gate
+    - warnings: advisory messages (e.g. zero Refine questions)
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not overconfidence_enabled:
+        return errors, warnings
+
+    # Check section exists
+    if "## Assumption Audit" not in spec_content:
+        errors.append("SPEC.md missing '## Assumption Audit' section")
+        return errors, warnings
+
+    # Extract table rows from the Assumption Audit section
+    section_start = spec_content.index("## Assumption Audit")
+    section_text = spec_content[section_start:]
+    # End at next ## heading or end of file
+    next_section = re.search(r"\n## (?!Assumption Audit)", section_text)
+    if next_section:
+        section_text = section_text[: next_section.start()]
+
+    # Build set of answered question IDs from questions_content
+    answered_questions: set[str] = set()
+    if questions_content:
+        q_lines = questions_content.split("\n")
+        current_q: str | None = None
+        for q_line in q_lines:
+            q_match = re.match(r"^###\s+(Q\d+):", q_line)
+            if q_match:
+                current_q = q_match.group(1)
+                continue
+            a_match = re.match(r"^\[Answer\]:\s*(.*)", q_line)
+            if a_match and current_q:
+                if a_match.group(1).strip():
+                    answered_questions.add(current_q)
+                current_q = None
+
+    # Parse table rows (skip header and separator)
+    table_rows = re.findall(r"^\|(.+)\|$", section_text, re.MULTILINE)
+    data_rows = []
+    for row in table_rows:
+        cells = [c.strip() for c in row.split("|")]
+        # Skip header row and separator row
+        if (
+            cells
+            and cells[0] in ("#", "---", "")
+            and (
+                len(cells) < 2 or cells[1].startswith("---") or cells[1] == "Assumption"
+            )
+        ):
+            continue
+        if all(c.startswith("---") or c == "" for c in cells):
+            continue
+        data_rows.append(cells)
+
+    for row in data_rows:
+        # Cells: [#, Assumption, Justification, Status, Resolves]
+        # (may have leading empty string from split)
+        # Filter out empty strings from leading/trailing pipes
+        cells = [c for c in row if c != ""]
+        if len(cells) < 4:
+            continue
+
+        status = cells[3].strip().lower()
+        resolves = cells[4].strip() if len(cells) > 4 else "n/a"
+
+        if status == "guess":
+            # Check if Resolves points to an answered question
+            resolves_match = re.match(r"^(Q\d+)$", resolves.strip())
+            if not resolves_match:
+                errors.append(
+                    f"Assumption {cells[0]}: status is 'guess' but Resolves "
+                    f"is '{resolves}' (must reference Q<N>)"
+                )
+            elif resolves_match.group(1) not in answered_questions:
+                errors.append(
+                    f"Assumption {cells[0]}: status is 'guess', Resolves "
+                    f"references {resolves_match.group(1)} but that question "
+                    f"is unanswered"
+                )
+
+    # Check for zero Refine-section questions (warning, not error)
+    if questions_content:
+        has_refine_section = bool(
+            re.search(r"^## Refine\b", questions_content, re.MULTILINE)
+        )
+        if has_refine_section:
+            # Count questions under the Refine section
+            refine_match = re.search(r"^## Refine\b.*", questions_content, re.MULTILINE)
+            if refine_match:
+                refine_start = refine_match.end()
+                # Find next ## section
+                next_sec = re.search(
+                    r"^## (?!Refine)", questions_content[refine_start:], re.MULTILINE
+                )
+                refine_text = (
+                    questions_content[refine_start : refine_start + next_sec.start()]
+                    if next_sec
+                    else questions_content[refine_start:]
+                )
+                refine_q_count = len(
+                    re.findall(r"^### Q\d+:", refine_text, re.MULTILINE)
+                )
+                if refine_q_count == 0:
+                    warnings.append("Zero clarifying questions in Refine section")
+        else:
+            warnings.append(
+                "QUESTIONS.md has no Refine section (zero Refine questions)"
+            )
+
+    return errors, warnings
+
+
 # ── Phase gate implementations ──────────────────────────────────────────────
 
 
 def gate_refine(yolo: bool, config: dict) -> None:
-    spec = Path("SPEC.md")
+    epic_dir = resolve_epic_dir()
+    spec = epic_dir / "SPEC.md"
+    if not spec.exists():
+        spec = Path("SPEC.md")
     if not spec.exists():
         fail("SPEC.md not found")
 
@@ -81,6 +257,13 @@ def gate_refine(yolo: bool, config: dict) -> None:
     if re.search(r"open question", content, re.IGNORECASE):
         if "[ ]" in content or "TBD" in content or "TODO" in content:
             fail("SPEC.md has unresolved open questions or TODOs")
+
+    # Check QUESTIONS.md for unanswered entries
+    questions_path = epic_dir / "QUESTIONS.md"
+    if questions_path.exists():
+        q_errors = check_questions_answered(questions_path.read_text())
+        if q_errors:
+            fail(f"QUESTIONS.md has unanswered questions: {q_errors}")
 
     policy = gate_policy(config, "refine_human_review")
     if policy == "required" and not yolo:
@@ -112,7 +295,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
     with lane_plan_path.open() as f:
         lane_plan = json.load(f)
 
-    schema_errors = validate_payload("lane-plan.schema.json", lane_plan_path)
+    schema_errors = _contracts()[0]("lane-plan.schema.json", lane_plan_path)
     if schema_errors:
         fail(f"lane-plan.json schema validation failed: {schema_errors}", hard=True)
 
@@ -151,6 +334,29 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 fail(
                     f"File overlap {f} across {sorted(owners)} has no dependency edge for {owner}"
                 )
+
+    # Overconfidence gate: check Assumption Audit in SPEC.md
+    epic_dir = resolve_epic_dir()
+    spec_path = epic_dir / "SPEC.md"
+    if not spec_path.exists():
+        spec_path = Path("SPEC.md")
+    questions_path = epic_dir / "QUESTIONS.md"
+
+    if spec_path.exists():
+        spec_content = spec_path.read_text()
+        questions_content = (
+            questions_path.read_text() if questions_path.exists() else None
+        )
+        overconfidence_enabled = config.get("gates", {}).get(
+            "overconfidence_check", True
+        )
+        audit_errors, audit_warnings = check_assumption_audit(
+            spec_content, questions_content, overconfidence_enabled
+        )
+        for w in audit_warnings:
+            print(f"⚠️ Warning: {w}", file=sys.stderr)
+        if audit_errors:
+            fail(f"Overconfidence gate failed: {audit_errors}")
 
     # Plan approval is always required (never skippable)
     policy = gate_policy(config, "plan_human_approval")
@@ -371,7 +577,7 @@ def gate_validate_packets(config: dict) -> None:
 
     errors = []
     for packet_path in packets_dir.glob("*.json"):
-        packet_errors = validate_payload("packet.schema.json", packet_path)
+        packet_errors = _contracts()[0]("packet.schema.json", packet_path)
         errors.extend(f"{packet_path.name}: {err}" for err in packet_errors)
 
     if errors:
@@ -413,7 +619,7 @@ def gate_validate_profiles(config: dict) -> None:
             errors.append(f"{profile_name}: missing profile and template")
             continue
         data = _load_yaml_profile(profile_path)
-        profile_errors = validate_value(schema_path, data)
+        profile_errors = _contracts()[1](schema_path, data)
         errors.extend(f"{profile_path}: {err}" for err in profile_errors)
 
     if errors:

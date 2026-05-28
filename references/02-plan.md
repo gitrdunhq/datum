@@ -56,6 +56,8 @@ Which approach should I decompose?
 
 Only proceed to step 1 after the human has chosen. If the human says "you choose" or "whatever's best", pick the simplest approach and state your choice explicitly before decomposing.
 
+After presenting approaches, append any implementation-level questions to `docs/epics/<branch>/QUESTIONS.md` with a `## Plan — YYYY-MM-DD` header. Use the same format as Refine questions (numbered, category-tagged, with context blocks and `[Answer]:` tags). Commit and wait for answers before decomposing.
+
 ### 1. Impact analysis
 
 For each module or symbol that will change:
@@ -83,6 +85,32 @@ Task shape (see `assets/schemas/task.schema.json`):
   "estimated_loc": 100
 }
 ```
+
+### 2.5. Unit decomposition (System-tier only)
+
+**Skip this step for Patch and Feature tiers.** Only System-tier epics (as classified by `datum classify`) require unit decomposition.
+
+Group tasks into parallelizable units of work:
+1. Identify independent work clusters — sets of tasks that share no files and have no behavioral dependencies
+2. Assign each cluster a unit ID: `unit-<name>` (e.g., `unit-auth`, `unit-api`)
+3. Map every task to exactly one unit via the `unit` field in tasks.json
+4. Define inter-unit dependencies in the top-level `units` key:
+
+```json
+{
+  "tasks": [...],
+  "units": {
+    "unit-auth": { "name": "Auth Middleware", "tasks": ["task-001", "task-002"], "depends_on": [] },
+    "unit-api": { "name": "API Endpoints", "tasks": ["task-003"], "depends_on": ["unit-auth"] }
+  }
+}
+```
+
+**Rules:**
+- Every task must belong to exactly one unit
+- The unit dependency graph must be acyclic (validated by `lane_plan.py`)
+- Tasks within a unit can run in parallel; a unit doesn't start until its dependency units complete
+- Units that share no dependencies can be assigned to different developers
 
 ### 3. Topological sort
 
@@ -113,6 +141,12 @@ cp tasks.json "docs/epics/$BRANCH/tasks.json"
 
 ### 6. Gate
 
+Before running the gate, the agent MUST complete the `## Assumption Audit` section in docs/epics/<branch>/SPEC.md:
+- List at least 3 assumptions baked into the SPEC
+- For each: state the assumption, justify it, and mark Status as `confirmed` or `guess`
+- For `guess` entries: add `Resolves: Q<N>` pointing to an answered question in QUESTIONS.md
+- If the Refine phase generated zero questions, note this — the gate will emit a warning
+
 Run `python3 scripts/gate.py plan [--yolo]`
 
 Validates:
@@ -131,6 +165,7 @@ On fail: surface the validation errors and rework.
 | `tasks.json` | repo root + `docs/epics/<branch>/` | Structured task list |
 | `TASKS.md` | repo root (execution) + `docs/epics/<branch>/` (archive) | Rendered implementation plan |
 | `lane-plan.json` | `.datum/` | DAG for pipeline scheduler |
+| `docs/epics/<branch>/QUESTIONS.md` | `docs/epics/<branch>/` | Plan-section questions appended |
 
 
 ## Failure modes
