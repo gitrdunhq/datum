@@ -167,23 +167,3 @@ yes
 ---
 
 ok have our gemma thing do something and show the output. have it develop a script that parses the claude jsonl and formats it for html
-
----
-
-and with grammar we can force
-
----
-
-yes
-
----
-
-@scripts/transcript-demo.html its blank though
-
----
-
-ok so like this thing is good . it can do sonnet work and can loop if we have to. we can monitor context right? for it?
-
----
-
-yep make this my new flow Gemma for Most!
