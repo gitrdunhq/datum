@@ -1,1 +1,5 @@
-make it a helper file for datum cli (datum bugfile
+make sure we dont leak sensitive data
+
+---
+
+sorryu keep going with report bug. datum mermaid should trigger like /datum:mermaid
