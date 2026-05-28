@@ -1,0 +1,75 @@
+update all documentation
+
+---
+
+<task-notification>
+<task-id>ad1e90dba975dfcf1</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/22c7ee55-dd95-47c2-898e-eb1751fa8a69/tasks/ad1e90dba975dfcf1.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix remaining stale refs" completed</summary>
+<result>All 7 changes applied. The other 4 files (quality-profiles.md, agent-contracts.md, brief-builder.md, 08-closeout.md) already had the correct `datum` CLI syntax and needed no edits.
+
+**Summary of changes made:**
+
+| File | Old | New |
+|---|---|---|
+| `references/01.5-research.md:34` | `python3 scripts/gate.py research` | `datum gate research` |
+| `references/recovery-modes.md:5` | `python3 scripts/diagnose_failure.py` | `datum diagnose` |
+| `references/rollback.md:25` | `python3 scripts/rollback.py` | `datum rollback` |
+| `references/coding-steering.md:36` | `uv run python` / `uv run pytest` | `datum test` for tests, project runner for execution |
+| `references/04-act-skeleton-preflight.md:75` | `python3 scripts/skeleton_creator.py` | `datum skeleton` |
+| `references/pattern-library.md:150` | `python3 scripts/learn_patterns.py` | `datum learn-patterns` |
+| `references/token-efficiency.md:74` | `python3 scripts/lane-tools/find_callers.py` | `datum lane-tool find_callers` |
+
+**Skipped (already correct):** `quality-profiles.md`, `agent-contracts.md`, `brief-builder.md`, `08-closeout.md` — all already used `datum` CLI syntax.</result>
+<usage><total_tokens>29598</total_tokens><tool_uses>19</tool_uses><duration_ms>65140</duration_ms></usage>
+</task-notification>
+
+---
+
+/dream
+
+---
+
+yes
+
+---
+
+how do we tune it
+
+---
+
+maybe this is where we do smeantic search bro
+
+---
+
+is that the best model for this? since we are using gemma?
+
+---
+
+dont need ollama we have apple mlx
+
+---
+
+lets use the best dedidiatected availalbe HF_TOKEN is in my env files
+
+---
+
+i think mlx is at 0.32
+
+---
+
+lets upgrade our stuff and see what features we have gained
+
+---
+
+can gemma 26 a4b do codeing , can we reduce my costs by leveraging that if available?!
+
+---
+
+but if we have agentic loops that fix and check, we could theoritically do it?
+
+---
+
+yes make it optional for now a beta feature

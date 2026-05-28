@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "2154204ad62f",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-11",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "SKILL.md",
+    "assets/config.toml.default",
+    "datum/cli.py",
+    "datum/local_llm.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/21/54204ad62f/0/metadata.json",
+      "transcript": "/21/54204ad62f/0/full.jsonl",
+      "content_hash": "/21/54204ad62f/0/content_hash.txt",
+      "prompt": "/21/54204ad62f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 755,
+    "cache_creation_tokens": 3253304,
+    "cache_read_tokens": 161272767,
+    "output_tokens": 176807,
+    "api_call_count": 579
+  }
+}
