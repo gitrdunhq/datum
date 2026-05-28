@@ -59,7 +59,3 @@ yeah lets go back and forth between you and gemini, pair programming. make your 
 ---
 
 install
-
----
-
-ok we didnt do a proper datum flow so lets get this checked in (except the HEY_) gitignore those
