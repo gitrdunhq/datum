@@ -30,6 +30,11 @@ All notable changes to DATUM are documented here.
 - `datum/cli.py`: full pipeline flag suite + multi-turn interactive testing
 - `assets/config.toml.default`: `[multi_turn]` section with 15 parameters + per-phase overrides + quality gates
 
+### Fixed
+- CLI crash: `Console.print(stderr=True)` replaced with `Console(stderr=True)` instance
+- Multi-word prompts: `datum local-llm how many r in strawberry` works without quotes
+- Shell autocompletion: `datum --install-completion` for bash, zsh, fish, powershell
+
 ### Stats
 - 13 files changed, +1,554 / -16 lines
 - Pair-programmed across 6 rounds between Claude (Opus 4.6) and Gemini (3.1 Pro)

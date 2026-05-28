@@ -31,7 +31,7 @@ Seventeen epics across two sessions:
 15. **Epic 15** (PR #39) — Enforce local LLM via subagent only: hook blocks shell, AGENTS.md mandates Agent tool.
 16. **Epic 16** (PR #40) — `datum init` seeds hooks, config, and lane-tools to every initted repo.
 17. **Epic 17** (PR #41) — datum-tui beta: Textual factory floor dashboard + OpenRouter TUI reference implementation.
-18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags. Pair-programmed Claude×Gemini across 6 rounds.
+18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags, shell autocompletion. Pair-programmed Claude×Gemini across 6 rounds.
 
 ## Active work
 

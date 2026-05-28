@@ -19,7 +19,7 @@ def _version_callback(value: bool):
 app = typer.Typer(
     name="datum",
     help="DATUM V2 - Agentic Production Line Orchestrator",
-    add_completion=False,
+    add_completion=True,
 )
 
 
@@ -254,8 +254,12 @@ def _strip_thinking(text: str) -> str:
     return text
 
 
-@app.command(name="local-llm")
+@app.command(
+    name="local-llm",
+    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
+)
 def local_llm_cmd(
+    ctx: typer.Context,
     prompt: str = typer.Argument("", help="Prompt to send (empty = show status)"),
     stats: bool = typer.Option(False, "--stats", help="Show inference metrics"),
     system: str = typer.Option(
@@ -298,6 +302,13 @@ def local_llm_cmd(
 ):
     """Local LLM inference via MLX. Use --json for pipeline integration."""
     from datum.local_llm import is_available, load_config, chat
+
+    if ctx.args:
+        prompt = (
+            (prompt + " " + " ".join(ctx.args)).strip()
+            if prompt
+            else " ".join(ctx.args)
+        )
 
     config = load_config()
 
