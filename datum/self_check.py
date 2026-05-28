@@ -16,22 +16,22 @@ from datum.path_utils import skill_root
 ROOT = skill_root()
 DOC_GLOBS = ["SKILL.md", "references/*.md"]
 REQUIRED_FILES = [
-    "scripts/contracts.py",
-    "scripts/path_utils.py",
-    "scripts/migrate.py",
-    "scripts/gate.py",
-    "scripts/render.py",
-    "scripts/commit_queue.py",
+    "datum/contracts.py",
+    "datum/path_utils.py",
+    "datum/migrate.py",
+    "datum/gate.py",
+    "datum/render.py",
+    "datum/commit_queue.py",
 ]
 REQUIRED_CLOSEOUT_COLLECTORS = [
-    "scripts/closeout/collect_git.py",
-    "scripts/closeout/collect_tasks.py",
-    "scripts/closeout/collect_platform.py",
-    "scripts/closeout/collect_lane_tools.py",
-    "scripts/closeout/collect_brief_defects.py",
-    "scripts/closeout/collect_token_metrics.py",
-    "scripts/closeout/collect_gitnexus_diff.py",
-    "scripts/closeout/detect_solutions.py",
+    "datum/closeout/collect_git.py",
+    "datum/closeout/collect_tasks.py",
+    "datum/closeout/collect_platform.py",
+    "datum/closeout/collect_lane_tools.py",
+    "datum/closeout/collect_brief_defects.py",
+    "datum/closeout/collect_token_metrics.py",
+    "datum/closeout/collect_gitnexus_diff.py",
+    "datum/closeout/detect_solutions.py",
 ]
 REQUIRED_HOOKS = [
     "assets/hooks/pre-commit-test-ratchet.sh",
@@ -55,14 +55,32 @@ def documented_script_refs() -> set[str]:
     refs: set[str] = set()
     for path in doc_files():
         content = path.read_text()
-        refs.update(re.findall(r"`(scripts/[A-Za-z0-9_./-]+\.py)(?:\s|`)", content))
-        refs.update(re.findall(r"(scripts/[A-Za-z0-9_./-]+\.py)", content))
+        for raw in re.findall(r"(scripts/[A-Za-z0-9_./-]+\.py)", content):
+            if raw == "scripts/datum.py":
+                refs.add(raw)
+                continue
+            migrated = raw.replace("scripts/", "datum/", 1)
+            if (ROOT / migrated).exists():
+                refs.add(migrated)
+            elif (ROOT / raw).exists():
+                refs.add(raw)
+        for m in re.findall(r"datum\.([A-Za-z0-9_.]+)", content):
+            parts = m.split(".")
+            py_path = "datum/" + "/".join(parts) + ".py"
+            pkg_path = "datum/" + "/".join(parts) + "/__init__.py"
+            if (ROOT / py_path).exists() or (ROOT / pkg_path).exists():
+                refs.add(py_path if (ROOT / py_path).exists() else pkg_path)
     return refs
 
 
 def run_contract_self_test() -> tuple[bool, str]:
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/contracts.py"), "self-test"],
+        [
+            sys.executable,
+            str(ROOT / "scripts/datum.py"),
+            "datum.contracts",
+            "self-test",
+        ],
         capture_output=True,
         text=True,
     )

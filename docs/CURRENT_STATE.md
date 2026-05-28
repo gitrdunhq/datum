@@ -13,7 +13,7 @@
 
 ## Active work / Next Steps
 
-- **V4 "Teach" Phase Implementation**: Rework `wfc-teach` to fit the modernized V2 architecture.
+- **V4 "Teach" Phase Implementation**: Rework `datum-teach` to fit the modernized V2 architecture.
 - **Fleet Command**: Implement centralized control across multiple machines (Dual Mode / Headless).
 - **Assimilate Legacy Integrations**:
   - Update Triage/Discovery to use `jira-intake` standards.

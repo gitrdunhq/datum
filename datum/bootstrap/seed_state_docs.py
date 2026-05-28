@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from datum.path_utils import assets_dir, templates_dir
+from datum.path_utils import templates_dir
 
 
 def main() -> None:
@@ -57,10 +57,53 @@ def main() -> None:
     practice_dir.mkdir(parents=True, exist_ok=True)
     practice_readme = practice_dir / "README.md"
     if not practice_readme.exists():
-        practice_readme.write_text("# Practice Ledger\n\nRecord manual manager interventions and roadmap decisions here before formal tooling is built to automate them.\n")
+        practice_readme.write_text(
+            "# Practice Ledger\n\nRecord manual manager interventions and roadmap decisions here before formal tooling is built to automate them.\n"
+        )
         seeded.append(str(practice_readme))
 
+    seeded.extend(seed_agents_md())
+
     print(json.dumps({"ok": True, "seeded": seeded}))
+
+
+AGENTS_MD_HEADER = """# AGENTS.md
+
+This is the single source of truth for all AI coding agents working in this repository.
+All tool-specific files (CLAUDE.md, GEMINI.md, etc.) redirect here.
+
+"""
+
+TOOL_REDIRECT = "# {tool_name} Instructions\n\nAll agent instructions live in [AGENTS.md](AGENTS.md). Read that file.\n"
+
+TOOL_FILES = {
+    "CLAUDE.md": "Claude Code",
+    "GEMINI.md": "Gemini CLI",
+    "CODEX.md": "Codex",
+    "KIRO.md": "Kiro",
+    "COPILOT.md": "Copilot",
+}
+
+
+def seed_agents_md() -> list[str]:
+    seeded = []
+
+    agents = Path("AGENTS.md")
+    if not agents.exists():
+        agents.write_text(AGENTS_MD_HEADER)
+        seeded.append(str(agents))
+
+    for filename, tool_name in TOOL_FILES.items():
+        path = Path(filename)
+        content = path.read_text() if path.exists() else ""
+        redirect_line = (
+            "All agent instructions live in [AGENTS.md](AGENTS.md). Read that file."
+        )
+        if redirect_line not in content:
+            path.write_text(TOOL_REDIRECT.format(tool_name=tool_name))
+            seeded.append(str(path))
+
+    return seeded
 
 
 if __name__ == "__main__":

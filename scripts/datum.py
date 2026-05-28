@@ -4,7 +4,6 @@
 #   "typer",
 #   "rich",
 #   "pydantic",
-#   "mcp",
 # ]
 # ///
 """Self-contained execution wrapper for the DATUM agent skill."""
@@ -16,6 +15,7 @@ from pathlib import Path
 # Ensure the 'datum' package is available
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+
 def main():
     # If the first argument starts with 'datum.', act like python -m
     if len(sys.argv) > 1 and sys.argv[1].startswith("datum."):
@@ -26,7 +26,9 @@ def main():
     else:
         # Otherwise, run the main Typer CLI
         from datum.cli import main as cli_main
+
         cli_main()
+
 
 if __name__ == "__main__":
     main()

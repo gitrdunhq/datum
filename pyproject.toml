@@ -5,15 +5,14 @@ description = "DATUM V2 Agentic Production Line Orchestrator"
 authors = [
     {name = "Gitrdun HQ"}
 ]
-readme = "DATUM.md"
+readme = "docs/DATUM.md"
 requires-python = ">=3.12"
 
 dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
-    "mcp>=1.27.1",
-    "uvicorn>=0.47.0",
-    "starlette>=1.0.1",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

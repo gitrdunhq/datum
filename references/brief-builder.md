@@ -38,7 +38,7 @@ Once all four are answerable, proceed to build the brief below.
 
 | Input | How to get it | Include how much |
 |---|---|---|
-| docs/SPEC.md relevant sections | Read docs/SPEC.md; extract sections related to this task's ACs | Relevant sections only, not the full doc |
+| docs/epics/$BRANCH/SPEC.md relevant sections | Read docs/epics/$BRANCH/SPEC.md; extract sections related to this task's ACs | Relevant sections only, not the full doc |
 | docs/PROPERTIES.md — task-filtered | Read traceability table; keep only property IDs assigned to this task | Those entries only |
 | Task entry | Read TASKS.md task block | Full entry: title, ACs, files, red_note, introduces_stubs, estimated_loc |
 | GitNexus context | `gitnexus context <symbol>` for each symbol the test will reference | Full output |
@@ -106,7 +106,7 @@ fix the test until the failure is meaningful — do not submit until the reason 
 
 | Input | How to get it |
 |---|---|
-| docs/SPEC.md sections, PROPERTIES (task-filtered), task entry, GitNexus context, lane-tools README | Same as RED |
+| docs/epics/$BRANCH/SPEC.md sections, PROPERTIES (task-filtered), task entry, GitNexus context, lane-tools README | Same as RED |
 | TestSignal JSON | `python3 scripts/test_signal.py --framework <detected> --input <runner_log>` |
 
 **Pre-dispatch check:** if `test_signal.py` returns `{"status": "redaction_failed"}`, **halt the lane** — do not dispatch GREEN. Log the halt; surface to user.
@@ -161,7 +161,7 @@ Do not edit test files — your file permissions exclude the test directory.
 
 | Input | How to get it |
 |---|---|
-| docs/SPEC.md (full), PROPERTIES (task-filtered), task entry | As before |
+| docs/epics/$BRANCH/SPEC.md (full), PROPERTIES (task-filtered), task entry | As before |
 | GitNexus **impact** (not just context) | `gitnexus impact <file>` for each file in task.files |
 | Implementation files at current HEAD | Read from branch |
 | Test source files | Read from branch — REFACTOR is the first agent that may see them |

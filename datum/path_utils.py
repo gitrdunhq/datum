@@ -13,12 +13,13 @@ STATE_FILE = DATUM_DIR / "state.json"
 
 def skill_root() -> Path:
     """Absolute path to the skill root."""
-    return Path(__file__).resolve().parent.parent / "skills" / "datum-workflow"
+    return Path(__file__).resolve().parent.parent
 
 
 def assets_dir() -> Path:
     """Absolute path to the skill assets directory."""
     return skill_root() / "assets"
+
 
 def templates_dir() -> Path:
     """Absolute path to the skill templates directory."""

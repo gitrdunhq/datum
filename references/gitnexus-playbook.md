@@ -21,7 +21,7 @@ GitNexus is the impact analysis and code intelligence backbone. The skill calls 
 |---|---|---|
 | Bootstrap | `analyze --skills` | One-time per repo indexing |
 | Discovery | `query`, `list_repos` | Architecture survey |
-| Refine | `context` on docs/TICKET.md symbols | Verify ticket assumptions |
+| Refine | `context` on docs/epics/$BRANCH/TICKET.md symbols | Verify ticket assumptions |
 | Plan | `impact` per change site | Inform lane grouping by blast radius |
 | Plan | `cypher` for complex traversals | When `impact` is insufficient |
 | Properties | `context` for invariant derivation | What currently calls this |

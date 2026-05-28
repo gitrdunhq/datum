@@ -1,6 +1,6 @@
 # Phase: Properties
 
-**Goal:** Derive a docs/PROPERTIES.md that covers all 11 property categories for every requirement in docs/SPEC.md, with traceability to specific tasks in TASKS.md.
+**Goal:** Derive a docs/PROPERTIES.md that covers all 11 property categories for every requirement in docs/epics/$BRANCH/SPEC.md, with traceability to specific tasks in TASKS.md.
 
 ## Inputs
 

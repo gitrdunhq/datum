@@ -1,5 +1,5 @@
 """
-wfc-coding-steering - Evidence mining and steering-doc validation helpers.
+datum-coding-steering - Evidence mining and steering-doc validation helpers.
 """
 
 from .extractor import (
