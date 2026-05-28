@@ -1,0 +1,73 @@
+how would you make the localllm pipeline more world class
+
+---
+
+id like to see multi turn multi phase for more complex problems where the localllm csncorechstarte a bit, dosble?
+
+---
+
+make everythkng paramaterable too so kt becomes super poweful
+
+---
+
+read #44 and see what and end user wants
+
+---
+
+lets berifyc ahain lets stress test
+
+---
+
+buddy we can handle 128k comtrxt wjndows
+
+---
+
+what about grammar
+
+---
+
+do web research for best practises
+
+---
+
+few-shot is what i meant i wanted
+
+---
+
+few-shot is what i meant i wanted initially, lets do all 5
+
+---
+
+leave a note called HEY_GEMINI.md with what we did, gonna have him take a look
+
+---
+
+@HEY_CLAUDE.md
+
+---
+
+yeah lets go back and forth between you and gemini, pair programming. make your change update HEY_GEMINI.md
+
+---
+
+@HEY_CLAUDE.md
+
+---
+
+@HEY_CLAUDE.md
+
+---
+
+install
+
+---
+
+ok we didnt do a proper datum flow so lets get this checked in (except the HEY_) gitignore those
+
+---
+
+merge and closeout
+
+---
+
+do the full closeout routine please
