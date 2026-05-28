@@ -222,8 +222,13 @@ def dream(
     extract_only: bool = typer.Option(
         False, "--extract-only", help="Only run transcript extraction"
     ),
+    semantic: bool = typer.Option(
+        True,
+        "--semantic/--regex",
+        help="Use MLX semantic search (default) or regex fallback",
+    ),
 ):
-    """Run memory consolidation — staleness audit + transcript extraction."""
+    """Run memory consolidation — staleness audit + semantic transcript extraction."""
 
     if not memory_dir:
         cwd = Path.cwd()
@@ -263,17 +268,41 @@ def dream(
         console.print("[yellow]No transcripts found — skipping extraction.[/yellow]")
         return
 
-    from datum.memory_extract import _extract_from_transcript
-
     console.print(
         f"\n[bold blue]Phase 2: Extracting from {len(transcripts)} transcript(s)...[/bold blue]"
     )
-    all_candidates = []
-    for t in transcripts:
-        all_candidates.extend(_extract_from_transcript(t))
 
-    high = [c for c in all_candidates if c["confidence"] == "high"]
-    medium = [c for c in all_candidates if c["confidence"] == "medium"]
+    if semantic:
+        from datum.memory_semantic import extract_semantic
+
+        console.print("  Using MLX semantic search (Jina v5)")
+        results = {
+            "high_confidence": [],
+            "medium_confidence": [],
+            "total": 0,
+            "method": "semantic",
+        }
+        for t in transcripts:
+            r = extract_semantic(t)
+            results["high_confidence"].extend(r.get("high_confidence", []))
+            results["medium_confidence"].extend(r.get("medium_confidence", []))
+            results["total"] += r.get("total", 0)
+            if r.get("method") == "regex_fallback":
+                console.print(
+                    "  [yellow]MLX not available — fell back to regex[/yellow]"
+                )
+                results["method"] = "regex_fallback"
+        high = results["high_confidence"]
+        medium = results["medium_confidence"]
+    else:
+        from datum.memory_extract import _extract_from_transcript
+
+        console.print("  Using regex extraction")
+        all_candidates = []
+        for t in transcripts:
+            all_candidates.extend(_extract_from_transcript(t))
+        high = [c for c in all_candidates if c["confidence"] == "high"]
+        medium = [c for c in all_candidates if c["confidence"] == "medium"]
 
     console.print(
         f"  {len(high)} high-confidence, {len(medium)} medium-confidence candidates"
@@ -281,26 +310,25 @@ def dream(
 
     if extract_only:
         console.print(
-            json.dumps(
-                {
-                    "high_confidence": high,
-                    "medium_confidence": medium,
-                    "total": len(all_candidates),
-                },
-                indent=2,
-            )
+            json.dumps({"high_confidence": high, "medium_confidence": medium}, indent=2)
         )
         return
 
     if high:
         console.print("\n[bold green]High-confidence (auto-write):[/bold green]")
         for c in high[:10]:
-            console.print(f"  [{c['suggested_type']}] {c['source_quote'][:100]}...")
+            score = f" ({c['score']})" if "score" in c else ""
+            console.print(
+                f"  [{c.get('suggested_type', 'feedback')}]{score} {c['source_quote'][:100]}..."
+            )
 
     if medium:
         console.print("\n[yellow]Medium-confidence (review):[/yellow]")
         for c in medium[:10]:
-            console.print(f"  [{c['suggested_type']}] {c['source_quote'][:100]}...")
+            score = f" ({c['score']})" if "score" in c else ""
+            console.print(
+                f"  [{c.get('suggested_type', 'feedback')}]{score} {c['source_quote'][:100]}..."
+            )
 
     console.print(
         f"\n[bold green]✓ Dream complete. "
