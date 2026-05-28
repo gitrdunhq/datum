@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "3bf7f7202eb9",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-6",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "SKILL.md",
+    "scripts/extract_mermaid.py",
+    "scripts/mermaid_to_image.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3b/f7f7202eb9/0/metadata.json",
+      "transcript": "/3b/f7f7202eb9/0/full.jsonl",
+      "content_hash": "/3b/f7f7202eb9/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 9713,
+    "cache_read_tokens": 7600185,
+    "output_tokens": 4258,
+    "api_call_count": 23
+  }
+}
