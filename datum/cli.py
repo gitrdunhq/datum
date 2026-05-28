@@ -624,6 +624,37 @@ def dream(
     )
 
 
+@app.command()
+def walkthrough():
+    """Generate a walkthrough document for the current epic."""
+    import subprocess
+    from datum.walkthrough import generate_walkthrough
+
+    try:
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if branch.returncode != 0 or not branch.stdout.strip():
+            console.print("[bold red]Could not resolve git branch.[/bold red]")
+            raise typer.Exit(1)
+        epic_dir = Path(f"docs/epics/{branch.stdout.strip()}")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        console.print(
+            "[bold red]git not available — cannot resolve epic directory.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    if not epic_dir.exists():
+        console.print(f"[bold red]Epic directory not found: {epic_dir}[/bold red]")
+        raise typer.Exit(1)
+
+    output_path = generate_walkthrough(epic_dir)
+    console.print(f"[bold green]✓ Walkthrough generated: {output_path}[/bold green]")
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()

@@ -21,9 +21,18 @@ _model_cache: dict = {}
 DEFAULTS = {
     "enabled": False,
     "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
+    # fast_model is used for low-complexity phases (triage, validate).
+    # Defaults to the same as model if not set.
+    "fast_model": None,
+    "fast_phases": ["triage", "validate"],
     "max_tokens": 131072,
     "temperature": 0.3,
     "context_window": 131072,
+    # KV cache: kv_bits=8 halves cache memory vs float16; None disables quantization.
+    # max_kv_size caps the rolling KV buffer (tokens); None = unlimited.
+    "kv_bits": 8,
+    "kv_group_size": 64,
+    "max_kv_size": 32768,
     "repetition_ngram_size": 6,
     "repetition_max_count": 3,
     "phases": [
@@ -107,7 +116,14 @@ def load_model(model_id: str = DEFAULTS["model"]):
     if model_id in _model_cache:
         return _model_cache[model_id]
 
+    import os
+
     from mlx_lm import load
+
+    config = load_config()
+    hf_cache = config.get("hf_cache_dir")
+    if hf_cache and not os.environ.get("HF_HUB_CACHE"):
+        os.environ["HF_HUB_CACHE"] = str(hf_cache)
 
     model, tokenizer = load(model_id)
     _model_cache[model_id] = (model, tokenizer)
@@ -200,13 +216,25 @@ def generate(
     config = load_config()
     ngram_size = config.get("repetition_ngram_size", DEFAULTS["repetition_ngram_size"])
     max_count = config.get("repetition_max_count", DEFAULTS["repetition_max_count"])
+    kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
+    kv_group_size = config.get("kv_group_size", DEFAULTS["kv_group_size"])
+    max_kv_size = config.get("max_kv_size", DEFAULTS["max_kv_size"])
+
+    kv_kwargs: dict = {}
+    if kv_bits is not None:
+        kv_kwargs["kv_bits"] = kv_bits
+        kv_kwargs["kv_group_size"] = kv_group_size
+    if max_kv_size is not None:
+        kv_kwargs["max_kv_size"] = max_kv_size
 
     start = time.monotonic()
     text = ""
     token_count = 0
     abort_reason = None
 
-    for response in stream_generate(model, tokenizer, prompt, max_tokens=max_tokens):
+    for response in stream_generate(
+        model, tokenizer, prompt, max_tokens=max_tokens, **kv_kwargs
+    ):
         text += response.text
         token_count += 1
 
@@ -300,6 +328,18 @@ def structured(
     except ImportError:
         raise RuntimeError("Grammar support requires: pip install outlines")
 
+    config = load_config()
+    kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
+    kv_group_size = config.get("kv_group_size", DEFAULTS["kv_group_size"])
+    max_kv_size = config.get("max_kv_size", DEFAULTS["max_kv_size"])
+
+    kv_kwargs: dict = {}
+    if kv_bits is not None:
+        kv_kwargs["kv_bits"] = kv_bits
+        kv_kwargs["kv_group_size"] = kv_group_size
+    if max_kv_size is not None:
+        kv_kwargs["max_kv_size"] = max_kv_size
+
     model, tokenizer = load_model(model_id)
     mlx_model = outlines.from_mlxlm(model, tokenizer)
     try:
@@ -308,7 +348,7 @@ def structured(
         gen = outlines.Generator(mlx_model, schema)
 
     start = time.monotonic()
-    raw = gen(prompt, max_tokens=max_tokens)
+    raw = gen(prompt, max_tokens=max_tokens, **kv_kwargs)
     elapsed = time.monotonic() - start
 
     data = json.loads(raw) if isinstance(raw, str) else raw
@@ -541,8 +581,7 @@ def run_phase(
     if mt_config.get("enabled") and phase in mt_config.get("phases", []):
         return multi_turn_phase(phase, prompt, schema, max_tokens, mt_overrides)
 
-    config = load_config()
-    model_id = config.get("model", DEFAULTS["model"])
+    model_id = get_model_for_phase(phase)
 
     try:
         if schema:
@@ -840,7 +879,7 @@ def multi_turn_phase(
         return run_phase(phase, prompt, schema, max_tokens)
 
     config = load_config()
-    model_id = config.get("model", DEFAULTS["model"])
+    model_id = get_model_for_phase(phase)
     max_turns = (
         mt_config.get("max_tool_turns", 10)
         if mt_config.get("enable_tool_execution", False)
@@ -996,15 +1035,15 @@ def multi_turn_phase(
                     tool_output, was_truncated = _execute_tool(tool_call, mt_config)
                     tool_time_s = time.monotonic() - tool_start_time
                     tool_name = tool_call.get("tool_name", "unknown")
-                    
+
                     history.append(
                         {"role": "assistant", "content": json.dumps(turn_data_dict)}
                     )
-                    
+
                     user_content = f"Tool execution result:\n<untrusted>\n{tool_output}\n</untrusted>\nAnalyze the result and decide next action."
                     if was_truncated:
                         user_content += "\n\nSystem Note: The tool output was extremely long and has been truncated. If you need the missing lines, use a more precise tool (like 'read_file_range' or 'grep_search')."
-                    
+
                     history.append(
                         {
                             "role": "user",
@@ -1306,6 +1345,18 @@ def should_use_local(phase: str) -> bool:
     if not config.get("enabled", False):
         return False
     return phase in config.get("phases", [])
+
+
+def get_model_for_phase(phase: str) -> str:
+    """Return fast_model for low-complexity phases, model otherwise.
+
+    Falls back to model if fast_model is not configured.
+    """
+    config = load_config()
+    main_model = config.get("model", DEFAULTS["model"])
+    fast_model = config.get("fast_model") or main_model
+    fast_phases = config.get("fast_phases", DEFAULTS["fast_phases"])
+    return fast_model if phase in fast_phases else main_model
 
 
 def main() -> None:

@@ -4,4 +4,4 @@ model = "mlx-community/gemma-4-26b-a4b-it-4bit"
 max_tokens = 8192
 context_window = 262144
 temperature = 0.3
-phases = ["triage", "act_skeleton", "validate", "sidecar_docs"]
+phases = ["triage", "act_skeleton", "act_red", "act_green", "act_refactor", "validate", "sidecar_docs", "sidecar_security", "closeout_collectors"]
