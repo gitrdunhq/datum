@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4a54c96341ec",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-8",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "CURRENT_STATE.md",
+    "ROADMAP.md",
+    "SKILL.md",
+    "TASKS.md",
+    "references/00-discovery.md",
+    "references/01-refine.md",
+    "references/02-plan.md",
+    "references/03-properties.md",
+    "references/04-act-python.md",
+    "references/04-act.md",
+    "references/05-validate.md",
+    "references/06-review.md",
+    "references/07-pr-comments.md",
+    "references/08-closeout.md",
+    "references/agent-contracts.md",
+    "references/brief-builder.md",
+    "references/quality-profiles.md",
+    "scripts/lane-tools/README.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4a/54c96341ec/0/metadata.json",
+      "transcript": "/4a/54c96341ec/0/full.jsonl",
+      "content_hash": "/4a/54c96341ec/0/content_hash.txt",
+      "prompt": "/4a/54c96341ec/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 361687,
+    "cache_read_tokens": 14647366,
+    "output_tokens": 9649,
+    "api_call_count": 41
+  }
+}

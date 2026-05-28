@@ -1,0 +1,97 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4a54c96341ec",
+  "session_id": "22c7ee55-dd95-47c2-898e-eb1751fa8a69",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T04:18:13.985217Z",
+  "branch": "datum/epic-8",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "CURRENT_STATE.md",
+    "ROADMAP.md",
+    "SKILL.md",
+    "TASKS.md",
+    "references/00-discovery.md",
+    "references/01-refine.md",
+    "references/02-plan.md",
+    "references/03-properties.md",
+    "references/04-act-python.md",
+    "references/04-act.md",
+    "references/05-validate.md",
+    "references/06-review.md",
+    "references/07-pr-comments.md",
+    "references/08-closeout.md",
+    "references/agent-contracts.md",
+    "references/brief-builder.md",
+    "references/quality-profiles.md",
+    "scripts/lane-tools/README.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "20114d189b17",
+  "checkpoint_transcript_start": 2939,
+  "transcript_lines_at_start": 2939,
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 361687,
+    "cache_read_tokens": 14647366,
+    "output_tokens": 9649,
+    "api_call_count": 41
+  },
+  "session_metrics": {
+    "turn_count": 25
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T04:18:13.933153Z",
+    "agent_lines": 83,
+    "agent_removed": 97,
+    "human_added": 0,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 91,
+    "total_lines_changed": 196,
+    "agent_percentage": 91.83673469387756,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 109,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/agents/entire-search.md": 25,
+        ".claude/settings.json": 84
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 8,
+      "user_lines_removed": 8,
+      "agent_lines_added": 200,
+      "agent_lines_removed": 97,
+      "user_added_per_file": {
+        "references/01.5-research.md": 1,
+        "references/04-act-skeleton-preflight.md": 1,
+        "references/coding-steering.md": 1,
+        "references/pattern-library.md": 1,
+        "references/pipeline-dispatch.md": 1,
+        "references/recovery-modes.md": 1,
+        "references/rollback.md": 1,
+        "references/token-efficiency.md": 1
+      },
+      "user_removed_per_file": {
+        "references/01.5-research.md": 1,
+        "references/04-act-skeleton-preflight.md": 1,
+        "references/coding-steering.md": 1,
+        "references/pattern-library.md": 1,
+        "references/pipeline-dispatch.md": 1,
+        "references/recovery-modes.md": 1,
+        "references/rollback.md": 1,
+        "references/token-efficiency.md": 1
+      }
+    }
+  ]
+}
