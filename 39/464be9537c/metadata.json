@@ -3,11 +3,8 @@
   "checkpoint_id": "39464be9537c",
   "strategy": "manual-commit",
   "branch": "datum/epic-13",
-  "checkpoints_count": 4,
-  "files_touched": [
-    "datum/gate.py",
-    "install.sh"
-  ],
+  "checkpoints_count": 2,
+  "files_touched": null,
   "sessions": [
     {
       "metadata": "/39/464be9537c/0/metadata.json",
@@ -17,10 +14,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 878,
-    "cache_creation_tokens": 3732540,
-    "cache_read_tokens": 201628545,
-    "output_tokens": 194481,
-    "api_call_count": 666
+    "input_tokens": 812,
+    "cache_creation_tokens": 3707373,
+    "cache_read_tokens": 178673491,
+    "output_tokens": 183903,
+    "api_call_count": 618
   }
 }
