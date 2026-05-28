@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "638bfd5325e4",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-2",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "SKILL.md",
+    "datum/gate.py",
+    "datum/state.py",
+    "docs/datum-workflow.md",
+    "docs/epics/datum/epic-2/QUESTIONS.md",
+    "docs/epics/datum/epic-2/SPEC.md",
+    "docs/epics/datum/epic-2/TICKET.md",
+    "references/02.8-deepen.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/63/8bfd5325e4/0/metadata.json",
+      "transcript": "/63/8bfd5325e4/0/full.jsonl",
+      "content_hash": "/63/8bfd5325e4/0/content_hash.txt",
+      "prompt": "/63/8bfd5325e4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 47,
+    "cache_creation_tokens": 265760,
+    "cache_read_tokens": 11817267,
+    "output_tokens": 11243,
+    "api_call_count": 45
+  }
+}
