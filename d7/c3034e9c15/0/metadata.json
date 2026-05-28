@@ -1,0 +1,139 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "d7c3034e9c15",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T21:48:15.138087Z",
+  "branch": "datum/epic-20",
+  "checkpoints_count": 7,
+  "files_touched": [
+    ".datum/config.toml",
+    "TASKS.md",
+    "datum/local_llm.py",
+    "docs/epics/datum/epic-20/QUESTIONS.md",
+    "docs/epics/datum/epic-20/SPEC.md",
+    "docs/epics/datum/epic-20/TASKS.md",
+    "docs/epics/datum/epic-20/TICKET.md",
+    "docs/epics/datum/epic-20/tasks.json",
+    "tasks.json",
+    "tests/test_local_llm_hardening.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "190838ef8c49",
+  "token_usage": {
+    "input_tokens": 1068,
+    "cache_creation_tokens": 969682,
+    "cache_read_tokens": 38874505,
+    "output_tokens": 124609,
+    "api_call_count": 235
+  },
+  "session_metrics": {
+    "turn_count": 16
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T21:48:15.108002Z",
+    "agent_lines": 253,
+    "agent_removed": 205,
+    "human_added": 123,
+    "human_modified": 24,
+    "human_removed": 0,
+    "total_committed": 393,
+    "total_lines_changed": 605,
+    "agent_percentage": 75.70247933884298,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 493,
+      "user_lines_removed": 1,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 23,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 493,
+      "user_lines_removed": 1,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 23,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 493,
+      "user_lines_removed": 1,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 23,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 493,
+      "user_lines_removed": 1,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 23,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 491,
+      "user_lines_removed": 1,
+      "agent_lines_added": 212,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".datum/config.toml": 21,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 491,
+      "user_lines_removed": 1,
+      "agent_lines_added": 409,
+      "agent_lines_removed": 334,
+      "user_added_per_file": {
+        ".datum/config.toml": 21,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "d7c3034e9c15",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-20",
+  "checkpoints_count": 7,
+  "files_touched": [
+    ".datum/config.toml",
+    "TASKS.md",
+    "datum/local_llm.py",
+    "docs/epics/datum/epic-20/QUESTIONS.md",
+    "docs/epics/datum/epic-20/SPEC.md",
+    "docs/epics/datum/epic-20/TASKS.md",
+    "docs/epics/datum/epic-20/TICKET.md",
+    "docs/epics/datum/epic-20/tasks.json",
+    "tasks.json",
+    "tests/test_local_llm_hardening.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d7/c3034e9c15/0/metadata.json",
+      "transcript": "/d7/c3034e9c15/0/full.jsonl",
+      "content_hash": "/d7/c3034e9c15/0/content_hash.txt",
+      "prompt": "/d7/c3034e9c15/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1068,
+    "cache_creation_tokens": 969682,
+    "cache_read_tokens": 38874505,
+    "output_tokens": 124609,
+    "api_call_count": 235
+  }
+}
