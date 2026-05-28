@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4988d7a70616",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".datum/config.toml",
+    "assets/schemas/task.schema.json",
+    "assets/schemas/tasks.schema.json",
+    "datum/cli.py",
+    "datum/local_llm.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/49/88d7a70616/0/metadata.json",
+      "transcript": "/49/88d7a70616/0/full.jsonl",
+      "content_hash": "/49/88d7a70616/0/content_hash.txt",
+      "prompt": "/49/88d7a70616/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1161,
+    "cache_creation_tokens": 1292025,
+    "cache_read_tokens": 58531978,
+    "output_tokens": 152827,
+    "api_call_count": 300
+  }
+}

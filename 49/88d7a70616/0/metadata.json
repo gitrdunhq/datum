@@ -1,0 +1,71 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "4988d7a70616",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T23:47:47.584369Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".datum/config.toml",
+    "assets/schemas/task.schema.json",
+    "assets/schemas/tasks.schema.json",
+    "datum/cli.py",
+    "datum/local_llm.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "cf0b4e1e9f52",
+  "token_usage": {
+    "input_tokens": 1161,
+    "cache_creation_tokens": 1292025,
+    "cache_read_tokens": 58531978,
+    "output_tokens": 152827,
+    "api_call_count": 300
+  },
+  "session_metrics": {
+    "turn_count": 29
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T23:47:47.541992Z",
+    "agent_lines": 5,
+    "agent_removed": 0,
+    "human_added": 889,
+    "human_modified": 13,
+    "human_removed": 0,
+    "total_committed": 906,
+    "total_lines_changed": 1202,
+    "agent_percentage": 0.4159733777038269,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 306,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 483,
+      "user_lines_removed": 2,
+      "agent_lines_added": 306,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 13,
+        "docs/LANDSCAPE.md": 470
+      },
+      "user_removed_per_file": {
+        ".datum/config.toml": 2
+      }
+    }
+  ]
+}
