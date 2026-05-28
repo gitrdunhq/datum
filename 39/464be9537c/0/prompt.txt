@@ -135,3 +135,11 @@ datum should install a hook that block pip and forces uv
 ---
 
 can it rewrite pip to uv?
+
+---
+
+[Image #9] why is veering like this
+
+---
+
+[Image #10]
