@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "a9f55d66e66c",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CHANGELOG.md",
+    "CURRENT_STATE.md",
+    "ROADMAP.md",
+    "datum-tui/README.md",
+    "docs/epics/datum/epic-10/RETRO.md",
+    "docs/epics/datum/epic-11/RETRO.md",
+    "docs/epics/datum/epic-12/RETRO.md",
+    "docs/epics/datum/epic-13/RETRO.md",
+    "docs/epics/datum/epic-14/RETRO.md",
+    "docs/epics/datum/epic-15/RETRO.md",
+    "docs/epics/datum/epic-16/RETRO.md",
+    "docs/epics/datum/epic-17/RETRO.md",
+    "docs/epics/datum/epic-8/RETRO.md",
+    "docs/epics/datum/epic-9/RETRO.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a9/f55d66e66c/0/metadata.json",
+      "transcript": "/a9/f55d66e66c/0/full.jsonl",
+      "content_hash": "/a9/f55d66e66c/0/content_hash.txt",
+      "prompt": "/a9/f55d66e66c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 57002,
+    "cache_read_tokens": 1631957,
+    "output_tokens": 13534,
+    "api_call_count": 30
+  }
+}
