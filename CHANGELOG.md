@@ -2,6 +2,29 @@
 
 All notable changes to DATUM are documented here.
 
+## [Epics 19–22] — 2026-05-28
+
+### Added
+- **`datum walkthrough`** — generates `WALKTHROUGH.md` post-mortem artifact from SPEC, TASKS, git diff via `run_phase("sidecar_docs", schema=WalkthroughSummary)`. Deterministic fallback if LLM unavailable.
+- **Two-tier model routing** — `fast_model` / `fast_phases` config: Llama-3.1-8B-Instruct-4bit for triage/validate (~120 t/s), Qwen3-30B-A3B-8bit for act/sidecar phases (~35 t/s). `get_model_for_phase()` routes automatically.
+- **KV cache quantization** — `kv_bits=8` and `max_kv_size` config options propagate through both `stream_generate` and outlines `gen()` kwargs. ~50% KV memory reduction for Qwen3-30B.
+- **`hf_cache_dir`** config option — datum sets `HF_HUB_CACHE` at load time so models on external drives work without shell env vars.
+- **`TriageDecision` Pydantic schema** — `datum/models/triage_decision_schema.py` with `decision: Literal["deepen", "properties"]` and `reason: str`. Enables grammar-constrained triage via `run_phase("triage", schema=TriageDecision)`.
+- **`prompt_cache` threading in `multi_turn_phase`** — cache created before turn loop, passed to structured/two_pass/vote calls. MLX accumulates KV state across turns.
+- **`_cache_offset(cache)`** helper — reads `cache[0].offset` safely for MLX KVCache offset tracking.
+- 24 new tests across 4 test files.
+
+### Fixed
+- **Budget check always rejected prompts** (#42) — `DEFAULTS["max_tokens"]` was 131072 (equal to `context_window`), making every `check_context_budget` return `fits=False`. Changed to 8192.
+- **`datum walkthrough` wrong result key** — `result["content"]` → `result["text"]` (run_phase without schema returns `text` key, not `content`).
+- **`git diff` returncode inverted** — returncode 1 = changes found (normal), 2 = error. Fixed condition to `returncode != 2`.
+- **`check_questions_answered` false-flags multi-line answers** (#24) — now peeks ahead to next non-empty non-header line when `[Answer]:` has no inline text.
+- **`_contracts()` opaque indexing** (#22) — all call sites now use named unpacking `validate_payload, validate_value = _contracts()`.
+- Top-level import of `datum.walkthrough` in `cli.py` moved inside function body — prevents CLI startup crash if walkthrough deps fail.
+
+### Stats
+- 5 commits, 37 files, +2110 / -356 LOC, 94 tests passing
+
 ## [Epic 18] — 2026-05-28
 
 ### Added

@@ -99,12 +99,14 @@ def check_questions_answered(content: str) -> list[str]:
     """Check all [Answer]: lines in content for non-empty answers.
 
     Returns a list of error strings for unanswered questions.
+    Peeks ahead to detect answers on lines following [Answer]:
     """
     errors: list[str] = []
     lines = content.split("\n")
     current_question: str | None = None
 
-    for line in lines:
+    for i in range(len(lines)):
+        line = lines[i]
         # Track current question header (### Q1: ...)
         q_match = re.match(r"^###\s+(Q\d+):", line)
         if q_match:
@@ -116,7 +118,27 @@ def check_questions_answered(content: str) -> list[str]:
         if a_match:
             answer_text = a_match.group(1).strip()
             if not answer_text and current_question:
-                errors.append(f"{current_question}: unanswered (empty [Answer]:)")
+                # Peek ahead to next non-empty, non-header line
+                found = False
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j]
+                    stripped = next_line.strip()
+                    if stripped == "":
+                        continue
+                    # If next non-empty line is a header, answer is missing
+                    if re.match(r"^###\s+", next_line):
+                        errors.append(
+                            f"{current_question}: unanswered (empty [Answer]:)"
+                        )
+                        found = True
+                        break
+                    else:
+                        # Answer found on following line
+                        found = True
+                        break
+                if not found:
+                    # No content after [Answer]:, treat as unanswered
+                    errors.append(f"{current_question}: unanswered (empty [Answer]:)")
             current_question = None
 
     return errors
@@ -307,7 +329,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
     with lane_plan_path.open() as f:
         lane_plan = json.load(f)
 
-    schema_errors = _contracts()[0]("lane-plan.schema.json", lane_plan_path)
+    validate_payload, validate_value = _contracts()
+    schema_errors = validate_payload("lane-plan.schema.json", lane_plan_path)
     if schema_errors:
         fail(f"lane-plan.json schema validation failed: {schema_errors}", hard=True)
 
@@ -585,8 +608,9 @@ def gate_validate_packets(config: dict) -> None:
         fail(f"review-packets/ not found: {packets_dir}")
 
     errors = []
+    validate_payload, validate_value = _contracts()
     for packet_path in packets_dir.glob("*.json"):
-        packet_errors = _contracts()[0]("packet.schema.json", packet_path)
+        packet_errors = validate_payload("packet.schema.json", packet_path)
         errors.extend(f"{packet_path.name}: {err}" for err in packet_errors)
 
     if errors:
@@ -628,7 +652,8 @@ def gate_validate_profiles(config: dict) -> None:
             errors.append(f"{profile_name}: missing profile and template")
             continue
         data = _load_yaml_profile(profile_path)
-        profile_errors = _contracts()[1](schema_path, data)
+        validate_payload, validate_value = _contracts()
+        profile_errors = validate_value(schema_path, data)
         errors.extend(f"{profile_path}: {err}" for err in profile_errors)
 
     if errors:

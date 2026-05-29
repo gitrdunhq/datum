@@ -1,7 +1,7 @@
 # Current State
 
 **Last updated:** 2026-05-28
-**Epic:** 18 — Multi-turn local LLM + ACI
+**Epic:** 22 — gate.py hardening (session: epics 19–22)
 
 ---
 
@@ -31,30 +31,31 @@ Seventeen epics across two sessions:
 15. **Epic 15** (PR #39) — Enforce local LLM via subagent only: hook blocks shell, AGENTS.md mandates Agent tool.
 16. **Epic 16** (PR #40) — `datum init` seeds hooks, config, and lane-tools to every initted repo.
 17. **Epic 17** (PR #41) — datum-tui beta: Textual factory floor dashboard + OpenRouter TUI reference implementation.
-18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags, shell autocompletion. Pair-programmed Claude×Gemini across 6 rounds.
+18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags, shell autocompletion.
+19. **Epic 19** (b7c099e) — `datum walkthrough` cmd + pipeline hardening: two-tier model routing (fast_model/fast_phases), KV cache quantization (kv_bits=8, max_kv_size), hf_cache_dir config, WalkthroughSummary schema, bug fixes from code review.
+20. **Epic 20** (0efdb62) — Budget check bug fix: DEFAULTS[max_tokens] 131072→8192. prompt_cache threading in multi_turn_phase. _cache_offset helper.
+21. **Epic 21** (0166399) — TriageDecision Pydantic schema: grammar-constrained triage output via run_phase("triage", schema=TriageDecision).
+22. **Epic 22** (712be36) — gate.py hardening: check_questions_answered peek-ahead for multi-line answers, _contracts() named unpacking.
 
 ## Active work
 
-None. Epic 18 committed to main. Pipeline idle.
+None. Epics 19–22 merged to main. Next: epic-23 datum closeout CLI command, epic-24 oMLX backend.
 
 ## Known issues
 
-- #42 (datum-bug) — `max_tokens` config conflated with `context_window`, budget check rejects all prompts
-- #24 — `check_questions_answered` only checks inline answers (gate.py)
 - #23 — Legacy render path duplicates `_render_task_block` (lane_plan.py)
-- #22 — `_contracts()` tuple indexing is opaque (gate.py)
 - #20 — Memory project-state records lack timestamps/epic stamps
-- #19 — `self_check` path prefix mismatch (scripts/ vs package root)
+- #47 — `datum closeout` CLI command not yet implemented (AC4 from epic-19)
+- #48 — prompt_cache cross-turn delta prefill deferred (needs token-level tracking below outlines)
 
 ## Architecture notes
 
 - All user-facing commands: `datum <command>` (CLI wrapper at `~/.local/bin/datum`)
-- `datum floor` launches the Textual TUI dashboard (reads `.datum/` state files, loosely coupled)
-- Local LLM: MLX Gemma 4 26B via Python API only (never shell). Grammar-constrained output via outlines.
-- Multi-turn: plan→execute→synthesize with two-pass DCCD, N-sample voting, few-shot prompting
-- ACI: local model can execute lane tools (read-only by default, write tools gated separately)
-- Lane tools: read_file, list_dir, grep_search, run_command, read_file_range — manifest-gated with resource limits
+- Local LLM: two-tier routing — fast_model (Llama-3.1-8B) for triage/validate, model (Qwen3-30B-A3B-8bit) for act/sidecar phases
+- KV cache: kv_bits=8 quantization + max_kv_size rotating buffer, flows through both stream_generate and outlines gen()
+- hf_cache_dir: datum sets HF_HUB_CACHE from config at load time; all models on /Volumes/Extra/mlx-models
+- Grammar-constrained output: outlines for structured phases; TriageDecision schema now used for triage
+- Multi-turn: prompt_cache created before turn loop, threaded through structured/two_pass/vote calls
+- Gate: check_questions_answered now peeks ahead for multi-line answers
 - Memory: `datum dream` runs staleness audit + MLX semantic extraction (Jina v5)
-- `datum init` bootstraps repos: hooks, config.toml, lane-tools, AGENTS.md (now includes local LLM docs)
-- Gate artifact resolution: `resolve_artifact()` SSOT — epic dir first, root fallback
 - Model tiers: config.toml is the authority; every subagent spawn must include explicit `model:` param

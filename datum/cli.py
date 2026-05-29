@@ -655,6 +655,58 @@ def walkthrough():
     console.print(f"[bold green]✓ Walkthrough generated: {output_path}[/bold green]")
 
 
+@app.command()
+def closeout(
+    run_id: str = typer.Option(None, help="Run ID (default: YYYYMMDD-HHMMSS)"),
+    base_sha: str = typer.Option(None, help="Base SHA (default: merge-base with main)"),
+    merge_sha: str = typer.Option(None, help="Merge SHA (default: git HEAD)"),
+    epic_number: int = typer.Option(
+        None, help="Epic number (default: parsed from branch)"
+    ),
+    skip_archive: bool = typer.Option(
+        False, "--skip-archive", help="Skip run archiving"
+    ),
+):
+    """Run DATUM closeout: collect metrics, collate, archive run."""
+    from datum.closeout_cmd import detect_context, run_archive, run_collate, run_stage1
+
+    try:
+        ctx = detect_context(run_id, base_sha, merge_sha, epic_number)
+    except Exception as e:
+        console.print(f"[bold red]Closeout failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[bold blue]Closeout run {ctx['run_id']} — epic {ctx['epic_number']}[/bold blue]"
+    )
+    console.print(
+        f"[dim]base: {ctx['base_sha'][:8]}  merge: {ctx['merge_sha'][:8]}[/dim]"
+    )
+
+    console.print("[dim]Stage 1: collecting metrics...[/dim]")
+    results = run_stage1(ctx["run_id"], ctx["base_sha"], ctx["merge_sha"])
+    ok = sum(1 for r in results.values() if r.get("ok"))
+    console.print(f"[dim]  {ok}/{len(results)} collectors succeeded[/dim]")
+
+    console.print("[dim]Collating...[/dim]")
+    try:
+        closeout_data = run_collate(ctx["run_id"], ctx["merge_sha"], ctx["epic_number"])
+        console.print(
+            f"[bold green]✓ closeout-data.json → {closeout_data}[/bold green]"
+        )
+    except Exception as e:
+        console.print(f"[bold red]Collate failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if not skip_archive:
+        run_archive(ctx["run_id"])
+        console.print("[dim]✓ Run archived[/dim]")
+
+    console.print(
+        "[bold green]✓ Closeout complete. Run `datum dream` for memory consolidation.[/bold green]"
+    )
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     app()

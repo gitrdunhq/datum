@@ -25,7 +25,7 @@ DEFAULTS = {
     # Defaults to the same as model if not set.
     "fast_model": None,
     "fast_phases": ["triage", "validate"],
-    "max_tokens": 131072,
+    "max_tokens": 8192,
     "temperature": 0.3,
     "context_window": 131072,
     # KV cache: kv_bits=8 halves cache memory vs float16; None disables quantization.
@@ -110,6 +110,14 @@ def is_available() -> bool:
         return True
     except ImportError:
         return False
+
+
+def _cache_offset(cache: list) -> int:
+    """Return tokens already processed in this cache, or 0 if unavailable."""
+    try:
+        return int(cache[0].offset) if cache else 0
+    except (AttributeError, IndexError):
+        return 0
 
 
 def load_model(model_id: str = DEFAULTS["model"]):
@@ -898,6 +906,14 @@ def multi_turn_phase(
     total_tokens = 0
     total_start = time.monotonic()
 
+    _mt_cache = None
+    try:
+        from mlx_lm.models.cache import make_prompt_cache as _make_cache
+
+        _mt_cache = _make_cache(model, max_kv_size=config.get("max_kv_size"))
+    except Exception:
+        pass
+
     for turn in range(max_turns):
         elapsed_total = time.monotonic() - total_start
         if elapsed_total >= total_timeout:
@@ -943,11 +959,23 @@ def multi_turn_phase(
 
                 if use_two_pass:
                     result = two_pass_structured(
-                        turn_prompt, StepPlan, model_id, max_tokens=turn_max_tokens
+                        turn_prompt,
+                        StepPlan,
+                        model_id,
+                        max_tokens=turn_max_tokens,
+                        **(
+                            {"prompt_cache": _mt_cache} if _mt_cache is not None else {}
+                        ),
                     )
                 else:
                     result = structured(
-                        turn_prompt, StepPlan, model_id, max_tokens=turn_max_tokens
+                        turn_prompt,
+                        StepPlan,
+                        model_id,
+                        max_tokens=turn_max_tokens,
+                        **(
+                            {"prompt_cache": _mt_cache} if _mt_cache is not None else {}
+                        ),
                     )
                 quality = result.get("quality", {})
                 if not quality.get("ok", True):
@@ -980,6 +1008,7 @@ def multi_turn_phase(
                     max_tokens=turn_max_tokens,
                     n=n_samples,
                     use_two_pass=use_two_pass,
+                    **({"prompt_cache": _mt_cache} if _mt_cache is not None else {}),
                 )
 
                 if result.get("data") is None:
