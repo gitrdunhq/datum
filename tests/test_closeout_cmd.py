@@ -47,7 +47,7 @@ def test_run_stage1_calls_all_collectors(tmp_path):
         mock_run.return_value = MagicMock(
             returncode=0, stdout='{"ok": true}', stderr=""
         )
-        results = run_stage1(
+        run_stage1(
             run_id="test-run",
             base_sha="abc1234",
             merge_sha="def5678",

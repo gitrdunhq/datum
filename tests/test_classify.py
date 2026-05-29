@@ -5,7 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from datum.classify import parse_classification_metadata, classify
+from datum.classify import parse_classification_metadata, classify  # noqa: E402
 
 PATCH_SPEC = """
 ## 9. Classification Metadata

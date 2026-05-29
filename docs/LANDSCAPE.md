@@ -10,11 +10,11 @@
 .DS_Store (3 LOC)
 .gitignore (46 LOC)
 AGENTS.md (131 LOC)
-CHANGELOG.md (150 LOC)
+CHANGELOG.md (173 LOC)
 CLAUDE.md (3 LOC)
 CODEX.md (3 LOC)
 COPILOT.md (3 LOC)
-CURRENT_STATE.md (60 LOC)
+CURRENT_STATE.md (61 LOC)
 GEMINI.md (3 LOC)
 HEY_CLAUDE.md (27 LOC)
 HEY_GEMINI.md (52 LOC)
@@ -22,10 +22,10 @@ KIRO.md (3 LOC)
 README.md (91 LOC)
 ROADMAP.md (35 LOC)
 SKILL.md (190 LOC)
-TASKS.md (163 LOC)
+TASKS.md (35 LOC)
 install.sh (368 LOC)
 pyproject.toml (37 LOC)
-tasks.json (206 LOC)
+tasks.json (43 LOC)
 uv.lock (1163 LOC)
   c4d94163-2ad4-4a66-9869-90a162f0c137.json (14 LOC)
   settings.json (84 LOC)
@@ -38,14 +38,21 @@ uv.lock (1163 LOC)
         SKILL.md (121 LOC)
   .gitignore (5 LOC)
   settings.json (11 LOC)
-    entire.log (1079 LOC)
+    entire.log (1665 LOC)
       full.jsonl (442 LOC)
       prompt.txt (1 LOC)
       full.jsonl (5967 LOC)
       prompt.txt (263 LOC)
-      full.jsonl (1521 LOC)
-      prompt.txt (1 LOC)
-    pre-prompt-b51a9ff8-5d2c-4458-a3a9-998d4aa59639.json (6 LOC)
+      full.jsonl (1566 LOC)
+      prompt.txt (5 LOC)
+      full.jsonl (3812 LOC)
+      prompt.txt (278 LOC)
+  green_ep21.py (20 LOC)
+  green_ep22.py (38 LOC)
+  plan_ep20.py (59 LOC)
+  red_ep21.py (25 LOC)
+  red_ep22.py (34 LOC)
+  refactor_runner.py (80 LOC)
   config.toml.default (222 LOC)
       green-brief.valid.json (34 LOC)
       green-continuation.valid.json (16 LOC)
@@ -67,13 +74,16 @@ uv.lock (1163 LOC)
     test_pre-commit-lane-tools-manifest.sh (40 LOC)
     test_pre-commit-test-ratchet.sh (65 LOC)
     test_pre-tool-use-install-interceptor.sh (48 LOC)
+    task.schema.json (34 LOC)
+    tasks.schema.json (9 LOC)
   __init__.py (3 LOC)
   analyze_properties.py (202 LOC)
   archive.py (107 LOC)
   artifact.py (139 LOC)
   backfill.py (44 LOC)
   classify.py (137 LOC)
-  cli.py (633 LOC)
+  cli.py (716 LOC)
+  closeout_cmd.py (156 LOC)
   commit_queue.py (275 LOC)
   contracts.py (155 LOC)
   dedupe.py (94 LOC)
@@ -81,14 +91,14 @@ uv.lock (1163 LOC)
   diff_normalize.py (83 LOC)
   events.py (54 LOC)
   floor.py (54 LOC)
-  gate.py (683 LOC)
+  gate.py (708 LOC)
   knowledge_drift.py (65 LOC)
   landscape.py (313 LOC)
   lane_plan.py (406 LOC)
   lane_tools_runner.py (121 LOC)
   language_detect.py (133 LOC)
   learn_patterns.py (177 LOC)
-  local_llm.py (1334 LOC)
+  local_llm.py (1536 LOC)
   memory_audit.py (104 LOC)
   memory_extract.py (116 LOC)
   memory_semantic.py (265 LOC)
@@ -112,6 +122,9 @@ uv.lock (1163 LOC)
   telemetry.py (38 LOC)
   test_ratchet.py (256 LOC)
   test_signal.py (345 LOC)
+  walkthrough.py (76 LOC)
+      task.schema.json (34 LOC)
+      tasks.schema.json (9 LOC)
     gitnexus_setup.py (50 LOC)
     install_hooks.py (188 LOC)
     install_linter_rules.py (43 LOC)
@@ -166,6 +179,8 @@ uv.lock (1163 LOC)
     state_schema.py (103 LOC)
     task_schema.py (27 LOC)
     tasks_schema.py (15 LOC)
+    triage_decision_schema.py (8 LOC)
+    walkthrough_schema.py (11 LOC)
     __init__.py (0 LOC)
     file_io.py (270 LOC)
       __init__.py (94 LOC)
@@ -240,6 +255,7 @@ uv.lock (1163 LOC)
   CURRENT_STATE.md (31 LOC)
   DATUM.md (1227 LOC)
   HORIZON.md (24 LOC)
+  LANDSCAPE.md (470 LOC)
   MEMORY.md (171 LOC)
   ROADMAP.md (13 LOC)
   TASKS.md (20 LOC)
@@ -249,6 +265,7 @@ uv.lock (1163 LOC)
   gitnexus-fts-fix.md (151 LOC)
     000-template.md (30 LOC)
     INVARIANTS.md (209 LOC)
+    WALKTHROUGH-session-20260528.md (83 LOC)
         PROPERTIES.md (178 LOC)
         QUESTIONS.md (28 LOC)
         SPEC.md (166 LOC)
@@ -263,9 +280,26 @@ uv.lock (1163 LOC)
         RETRO.md (24 LOC)
         RETRO.md (24 LOC)
         RETRO.md (38 LOC)
+        QUESTIONS.md (13 LOC)
+        SPEC.md (107 LOC)
+        TASKS.md (95 LOC)
+        TICKET.md (22 LOC)
+        tasks.json (92 LOC)
         QUESTIONS.md (9 LOC)
         SPEC.md (94 LOC)
         TICKET.md (35 LOC)
+        QUESTIONS.md (5 LOC)
+        SPEC.md (131 LOC)
+        TASKS.md (69 LOC)
+        TICKET.md (32 LOC)
+        tasks.json (43 LOC)
+        QUESTIONS.md (5 LOC)
+        SPEC.md (86 LOC)
+        TICKET.md (12 LOC)
+        QUESTIONS.md (5 LOC)
+        SPEC.md (96 LOC)
+        TICKET.md (16 LOC)
+        TICKET.md (17 LOC)
         QUESTIONS.md (9 LOC)
         SPEC.md (109 LOC)
         TICKET.md (13 LOC)
@@ -357,6 +391,7 @@ uv.lock (1163 LOC)
   ROADMAP.md (19 LOC)
   SPEC.md (82 LOC)
   TASKS.md (54 LOC)
+  WALKTHROUGH.md (21 LOC)
   api-design-template.md (556 LOC)
   architecture-design-template.md (411 LOC)
   database-design-template.md (610 LOC)
@@ -365,10 +400,17 @@ uv.lock (1163 LOC)
   quality.yaml (61 LOC)
   system-design-template.md (735 LOC)
   test_classify.py (180 LOC)
+  test_closeout_cmd.py (74 LOC)
   test_datum_hardening.py (267 LOC)
   test_gate_enhancements.py (144 LOC)
+  test_gate_fixes.py (26 LOC)
   test_landscape.py (184 LOC)
+  test_local_llm_hardening.py (46 LOC)
+  test_model_tiers.py (127 LOC)
+  test_omlx_backend.py (160 LOC)
+  test_triage_schema.py (25 LOC)
   test_units.py (283 LOC)
+  test_walkthrough.py (108 LOC)
       MyViewTests.swift (19 LOC)
 ```
 
@@ -376,7 +418,7 @@ uv.lock (1163 LOC)
 
 | Directory | LOC |
 |-----------|-----|
-| (root) | 2737 |
+| (root) | 2470 |
 | .antigravitycli | 14 |
 | .claude | 641 |
 | .claude/agents | 25 |
@@ -388,18 +430,21 @@ uv.lock (1163 LOC)
 | .claude/skills/gitnexus/gitnexus-guide | 64 |
 | .claude/skills/gitnexus/gitnexus-impact-analysis | 97 |
 | .claude/skills/gitnexus/gitnexus-refactoring | 121 |
-| .entire | 9296 |
-| .entire/logs | 1079 |
-| .entire/metadata | 8195 |
+| .entire | 14015 |
+| .entire/logs | 1665 |
+| .entire/metadata | 12334 |
 | .entire/metadata/011f10ba-5a33-4f7f-862c-775f46aa941d | 443 |
 | .entire/metadata/22c7ee55-dd95-47c2-898e-eb1751fa8a69 | 6230 |
-| .entire/metadata/b51a9ff8-5d2c-4458-a3a9-998d4aa59639 | 1522 |
-| .entire/tmp | 6 |
-| assets | 878 |
+| .entire/metadata/b51a9ff8-5d2c-4458-a3a9-998d4aa59639 | 1571 |
+| .entire/metadata/bcdd7121-e3c2-4afe-af2e-3e628725b571 | 4090 |
+| .entire/tmp | 0 |
+| .temp | 256 |
+| assets | 921 |
 | assets/fixtures | 188 |
 | assets/fixtures/contracts | 188 |
 | assets/hooks | 468 |
-| datum | 16973 |
+| assets/schemas | 43 |
+| datum | 17577 |
 | datum-tui | 6779 |
 | datum-tui/reference-openrouter | 6313 |
 | datum-tui/reference-openrouter/references | 2108 |
@@ -407,20 +452,22 @@ uv.lock (1163 LOC)
 | datum-tui/reference-openrouter/sample/screenshots | 1444 |
 | datum-tui/reference-openrouter/sample/src | 1428 |
 | datum-tui/reference-openrouter/sample/src/tools | 289 |
+| datum/assets | 43 |
+| datum/assets/schemas | 43 |
 | datum/bootstrap | 633 |
 | datum/closeout | 904 |
 | datum/memory | 2833 |
-| datum/models | 1146 |
+| datum/models | 1165 |
 | datum/shared | 785 |
 | datum/shared/logging | 515 |
 | datum/steering | 984 |
 | datum/test_ratchet | 101 |
 | diagrams | 972 |
-| docs | 3969 |
+| docs | 5368 |
 | docs/adr | 30 |
 | docs/architecture | 209 |
-| docs/epics | 1411 |
-| docs/epics/datum | 1411 |
+| docs/epics | 2340 |
+| docs/epics/datum | 2257 |
 | docs/epics/datum-epic-1 | 0 |
 | docs/epics/datum/epic-1 | 885 |
 | docs/epics/datum/epic-10 | 25 |
@@ -431,7 +478,12 @@ uv.lock (1163 LOC)
 | docs/epics/datum/epic-15 | 24 |
 | docs/epics/datum/epic-16 | 24 |
 | docs/epics/datum/epic-17 | 38 |
+| docs/epics/datum/epic-19 | 329 |
 | docs/epics/datum/epic-2 | 138 |
+| docs/epics/datum/epic-20 | 280 |
+| docs/epics/datum/epic-21 | 103 |
+| docs/epics/datum/epic-22 | 117 |
+| docs/epics/datum/epic-24 | 17 |
 | docs/epics/datum/epic-7 | 131 |
 | docs/epics/datum/epic-8 | 24 |
 | docs/epics/datum/epic-9 | 25 |
@@ -446,8 +498,8 @@ uv.lock (1163 LOC)
 | skills | 330 |
 | skills/gitnexus-bug-hunt | 330 |
 | skills/gitnexus-bug-hunt/evals | 40 |
-| templates | 3310 |
-| tests | 1077 |
+| templates | 3331 |
+| tests | 1643 |
 | tests/Unit | 19 |
 | tests/Unit/src | 19 |
 

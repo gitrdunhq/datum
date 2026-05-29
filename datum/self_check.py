@@ -62,14 +62,20 @@ def documented_script_refs() -> set[str]:
             migrated = raw.replace("scripts/", "datum/", 1)
             if (ROOT / migrated).exists():
                 refs.add(migrated)
-            elif (ROOT / raw).exists():
+            else:
                 refs.add(raw)
         for m in re.findall(r"datum\.([A-Za-z0-9_.]+)", content):
             parts = m.split(".")
-            py_path = "datum/" + "/".join(parts) + ".py"
-            pkg_path = "datum/" + "/".join(parts) + "/__init__.py"
-            if (ROOT / py_path).exists() or (ROOT / pkg_path).exists():
-                refs.add(py_path if (ROOT / py_path).exists() else pkg_path)
+            found = False
+            for i in range(len(parts), 0, -1):
+                py_path = "datum/" + "/".join(parts[:i]) + ".py"
+                pkg_path = "datum/" + "/".join(parts[:i]) + "/__init__.py"
+                if (ROOT / py_path).exists() or (ROOT / pkg_path).exists():
+                    refs.add(py_path if (ROOT / py_path).exists() else pkg_path)
+                    found = True
+                    break
+            if not found:
+                refs.add("datum/" + "/".join(parts) + ".py")
     return refs
 
 

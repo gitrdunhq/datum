@@ -154,3 +154,46 @@ def run_archive(run_id: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def sweep_project_memories(memory_dir: Path, epic_branch: str) -> int:
+    """Sweep project-state memories and stamp them with the closing epic and today's date."""
+    if not memory_dir.is_dir():
+        return 0
+        
+    count = 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    for md_file in memory_dir.glob("*.md"):
+        if md_file.name in {"MEMORY.md", "INDEX.md"}:
+            continue
+            
+        content = md_file.read_text(encoding="utf-8")
+        if not content.startswith("---"):
+            continue
+            
+        end_idx = content.find("---", 3)
+        if end_idx == -1:
+            continue
+            
+        frontmatter = content[3:end_idx]
+        if "type: project" not in frontmatter and "type: 'project'" not in frontmatter and 'type: "project"' not in frontmatter:
+            continue
+            
+        # Add or update `epic:`
+        if re.search(r"^epic:.*$", frontmatter, flags=re.MULTILINE):
+            frontmatter = re.sub(r"^epic:.*$", f"epic: {epic_branch}", frontmatter, flags=re.MULTILINE)
+        else:
+            frontmatter = frontmatter.rstrip() + f"\nepic: {epic_branch}\n"
+            
+        # Add or update `updated:`
+        if re.search(r"^updated:.*$", frontmatter, flags=re.MULTILINE):
+            frontmatter = re.sub(r"^updated:.*$", f"updated: {today}", frontmatter, flags=re.MULTILINE)
+        else:
+            frontmatter = frontmatter.rstrip() + f"\nupdated: {today}\n"
+            
+        new_content = f"---{frontmatter}---{content[end_idx+3:]}"
+        md_file.write_text(new_content, encoding="utf-8")
+        count += 1
+        
+    return count

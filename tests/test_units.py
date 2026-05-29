@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from datum.lane_plan import (
+from datum.lane_plan import (  # noqa: E402
     normalize_input,
     validate_units,
 )

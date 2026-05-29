@@ -1,7 +1,7 @@
 # Current State
 
-**Last updated:** 2026-05-28
-**Epic:** 22 — gate.py hardening (session: epics 19–22)
+**Last updated:** 2026-05-29
+**Epic:** 23 — Mega Fix Session
 
 ---
 
@@ -36,17 +36,15 @@ Seventeen epics across two sessions:
 20. **Epic 20** (0efdb62) — Budget check bug fix: DEFAULTS[max_tokens] 131072→8192. prompt_cache threading in multi_turn_phase. _cache_offset helper.
 21. **Epic 21** (0166399) — TriageDecision Pydantic schema: grammar-constrained triage output via run_phase("triage", schema=TriageDecision).
 22. **Epic 22** (712be36) — gate.py hardening: check_questions_answered peek-ahead for multi-line answers, _contracts() named unpacking.
+23. **Epic 23** (Mega Fix Session) — Closed all 16 outstanding issues: config.toml `max_tokens` vs `context_window` decoupling, legacy render refactor for lane_plan, memory frontmatter schema expansion (created, updated, epic, issues) with 28-day expiration, auto-memory sweeping during `datum closeout`, and AI-friendly sanitized crash tracebacks with self-healing GitHub issue hints.
 
 ## Active work
 
-None. Epics 19–22 merged to main. Next: epic-23 datum closeout CLI command, epic-24 oMLX backend.
+oMLX backend development.
 
 ## Known issues
 
-- #23 — Legacy render path duplicates `_render_task_block` (lane_plan.py)
-- #20 — Memory project-state records lack timestamps/epic stamps
-- #47 — `datum closeout` CLI command not yet implemented (AC4 from epic-19)
-- #48 — prompt_cache cross-turn delta prefill deferred (needs token-level tracking below outlines)
+- *All outstanding hitlist issues resolved in Epic 23. Zero known issues!*
 
 ## Architecture notes
 

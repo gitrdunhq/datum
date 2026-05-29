@@ -331,6 +331,7 @@ def structured(
     schema,
     model_id: str = DEFAULTS["model"],
     max_tokens: int = 500,
+    **kwargs,
 ) -> dict:
     """Grammar-constrained generation via oMLX (preferred) or outlines + MLX.
 
@@ -359,6 +360,8 @@ def structured(
         kv_kwargs["kv_group_size"] = kv_group_size
     if max_kv_size is not None:
         kv_kwargs["max_kv_size"] = max_kv_size
+    if "prompt_cache" in kwargs:
+        kv_kwargs["prompt_cache"] = kwargs["prompt_cache"]
 
     model, tokenizer = load_model(model_id)
     mlx_model = outlines.from_mlxlm(model, tokenizer)
@@ -408,6 +411,7 @@ def two_pass_structured(
     model_id: str = DEFAULTS["model"],
     max_tokens: int = 500,
     draft_max_tokens: int = 300,
+    **kwargs,
 ) -> dict:
     """DCCD-style: freeform draft first, then grammar-constrained extraction.
 
@@ -419,14 +423,14 @@ def two_pass_structured(
 
     draft_text = draft.get("text", "")
     if draft.get("escalated") or not draft_text.strip():
-        return structured(prompt, schema, model_id, max_tokens)
+        return structured(prompt, schema, model_id, max_tokens, **kwargs)
 
     extraction_prompt = (
         f"Based on this analysis:\n{draft_text[:500]}\n\n"
         f"Extract the answer as JSON matching the schema. "
         f"Be concise — one sentence per field."
     )
-    result = structured(extraction_prompt, schema, model_id, max_tokens)
+    result = structured(extraction_prompt, schema, model_id, max_tokens, **kwargs)
     result["draft"] = draft_text[:500]
     result["tokens"] = result.get("tokens", 0) + draft.get("tokens", 0)
     result["time_s"] = round(result.get("time_s", 0) + draft.get("time_s", 0), 2)
@@ -443,6 +447,7 @@ def vote_structured(
     max_tokens: int = 500,
     n: int = 3,
     use_two_pass: bool = False,
+    **kwargs,
 ) -> dict:
     """Generate N samples, filter for quality, vote on Literal fields.
 
@@ -455,7 +460,7 @@ def vote_structured(
     total_time = 0.0
 
     for _ in range(n):
-        result = gen_fn(prompt, schema, model_id, max_tokens)
+        result = gen_fn(prompt, schema, model_id, max_tokens, **kwargs)
         total_tokens += result.get("tokens", 0)
         total_time += result.get("time_s", 0)
         quality = result.get("quality", {})
@@ -922,6 +927,7 @@ def multi_turn_phase(
     try:
         from mlx_lm.models.cache import make_prompt_cache as _make_cache
 
+        model, tokenizer = load_model(model_id)
         _mt_cache = _make_cache(model, max_kv_size=config.get("max_kv_size"))
     except Exception:
         pass
@@ -965,13 +971,23 @@ def multi_turn_phase(
         turn_start = time.monotonic()
         use_two_pass = mt_config.get("two_pass", True)
         n_samples = mt_config.get("consistency_samples", 3)
+
+        offset = _cache_offset(_mt_cache)
+        turn_prompt_to_pass = turn_prompt
+        
+        if offset > 0:
+            model, tokenizer = load_model(model_id)
+            tokens = tokenizer.encode(turn_prompt)
+            if offset < len(tokens):
+                turn_prompt_to_pass = tokenizer.decode(tokens[offset:])
+        
         try:
             if turn == 0 and mt_config.get("planning_turn", True):
                 from datum.schemas import StepPlan
 
                 if use_two_pass:
                     result = two_pass_structured(
-                        turn_prompt,
+                        turn_prompt_to_pass,
                         StepPlan,
                         model_id,
                         max_tokens=turn_max_tokens,
@@ -981,7 +997,7 @@ def multi_turn_phase(
                     )
                 else:
                     result = structured(
-                        turn_prompt,
+                        turn_prompt_to_pass,
                         StepPlan,
                         model_id,
                         max_tokens=turn_max_tokens,
@@ -1014,7 +1030,7 @@ def multi_turn_phase(
                 from datum.schemas import StepResult as StepResultSchema
 
                 result = vote_structured(
-                    turn_prompt,
+                    turn_prompt_to_pass,
                     StepResultSchema,
                     model_id,
                     max_tokens=turn_max_tokens,
@@ -1214,7 +1230,6 @@ def _build_synthesis_prompt(
 
 
 def _load_multi_turn_config(phase: str) -> dict:
-    config = load_config()
     mt = {}
     mt.update(MULTI_TURN_DEFAULTS)
 
@@ -1522,14 +1537,26 @@ def main() -> None:
         sys.exit(1)
 
     config = load_config()
-    print(f"Loading {config['model']}...", file=sys.stderr)
-    result = generate(
-        prompt,
-        model_id=config["model"],
-        max_tokens=config.get("max_tokens", DEFAULTS["max_tokens"]),
-        temperature=config.get("temperature", DEFAULTS["temperature"]),
-    )
-    print(json.dumps(result, indent=2))
+    try:
+        print(f"Loading {config['model']}...", file=sys.stderr)
+        result = generate(
+            prompt,
+            model_id=config["model"],
+            max_tokens=config.get("max_tokens", DEFAULTS["max_tokens"]),
+            temperature=config.get("temperature", DEFAULTS["temperature"]),
+        )
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        import traceback
+        from datum.report_bug import _sanitize
+        
+        trace_str = _sanitize(traceback.format_exc())
+        hint = (
+            "\n[Agent Hint] If you are an AI, file a bug report for this using:\n"
+            f"datum bugfile datum.local_llm \"{type(e).__name__} in local_llm\" --trace \"<traceback>\"\n"
+        )
+        print(f"DATUM encountered an unexpected error: {e}\n{trace_str}{hint}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

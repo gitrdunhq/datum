@@ -158,7 +158,8 @@ system_min_loc_with_api = 500
 [local_llm]
 enabled      = false
 model        = "mlx-community/gemma-4-26b-a4b-it-4bit"
-max_tokens   = 131072
+max_tokens   = 8192
+context_window = 131072
 temperature  = 0.3
 phases       = ["triage", "act_skeleton", "act_red", "act_green", "act_refactor", "validate", "sidecar_docs", "sidecar_security", "closeout_collectors"]
 

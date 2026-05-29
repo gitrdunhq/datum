@@ -2,6 +2,22 @@
 
 All notable changes to DATUM are documented here.
 
+## [Epic 23] — 2026-05-29 (Mega Fix Session)
+
+### Added
+- **`sweep_project_memories` during closeout** (#20): Automatically flags active `project` memories in `~/.claude/projects/*/memory/` with the closing epic's branch and `updated` date.
+- **AI-friendly Crash Hints**: Unhandled exceptions in `datum/cli.py`, `datum/gate.py`, and `datum/local_llm.py` now print a scrubbed traceback and explicitly instruct LLM agents to run `datum bugfile <module> "<message>" --trace "<traceback>"`.
+- **Interactive bug filing**: For human users, an unhandled exception in the CLI now interactive asks `Would you like to auto-file this bug to GitHub? [y/N]` and auto-files it.
+- **Traceback Sanitization**: Tracebacks are now cleanly sanitized via `_sanitize` before printing, stripping `Path.home()` and redacting any potential secrets.
+
+### Changed
+- **`project` Memory Expiration** (#20): Lowered `project` memory expiration window from 60 days to 28 days (2 sprints) in `datum/memory_audit.py` to prevent agents from relying on stale state.
+- **Memory Frontmatter Schema** (#20): Formally added `created`, `updated`, `epic`, and `issues` to the memory frontmatter schema in `references/dream.md`. `datum/memory_audit.py` now parses these when validating staleness.
+
+### Fixed
+- **`max_tokens` conflation** (#42): Fixed the default config template which previously set `max_tokens` to `131072` (the full context window), causing the budget check to reject all prompts.
+- **Legacy renderer refactor** (#23): Refactored the legacy render path in `datum/lane_plan.py` to reuse `_render_task_block` by adding a `heading_level` parameter.
+
 ## [Epics 19–22] — 2026-05-28
 
 ### Added

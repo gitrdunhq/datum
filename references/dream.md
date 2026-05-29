@@ -49,6 +49,10 @@ description: one-line summary
 metadata:
   type: user | feedback | project | reference | episodic
   scope: global | project
+  created: YYYY-MM-DD
+  updated: YYYY-MM-DD
+  epic: chore/arch-debt-1  # or PR #311 (optional)
+  issues: [1, 2, 3]        # on repo (optional)
   expires_after_days: 60
   last_verified: YYYY-MM-DD
 ---
