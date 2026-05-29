@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "6c1e6ff4dec7",
+  "session_id": "bcdd7121-e3c2-4afe-af2e-3e628725b571",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T00:01:07.808287Z",
+  "branch": "datum/epic-23",
+  "checkpoints_count": 2,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e84e7f663137",
+  "token_usage": {
+    "input_tokens": 1216,
+    "cache_creation_tokens": 1322580,
+    "cache_read_tokens": 76606600,
+    "output_tokens": 169704,
+    "api_call_count": 352
+  },
+  "session_metrics": {
+    "turn_count": 30
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 18,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 18
+      }
+    }
+  ]
+}
