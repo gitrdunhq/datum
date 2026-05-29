@@ -7,11 +7,6 @@
 ## Planned
 
 - Closeout automation: implement collector scripts + collate + synthesis pipeline (`08-closeout.md`)
-- Fix #42: max_tokens / context_window conflation in local-llm budget check
-- Self-healing integration into gate.py try/except paths (auto-call `report_bug` on crashes)
-- CLI subcommand wrappers for internal pipeline commands (gate, test-signal, skeleton, commit-queue, etc.)
-- Fix #19: self_check path prefix mismatch
-- Full `/dream` integration as closeout Stage 2 step 5
 
 ## Completed
 

@@ -705,18 +705,24 @@ def main() -> None:
         GATES[args.phase](args.yolo or args.skip_human, config)
     except Exception as e:
         import traceback
-        from datum.report_bug import _sanitize
+        from datum.report_bug import _sanitize, report_bug
         
         trace_str = _sanitize(traceback.format_exc())
-        hint = (
-            "[Agent Hint] If you are an AI, file a bug report for this using:\n"
-            f"datum bugfile datum.gate \"{type(e).__name__} in gate_{args.phase}\" --trace \"<traceback>\""
+        
+        issue_url = report_bug(
+            module="datum.gate",
+            error=f"{type(e).__name__} in gate_{args.phase}",
+            context={"traceback": trace_str}
         )
+        
+        msg = f"DATUM encountered an unexpected error: {e}\n{trace_str}"
+        if issue_url:
+            msg += f"\n\n[Auto-Healing] Filed bug report: {issue_url}"
+            
         print(json.dumps({
             "passed": False, 
             "hard_stop": True, 
-            "message": f"DATUM encountered an unexpected error: {e}\n{trace_str}\n{hint}",
-            "agent_instruction": hint
+            "message": msg
         }))
         sys.exit(2)
 

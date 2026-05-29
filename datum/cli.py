@@ -271,6 +271,42 @@ def landscape(
     console.print(f"[bold green]✓ docs/LANDSCAPE.md ({status})[/bold green]")
 
 
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def gate(ctx: typer.Context):
+    """Run DATUM gate validator (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.gate"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="test-signal")
+def test_signal(ctx: typer.Context):
+    """Run DATUM test signal extractor (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.test_signal"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def skeleton(ctx: typer.Context):
+    """Run DATUM skeleton creator (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.skeleton_creator"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="commit-queue")
+def commit_queue(ctx: typer.Context):
+    """Run DATUM commit queue manager (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.commit_queue"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
 @app.command()
 def bugfile(
     module: str = typer.Argument(
@@ -706,6 +742,9 @@ def closeout(
     epic_number: int = typer.Option(
         None, help="Epic number (default: parsed from branch)"
     ),
+    synthesize: bool = typer.Option(
+        False, "--synthesize", help="Generate RETRO.md synthesis"
+    ),
     skip_archive: bool = typer.Option(
         False, "--skip-archive", help="Skip run archiving"
     ),
@@ -747,6 +786,16 @@ def closeout(
         console.print(f"[bold red]Collate failed: {e}[/bold red]")
         raise typer.Exit(1)
 
+    if synthesize:
+        console.print("[dim]Synthesizing RETRO.md...[/dim]")
+        try:
+            from datum.render import render_closeout_retro
+            retro_path = Path(f"docs/epics/{ctx['branch']}/RETRO.md")
+            render_closeout_retro(closeout_data, retro_path)
+            console.print(f"[bold green]✓ RETRO.md generated → {retro_path}[/bold green]")
+        except Exception as e:
+            console.print(f"[bold yellow]Synthesis failed: {e}[/bold yellow]")
+
     console.print("[dim]Generating walkthrough...[/dim]")
     from datum.walkthrough import generate_walkthrough
     
@@ -759,6 +808,13 @@ def closeout(
             console.print(f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]")
     else:
         console.print(f"[dim]Skipping walkthrough: {epic_dir} not found[/dim]")
+
+    console.print("[dim]Running /dream memory consolidation...[/dim]")
+    try:
+        # Pass semantic=False to keep closeout fast, or True if MLX is desired. Let's use False for fast Regex fallback
+        dream(memory_dir="", audit_only=False, extract_only=False, semantic=False)
+    except Exception as e:
+        console.print(f"[bold yellow]Memory consolidation failed: {e}[/bold yellow]")
 
     if not skip_archive:
         run_archive(ctx["run_id"])
