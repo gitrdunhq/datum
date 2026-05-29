@@ -185,7 +185,3 @@ all 3!
 ---
 
 ok lets merge eveything that isjt merged snd then do a closeout before we do omlx
-
----
-
-did you do the full closeout?
