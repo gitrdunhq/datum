@@ -1,0 +1,195 @@
+ok lets try use datum local-llm to do a more complicated feature fromn our gh issues'
+
+---
+
+A
+
+---
+
+yes i approve as long as GEMMA is doing
+
+---
+
+hows fhe code wuality
+
+---
+
+yes please do that
+
+---
+
+yes
+
+---
+
+option 2
+
+---
+
+does mlx have kv cache we should use
+
+---
+
+yes
+
+---
+
+does kv cache allow for bigger models
+
+---
+
+fuck lets try it. make its downlosding to this drife yoh sre on
+
+---
+
+check if its done downloading
+
+---
+
+<task-notification>
+<task-id>b26xuqvzj</task-id>
+<tool-use-id>toolu_01U52up1XeEpP8Y2esmSR1Yy</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/b26xuqvzj.output</output-file>
+<status>completed</status>
+<summary>Background command "Start download with hf CLI to /Volumes/Extra/mlx-models" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+letd branch wnd select a frwture to build out
+
+---
+
+48
+
+---
+
+42 and 48 same go
+
+---
+
+no need ro migrste
+
+---
+
+lets go
+
+---
+
+the 79b did this???
+
+---
+
+79b wint work lets drop 79b
+
+---
+
+<task-notification>
+<task-id>bttzb82av</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/bttzb82av.output</output-file>
+<status>completed</status>
+<summary>Background command "Verify Qwen3-30B loads from Extra drive" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+lets try
+
+---
+
+check if the 8bit is done downloading
+
+---
+
+<task-notification>
+<task-id>bcm3a0n1f</task-id>
+<tool-use-id>toolu_01LugC1JbwGfLP2XMYT3wuji</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/bcm3a0n1f.output</output-file>
+<status>completed</status>
+<summary>Background command "Download Qwen3-30B-A3B-8bit to Extra drive" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+ok develop with it
+
+---
+
+anther
+
+---
+
+whats the license
+
+---
+
+should we vendor it in or form
+
+---
+
+all 3!
+
+---
+
+<task-notification>
+<task-id>a33a4371a16a50285</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/06b58ce4-9161-4790-b2f0-01be499d9b67/tasks/a33a4371a16a50285.output</output-file>
+<status>completed</status>
+<summary>Agent "8-bit Qwen3 — gate.py multi-line answer fix + _contracts naming" completed</summary>
+<result>Perfect! Now let me generate a summary report:
+
+## Epic 22 Act Phase - Complete
+
+**Phase 1 (RED):** ✓ Qwen3-30B-A3B-8bit ran in **34.79 seconds**
+- Generated 4 pytest tests for the two fixes
+- Tests written to `tests/test_gate_fixes.py`
+- Ran tests: 2 failed (multiline &amp; blank-line scenarios), 2 passed ✓
+
+**Phase 2 (GREEN):** ✓ Qwen3-30B-A3B-8bit ran in **113.03 seconds**
+- Generated fixed `check_questions_answered()` function with peek-ahead logic
+- Replaces single-line check with look-ahead loop that peeks at next non-empty, non-header line
+- Preserves error messages but changes logic: only errors on true missing answers
+
+**Fixes Applied:**
+
+**Fix 1 (#24): check_questions_answered peek-ahead**
+- Modified function to use indexed loop (`for i in range(len(lines))`) to enable look-ahead
+- When `[Answer]:` has no inline text, now checks next non-empty line:
+  - If next non-empty line is a header (`###`), flags as unanswered
+  - If next non-empty line has content, treats as answered (no error)
+  - If no lines follow, flags as unanswered
+- Prevents false positives on multi-line answers
+
+**Fix 2 (#22): _contracts() named unpacking**
+- Located 3 call sites using indexed access:
+  - Line 332: `_contracts()[0](...)` → `validate_payload, validate_value = _contracts(); validate_payload(...)`
+  - Line 612: `_contracts()[0](...)` → same unpacking pattern
+  - Line 655: `_contracts()[1](...)` → unpacked to `validate_value(...)`
+- All indexed calls replaced with named variables
+
+**Test Results:**
+- `tests/test_gate_fixes.py`: 4/4 PASSED (multiline, inline, empty, blank-lines)
+- `tests/test_gate_enhancements.py`: 12/12 PASSED
+- Full suite `tests/`: 68/68 PASSED ✓
+
+**Commit:**
+- SHA: `5a2935f` 
+- Message closes #24 and #22
+- Files: `datum/gate.py`, `tests/test_gate_fixes.py`
+- No escalations from Qwen3 (both phases ran successfully)</result>
+<usage><total_tokens>54639</total_tokens><tool_uses>44</tool_uses><duration_ms>368302</duration_ms></usage>
+</task-notification>
+
+---
+
+ok lets merge eveything that isjt merged snd then do a closeout before we do omlx
+
+---
+
+did you do the full closeout?
+
+---
+
+do it up
