@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import urllib.request  # noqa: F401 — used in oMLX backend helpers below
 from pathlib import Path
 
 _model_cache: dict = {}
@@ -202,9 +203,14 @@ def generate(
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
+    Routes to oMLX server if available, falls back to direct mlx_lm.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
+    if _omlx_available():
+        url = _omlx_url()
+        return _omlx_generate(prompt, model_id, max_tokens, temperature, url)
+
     from mlx_lm import stream_generate
 
     model, tokenizer = load_model(model_id)
@@ -325,12 +331,17 @@ def structured(
     model_id: str = DEFAULTS["model"],
     max_tokens: int = 500,
 ) -> dict:
-    """Grammar-constrained generation using outlines + MLX.
+    """Grammar-constrained generation via oMLX (preferred) or outlines + MLX.
 
-    schema: a Pydantic BaseModel class. Output is guaranteed to match it.
+    Routes to oMLX JSON schema response_format if server is available,
+    falls back to outlines grammar-constrained generation otherwise.
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
+    if _omlx_available():
+        url = _omlx_url()
+        return _omlx_structured(prompt, schema, model_id, max_tokens, url)
+
     try:
         import outlines
     except ImportError:
@@ -1386,6 +1397,110 @@ def get_model_for_phase(phase: str) -> str:
     fast_model = config.get("fast_model") or main_model
     fast_phases = config.get("fast_phases", DEFAULTS["fast_phases"])
     return fast_model if phase in fast_phases else main_model
+
+
+# ── oMLX backend ─────────────────────────────────────────────────────────────
+
+
+def _omlx_url() -> str | None:
+    """Return configured oMLX base URL, or None if not set."""
+    return load_config().get("omlx_url")
+
+
+def _omlx_available() -> bool:
+    """Return True if oMLX server is reachable at the configured URL."""
+    url = _omlx_url()
+    if not url:
+        return False
+    try:
+        resp = urllib.request.urlopen(f"{url}/health", timeout=1)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def _omlx_generate(
+    prompt: str,
+    model_id: str,
+    max_tokens: int,
+    temperature: float,
+    url: str,
+) -> dict:
+    """Generate unstructured text via oMLX /v1/chat/completions."""
+    payload = json.dumps(
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    text = data["choices"][0]["message"]["content"]
+    tokens = data.get("usage", {}).get("completion_tokens", 0)
+    escalated = ESCALATE in text
+    return {
+        "text": text,
+        "tokens": tokens,
+        "time_s": 0.0,
+        "model": model_id,
+        "escalated": escalated,
+        "abort_reason": "model_requested_escalation" if escalated else None,
+        "context": {},
+    }
+
+
+def _omlx_structured(
+    prompt: str,
+    schema,
+    model_id: str,
+    max_tokens: int,
+    url: str,
+) -> dict:
+    """Grammar-constrained generation via oMLX JSON schema response_format."""
+    json_schema = schema.model_json_schema()
+    payload = json.dumps(
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            },
+            "stream": False,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    raw = data["choices"][0]["message"]["content"]
+    parsed = json.loads(raw)
+    return {
+        "data": parsed,
+        "raw": raw,
+        "tokens": data.get("usage", {}).get("completion_tokens", 0),
+        "time_s": 0.0,
+        "model": model_id,
+        "quality": {"ok": True, "reason": None},
+    }
 
 
 def main() -> None:
