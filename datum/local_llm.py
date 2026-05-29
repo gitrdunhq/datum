@@ -203,7 +203,8 @@ def generate(
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
-    Routes to oMLX server if available, falls back to direct mlx_lm.
+    Routes to oMLX/LM Studio (if omlx_url configured and reachable),
+    falls back to direct mlx_lm.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
@@ -1408,15 +1409,21 @@ def _omlx_url() -> str | None:
 
 
 def _omlx_available() -> bool:
-    """Return True if oMLX server is reachable at the configured URL."""
+    """Return True if an OpenAI-compatible inference server is reachable.
+
+    Tries /health first (oMLX), falls back to /v1/models (LM Studio, Ollama).
+    """
     url = _omlx_url()
     if not url:
         return False
-    try:
-        resp = urllib.request.urlopen(f"{url}/health", timeout=1)
-        return resp.status == 200
-    except Exception:
-        return False
+    for path in ("/health", "/v1/models"):
+        try:
+            resp = urllib.request.urlopen(f"{url}{path}", timeout=1)
+            if resp.status == 200:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _omlx_generate(
