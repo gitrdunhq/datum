@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.3",
+  "checkpoint_id": "12548ee840ba",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-25",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "datum/local_llm.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/12/548ee840ba/0/metadata.json",
+      "transcript": "/12/548ee840ba/0/full.jsonl",
+      "content_hash": "/12/548ee840ba/0/content_hash.txt",
+      "prompt": "/12/548ee840ba/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1385,
+    "cache_creation_tokens": 2564936,
+    "cache_read_tokens": 121939924,
+    "output_tokens": 214570,
+    "api_call_count": 468
+  }
+}
