@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "b777aeb5ea73",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-10T20:12:39.552592Z",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-26/bootstrap/templates/test_m1_e2e.py",
+    "tests/test_epic26_e2e_template.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "d4ee32d4509d",
+  "token_usage": {
+    "input_tokens": 33427,
+    "cache_creation_tokens": 954297,
+    "cache_read_tokens": 27526582,
+    "output_tokens": 105576,
+    "api_call_count": 159
+  },
+  "session_metrics": {
+    "turn_count": 10
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-10T20:12:39.503912Z",
+    "agent_lines": 471,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 471,
+    "total_lines_changed": 471,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
