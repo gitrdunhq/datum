@@ -151,15 +151,21 @@ class TestFixtureBaselinePytestAC63:
 
 
 # ---------------------------------------------------------------------------
-# ISOL-004 — fixture .git is standalone (not a submodule)
+# ISOL-004 — fixture TEMPLATE must not contain .git (materialize.sh git-inits)
 # ---------------------------------------------------------------------------
 
 
 class TestFixtureGitIsolationISOL004:
-    """ISOL-004: The fixture repo's .git must be a plain directory, not a submodule gitfile."""
+    """ISOL-004: The fixture TEMPLATE must NOT contain a .git entry.
+
+    Git cannot track a nested .git directory, so a template containing .git
+    breaks on fresh clone. Git initialization of the materialized fixture is
+    materialize.sh's job (task-003, AC6.4) — the standalone-repo check for the
+    materialized fixture lives in the task-003 test suite.
+    """
 
     def test_fixture_dir_exists_before_git_check(self):
-        """ISOL-004 precondition: fixture directory must exist."""
+        """ISOL-004 precondition: fixture template directory must exist."""
         assert FIXTURE_DIR.exists(), (
             f"ISOL-004 precondition: fixture directory {FIXTURE_DIR} "
             "does not exist. Templates have not been created yet (RED phase)."
@@ -169,13 +175,17 @@ class TestFixtureGitIsolationISOL004:
         not FIXTURE_DIR.exists(),
         reason=f"Fixture dir {FIXTURE_DIR} not yet created (RED phase — expected failure).",
     )
-    def test_git_is_directory_not_gitfile(self):
-        """ISOL-004: .git inside the fixture must be a directory (standalone repo), not a file (submodule)."""
+    def test_template_has_no_git_entry(self):
+        """ISOL-004: the template dir must NOT contain .git (file or dir).
+
+        Templates are materialized into standalone git repos later by
+        materialize.sh (task-003); a .git entry inside the template itself
+        cannot be tracked by the datum repo and would silently vanish on
+        a fresh clone.
+        """
         git_path = FIXTURE_DIR / ".git"
-        assert (
-            git_path.exists()
-        ), f"ISOL-004: {git_path} does not exist — the fixture must be initialised as a git repo."
-        assert git_path.is_dir(), (
-            f"ISOL-004: {git_path} is a file, not a directory — "
-            "this indicates a submodule, which violates isolation."
+        assert not git_path.exists(), (
+            f"ISOL-004 violated: {git_path} exists inside the fixture TEMPLATE. "
+            "Remove it — git init of the materialized fixture belongs to "
+            "materialize.sh (task-003), not the template."
         )
