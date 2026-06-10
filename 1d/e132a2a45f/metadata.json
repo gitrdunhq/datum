@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "1de132a2a45f",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "scripts/lane-tools/manifest.toml",
+    "scripts/lane-tools/multi_replace_file_content.py",
+    "scripts/lane-tools/replace_file_content.py",
+    "scripts/lane-tools/write_to_file.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1d/e132a2a45f/0/metadata.json",
+      "transcript": "/1d/e132a2a45f/0/full.jsonl",
+      "content_hash": "/1d/e132a2a45f/0/content_hash.txt",
+      "prompt": "/1d/e132a2a45f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 32291,
+    "cache_creation_tokens": 739725,
+    "cache_read_tokens": 23188928,
+    "output_tokens": 94450,
+    "api_call_count": 141
+  }
+}
