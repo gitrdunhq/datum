@@ -1,0 +1,118 @@
+# datum-local overlay config — local MLX inference with write-tool access
+# Copy to .datum/config.toml in the datum-local repo (materialize.sh does this).
+#
+# This file intentionally configures local-only inference.
+# No remote or cloud model IDs appear in this file.
+
+# ── Local LLM ─────────────────────────────────────────────────────────────────
+[local_llm]
+enabled       = true
+
+# Quality model (30B MoE) for reasoning-intensive phases
+model         = "mlx-community/Qwen3-30B-A3B-8bit"
+
+# Fast model (8B) for triage and validation
+fast_model    = "mlx-community/Llama-3.1-8B-Instruct-4bit"
+
+# Phases handled by the fast model
+fast_phases   = ["triage", "validate"]
+
+# All phases routed through local inference
+phases        = [
+  "triage",
+  "act_skeleton",
+  "act_red",
+  "act_green",
+  "act_refactor",
+  "validate",
+  "sidecar_docs",
+  "sidecar_security",
+  "closeout_collectors",
+]
+
+# Local model cache directory
+hf_cache_dir  = "/Volumes/Extra/mlx-models"
+
+# oMLX persistent inference server endpoint
+# Start with: brew services start jundot/omlx/omlx
+omlx_url      = "http://localhost:12200"
+
+# Generation parameters
+max_tokens    = 8192
+context_window = 262144
+temperature   = 0.3
+
+# KV-cache quantization (8-bit saves ~50% memory vs fp16)
+kv_bits       = 8
+kv_group_size = 64
+max_kv_size   = 32768
+
+# ── Multi-Turn Orchestration ───────────────────────────────────────────────────
+# Enables multi-step reasoning loops so the local model can plan, read files,
+# run tools, and synthesize — all without escalating to a remote model.
+[multi_turn]
+enabled               = true
+
+# Hard budget caps (all three required when tool execution is on)
+max_turns             = 5         # max reasoning turns before forced escalation
+timeout_s             = 300       # total wall-clock budget (seconds)
+max_tool_turns        = 10        # tool-execution turns before forced escalation
+
+# Tool execution — allows model to call lane tools
+enable_tool_execution = true
+
+# Write tools enabled: model may create / modify files inside the sandbox
+enable_write_tools    = true
+
+# Allowed tools: 7 read-only lane tools + 3 write tools = 10 total
+allowed_tools = [
+  # Read-only tools
+  "find_callers",
+  "filter_gitnexus_output",
+  "read_file",
+  "read_file_range",
+  "list_dir",
+  "grep_search",
+  "run_command",
+  # Write tools (gated by enable_write_tools = true)
+  "write_to_file",
+  "replace_file_content",
+  "multi_replace_file_content",
+]
+
+# Write sandbox: only allow writes relative to the project root (cwd)
+allowed_write_dirs    = []
+
+# Planning / voting defaults
+turn_timeout_s        = 90
+confidence_threshold  = 0.8
+temperature_schedule  = "fixed"
+temperature_min       = 0.2
+temperature_max       = 0.7
+context_reserve_pct   = 20
+planning_turn         = true
+verification_turn     = true
+two_pass              = true
+consistency_samples   = 1
+few_shot              = true
+phases                = [
+  "act_green",
+  "act_refactor",
+]
+
+[multi_turn.quality_gates]
+char_flood_pct  = 0.3
+ngram_size      = 3
+max_count       = 4
+diversity_ratio = 0.25
+
+[multi_turn.phase_overrides.triage]
+max_turns            = 3
+temperature_schedule = "rising"
+confidence_threshold = 0.7
+
+[multi_turn.phase_overrides.validate]
+max_turns            = 4
+planning_turn        = false
+verification_turn    = true
+confidence_threshold = 0.9
