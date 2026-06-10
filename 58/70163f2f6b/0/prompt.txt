@@ -1,0 +1,9 @@
+i would like to create a datum variant in a its own folder that uses local models. It takes an input and does the work. what do we have to do to get that state? you are in architture and investigation only not nitty gritty details.
+
+---
+
+/datum yolo
+
+---
+
+/datum yolo (but first get epic 25 merged in and then branch from the new main)
