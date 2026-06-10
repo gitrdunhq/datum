@@ -1,0 +1,23 @@
+<task-notification>
+<task-id>ad932a2bc68e5d814</task-id>
+<tool-use-id>toolu_01E7tk4h2eLPwXnnT8KkPK3E</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/5e0ef979-a632-4cc8-aa42-b353a67179a3/tasks/ad932a2bc68e5d814.output</output-file>
+<status>completed</status>
+<summary>Agent "RED agent: task-006 canary" completed</summary>
+<result>Fixed and verified. Exactly one failure — the new inverted assertion — with everything else green.
+
+**Updated ISOL-004 test list** (`/Volumes/Extra/repos/gitrdunhq/datum/tests/test_epic26_fixture.py`, `TestFixtureGitIsolationISOL004`):
+
+1. `test_fixture_dir_exists_before_git_check` — kept as precondition (template dir exists); now PASSES since GREEN created the templates.
+2. `test_template_has_no_git_entry` — replaces `test_git_is_directory_not_gitfile`; asserts the **inverse**: `FIXTURE_DIR / ".git"` must NOT exist (file or dir). Class and method docstrings reference ISOL-004 and note that the materialized-fixture standalone-git check belongs to the task-003 (materialize.sh, AC6.4) test suite.
+
+**Failure line proving the RED:**
+
+```
+FAILED tests/test_epic26_fixture.py::TestFixtureGitIsolationISOL004::test_template_has_no_git_entry
+AssertionError: ISOL-004 violated: /Volumes/Extra/repos/gitrdunhq/datum/docs/epics/datum/epic-26/bootstrap/templates/fixture/.git exists inside the fixture TEMPLATE. Remove it — git init of the materialized fixture belongs to materialize.sh (task-003), not the template.
+```
+
+**Summary:** `1 failed, 10 passed in 0.16s` — the only failure is the .git-absence assertion, which GREEN clears by removing the stray `.git` dir from the template. No template files were touched.</result>
+<usage><subagent_tokens>51386</subagent_tokens><tool_uses>4</tool_uses><duration_ms>58775</duration_ms></usage>
+</task-notification>

@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "db1276d91383",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-26/bootstrap/templates/fixture/calculator.py",
+    "docs/epics/datum/epic-26/bootstrap/templates/fixture/pyproject.toml",
+    "docs/epics/datum/epic-26/bootstrap/templates/fixture/uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/db/1276d91383/0/metadata.json",
+      "transcript": "/db/1276d91383/0/full.jsonl",
+      "content_hash": "/db/1276d91383/0/content_hash.txt",
+      "prompt": "/db/1276d91383/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26710,
+    "cache_creation_tokens": 703799,
+    "cache_read_tokens": 17278641,
+    "output_tokens": 74102,
+    "api_call_count": 117
+  }
+}
