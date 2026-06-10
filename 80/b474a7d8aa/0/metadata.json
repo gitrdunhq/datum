@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "80b474a7d8aa",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-10T19:51:15.886231Z",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "2e3e5b56710c",
+  "token_usage": {
+    "input_tokens": 26964,
+    "cache_creation_tokens": 724984,
+    "cache_read_tokens": 20865674,
+    "output_tokens": 87584,
+    "api_call_count": 132
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 1524,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "tests/test_epic26_config_overlay.py": 274,
+        "tests/test_epic26_materialize.py": 528,
+        "tests/test_epic26_write_tool_scripts.py": 700
+      }
+    }
+  ]
+}
