@@ -1,0 +1,16 @@
+# datum artifacts
+.datum/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# uv / venv
+.venv/
+
+# Fixture repos — never track toy-project's .git as a submodule
+fixtures/
