@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
-import sys
+"""Lane tool: replace the first occurrence of old_text with new_text in a file."""
+
 import json
+import sys
 from pathlib import Path
 
 
-def main():
+def main() -> None:
+    """Replace the first occurrence of old_text with new_text in a file.
+
+    Args (JSON via sys.argv[1]):
+        path (str): Target file path.
+        old_text (str): Exact text to search for (must be present).
+        new_text (str): Replacement text.
+
+    Prints:
+        On success: JSON with ``path`` and ``ok=true``.
+        On error: plain error string to stdout, exits non-zero.
+        Exits non-zero if ``old_text`` is not found — file is never modified.
+    """
     if len(sys.argv) < 2:
         print("Usage: replace_file_content.py <json_args>")
         sys.exit(1)

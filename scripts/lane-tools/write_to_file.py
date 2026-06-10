@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
-import sys
+"""Lane tool: write content to a file, creating parent directories as needed."""
+
 import json
+import sys
 from pathlib import Path
 
 
-def main():
+def main() -> None:
+    """Write content to a file.
+
+    Args (JSON via sys.argv[1]):
+        path (str): Destination file path (absolute or relative to cwd).
+        content (str): Text content to write.
+
+    Prints:
+        On success: JSON with ``path``, ``bytes_written``, and ``ok=true``.
+        On error: plain error string to stdout, exits non-zero.
+    """
     if len(sys.argv) < 2:
         print("Usage: write_to_file.py <json_args>")
         sys.exit(1)

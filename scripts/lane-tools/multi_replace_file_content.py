@@ -1,10 +1,25 @@
 #!/usr/bin/env python3
-import sys
+"""Lane tool: apply a list of old_text/new_text replacements sequentially to a file."""
+
 import json
+import sys
 from pathlib import Path
 
 
-def main():
+def main() -> None:
+    """Apply a list of replacements to a file sequentially (index-0 first).
+
+    Args (JSON via sys.argv[1]):
+        path (str): Target file path.
+        replacements (list[dict]): Ordered list of ``{"old_text": str, "new_text": str}``
+            pairs.  Applied in list order; each replacement operates on the
+            result of the previous one.  An empty list is a no-op success.
+
+    Prints:
+        On success: JSON with ``path``, ``replacements_applied``, and ``ok=true``.
+        On error: plain error string to stdout, exits non-zero.
+        Exits non-zero if any ``old_text`` is not found — file is never partially modified.
+    """
     if len(sys.argv) < 2:
         print("Usage: multi_replace_file_content.py <json_args>")
         sys.exit(1)
