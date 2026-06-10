@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "ff38b42dfdd9",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-10T19:58:30.337809Z",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "b460fdbca671",
+  "token_usage": {
+    "input_tokens": 33408,
+    "cache_creation_tokens": 750115,
+    "cache_read_tokens": 25076954,
+    "output_tokens": 100201,
+    "api_call_count": 148
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 678,
+      "user_lines_removed": 6,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "scripts/lane-tools/multi_replace_file_content.py": 17,
+        "scripts/lane-tools/replace_file_content.py": 16,
+        "scripts/lane-tools/write_to_file.py": 14,
+        "tests/test_write_tools.py": 609
+      },
+      "user_removed_per_file": {
+        "scripts/lane-tools/multi_replace_file_content.py": 2,
+        "scripts/lane-tools/replace_file_content.py": 2,
+        "scripts/lane-tools/write_to_file.py": 2
+      }
+    }
+  ]
+}
