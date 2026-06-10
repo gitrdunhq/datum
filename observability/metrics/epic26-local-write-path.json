@@ -1,0 +1,68 @@
+{
+  "metrics": [
+    {
+      "property_id": "PERF-001",
+      "name": "datum.m1_driver.run_duration_ms",
+      "type": "histogram",
+      "description": "Wall-clock time for a single M1 RED-GREEN run on the toy fixture",
+      "unit": "milliseconds",
+      "threshold": 300000
+    },
+    {
+      "property_id": "PERF-002",
+      "name": "datum.write_tool.write_to_file_duration_ms",
+      "type": "histogram",
+      "description": "Time to execute write_to_file lane-tool script for files under 10KB",
+      "unit": "milliseconds",
+      "threshold": 2000
+    },
+    {
+      "property_id": "PERF-003",
+      "name": "datum.write_tool.replace_file_content_duration_ms",
+      "type": "histogram",
+      "description": "Time to execute replace_file_content lane-tool script for files under 10KB",
+      "unit": "milliseconds",
+      "threshold": 2000
+    },
+    {
+      "property_id": "PERF-004",
+      "name": "datum.materialize.scaffold_duration_ms",
+      "type": "histogram",
+      "description": "Time for materialize.sh to create full scaffold (excluding uv sync)",
+      "unit": "milliseconds",
+      "threshold": 10000
+    },
+    {
+      "property_id": "PERF-005",
+      "name": "datum.e2e_test.total_duration_ms",
+      "type": "histogram",
+      "description": "Total wall-clock time for the M1 e2e test run",
+      "unit": "milliseconds",
+      "threshold": 600000
+    },
+    {
+      "property_id": "OBS-001",
+      "name": "datum.m1_driver.metrics_entries_count",
+      "type": "counter",
+      "description": "Number of entries appended to local-llm-metrics.jsonl per M1 run",
+      "unit": "count",
+      "threshold": 1
+    },
+    {
+      "property_id": "OBS-002",
+      "name": "datum.m1_driver.failure_records_count",
+      "type": "counter",
+      "description": "Number of structured JSON failure records produced by failed M1 runs",
+      "unit": "count",
+      "threshold": 0
+    },
+    {
+      "property_id": "OBS-003",
+      "name": "datum.write_tool.invocation_count",
+      "type": "counter",
+      "description": "Number of write-tool invocations logged in multi-turn trace per session",
+      "unit": "count",
+      "threshold": 0
+    }
+  ]
+}

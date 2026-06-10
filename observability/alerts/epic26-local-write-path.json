@@ -1,0 +1,46 @@
+{
+  "alerts": [
+    {
+      "property_id": "PERF-001",
+      "name": "m1_driver_slow",
+      "condition": "datum.m1_driver.run_duration_ms > 300000",
+      "severity": "warning",
+      "description": "M1 RED-GREEN run exceeded 5-minute SLO"
+    },
+    {
+      "property_id": "PERF-002",
+      "name": "write_to_file_slow",
+      "condition": "datum.write_tool.write_to_file_duration_ms > 2000",
+      "severity": "warning",
+      "description": "write_to_file exceeded 2s SLO for file under 10KB"
+    },
+    {
+      "property_id": "PERF-003",
+      "name": "replace_file_content_slow",
+      "condition": "datum.write_tool.replace_file_content_duration_ms > 2000",
+      "severity": "warning",
+      "description": "replace_file_content exceeded 2s SLO for file under 10KB"
+    },
+    {
+      "property_id": "PERF-005",
+      "name": "e2e_test_timeout",
+      "condition": "datum.e2e_test.total_duration_ms > 600000",
+      "severity": "critical",
+      "description": "M1 e2e test exceeded 10-minute hard timeout"
+    },
+    {
+      "property_id": "SEC-001",
+      "name": "cloud_model_id_detected",
+      "condition": "datum.m1_driver.metrics_entries contains claude|anthropic|sonnet|opus|haiku",
+      "severity": "critical",
+      "description": "Cloud LLM model ID detected in local-only metrics -- strictly-local guarantee violated"
+    },
+    {
+      "property_id": "OBS-002",
+      "name": "m1_silent_failure",
+      "condition": "datum.m1_driver.exit_code != 0 AND datum.m1_driver.failure_records_count == 0",
+      "severity": "critical",
+      "description": "M1 driver failed without producing a structured failure record"
+    }
+  ]
+}
