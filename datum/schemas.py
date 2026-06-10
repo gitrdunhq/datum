@@ -46,11 +46,48 @@ class EscalationSignal(BaseModel):
     reason: str = Field(max_length=200)
 
 
+# ── Prior Art schemas ─────────────────────────────────────────────────────────
+
+
+class PriorArtFinding(BaseModel):
+    source_type: Literal["github", "pypi", "internal", "web"]
+    url: str = Field(max_length=500)
+    name: str = Field(max_length=100)
+    relevance: Literal["high", "medium", "low"]
+    license: str = Field(max_length=50)
+    verdict: Literal["use", "wrap", "vendor", "reference", "skip"]
+    rationale: str = Field(max_length=300)
+    reduces_loc: int = Field(ge=0)
+
+
+class PriorArtTaskResult(BaseModel):
+    task_id: str = Field(max_length=20)
+    findings: list[PriorArtFinding]
+    recommendation: Literal["build", "wrap", "vendor", "skip"]
+    recommendation_rationale: str = Field(max_length=300)
+
+
+class SecurityCheckResult(BaseModel):
+    status: Literal["clear", "flag", "fail", "n/a"]
+    details: str = Field(max_length=300)
+
+
+class SecurityAuditResult(BaseModel):
+    package: str = Field(max_length=100)
+    version: str = Field(max_length=30)
+    verdict: Literal["pass", "accept_risk", "reject"]
+    checks: dict[str, SecurityCheckResult]
+    risk_summary: str = Field(max_length=300)
+    conditions: list[str] = Field(default_factory=list)
+
+
 # ── Multi-turn orchestration schemas ────────────────────────────────────────
 
 
 class StepAction(BaseModel):
-    action: Literal["analyze", "decompose", "execute", "verify", "synthesize", "tool_execution"]
+    action: Literal[
+        "analyze", "decompose", "execute", "verify", "synthesize", "tool_execution"
+    ]
     description: str = Field(max_length=80)
 
 
@@ -63,13 +100,23 @@ class ToolCall(BaseModel):
     tool_name: str = Field(max_length=50)
     tool_args: dict
 
+
 class StepResult(BaseModel):
     step_index: int
-    action: Literal["analyze", "decompose", "execute", "verify", "synthesize", "tool_execution"]
+    action: Literal[
+        "analyze", "decompose", "execute", "verify", "synthesize", "tool_execution"
+    ]
     finding: str = Field(max_length=80)
     evidence: str = Field(max_length=80)
     recommendation: Literal[
-        "deepen", "properties", "escalate", "proceed", "block", "retest", "skip", "retry_with_context"
+        "deepen",
+        "properties",
+        "escalate",
+        "proceed",
+        "block",
+        "retest",
+        "skip",
+        "retry_with_context",
     ]
     confidence: float = Field(ge=0.0, le=1.0)
     needs_more_turns: bool
