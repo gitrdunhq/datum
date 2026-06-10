@@ -161,13 +161,14 @@ def check_assumption_audit(
     if not overconfidence_enabled:
         return errors, warnings
 
-    # Check section exists
-    if "## Assumption Audit" not in spec_content:
+    # Check section exists (heading may carry a section number, e.g. "## 9. Assumption Audit")
+    section_match = re.search(r"##\s+(?:\d+\.\s+)?Assumption Audit", spec_content)
+    if not section_match:
         errors.append("SPEC.md missing '## Assumption Audit' section")
         return errors, warnings
 
     # Extract table rows from the Assumption Audit section
-    section_start = spec_content.index("## Assumption Audit")
+    section_start = section_match.start()
     section_text = spec_content[section_start:]
     # End at next ## heading or end of file
     next_section = re.search(r"\n## (?!Assumption Audit)", section_text)
@@ -706,24 +707,20 @@ def main() -> None:
     except Exception as e:
         import traceback
         from datum.report_bug import _sanitize, report_bug
-        
+
         trace_str = _sanitize(traceback.format_exc())
-        
+
         issue_url = report_bug(
             module="datum.gate",
             error=f"{type(e).__name__} in gate_{args.phase}",
-            context={"traceback": trace_str}
+            context={"traceback": trace_str},
         )
-        
+
         msg = f"DATUM encountered an unexpected error: {e}\n{trace_str}"
         if issue_url:
             msg += f"\n\n[Auto-Healing] Filed bug report: {issue_url}"
-            
-        print(json.dumps({
-            "passed": False, 
-            "hard_stop": True, 
-            "message": msg
-        }))
+
+        print(json.dumps({"passed": False, "hard_stop": True, "message": msg}))
         sys.exit(2)
 
 
