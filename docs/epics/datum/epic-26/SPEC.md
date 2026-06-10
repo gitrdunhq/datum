@@ -71,7 +71,7 @@ datum's wheel (`[tool.hatch.build.targets.wheel] packages = ["datum"]`) excludes
 
 **Acceptance criteria:**
 - AC5.1: `../datum-local/config.toml` enables `[multi_turn]` with `enable_tool_execution = true`, `enable_write_tools = true`
-- AC5.2: `allowed_tools` includes all 9 read tools plus the 3 write tools
+- AC5.2: `allowed_tools` includes all 7 read tools (full manifest set) plus the 3 write tools
 - AC5.3: Model tiers configured: main = `Qwen3-30B-A3B-8bit`, fast = `Llama-3.1-8B-Instruct-4bit`, oMLX endpoint = `localhost:12200`
 - AC5.4: Budget caps present: `max_turns`, `timeout_s`, `max_tool_turns` all set to finite values
 - AC5.5: No Claude/Anthropic model IDs appear anywhere in the config
