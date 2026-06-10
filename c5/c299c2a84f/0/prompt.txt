@@ -192,3 +192,59 @@ Moved `scripts/lane-tools/write_to_file.py` aside → **6 tests failed** (the 5 
 | COMPAT-002 | `TestWriteToolGate` (4 tests: each write tool blocked + default-off) |</result>
 <usage><subagent_tokens>60399</subagent_tokens><tool_uses>18</tool_uses><duration_ms>164036</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>a2c44448dba86e52c</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/5e0ef979-a632-4cc8-aa42-b353a67179a3/tasks/a2c44448dba86e52c.output</output-file>
+<status>completed</status>
+<summary>Agent "REFACTOR agent: task-001" completed</summary>
+<result>Everything is clean. Here is the full report:
+
+---
+
+## AC Checklist Verdicts
+
+| AC | Verdict | Notes |
+|---|---|---|
+| AC4.1 | PASS | `write_to_file.py` exists; accepts `{"path", "content"}`; creates parent dirs; returns `{"path", "bytes_written", "ok": true}` |
+| AC4.2 | PASS | `replace_file_content.py` exists; accepts `{"path", "old_text", "new_text"}`; exact single replacement; exits non-zero when `old_text` absent (SAFE-003 preserved) |
+| AC4.3 | PASS | `multi_replace_file_content.py` exists; accepts `{"path", "replacements": [...]}` list; applied index-0 first; empty list is no-op success (BOUND-003/ORD-004 satisfied) |
+| AC4.4 | PASS | All three have `manifest.toml` entries with `permissions = { network = false, write = ["."], read = ["."] }`, `timeout_seconds = 10`, `added_in_epic = 26`, `added_in_lane = "task-001"` |
+
+All 42 tests green before and after changes.
+
+## README Lines Added
+
+`scripts/lane-tools/README.md` — Added one-line + Usage entries for all three new write tools under "Available Tools", mirroring the existing `## toolname.py` heading format:
+
+- `## write_to_file.py` — Write content to a file, creating parent directories as needed.
+- `## replace_file_content.py` — Replace the first occurrence of old_text with new_text in a file.
+- `## multi_replace_file_content.py` — Apply a list of old_text/new_text replacements sequentially to a file.
+
+Also added the 5 existing read tools that were missing (`read_file`, `read_file_range`, `list_dir`, `grep_search`, `run_command`) — they were in the manifest but undocumented in the README, which would have violated the "read this file to know what's available" contract.
+
+## Lint Status
+
+`uvx black --check` — 3 files unchanged (clean)
+`uvx ruff check` — All checks passed
+
+## Files Changed
+
+- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/write_to_file.py` — Added module docstring, `-&gt; None` return type hint, function docstring; fixed import order (`json` before `sys` alphabetically)
+- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/replace_file_content.py` — Same additions; docstring explicitly documents the non-zero exit contract for missing `old_text`
+- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/multi_replace_file_content.py` — Same additions; docstring documents atomic-write guarantee (no partial modification on error)
+- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/README.md` — Added 8 tool entries (3 new write tools + 5 previously undocumented read tools)
+- `manifest.toml` — No changes needed (already correct from GREEN)
+
+## Gemba Verdict (one trade-off)
+
+The error paths print plain strings to stdout (not JSON) and exit 1. This is consistent with all existing read tools and is what the research findings prescribe — `_execute_tool` captures stdout+stderr as a plain string, so a JSON error envelope would actually be worse (callers would get `'{"error": "..."}' `as a string, no better than the plain text). The trade-off: agents receiving error output can't programmatically distinguish error types (missing file vs. bad args vs. write failure) without string matching. A structured error shape would help future agent routing but would break the existing caller contract and add complexity the tests don't require. Correct call was to stay consistent.
+
+## Missing-AC RED-cycle needed
+
+None. All four ACs are green, all 42 tests pass, no behavior changes.</result>
+<usage><subagent_tokens>60774</subagent_tokens><tool_uses>27</tool_uses><duration_ms>139656</duration_ms></usage>
+</task-notification>
