@@ -83,36 +83,46 @@ allowed_tools = [
 # Write sandbox: only allow writes relative to the project root (cwd)
 allowed_write_dirs    = []
 
-# Planning / voting defaults
-turn_timeout_s        = 90
-confidence_threshold  = 0.8
-temperature_schedule  = "fixed"
-temperature_min       = 0.2
-temperature_max       = 0.7
-context_reserve_pct   = 20
-planning_turn         = true
-verification_turn     = true
-two_pass              = true
-consistency_samples   = 1
-few_shot              = true
+# Planning / voting defaults (applied to phases listed above)
+turn_timeout_s        = 90    # wall-clock budget for a single turn (seconds)
+confidence_threshold  = 0.8   # exit early if model agreement >= this (0.0–1.0)
+temperature_schedule  = "fixed"  # "fixed" | "rising" | "falling" | "u_curve"
+temperature_min       = 0.2   # floor for scheduled temperature
+temperature_max       = 0.7   # ceiling for scheduled temperature
+context_reserve_pct   = 20    # % of context window kept free for synthesis output
+planning_turn         = true  # turn 0 produces a StepPlan before acting
+verification_turn     = true  # final turn synthesises steps into phase schema
+two_pass              = true  # freeform draft → grammar extraction (DCCD)
+consistency_samples   = 1     # majority-vote samples per turn (1 = fastest)
+few_shot              = true  # inject example JSON to anchor output format
 phases                = [
   "act_green",
   "act_refactor",
 ]
 
+# ── Output quality gates ───────────────────────────────────────────────────────
+# Thresholds that reject degenerate completions (character floods, repetition).
+# Failures here cause a retry on the same turn rather than a hard abort.
 [multi_turn.quality_gates]
-char_flood_pct  = 0.3
-ngram_size      = 3
-max_count       = 4
-diversity_ratio = 0.25
+char_flood_pct  = 0.3   # reject if any single character > 30% of the tail
+ngram_size      = 3     # n-gram window for repetition detection
+max_count       = 4     # max allowed consecutive identical n-grams
+diversity_ratio = 0.25  # min unique-token ratio required in the tail
 
+# ── Per-phase overrides ────────────────────────────────────────────────────────
+# These sections tighten or relax the global [multi_turn] defaults for a
+# specific phase. Only the keys listed here are overridden; all others
+# inherit from [multi_turn].
+
+# triage: fast, low-confidence classification — fewer turns, rising temperature
 [multi_turn.phase_overrides.triage]
-max_turns            = 3
-temperature_schedule = "rising"
-confidence_threshold = 0.7
+max_turns            = 3     # triage rarely needs more than 3 passes
+temperature_schedule = "rising"  # encourage broader exploration on retries
+confidence_threshold = 0.7   # lower bar — triage is a coarse routing decision
 
+# validate: strict correctness check — extra turns, no planning overhead
 [multi_turn.phase_overrides.validate]
-max_turns            = 4
-planning_turn        = false
-verification_turn    = true
-confidence_threshold = 0.9
+max_turns            = 4     # one more turn than triage for evidence gathering
+planning_turn        = false # skip StepPlan; validate goes straight to assertion
+verification_turn    = true  # synthesis turn required to produce a verdict
+confidence_threshold = 0.9   # high bar — validation failures block the pipeline
