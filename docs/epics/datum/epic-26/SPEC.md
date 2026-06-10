@@ -81,7 +81,7 @@ datum's wheel (`[tool.hatch.build.targets.wheel] packages = ["datum"]`) excludes
 **Description:** A tiny toy Python project committed as a test fixture inside datum-local, used as the target for the M1 driver.
 
 **Acceptance criteria:**
-- AC6.1: `../datum-local/fixtures/toy-project/` is a valid Python project with at least one source file and a `tests/` directory
+- AC6.1: `../datum-local/fixtures/toy-project/` is a valid Python project with at least one source file and a baseline test file (flat layout; `conftest.py` anchors pytest rootdir — adversarial EC-7)
 - AC6.2: The project has a minimal function with a known bug or missing feature that a RED-GREEN cycle can target
 - AC6.3: `uv run pytest` in the fixture repo passes (baseline green before the driver modifies it)
 - AC6.4: The fixture is git-initialized with an initial commit (the driver creates branches on it)

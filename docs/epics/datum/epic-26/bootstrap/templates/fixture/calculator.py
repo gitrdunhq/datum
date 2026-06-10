@@ -8,6 +8,6 @@ def add(a: int | float, b: int | float) -> int | float:
     return a + b
 
 
-# NOTE: multiply is intentionally absent — it is the target function for the
-# M1 driver's RED-GREEN cycle.  The driver writes a failing test for it (RED),
-# then implements it here (GREEN).  Do not add multiply to this template.
+# NOTE: the product operation is intentionally absent — it is the target the
+# M1 driver must fill via a RED-GREEN cycle (failing test first, then the
+# implementation). Do not add it to this template.
