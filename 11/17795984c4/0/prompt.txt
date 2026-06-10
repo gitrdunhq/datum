@@ -57,3 +57,29 @@ AssertionError: ISOL-004 violated: /Volumes/Extra/repos/gitrdunhq/datum/docs/epi
 `max_tool_turns` is NOT in `MULTI_TURN_DEFAULTS` (lines 52-76) but IS actively read by `multi_turn_phase` at line 909 via `mt_config.get("max_tool_turns", 10)` — specifically when `enable_tool_execution` is true, it replaces `max_turns` as the turn budget. It also appears in `assets/config.toml.default` line 188 with a value of `10`. Since the config template enables `enable_tool_execution = true`, `max_tool_turns` is the operative cap and MUST be set. Test 5 asserts it is present, is an `int`, and is `&gt; 0`.</result>
 <usage><subagent_tokens>57429</subagent_tokens><tool_uses>15</tool_uses><duration_ms>109890</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>acca4556751f45276</task-id>
+<tool-use-id>toolu_01LFNNqAgngnzdFFKCqv3eq9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/5e0ef979-a632-4cc8-aa42-b353a67179a3/tasks/acca4556751f45276.output</output-file>
+<status>completed</status>
+<summary>Agent "GREEN agent: task-004 config" completed</summary>
+<result>All 7 tests pass on the first attempt.
+
+**Summary:**
+
+File written: `/Volumes/Extra/repos/gitrdunhq/datum/docs/epics/datum/epic-26/bootstrap/templates/config.toml`
+
+Key sections:
+
+- **`[local_llm]`**: `enabled=true`, `model="mlx-community/Qwen3-30B-A3B-8bit"`, `fast_model="mlx-community/Llama-3.1-8B-Instruct-4bit"`, `omlx_url="http://localhost:12200"`, `hf_cache_dir="/Volumes/Extra/mlx-models"`, `kv_bits=8`, full `phases` list mirroring `.datum/config.toml`, `fast_phases=["triage","validate"]`
+
+- **`[multi_turn]`**: `enabled=true`, `enable_tool_execution=true`, `enable_write_tools=true`, budget caps `max_turns=5`, `timeout_s=300`, `max_tool_turns=10`; `allowed_tools` is exactly the 10-entry list (7 read tools: `find_callers`, `filter_gitnexus_output`, `read_file`, `read_file_range`, `list_dir`, `grep_search`, `run_command` + 3 write tools: `write_to_file`, `replace_file_content`, `multi_replace_file_content`)
+
+- Zero occurrences of `claude`, `anthropic`, `sonnet`, `opus`, or `haiku` anywhere in the file
+
+Final pytest summary: `7 passed in 0.01s`</result>
+<usage><subagent_tokens>34558</subagent_tokens><tool_uses>7</tool_uses><duration_ms>56779</duration_ms></usage>
+</task-notification>
