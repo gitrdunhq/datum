@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "96ba20d3a2b5",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-10T20:02:20.360511Z",
+  "branch": "datum/epic-26",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "d3ca72ce6415",
+  "token_usage": {
+    "input_tokens": 33416,
+    "cache_creation_tokens": 754408,
+    "cache_read_tokens": 26188669,
+    "output_tokens": 100961,
+    "api_call_count": 152
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 184,
+      "user_lines_removed": 44,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "docs/epics/datum/epic-26/bootstrap/materialize.sh": 41,
+        "docs/epics/datum/epic-26/bootstrap/templates/README.md": 36,
+        "docs/epics/datum/epic-26/bootstrap/templates/config.toml": 33,
+        "docs/epics/datum/epic-26/bootstrap/templates/test_contracts.py": 52
+      },
+      "user_removed_per_file": {
+        "docs/epics/datum/epic-26/bootstrap/materialize.sh": 12,
+        "docs/epics/datum/epic-26/bootstrap/templates/README.md": 9,
+        "docs/epics/datum/epic-26/bootstrap/templates/config.toml": 23
+      }
+    }
+  ]
+}
