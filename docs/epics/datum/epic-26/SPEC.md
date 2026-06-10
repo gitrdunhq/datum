@@ -25,89 +25,89 @@ datum's wheel (`[tool.hatch.build.targets.wheel] packages = ["datum"]`) excludes
 **Description:** Create the datum-local sibling repository with minimal package skeleton, editable path dependency on datum, and project config.
 
 **Acceptance criteria:**
-- [ ] AC1.1: `../datum-local/pyproject.toml` exists with `[tool.uv.sources] datum = { path = "../datum", editable = true }` and `requires-python = ">=3.12"`
-- [ ] AC1.2: `../datum-local/datum_local/__init__.py` exists and is importable
-- [ ] AC1.3: `../datum-local/README.md` documents the editable-dependency rationale and the strictly-local architecture constraint
-- [ ] AC1.4: `uv sync` in `../datum-local` succeeds and `import datum.state` works from that venv
-- [ ] AC1.5: `git init` run, `.gitignore` covers `.datum/`, `__pycache__/`, `.venv/`
+- AC1.1: `../datum-local/pyproject.toml` exists with `[tool.uv.sources] datum = { path = "../datum", editable = true }` and `requires-python = ">=3.12"`
+- AC1.2: `../datum-local/datum_local/__init__.py` exists and is importable
+- AC1.3: `../datum-local/README.md` documents the editable-dependency rationale and the strictly-local architecture constraint
+- AC1.4: `uv sync` in `../datum-local` succeeds and `import datum.state` works from that venv
+- AC1.5: `git init` run, `.gitignore` covers `.datum/`, `__pycache__/`, `.venv/`
 
 ### R2: Bootstrap scripts (this repo)
 
 **Description:** Author reproducible bootstrap scripts inside this repo that materialize the sibling when executed. Avoids manual instructions and keeps the source-of-truth in datum's version control.
 
 **Acceptance criteria:**
-- [ ] AC2.1: `docs/epics/datum/epic-26/bootstrap/materialize.sh` exists; running it from this repo's root creates `../datum-local/` with all scaffold files
-- [ ] AC2.2: The script is idempotent — running it twice does not corrupt an existing `../datum-local/`
-- [ ] AC2.3: The script exits non-zero if `../datum` (this repo) does not exist at the expected relative path
+- AC2.1: `docs/epics/datum/epic-26/bootstrap/materialize.sh` exists; running it from this repo's root creates `../datum-local/` with all scaffold files
+- AC2.2: The script is idempotent — running it twice does not corrupt an existing `../datum-local/`
+- AC2.3: The script exits non-zero if `../datum` (this repo) does not exist at the expected relative path
 
 ### R3: Contract-test suite
 
 **Description:** Tests in datum-local that import datum surfaces and assert their signatures, failing loudly on upstream drift.
 
 **Acceptance criteria:**
-- [ ] AC3.1: `tests/test_contracts.py` imports `datum.state.load_state`, `datum.state.resolve_tier`, `datum.state.PHASES`
-- [ ] AC3.2: `tests/test_contracts.py` imports `datum.gate` and asserts it is callable as a module (has gate check functions)
-- [ ] AC3.3: `tests/test_contracts.py` imports `datum.local_llm.run_phase`, `datum.local_llm.multi_turn_phase`, `datum.local_llm.generate`, `datum.local_llm.structured`, `datum.local_llm._execute_tool`
-- [ ] AC3.4: `tests/test_contracts.py` imports `datum.pipeline_scheduler`, `datum.commit_queue`
-- [ ] AC3.5: `tests/test_contracts.py` imports `datum.schemas.StepPlan`, `datum.schemas.StepResult`, `datum.schemas.ToolCall`
-- [ ] AC3.6: Signature assertions use `inspect.signature()` to validate parameter names and count — a renamed or removed parameter fails the test
-- [ ] AC3.7: `uv run pytest tests/test_contracts.py` passes green in datum-local
+- AC3.1: `tests/test_contracts.py` imports `datum.state.load_state`, `datum.state.resolve_tier`, `datum.state.PHASES`
+- AC3.2: `tests/test_contracts.py` imports `datum.gate` and asserts it is callable as a module (has gate check functions)
+- AC3.3: `tests/test_contracts.py` imports `datum.local_llm.run_phase`, `datum.local_llm.multi_turn_phase`, `datum.local_llm.generate`, `datum.local_llm.structured`, `datum.local_llm._execute_tool`
+- AC3.4: `tests/test_contracts.py` imports `datum.pipeline_scheduler`, `datum.commit_queue`
+- AC3.5: `tests/test_contracts.py` imports `datum.schemas.StepPlan`, `datum.schemas.StepResult`, `datum.schemas.ToolCall`
+- AC3.6: Signature assertions use `inspect.signature()` to validate parameter names and count — a renamed or removed parameter fails the test
+- AC3.7: `uv run pytest tests/test_contracts.py` passes green in datum-local
 
 ### R4: Write-tool lane scripts
 
 **Description:** Implement the three write tools (`write_to_file`, `replace_file_content`, `multi_replace_file_content`) as lane-tool scripts in this repo with manifest entries. These are currently declared in `WRITE_TOOLS` but have no backing implementation.
 
 **Acceptance criteria:**
-- [ ] AC4.1: `scripts/lane-tools/write_to_file.py` exists, accepts `{"path": str, "content": str}`, writes the file, returns confirmation JSON
-- [ ] AC4.2: `scripts/lane-tools/replace_file_content.py` exists, accepts `{"path": str, "old_text": str, "new_text": str}`, performs exact replacement
-- [ ] AC4.3: `scripts/lane-tools/multi_replace_file_content.py` exists, accepts `{"path": str, "replacements": [{"old_text": str, "new_text": str}]}`, performs all replacements
-- [ ] AC4.4: All three have entries in `scripts/lane-tools/manifest.toml` with `write = ["."]` permission and appropriate timeouts
-- [ ] AC4.5: `_execute_tool({"tool_name": "write_to_file", ...}, {"enable_write_tools": true, "allowed_tools": [...]})` succeeds end-to-end (integration test in this repo)
-- [ ] AC4.6: Sandbox enforcement: paths outside `allowed_write_dirs` are rejected
+- AC4.1: `scripts/lane-tools/write_to_file.py` exists, accepts `{"path": str, "content": str}`, writes the file, returns confirmation JSON
+- AC4.2: `scripts/lane-tools/replace_file_content.py` exists, accepts `{"path": str, "old_text": str, "new_text": str}`, performs exact replacement
+- AC4.3: `scripts/lane-tools/multi_replace_file_content.py` exists, accepts `{"path": str, "replacements": [{"old_text": str, "new_text": str}]}`, performs all replacements
+- AC4.4: All three have entries in `scripts/lane-tools/manifest.toml` with `write = ["."]` permission and appropriate timeouts
+- AC4.5: `_execute_tool({"tool_name": "write_to_file", ...}, {"enable_write_tools": true, "allowed_tools": [...]})` succeeds end-to-end (integration test in this repo)
+- AC4.6: Sandbox enforcement: paths outside `allowed_write_dirs` are rejected
 
 ### R5: Config overlay
 
 **Description:** datum-local config enabling the local LLM stack with write tools and budget caps.
 
 **Acceptance criteria:**
-- [ ] AC5.1: `../datum-local/config.toml` enables `[multi_turn]` with `enable_tool_execution = true`, `enable_write_tools = true`
-- [ ] AC5.2: `allowed_tools` includes all 9 read tools plus the 3 write tools
-- [ ] AC5.3: Model tiers configured: main = `Qwen3-30B-A3B-8bit`, fast = `Llama-3.1-8B-Instruct-4bit`, oMLX endpoint = `localhost:12200`
-- [ ] AC5.4: Budget caps present: `max_turns`, `timeout_s`, `max_tool_turns` all set to finite values
-- [ ] AC5.5: No Claude/Anthropic model IDs appear anywhere in the config
+- AC5.1: `../datum-local/config.toml` enables `[multi_turn]` with `enable_tool_execution = true`, `enable_write_tools = true`
+- AC5.2: `allowed_tools` includes all 9 read tools plus the 3 write tools
+- AC5.3: Model tiers configured: main = `Qwen3-30B-A3B-8bit`, fast = `Llama-3.1-8B-Instruct-4bit`, oMLX endpoint = `localhost:12200`
+- AC5.4: Budget caps present: `max_turns`, `timeout_s`, `max_tool_turns` all set to finite values
+- AC5.5: No Claude/Anthropic model IDs appear anywhere in the config
 
 ### R6: Fixture repo
 
 **Description:** A tiny toy Python project committed as a test fixture inside datum-local, used as the target for the M1 driver.
 
 **Acceptance criteria:**
-- [ ] AC6.1: `../datum-local/fixtures/toy-project/` is a valid Python project with at least one source file and a `tests/` directory
-- [ ] AC6.2: The project has a minimal function with a known bug or missing feature that a RED-GREEN cycle can target
-- [ ] AC6.3: `uv run pytest` in the fixture repo passes (baseline green before the driver modifies it)
-- [ ] AC6.4: The fixture is git-initialized with an initial commit (the driver creates branches on it)
+- AC6.1: `../datum-local/fixtures/toy-project/` is a valid Python project with at least one source file and a `tests/` directory
+- AC6.2: The project has a minimal function with a known bug or missing feature that a RED-GREEN cycle can target
+- AC6.3: `uv run pytest` in the fixture repo passes (baseline green before the driver modifies it)
+- AC6.4: The fixture is git-initialized with an initial commit (the driver creates branches on it)
 
 ### R7: M1 driver script
 
 **Description:** A bare driver (no orchestrator) that runs `multi_turn_phase` with tool execution to perform RED-GREEN on the fixture repo.
 
 **Acceptance criteria:**
-- [ ] AC7.1: `../datum-local/scripts/m1_driver.py` exists as a standalone script
-- [ ] AC7.2: The driver calls `datum.local_llm.multi_turn_phase` with `enable_tool_execution = true` and `enable_write_tools = true` via `mt_overrides`
-- [ ] AC7.3: The driver operates in two phases: (a) write a failing test (RED), run pytest to confirm failure; (b) implement the fix (GREEN), run pytest to confirm pass
-- [ ] AC7.4: On success, the driver commits both the test and the fix to a branch in the fixture repo via `datum.commit_queue`
-- [ ] AC7.5: The driver completes RED-GREEN on the fixture repo with zero human input in at least 4 of 5 consecutive runs
-- [ ] AC7.6: `.datum/local-llm-metrics.jsonl` from M1 runs contains no Claude/Anthropic model IDs — every inference event names a local model
-- [ ] AC7.7: Failure runs produce a structured JSON failure record (phase, attempts, reason, model used) — not a silent stall or bare traceback
+- AC7.1: `../datum-local/scripts/m1_driver.py` exists as a standalone script
+- AC7.2: The driver calls `datum.local_llm.multi_turn_phase` with `enable_tool_execution = true` and `enable_write_tools = true` via `mt_overrides`
+- AC7.3: The driver operates in two phases: (a) write a failing test (RED), run pytest to confirm failure; (b) implement the fix (GREEN), run pytest to confirm pass
+- AC7.4: On success, the driver commits both the test and the fix to a branch in the fixture repo via `datum.commit_queue`
+- AC7.5: The driver completes RED-GREEN on the fixture repo with zero human input in at least 4 of 5 consecutive runs
+- AC7.6: `.datum/local-llm-metrics.jsonl` from M1 runs contains no Claude/Anthropic model IDs — every inference event names a local model
+- AC7.7: Failure runs produce a structured JSON failure record (phase, attempts, reason, model used) — not a silent stall or bare traceback
 
 ### R8: Integration test (end-to-end)
 
 **Description:** An automated test that exercises the full M1 flow, runnable in CI or locally.
 
 **Acceptance criteria:**
-- [ ] AC8.1: `../datum-local/tests/test_m1_e2e.py` exists and is skippable when no local model is available (`pytest.mark.skipif`)
-- [ ] AC8.2: The test invokes the M1 driver against a fresh copy of the fixture repo
-- [ ] AC8.3: The test asserts: fixture branch exists, test file written, source file modified, pytest passes in fixture, metrics log contains only local model IDs
-- [ ] AC8.4: The test completes in under 10 minutes (timeout enforced)
+- AC8.1: `../datum-local/tests/test_m1_e2e.py` exists and is skippable when no local model is available (`pytest.mark.skipif`)
+- AC8.2: The test invokes the M1 driver against a fresh copy of the fixture repo
+- AC8.3: The test asserts: fixture branch exists, test file written, source file modified, pytest passes in fixture, metrics log contains only local model IDs
+- AC8.4: The test completes in under 10 minutes (timeout enforced)
 
 ## 4. Failure Modes and Handling
 
