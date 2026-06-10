@@ -76,7 +76,8 @@ User can override at `plan_human_approval` gate.
 | Discovery | `00-discovery.md` | — | |
 | Refine | `01-refine.md` | skippable | |
 | Plan | `02-plan.md` | **required** | System-tier epics include unit decomposition (step 2.5 in 02-plan.md), grouping tasks into parallelizable units of work. |
-| Triage | `02.5-triage.md` | **required** | **ALWAYS runs after Plan.** Non-skippable, even in Express. |
+| Prior Art | `02.3-prior-art.md` | skippable | Parallel subagents search GitHub, PyPI, internal repos, and the web for existing solutions per task. Can downgrade tasks from "build" to "wrap." |
+| Triage | `02.5-triage.md` | **required** | **ALWAYS runs after Prior Art.** Non-skippable, even in Express. |
 | Deepen | `02.8-deepen.md` | skipped if triage routes to properties | Triage decides: deepen or skip to properties. |
 | Properties | `03-properties.md` | skippable | |
 | Architect | `03.5-architect.md` | blocks if ADRs missing | |
@@ -86,7 +87,7 @@ User can override at `plan_human_approval` gate.
 | PR Comments | `07-pr-comments.md` | — | |
 | Closeout | `08-closeout.md` | — | |
 
-**Sequencing rule:** After Plan gate passes, the next phase is ALWAYS Triage. Never skip directly to Properties or Act. Triage evaluates the plan and routes to Deepen or Properties. This is non-negotiable — skipping Triage in epic-1 caused the pipeline to miss evidence gathering.
+**Sequencing rule:** After Plan gate passes, the next phase is ALWAYS Prior Art, then Triage. Never skip directly to Properties or Act. Prior Art searches for existing solutions per task (can reduce scope). Triage evaluates the plan and routes to Deepen or Properties. This is non-negotiable — skipping Triage in epic-1 caused the pipeline to miss evidence gathering.
 
 After each phase: `datum gate <phase> [--yolo]`
 

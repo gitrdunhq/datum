@@ -409,6 +409,47 @@ def gate_plan(yolo: bool, config: dict) -> None:
     pass_gate("Plan gate passed")
 
 
+def gate_prior_art(yolo: bool, config: dict) -> None:
+    prior_art_path = resolve_artifact("PRIOR_ART.md")
+    if not prior_art_path.exists():
+        fail("PRIOR_ART.md not found in epic directory")
+
+    content = prior_art_path.read_text()
+
+    tasks_path = Path("tasks.json")
+    if tasks_path.exists():
+        tasks = json.loads(tasks_path.read_text())
+        task_list = tasks if isinstance(tasks, list) else tasks.get("tasks", [])
+        task_ids = {t["id"] for t in task_list if "id" in t}
+        for tid in task_ids:
+            if tid not in content:
+                fail(f"PRIOR_ART.md missing entry for {tid}")
+
+    tasks_md = resolve_artifact("TASKS.md")
+    if tasks_md.exists():
+        md_content = tasks_md.read_text()
+        if "## Prior Art" not in md_content:
+            fail("TASKS.md missing '## Prior Art' section")
+
+    if re.search(r"\buse\b.*\b(GPL|AGPL)\b", content, re.IGNORECASE):
+        fail("Prior art finding with 'use' verdict has GPL/AGPL license — incompatible")
+
+    policy = gate_policy(config, "prior_art_human_review")
+    if policy == "required" and not yolo:
+        print(
+            json.dumps(
+                {
+                    "passed": False,
+                    "needs_human": True,
+                    "message": "PRIOR_ART.md ready for human review.",
+                }
+            )
+        )
+        sys.exit(1)
+
+    pass_gate("Prior Art gate passed")
+
+
 def gate_triage(yolo: bool, config: dict) -> None:
     routing_path = Path(".datum/routing.json")
     if not routing_path.exists():
@@ -669,6 +710,7 @@ def gate_validate_profiles(config: dict) -> None:
 GATES = {
     "refine": gate_refine,
     "plan": gate_plan,
+    "prior_art": gate_prior_art,
     "triage": gate_triage,
     "deepen": gate_deepen,
     "properties": gate_properties,

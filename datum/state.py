@@ -27,6 +27,7 @@ PHASES = [
     "discovery",
     "refine",
     "plan",
+    "prior_art",
     "triage",
     "deepen",
     "properties",
