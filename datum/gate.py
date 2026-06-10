@@ -434,6 +434,43 @@ def gate_prior_art(yolo: bool, config: dict) -> None:
     if re.search(r"\buse\b.*\b(GPL|AGPL)\b", content, re.IGNORECASE):
         fail("Prior art finding with 'use' verdict has GPL/AGPL license — incompatible")
 
+    has_imports = bool(re.search(r"\b(use|wrap|vendor)\b", content, re.IGNORECASE))
+
+    if has_imports:
+        if "## Security Audit" not in content:
+            fail(
+                "PRIOR_ART.md has use/wrap/vendor verdicts but no '## Security Audit' section"
+            )
+        if re.search(r"⛔\s*REJECTED", content):
+            rejected = re.findall(r"⛔\s*REJECTED[^\n]*", content)
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "hard_stop": False,
+                        "message": f"Security audit rejected {len(rejected)} dependency(s). "
+                        "Verdicts downgraded to 'reference'. Review PRIOR_ART.md.",
+                    }
+                ),
+                file=sys.stderr,
+            )
+        if "accept_risk" in content.lower():
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "needs_human": True,
+                        "message": "Security audit has accept_risk verdicts requiring human sign-off.",
+                    }
+                )
+            )
+            sys.exit(1)
+        if re.search(r"vendor.*\bwithout\b.*\battribution\b", content, re.IGNORECASE):
+            fail(
+                "Vendored code missing license attribution — hard gate requirement",
+                hard=True,
+            )
+
     policy = gate_policy(config, "prior_art_human_review")
     if policy == "required" and not yolo:
         print(
