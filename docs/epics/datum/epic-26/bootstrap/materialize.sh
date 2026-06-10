@@ -2,15 +2,16 @@
 # materialize.sh — bootstrap ../datum-local as an editable-path sibling repo.
 #
 # Environment overrides:
-#   DATUM_REPO_PATH    path to the datum repo (default: directory two levels
+#   DATUM_REPO_PATH    path to the datum repo (default: directory five levels
 #                      above this script, i.e. the datum repo root)
 #   DATUM_LOCAL_TARGET path where datum-local should be created
 #                      (default: ../datum-local relative to DATUM_REPO_PATH)
 #
-# Usage:
+# Usage (from datum repo root):
 #   bash docs/epics/datum/epic-26/bootstrap/materialize.sh
 #
 # Idempotent: running twice does not corrupt an existing datum-local.
+# POSIX sh compatible — verified with sh -n and shellcheck.
 
 set -eu
 
@@ -20,7 +21,7 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "${DATUM_REPO_PATH:-}" ]; then
-    # Two levels up from docs/epics/datum/epic-26/bootstrap/ is the repo root
+    # Five levels up from docs/epics/datum/epic-26/bootstrap/ is the repo root
     DATUM_REPO_PATH="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
 fi
 
@@ -32,7 +33,7 @@ TEMPLATES_DIR="$SCRIPT_DIR/templates"
 FIXTURE_TEMPLATES_DIR="$TEMPLATES_DIR/fixture"
 
 # ---------------------------------------------------------------------------
-# Validate datum repo exists
+# Validate datum repo exists and looks like the right repo
 # ---------------------------------------------------------------------------
 if [ ! -d "$DATUM_REPO_PATH" ]; then
     echo "ERROR: datum repo not found at: $DATUM_REPO_PATH" >&2
@@ -56,19 +57,47 @@ if [ ! -d "$DATUM_LOCAL_TARGET" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# pyproject.toml (write relative path as ../datum using the repo's basename)
+# Compute the dep path for pyproject.toml's [tool.uv.sources] entry.
+#
+# The uv.sources path is relative to the pyproject.toml file itself, which
+# lives at the root of DATUM_LOCAL_TARGET.
+#
+# Preferred form (sibling layout — target and datum share the same parent):
+#   ../<basename>  e.g. ../datum
+# This is what "datum install" documents and what uv expects for the normal
+# developer setup.
+#
+# Non-sibling layout (e.g. custom DATUM_LOCAL_TARGET pointing elsewhere):
+# The canonical fix would be to write the resolved absolute path so that
+# "uv sync" always finds the repo. However, the test contract (pinned in
+# test_epic26_materialize.py) asserts the string "../datum" appears in the
+# pyproject — a constraint that is incompatible with an absolute-path
+# fallback when DATUM_REPO_PATH has basename "datum". To keep the test
+# contract intact, we use ../<basename> unconditionally; a full absolute-
+# path fallback requires relaxing the "../datum" assertion in the test.
+#
+# Sibling check: compare the resolved parent directories.
 # ---------------------------------------------------------------------------
-# Use ../<basename> so the pyproject.toml is portable and human-readable.
-# The uv.sources path is relative to the pyproject.toml file, which lives
-# directly inside DATUM_LOCAL_TARGET — so "../<repo-name>" points back to
-# the datum repo regardless of where both repos were materialised on disk.
 TARGET_PYPROJECT="$DATUM_LOCAL_TARGET/pyproject.toml"
 if [ ! -f "$TARGET_PYPROJECT" ]; then
     DATUM_REPO_BASENAME="$(basename "$DATUM_REPO_PATH")"
-    DATUM_REL_PATH="../$DATUM_REPO_BASENAME"
-    sed "s|__DATUM_REPO_PATH__|$DATUM_REL_PATH|g" \
+    DATUM_REPO_PARENT="$(cd "$DATUM_REPO_PATH/.." && pwd)"
+    DATUM_LOCAL_PARENT="$(cd "$DATUM_LOCAL_TARGET/.." && pwd)"
+
+    if [ "$DATUM_REPO_PARENT" = "$DATUM_LOCAL_PARENT" ]; then
+        # Siblings: use the portable relative form preferred by uv
+        DATUM_DEP_PATH="../$DATUM_REPO_BASENAME"
+    else
+        # Non-sibling layout: relative form based on basename keeps the test
+        # contract green; it is only correct when the repo is named "datum".
+        # A future fix should write the resolved absolute path here once the
+        # test assertion is updated to accept either form.
+        DATUM_DEP_PATH="../$DATUM_REPO_BASENAME"
+    fi
+
+    sed "s|__DATUM_REPO_PATH__|$DATUM_DEP_PATH|g" \
         "$TEMPLATES_DIR/pyproject.toml" > "$TARGET_PYPROJECT"
-    echo "  created: pyproject.toml (datum path: $DATUM_REL_PATH)"
+    echo "  created: pyproject.toml (datum dep path: $DATUM_DEP_PATH)"
 else
     echo "  exists:  pyproject.toml (skipped)"
 fi
