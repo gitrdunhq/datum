@@ -25,7 +25,7 @@ _ALL_FIELDS = (
 )
 
 _SECTION_RE = re.compile(
-    r"##\s+(?:9\.\s+)?Classification Metadata.*?```(?:yaml|yml)?\s*\n(.*?)```",
+    r"##\s+(?:\d+\.\s+)?Classification Metadata.*?```(?:yaml|yml)?\s*\n(.*?)```",
     re.DOTALL,
 )
 

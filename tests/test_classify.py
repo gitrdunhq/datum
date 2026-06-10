@@ -121,6 +121,12 @@ class TestParseClassificationMetadata(unittest.TestCase):
         meta = parse_classification_metadata("# Spec with no metadata")
         self.assertIsNone(meta["estimated_files"])
 
+    def test_section_number_agnostic(self):
+        """references/01-refine.md numbers Classification Metadata as section 10."""
+        spec = FEATURE_SPEC.replace("## 9.", "## 10.")
+        meta = parse_classification_metadata(spec)
+        self.assertEqual(meta["estimated_files"], 8)
+
 
 class TestClassify(unittest.TestCase):
     def test_patch_tier(self):
