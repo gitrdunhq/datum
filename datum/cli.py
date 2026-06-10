@@ -74,12 +74,51 @@ def status(json_output: bool = typer.Option(False, "--json", help="Output raw JS
         console.print(render(state))
 
 
+@app.command(name="language-detect")
+def language_detect_cmd(path: str = typer.Option(".", help="Path to the repository")):
+    """Detect primary repo language."""
+    from datum.language_detect import detect
+    import json
+    from pathlib import Path
+    
+    root = Path(path).resolve()
+    result = detect(root)
+    console.print(json.dumps(result))
+
+
+@app.command(name="lane-plan")
+def lane_plan_cmd(
+    validate: bool = typer.Option(False, "--validate", help="Validate tasks.json only"),
+    input_file: str = typer.Option("tasks.json", "--input", help="Input tasks JSON"),
+    output_file: str = typer.Option(".datum/lane-plan.json", "--output", help="Output lane plan JSON"),
+    md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD")
+):
+    """Builds lane-plan.json and TASKS.md from tasks.json."""
+    import sys
+    from unittest.mock import patch
+    from datum.lane_plan import main as lane_plan_main
+
+    args = ["lane_plan.py"]
+    if validate:
+        args.append("--validate")
+    args.extend(["--input", input_file, "--output", output_file, "--md-output", md_output])
+    
+    with patch.object(sys, 'argv', args):
+        lane_plan_main()
+
+
 @app.command()
 def init():
     """Bootstrap the repository for DATUM execution."""
     from datum.state import ensure_feature_branch
     from datum.bootstrap import seed_state_docs
     import sys
+    import subprocess
+
+    res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
+    if res.returncode != 0:
+        console.print("[bold red]Cannot init — repo has no commits. Run `git commit` first.[/bold red]")
+        raise typer.Exit(1)
 
     branch = ensure_feature_branch()
     console.print(f"[dim]Branch: {branch}[/dim]")
@@ -224,8 +263,48 @@ def landscape(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(result["markdown"])
 
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        console.print(f"[bold red]Failed to write {out_path}[/bold red]")
+        raise typer.Exit(1)
+
     status = "cache hit" if result["cache_hit"] else "generated"
     console.print(f"[bold green]✓ docs/LANDSCAPE.md ({status})[/bold green]")
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def gate(ctx: typer.Context):
+    """Run DATUM gate validator (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.gate"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="test-signal")
+def test_signal(ctx: typer.Context):
+    """Run DATUM test signal extractor (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.test_signal"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def skeleton(ctx: typer.Context):
+    """Run DATUM skeleton creator (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.skeleton_creator"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="commit-queue")
+def commit_queue(ctx: typer.Context):
+    """Run DATUM commit queue manager (internal)."""
+    import subprocess
+    import sys
+    res = subprocess.run([sys.executable, "-m", "datum.commit_queue"] + ctx.args)
+    raise typer.Exit(res.returncode)
 
 
 @app.command()
@@ -624,9 +703,174 @@ def dream(
     )
 
 
+@app.command()
+def walkthrough():
+    """Generate a walkthrough document for the current epic."""
+    import subprocess
+    from datum.walkthrough import generate_walkthrough
+
+    try:
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if branch.returncode != 0 or not branch.stdout.strip():
+            console.print("[bold red]Could not resolve git branch.[/bold red]")
+            raise typer.Exit(1)
+        epic_dir = Path(f"docs/epics/{branch.stdout.strip()}")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        console.print(
+            "[bold red]git not available — cannot resolve epic directory.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    if not epic_dir.exists():
+        console.print(f"[bold red]Epic directory not found: {epic_dir}[/bold red]")
+        raise typer.Exit(1)
+
+    output_path = generate_walkthrough(epic_dir)
+    console.print(f"[bold green]✓ Walkthrough generated: {output_path}[/bold green]")
+
+
+@app.command()
+def closeout(
+    run_id: str = typer.Option(None, help="Run ID (default: YYYYMMDD-HHMMSS)"),
+    base_sha: str = typer.Option(None, help="Base SHA (default: merge-base with main)"),
+    merge_sha: str = typer.Option(None, help="Merge SHA (default: git HEAD)"),
+    epic_number: int = typer.Option(
+        None, help="Epic number (default: parsed from branch)"
+    ),
+    synthesize: bool = typer.Option(
+        False, "--synthesize", help="Generate RETRO.md synthesis"
+    ),
+    skip_archive: bool = typer.Option(
+        False, "--skip-archive", help="Skip run archiving"
+    ),
+):
+    """Run DATUM closeout: collect metrics, collate, archive run."""
+    from datum.closeout_cmd import (
+        detect_context,
+        run_archive,
+        run_collate,
+        run_stage1,
+        sweep_project_memories,
+    )
+
+    try:
+        ctx = detect_context(run_id, base_sha, merge_sha, epic_number)
+    except Exception as e:
+        console.print(f"[bold red]Closeout failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[bold blue]Closeout run {ctx['run_id']} — epic {ctx['epic_number']}[/bold blue]"
+    )
+    console.print(
+        f"[dim]base: {ctx['base_sha'][:8]}  merge: {ctx['merge_sha'][:8]}[/dim]"
+    )
+
+    console.print("[dim]Stage 1: collecting metrics...[/dim]")
+    results = run_stage1(ctx["run_id"], ctx["base_sha"], ctx["merge_sha"])
+    ok = sum(1 for r in results.values() if r.get("ok"))
+    console.print(f"[dim]  {ok}/{len(results)} collectors succeeded[/dim]")
+
+    console.print("[dim]Collating...[/dim]")
+    try:
+        closeout_data = run_collate(ctx["run_id"], ctx["merge_sha"], ctx["epic_number"])
+        console.print(
+            f"[bold green]✓ closeout-data.json → {closeout_data}[/bold green]"
+        )
+    except Exception as e:
+        console.print(f"[bold red]Collate failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if synthesize:
+        console.print("[dim]Synthesizing RETRO.md...[/dim]")
+        try:
+            from datum.render import render_closeout_retro
+            retro_path = Path(f"docs/epics/{ctx['branch']}/RETRO.md")
+            render_closeout_retro(closeout_data, retro_path)
+            console.print(f"[bold green]✓ RETRO.md generated → {retro_path}[/bold green]")
+        except Exception as e:
+            console.print(f"[bold yellow]Synthesis failed: {e}[/bold yellow]")
+
+    console.print("[dim]Generating walkthrough...[/dim]")
+    from datum.walkthrough import generate_walkthrough
+    
+    epic_dir = Path(f"docs/epics/{ctx['branch']}")
+    if epic_dir.exists():
+        try:
+            wt_path = generate_walkthrough(epic_dir)
+            console.print(f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]")
+        except Exception as e:
+            console.print(f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]")
+    else:
+        console.print(f"[dim]Skipping walkthrough: {epic_dir} not found[/dim]")
+
+    console.print("[dim]Running /dream memory consolidation...[/dim]")
+    try:
+        # Pass semantic=False to keep closeout fast, or True if MLX is desired. Let's use False for fast Regex fallback
+        dream(memory_dir="", audit_only=False, extract_only=False, semantic=False)
+    except Exception as e:
+        console.print(f"[bold yellow]Memory consolidation failed: {e}[/bold yellow]")
+
+    if not skip_archive:
+        run_archive(ctx["run_id"])
+        console.print("[dim]✓ Run archived[/dim]")
+
+    try:
+        cwd = Path.cwd()
+        project_hash = str(cwd).replace("/", "-")
+        memory_dir = Path.home() / ".claude" / "projects" / project_hash / "memory"
+        count = sweep_project_memories(memory_dir, ctx["branch"])
+        if count > 0:
+            console.print(f"[dim]✓ Swept {count} project-state memories[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Failed to sweep memories: {e}[/yellow]")
+
+    console.print(
+        "[bold green]✓ Closeout complete. Run `datum dream` for memory consolidation.[/bold green]"
+    )
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
-    app()
+    try:
+        app()
+    except Exception as e:
+        import sys
+        import traceback
+        import click
+        import typer
+        
+        if isinstance(e, (click.exceptions.Exit, click.exceptions.ClickException, typer.Exit)):
+            raise
+            
+        from datum.report_bug import _sanitize
+        trace_str = _sanitize(traceback.format_exc())
+            
+        console.print(f"[bold red]DATUM encountered an unexpected error: {e}[/bold red]")
+        console.print(f"[dim]{trace_str}[/dim]")
+        console.print(
+            "\n[yellow][Agent Hint] If you are an AI, file a bug report for this using:\n"
+            "datum bugfile <module> \"<one-line description>\" --trace \"<traceback>\"[/yellow]"
+        )
+        
+        if sys.stdout.isatty() and sys.stdin.isatty():
+            try:
+                if typer.confirm("\nWould you like to auto-file this bug to GitHub?", default=False):
+                    from datum.report_bug import report_bug
+                    url = report_bug("datum.cli", str(e), {"trace": trace_str})
+                    if url:
+                        console.print(f"[bold green]✓ Bug filed: {url}[/bold green]")
+                    else:
+                        console.print("[yellow]Skipped — duplicate issue already open or failed to file.[/yellow]")
+            except Exception:
+                pass
+                
+        sys.exit(1)
 
 
 if __name__ == "__main__":

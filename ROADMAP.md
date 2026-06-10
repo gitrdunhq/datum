@@ -1,20 +1,16 @@
 # Roadmap
 
-**Last updated:** 2026-05-28
+**Last updated:** 2026-05-29
 
 ---
 
 ## Planned
 
 - Closeout automation: implement collector scripts + collate + synthesis pipeline (`08-closeout.md`)
-- Fix #42: max_tokens / context_window conflation in local-llm budget check
-- Self-healing integration into gate.py try/except paths (auto-call `report_bug` on crashes)
-- CLI subcommand wrappers for internal pipeline commands (gate, test-signal, skeleton, commit-queue, etc.)
-- Fix #19: self_check path prefix mismatch
-- Full `/dream` integration as closeout Stage 2 step 5
 
 ## Completed
 
+- Epic 25 — chore: remove turret from datum — 2026-05-29
 - Epic 18 — Multi-turn local LLM + ACI + lane tools (direct-to-main, Claude×Gemini pair) — 2026-05-28
 - Epic 17 — datum-tui beta (factory floor dashboard) — 2026-05-28 — PR #41
 - Epic 16 — `datum init` seeds hooks/config/lane-tools — 2026-05-28 — PR #40

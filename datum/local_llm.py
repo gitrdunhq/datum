@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import urllib.request  # noqa: F401 — used in oMLX backend helpers below
 from pathlib import Path
 
 _model_cache: dict = {}
@@ -21,9 +22,18 @@ _model_cache: dict = {}
 DEFAULTS = {
     "enabled": False,
     "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
-    "max_tokens": 131072,
+    # fast_model is used for low-complexity phases (triage, validate).
+    # Defaults to the same as model if not set.
+    "fast_model": None,
+    "fast_phases": ["triage", "validate"],
+    "max_tokens": 8192,
     "temperature": 0.3,
     "context_window": 131072,
+    # KV cache: kv_bits=8 halves cache memory vs float16; None disables quantization.
+    # max_kv_size caps the rolling KV buffer (tokens); None = unlimited.
+    "kv_bits": 8,
+    "kv_group_size": 64,
+    "max_kv_size": 32768,
     "repetition_ngram_size": 6,
     "repetition_max_count": 3,
     "phases": [
@@ -103,11 +113,26 @@ def is_available() -> bool:
         return False
 
 
+def _cache_offset(cache: list) -> int:
+    """Return tokens already processed in this cache, or 0 if unavailable."""
+    try:
+        return int(cache[0].offset) if cache else 0
+    except (AttributeError, IndexError):
+        return 0
+
+
 def load_model(model_id: str = DEFAULTS["model"]):
     if model_id in _model_cache:
         return _model_cache[model_id]
 
+    import os
+
     from mlx_lm import load
+
+    config = load_config()
+    hf_cache = config.get("hf_cache_dir")
+    if hf_cache and not os.environ.get("HF_HUB_CACHE"):
+        os.environ["HF_HUB_CACHE"] = str(hf_cache)
 
     model, tokenizer = load(model_id)
     _model_cache[model_id] = (model, tokenizer)
@@ -178,9 +203,15 @@ def generate(
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
+    Routes to oMLX/LM Studio (if omlx_url configured and reachable),
+    falls back to direct mlx_lm.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
+    if _omlx_available():
+        url = _omlx_url()
+        return _omlx_generate(prompt, model_id, max_tokens, temperature, url)
+
     from mlx_lm import stream_generate
 
     model, tokenizer = load_model(model_id)
@@ -200,13 +231,25 @@ def generate(
     config = load_config()
     ngram_size = config.get("repetition_ngram_size", DEFAULTS["repetition_ngram_size"])
     max_count = config.get("repetition_max_count", DEFAULTS["repetition_max_count"])
+    kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
+    kv_group_size = config.get("kv_group_size", DEFAULTS["kv_group_size"])
+    max_kv_size = config.get("max_kv_size", DEFAULTS["max_kv_size"])
+
+    kv_kwargs: dict = {}
+    if kv_bits is not None:
+        kv_kwargs["kv_bits"] = kv_bits
+        kv_kwargs["kv_group_size"] = kv_group_size
+    if max_kv_size is not None:
+        kv_kwargs["max_kv_size"] = max_kv_size
 
     start = time.monotonic()
     text = ""
     token_count = 0
     abort_reason = None
 
-    for response in stream_generate(model, tokenizer, prompt, max_tokens=max_tokens):
+    for response in stream_generate(
+        model, tokenizer, prompt, max_tokens=max_tokens, **kv_kwargs
+    ):
         text += response.text
         token_count += 1
 
@@ -288,17 +331,37 @@ def structured(
     schema,
     model_id: str = DEFAULTS["model"],
     max_tokens: int = 500,
+    **kwargs,
 ) -> dict:
-    """Grammar-constrained generation using outlines + MLX.
+    """Grammar-constrained generation via oMLX (preferred) or outlines + MLX.
 
-    schema: a Pydantic BaseModel class. Output is guaranteed to match it.
+    Routes to oMLX JSON schema response_format if server is available,
+    falls back to outlines grammar-constrained generation otherwise.
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
+    if _omlx_available():
+        url = _omlx_url()
+        return _omlx_structured(prompt, schema, model_id, max_tokens, url)
+
     try:
         import outlines
     except ImportError:
         raise RuntimeError("Grammar support requires: pip install outlines")
+
+    config = load_config()
+    kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
+    kv_group_size = config.get("kv_group_size", DEFAULTS["kv_group_size"])
+    max_kv_size = config.get("max_kv_size", DEFAULTS["max_kv_size"])
+
+    kv_kwargs: dict = {}
+    if kv_bits is not None:
+        kv_kwargs["kv_bits"] = kv_bits
+        kv_kwargs["kv_group_size"] = kv_group_size
+    if max_kv_size is not None:
+        kv_kwargs["max_kv_size"] = max_kv_size
+    if "prompt_cache" in kwargs:
+        kv_kwargs["prompt_cache"] = kwargs["prompt_cache"]
 
     model, tokenizer = load_model(model_id)
     mlx_model = outlines.from_mlxlm(model, tokenizer)
@@ -308,7 +371,7 @@ def structured(
         gen = outlines.Generator(mlx_model, schema)
 
     start = time.monotonic()
-    raw = gen(prompt, max_tokens=max_tokens)
+    raw = gen(prompt, max_tokens=max_tokens, **kv_kwargs)
     elapsed = time.monotonic() - start
 
     data = json.loads(raw) if isinstance(raw, str) else raw
@@ -348,6 +411,7 @@ def two_pass_structured(
     model_id: str = DEFAULTS["model"],
     max_tokens: int = 500,
     draft_max_tokens: int = 300,
+    **kwargs,
 ) -> dict:
     """DCCD-style: freeform draft first, then grammar-constrained extraction.
 
@@ -359,14 +423,14 @@ def two_pass_structured(
 
     draft_text = draft.get("text", "")
     if draft.get("escalated") or not draft_text.strip():
-        return structured(prompt, schema, model_id, max_tokens)
+        return structured(prompt, schema, model_id, max_tokens, **kwargs)
 
     extraction_prompt = (
         f"Based on this analysis:\n{draft_text[:500]}\n\n"
         f"Extract the answer as JSON matching the schema. "
         f"Be concise — one sentence per field."
     )
-    result = structured(extraction_prompt, schema, model_id, max_tokens)
+    result = structured(extraction_prompt, schema, model_id, max_tokens, **kwargs)
     result["draft"] = draft_text[:500]
     result["tokens"] = result.get("tokens", 0) + draft.get("tokens", 0)
     result["time_s"] = round(result.get("time_s", 0) + draft.get("time_s", 0), 2)
@@ -383,6 +447,7 @@ def vote_structured(
     max_tokens: int = 500,
     n: int = 3,
     use_two_pass: bool = False,
+    **kwargs,
 ) -> dict:
     """Generate N samples, filter for quality, vote on Literal fields.
 
@@ -395,7 +460,7 @@ def vote_structured(
     total_time = 0.0
 
     for _ in range(n):
-        result = gen_fn(prompt, schema, model_id, max_tokens)
+        result = gen_fn(prompt, schema, model_id, max_tokens, **kwargs)
         total_tokens += result.get("tokens", 0)
         total_time += result.get("time_s", 0)
         quality = result.get("quality", {})
@@ -541,8 +606,7 @@ def run_phase(
     if mt_config.get("enabled") and phase in mt_config.get("phases", []):
         return multi_turn_phase(phase, prompt, schema, max_tokens, mt_overrides)
 
-    config = load_config()
-    model_id = config.get("model", DEFAULTS["model"])
+    model_id = get_model_for_phase(phase)
 
     try:
         if schema:
@@ -840,7 +904,7 @@ def multi_turn_phase(
         return run_phase(phase, prompt, schema, max_tokens)
 
     config = load_config()
-    model_id = config.get("model", DEFAULTS["model"])
+    model_id = get_model_for_phase(phase)
     max_turns = (
         mt_config.get("max_tool_turns", 10)
         if mt_config.get("enable_tool_execution", False)
@@ -858,6 +922,15 @@ def multi_turn_phase(
     plan: dict | None = None
     total_tokens = 0
     total_start = time.monotonic()
+
+    _mt_cache = None
+    try:
+        from mlx_lm.models.cache import make_prompt_cache as _make_cache
+
+        model, tokenizer = load_model(model_id)
+        _mt_cache = _make_cache(model, max_kv_size=config.get("max_kv_size"))
+    except Exception:
+        pass
 
     for turn in range(max_turns):
         elapsed_total = time.monotonic() - total_start
@@ -898,17 +971,39 @@ def multi_turn_phase(
         turn_start = time.monotonic()
         use_two_pass = mt_config.get("two_pass", True)
         n_samples = mt_config.get("consistency_samples", 3)
+
+        offset = _cache_offset(_mt_cache)
+        turn_prompt_to_pass = turn_prompt
+        
+        if offset > 0:
+            model, tokenizer = load_model(model_id)
+            tokens = tokenizer.encode(turn_prompt)
+            if offset < len(tokens):
+                turn_prompt_to_pass = tokenizer.decode(tokens[offset:])
+        
         try:
             if turn == 0 and mt_config.get("planning_turn", True):
                 from datum.schemas import StepPlan
 
                 if use_two_pass:
                     result = two_pass_structured(
-                        turn_prompt, StepPlan, model_id, max_tokens=turn_max_tokens
+                        turn_prompt_to_pass,
+                        StepPlan,
+                        model_id,
+                        max_tokens=turn_max_tokens,
+                        **(
+                            {"prompt_cache": _mt_cache} if _mt_cache is not None else {}
+                        ),
                     )
                 else:
                     result = structured(
-                        turn_prompt, StepPlan, model_id, max_tokens=turn_max_tokens
+                        turn_prompt_to_pass,
+                        StepPlan,
+                        model_id,
+                        max_tokens=turn_max_tokens,
+                        **(
+                            {"prompt_cache": _mt_cache} if _mt_cache is not None else {}
+                        ),
                     )
                 quality = result.get("quality", {})
                 if not quality.get("ok", True):
@@ -935,12 +1030,13 @@ def multi_turn_phase(
                 from datum.schemas import StepResult as StepResultSchema
 
                 result = vote_structured(
-                    turn_prompt,
+                    turn_prompt_to_pass,
                     StepResultSchema,
                     model_id,
                     max_tokens=turn_max_tokens,
                     n=n_samples,
                     use_two_pass=use_two_pass,
+                    **({"prompt_cache": _mt_cache} if _mt_cache is not None else {}),
                 )
 
                 if result.get("data") is None:
@@ -996,15 +1092,15 @@ def multi_turn_phase(
                     tool_output, was_truncated = _execute_tool(tool_call, mt_config)
                     tool_time_s = time.monotonic() - tool_start_time
                     tool_name = tool_call.get("tool_name", "unknown")
-                    
+
                     history.append(
                         {"role": "assistant", "content": json.dumps(turn_data_dict)}
                     )
-                    
+
                     user_content = f"Tool execution result:\n<untrusted>\n{tool_output}\n</untrusted>\nAnalyze the result and decide next action."
                     if was_truncated:
                         user_content += "\n\nSystem Note: The tool output was extremely long and has been truncated. If you need the missing lines, use a more precise tool (like 'read_file_range' or 'grep_search')."
-                    
+
                     history.append(
                         {
                             "role": "user",
@@ -1134,7 +1230,6 @@ def _build_synthesis_prompt(
 
 
 def _load_multi_turn_config(phase: str) -> dict:
-    config = load_config()
     mt = {}
     mt.update(MULTI_TURN_DEFAULTS)
 
@@ -1308,6 +1403,128 @@ def should_use_local(phase: str) -> bool:
     return phase in config.get("phases", [])
 
 
+def get_model_for_phase(phase: str) -> str:
+    """Return fast_model for low-complexity phases, model otherwise.
+
+    Falls back to model if fast_model is not configured.
+    """
+    config = load_config()
+    main_model = config.get("model", DEFAULTS["model"])
+    fast_model = config.get("fast_model") or main_model
+    fast_phases = config.get("fast_phases", DEFAULTS["fast_phases"])
+    return fast_model if phase in fast_phases else main_model
+
+
+# ── oMLX backend ─────────────────────────────────────────────────────────────
+
+
+def _omlx_url() -> str | None:
+    """Return configured oMLX base URL, or None if not set."""
+    return load_config().get("omlx_url")
+
+
+def _omlx_available() -> bool:
+    """Return True if an OpenAI-compatible inference server is reachable.
+
+    Tries /health first (oMLX), falls back to /v1/models (LM Studio, Ollama).
+    """
+    url = _omlx_url()
+    if not url:
+        return False
+    for path in ("/health", "/v1/models"):
+        try:
+            resp = urllib.request.urlopen(f"{url}{path}", timeout=1)
+            if resp.status == 200:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _omlx_generate(
+    prompt: str,
+    model_id: str,
+    max_tokens: int,
+    temperature: float,
+    url: str,
+) -> dict:
+    """Generate unstructured text via oMLX /v1/chat/completions."""
+    payload = json.dumps(
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    text = data["choices"][0]["message"]["content"]
+    tokens = data.get("usage", {}).get("completion_tokens", 0)
+    escalated = ESCALATE in text
+    return {
+        "text": text,
+        "tokens": tokens,
+        "time_s": 0.0,
+        "model": model_id,
+        "escalated": escalated,
+        "abort_reason": "model_requested_escalation" if escalated else None,
+        "context": {},
+    }
+
+
+def _omlx_structured(
+    prompt: str,
+    schema,
+    model_id: str,
+    max_tokens: int,
+    url: str,
+) -> dict:
+    """Grammar-constrained generation via oMLX JSON schema response_format."""
+    json_schema = schema.model_json_schema()
+    payload = json.dumps(
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            },
+            "stream": False,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{url}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read())
+    raw = data["choices"][0]["message"]["content"]
+    parsed = json.loads(raw)
+    return {
+        "data": parsed,
+        "raw": raw,
+        "tokens": data.get("usage", {}).get("completion_tokens", 0),
+        "time_s": 0.0,
+        "model": model_id,
+        "quality": {"ok": True, "reason": None},
+    }
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         config = load_config()
@@ -1320,14 +1537,26 @@ def main() -> None:
         sys.exit(1)
 
     config = load_config()
-    print(f"Loading {config['model']}...", file=sys.stderr)
-    result = generate(
-        prompt,
-        model_id=config["model"],
-        max_tokens=config.get("max_tokens", DEFAULTS["max_tokens"]),
-        temperature=config.get("temperature", DEFAULTS["temperature"]),
-    )
-    print(json.dumps(result, indent=2))
+    try:
+        print(f"Loading {config['model']}...", file=sys.stderr)
+        result = generate(
+            prompt,
+            model_id=config["model"],
+            max_tokens=config.get("max_tokens", DEFAULTS["max_tokens"]),
+            temperature=config.get("temperature", DEFAULTS["temperature"]),
+        )
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        import traceback
+        from datum.report_bug import _sanitize
+        
+        trace_str = _sanitize(traceback.format_exc())
+        hint = (
+            "\n[Agent Hint] If you are an AI, file a bug report for this using:\n"
+            f"datum bugfile datum.local_llm \"{type(e).__name__} in local_llm\" --trace \"<traceback>\"\n"
+        )
+        print(f"DATUM encountered an unexpected error: {e}\n{trace_str}{hint}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

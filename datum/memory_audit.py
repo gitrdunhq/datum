@@ -16,7 +16,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-EXPIRES_DEFAULTS: dict[str, int] = {"project": 60, "reference": 90}
+EXPIRES_DEFAULTS: dict[str, int] = {"project": 28, "reference": 90}
 ARCHIVE_MULTIPLIER = 2
 
 
@@ -59,9 +59,12 @@ def audit_directory(memory_dir: Path) -> list[dict]:
         default_expires = EXPIRES_DEFAULTS[mem_type]
         expires_after = int(fm.get("expires_after_days", default_expires))
         last_verified = _parse_date(fm.get("last_verified", ""))
+        updated = _parse_date(fm.get("updated", ""))
+        created = _parse_date(fm.get("created", ""))
 
-        if last_verified:
-            age_days = (today - last_verified).days
+        base_date = last_verified or updated or created
+        if base_date:
+            age_days = (today - base_date).days
         else:
             mtime = date.fromtimestamp(md_file.stat().st_mtime)
             age_days = (today - mtime).days

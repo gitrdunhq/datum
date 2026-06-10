@@ -151,10 +151,10 @@ def topological_sort(tasks: list[dict]) -> list[str]:
     return order
 
 
-def _render_task_block(task: dict) -> list[str]:
+def _render_task_block(task: dict, heading_level: str = "###") -> list[str]:
     """Render a single task as markdown lines."""
     lines: list[str] = []
-    lines.append(f"### {task['id']}: {task['title']}")
+    lines.append(f"{heading_level} {task['id']}: {task['title']}")
     if task.get("description"):
         lines.append(f"{task['description']}")
         lines.append("")
@@ -242,30 +242,7 @@ def render_tasks_md(
     else:
         # Legacy: flat list, no unit grouping (use ## for tasks like before)
         for tid in sorted_ids:
-            task = task_map[tid]
-            lines.append(f"## {task['id']}: {task['title']}")
-            if task.get("description"):
-                lines.append(f"{task['description']}")
-                lines.append("")
-
-            lines.append("- **Acceptance Criteria**:")
-            for ac in task["acceptance_criteria"]:
-                lines.append(f"  - {ac}")
-
-            lines.append(f"- **Files**: {', '.join(task['files'])}")
-
-            if task.get("depends_on"):
-                lines.append(f"- **Depends on**: {', '.join(task['depends_on'])}")
-
-            lines.append(f"- **RED Note**: {task['red_note']}")
-
-            if task.get("introduces_stubs"):
-                lines.append("- **Introduces Stubs**: true")
-
-            if task.get("estimated_loc"):
-                lines.append(f"- **Estimated LOC**: {task['estimated_loc']}")
-
-            lines.append("")
+            lines.extend(_render_task_block(task_map[tid], heading_level="##"))
 
     return "\n".join(lines)
 

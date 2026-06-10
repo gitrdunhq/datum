@@ -1,0 +1,92 @@
+[
+  {
+    "id": "task-001",
+    "title": "Create WalkthroughSummary Pydantic schema",
+    "description": "Define the `WalkthroughSummary` Pydantic model in `datum/models/walkthrough_schema.py` to structure the LLM output. Fields: `summary` (str), `lanes` (list of lane narratives), `files_touched` (list[str]), `key_decisions` (list[str]), and `excluded` (list[str]).",
+    "acceptance_criteria": [
+      "datum/models/walkthrough_schema.py defines WalkthroughSummary",
+      "Schema validates cleanly with Pydantic v2"
+    ],
+    "files": [
+      "datum/models/walkthrough_schema.py"
+    ],
+    "depends_on": [],
+    "introduces_stubs": false,
+    "red_note": "None",
+    "estimated_loc": 40
+  },
+  {
+    "id": "task-002",
+    "title": "Create WALKTHROUGH.md template",
+    "description": "Create `templates/WALKTHROUGH.md` as a template for the walkthrough artifact. It must include sections for summary, lane narratives (RED/GREEN/REFACTOR), files touched, key design decisions, and exclusions.",
+    "acceptance_criteria": [
+      "templates/WALKTHROUGH.md exists with all required sections",
+      "Template uses clear placeholders for LLM output"
+    ],
+    "files": [
+      "templates/WALKTHROUGH.md"
+    ],
+    "depends_on": [],
+    "introduces_stubs": false,
+    "red_note": "None",
+    "estimated_loc": 60
+  },
+  {
+    "id": "task-003",
+    "title": "Create walkthrough generator module",
+    "description": "Implement `datum/walkthrough.py` to handle the generation logic. This includes reading `SPEC.md`, `TASKS.md`, and `git diff`, calling `run_phase(\"sidecar_docs\", ...)` with the schema, and rendering the result into the template. It must also handle the deterministic fallback if the LLM is unavailable or returns malformed JSON.",
+    "acceptance_criteria": [
+      "datum/walkthrough.py reads necessary files and git diff",
+      "LLM output is correctly rendered into the template",
+      "Deterministic fallback works if sidecar_docs is unavailable or returns malformed JSON"
+    ],
+    "files": [
+      "datum/walkthrough.py"
+    ],
+    "depends_on": [
+      "task-001",
+      "task-002"
+    ],
+    "introduces_stubs": false,
+    "red_note": "None",
+    "estimated_loc": 80
+  },
+  {
+    "id": "task-004",
+    "title": "Register walkthrough CLI command and integrate with closeout",
+    "description": "Add the `datum walkthrough` subcommand to `datum/cli.py` and integrate it into the `datum closeout` command pipeline to ensure it runs after archiving artifacts.",
+    "acceptance_criteria": [
+      "datum walkthrough subcommand is registered",
+      "datum closeout calls the walkthrough generation process"
+    ],
+    "files": [
+      "datum/cli.py"
+    ],
+    "depends_on": [
+      "task-003"
+    ],
+    "introduces_stubs": false,
+    "red_note": "None",
+    "estimated_loc": 40
+  },
+  {
+    "id": "task-005",
+    "title": "Write unit and integration tests",
+    "description": "Implement `tests/test_walkthrough.py` to cover template existence, schema validation, deterministic fallback, and CLI command execution. All LLM calls must be mocked to prevent actual calls to Gemma during testing.",
+    "acceptance_criteria": [
+      "tests/test_walkthrough.py contains at least 5 tests",
+      "All tests pass with `uv run pytest tests/test_walkthrough.py`",
+      "No actual calls to Gemma are made during testing"
+    ],
+    "files": [
+      "tests/test_walkthrough.py"
+    ],
+    "depends_on": [
+      "task-003",
+      "task-004"
+    ],
+    "introduces_stubs": false,
+    "red_note": "None",
+    "estimated_loc": 90
+  }
+]

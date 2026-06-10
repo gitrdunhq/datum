@@ -86,8 +86,32 @@ def render_lane_row(lane_id: str, lane: dict) -> list[str]:
     return rows
 
 
+def detect_fallback_phase() -> str | None:
+    import subprocess
+    try:
+        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        branch = "unknown"
+
+    root = Path.cwd()
+    if (root / "TASKS.md").exists() and (root / "PROPERTIES.md").exists():
+        return "Act"
+    
+    epic_dir = root / "docs" / "epics" / branch
+    if epic_dir.exists():
+        if (epic_dir / "SPEC.md").exists() and not (root / "TASKS.md").exists():
+            return "Plan"
+        if (epic_dir / "TICKET.md").exists():
+            return "Refine"
+
+    return None
+
+
 def render(state: dict) -> str:
     if not state:
+        fallback = detect_fallback_phase()
+        if fallback:
+            return f"No active run state. Detected artifacts for phase: {fallback}. Run 'datum go' to start."
         return "No active run. Run 'datum go' to start or 'datum init' to bootstrap."
 
     run_id = state.get("run_id", "unknown")
