@@ -83,31 +83,3 @@ Key sections:
 Final pytest summary: `7 passed in 0.01s`</result>
 <usage><subagent_tokens>34558</subagent_tokens><tool_uses>7</tool_uses><duration_ms>56779</duration_ms></usage>
 </task-notification>
-
----
-
-<task-notification>
-<task-id>ae3800ade847758f5</task-id>
-<tool-use-id>toolu_01LHQBkB9cxqvUoQ2bu1Fax4</tool-use-id>
-<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/5e0ef979-a632-4cc8-aa42-b353a67179a3/tasks/ae3800ade847758f5.output</output-file>
-<status>completed</status>
-<summary>Agent "GREEN agent: task-001 write tools" completed</summary>
-<result>All 42 tests pass.
-
----
-
-**Summary**
-
-Files written:
-- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/write_to_file.py` — accepts `{"path", "content"}`, creates parent dirs, writes UTF-8, prints JSON `{"path": ..., "bytes_written": N, "ok": true}`, exit 0; idempotent by design (overwrites on repeat)
-- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/replace_file_content.py` — accepts `{"path", "old_text", "new_text"}`, replaces first occurrence; exits 1 with error message if `old_text` not found; replacing with identical text is a clean no-op success
-- `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/multi_replace_file_content.py` — accepts `{"path", "replacements": [...]}`, applies list sequentially so later replacements can match text produced by earlier ones; empty list is clean success
-
-Manifest entries added to `scripts/lane-tools/manifest.toml`:
-- `[tools.write_to_file]`, `[tools.replace_file_content]`, `[tools.multi_replace_file_content]` — all with `permissions = { network = false, write = ["."], read = ["."] }`, `timeout_seconds = 10`, `added_in_epic = 26`, `added_in_lane = "task-001"`; existing entries untouched
-
-All scripts use stdlib only (json, pathlib, sys) — no subprocess, os.system, or eval.
-
-**Final pytest summary: `42 passed in 0.86s`**</result>
-<usage><subagent_tokens>48005</subagent_tokens><tool_uses>20</tool_uses><duration_ms>130958</duration_ms></usage>
-</task-notification>
