@@ -67,3 +67,27 @@ permissions = { network = true, write = ["."], read = ["."] }
 timeout_seconds = 60
 added_in_epic = 1
 added_in_lane = "aci-loop"
+
+[tools.write_to_file]
+path = "write_to_file.py"
+description = "Write content to a file, creating parent directories as needed."
+permissions = { network = false, write = ["."], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 26
+added_in_lane = "task-001"
+
+[tools.replace_file_content]
+path = "replace_file_content.py"
+description = "Replace the first occurrence of old_text with new_text in a file."
+permissions = { network = false, write = ["."], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 26
+added_in_lane = "task-001"
+
+[tools.multi_replace_file_content]
+path = "multi_replace_file_content.py"
+description = "Apply a list of old_text/new_text replacements sequentially to a file."
+permissions = { network = false, write = ["."], read = ["."] }
+timeout_seconds = 10
+added_in_epic = 26
+added_in_lane = "task-001"

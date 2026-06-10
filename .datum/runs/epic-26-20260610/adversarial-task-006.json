@@ -1,0 +1,56 @@
+{
+  "task_id": "task-006",
+  "no_gaps_found": false,
+  "review": [
+    {
+      "id": "EC-1",
+      "verdict": "gap-fixed",
+      "action": "comment reworded to avoid literal target-function name"
+    },
+    {
+      "id": "EC-2",
+      "verdict": "dismissed",
+      "action": "BOUND-006 applies to template baseline only"
+    },
+    {
+      "id": "EC-3",
+      "verdict": "routed",
+      "action": "datum-local .gitignore must exclude fixtures/*/.git \u2014 added to task-003 brief"
+    },
+    {
+      "id": "EC-4",
+      "verdict": "gap-fixed",
+      "action": "conftest.py added to anchor rootdir/sys.path"
+    },
+    {
+      "id": "EC-5",
+      "verdict": "gap-fixed",
+      "action": "same fix as EC-4"
+    },
+    {
+      "id": "EC-6",
+      "verdict": "gap-fixed",
+      "action": "build artifacts purged; materialize.sh must copy an explicit allowlist \u2014 added to task-003 brief"
+    },
+    {
+      "id": "EC-7",
+      "verdict": "dismissed-spec-corrected",
+      "action": "flat layout is the tested deliberate form; SPEC AC6.1 wording aligned"
+    },
+    {
+      "id": "EC-8",
+      "verdict": "gap-fixed",
+      "action": "uv.lock removed with EC-6"
+    },
+    {
+      "id": "EC-9",
+      "verdict": "dismissed",
+      "action": "per adversarial self-assessment"
+    },
+    {
+      "id": "EC-10",
+      "verdict": "dismissed",
+      "action": "from __future__ annotations defuses it"
+    }
+  ]
+}

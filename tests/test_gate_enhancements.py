@@ -79,6 +79,19 @@ class TestCheckAssumptionAudit(unittest.TestCase):
         errors, warnings = check_assumption_audit(spec, None)
         self.assertEqual(len(errors), 0)
 
+    def test_numbered_section_heading_passes(self):
+        """references/01-refine.md numbers Assumption Audit as section 9."""
+        from datum.gate import check_assumption_audit
+
+        spec = (
+            "## 9. Assumption Audit\n\n"
+            "| # | Assumption | Justification | Status | Resolves |\n"
+            "|---|---|---|---|---|\n"
+            "| 1 | Test | Safe | confirmed | n/a |\n"
+        )
+        errors, warnings = check_assumption_audit(spec, None)
+        self.assertEqual(len(errors), 0)
+
     def test_guess_without_resolves_fails(self):
         """SAFE-001: guess without Resolves fails"""
         from datum.gate import check_assumption_audit

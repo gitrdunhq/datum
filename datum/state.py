@@ -27,6 +27,7 @@ PHASES = [
     "discovery",
     "refine",
     "plan",
+    "prior_art",
     "triage",
     "deepen",
     "properties",
@@ -159,7 +160,11 @@ def load_state() -> dict:
     if not DB_FILE.exists():
         return {}
     with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
+        try:
+            cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
+        except sqlite3.OperationalError:
+            # DB file exists but was never initialized (e.g. zero-byte file)
+            return {}
         row = cur.fetchone()
         if row:
             return json.loads(row[0])

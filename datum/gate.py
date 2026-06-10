@@ -161,13 +161,14 @@ def check_assumption_audit(
     if not overconfidence_enabled:
         return errors, warnings
 
-    # Check section exists
-    if "## Assumption Audit" not in spec_content:
+    # Check section exists (heading may carry a section number, e.g. "## 9. Assumption Audit")
+    section_match = re.search(r"##\s+(?:\d+\.\s+)?Assumption Audit", spec_content)
+    if not section_match:
         errors.append("SPEC.md missing '## Assumption Audit' section")
         return errors, warnings
 
     # Extract table rows from the Assumption Audit section
-    section_start = spec_content.index("## Assumption Audit")
+    section_start = section_match.start()
     section_text = spec_content[section_start:]
     # End at next ## heading or end of file
     next_section = re.search(r"\n## (?!Assumption Audit)", section_text)
@@ -406,6 +407,84 @@ def gate_plan(yolo: bool, config: dict) -> None:
         sys.exit(1)
 
     pass_gate("Plan gate passed")
+
+
+def gate_prior_art(yolo: bool, config: dict) -> None:
+    prior_art_path = resolve_artifact("PRIOR_ART.md")
+    if not prior_art_path.exists():
+        fail("PRIOR_ART.md not found in epic directory")
+
+    content = prior_art_path.read_text()
+
+    tasks_path = Path("tasks.json")
+    if tasks_path.exists():
+        tasks = json.loads(tasks_path.read_text())
+        task_list = tasks if isinstance(tasks, list) else tasks.get("tasks", [])
+        task_ids = {t["id"] for t in task_list if "id" in t}
+        for tid in task_ids:
+            if tid not in content:
+                fail(f"PRIOR_ART.md missing entry for {tid}")
+
+    tasks_md = resolve_artifact("TASKS.md")
+    if tasks_md.exists():
+        md_content = tasks_md.read_text()
+        if "## Prior Art" not in md_content:
+            fail("TASKS.md missing '## Prior Art' section")
+
+    if re.search(r"\buse\b.*\b(GPL|AGPL)\b", content, re.IGNORECASE):
+        fail("Prior art finding with 'use' verdict has GPL/AGPL license — incompatible")
+
+    has_imports = bool(re.search(r"\b(use|wrap|vendor)\b", content, re.IGNORECASE))
+
+    if has_imports:
+        if "## Security Audit" not in content:
+            fail(
+                "PRIOR_ART.md has use/wrap/vendor verdicts but no '## Security Audit' section"
+            )
+        if re.search(r"⛔\s*REJECTED", content):
+            rejected = re.findall(r"⛔\s*REJECTED[^\n]*", content)
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "hard_stop": False,
+                        "message": f"Security audit rejected {len(rejected)} dependency(s). "
+                        "Verdicts downgraded to 'reference'. Review PRIOR_ART.md.",
+                    }
+                ),
+                file=sys.stderr,
+            )
+        if "accept_risk" in content.lower():
+            print(
+                json.dumps(
+                    {
+                        "passed": False,
+                        "needs_human": True,
+                        "message": "Security audit has accept_risk verdicts requiring human sign-off.",
+                    }
+                )
+            )
+            sys.exit(1)
+        if re.search(r"vendor.*\bwithout\b.*\battribution\b", content, re.IGNORECASE):
+            fail(
+                "Vendored code missing license attribution — hard gate requirement",
+                hard=True,
+            )
+
+    policy = gate_policy(config, "prior_art_human_review")
+    if policy == "required" and not yolo:
+        print(
+            json.dumps(
+                {
+                    "passed": False,
+                    "needs_human": True,
+                    "message": "PRIOR_ART.md ready for human review.",
+                }
+            )
+        )
+        sys.exit(1)
+
+    pass_gate("Prior Art gate passed")
 
 
 def gate_triage(yolo: bool, config: dict) -> None:
@@ -668,6 +747,7 @@ def gate_validate_profiles(config: dict) -> None:
 GATES = {
     "refine": gate_refine,
     "plan": gate_plan,
+    "prior_art": gate_prior_art,
     "triage": gate_triage,
     "deepen": gate_deepen,
     "properties": gate_properties,
@@ -706,24 +786,20 @@ def main() -> None:
     except Exception as e:
         import traceback
         from datum.report_bug import _sanitize, report_bug
-        
+
         trace_str = _sanitize(traceback.format_exc())
-        
+
         issue_url = report_bug(
             module="datum.gate",
             error=f"{type(e).__name__} in gate_{args.phase}",
-            context={"traceback": trace_str}
+            context={"traceback": trace_str},
         )
-        
+
         msg = f"DATUM encountered an unexpected error: {e}\n{trace_str}"
         if issue_url:
             msg += f"\n\n[Auto-Healing] Filed bug report: {issue_url}"
-            
-        print(json.dumps({
-            "passed": False, 
-            "hard_stop": True, 
-            "message": msg
-        }))
+
+        print(json.dumps({"passed": False, "hard_stop": True, "message": msg}))
         sys.exit(2)
 
 

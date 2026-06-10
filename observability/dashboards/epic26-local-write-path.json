@@ -1,0 +1,81 @@
+{
+  "dashboard": {
+    "title": "Epic-26: Local Write Path (M0+M1)",
+    "description": "Monitors write-tool performance, M1 driver success rates, and strictly-local enforcement",
+    "panels": [
+      {
+        "title": "M1 Driver Run Duration",
+        "type": "timeseries",
+        "metric": "datum.m1_driver.run_duration_ms",
+        "property_ids": ["PERF-001"],
+        "thresholds": [
+          {"value": 300000, "color": "red", "label": "5-min SLO"}
+        ],
+        "description": "Wall-clock time per RED-GREEN run. Target: < 300,000ms"
+      },
+      {
+        "title": "Write Tool Latency",
+        "type": "timeseries",
+        "metrics": [
+          "datum.write_tool.write_to_file_duration_ms",
+          "datum.write_tool.replace_file_content_duration_ms"
+        ],
+        "property_ids": ["PERF-002", "PERF-003"],
+        "thresholds": [
+          {"value": 2000, "color": "red", "label": "2s SLO"}
+        ],
+        "description": "Per-invocation latency for write-tool lane scripts on files under 10KB"
+      },
+      {
+        "title": "M1 Success Rate (4/5 target)",
+        "type": "stat",
+        "metric": "datum.m1_driver.success_rate",
+        "property_ids": ["PERF-001", "LIVE-003"],
+        "thresholds": [
+          {"value": 0.8, "color": "green", "label": ">= 80%"},
+          {"value": 0.6, "color": "yellow", "label": ">= 60%"},
+          {"value": 0, "color": "red", "label": "< 60%"}
+        ],
+        "description": "Percentage of M1 runs that complete RED-GREEN successfully. Target: >= 80%"
+      },
+      {
+        "title": "Metrics JSONL Entries per Run",
+        "type": "stat",
+        "metric": "datum.m1_driver.metrics_entries_count",
+        "property_ids": ["OBS-001"],
+        "thresholds": [
+          {"value": 1, "color": "green", "label": ">= 1 entry"}
+        ],
+        "description": "Number of entries written to local-llm-metrics.jsonl per M1 run. Must be >= 1"
+      },
+      {
+        "title": "Structured Failure Records",
+        "type": "stat",
+        "metric": "datum.m1_driver.failure_records_count",
+        "property_ids": ["OBS-002"],
+        "description": "Count of structured JSON failure records. Non-zero on failed runs confirms OBS-002"
+      },
+      {
+        "title": "Cloud Model ID Violations",
+        "type": "stat",
+        "metric": "datum.m1_driver.cloud_model_violations",
+        "property_ids": ["SEC-001", "INV-005"],
+        "thresholds": [
+          {"value": 0, "color": "green", "label": "Clean"},
+          {"value": 1, "color": "red", "label": "VIOLATION"}
+        ],
+        "description": "Count of Claude/Anthropic model IDs found in metrics. Must always be 0"
+      },
+      {
+        "title": "E2E Test Duration",
+        "type": "timeseries",
+        "metric": "datum.e2e_test.total_duration_ms",
+        "property_ids": ["PERF-005"],
+        "thresholds": [
+          {"value": 600000, "color": "red", "label": "10-min timeout"}
+        ],
+        "description": "Total e2e test wall-clock time. Hard timeout at 600,000ms"
+      }
+    ]
+  }
+}

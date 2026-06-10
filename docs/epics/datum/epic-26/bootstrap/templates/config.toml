@@ -1,0 +1,128 @@
+# datum-local overlay config — local MLX inference with write-tool access
+# Copy to .datum/config.toml in the datum-local repo (materialize.sh does this).
+#
+# This file intentionally configures local-only inference.
+# No remote or cloud model IDs appear in this file.
+
+# ── Local LLM ─────────────────────────────────────────────────────────────────
+[local_llm]
+enabled       = true
+
+# Quality model (30B MoE) for reasoning-intensive phases
+model         = "mlx-community/Qwen3-30B-A3B-8bit"
+
+# Fast model (8B) for triage and validation
+fast_model    = "mlx-community/Llama-3.1-8B-Instruct-4bit"
+
+# Phases handled by the fast model
+fast_phases   = ["triage", "validate"]
+
+# All phases routed through local inference
+phases        = [
+  "triage",
+  "act_skeleton",
+  "act_red",
+  "act_green",
+  "act_refactor",
+  "validate",
+  "sidecar_docs",
+  "sidecar_security",
+  "closeout_collectors",
+]
+
+# Local model cache directory
+hf_cache_dir  = "/Volumes/Extra/mlx-models"
+
+# oMLX persistent inference server endpoint
+# Start with: brew services start jundot/omlx/omlx
+omlx_url      = "http://localhost:12200"
+
+# Generation parameters
+max_tokens    = 8192
+context_window = 262144
+temperature   = 0.3
+
+# KV-cache quantization (8-bit saves ~50% memory vs fp16)
+kv_bits       = 8
+kv_group_size = 64
+max_kv_size   = 32768
+
+# ── Multi-Turn Orchestration ───────────────────────────────────────────────────
+# Enables multi-step reasoning loops so the local model can plan, read files,
+# run tools, and synthesize — all without escalating to a remote model.
+[multi_turn]
+enabled               = true
+
+# Hard budget caps (all three required when tool execution is on)
+max_turns             = 5         # max reasoning turns before forced escalation
+timeout_s             = 300       # total wall-clock budget (seconds)
+max_tool_turns        = 10        # tool-execution turns before forced escalation
+
+# Tool execution — allows model to call lane tools
+enable_tool_execution = true
+
+# Write tools enabled: model may create / modify files inside the sandbox
+enable_write_tools    = true
+
+# Allowed tools: 7 read-only lane tools + 3 write tools = 10 total
+allowed_tools = [
+  # Read-only tools
+  "find_callers",
+  "filter_gitnexus_output",
+  "read_file",
+  "read_file_range",
+  "list_dir",
+  "grep_search",
+  "run_command",
+  # Write tools (gated by enable_write_tools = true)
+  "write_to_file",
+  "replace_file_content",
+  "multi_replace_file_content",
+]
+
+# Write sandbox: only allow writes relative to the project root (cwd)
+allowed_write_dirs    = []
+
+# Planning / voting defaults (applied to phases listed above)
+turn_timeout_s        = 90    # wall-clock budget for a single turn (seconds)
+confidence_threshold  = 0.8   # exit early if model agreement >= this (0.0–1.0)
+temperature_schedule  = "fixed"  # "fixed" | "rising" | "falling" | "u_curve"
+temperature_min       = 0.2   # floor for scheduled temperature
+temperature_max       = 0.7   # ceiling for scheduled temperature
+context_reserve_pct   = 20    # % of context window kept free for synthesis output
+planning_turn         = true  # turn 0 produces a StepPlan before acting
+verification_turn     = true  # final turn synthesises steps into phase schema
+two_pass              = true  # freeform draft → grammar extraction (DCCD)
+consistency_samples   = 1     # majority-vote samples per turn (1 = fastest)
+few_shot              = true  # inject example JSON to anchor output format
+phases                = [
+  "act_green",
+  "act_refactor",
+]
+
+# ── Output quality gates ───────────────────────────────────────────────────────
+# Thresholds that reject degenerate completions (character floods, repetition).
+# Failures here cause a retry on the same turn rather than a hard abort.
+[multi_turn.quality_gates]
+char_flood_pct  = 0.3   # reject if any single character > 30% of the tail
+ngram_size      = 3     # n-gram window for repetition detection
+max_count       = 4     # max allowed consecutive identical n-grams
+diversity_ratio = 0.25  # min unique-token ratio required in the tail
+
+# ── Per-phase overrides ────────────────────────────────────────────────────────
+# These sections tighten or relax the global [multi_turn] defaults for a
+# specific phase. Only the keys listed here are overridden; all others
+# inherit from [multi_turn].
+
+# triage: fast, low-confidence classification — fewer turns, rising temperature
+[multi_turn.phase_overrides.triage]
+max_turns            = 3     # triage rarely needs more than 3 passes
+temperature_schedule = "rising"  # encourage broader exploration on retries
+confidence_threshold = 0.7   # lower bar — triage is a coarse routing decision
+
+# validate: strict correctness check — extra turns, no planning overhead
+[multi_turn.phase_overrides.validate]
+max_turns            = 4     # one more turn than triage for evidence gathering
+planning_turn        = false # skip StepPlan; validate goes straight to assertion
+verification_turn    = true  # synthesis turn required to produce a verdict
+confidence_threshold = 0.9   # high bar — validation failures block the pipeline
