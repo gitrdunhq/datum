@@ -3739,3 +3739,64 @@ Binary-suffix filter and MAX_RESULTS untouched. A PostToolUse formatter hook als
 The agent loop will no longer gaslight itself into thinking `slug.py` doesn't exist — the search is recursive 100% of the time, not "60% of the time it works every time."</result>
 <usage><subagent_tokens>37088</subagent_tokens><tool_uses>11</tool_uses><duration_ms>142497</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>a387d28f3b834a357</task-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/cfcf9319-f888-40b0-bf5c-ac78e2d72546/tasks/a387d28f3b834a357.output</output-file>
+<status>completed</status>
+<summary>Agent "Canary fix datum#101 grep_search" completed</summary>
+<result>Nothing in that notification touches the datum repo or my branch — datum#101 stands as reported. Compact final status:
+
+## datum#101 — complete
+
+- **Branch:** `fix/101-grep-search-recursive` → `860ae49`, parent exactly `02e14d8b9f28...` (base + one commit, merge-base verified, never rebased). Local only — no push, no PR.
+- **Fix:** `/Volumes/Extra/repos/gitrdunhq/datum/scripts/lane-tools/grep_search.py` — `glob_pattern = f"**/{include}" if include else "**/*"` with a single recursive `search_path.glob(glob_pattern)`. Binary-suffix filter and MAX_RESULTS unchanged.
+- **TDD:** RED reproduced the live false negative (2 failed), GREEN 4/4 in new `/Volumes/Extra/repos/gitrdunhq/datum/tests/test_lane_tools_grep.py` (subdir match, root match, extension exclusion, invalid-regex exit 1). Full suite: **571 passed, 2 skipped**.
+- **Diff stat:** 2 files, +79 / −7.
+
+## One open action item for the batch (datum repo)
+
+`fix/95-strip-secrets` still stacks on the foreign #98 commit (`02e14d8 → 8a5075a → d837a47`). Either rebase it onto base (`git rebase --onto 02e14d8 8a5075a fix/95-strip-secrets`) or merge #98 first. All other branches — #101, #98, #99/#86, #65, #66 — are clean single-purpose commits on `02e14d8`. Next parallel dispatch should use isolated worktrees per agent; the shared-checkout races caused that contamination.</result>
+<usage><subagent_tokens>51324</subagent_tokens><tool_uses>15</tool_uses><duration_ms>1054028</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a387d28f3b834a357</task-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/cfcf9319-f888-40b0-bf5c-ac78e2d72546/tasks/a387d28f3b834a357.output</output-file>
+<status>completed</status>
+<summary>Agent "Canary fix datum#101 grep_search" completed</summary>
+<result>Untangled and verified. The batch is now fully clean.
+
+## What I did
+
+`git rebase --onto 02e14d8 8a5075a fix/95-strip-secrets` — clean replay, zero conflicts (the two commits touch disjoint files).
+
+## Verification
+
+- **Patch-identical:** `git range-diff` reports `1: d837a47 = 1: 71c217d` — the #95 commit replayed byte-for-byte, only the parent changed.
+- **Tree delta as expected:** diff between old and new tip is exactly the #98 changes being removed (`state.py` +1, `test_state_db.py` −71) — i.e., the foreign commit is gone, nothing of #95 was lost.
+- **`fix/98-state-read-readonly` untouched:** still `8a5075a` on `02e14d8`.
+- **#95 stands alone:** full suite on the rebased branch — **584 passed, 2 skipped, 0 failed** (the 586 the #95 agent reported included #98's 2 tests, which now correctly live only on fix/98).
+
+## Final batch state — all six branches are single-purpose commits directly on base `02e14d8`
+
+| Branch | Tip | Issue |
+|---|---|---|
+| `fix/101-grep-search-recursive` | `860ae49` | #101 recursive include |
+| `fix/98-state-read-readonly` | `8a5075a` | #98 read-only state read |
+| `fix/95-strip-secrets` | `71c217d` (rebased) | #95 secret stripping |
+| `fix/99-86-agent-loop-hardening` | `84cc4e2` | #99 (+#86 already fixed at base) |
+| `fix/65-omlx-client-hygiene` | `6f33a5a` | #65 oMLX hygiene |
+| `fix/66-materialize-test-portable` | `a9c795b` | #66 test portability |
+
+Any merge order works now — no inter-branch dependencies. Everything is local; nothing pushed. Conscious uncoupling, as it were — both branches are doing great.</result>
+<usage><subagent_tokens>54163</subagent_tokens><tool_uses>19</tool_uses><duration_ms>1388163</duration_ms></usage>
+</task-notification>
+
+---
+
+lets get everything merged please
