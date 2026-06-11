@@ -66,9 +66,13 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Also matches an UNCLOSED <think> (generation truncated mid-think): in that
-# case everything after the tag is reasoning, never actionable output.
-_THINK_TAG_RE = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL)
+# Anchored to the start of the response: a real reasoning block only ever
+# opens as the first token of a turn. A <think> appearing later is content
+# (e.g. a file that processes think tags) and must survive untouched —
+# stripping it corrupted written files in transit. Also matches an UNCLOSED
+# leading <think> (generation truncated mid-think): in that case everything
+# after the tag is reasoning, never actionable output.
+_THINK_TAG_RE = re.compile(r"\A\s*<think>.*?(?:</think>|\Z)", re.DOTALL)
 _FENCE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 
 MAX_OLD_OBSERVATION_CHARS = 400

@@ -68,6 +68,24 @@ def test_strip_think_tags_multiline():
     assert _strip_think_tags(text).strip() == "Visible."
 
 
+def test_strip_think_tags_preserves_literals_in_file_content():
+    """Only the LEADING reasoning block is stripped. <think> literals later in
+    the response are content — e.g. a file that processes think tags. Stripping
+    them corrupted the S0.1 sanitizer in transit and looped the GREEN phase."""
+    thought = (
+        "REASONING: add the tag patterns\n"
+        "FILE:\n"
+        '```python\ntags = [r"<think>", r"</think>"]\n```\n'
+        'NEXT: write_to_file {"path": "datum/prompt_sanitizer.py"}'
+    )
+    assert _strip_think_tags(thought) == thought
+
+
+def test_strip_think_tags_leading_block_then_literals_kept():
+    text = '<think>real reasoning</think>keep r"<think>" this'
+    assert _strip_think_tags(text) == 'keep r"<think>" this'
+
+
 # ── Arg assembly (Python boundary for write content) ─────────────────────────
 
 
@@ -1154,7 +1172,12 @@ def test_unclosed_think_tag_stripped_and_turn_skipped():
     from datum.agent_loop import _strip_think_tags
 
     assert _strip_think_tags("<think>old file:\n```\nold = 1\n```") == ""
-    assert _strip_think_tags("<think>a</think>keep<think>unclosed") == "keep"
+    # A mid-response <think> is content, not reasoning — only the leading
+    # block is stripped (see test_strip_think_tags_preserves_literals_*).
+    assert (
+        _strip_think_tags("<think>a</think>keep<think>unclosed")
+        == "keep<think>unclosed"
+    )
 
 
 def test_agent_loop_empty_thought_feeds_error_not_decide():
