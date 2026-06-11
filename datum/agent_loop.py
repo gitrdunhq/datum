@@ -314,8 +314,23 @@ def _build_system_prompt(allowed_tools: list[str], extra_rules: str = "") -> str
         "accomplishes the task; no new files unless the task requires them.\n"
         "6. Never remove existing tests or functions unless the task says so."
         f"{project_section}\n\n"
-        "End every response with exactly one line:\n"
-        "NEXT: <tool_name> <json args without file content> | NEXT: DONE"
+        "RESPONSE FORMAT — every response has exactly these three sections, "
+        "in this order, all three always present:\n"
+        "REASONING: 2-5 sentences on the single next action.\n"
+        "FILE: if the action writes a file, the COMPLETE updated file in one "
+        "fenced code block; otherwise the single word NONE.\n"
+        "NEXT: <tool_name> <json args without file content> | NEXT: DONE\n\n"
+        "EXAMPLE RESPONSE:\n"
+        "REASONING: The tests expect a greet function that calculator.py "
+        "does not define yet. I have read both files, so I can write the "
+        "complete updated module now.\n"
+        "FILE:\n"
+        "```python\n"
+        '"""Calculator module."""\n\n\n'
+        "def greet(name: str) -> str:\n"
+        '    return f"hello {name}"\n'
+        "```\n"
+        'NEXT: write_to_file {"path": "calculator.py"}'
     )
 
 
@@ -323,7 +338,11 @@ def _build_think_prompt(task: str, history: list[dict]) -> str:
     return (
         f"TASK:\n{task}\n\n"
         f"STEPS SO FAR:\n{_render_history(history)}\n\n"
-        "Think briefly about the SINGLE next action, then state it."
+        "Respond with all three sections — REASONING, FILE, NEXT — per the "
+        "RESPONSE FORMAT. For a write action, FILE carries the COMPLETE "
+        "updated file content in one fenced code block (```...```) — the "
+        "write sends exactly that block, nothing else. For any other "
+        "action, FILE is NONE."
     )
 
 
@@ -349,12 +368,22 @@ def _build_decide_prompt(thought: str, allowed_tools: list[str]) -> str:
     )
 
 
+# Qwen3-2507 card sampling. The server does not read generation_config.json,
+# so omitting these means top_p=1.0/top_k=off — measured cause of the
+# 3x-identical-pytest repetition loop on the 4bit-DWQ build.
+THINK_SAMPLING = {"top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0}
+
+
 def _think(
     prompt: str, model_id: str, max_tokens: int, system: str | None = None
 ) -> dict:
-    # Qwen3 thinking-mode sampling per model card — never greedy (loops).
     return generate(
-        prompt, model_id, max_tokens=max_tokens, temperature=0.6, system=system
+        prompt,
+        model_id,
+        max_tokens=max_tokens,
+        temperature=0.7,
+        system=system,
+        sampling=THINK_SAMPLING,
     )
 
 
@@ -495,9 +524,12 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
         elif tool_name == "write_to_file" and "content" not in tool_args:
             observation = (
-                "Error: write_to_file requires the full file content in a "
-                "fenced code block (```...```) in your reasoning. "
-                "Re-emit the complete file inside one fenced block."
+                f"Error: the file was NOT modified. write_to_file requires "
+                f"the full file content in a fenced code block (```...```) "
+                f"in your reasoning. Emit the complete updated "
+                f"'{tool_args.get('path')}' inside one fenced block, then "
+                f"retry the write. Do not declare DONE — the task is not "
+                f"complete until the write succeeds."
             )
         elif (
             tool_name == "write_to_file"

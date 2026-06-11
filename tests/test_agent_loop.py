@@ -15,6 +15,7 @@ from datum.agent_loop import (
     _build_think_prompt,
     _render_history,
     _strip_think_tags,
+    _think,
     agent_loop,
     assemble_tool_args,
     extract_fenced_content,
@@ -105,12 +106,65 @@ def test_think_prompt_contains_task():
     assert "add a test" in prompt
 
 
+def test_think_prompt_demands_fenced_content_for_writes():
+    """Non-thinking instruct models state intent without emitting the file
+    body — the per-step prompt must demand the fenced content explicitly
+    (2507-DWQ live runs: write_to_file chosen, no fence in the thought)."""
+    prompt = _build_think_prompt("implement multiply", [])
+    assert "COMPLETE" in prompt
+    assert "fenced code block" in prompt
+
+
 def test_system_prompt_contains_tools_and_rules():
     system = _build_system_prompt(["read_file", "write_to_file"])
     assert "read_file" in system
     assert "write_to_file" in system
     assert "fenced code block" in system
     assert "comment or docstring" in system  # stale-comment rule
+
+
+def test_system_prompt_mandatory_sections_not_terminal_line():
+    """Instruct-2507 collapsed to emitting ONLY the 'end with NEXT:' line —
+    the contract must be mandatory ordered sections, every section always
+    required, never a conditional (research: format-collapse attractor)."""
+    system = _build_system_prompt(["read_file", "write_to_file"])
+    assert "REASONING:" in system
+    assert "FILE:" in system
+    assert "NEXT:" in system
+    # sections are demanded in order, FILE has an explicit non-write value
+    assert "NONE" in system
+    # the old collapse-inducing phrasing is gone
+    assert "End every response with exactly one line" not in system
+
+
+def test_system_prompt_contains_full_response_exemplar():
+    """One-shot exemplar showing all three sections locks the format for
+    small instruct models (research fix #2)."""
+    system = _build_system_prompt(["read_file", "write_to_file"])
+    assert "EXAMPLE RESPONSE" in system
+    # exemplar shows a real fenced file and a real NEXT line
+    assert system.count("```") >= 2
+    assert 'NEXT: write_to_file {"path"' in system
+
+
+def test_think_passes_qwen_sampling_params():
+    """Card-recommended sampling (top_p=0.8, top_k=20, presence_penalty)
+    is never applied unless sent per-request — mlx-lm server defaults are
+    top_p=1.0/top_k=off, which caused the 3x-pytest repetition loop."""
+    captured = {}
+
+    def fake_generate(prompt, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"text": "ok", "tokens": 1}
+
+    with patch("datum.agent_loop.generate", fake_generate):
+        _think("p", "model", 2048, "sys")
+
+    assert captured["temperature"] == 0.7
+    sampling = captured["sampling"]
+    assert sampling["top_p"] == 0.8
+    assert sampling["top_k"] == 20
+    assert sampling["presence_penalty"] == 1.0
 
 
 def test_system_prompt_excludes_unlisted_tools():
@@ -331,6 +385,11 @@ def test_agent_loop_write_tool_missing_content_feeds_error_back():
     assert len(observations) == 1
     assert observations[0]["tool_args"]["content"] == "c = 1\n"
     assert result["escalated"] is False
+    # The error must say the file was NOT touched — instruct models otherwise
+    # declare DONE believing the write landed (2507-DWQ live runs).
+    fence_error = result["steps"][0]["observation"]
+    assert "NOT modified" in fence_error
+    assert "DONE" in fence_error
 
 
 def test_agent_loop_invalid_tool_name_feeds_error_back():
@@ -632,13 +691,18 @@ def _write_and_run(thought_content, path="f.py"):
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "write_to_file",
-                     "tool_args": {"path": path}},
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": path},
+                    },
                     {"action": "done", "summary": "ok"},
                 ]
             ),
         ),
-        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)
+        ),
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
     return result["steps"][0]["observation"]
@@ -658,9 +722,7 @@ def test_lint_flags_os_system(tmp_path, monkeypatch):
 
 def test_lint_flags_shell_true(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    obs = _write_and_run(
-        "import subprocess\nsubprocess.run('ls', shell=True)"
-    )
+    obs = _write_and_run("import subprocess\nsubprocess.run('ls', shell=True)")
     assert "shell=True" in obs and "WARNING" in obs
 
 
@@ -724,7 +786,9 @@ def test_load_project_rules_missing_returns_empty(tmp_path):
 def test_load_project_rules_caps_length(tmp_path):
     from datum.agent_loop import load_project_rules
 
-    (tmp_path / "AGENTS.md").write_text("\n".join(f"- rule {i} " + "x" * 80 for i in range(100)))
+    (tmp_path / "AGENTS.md").write_text(
+        "\n".join(f"- rule {i} " + "x" * 80 for i in range(100))
+    )
     assert len(load_project_rules(tmp_path)) <= 2000
 
 
@@ -787,10 +851,16 @@ def test_agent_loop_checkpoints_at_context_threshold(tmp_path, monkeypatch):
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "read_file",
-                     "tool_args": {"path": "a.py"}},
-                    {"action": "tool", "tool_name": "read_file",
-                     "tool_args": {"path": "b.py"}},
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "b.py"},
+                    },
                     {"action": "done", "summary": "ok"},
                 ]
             ),
@@ -822,8 +892,11 @@ def test_agent_loop_no_checkpoint_below_threshold(tmp_path, monkeypatch):
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "read_file",
-                     "tool_args": {"path": "a.py"}},
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
                     {"action": "done", "summary": "ok"},
                 ]
             ),
@@ -840,10 +913,18 @@ def test_compact_history_digests_steps():
     from datum.agent_loop import _compact_history
 
     history = [
-        {"thought": "t", "tool_name": "read_file", "tool_args": {"path": "a.py"},
-         "observation": "long file contents " * 50},
-        {"thought": "t", "tool_name": "run_command",
-         "tool_args": {"command": "pytest"}, "observation": "2 passed"},
+        {
+            "thought": "t",
+            "tool_name": "read_file",
+            "tool_args": {"path": "a.py"},
+            "observation": "long file contents " * 50,
+        },
+        {
+            "thought": "t",
+            "tool_name": "run_command",
+            "tool_args": {"command": "pytest"},
+            "observation": "2 passed",
+        },
     ]
     compacted = _compact_history(history)
     assert len(compacted) == 1
@@ -905,10 +986,16 @@ def test_truncated_read_blocks_whole_file_write(tmp_path, monkeypatch):
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "read_file",
-                     "tool_args": {"path": "big.py"}},
-                    {"action": "tool", "tool_name": "write_to_file",
-                     "tool_args": {"path": "big.py"}},
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "big.py"},
+                    },
                     {"action": "done", "summary": "ok"},
                 ]
             ),
@@ -933,20 +1020,35 @@ def test_truncated_read_still_allows_surgical_replace(tmp_path, monkeypatch):
             return "x = 1 ... [truncated]", True
         return '{"ok": true}', False
 
-    cfg = dict(BASE_CFG, allowed_tools=[
-        "read_file", "write_to_file", "replace_file_content", "run_command"
-    ])
+    cfg = dict(
+        BASE_CFG,
+        allowed_tools=[
+            "read_file",
+            "write_to_file",
+            "replace_file_content",
+            "run_command",
+        ],
+    )
     with (
         patch("datum.agent_loop._think", _mk_think(["read", "replace", "done"])),
         patch(
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "read_file",
-                     "tool_args": {"path": "big.py"}},
-                    {"action": "tool", "tool_name": "replace_file_content",
-                     "tool_args": {"path": "big.py", "old_text": "x = 1",
-                                   "new_text": "x = 2"}},
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "replace_file_content",
+                        "tool_args": {
+                            "path": "big.py",
+                            "old_text": "x = 1",
+                            "new_text": "x = 2",
+                        },
+                    },
                     {"action": "done", "summary": "ok"},
                 ]
             ),
@@ -1001,13 +1103,14 @@ def test_write_tool_missing_path_gets_clear_error(tmp_path, monkeypatch):
             "datum.agent_loop._decide",
             _mk_decide(
                 [
-                    {"action": "tool", "tool_name": "write_to_file",
-                     "tool_args": {}},
+                    {"action": "tool", "tool_name": "write_to_file", "tool_args": {}},
                     {"action": "done", "summary": "ok"},
                 ]
             ),
         ),
-        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)
+        ),
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
 

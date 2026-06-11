@@ -201,18 +201,25 @@ def generate(
     max_tokens: int = DEFAULTS["max_tokens"],
     temperature: float = DEFAULTS["temperature"],
     system: str | None = None,
+    sampling: dict | None = None,
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
     Routes to oMLX/LM Studio (if omlx_url configured and reachable),
     falls back to direct mlx_lm. A stable `system` prompt improves rule
     adherence and lets the server's prefix cache reuse the static prefix.
+    `sampling` carries extra OpenAI-compatible params (top_p, top_k,
+    presence_penalty, min_p) — the server does NOT read the model's
+    generation_config.json, so card-recommended values must be sent
+    per-request. Only honored on the oMLX path.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
     if _omlx_available():
         url = _omlx_url()
-        return _omlx_generate(prompt, model_id, max_tokens, temperature, url, system)
+        return _omlx_generate(
+            prompt, model_id, max_tokens, temperature, url, system, sampling
+        )
 
     from mlx_lm import stream_generate
 
@@ -1507,21 +1514,23 @@ def _omlx_generate(
     temperature: float,
     url: str,
     system: str | None = None,
+    sampling: dict | None = None,
 ) -> dict:
     """Generate unstructured text via oMLX /v1/chat/completions."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    payload = json.dumps(
-        {
-            "model": model_id,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }
-    ).encode()
+    body = {
+        "model": model_id,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+    }
+    if sampling:
+        body.update(sampling)
+    payload = json.dumps(body).encode()
     req = urllib.request.Request(
         f"{url}/v1/chat/completions",
         data=payload,
