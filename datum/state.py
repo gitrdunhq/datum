@@ -203,7 +203,6 @@ def next_epic_number() -> int:
 
 
 def cmd_read(args: argparse.Namespace) -> None:
-    ensure_feature_branch()
     state = load_state()
     if not state:
         print(json.dumps({"error": "no_state", "message": "No .datum/state.db found"}))
