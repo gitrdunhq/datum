@@ -940,6 +940,7 @@ READ_ONLY_TOOLS = frozenset(
         "grep_search",
         "run_command",
         "read_todos",
+        "corpus_sql",
     }
 )
 WRITE_TOOLS = frozenset(

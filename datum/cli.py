@@ -928,6 +928,46 @@ def gc(
         console.print(f"[bold green]{report}[/bold green]")
 
 
+@app.command()
+def corpus(
+    query: str = typer.Argument(
+        ..., help="SQL SELECT query, or 'SHOW TABLES' to list views"
+    ),
+    limit: int = typer.Option(
+        20, "--limit", "-n", help="Max rows (default 20, max 50)"
+    ),
+    repo: str = typer.Option(
+        ".", "--repo", help="Path to the repository root (default: cwd)"
+    ),
+):
+    """Query .datum artifacts via DuckDB SQL views.
+
+    Available views: transcripts, failures, run_state, lane_files,
+    token_metrics, kv_state, floor_runs.
+
+    Examples:
+
+      datum corpus "SHOW TABLES"
+
+      datum corpus "SELECT phase, reason FROM failures LIMIT 5"
+
+      datum corpus "SELECT lane, count(*) AS n FROM lane_files GROUP BY lane ORDER BY n DESC"
+    """
+    from pathlib import Path as _Path
+
+    try:
+        from datum.memory.corpus_sql import run_corpus_query
+    except ImportError:
+        console.print(
+            "[bold red]duckdb not installed — run: uv pip install 'datum[rag]'[/bold red]"
+        )
+        raise typer.Exit(1) from None
+
+    repo_root = _Path(repo).resolve()
+    result = run_corpus_query(query, limit=limit, repo_root=repo_root)
+    console.print(result)
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
