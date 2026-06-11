@@ -380,8 +380,18 @@ def structured(
 
     Routes to oMLX JSON schema response_format if server is available,
     falls back to outlines grammar-constrained generation otherwise.
-    `max_time_s` (kwarg) caps the request's wall-clock budget below the
-    configured request_timeout_s — only honored on the oMLX path (#61).
+    `max_time_s` (kwarg) caps the request's wall-clock budget on BOTH paths.
+    On the oMLX path it bounds socket timeout and retry backoff below the
+    configured request_timeout_s (#61). On the in-process outlines fallback
+    generation runs in streaming form with a monotonic deadline checked
+    between chunks (#105, mirroring generate()'s #104 fix): when exceeded,
+    generation stops and a structured timeout error is returned — data=None,
+    quality={"ok": False, "reason": "max_time_exceeded"}, escalated=True,
+    abort_reason="max_time_exceeded" — with the partial raw text preserved
+    but never parsed (partial JSON is useless). If the installed outlines
+    Generator has no stream() method, a deadline-bearing call is REFUSED
+    with the same error shape instead of silently blocking past the
+    caller's budget (#65 fail-loudly).
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
@@ -424,8 +434,42 @@ def structured(
     except TypeError:
         gen = outlines.Generator(mlx_model, schema)
 
+    max_time_s = kwargs.get("max_time_s")
     start = time.monotonic()
-    raw = gen(prompt, max_tokens=max_tokens, **kv_kwargs)
+
+    if max_time_s is None:
+        raw = gen(prompt, max_tokens=max_tokens, **kv_kwargs)
+    elif not hasattr(gen, "stream"):
+        # #105/#65 fail-loudly: a blocking gen() call cannot honor the
+        # caller's deadline — refuse instead of silently overrunning it.
+        return _structured_abort(
+            "",
+            tokenizer,
+            0.0,
+            model_id,
+            "max_time_unenforceable: outlines Generator has no stream()",
+        )
+    else:
+        # #105: enforce the caller's wall-clock budget on the in-process
+        # structured path too — stream the grammar-constrained generation
+        # and check a monotonic deadline between chunks, mirroring
+        # generate()'s in-process deadline (#104). On overrun, the partial
+        # JSON is useless: surface a structured timeout error, never a
+        # partial parse.
+        deadline = start + max_time_s
+        pieces: list[str] = []
+        for chunk in gen.stream(prompt, max_tokens=max_tokens, **kv_kwargs):
+            pieces.append(chunk)
+            if time.monotonic() >= deadline:
+                return _structured_abort(
+                    "".join(pieces),
+                    tokenizer,
+                    time.monotonic() - start,
+                    model_id,
+                    "max_time_exceeded",
+                )
+        raw = "".join(pieces)
+
     elapsed = time.monotonic() - start
 
     data = json.loads(raw) if isinstance(raw, str) else raw
@@ -440,6 +484,35 @@ def structured(
         "time_s": round(elapsed, 2),
         "model": model_id,
         "quality": quality,
+    }
+    _log_metric(output)
+    return output
+
+
+def _structured_abort(
+    raw: str,
+    tokenizer,
+    elapsed: float,
+    model_id: str,
+    reason: str,
+) -> dict:
+    """Structured-path abort result (#105): no parsed data, quality gate
+    tripped, flagged escalated/abort_reason like generate()'s aborts (#104).
+
+    Every existing caller treats data=None or quality.ok=False as an
+    escalation signal (vote_structured drops the sample, multi_turn_phase
+    escalates, the agent loop's _decide yields an empty decision and the
+    loop's own deadline then trips), so the extra keys are additive.
+    """
+    output = {
+        "data": None,
+        "raw": raw,
+        "tokens": len(tokenizer.encode(raw)) if raw else 0,
+        "time_s": round(elapsed, 2),
+        "model": model_id,
+        "quality": {"ok": False, "reason": reason},
+        "escalated": True,
+        "abort_reason": reason,
     }
     _log_metric(output)
     return output
@@ -1403,8 +1476,16 @@ def _log_multi_turn_metric(result: dict) -> None:
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
 
+# Module-level seam for the metrics file (#107, same pattern as
+# _TranscriptWriter.BASE_DIR from #103): the test suite redirects this to
+# tmp_path so metric writes can never land in the live repo. None means the
+# prod default: .datum/local-llm-metrics.jsonl under the project root.
+METRICS_PATH: Path | None = None
+
 
 def _metrics_path() -> Path:
+    if METRICS_PATH is not None:
+        return METRICS_PATH
     from datum.path_utils import datum_dir
 
     return datum_dir() / "local-llm-metrics.jsonl"
