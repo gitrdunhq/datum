@@ -39,6 +39,7 @@ from datum.local_llm import (
 from datum.prompt_sanitizer import (
     hash_pin_rules,
     strip_invisible_unicode,
+    strip_secrets,
     strip_special_tokens,
 )
 from datum.schemas import AgentDecision
@@ -164,7 +165,7 @@ def _sanitize_observation(text: str) -> str:
     echo, command output, error strings) is covered. Never applied to tool_args
     or content written to disk.
     """
-    return strip_invisible_unicode(strip_special_tokens(text))
+    return strip_secrets(strip_invisible_unicode(strip_special_tokens(text)))
 
 
 # ── #94: structural-fingerprint collapse at the OBSERVE boundary ─────────
