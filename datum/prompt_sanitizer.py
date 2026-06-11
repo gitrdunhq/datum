@@ -33,3 +33,23 @@ _PATTERN = re.compile("|".join(re.escape(t) for t in _TOKENS))
 def strip_special_tokens(text: str) -> str:
     """Remove all special tokens from the input text."""
     return _PATTERN.sub("", text)
+
+
+# Define invisible Unicode characters to strip
+# - zero-width chars: U+200B to U+200D, and U+FEFF
+# - bidi controls: U+202A to U+202E, and U+2066 to U+2069
+# - private-use-area: U+E000 to U+F8FF
+_INVISIBLE = re.compile(r"[\u200b-\u200d\ufeff\u202a-\u202e\u2066-\u2069\ue000-\uf8ff]")
+
+
+def strip_invisible_unicode(text: str) -> str:
+    """Remove all invisible Unicode characters from the input text.
+
+    Strips:
+    - zero-width characters U+200B through U+200D, and U+FEFF
+    - bidi controls U+202A through U+202E, and U+2066 through U+2069
+    - private-use-area characters U+E000 through U+F8FF
+
+    Uses a single compiled regex with ASCII escape sequences only.
+    """
+    return _INVISIBLE.sub("", text)
