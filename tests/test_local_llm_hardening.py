@@ -937,6 +937,57 @@ def test_inprocess_no_max_time_means_no_deadline():
     assert len(yielded) == 5
 
 
+# ── Issue #107: metric writes must never touch the live repo ────────────────
+# Same leak class as #103's transcripts: test runs that exercise any
+# metric-writing path from the repo root appended to the repo's real
+# .datum/local-llm-metrics.jsonl. Isolation is structural — the suite-wide
+# conftest fixture redirects datum.local_llm.METRICS_PATH to tmp_path.
+
+
+def test_metrics_cannot_leak_into_real_repo(request, tmp_path, monkeypatch):
+    """Issue #107 regression: a metric-writing path run from the repo root
+    with no DATUM_PROJECT_DIR — i.e. a test that forgets per-module chdir
+    isolation — must not gain the real .datum/ a metrics file; the entry
+    lands in the redirected tmp_path file instead."""
+    import json as _json
+
+    from datum.local_llm import generate
+
+    repo_datum = request.config.rootpath / ".datum"
+    before = {p.name for p in repo_datum.iterdir()} if repo_datum.is_dir() else set()
+    monkeypatch.chdir(request.config.rootpath)  # simulate the forgetful test
+    monkeypatch.delenv("DATUM_PROJECT_DIR", raising=False)
+
+    def stream(*args, **kwargs):
+        resp = MagicMock()
+        resp.text = "ok"
+        yield resp
+
+    with (
+        patch("datum.local_llm._omlx_available", return_value=False),
+        patch("datum.local_llm.load_model", return_value=(MagicMock(), MagicMock())),
+        patch(
+            "datum.local_llm.check_context_budget",
+            return_value={"fits": True, "prompt_tokens": 5, "window": 131072},
+        ),
+        patch("datum.local_llm.load_config", return_value={}),
+        patch("mlx_lm.stream_generate", stream),
+    ):
+        result = generate("hello", model_id="test-model")
+
+    assert result["text"] == "ok"
+    after = {p.name for p in repo_datum.iterdir()} if repo_datum.is_dir() else set()
+    assert "local-llm-metrics.jsonl" not in after
+    assert after == before, f"metrics leaked into live repo: {after - before}"
+
+    # The metric landed in the redirected file instead — nothing was lost.
+    redirected = tmp_path / ".datum" / "local-llm-metrics.jsonl"
+    assert redirected.is_file()
+    lines = [ln for ln in redirected.read_text().splitlines() if ln.strip()]
+    assert len(lines) == 1
+    assert _json.loads(lines[0])["model"] == "test-model"
+
+
 # ── Issue #65 item 3: _omlx_available logs a warning on silent fallback ─────
 # Server configured but unreachable must emit a structured warning (DPS-204)
 # instead of silently returning False and falling back to a local MLX load.

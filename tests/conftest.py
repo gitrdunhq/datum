@@ -8,6 +8,11 @@ own module; this conftest makes the isolation structural for the whole
 suite: every test gets the transcript writer's base dir pointed at its own
 tmp_path, so even a future test that forgets to chdir cannot write into
 the live repo.
+
+Issue #107: same leak class for the local-LLM metrics writer — test runs
+that exercise generate()/structured()/multi-turn paths appended to the
+repo's live .datum/local-llm-metrics.jsonl. Every test gets
+datum.local_llm.METRICS_PATH pointed at its own tmp_path too.
 """
 
 from __future__ import annotations
@@ -26,4 +31,18 @@ def _isolate_transcript_writes(tmp_path, monkeypatch):
         return
     monkeypatch.setattr(
         _TranscriptWriter, "BASE_DIR", tmp_path / ".datum" / "transcripts"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_local_llm_metrics(tmp_path, monkeypatch):
+    """Redirect datum.local_llm.METRICS_PATH to tmp_path for every test."""
+    try:
+        from datum import local_llm
+    except Exception:
+        # If local_llm can't import in this environment, nothing can write
+        # metrics either.
+        return
+    monkeypatch.setattr(
+        local_llm, "METRICS_PATH", tmp_path / ".datum" / "local-llm-metrics.jsonl"
     )

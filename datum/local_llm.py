@@ -1476,8 +1476,16 @@ def _log_multi_turn_metric(result: dict) -> None:
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
 
+# Module-level seam for the metrics file (#107, same pattern as
+# _TranscriptWriter.BASE_DIR from #103): the test suite redirects this to
+# tmp_path so metric writes can never land in the live repo. None means the
+# prod default: .datum/local-llm-metrics.jsonl under the project root.
+METRICS_PATH: Path | None = None
+
 
 def _metrics_path() -> Path:
+    if METRICS_PATH is not None:
+        return METRICS_PATH
     from datum.path_utils import datum_dir
 
     return datum_dir() / "local-llm-metrics.jsonl"
