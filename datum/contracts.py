@@ -13,23 +13,20 @@ from typing import Any
 
 from pydantic import ValidationError
 
-# Fix relative imports
-sys.path.insert(0, str(Path(__file__).parent))
-from datum.path_utils import assets_dir
-
-from datum.models.brief_red_schema import DatumRedBrief
-from datum.models.brief_green_schema import DatumGreenBrief
+from datum.models.artifact_schema import ArtifactEnvelope
 from datum.models.brief_green_continuation_schema import DatumGreenContinuationBrief
+from datum.models.brief_green_schema import DatumGreenBrief
+from datum.models.brief_red_schema import DatumRedBrief
 from datum.models.brief_refactor_schema import DatumRefactorBrief
-from datum.models.result_red_schema import DatumRedResult
-from datum.models.result_green_schema import DatumGreenResult
-from datum.models.result_refactor_schema import DatumRefactorResult
-from datum.models.result_adversarial_schema import DatumAdversarialResult
+from datum.models.environment_schema import EnvironmentProfile
 from datum.models.lane_plan_schema import DatumLanePlan
 from datum.models.packet_schema import ReviewPacket
-from datum.models.artifact_schema import ArtifactEnvelope
 from datum.models.quality_schema import QualityProfile
-from datum.models.environment_schema import EnvironmentProfile
+from datum.models.result_adversarial_schema import DatumAdversarialResult
+from datum.models.result_green_schema import DatumGreenResult
+from datum.models.result_red_schema import DatumRedResult
+from datum.models.result_refactor_schema import DatumRefactorResult
+from datum.path_utils import assets_dir
 
 # Map schema filenames to their Pydantic classes for the CLI
 SCHEMA_MAP = {

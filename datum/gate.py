@@ -19,8 +19,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Fix relative imports
-sys.path.insert(0, str(Path(__file__).parent))
 from datum.path_utils import assets_dir, existing_review_packets_dir, templates_dir
 
 
