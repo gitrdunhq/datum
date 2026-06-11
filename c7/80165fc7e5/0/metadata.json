@@ -1,0 +1,198 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "c780165fc7e5",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-11T02:48:40.720007Z",
+  "branch": "feat/react-agent-loop",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "datum/agent_loop.py",
+    "datum/lane_tools_runner.py",
+    "datum/local_llm.py",
+    "datum/schemas.py",
+    "docs/epics/datum/epic-26/bootstrap/templates/test_contracts.py",
+    "tests/test_agent_loop.py",
+    "tests/test_write_tools.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "d19bef560b51",
+  "token_usage": {
+    "input_tokens": 59087,
+    "cache_creation_tokens": 2864936,
+    "cache_read_tokens": 98041092,
+    "output_tokens": 295549,
+    "api_call_count": 525
+  },
+  "session_metrics": {
+    "turn_count": 32
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T02:48:40.617838Z",
+    "agent_lines": 693,
+    "agent_removed": 31,
+    "human_added": 828,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1521,
+    "total_lines_changed": 1552,
+    "agent_percentage": 46.649484536082475,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 59,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 59,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 59,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 745,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 780,
+      "agent_lines_removed": 11,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 145,
+      "user_lines_removed": 0,
+      "agent_lines_added": 804,
+      "agent_lines_removed": 11,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "tests/test_agent_loop.py": 123
+      }
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 927,
+      "agent_lines_removed": 11,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1122,
+      "agent_lines_removed": 30,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1122,
+      "agent_lines_removed": 30,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1122,
+      "agent_lines_removed": 30,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1122,
+      "agent_lines_removed": 30,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 257,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1286,
+      "agent_lines_removed": 31,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "tests/test_agent_loop.py": 235
+      }
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 257,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1286,
+      "agent_lines_removed": 31,
+      "user_added_per_file": {
+        ".datum/config.toml": 22,
+        "tests/test_agent_loop.py": 235
+      }
+    }
+  ]
+}

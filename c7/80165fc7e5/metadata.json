@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "c780165fc7e5",
+  "strategy": "manual-commit",
+  "branch": "feat/react-agent-loop",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "datum/agent_loop.py",
+    "datum/lane_tools_runner.py",
+    "datum/local_llm.py",
+    "datum/schemas.py",
+    "docs/epics/datum/epic-26/bootstrap/templates/test_contracts.py",
+    "tests/test_agent_loop.py",
+    "tests/test_write_tools.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c7/80165fc7e5/0/metadata.json",
+      "transcript": "/c7/80165fc7e5/0/full.jsonl",
+      "content_hash": "/c7/80165fc7e5/0/content_hash.txt",
+      "prompt": "/c7/80165fc7e5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 59087,
+    "cache_creation_tokens": 2864936,
+    "cache_read_tokens": 98041092,
+    "output_tokens": 295549,
+    "api_call_count": 525
+  }
+}
