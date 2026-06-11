@@ -297,6 +297,92 @@ def check_assumption_audit(
     return errors, warnings
 
 
+# ── Deterministic artifact scoring (issue #92) ──────────────────────────────
+
+
+def _project_entries(root: Path) -> list[str]:
+    """Top-level project dirs/files (non-hidden) for the grounding check."""
+    try:
+        return sorted(p.name for p in root.iterdir() if not p.name.startswith("."))
+    except OSError:
+        return []
+
+
+def _git_commits_since(path: str) -> int | None:
+    """rev-list count of commits since `path` was last touched; None if unknowable."""
+    try:
+        last = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--", path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        sha = last.stdout.strip()
+        if last.returncode != 0 or not sha:
+            return None
+        count = subprocess.run(
+            ["git", "rev-list", "--count", f"{sha}..HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if count.returncode != 0:
+            return None
+        return int(count.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError, OSError):
+        return None
+
+
+def score_context_quality(artifact: str = "SPEC.md") -> dict:
+    """Score an artifact with the deterministic rubric (issue #92).
+
+    Thin boundary wrapper: resolves the artifact, plugs real filesystem/git
+    lookups into the pure datum.artifact_score module, returns the
+    structured payload (per-check sub-scores + reasons) for the #79
+    evaluator's structural half.
+    """
+    from datum.artifact_score import SCHEMA_VERSION, score_artifact
+
+    path = resolve_artifact(artifact)
+    if not path.exists():
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "artifact": str(path),
+            "overall_score": 0.0,
+            "verdict": "fail",
+            "checks": [],
+            "error": f"{artifact} not found",
+        }
+
+    result = score_artifact(
+        path.read_text(),
+        artifact_path=str(path),
+        path_exists=lambda ref: Path(ref).exists(),
+        project_entries=_project_entries(Path(".")),
+        commits_since=_git_commits_since,
+    )
+    return result.to_dict()
+
+
+def gate_score_context(config: dict, artifact: str) -> None:
+    payload = score_context_quality(artifact)
+    passed = "error" not in payload and payload["verdict"] in ("pass", "warn")
+    print(
+        json.dumps(
+            {
+                "passed": passed,
+                "message": payload.get(
+                    "error",
+                    f"{artifact} context quality: {payload['verdict']} "
+                    f"(score {payload['overall_score']:.2f})",
+                ),
+                "score": payload,
+            }
+        )
+    )
+    sys.exit(0 if passed else 1)
+
+
 # ── Phase gate implementations ──────────────────────────────────────────────
 
 
@@ -795,10 +881,18 @@ def main() -> None:
     parser.add_argument("phase")
     parser.add_argument("--yolo", action="store_true")
     parser.add_argument("--skip-human", action="store_true")
+    parser.add_argument(
+        "--artifact",
+        default="SPEC.md",
+        help="Artifact to score (score-context phase only)",
+    )
     args = parser.parse_args()
 
     config = load_config()
 
+    if args.phase == "score-context":
+        gate_score_context(config, args.artifact)
+        return
     if args.phase == "validate-packets":
         gate_validate_packets(config)
         return
