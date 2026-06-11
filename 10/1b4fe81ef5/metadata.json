@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "101b4fe81ef5",
+  "strategy": "manual-commit",
+  "branch": "feat/eedom-integration",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "pyproject.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/10/1b4fe81ef5/0/metadata.json",
+      "transcript": "/10/1b4fe81ef5/0/full.jsonl",
+      "content_hash": "/10/1b4fe81ef5/0/content_hash.txt",
+      "prompt": "/10/1b4fe81ef5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 196995,
+    "cache_creation_tokens": 4527403,
+    "cache_read_tokens": 187653697,
+    "output_tokens": 684008,
+    "api_call_count": 1026
+  }
+}
