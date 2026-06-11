@@ -73,7 +73,13 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
 # leading <think> (generation truncated mid-think): in that case everything
 # after the tag is reasoning, never actionable output.
 _THINK_TAG_RE = re.compile(r"\A\s*<think>.*?(?:</think>|\Z)", re.DOTALL)
-_FENCE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+# Fence regex: match ``` + optional language tag (word chars) then capture
+# everything from that point.  The old pattern ``[^\n]*\n`` ate the whole
+# info-string line, silently dropping content a model placed there (e.g.
+# ``\`\`\`python """`` lost the opening triple-quote — Defect-1).
+# Now we consume only the language word, an optional space, and start
+# capturing — so any real content on the same line survives.
+_FENCE_RE = re.compile(r"```\w*[ \t]*\n?(.*?)```", re.DOTALL)
 
 MAX_OLD_OBSERVATION_CHARS = 400
 MAX_RECENT_OBSERVATION_CHARS = 3000
@@ -119,6 +125,21 @@ def assemble_tool_args(decision: dict, thought: str) -> dict:
         if content is not None:
             args["content"] = content
     return args
+
+
+def _check_py_syntax(content: str) -> SyntaxError | None:
+    """Return the SyntaxError if content fails ast.parse, else None.
+
+    Used as a pre-execution gate (Defect-2a): .py writes that don't parse
+    are rejected before touching disk.
+    """
+    import ast as _ast
+
+    try:
+        _ast.parse(content)
+    except SyntaxError as e:
+        return e
+    return None
 
 
 def _lint_python(content: str) -> list[str]:
@@ -606,6 +627,22 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             observation = (
                 f"Error: '{tool_args.get('path')}' exists but you have not "
                 f"read it this session. Call read_file on it first."
+            )
+        elif (
+            tool_name == "write_to_file"
+            and str(target).endswith(".py")
+            and "content" in tool_args
+            and _check_py_syntax(tool_args["content"]) is not None
+        ):
+            # Defect-2a: reject .py writes that fail ast.parse — broken
+            # Python must never land on disk where it becomes an opaque
+            # collection error that the model cannot self-correct from.
+            se = _check_py_syntax(tool_args["content"])
+            observation = (
+                f"Error: file was NOT written to disk — Python syntax "
+                f"error at line {se.lineno}: {se.msg}. Re-emit the "
+                f"full corrected file in one fenced code block and "
+                f"retry write_to_file."
             )
         else:
             # ── EXECUTE (sandboxed, deterministic) ───────────────────────

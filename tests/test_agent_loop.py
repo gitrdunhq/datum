@@ -51,6 +51,33 @@ def test_extract_fenced_content_preserves_interior_blank_lines():
     )
 
 
+def test_extract_fenced_content_docstring_on_info_line():
+    """Defect-1 regression: model places opening triple-quote on the fence's
+    info-string line (```python \"\"\").  The captured content must include
+    the triple-quote — dropping it makes the whole file an unterminated string."""
+    thought = '```python """\nTest cases for strip_special_tokens function."""\n```'
+    content = extract_fenced_content(thought)
+    assert content is not None
+    assert content.startswith('"""')
+
+
+def test_extract_fenced_content_content_on_info_line():
+    """Any non-info-string content on the opening fence line must survive."""
+    thought = "```python x = 1\ny = 2\n```"
+    content = extract_fenced_content(thought)
+    assert content is not None
+    assert "x = 1" in content
+
+
+def test_extract_fenced_content_unbalanced_odd_fences():
+    """Odd number of ``` markers — should still extract what it can."""
+    thought = "```python\nfirst block\n```\nextra text\n```\n"
+    content = extract_fenced_content(thought)
+    # first block should be captured (the trailing ``` has no closer)
+    assert content is not None
+    assert "first block" in content
+
+
 # ── Think-tag stripping (Qwen3 thinking mode) ────────────────────────────────
 
 
@@ -706,7 +733,7 @@ def test_agent_loop_write_observation_echoes_content(tmp_path, monkeypatch):
     with (
         patch(
             "datum.agent_loop._think",
-            _mk_think(["write\n```\nthe payload\n```", "done"]),
+            _mk_think(["write\n```\nthe_payload = True\n```", "done"]),
         ),
         patch(
             "datum.agent_loop._decide",
@@ -727,15 +754,18 @@ def test_agent_loop_write_observation_echoes_content(tmp_path, monkeypatch):
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
 
-    assert "the payload" in result["steps"][0]["observation"]
+    assert "the_payload" in result["steps"][0]["observation"]
 
 
 # ── Syntax lint gate on writes ───────────────────────────────────────────────
 
 
-def test_agent_loop_write_with_syntax_error_warns(tmp_path, monkeypatch):
-    """Writing a .py file with a syntax error appends a warning observation."""
+def test_agent_loop_write_with_syntax_error_rejects(tmp_path, monkeypatch):
+    """Defect-2a: writing a .py file with a SyntaxError must REJECT the write
+    (tool not executed, file not written) and return an error observation
+    with the line number and error message so the model can fix it."""
     monkeypatch.chdir(tmp_path)
+    executed = []
 
     with (
         patch(
@@ -756,12 +786,19 @@ def test_agent_loop_write_with_syntax_error_warns(tmp_path, monkeypatch):
             ),
         ),
         patch(
-            "datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
         ),
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
 
-    assert "syntax error" in result["steps"][0]["observation"].lower()
+    # Write must have been rejected — tool never executed
+    assert executed == []
+    obs = result["steps"][0]["observation"]
+    assert "syntax" in obs.lower()
+    assert "NOT written" in obs or "not written" in obs.lower()
+    # Must tell the model the line number
+    assert "line" in obs.lower()
 
 
 def test_agent_loop_write_valid_python_no_warning(tmp_path, monkeypatch):

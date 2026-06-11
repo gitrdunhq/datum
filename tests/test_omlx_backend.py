@@ -158,3 +158,70 @@ def test_generate_falls_back_when_omlx_down():
         result = generate("hello", model_id="test-model")
 
     assert "text" in result
+
+
+# ── Defect-3: empty message content retries ──────────────────────────────────
+
+
+def test_omlx_call_retries_on_empty_content_then_succeeds():
+    """Defect-3: a 200 with None/empty content should be retried, not raise
+    immediately. On the second attempt a good response succeeds."""
+    from datum.local_llm import _omlx_call
+
+    empty_response = json.dumps(
+        {"choices": [{"message": {"content": None}}], "usage": {}}
+    ).encode()
+    good_response = json.dumps(
+        {"choices": [{"message": {"content": "hello"}}], "usage": {}}
+    ).encode()
+
+    call_count = 0
+
+    def fake_urlopen(req, timeout=None, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.read.return_value = empty_response if call_count == 1 else good_response
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    with (
+        patch("datum.local_llm._omlx_urlopen_with_retry", fake_urlopen),
+        patch("datum.local_llm.time.sleep"),
+    ):
+        body = {"model": "test-model", "messages": []}
+        data, elapsed = _omlx_call(body, "http://localhost:12200", 10, deadline=None)
+
+    assert data["choices"][0]["message"]["content"] == "hello"
+    assert call_count == 2
+
+
+def test_omlx_call_raises_after_exhausting_retries_on_empty_content():
+    """Defect-3: after max retries all returning empty content, raise ValueError."""
+    from datum.local_llm import _omlx_call
+
+    empty_response = json.dumps(
+        {"choices": [{"message": {"content": ""}}], "usage": {}}
+    ).encode()
+
+    def fake_urlopen(req, timeout=None, **kwargs):
+        resp = MagicMock()
+        resp.read.return_value = empty_response
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = MagicMock(return_value=False)
+        return resp
+
+    import pytest
+
+    with (
+        patch("datum.local_llm._omlx_urlopen_with_retry", fake_urlopen),
+        patch("datum.local_llm.time.sleep"),
+        pytest.raises(ValueError, match="no content"),
+    ):
+        _omlx_call(
+            {"model": "test-model", "messages": []},
+            "http://localhost:12200",
+            10,
+            deadline=None,
+        )

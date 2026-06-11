@@ -1637,37 +1637,58 @@ def _omlx_call(
     wrapper so the whole call — retries and backoff included — never runs
     past the caller's wall-clock budget (#61).
 
-    Raises ValueError naming the model and URL when the response has a
-    missing/empty "choices" list or no message content.
-    """
-    endpoint = f"{url}/v1/chat/completions"
-    payload = json.dumps(body).encode()
-    req = urllib.request.Request(
-        endpoint,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    t0 = time.monotonic()
-    with _omlx_urlopen_with_retry(req, timeout=timeout_s, deadline=deadline) as resp:
-        data = json.loads(resp.read())
-    elapsed = time.monotonic() - t0
+    A 200 response whose message content is missing/None/empty-string is
+    RETRYABLE (Defect-3): the model occasionally emits only tokens the
+    server's reasoning parser strips, yielding empty content.  Retries up
+    to ``_OMLX_MAX_ATTEMPTS`` with exponential backoff before raising.
 
+    Raises ValueError naming the model and URL when the response has a
+    missing/empty "choices" list or no message content after retries.
+    """
+    import random as _random
+
+    endpoint = f"{url}/v1/chat/completions"
     model_id = body.get("model", "<unknown>")
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if not choices:
-        raise ValueError(
-            f"oMLX response has missing or empty 'choices' "
-            f"(model={model_id}, url={endpoint})"
+
+    for attempt in range(_OMLX_MAX_ATTEMPTS):
+        payload = json.dumps(body).encode()
+        req = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-    first = choices[0] if isinstance(choices[0], dict) else {}
-    message = first.get("message")
-    if not isinstance(message, dict) or message.get("content") is None:
-        raise ValueError(
-            f"oMLX response message has no content "
-            f"(model={model_id}, url={endpoint})"
-        )
-    return data, elapsed
+        t0 = time.monotonic()
+        with _omlx_urlopen_with_retry(
+            req, timeout=timeout_s, deadline=deadline
+        ) as resp:
+            data = json.loads(resp.read())
+        elapsed = time.monotonic() - t0
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not choices:
+            raise ValueError(
+                f"oMLX response has missing or empty 'choices' "
+                f"(model={model_id}, url={endpoint})"
+            )
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        message = first.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+
+        # Defect-3: treat missing/None/empty-string content as retryable.
+        if content is not None and content != "":
+            return data, elapsed
+
+        # Empty content — retry with backoff unless exhausted.
+        if attempt < _OMLX_MAX_ATTEMPTS - 1:
+            delay = 2**attempt + _random.uniform(0, 1)
+            if deadline is not None and time.monotonic() + delay >= deadline:
+                break  # budget exhausted, fall through to raise
+            time.sleep(delay)
+
+    raise ValueError(
+        f"oMLX response message has no content " f"(model={model_id}, url={endpoint})"
+    )
 
 
 def _omlx_generate(
