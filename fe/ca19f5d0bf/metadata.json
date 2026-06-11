@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "feca19f5d0bf",
+  "strategy": "manual-commit",
+  "branch": "fix/write-echo-truncation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/agent_loop.py",
+    "tests/test_agent_loop.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fe/ca19f5d0bf/0/metadata.json",
+      "transcript": "/fe/ca19f5d0bf/0/full.jsonl",
+      "content_hash": "/fe/ca19f5d0bf/0/content_hash.txt",
+      "prompt": "/fe/ca19f5d0bf/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 169904,
+    "cache_creation_tokens": 4206174,
+    "cache_read_tokens": 167083316,
+    "output_tokens": 582229,
+    "api_call_count": 909
+  }
+}
