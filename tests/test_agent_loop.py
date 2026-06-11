@@ -1443,6 +1443,119 @@ def test_pin_store_tampering_alone_is_advisory(tmp_path, monkeypatch):
     assert result["result"]["summary"] == "ok"
 
 
+def test_rules_file_deleted_mid_episode_aborts(tmp_path, monkeypatch):
+    """#99: DELETING the rules file mid-episode must trip rules_tampering
+    just like rewriting it — removal of the rules is the most complete
+    form of tampering, not an exemption from the check."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("- always use uv\n")
+
+    from datum.agent_loop import load_project_rules
+
+    rules = load_project_rules(tmp_path)
+    assert rules == "- always use uv"
+
+    def delete_exec(tc, cfg):
+        # Tool execution deletes the rules file mid-episode.
+        (tmp_path / "AGENTS.md").unlink(missing_ok=True)
+        return "out", False
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 5)),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": f"f{i}.py"},
+                    }
+                    for i in range(5)
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", delete_exec),
+    ):
+        cfg = dict(BASE_CFG, extra_rules=rules)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert result["escalated"] is True
+    assert "rules_tampering" in result["reason"]
+    # The first step executed; the abort fired before the second THINK
+    assert result["steps_taken"] == 1
+
+
+def test_rules_file_deleted_mid_episode_aborts_without_extra_rules(
+    tmp_path, monkeypatch
+):
+    """#99: the deletion tripwire keys off the rules file existing at
+    episode start — it must fire even when the caller supplied no
+    extra_rules (the hash-compare path is unavailable, but deletion is
+    still observable and still tampering)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("- always use uv\n")
+
+    def delete_exec(tc, cfg):
+        (tmp_path / "AGENTS.md").unlink(missing_ok=True)
+        return "out", False
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 5)),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": f"f{i}.py"},
+                    }
+                    for i in range(5)
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", delete_exec),
+    ):
+        result = agent_loop("task", dict(BASE_CFG), phase="act_red")
+
+    assert result["escalated"] is True
+    assert "rules_tampering" in result["reason"]
+    assert result["steps_taken"] == 1
+
+
+def test_no_rules_file_at_start_with_extra_rules_never_trips(tmp_path, monkeypatch):
+    """#99 preserved path: extra_rules may legitimately be caller-supplied
+    with NO rules file on disk. When no rules file existed at episode
+    start, per-step verification stays skipped and the episode completes."""
+    monkeypatch.chdir(tmp_path)
+    assert not (tmp_path / "AGENTS.md").exists()
+    assert not (tmp_path / "CLAUDE.md").exists()
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go", "all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "f.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("out", False)),
+    ):
+        cfg = dict(BASE_CFG, extra_rules="- caller-supplied rule")
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert result["escalated"] is False
+    assert result["result"]["summary"] == "ok"
+
+
 def test_stale_rules_pin_deleted_at_episode_start(tmp_path, monkeypatch):
     """S0: a stale .datum/rules-hash.json from a previous run must NOT abort
     a fresh episode — each episode deletes the stale pin and pins fresh
