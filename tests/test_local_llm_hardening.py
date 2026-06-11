@@ -815,3 +815,115 @@ def test_structured_threads_max_time_to_omlx():
         mock_struct.return_value = {"data": {}, "tokens": 1}
         structured("p", schema, "m", max_time_s=22)
     assert mock_struct.call_args.kwargs.get("max_time_s") == 22
+
+
+# ── Issue #65 item 3: _omlx_available logs a warning on silent fallback ─────
+# Server configured but unreachable must emit a structured warning (DPS-204)
+# instead of silently returning False and falling back to a local MLX load.
+
+
+def test_omlx_available_logs_warning_when_server_unreachable(caplog):
+    """Configured oMLX URL + unreachable server → warning naming the URL."""
+    import logging
+
+    from datum.local_llm import _omlx_available
+
+    with (
+        patch(
+            "datum.local_llm.load_config",
+            return_value={"omlx_url": "http://localhost:9999"},
+        ),
+        patch(
+            "datum.local_llm.urllib.request.urlopen",
+            side_effect=_conn_refused_urlerror(),
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        assert _omlx_available() is False
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    msg = warnings[0].getMessage()
+    assert "http://localhost:9999" in msg
+    assert "fall" in msg  # names the fallback consequence
+
+
+def test_omlx_available_no_warning_when_url_unset(caplog):
+    """No omlx_url configured is a normal state — no warning emitted."""
+    import logging
+
+    from datum.local_llm import _omlx_available
+
+    with (
+        patch("datum.local_llm.load_config", return_value={}),
+        caplog.at_level(logging.WARNING),
+    ):
+        assert _omlx_available() is False
+
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+# ── Issue #65 item 6 (residual): _omlx_call empty-content retry sleep_fn ───
+# The Defect-3 empty-content retry loop in _omlx_call used a raw time.sleep,
+# forcing tests to patch datum.local_llm.time.sleep. It must accept an
+# injectable sleep_fn like _omlx_urlopen_with_retry does.
+
+
+def test_omlx_call_empty_content_retry_uses_injected_sleep_fn():
+    """Empty content retried via sleep_fn — no time.sleep patching needed."""
+    import json as _json
+
+    from datum.local_llm import _omlx_call
+
+    empty = _json.dumps(
+        {"choices": [{"message": {"content": ""}}], "usage": {}}
+    ).encode()
+    responses = [_mock_resp(empty), _mock_resp(_make_omlx_response("ok"))]
+
+    def fake_urlopen(req, timeout=None, **kwargs):
+        return responses.pop(0)
+
+    sleep_fn = MagicMock()
+    with patch("datum.local_llm._omlx_urlopen_with_retry", fake_urlopen):
+        data, _elapsed = _omlx_call(
+            {"model": "m", "messages": []},
+            "http://localhost:9999",
+            10,
+            sleep_fn=sleep_fn,
+        )
+
+    assert data["choices"][0]["message"]["content"] == "ok"
+    assert sleep_fn.call_count == 1
+    # First backoff is 2**0 plus up-to-1s jitter.
+    delay = sleep_fn.call_args.args[0]
+    assert 1.0 <= delay < 2.0
+
+
+def test_omlx_call_empty_content_exhaustion_sleeps_between_attempts():
+    """All attempts empty → ValueError after MAX-1 injected sleeps."""
+    import json as _json
+
+    import pytest
+
+    from datum.local_llm import _OMLX_MAX_ATTEMPTS, _omlx_call
+
+    empty = _json.dumps(
+        {"choices": [{"message": {"content": None}}], "usage": {}}
+    ).encode()
+
+    def fake_urlopen(req, timeout=None, **kwargs):
+        return _mock_resp(empty)
+
+    sleep_fn = MagicMock()
+    with (
+        patch("datum.local_llm._omlx_urlopen_with_retry", fake_urlopen),
+        pytest.raises(ValueError, match="no content"),
+    ):
+        _omlx_call(
+            {"model": "m", "messages": []},
+            "http://localhost:9999",
+            10,
+            sleep_fn=sleep_fn,
+        )
+
+    assert sleep_fn.call_count == _OMLX_MAX_ATTEMPTS - 1

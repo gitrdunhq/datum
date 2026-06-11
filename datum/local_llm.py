@@ -19,6 +19,10 @@ import urllib.request  # noqa: F401 — used in oMLX backend helpers below
 from collections.abc import Callable
 from pathlib import Path
 
+from datum.shared.logging import get_logger
+
+_logger = get_logger("local_llm")
+
 _model_cache: dict = {}
 
 DEFAULTS = {
@@ -1521,10 +1525,15 @@ def _omlx_available() -> bool:
     """Return True if an OpenAI-compatible inference server is reachable.
 
     Tries /health first (oMLX), falls back to /v1/models (LM Studio, Ollama).
+
+    A configured-but-unreachable server is logged at WARNING before the
+    fallback to a local MLX load — never a silent False (DPS-204, #65).
+    An unset omlx_url is a normal config state and stays quiet.
     """
     url = _omlx_url()
     if not url:
         return False
+    last_error: Exception | None = None
     for path in ("/health", "/v1/models"):
         try:
             resp = urllib.request.urlopen(  # nosemgrep: ssrf-prevention, dynamic-urllib-use-detected -- local-only oMLX endpoint from config, no user input
@@ -1532,8 +1541,15 @@ def _omlx_available() -> bool:
             )
             if resp.status == 200:
                 return True
-        except Exception:
+        except Exception as exc:
+            last_error = exc
             continue
+    _logger.warning(
+        "oMLX server unreachable at %s (tried /health, /v1/models; "
+        "last error: %s) — falling back to local MLX model load",
+        url,
+        last_error,
+    )
     return False
 
 
@@ -1638,6 +1654,7 @@ def _omlx_call(
     url: str,
     timeout_s: int | float,
     deadline: float | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
 ) -> tuple[dict, float]:
     """POST a chat-completions body to oMLX; return (response_data, elapsed_s).
 
@@ -1656,6 +1673,9 @@ def _omlx_call(
 
     Raises ValueError naming the model and URL when the response has a
     missing/empty "choices" list or no message content after retries.
+
+    *sleep_fn* is the empty-content backoff sleep (injectable for tests,
+    #65 item 6); defaults to time.sleep.
     """
     import random as _random
 
@@ -1696,7 +1716,7 @@ def _omlx_call(
             delay = 2**attempt + _random.uniform(0, 1)
             if deadline is not None and time.monotonic() + delay >= deadline:
                 break  # budget exhausted, fall through to raise
-            time.sleep(delay)
+            (sleep_fn or time.sleep)(delay)
 
     raise ValueError(
         f"oMLX response message has no content " f"(model={model_id}, url={endpoint})"
