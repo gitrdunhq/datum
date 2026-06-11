@@ -18,6 +18,7 @@ multi_turn_phase remains the engine for analysis phases (triage, validate).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -384,6 +385,33 @@ def _write_checkpoint(
     return path
 
 
+def _distill_rules_text(repo_dir) -> str | None:
+    """Distill the repo's rules file to sanitized rule-like lines.
+
+    Returns None when no rules file exists (AGENTS.md / CLAUDE.md), so
+    callers can distinguish "no rules" from "rules distilled to nothing".
+    Pure read — never touches the pin store.
+    """
+    repo_dir = Path(repo_dir)
+    source = None
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        candidate = repo_dir / name
+        if candidate.is_file():
+            source = candidate
+            break
+    if source is None:
+        return None
+
+    rule_lines = []
+    for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
+            rule_lines.append(stripped)
+
+    text = "\n".join(rule_lines)
+    return strip_invisible_unicode(strip_special_tokens(text))[:2000]
+
+
 def load_project_rules(repo_dir) -> str:
     """Read the target repo's agent rules — AGENTS.md preferred, CLAUDE.md
     fallback — and distill to rule-like lines (bullets, numbered, headers).
@@ -396,25 +424,16 @@ def load_project_rules(repo_dir) -> str:
     repo_dir. The first load pins; a later load whose rules differ raises
     ValueError — the tampering tripwire. Episodes delete the stale pin at
     start so only MID-EPISODE mutation trips it, never cross-run changes.
+
+    #85: agent_loop's per-step tripwire does NOT use this disk pin — the
+    store is agent-writable, so the loop verifies against an in-memory hash
+    captured at episode start. The disk store remains useful for cross-call
+    pinning by trusted callers and as an audit artifact.
     """
     repo_dir = Path(repo_dir)
-    source = None
-    for name in ("AGENTS.md", "CLAUDE.md"):
-        candidate = repo_dir / name
-        if candidate.is_file():
-            source = candidate
-            break
-    if source is None:
+    text = _distill_rules_text(repo_dir)
+    if text is None:
         return ""
-
-    rule_lines = []
-    for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
-            rule_lines.append(stripped)
-
-    text = "\n".join(rule_lines)
-    text = strip_invisible_unicode(strip_special_tokens(text))[:2000]
 
     store = repo_dir / ".datum" / "rules-hash.json"
     store.parent.mkdir(exist_ok=True)
@@ -658,29 +677,48 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             "total_time_s": round(time.monotonic() - start, 2),
         }
 
-    # ── S0: per-episode rules pinning ────────────────────────────────────
-    # Delete any stale pin so each episode pins fresh: the tripwire guards
-    # against MID-EPISODE mutation, never legitimate cross-run rule changes.
+    # ── S0/#85: per-episode rules pinning — IN MEMORY ────────────────────
+    # The authoritative pin is a local variable, never agent-writable disk:
+    # a malicious episode could rewrite both the rules file AND an on-disk
+    # pin store to a matching hash, laundering the edit past the tripwire.
+    # In-memory pinning cannot fail and cannot be tampered with from tools.
+    rules_pinned_sha = (
+        hashlib.sha256(extra_rules.encode("utf-8")).hexdigest() if extra_rules else ""
+    )
     if extra_rules:
+        # Advisory audit artifact ONLY — refresh .datum/rules-hash.json so a
+        # human can inspect what was pinned. Verification never reads it, so
+        # a write failure is harmless and deliberately non-fatal.
         rules_pin_store = Path(".datum") / "rules-hash.json"
         try:
             rules_pin_store.parent.mkdir(exist_ok=True)
             rules_pin_store.unlink(missing_ok=True)
             hash_pin_rules(extra_rules, rules_pin_store)
-        except OSError as e:
-            # No pin means no tampering tripwire — fail closed.
-            return _finish(None, True, f"rules_pinning_failed: {e}")
+        except OSError:
+            pass  # advisory only — the in-memory pin is the tripwire
 
     for _step in range(max_steps):
-        # ── S0: mid-episode rules-tampering tripwire ─────────────────────
-        # Re-distill the repo's rules file and compare against the episode
-        # pin. A mismatch means the rules changed UNDER a running episode —
-        # rules tampering is a stop-the-world event, not a warning.
+        # ── S0/#85: mid-episode rules-tampering tripwire ─────────────────
+        # Re-distill the repo's rules file and compare against the IN-MEMORY
+        # episode pin (never the agent-writable disk store). A mismatch
+        # means the rules changed UNDER a running episode — rules tampering
+        # is a stop-the-world event, not a warning. A missing rules file is
+        # skipped to match episode-start semantics (extra_rules may be
+        # caller-supplied with no rules file on disk).
         if extra_rules:
-            try:
-                load_project_rules(Path.cwd())
-            except ValueError as e:
-                return _finish(None, True, f"rules_tampering: {e}")
+            current_rules = _distill_rules_text(Path.cwd())
+            if (
+                current_rules is not None
+                and hashlib.sha256(current_rules.encode("utf-8")).hexdigest()
+                != rules_pinned_sha
+            ):
+                return _finish(
+                    None,
+                    True,
+                    "rules_tampering: project rules changed mid-episode "
+                    "(disk rules no longer match the hash pinned in loop "
+                    "memory at episode start)",
+                )
 
         remaining_s = timeout_s - (time.monotonic() - start)
         if remaining_s < MIN_STEP_BUDGET_S:
