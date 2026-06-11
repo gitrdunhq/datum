@@ -1480,3 +1480,257 @@ def test_decide_threads_max_time_s_to_structured():
         _decide("p", "model", max_time_s=12.5)
 
     assert captured["max_time_s"] == 12.5
+
+
+# ── Overwrite-loss warning (Defect-3: clobbered test file) ──────────────────
+
+
+def test_overwrite_removing_defs_warns(tmp_path, monkeypatch):
+    """When write_to_file overwrites a .py file and removes top-level
+    definitions, the observation must include a WARNING naming what was lost."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "test_thing.py"
+    existing.write_text(
+        "def test_a():\n    pass\n\n"
+        "def test_b():\n    pass\n\n"
+        "def test_c():\n    pass\n"
+    )
+
+    # New content only has test_c — a and b removed
+    new_content = "def test_c():\n    pass\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "test_thing.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "test_thing.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "test_thing.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    # The write step's observation must warn about the removed definitions
+    write_obs = steps[1]["observation"]
+    assert "WARNING" in write_obs
+    assert "REMOVED" in write_obs
+    assert "test_a" in write_obs
+    assert "test_b" in write_obs
+
+
+def test_overwrite_keeping_all_defs_no_warning(tmp_path, monkeypatch):
+    """When an overwrite preserves all definitions, no removal warning."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "calc.py"
+    existing.write_text("def add(a, b):\n    return a + b\n")
+
+    new_content = (
+        "def add(a, b):\n    return a + b\n\ndef mul(a, b):\n    return a * b\n"
+    )
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "calc.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "calc.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "calc.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[1]["observation"]
+    assert "REMOVED" not in write_obs
+
+
+def test_overwrite_unparseable_old_skips_comparison(tmp_path, monkeypatch):
+    """If the old file doesn't parse, the comparison is skipped (no crash)."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "broken.py"
+    existing.write_text("def broken(:\n    pass\n")
+
+    new_content = "def fixed():\n    pass\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "broken.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "broken.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "broken.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    # No crash, no REMOVED warning
+    write_obs = steps[1]["observation"]
+    assert "REMOVED" not in write_obs
+
+
+def test_overwrite_loss_warning_truncates_long_name_list(tmp_path, monkeypatch):
+    """When more than 10 defs are removed, the name list is truncated."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "big.py"
+    defs = "\n".join(f"def func_{i}():\n    pass\n" for i in range(15))
+    existing.write_text(defs)
+
+    new_content = "x = 1\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "big.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[1]["observation"]
+    assert "WARNING" in write_obs
+    assert "+5 more" in write_obs
+
+
+def test_overwrite_new_file_no_warning(tmp_path, monkeypatch):
+    """Writing a brand-new .py file (no old content) produces no warning."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    new_content = "def test_new():\n    pass\n"
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "new_test.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: ('{"path": "new_test.py", "ok": true}', False),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[0]["observation"]
+    assert "REMOVED" not in write_obs

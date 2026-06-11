@@ -127,6 +127,34 @@ def assemble_tool_args(decision: dict, thought: str) -> dict:
     return args
 
 
+def _detect_removed_defs(old_content: str, new_content: str) -> list[str]:
+    """Compare top-level function/class names between old and new Python source.
+
+    Returns the names present in old_content but absent in new_content.
+    If either file fails to parse, returns [] (skip comparison).
+    """
+    import ast as _ast
+
+    def _top_level_names(source: str) -> set[str]:
+        tree = _ast.parse(source)
+        names: set[str] = set()
+        for node in tree.body:
+            if isinstance(
+                node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)
+            ):
+                names.add(node.name)
+        return names
+
+    try:
+        old_names = _top_level_names(old_content)
+        new_names = _top_level_names(new_content)
+    except SyntaxError:
+        return []
+
+    removed = sorted(old_names - new_names)
+    return removed
+
+
 def _check_py_syntax(content: str) -> SyntaxError | None:
     """Return the SyntaxError if content fails ast.parse, else None.
 
@@ -632,12 +660,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             tool_name == "write_to_file"
             and str(target).endswith(".py")
             and "content" in tool_args
-            and _check_py_syntax(tool_args["content"]) is not None
+            and (se := _check_py_syntax(tool_args["content"])) is not None
         ):
             # Defect-2a: reject .py writes that fail ast.parse — broken
             # Python must never land on disk where it becomes an opaque
             # collection error that the model cannot self-correct from.
-            se = _check_py_syntax(tool_args["content"])
             observation = (
                 f"Error: file was NOT written to disk — Python syntax "
                 f"error at line {se.lineno}: {se.msg}. Re-emit the "
@@ -645,6 +672,21 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 f"retry write_to_file."
             )
         else:
+            # Snapshot old content for overwrite-loss detection (Defect-3).
+            _old_py_content: str | None = None
+            if (
+                tool_name == "write_to_file"
+                and str(target).endswith(".py")
+                and target.exists()
+                and "content" in tool_args
+            ):
+                try:
+                    _old_py_content = target.read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                except OSError:
+                    pass
+
             # ── EXECUTE (sandboxed, deterministic) ───────────────────────
             tool_output, exec_truncated = _execute_tool(
                 {"tool_name": tool_name, "tool_args": tool_args}, config
@@ -681,6 +723,24 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 if str(target).endswith(".py"):
                     for warning in _lint_python(content):
                         observation += f"\nWARNING: {warning}"
+
+                # Defect-3: overwrite-loss detection — warn when an
+                # overwrite removes top-level definitions so the model
+                # can self-correct before GREEN becomes unwinnable.
+                if _old_py_content is not None:
+                    removed = _detect_removed_defs(_old_py_content, content)
+                    if removed:
+                        shown = removed[:10]
+                        suffix = (
+                            f" +{len(removed) - 10} more" if len(removed) > 10 else ""
+                        )
+                        observation += (
+                            f"\nWARNING: this overwrite REMOVED "
+                            f"{len(removed)} top-level definitions that "
+                            f"existed before: {', '.join(shown)}"
+                            f"{suffix}. If that was unintentional, "
+                            f"re-emit the COMPLETE file including them."
+                        )
 
         # ── OBSERVE ──────────────────────────────────────────────────────
         step_entry = {
