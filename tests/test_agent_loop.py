@@ -53,20 +53,50 @@ def test_extract_fenced_content_preserves_interior_blank_lines():
 
 def test_extract_fenced_content_docstring_on_info_line():
     """Defect-1 regression: model places opening triple-quote on the fence's
-    info-string line (```python \"\"\").  The captured content must include
-    the triple-quote — dropping it makes the whole file an unterminated string."""
+    info-string line (```python \"\"\").  With standard Markdown semantics the
+    info line is discarded, so the triple-quote is lost.  The ast syntax gate
+    catches this as a SyntaxError BEFORE it lands on disk — the model gets
+    feedback and re-emits with the content on the next line."""
     thought = '```python """\nTest cases for strip_special_tokens function."""\n```'
     content = extract_fenced_content(thought)
     assert content is not None
-    assert content.startswith('"""')
+    # Standard semantics: everything on the opening fence line is info string
+    # and discarded.  The content starts on the NEXT line.
+    assert content == 'Test cases for strip_special_tokens function."""\n'
 
 
-def test_extract_fenced_content_content_on_info_line():
-    """Any non-info-string content on the opening fence line must survive."""
+def test_extract_fenced_content_info_line_discarded():
+    """Standard Markdown: everything after ``` on the opening line is the
+    info string and is discarded.  Only content starting from the next line
+    is captured."""
     thought = "```python x = 1\ny = 2\n```"
     content = extract_fenced_content(thought)
     assert content is not None
-    assert "x = 1" in content
+    # "x = 1" was on the info line — discarded
+    assert content == "y = 2\n"
+
+
+def test_extract_fenced_content_filename_on_info_line():
+    """Run-5 regression: model labels a fence ```python tests/test_file.py
+    and the filename must NOT leak into captured content — standard Markdown
+    semantics discards the entire info-string line.  Without this fix, the
+    filename became line 1, triggering a SyntaxError that the model could
+    not diagnose (its own emission was valid)."""
+    file_body = (
+        '"""Test cases for strip_special_tokens function."""\n\n'
+        "from datum.prompt_sanitizer import strip_special_tokens\n\n\n"
+        "def test_strips_im_start_end():\n"
+        '    assert strip_special_tokens("hello world") == "hello world"\n'
+    )
+    thought = "```python tests/test_prompt_sanitizer.py\n" + file_body + "```"
+    content = extract_fenced_content(thought)
+    assert content is not None
+    # The filename must NOT appear in the captured content
+    assert "tests/test_prompt_sanitizer.py" not in content
+    # The actual file body must be valid Python
+    import ast
+
+    ast.parse(content)  # must not raise
 
 
 def test_extract_fenced_content_unbalanced_odd_fences():
@@ -757,6 +787,110 @@ def test_agent_loop_write_observation_echoes_content(tmp_path, monkeypatch):
     assert "the_payload" in result["steps"][0]["observation"]
 
 
+# ── Idempotent-write short-circuit (Fix 3, run-5 loop breaker) ──────────────
+
+
+def test_idempotent_write_skips_and_warns_no_rewrite(tmp_path, monkeypatch):
+    """Run-5 fix: when write_to_file content is byte-identical to what is
+    already on disk, the write is skipped and the observation tells the model
+    to stop rewriting.  This deterministically breaks the identical-rewrite
+    loop before the loop detector has to fire."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "stable.py"
+    existing_content = "def test_a():\n    pass\n"
+    existing.write_text(existing_content)
+    executed = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\n" + existing_content + "```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "stable.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "stable.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Only the read should have been executed — the write was short-circuited
+    assert len(executed) == 1
+    assert executed[0]["tool_name"] == "read_file"
+
+    # The write step observation must say the write was skipped
+    write_obs = result["steps"][1]["observation"]
+    assert "already contains exactly this content" in write_obs
+    assert (
+        "do NOT write it again" in write_obs.lower()
+        or "DO NOT write it again" in write_obs
+    )
+
+    # The file must still count as read (path in read_paths) so further
+    # writes are not blocked by the read-before-write guard
+    assert result["escalated"] is False
+
+
+def test_idempotent_write_does_not_trigger_for_different_content(tmp_path, monkeypatch):
+    """When the content differs from what is on disk, the write proceeds normally."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "changing.py"
+    existing.write_text("x = 1\n")
+    executed = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\nx = 2\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "changing.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "changing.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Both read and write should have been executed
+    assert len(executed) == 2
+    assert executed[1]["tool_name"] == "write_to_file"
+    assert "already contains" not in result["steps"][1]["observation"]
+
+
 # ── Syntax lint gate on writes ───────────────────────────────────────────────
 
 
@@ -799,6 +933,61 @@ def test_agent_loop_write_with_syntax_error_rejects(tmp_path, monkeypatch):
     assert "NOT written" in obs or "not written" in obs.lower()
     # Must tell the model the line number
     assert "line" in obs.lower()
+
+
+def test_syntax_gate_shows_captured_line_1(tmp_path, monkeypatch):
+    """Run-5 fix: when the syntax gate rejects at line 1, the observation must
+    include a repr of captured line 1 so a model whose own emission was valid
+    can see what the extractor actually captured and diagnose the mismatch."""
+    monkeypatch.chdir(tmp_path)
+    executed = []
+
+    # Simulate content where a leaked filename concatenated with the
+    # docstring creates a SyntaxError at line 1 — this is the exact
+    # shape of the run-5 defect when the old \w* regex stopped after
+    # "python" and the filename ran directly into the triple-quote.
+    bad_content = (
+        'tests/test_prompt_sanitizer.py"""Test cases."""\n' "def test_a():\n    pass\n"
+    )
+    # Confirm it really is a SyntaxError at line 1
+    import ast as _ast
+
+    try:
+        _ast.parse(bad_content)
+        raise AssertionError("bad_content should not parse")
+    except SyntaxError as _e:
+        assert _e.lineno == 1
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["write\n```\n" + bad_content + "```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "bad.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    assert executed == []
+    obs = result["steps"][0]["observation"]
+    # The observation must show what captured line 1 actually was
+    assert "Captured line 1" in obs
+    assert "test_prompt_sanitizer" in obs
 
 
 def test_agent_loop_write_valid_python_no_warning(tmp_path, monkeypatch):

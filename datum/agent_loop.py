@@ -73,13 +73,16 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
 # leading <think> (generation truncated mid-think): in that case everything
 # after the tag is reasoning, never actionable output.
 _THINK_TAG_RE = re.compile(r"\A\s*<think>.*?(?:</think>|\Z)", re.DOTALL)
-# Fence regex: match ``` + optional language tag (word chars) then capture
-# everything from that point.  The old pattern ``[^\n]*\n`` ate the whole
-# info-string line, silently dropping content a model placed there (e.g.
-# ``\`\`\`python """`` lost the opening triple-quote — Defect-1).
-# Now we consume only the language word, an optional space, and start
-# capturing — so any real content on the same line survives.
-_FENCE_RE = re.compile(r"```\w*[ \t]*\n?(.*?)```", re.DOTALL)
+# Fence regex: standard Markdown semantics — everything after ``` to end of
+# line is the info string and is DISCARDED.  Content starts on the next line.
+# The a4d815e regex tried to preserve content on the info line to fix a case
+# where a model placed a docstring opener there (Defect-1), but that caused
+# Run-5: a filename on the info line (```python tests/test_file.py) leaked
+# into captured content as line 1, triggering invisible SyntaxErrors.
+# Standard semantics is safe now because the ast syntax gate (also added in
+# a4d815e) catches the Defect-1 case — the broken content gets REJECTED with
+# feedback instead of landing on disk silently.
+_FENCE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 
 MAX_OLD_OBSERVATION_CHARS = 400
 MAX_RECENT_OBSERVATION_CHARS = 3000
@@ -663,6 +666,26 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
         elif (
             tool_name == "write_to_file"
+            and "content" in tool_args
+            and target.exists()
+            and tool_args["content"]
+            == target.read_text(encoding="utf-8", errors="replace")
+        ):
+            # Run-5 fix: idempotent-write short-circuit.  When the new
+            # content is byte-identical to what is already on disk, skip
+            # the write and tell the model to stop.  This deterministically
+            # breaks the rewrite-the-same-file loop before the loop
+            # detector has to fire.  Count as a successful read so further
+            # writes are not blocked by the read-before-write guard.
+            read_paths.add(resolved)
+            observation = (
+                "File already contains exactly this content — write "
+                "skipped, nothing changed. The file is complete; "
+                "DO NOT write it again. Proceed to the next action "
+                "or call done."
+            )
+        elif (
+            tool_name == "write_to_file"
             and str(target).endswith(".py")
             and "content" in tool_args
             and (se := _check_py_syntax(tool_args["content"])) is not None
@@ -670,11 +693,19 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             # Defect-2a: reject .py writes that fail ast.parse — broken
             # Python must never land on disk where it becomes an opaque
             # collection error that the model cannot self-correct from.
+            # Run-5 fix: show what line 1 actually contains so a model
+            # whose own emission was valid can see extraction artifacts.
+            captured_line1 = tool_args["content"].split("\n", 1)[0]
+            line1_diag = (
+                f" Captured line 1 was: {captured_line1!r:.120}."
+                if se.lineno == 1
+                else ""
+            )
             observation = (
                 f"Error: file was NOT written to disk — Python syntax "
-                f"error at line {se.lineno}: {se.msg}. Re-emit the "
-                f"full corrected file in one fenced code block and "
-                f"retry write_to_file."
+                f"error at line {se.lineno}: {se.msg}.{line1_diag} "
+                f"Re-emit the full corrected file in one fenced code "
+                f"block and retry write_to_file."
             )
         else:
             # Snapshot old content for overwrite-loss detection (Defect-3).
