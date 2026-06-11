@@ -62,7 +62,7 @@ added_in_lane = "aci-loop"
 
 [tools.run_command]
 path = "run_command.py"
-description = "Execute a shell command."
+description = "Execute a command (argv, no shell — metacharacters are literal)."
 permissions = { network = true, write = ["."], read = ["."] }
 timeout_seconds = 60
 added_in_epic = 1
