@@ -80,7 +80,7 @@ ITEMS = [
 def test_catalog_contains_both_todo_tools():
     assert "read_todos" in TOOL_CATALOG
     assert "write_todos" in TOOL_CATALOG
-    sig, desc = TOOL_CATALOG["write_todos"]
+    sig, desc, _risk = TOOL_CATALOG["write_todos"]
     assert "items" in sig
     assert desc  # prompt surface must explain when to use it
 

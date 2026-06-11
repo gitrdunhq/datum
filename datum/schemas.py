@@ -16,6 +16,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+# Re-export so callers can do `from datum.schemas import ToolRiskClass`
+# without importing from the lower-level tool_risk module directly.
+from datum.tool_risk import ToolRiskClass as ToolRiskClass  # noqa: F401
+
 
 def _truncate(v: str, limit: int) -> str:
     """Truncate a string to *limit* chars.  Preserves the first N chars exactly."""
