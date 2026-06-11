@@ -103,6 +103,20 @@ MAX_FILE_ECHO_CHARS = 6000
 RECENT_STEPS_KEPT_FULL = 2
 LOOP_DETECT_REPEATS = 3
 
+# ── #67: GREEN-phase done-verification guard ─────────────────────────────
+# 'Declare done only after seeing tests pass' was a prompt-level instruction
+# the model could skip (S0.2b dogfood: final write landed, pytest never
+# re-ran, done accepted with a broken file on disk). Structural enforcement:
+# in GREEN-type phases a done that arrives after a successful write with no
+# SUBSEQUENT passing test run is rejected with a corrective observation.
+# Rejections are capped; past the cap the loop escalates.
+MAX_UNVERIFIED_DONE_REJECTIONS = 2
+_TEST_CMD_RE = re.compile(r"\b(?:pytest|unittest)\b")
+_TEST_PASS_RE = re.compile(r"\b\d+ passed\b")
+_TEST_FAIL_RE = re.compile(
+    r"\b\d+ (?:failed|errors?)\b|\bFAILURES\b|\bERRORS\b|\bTraceback\b"
+)
+
 # Wall-clock budget enforcement (#61): below this floor a THINK call cannot
 # do useful work, so the loop escalates instead of issuing a call that could
 # overrun timeout_s by up to the HTTP request timeout.
@@ -116,6 +130,22 @@ BUDGET_SLACK_S = 2.0
 # Module-level so tests can patch them.
 _eedom_graph: object | None = None
 _eedom_repo_dir: str = ""
+
+
+def _is_passing_test_run(command: str, output: str) -> bool:
+    """True when command is a test invocation whose output shows a clean pass.
+
+    Conservative classifier behind the #67 done-verification guard: it only
+    VERIFIES (arms last_passing_test_step); a false negative costs at worst
+    one corrective observation telling the model to re-run pytest, while a
+    false positive would let an unverified done through. Pass requires the
+    pytest summary ("N passed") with no failure/error markers anywhere.
+    """
+    if not _TEST_CMD_RE.search(command):
+        return False
+    if _TEST_FAIL_RE.search(output):
+        return False
+    return bool(_TEST_PASS_RE.search(output))
 
 
 def _sanitize_observation(text: str) -> str:
@@ -665,6 +695,15 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     _prev_observation: str | None = None
     _no_progress_fired = False
 
+    # ── #67: GREEN-phase done-verification state ─────────────────────────
+    # Scoped to GREEN-type phases: their terminal state is a PASSING test
+    # run, so done after a write needs fresh verification. RED phases are
+    # untouched — a failing run is their expected terminal state.
+    _green_phase = "green" in phase.lower()
+    _last_write_step: int | None = None  # last step a write tool mutated disk
+    _last_passing_test_step: int | None = None  # last step pytest passed
+    _unverified_done_rejections = 0
+
     def _finish(summary: str | None, escalated: bool, reason: str | None) -> dict:
         return {
             "result": {"summary": summary} if summary is not None else None,
@@ -797,6 +836,75 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             return _finish(None, True, f"exception: {e}")
 
         if decision.get("action") == "done":
+            # ── #67: GREEN done-verification guard ───────────────────────
+            # A done arriving after a successful write with no SUBSEQUENT
+            # passing test run is unverified: reject with a corrective
+            # observation (capped), then escalate. Structural enforcement —
+            # the prompt-level 'run pytest before DONE' instruction was
+            # skippable (S0.2b: broken file accepted as done).
+            _done_unverified = (
+                _green_phase
+                and _last_write_step is not None
+                and (
+                    _last_passing_test_step is None
+                    or _last_write_step > _last_passing_test_step
+                )
+            )
+            if _done_unverified:
+                if _unverified_done_rejections >= MAX_UNVERIFIED_DONE_REJECTIONS:
+                    step_entry = {
+                        "thought": thought,
+                        "tool_name": "unverified_done",
+                        "tool_args": {},
+                        "observation": (
+                            "done rejected "
+                            f"{MAX_UNVERIFIED_DONE_REJECTIONS} times without a "
+                            "verifying test run — escalating."
+                        ),
+                    }
+                    steps_log.append(step_entry)
+                    if on_step:
+                        on_step(step_entry)
+                    transcript.log_step(
+                        _step,
+                        think_raw,
+                        decision,
+                        "unverified_done",
+                        {},
+                        step_entry["observation"],
+                    )
+                    return _finish(
+                        None,
+                        True,
+                        "done_without_verification: model declared done in a "
+                        "GREEN phase after modifying files with no subsequent "
+                        "passing test run (rejection cap reached)",
+                    )
+                _unverified_done_rejections += 1
+                step_entry = {
+                    "thought": thought,
+                    "tool_name": "unverified_done",
+                    "tool_args": {},
+                    "observation": (
+                        "DONE rejected: you modified files after the last "
+                        "test run. Run pytest first; declare DONE only after "
+                        "it passes."
+                    ),
+                }
+                history.append(step_entry)
+                steps_log.append(step_entry)
+                if on_step:
+                    on_step(step_entry)
+                transcript.log_step(
+                    _step,
+                    think_raw,
+                    decision,
+                    "unverified_done",
+                    {},
+                    step_entry["observation"],
+                )
+                continue
+
             steps_log.append(
                 {
                     "thought": thought,
@@ -932,6 +1040,17 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             tool_output, exec_truncated = _execute_tool(
                 {"tool_name": tool_name, "tool_args": tool_args}, config
             )
+            # ── #67: track (last write, last passing test) for the GREEN
+            # done-verification guard. Only writes that actually mutated
+            # disk count (every lane write tool prints '"ok": true' on
+            # success); pass detection runs on the UNTRUNCATED output so
+            # the pytest summary line is never clipped away.
+            if tool_name in WRITE_TOOLS and '"ok": true' in tool_output:
+                _last_write_step = _step
+            if tool_name == "run_command" and _is_passing_test_run(
+                str(tool_args.get("command", "")), tool_output
+            ):
+                _last_passing_test_step = _step
             # read_file observations use the file-echo cap so any file
             # fully echo-able on write is also fully viewable on read —
             # prevents the 3000-6000 byte deadlock band.  Other tools
