@@ -1019,6 +1019,169 @@ def test_omlx_call_empty_content_retry_uses_injected_sleep_fn():
     assert 1.0 <= delay < 2.0
 
 
+# ── Fix (#105): in-process structured (outlines) path honors max_time_s ─────
+# structured()'s outlines fallback was a single blocking gen() call that
+# ignored max_time_s. outlines' Generator supports stream(); when a budget is
+# set the path now streams with a monotonic deadline (mirroring generate()'s
+# #104 fix) and on overrun returns a structured timeout error — a partial
+# JSON document is useless, so no partial parse is ever attempted.
+
+
+class _FakeOutlinesGenerator:
+    """Fake outlines Generator: blocking __call__ plus chunked stream() that
+    advances the fake clock per chunk (simulating slow generation)."""
+
+    def __init__(
+        self,
+        clock: _TickingClock,
+        chunks: list[str],
+        seconds_per_chunk: float = 0.0,
+    ):
+        self._clock = clock
+        self._chunks = chunks
+        self._spc = seconds_per_chunk
+        self.blocking_calls = 0
+        self.streamed: list[str] = []
+
+    def __call__(self, prompt, **kwargs):
+        self.blocking_calls += 1
+        return "".join(self._chunks)
+
+    def stream(self, prompt, **kwargs):
+        for c in self._chunks:
+            self._clock.now += self._spc
+            self.streamed.append(c)
+            yield c
+
+
+def _structured_inprocess_patches(clock, gen):
+    """Common patch set for the in-process (oMLX-down) structured() path.
+
+    Fakes the outlines/model boundary entirely — no real model, no real
+    outlines machinery."""
+    import sys as _sys
+
+    fake_outlines = MagicMock()
+    fake_outlines.from_mlxlm.return_value = MagicMock()
+    fake_outlines.Generator.return_value = gen
+    tokenizer = MagicMock()
+    tokenizer.encode.side_effect = lambda s: s.split()
+    return (
+        patch.dict(_sys.modules, {"outlines": fake_outlines}),
+        patch("datum.local_llm._omlx_available", return_value=False),
+        patch("datum.local_llm.load_model", return_value=(MagicMock(), tokenizer)),
+        patch("datum.local_llm.load_config", return_value={}),
+        patch("datum.local_llm._log_metric"),
+        patch("time.monotonic", clock),
+    )
+
+
+def test_structured_inprocess_deadline_exceeded_returns_structured_timeout():
+    """Deadline blown mid-stream → stops promptly, returns a structured
+    timeout error: data=None, quality gate tripped, escalated=True with
+    abort_reason='max_time_exceeded' (#104 house style)."""
+    import contextlib
+
+    from datum.local_llm import structured
+
+    clock = _TickingClock(start=100.0)
+    # 10 chunks at 2s each; budget 5s → deadline t=105 trips on chunk 3 (t=106).
+    chunks = [f'"c{i}" ' for i in range(10)]
+    gen = _FakeOutlinesGenerator(clock, chunks, seconds_per_chunk=2.0)
+
+    with contextlib.ExitStack() as stack:
+        for p in _structured_inprocess_patches(clock, gen):
+            stack.enter_context(p)
+        result = structured("p", MagicMock(), "test-model", max_time_s=5.0)
+
+    assert result["abort_reason"] == "max_time_exceeded"
+    assert result["escalated"] is True
+    assert result["quality"] == {"ok": False, "reason": "max_time_exceeded"}
+    # Partial JSON is useless — never parsed, surfaced as raw only.
+    assert result["data"] is None
+    assert result["raw"] == '"c0" "c1" "c2" '
+    # Stops promptly: the stream was NOT consumed to exhaustion.
+    assert len(gen.streamed) == 3
+    assert gen.blocking_calls == 0
+    assert result["time_s"] == 6.0
+
+
+def test_structured_inprocess_generous_budget_parses_full_output():
+    """Budget never exceeded → streams to completion, parses the full JSON,
+    quality gate untouched, blocking gen() never called."""
+    import contextlib
+
+    from datum.local_llm import structured
+
+    clock = _TickingClock(start=100.0)
+    chunks = ['{"verdict": "pass"', "}"]
+    gen = _FakeOutlinesGenerator(clock, chunks, seconds_per_chunk=1.0)
+
+    with contextlib.ExitStack() as stack:
+        for p in _structured_inprocess_patches(clock, gen):
+            stack.enter_context(p)
+        result = structured("p", MagicMock(), "test-model", max_time_s=1000.0)
+
+    assert result["data"] == {"verdict": "pass"}
+    assert result["raw"] == '{"verdict": "pass"}'
+    assert result["quality"]["ok"] is True
+    assert len(gen.streamed) == 2
+    assert gen.blocking_calls == 0
+
+
+def test_structured_inprocess_no_max_time_keeps_blocking_call():
+    """max_time_s=None → behavior preserved: single blocking gen() call,
+    no streaming, full parse."""
+    import contextlib
+
+    from datum.local_llm import structured
+
+    clock = _TickingClock(start=100.0)
+    gen = _FakeOutlinesGenerator(clock, ['{"verdict": "pass"}'])
+
+    with contextlib.ExitStack() as stack:
+        for p in _structured_inprocess_patches(clock, gen):
+            stack.enter_context(p)
+        result = structured("p", MagicMock(), "test-model")
+
+    assert gen.blocking_calls == 1
+    assert gen.streamed == []
+    assert result["data"] == {"verdict": "pass"}
+    assert result["quality"]["ok"] is True
+
+
+def test_structured_inprocess_refuses_blocking_call_when_deadline_unenforceable():
+    """Generator without stream() (older outlines) + max_time_s set → the
+    blocking call is REFUSED with a structured error (#65 fail-loudly):
+    never silently run past the caller's deadline."""
+    import contextlib
+
+    from datum.local_llm import structured
+
+    class _BlockingOnlyGenerator:
+        def __init__(self):
+            self.blocking_calls = 0
+
+        def __call__(self, prompt, **kwargs):
+            self.blocking_calls += 1
+            return '{"verdict": "pass"}'
+
+    clock = _TickingClock(start=100.0)
+    gen = _BlockingOnlyGenerator()
+
+    with contextlib.ExitStack() as stack:
+        for p in _structured_inprocess_patches(clock, gen):
+            stack.enter_context(p)
+        result = structured("p", MagicMock(), "test-model", max_time_s=5.0)
+
+    assert result["escalated"] is True
+    assert result["data"] is None
+    assert result["quality"]["ok"] is False
+    assert "max_time" in result["abort_reason"]
+    # The deadline could not be honored, so the call never even started.
+    assert gen.blocking_calls == 0
+
+
 def test_omlx_call_empty_content_exhaustion_sleeps_between_attempts():
     """All attempts empty → ValueError after MAX-1 injected sleeps."""
     import json as _json
