@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+import urllib.error
 import urllib.request  # noqa: F401 — used in oMLX backend helpers below
 from pathlib import Path
 
@@ -34,6 +35,7 @@ DEFAULTS = {
     "kv_bits": 8,
     "kv_group_size": 64,
     "max_kv_size": 32768,
+    "request_timeout_s": 300,
     "repetition_ngram_size": 6,
     "repetition_max_count": 3,
     "phases": [
@@ -1529,6 +1531,56 @@ def _sampling_params(sampling: dict | None) -> dict:
     return {k: v for k, v in sampling.items() if k in _SAMPLING_KEYS}
 
 
+_RETRYABLE_HTTP_CODES = frozenset({429, 503})
+_OMLX_MAX_ATTEMPTS = 4
+
+
+def _omlx_urlopen_with_retry(
+    req: urllib.request.Request,
+    timeout: int | float,
+    max_attempts: int = _OMLX_MAX_ATTEMPTS,
+) -> object:
+    """urlopen with jittered exponential backoff on 429/503/ConnectionRefused.
+
+    Honors ``Retry-After`` response header when present.
+    Non-retryable HTTP errors (400, 401, 500, ...) raise immediately.
+    After *max_attempts* exhausted, re-raises the original error.
+    """
+    import random as _random
+
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _RETRYABLE_HTTP_CODES:
+                raise
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            if retry_after is not None:
+                try:
+                    delay = float(retry_after)
+                except (ValueError, TypeError):
+                    delay = 2**attempt
+            else:
+                delay = 2**attempt
+            delay += _random.uniform(0, 1)
+            time.sleep(delay)
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, ConnectionRefusedError):
+                last_exc = exc
+                if attempt == max_attempts - 1:
+                    raise
+                delay = 2**attempt + _random.uniform(0, 1)
+                time.sleep(delay)
+            else:
+                raise
+    # Unreachable, but satisfies the type checker.
+    raise last_exc  # type: ignore[misc]
+
+
 def _omlx_generate(
     prompt: str,
     model_id: str,
@@ -1558,8 +1610,11 @@ def _omlx_generate(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
+    timeout_s = load_config().get("request_timeout_s", 300)
+    t0 = time.monotonic()
+    with _omlx_urlopen_with_retry(req, timeout=timeout_s) as resp:
         data = json.loads(resp.read())
+    elapsed = time.monotonic() - t0
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage", {})
     tokens = usage.get("completion_tokens", 0)
@@ -1568,7 +1623,7 @@ def _omlx_generate(
         "text": text,
         "tokens": tokens,
         "prompt_tokens": usage.get("prompt_tokens", 0),
-        "time_s": 0.0,
+        "time_s": elapsed,
         "model": model_id,
         "escalated": escalated,
         "abort_reason": "model_requested_escalation" if escalated else None,
@@ -1609,15 +1664,18 @@ def _omlx_structured(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
+    timeout_s = load_config().get("request_timeout_s", 300)
+    t0 = time.monotonic()
+    with _omlx_urlopen_with_retry(req, timeout=timeout_s) as resp:
         data = json.loads(resp.read())
+    elapsed = time.monotonic() - t0
     raw = data["choices"][0]["message"]["content"]
     parsed = json.loads(raw)
     return {
         "data": parsed,
         "raw": raw,
         "tokens": data.get("usage", {}).get("completion_tokens", 0),
-        "time_s": 0.0,
+        "time_s": elapsed,
         "model": model_id,
         "quality": {"ok": True, "reason": None},
     }
