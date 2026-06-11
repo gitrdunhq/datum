@@ -39,6 +39,7 @@ def strip_special_tokens(text: str) -> str:
 # - zero-width chars: U+200B to U+200D, and U+FEFF
 # - bidi controls: U+202A to U+202E, and U+2066 to U+2069
 # - private-use-area: U+E000 to U+F8FF
+# This regex removes all invisible Unicode characters from untrusted input.
 _INVISIBLE = re.compile(r"[\u200b-\u200d\ufeff\u202a-\u202e\u2066-\u2069\ue000-\uf8ff]")
 
 
