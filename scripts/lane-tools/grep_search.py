@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import sys
 import json
 import re
+import sys
 from pathlib import Path
 
 MAX_RESULTS = 50
@@ -34,12 +34,8 @@ def main():
 
     count = 0
     try:
-        glob_pattern = include if include else "**/*"
-        for fpath in sorted(
-            search_path.rglob(glob_pattern)
-            if not include
-            else search_path.glob(include)
-        ):
+        glob_pattern = f"**/{include}" if include else "**/*"
+        for fpath in sorted(search_path.glob(glob_pattern)):
             if not fpath.is_file():
                 continue
             if fpath.suffix in (".pyc", ".so", ".whl", ".egg-info"):
