@@ -239,7 +239,7 @@ def _mk_think(texts):
     """Return a fake think() yielding canned thoughts in order."""
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         return {"text": next(it), "tokens": 10, "time_s": 0.1}
 
     return fake
@@ -248,7 +248,7 @@ def _mk_think(texts):
 def _mk_decide(decisions):
     it = iter(decisions)
 
-    def fake(prompt, model_id):
+    def fake(prompt, model_id, max_time_s=None):
         return {"data": next(it), "tokens": 5, "time_s": 0.05}
 
     return fake
@@ -909,7 +909,9 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     captured = {}
 
-    def spy_think(prompt, model_id, max_tokens, system=None, sampling=None):
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
         captured["system"] = system
         return {"text": "all done", "tokens": 1, "time_s": 0}
 
@@ -932,7 +934,7 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
 def _fat_think(texts, prompt_tokens):
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         return {
             "text": next(it),
             "tokens": 10,
@@ -1047,7 +1049,7 @@ def test_compact_history_digests_steps():
 def test_agent_loop_model_exception_returns_structured_failure():
     """HIGH: a crashing model call must yield escalated=True, not a traceback."""
 
-    def boom(prompt, model_id, max_tokens, system=None, sampling=None):
+    def boom(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         raise OSError("oMLX connection refused")
 
     with patch("datum.agent_loop._think", boom):
@@ -1059,7 +1061,7 @@ def test_agent_loop_model_exception_returns_structured_failure():
 
 
 def test_agent_loop_decide_exception_returns_structured_failure():
-    def boom(prompt, model_id):
+    def boom(prompt, model_id, max_time_s=None):
         raise ValueError("Unterminated string starting at: line 1")
 
     with (
@@ -1183,7 +1185,7 @@ def test_unclosed_think_tag_stripped_and_turn_skipped():
 def test_agent_loop_empty_thought_feeds_error_not_decide():
     decide_calls = []
 
-    def spy_decide(prompt, model_id):
+    def spy_decide(prompt, model_id, max_time_s=None):
         decide_calls.append(prompt)
         return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
 
@@ -1229,3 +1231,146 @@ def test_write_tool_missing_path_gets_clear_error(tmp_path, monkeypatch):
     obs = result["steps"][0]["observation"]
     assert "path" in obs.lower()
     assert "exists but you have not read" not in obs
+
+
+# ── Budget-capped model calls (#61) ──────────────────────────────────────────
+# The wall-clock deadline was only checked between steps: a single THINK call
+# could hang for the full HTTP request timeout (request_timeout_s, default
+# 300s) past the loop budget. Each model call now carries max_time_s capped
+# at the remaining budget, and a call is never issued below a sane floor.
+
+
+def test_think_max_time_is_remaining_budget_plus_slack():
+    """THINK and DECIDE receive max_time_s = remaining loop budget + slack,
+    shrinking as wall-clock time drains."""
+    import pytest
+
+    from datum.agent_loop import BUDGET_SLACK_S
+
+    captured = {}
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        captured["think_max_time_s"] = max_time_s
+        return {"text": "all done", "tokens": 1}
+
+    def spy_decide(prompt, model_id, max_time_s=None):
+        captured["decide_max_time_s"] = max_time_s
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch("datum.agent_loop._decide", spy_decide),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        # start=0; remaining check at t=10 → 50 left; decide at t=30 → 30 left
+        mock_time.monotonic.side_effect = [0.0, 10.0, 30.0, 40.0]
+        cfg = dict(BASE_CFG, timeout_s=60)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert result["escalated"] is False
+    assert captured["think_max_time_s"] == pytest.approx(50.0 + BUDGET_SLACK_S)
+    assert captured["decide_max_time_s"] == pytest.approx(30.0 + BUDGET_SLACK_S)
+
+
+def test_think_not_called_when_budget_below_floor_midrun():
+    """When the remaining budget drops below the floor mid-run, the loop
+    escalates with the existing timeout reason instead of issuing a THINK
+    that could overrun by up to the HTTP timeout."""
+    think_calls = []
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        think_calls.append(max_time_s)
+        return {"text": "go", "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    }
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("out", False)),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        # iter1 at t=1 (59 left, call issued); iter2 at t=57 (3 left < floor)
+        mock_time.monotonic.side_effect = [0.0, 1.0, 2.0, 57.0, 58.0]
+        cfg = dict(BASE_CFG, timeout_s=60)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert len(think_calls) == 1
+    assert result["escalated"] is True
+    assert result["reason"] == "timeout_exceeded"
+    assert result["steps_taken"] == 1
+
+
+def test_budget_exhausted_before_first_think_makes_no_call():
+    """Negative path: budget already exhausted → no model call at all,
+    escalates with the existing timeout reason."""
+    think_calls = []
+    decide_calls = []
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        think_calls.append(max_time_s)
+        return {"text": "go", "tokens": 1}
+
+    def spy_decide(prompt, model_id, max_time_s=None):
+        decide_calls.append(max_time_s)
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch("datum.agent_loop._decide", spy_decide),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        mock_time.monotonic.side_effect = [0.0, 100.0, 100.0]
+        cfg = dict(BASE_CFG, timeout_s=50)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert think_calls == []
+    assert decide_calls == []
+    assert result["escalated"] is True
+    assert result["reason"] == "timeout_exceeded"
+    assert result["steps_taken"] == 0
+
+
+def test_think_threads_max_time_s_to_generate():
+    """_think forwards max_time_s to generate (same threading as sampling)."""
+    captured = {}
+
+    def fake_generate(prompt, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"text": "ok", "tokens": 1}
+
+    with patch("datum.agent_loop.generate", fake_generate):
+        _think("p", "model", 2048, "sys", max_time_s=37.5)
+
+    assert captured["max_time_s"] == 37.5
+
+
+def test_decide_threads_max_time_s_to_structured():
+    """_decide forwards max_time_s to structured."""
+    from datum.agent_loop import _decide
+
+    captured = {}
+
+    def fake_structured(prompt, schema, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with patch("datum.agent_loop.structured", fake_structured):
+        _decide("p", "model", max_time_s=12.5)
+
+    assert captured["max_time_s"] == 12.5

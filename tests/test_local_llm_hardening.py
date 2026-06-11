@@ -454,3 +454,172 @@ def test_time_s_not_hardcoded_zero():
     # Real call is near-instant but must not be exactly 0.0 (the old hardcoded value)
     # Actually, with mocked urlopen it could be essentially 0 — but must be >= 0
     assert result["time_s"] >= 0.0
+
+
+# ── Fix 4 (#61): per-call budget cap — max_time_s ───────────────────────────
+# A caller with a wall-clock budget (the agent loop) must be able to cap the
+# request below request_timeout_s, and retries must never run past that cap.
+
+
+def test_omlx_generate_max_time_caps_socket_timeout():
+    """max_time_s below request_timeout_s wins: urlopen timeout == max_time_s."""
+    from datum.local_llm import _omlx_generate
+
+    resp_ok = MagicMock()
+    resp_ok.read.return_value = _make_omlx_response("ok")
+    resp_ok.__enter__ = MagicMock(return_value=resp_ok)
+    resp_ok.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("datum.local_llm.load_config", return_value={**DEFAULTS}),
+        patch(
+            "datum.local_llm.urllib.request.urlopen", return_value=resp_ok
+        ) as mock_open,
+        patch("time.monotonic", side_effect=[100.0, 100.0, 105.0]),
+    ):
+        _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999", max_time_s=42)
+    _, kwargs = mock_open.call_args
+    assert kwargs.get("timeout") == 42
+
+
+def test_omlx_generate_config_timeout_still_wins_when_smaller():
+    """max_time_s above request_timeout_s does not raise the socket timeout."""
+    from datum.local_llm import _omlx_generate
+
+    resp_ok = MagicMock()
+    resp_ok.read.return_value = _make_omlx_response("ok")
+    resp_ok.__enter__ = MagicMock(return_value=resp_ok)
+    resp_ok.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch(
+            "datum.local_llm.load_config",
+            return_value={**DEFAULTS, "request_timeout_s": 42},
+        ),
+        patch(
+            "datum.local_llm.urllib.request.urlopen", return_value=resp_ok
+        ) as mock_open,
+        patch("time.monotonic", side_effect=[100.0, 100.0, 105.0]),
+    ):
+        _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999", max_time_s=500)
+    _, kwargs = mock_open.call_args
+    assert kwargs.get("timeout") == 42
+
+
+def test_omlx_structured_max_time_caps_socket_timeout():
+    """_omlx_structured honors max_time_s the same way."""
+    from datum.local_llm import _omlx_structured
+
+    schema = MagicMock()
+    schema.model_json_schema.return_value = {"type": "object", "properties": {}}
+    schema.__name__ = "TestSchema"
+
+    resp_ok = MagicMock()
+    resp_ok.read.return_value = _make_omlx_response('{"a": 1}')
+    resp_ok.__enter__ = MagicMock(return_value=resp_ok)
+    resp_ok.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("datum.local_llm.load_config", return_value={**DEFAULTS}),
+        patch(
+            "datum.local_llm.urllib.request.urlopen", return_value=resp_ok
+        ) as mock_open,
+        patch("time.monotonic", side_effect=[200.0, 200.0, 203.0]),
+    ):
+        _omlx_structured("hi", schema, "m", 100, "http://localhost:9999", max_time_s=33)
+    _, kwargs = mock_open.call_args
+    assert kwargs.get("timeout") == 33
+
+
+def test_retry_does_not_sleep_past_deadline():
+    """A retryable error close to the deadline re-raises instead of sleeping
+    past the budget."""
+    import urllib.error as _ue
+    import urllib.request as _ur
+
+    import pytest
+
+    from datum.local_llm import _omlx_urlopen_with_retry
+
+    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    with (
+        patch(
+            "datum.local_llm.urllib.request.urlopen",
+            side_effect=[_make_http_error(429)],
+        ),
+        patch("time.sleep") as mock_sleep,
+        # attempt at t=100 (5s left); pre-sleep check at t=104.5: any
+        # backoff delay (>=1s) would land past the deadline → raise now.
+        patch("time.monotonic", side_effect=[100.0, 104.5]),
+        pytest.raises(_ue.HTTPError),
+    ):
+        _omlx_urlopen_with_retry(req, timeout=300, deadline=105.0)
+    assert mock_sleep.call_count == 0
+
+
+def test_retry_within_deadline_still_retries():
+    """With budget to spare, the retry path is unchanged: sleep, retry, win."""
+    import urllib.request as _ur
+
+    from datum.local_llm import _omlx_urlopen_with_retry
+
+    resp_ok = MagicMock()
+    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    with (
+        patch(
+            "datum.local_llm.urllib.request.urlopen",
+            side_effect=[_make_http_error(429), resp_ok],
+        ),
+        patch("time.sleep") as mock_sleep,
+        patch("time.monotonic", side_effect=[100.0, 101.0, 103.0]),
+    ):
+        result = _omlx_urlopen_with_retry(req, timeout=300, deadline=400.0)
+    assert result is resp_ok
+    assert mock_sleep.call_count == 1
+
+
+def test_retry_expired_deadline_raises_before_request():
+    """Negative path: deadline already past → no request is issued at all."""
+    import urllib.request as _ur
+
+    import pytest
+
+    from datum.local_llm import _omlx_urlopen_with_retry
+
+    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    with (
+        patch("datum.local_llm.urllib.request.urlopen") as mock_open,
+        patch("time.monotonic", side_effect=[100.0]),
+        pytest.raises(TimeoutError),
+    ):
+        _omlx_urlopen_with_retry(req, timeout=300, deadline=99.0)
+    assert mock_open.call_count == 0
+
+
+def test_generate_threads_max_time_to_omlx():
+    """generate(max_time_s=...) reaches _omlx_generate (kwarg threading)."""
+    from datum.local_llm import generate
+
+    with (
+        patch("datum.local_llm._omlx_available", return_value=True),
+        patch("datum.local_llm._omlx_url", return_value="http://localhost:9999"),
+        patch("datum.local_llm._omlx_generate") as mock_gen,
+    ):
+        mock_gen.return_value = {"text": "ok", "tokens": 1}
+        generate("p", "m", max_time_s=21)
+    assert mock_gen.call_args.kwargs.get("max_time_s") == 21
+
+
+def test_structured_threads_max_time_to_omlx():
+    """structured(max_time_s=...) reaches _omlx_structured."""
+    from datum.local_llm import structured
+
+    schema = MagicMock()
+    with (
+        patch("datum.local_llm._omlx_available", return_value=True),
+        patch("datum.local_llm._omlx_url", return_value="http://localhost:9999"),
+        patch("datum.local_llm._omlx_structured") as mock_struct,
+    ):
+        mock_struct.return_value = {"data": {}, "tokens": 1}
+        structured("p", schema, "m", max_time_s=22)
+    assert mock_struct.call_args.kwargs.get("max_time_s") == 22
