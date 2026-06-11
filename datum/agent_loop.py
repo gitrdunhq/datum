@@ -73,6 +73,7 @@ _FENCE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 
 MAX_OLD_OBSERVATION_CHARS = 400
 MAX_RECENT_OBSERVATION_CHARS = 3000
+MAX_WRITE_ECHO_CHARS = 1500
 RECENT_STEPS_KEPT_FULL = 2
 LOOP_DETECT_REPEATS = 3
 
@@ -592,7 +593,18 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 # a successful write also counts as having read the file.
                 read_paths.add(str(target.resolve()))
                 content = tool_args.get("content", "")
-                observation += f"\nFile content now on disk:\n{content[:1500]}"
+                observation += (
+                    f"\nFile content now on disk:\n{content[:MAX_WRITE_ECHO_CHARS]}"
+                )
+                if len(content) > MAX_WRITE_ECHO_CHARS:
+                    # A silently cut-off echo reads as a failed write to
+                    # literal models, which then rewrite the file forever.
+                    observation += (
+                        f"\n[echo truncated for display — the COMPLETE file "
+                        f"({len(content)} chars) was written to disk "
+                        f"successfully. Do NOT rewrite it because the echo "
+                        f"above is cut off.]"
+                    )
                 # Tier-1 lint gate: deterministic content checks, surfaced
                 # immediately instead of waiting for a test run.
                 if str(target).endswith(".py"):

@@ -362,6 +362,78 @@ def test_agent_loop_repeated_identical_call_escalates():
     assert result["reason"] == "loop_detected"
 
 
+def test_write_echo_over_cap_carries_truncation_notice():
+    """A successful write larger than the echo cap must tell the model the
+    FULL file landed on disk — a silently cut-off echo makes literal models
+    (2507) conclude the write failed and rewrite forever (S0.1 loop)."""
+    long_content = "# pad line\n" * 300  # 3300 chars, valid Python, lint-clean
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "big.py", "content": long_content},
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "big.py", "bytes_written": 3300, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert "echo truncated" in obs
+    assert f"{len(long_content)} chars" in obs
+    assert "Do NOT rewrite" in obs
+
+
+def test_write_echo_under_cap_has_no_truncation_notice():
+    short_content = "x = 1\n"
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "small.py", "content": short_content},
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "small.py", "bytes_written": 6, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert "echo truncated" not in obs
+    assert short_content in obs
+
+
 def test_agent_loop_write_tool_missing_content_feeds_error_back():
     """A write decision with no fenced block should not crash — the loop feeds
     an error observation back so the model can retry with a fenced block."""
