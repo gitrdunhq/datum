@@ -3731,3 +3731,222 @@ def test_compaction_emits_typed_transcript_record(tmp_path, monkeypatch):
     assert result["steps_taken"] == 3
     assert all("event" in s for s in result["steps"])
     assert "context_compaction" not in {s["event"] for s in result["steps"]}
+
+
+# ── Issue #91: progress.json — structured run state for external consumers ───
+
+
+def test_progress_json_written_on_done(tmp_path, monkeypatch):
+    """progress.json exists after a successful run and has status='done'."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["all good"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "finished ok"}]),
+        ),
+    ):
+        result = agent_loop("my task", BASE_CFG, phase="act_red")
+
+    assert result["escalated"] is False
+    progress_path = tmp_path / ".datum" / "progress.json"
+    assert progress_path.exists(), "progress.json must be written on done"
+    doc = _json.loads(progress_path.read_text())
+    assert doc["status"] == "done"
+    assert doc["phase"] == "act_red"
+    assert doc["escalated"] is False
+    assert doc["reason"] is None
+    assert doc["steps_taken"] == 1
+    assert doc["last_tool"] == "done"
+    assert doc["last_event"] == "final_answer"
+
+
+def test_progress_json_written_on_escalation(tmp_path, monkeypatch):
+    """progress.json has status='escalated' when the loop escalates."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 10)),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": f"f{i}.py"},
+                    }
+                    for i in range(10)
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("out", False)),
+    ):
+        cfg = dict(BASE_CFG, max_steps=2)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert result["escalated"] is True
+    progress_path = tmp_path / ".datum" / "progress.json"
+    assert progress_path.exists(), "progress.json must be written on escalation"
+    doc = _json.loads(progress_path.read_text())
+    assert doc["status"] == "escalated"
+    assert doc["escalated"] is True
+    assert doc["reason"] == "max_steps_exhausted"
+
+
+def test_progress_json_schema_fields(tmp_path, monkeypatch):
+    """All required schema fields are present after a normal run."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        agent_loop("run the thing", BASE_CFG, phase="act_green")
+
+    doc = _json.loads((tmp_path / ".datum" / "progress.json").read_text())
+    required = {
+        "run_id",
+        "phase",
+        "status",
+        "steps_taken",
+        "current_objective",
+        "completed_steps",
+        "blockers",
+        "last_tool",
+        "last_event",
+        "updated_at",
+        "escalated",
+        "reason",
+    }
+    assert required <= set(doc), f"Missing fields: {required - set(doc)}"
+    # run_id contains the phase
+    assert "act_green" in doc["run_id"]
+    # completed_steps is a list of dicts with tool/target
+    assert isinstance(doc["completed_steps"], list)
+    for entry in doc["completed_steps"]:
+        assert "tool" in entry
+        assert "target" in entry
+
+
+def test_progress_json_completed_steps_accumulate(tmp_path, monkeypatch):
+    """Each successful tool execution appears in completed_steps."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read a", "read b", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "b.py"},
+                    },
+                    {"action": "done", "summary": "all read"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        agent_loop("read files", BASE_CFG, phase="act_red")
+
+    doc = _json.loads((tmp_path / ".datum" / "progress.json").read_text())
+    tools_used = [s["tool"] for s in doc["completed_steps"]]
+    # two read_file steps + the final done
+    assert tools_used.count("read_file") == 2
+    assert "done" in tools_used
+
+
+def test_progress_json_error_step_goes_to_blockers(tmp_path, monkeypatch):
+    """Guard-rejected tool calls (error event) appear in blockers, not completed_steps."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    # Ask for a tool not in the allowed list — that produces an error step
+    cfg = dict(BASE_CFG, allowed_tools=["read_file"])
+    with (
+        patch("datum.agent_loop._think", _mk_think(["try bad tool", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",  # not in allowed_tools
+                        "tool_args": {"path": "x.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+    ):
+        agent_loop("task", cfg, phase="act_red")
+
+    doc = _json.loads((tmp_path / ".datum" / "progress.json").read_text())
+    # The invalid-tool rejection must surface as a blocker
+    assert len(doc["blockers"]) >= 1
+    assert any("not a valid tool" in b for b in doc["blockers"])
+
+
+def test_progress_json_is_valid_json_during_run(tmp_path, monkeypatch):
+    """progress.json is readable valid JSON after every step (atomic writes)."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    snapshots = []
+
+    def capturing_on_step(step):
+        p = tmp_path / ".datum" / "progress.json"
+        if p.exists():
+            snapshots.append(_json.loads(p.read_text()))
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=capturing_on_step)
+
+    # We captured 2 snapshots (one per step) and each was valid JSON
+    assert len(snapshots) == 2
+    # First snapshot: still running
+    assert snapshots[0]["status"] == "running"
+    # Second snapshot: done
+    assert snapshots[1]["status"] == "done"

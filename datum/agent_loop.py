@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import time
@@ -595,6 +596,123 @@ class _TranscriptWriter:
             pass
 
 
+class _ProgressWriter:
+    """Atomic progress.json writer for external consumers (#91).
+
+    Writes .datum/progress.json after every meaningful state transition so
+    the floor watcher, the orchestrator, and CI can poll structured run state
+    without parsing transcripts. Writes are atomic (tmp → rename) so a reader
+    never sees a partial file. All writes are wrapped in try/except OSError so
+    logging never crashes the loop.
+
+    Schema fields:
+      run_id          — opaque identifier for this episode (phase + timestamp)
+      phase           — e.g. "act_red", "act_green"
+      status          — "running" | "done" | "escalated"
+      steps_taken     — number of steps committed to steps_log so far
+      current_objective — last thought snippet (first 200 chars after tag strip)
+      completed_steps — list of {"tool": str, "target": str} for non-error steps
+      blockers        — list of observation prefixes for error/escalation steps
+      last_tool       — tool_name of the most recent step
+      last_event      — StepEvent discriminator of the most recent step
+      updated_at      — ISO-8601 UTC timestamp of this write
+      escalated       — bool, True when status == "escalated"
+      reason          — escalation reason string or null
+    """
+
+    PROGRESS_FILE = Path(".datum") / "progress.json"
+    _OBJ_CHARS = 200  # chars of thought kept as current_objective
+    _BLOCKER_CHARS = 120  # chars of observation kept per blocker entry
+
+    def __init__(self, phase: str) -> None:
+        self._phase = phase
+        ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        self._run_id = f"{phase}-{ts}"
+        self._completed_steps: list[dict] = []
+        self._blockers: list[str] = []
+        self._last_tool: str = ""
+        self._last_event: str = ""
+        self._steps_taken: int = 0
+
+    def _write(self, doc: dict) -> None:
+        try:
+            dest = self.PROGRESS_FILE
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(doc, indent=2, default=str) + "\n", encoding="utf-8"
+            )
+            os.replace(tmp, dest)
+        except OSError:
+            pass
+
+    def _now(self) -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def _snapshot(
+        self,
+        status: str,
+        current_objective: str,
+        escalated: bool = False,
+        reason: str | None = None,
+    ) -> dict:
+        return {
+            "run_id": self._run_id,
+            "phase": self._phase,
+            "status": status,
+            "steps_taken": self._steps_taken,
+            "current_objective": current_objective[: self._OBJ_CHARS],
+            "completed_steps": list(self._completed_steps),
+            "blockers": list(self._blockers),
+            "last_tool": self._last_tool,
+            "last_event": self._last_event,
+            "updated_at": self._now(),
+            "escalated": escalated,
+            "reason": reason,
+        }
+
+    def start(self, task: str) -> None:
+        """Write initial 'running' state at episode start."""
+        self._write(self._snapshot("running", task[: self._OBJ_CHARS]))
+
+    def record_step(self, step: dict) -> None:
+        """Update progress after a completed step is appended to steps_log."""
+        self._steps_taken += 1
+        tool = step.get("tool_name", "")
+        event = step.get("event", "tool_result")
+        thought = step.get("thought", "")
+        observation = step.get("observation", "")
+        tool_args = step.get("tool_args", {})
+
+        self._last_tool = tool
+        self._last_event = event
+
+        target = (
+            tool_args.get("path")
+            or tool_args.get("command")
+            or json.dumps(tool_args)[:40]
+        )
+
+        if event in (
+            "tool_result",
+            "plan_update",
+            "final_answer",
+            "context_compaction",
+        ):
+            self._completed_steps.append({"tool": tool, "target": str(target)})
+        elif event == "error" or observation.startswith("Error"):
+            self._blockers.append(observation[: self._BLOCKER_CHARS])
+
+        status = "done" if event == "final_answer" else "running"
+        self._write(self._snapshot(status, thought[: self._OBJ_CHARS]))
+
+    def finish(self, escalated: bool, reason: str | None) -> None:
+        """Write terminal state (done or escalated) on _finish."""
+        if escalated:
+            self._write(self._snapshot("escalated", "", escalated=True, reason=reason))
+        # done path is already written by record_step on final_answer
+
+
 def _write_checkpoint(
     phase: str, task: str, steps: list[dict], read_paths: set[str]
 ) -> Path:
@@ -893,6 +1011,8 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     )
     system_prompt = _build_system_prompt(allowed_tools, rules_salt=rules_salt)
     transcript = _TranscriptWriter(phase)
+    progress = _ProgressWriter(phase)
+    progress.start(task)
 
     # ── Eedom blast-radius: init graph at episode start (fail open) ─────
     global _eedom_graph, _eedom_repo_dir
@@ -918,6 +1038,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     _unverified_done_rejections = 0
 
     def _finish(summary: str | None, escalated: bool, reason: str | None) -> dict:
+        progress.finish(escalated, reason)
         return {
             "result": {"summary": summary} if summary is not None else None,
             "escalated": escalated,
@@ -1047,6 +1168,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 }
                 history.append(step_entry)
                 steps_log.append(step_entry)
+                progress.record_step(step_entry)
                 if on_step:
                     on_step(step_entry)
                 transcript.log_step(
@@ -1108,6 +1230,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                         ),
                     }
                     steps_log.append(step_entry)
+                    progress.record_step(step_entry)
                     if on_step:
                         on_step(step_entry)
                     transcript.log_step(
@@ -1140,6 +1263,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 }
                 history.append(step_entry)
                 steps_log.append(step_entry)
+                progress.record_step(step_entry)
                 if on_step:
                     on_step(step_entry)
                 transcript.log_step(
@@ -1162,6 +1286,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     "observation": decision.get("summary", ""),
                 }
             )
+            progress.record_step(steps_log[-1])
             if on_step:
                 on_step(steps_log[-1])
             transcript.log_step(
@@ -1437,6 +1562,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         }
         history.append(step_entry)
         steps_log.append(step_entry)
+        progress.record_step(step_entry)
         if on_step:
             on_step(step_entry)
 
