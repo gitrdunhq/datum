@@ -14,9 +14,13 @@ import os
 import resource
 import subprocess
 import sys
-from pathlib import Path
 
-MANIFEST = Path("scripts/lane-tools/manifest.toml")
+from datum.path_utils import skill_root
+
+# Resolve against the datum repo, not cwd — lane tools run with cwd set to
+# the target project (e.g. a fixture repo), which has no scripts/lane-tools/.
+LANE_TOOLS_DIR = skill_root() / "scripts" / "lane-tools"
+MANIFEST = LANE_TOOLS_DIR / "manifest.toml"
 DEFAULT_TIMEOUT = 60
 
 
@@ -66,7 +70,7 @@ def run_tool(tool_name: str, tool_args: list[str]) -> int:
         )
         return 2
 
-    tool_path = Path("scripts/lane-tools") / config.get("path", f"{tool_name}.py")
+    tool_path = LANE_TOOLS_DIR / config.get("path", f"{tool_name}.py")
     if not tool_path.exists():
         print(
             json.dumps({"error": f"Tool file not found: {tool_path}"}), file=sys.stderr

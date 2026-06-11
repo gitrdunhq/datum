@@ -607,3 +607,31 @@ class TestThreeToolWorkflow:
         )
         assert "Error" not in r3
         assert target.read_text() == "A BBB C"
+
+
+# ===========================================================================
+# Group 8 — cwd independence (agent loop chdirs into the target project)
+# ===========================================================================
+
+
+class TestCwdIndependence:
+    """The lane-tools runner must resolve its manifest against the datum repo,
+    not the process cwd — agent loops run with cwd set to the target project."""
+
+    def test_execute_tool_works_from_foreign_cwd(self, tmp_path, monkeypatch):
+        """Regression: 'Tool not in manifest' when cwd is a fixture repo."""
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "out.txt"
+        result, _ = _execute_tool(
+            _tc("write_to_file", {"path": str(target), "content": "from afar"}),
+            _config(tmp_path),
+        )
+        assert "not in manifest" not in result, result
+        assert target.exists(), f"Expected {target} to be created: {result}"
+        assert target.read_text() == "from afar"
+
+    def test_runner_manifest_is_absolute(self):
+        from datum import lane_tools_runner
+
+        assert lane_tools_runner.MANIFEST.is_absolute()
+        assert lane_tools_runner.MANIFEST.exists()

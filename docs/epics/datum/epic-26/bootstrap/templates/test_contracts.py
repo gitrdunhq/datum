@@ -88,6 +88,7 @@ def test_state_phases_has_expected_phases():
         "discovery",
         "refine",
         "plan",
+        "prior_art",
         "triage",
         "deepen",
         "properties",
