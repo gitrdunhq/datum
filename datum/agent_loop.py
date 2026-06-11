@@ -18,6 +18,7 @@ multi_turn_phase remains the engine for analysis phases (triage, validate).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -102,6 +103,20 @@ MAX_FILE_ECHO_CHARS = 6000
 RECENT_STEPS_KEPT_FULL = 2
 LOOP_DETECT_REPEATS = 3
 
+# ── #67: GREEN-phase done-verification guard ─────────────────────────────
+# 'Declare done only after seeing tests pass' was a prompt-level instruction
+# the model could skip (S0.2b dogfood: final write landed, pytest never
+# re-ran, done accepted with a broken file on disk). Structural enforcement:
+# in GREEN-type phases a done that arrives after a successful write with no
+# SUBSEQUENT passing test run is rejected with a corrective observation.
+# Rejections are capped; past the cap the loop escalates.
+MAX_UNVERIFIED_DONE_REJECTIONS = 2
+_TEST_CMD_RE = re.compile(r"\b(?:pytest|unittest)\b")
+_TEST_PASS_RE = re.compile(r"\b\d+ passed\b")
+_TEST_FAIL_RE = re.compile(
+    r"\b\d+ (?:failed|errors?)\b|\bFAILURES\b|\bERRORS\b|\bTraceback\b"
+)
+
 # Wall-clock budget enforcement (#61): below this floor a THINK call cannot
 # do useful work, so the loop escalates instead of issuing a call that could
 # overrun timeout_s by up to the HTTP request timeout.
@@ -115,6 +130,22 @@ BUDGET_SLACK_S = 2.0
 # Module-level so tests can patch them.
 _eedom_graph: object | None = None
 _eedom_repo_dir: str = ""
+
+
+def _is_passing_test_run(command: str, output: str) -> bool:
+    """True when command is a test invocation whose output shows a clean pass.
+
+    Conservative classifier behind the #67 done-verification guard: it only
+    VERIFIES (arms last_passing_test_step); a false negative costs at worst
+    one corrective observation telling the model to re-run pytest, while a
+    false positive would let an unverified done through. Pass requires the
+    pytest summary ("N passed") with no failure/error markers anywhere.
+    """
+    if not _TEST_CMD_RE.search(command):
+        return False
+    if _TEST_FAIL_RE.search(output):
+        return False
+    return bool(_TEST_PASS_RE.search(output))
 
 
 def _sanitize_observation(text: str) -> str:
@@ -384,6 +415,33 @@ def _write_checkpoint(
     return path
 
 
+def _distill_rules_text(repo_dir) -> str | None:
+    """Distill the repo's rules file to sanitized rule-like lines.
+
+    Returns None when no rules file exists (AGENTS.md / CLAUDE.md), so
+    callers can distinguish "no rules" from "rules distilled to nothing".
+    Pure read — never touches the pin store.
+    """
+    repo_dir = Path(repo_dir)
+    source = None
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        candidate = repo_dir / name
+        if candidate.is_file():
+            source = candidate
+            break
+    if source is None:
+        return None
+
+    rule_lines = []
+    for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
+            rule_lines.append(stripped)
+
+    text = "\n".join(rule_lines)
+    return strip_invisible_unicode(strip_special_tokens(text))[:2000]
+
+
 def load_project_rules(repo_dir) -> str:
     """Read the target repo's agent rules — AGENTS.md preferred, CLAUDE.md
     fallback — and distill to rule-like lines (bullets, numbered, headers).
@@ -396,25 +454,16 @@ def load_project_rules(repo_dir) -> str:
     repo_dir. The first load pins; a later load whose rules differ raises
     ValueError — the tampering tripwire. Episodes delete the stale pin at
     start so only MID-EPISODE mutation trips it, never cross-run changes.
+
+    #85: agent_loop's per-step tripwire does NOT use this disk pin — the
+    store is agent-writable, so the loop verifies against an in-memory hash
+    captured at episode start. The disk store remains useful for cross-call
+    pinning by trusted callers and as an audit artifact.
     """
     repo_dir = Path(repo_dir)
-    source = None
-    for name in ("AGENTS.md", "CLAUDE.md"):
-        candidate = repo_dir / name
-        if candidate.is_file():
-            source = candidate
-            break
-    if source is None:
+    text = _distill_rules_text(repo_dir)
+    if text is None:
         return ""
-
-    rule_lines = []
-    for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
-            rule_lines.append(stripped)
-
-    text = "\n".join(rule_lines)
-    text = strip_invisible_unicode(strip_special_tokens(text))[:2000]
 
     store = repo_dir / ".datum" / "rules-hash.json"
     store.parent.mkdir(exist_ok=True)
@@ -646,6 +695,15 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     _prev_observation: str | None = None
     _no_progress_fired = False
 
+    # ── #67: GREEN-phase done-verification state ─────────────────────────
+    # Scoped to GREEN-type phases: their terminal state is a PASSING test
+    # run, so done after a write needs fresh verification. RED phases are
+    # untouched — a failing run is their expected terminal state.
+    _green_phase = "green" in phase.lower()
+    _last_write_step: int | None = None  # last step a write tool mutated disk
+    _last_passing_test_step: int | None = None  # last step pytest passed
+    _unverified_done_rejections = 0
+
     def _finish(summary: str | None, escalated: bool, reason: str | None) -> dict:
         return {
             "result": {"summary": summary} if summary is not None else None,
@@ -658,29 +716,48 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             "total_time_s": round(time.monotonic() - start, 2),
         }
 
-    # ── S0: per-episode rules pinning ────────────────────────────────────
-    # Delete any stale pin so each episode pins fresh: the tripwire guards
-    # against MID-EPISODE mutation, never legitimate cross-run rule changes.
+    # ── S0/#85: per-episode rules pinning — IN MEMORY ────────────────────
+    # The authoritative pin is a local variable, never agent-writable disk:
+    # a malicious episode could rewrite both the rules file AND an on-disk
+    # pin store to a matching hash, laundering the edit past the tripwire.
+    # In-memory pinning cannot fail and cannot be tampered with from tools.
+    rules_pinned_sha = (
+        hashlib.sha256(extra_rules.encode("utf-8")).hexdigest() if extra_rules else ""
+    )
     if extra_rules:
+        # Advisory audit artifact ONLY — refresh .datum/rules-hash.json so a
+        # human can inspect what was pinned. Verification never reads it, so
+        # a write failure is harmless and deliberately non-fatal.
         rules_pin_store = Path(".datum") / "rules-hash.json"
         try:
             rules_pin_store.parent.mkdir(exist_ok=True)
             rules_pin_store.unlink(missing_ok=True)
             hash_pin_rules(extra_rules, rules_pin_store)
-        except OSError as e:
-            # No pin means no tampering tripwire — fail closed.
-            return _finish(None, True, f"rules_pinning_failed: {e}")
+        except OSError:
+            pass  # advisory only — the in-memory pin is the tripwire
 
     for _step in range(max_steps):
-        # ── S0: mid-episode rules-tampering tripwire ─────────────────────
-        # Re-distill the repo's rules file and compare against the episode
-        # pin. A mismatch means the rules changed UNDER a running episode —
-        # rules tampering is a stop-the-world event, not a warning.
+        # ── S0/#85: mid-episode rules-tampering tripwire ─────────────────
+        # Re-distill the repo's rules file and compare against the IN-MEMORY
+        # episode pin (never the agent-writable disk store). A mismatch
+        # means the rules changed UNDER a running episode — rules tampering
+        # is a stop-the-world event, not a warning. A missing rules file is
+        # skipped to match episode-start semantics (extra_rules may be
+        # caller-supplied with no rules file on disk).
         if extra_rules:
-            try:
-                load_project_rules(Path.cwd())
-            except ValueError as e:
-                return _finish(None, True, f"rules_tampering: {e}")
+            current_rules = _distill_rules_text(Path.cwd())
+            if (
+                current_rules is not None
+                and hashlib.sha256(current_rules.encode("utf-8")).hexdigest()
+                != rules_pinned_sha
+            ):
+                return _finish(
+                    None,
+                    True,
+                    "rules_tampering: project rules changed mid-episode "
+                    "(disk rules no longer match the hash pinned in loop "
+                    "memory at episode start)",
+                )
 
         remaining_s = timeout_s - (time.monotonic() - start)
         if remaining_s < MIN_STEP_BUDGET_S:
@@ -759,6 +836,75 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             return _finish(None, True, f"exception: {e}")
 
         if decision.get("action") == "done":
+            # ── #67: GREEN done-verification guard ───────────────────────
+            # A done arriving after a successful write with no SUBSEQUENT
+            # passing test run is unverified: reject with a corrective
+            # observation (capped), then escalate. Structural enforcement —
+            # the prompt-level 'run pytest before DONE' instruction was
+            # skippable (S0.2b: broken file accepted as done).
+            _done_unverified = (
+                _green_phase
+                and _last_write_step is not None
+                and (
+                    _last_passing_test_step is None
+                    or _last_write_step > _last_passing_test_step
+                )
+            )
+            if _done_unverified:
+                if _unverified_done_rejections >= MAX_UNVERIFIED_DONE_REJECTIONS:
+                    step_entry = {
+                        "thought": thought,
+                        "tool_name": "unverified_done",
+                        "tool_args": {},
+                        "observation": (
+                            "done rejected "
+                            f"{MAX_UNVERIFIED_DONE_REJECTIONS} times without a "
+                            "verifying test run — escalating."
+                        ),
+                    }
+                    steps_log.append(step_entry)
+                    if on_step:
+                        on_step(step_entry)
+                    transcript.log_step(
+                        _step,
+                        think_raw,
+                        decision,
+                        "unverified_done",
+                        {},
+                        step_entry["observation"],
+                    )
+                    return _finish(
+                        None,
+                        True,
+                        "done_without_verification: model declared done in a "
+                        "GREEN phase after modifying files with no subsequent "
+                        "passing test run (rejection cap reached)",
+                    )
+                _unverified_done_rejections += 1
+                step_entry = {
+                    "thought": thought,
+                    "tool_name": "unverified_done",
+                    "tool_args": {},
+                    "observation": (
+                        "DONE rejected: you modified files after the last "
+                        "test run. Run pytest first; declare DONE only after "
+                        "it passes."
+                    ),
+                }
+                history.append(step_entry)
+                steps_log.append(step_entry)
+                if on_step:
+                    on_step(step_entry)
+                transcript.log_step(
+                    _step,
+                    think_raw,
+                    decision,
+                    "unverified_done",
+                    {},
+                    step_entry["observation"],
+                )
+                continue
+
             steps_log.append(
                 {
                     "thought": thought,
@@ -894,6 +1040,17 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             tool_output, exec_truncated = _execute_tool(
                 {"tool_name": tool_name, "tool_args": tool_args}, config
             )
+            # ── #67: track (last write, last passing test) for the GREEN
+            # done-verification guard. Only writes that actually mutated
+            # disk count (every lane write tool prints '"ok": true' on
+            # success); pass detection runs on the UNTRUNCATED output so
+            # the pytest summary line is never clipped away.
+            if tool_name in WRITE_TOOLS and '"ok": true' in tool_output:
+                _last_write_step = _step
+            if tool_name == "run_command" and _is_passing_test_run(
+                str(tool_args.get("command", "")), tool_output
+            ):
+                _last_passing_test_step = _step
             # read_file observations use the file-echo cap so any file
             # fully echo-able on write is also fully viewable on read —
             # prevents the 3000-6000 byte deadlock band.  Other tools
