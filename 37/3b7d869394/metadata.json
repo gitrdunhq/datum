@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "373b7d869394",
+  "strategy": "manual-commit",
+  "branch": "feat/70-todos-core",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".eedom/code_graph.sqlite"
+  ],
+  "sessions": [
+    {
+      "metadata": "/37/3b7d869394/0/metadata.json",
+      "transcript": "/37/3b7d869394/0/full.jsonl",
+      "content_hash": "/37/3b7d869394/0/content_hash.txt",
+      "prompt": "/37/3b7d869394/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 243504,
+    "cache_creation_tokens": 5250847,
+    "cache_read_tokens": 226986724,
+    "output_tokens": 860110,
+    "api_call_count": 1216
+  }
+}
