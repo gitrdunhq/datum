@@ -792,6 +792,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     rules_pinned_sha = (
         hashlib.sha256(extra_rules.encode("utf-8")).hexdigest() if extra_rules else ""
     )
+    # #99: remember whether a rules file existed on disk at episode start.
+    # Deleting it mid-episode is tampering (the most complete rewrite);
+    # verification is skipped only when NO rules file existed at start
+    # (extra_rules may legitimately be caller-supplied with none on disk).
+    rules_file_existed_at_start = _distill_rules_text(Path.cwd()) is not None
     if extra_rules:
         # Advisory audit artifact ONLY — refresh .datum/rules-hash.json so a
         # human can inspect what was pinned. Verification never reads it, so
@@ -805,17 +810,30 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             pass  # advisory only — the in-memory pin is the tripwire
 
     for _step in range(max_steps):
-        # ── S0/#85: mid-episode rules-tampering tripwire ─────────────────
+        # ── S0/#85/#99: mid-episode rules-tampering tripwire ─────────────
         # Re-distill the repo's rules file and compare against the IN-MEMORY
         # episode pin (never the agent-writable disk store). A mismatch
         # means the rules changed UNDER a running episode — rules tampering
-        # is a stop-the-world event, not a warning. A missing rules file is
-        # skipped to match episode-start semantics (extra_rules may be
-        # caller-supplied with no rules file on disk).
-        if extra_rules:
+        # is a stop-the-world event, not a warning. #99: a rules file that
+        # existed at episode start and is now MISSING was deleted under the
+        # episode — that is tampering too, not a skip. Verification is
+        # skipped only when no rules file existed at episode start
+        # (extra_rules may be caller-supplied with no rules file on disk).
+        if extra_rules or rules_file_existed_at_start:
             current_rules = _distill_rules_text(Path.cwd())
-            if (
-                current_rules is not None
+            if current_rules is None:
+                if rules_file_existed_at_start:
+                    return _finish(
+                        None,
+                        True,
+                        "rules_tampering: rules file deleted mid-episode "
+                        "(a rules file existed on disk at episode start "
+                        "and is now missing)",
+                    )
+                # No rules file at start and none now: extra_rules was
+                # caller-supplied — nothing on disk to verify against.
+            elif (
+                extra_rules
                 and hashlib.sha256(current_rules.encode("utf-8")).hexdigest()
                 != rules_pinned_sha
             ):
