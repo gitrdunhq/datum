@@ -1,0 +1,116 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "28c1e683ddeb",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-11T11:50:41.907117Z",
+  "branch": "feat/eedom-integration",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "datum/agent_loop.py",
+    "tests/test_eedom_blast_radius.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "d1d5d81e3081",
+  "token_usage": {
+    "input_tokens": 196856,
+    "cache_creation_tokens": 4521527,
+    "cache_read_tokens": 186269909,
+    "output_tokens": 678102,
+    "api_call_count": 1021
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01LAHjnycdCUxdK6765Rnjzf",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "modern-css"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d1d5d81e3081",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 6890,
+        "end": 6891,
+        "entry_ids": [
+          "483dd771-f94a-452c-93b4-84677f3d56e1"
+        ],
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: modern-css",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01S5H3t2RdzhwsG3LcehB4gy",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "update-config"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d1d5d81e3081",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 7164,
+        "end": 7165,
+        "entry_ids": [
+          "37327a56-2320-4cd7-a6dd-5d9b4910f550"
+        ],
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: update-config",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 99
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T11:50:41.420021Z",
+    "agent_lines": 307,
+    "agent_removed": 0,
+    "human_added": 121,
+    "human_modified": 12,
+    "human_removed": 0,
+    "total_committed": 440,
+    "total_lines_changed": 440,
+    "agent_percentage": 69.77272727272728,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 245,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 131,
+        "datum/eedom_blast_radius.py": 114
+      }
+    }
+  ]
+}
