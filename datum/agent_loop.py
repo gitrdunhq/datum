@@ -121,6 +121,7 @@ TOOL_CATALOG: dict[str, tuple[str, str, ToolRiskClass]] = {
         "query run history, failures, lane ownership, token metrics "
         "(SQL over views: transcripts, failures, run_state, lane_files, "
         "token_metrics, floor_runs); use SHOW TABLES to discover schema",
+        ToolRiskClass.read_only,
     ),
 }
 

@@ -57,6 +57,7 @@ TOOL_RISK_MAP: dict[str, ToolRiskClass] = {
     "find_callers": ToolRiskClass.read_only,
     "filter_gitnexus_output": ToolRiskClass.read_only,
     "read_todos": ToolRiskClass.read_only,
+    "corpus_sql": ToolRiskClass.read_only,
     # ── process_execution: external process, unknown side-effects ─────────
     "run_command": ToolRiskClass.process_execution,
     # ── write_local: mutates the working tree, not retry-safe ─────────────
