@@ -314,8 +314,7 @@ def main() -> None:
 
     tasks, units = normalize_input(raw)
 
-    sys.path.insert(0, str(Path(__file__).parent))
-    from path_utils import assets_dir
+    from datum.path_utils import assets_dir
 
     schema_path = assets_dir() / "schemas/tasks.schema.json"
     valid, errors = validate_json_schema(tasks, schema_path)

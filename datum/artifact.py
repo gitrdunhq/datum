@@ -8,14 +8,11 @@ All JSON passing between the orchestrator, agents, and storage must be wrapped i
 
 import json
 import sys
-from dataclasses import dataclass, asdict
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from typing import Any
 
-# Fix relative imports
-sys.path.insert(0, str(Path(__file__).parent))
-from datum.path_utils import assets_dir
 from datum.contracts import validate_value
+from datum.path_utils import assets_dir
 
 ARTIFACT_SCHEMA = "artifact.schema.json"
 ARTIFACT_SCHEMA_PATH = assets_dir() / "schemas" / ARTIFACT_SCHEMA

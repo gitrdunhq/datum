@@ -14,8 +14,6 @@ try:
 except ImportError:  # pragma: no cover - py3.10 fallback
     import tomli as tomllib  # type: ignore[import-not-found]
 
-# Fix relative imports
-sys.path.insert(0, str(Path(__file__).parent))
 from datum.path_utils import assets_dir
 
 STATE_FILE = Path(".datum/state.json")
@@ -41,7 +39,7 @@ def migrate_wfc_directory(dry_run: bool) -> list[str]:
             if not dry_run:
                 shutil.rmtree(worktrees, ignore_errors=True)
             changes.append("deleted legacy .wfc/worktrees directory")
-        
+
         if not dry_run:
             wfc_dir.rename(datum_dir)
         changes.append("renamed .wfc directory to .datum")
@@ -93,12 +91,20 @@ def main() -> None:
 
     state = load_state()
     if not state and not dir_changes:
-        print(json.dumps({"ok": True, "skipped": True, "reason": "no state.json and no .wfc directory"}))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "no state.json and no .wfc directory",
+                }
+            )
+        )
         return
 
     migrated, changes = migrate_state(state, current_skill_version())
     all_changes = dir_changes + changes
-    
+
     if not args.dry_run and state:
         save_state(migrated)
 
@@ -110,10 +116,18 @@ def main() -> None:
         errors = [str(exc)]
 
     if errors:
-        print(json.dumps({"ok": False, "changes": all_changes, "errors": errors}, indent=2))
+        print(
+            json.dumps(
+                {"ok": False, "changes": all_changes, "errors": errors}, indent=2
+            )
+        )
         sys.exit(1)
 
-    print(json.dumps({"ok": True, "dry_run": args.dry_run, "changes": all_changes}, indent=2))
+    print(
+        json.dumps(
+            {"ok": True, "dry_run": args.dry_run, "changes": all_changes}, indent=2
+        )
+    )
 
 
 if __name__ == "__main__":
