@@ -851,6 +851,7 @@ READ_ONLY_TOOLS = frozenset(
         "list_dir",
         "grep_search",
         "run_command",
+        "read_todos",
     }
 )
 WRITE_TOOLS = frozenset(
@@ -858,8 +859,15 @@ WRITE_TOOLS = frozenset(
         "write_to_file",
         "replace_file_content",
         "multi_replace_file_content",
+        "write_todos",
     }
 )
+# Write tools that persist to a FIXED loop-owned path under .datum/ and take
+# no 'path' arg (#70: write_todos -> .datum/todos.json). They are write-gated
+# like every WRITE_TOOL (enable_write_tools, sandbox), but the agent loop's
+# path-centric guards (path-arg requirement, read-before-write) and the #67
+# done-verification arming do not apply — bookkeeping never mutates source.
+PATHLESS_WRITE_TOOLS = frozenset({"write_todos"})
 BLOCKED_COMMANDS = frozenset(
     {
         "rm",

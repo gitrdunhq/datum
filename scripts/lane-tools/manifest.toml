@@ -91,3 +91,19 @@ permissions = { network = false, write = ["."], read = ["."] }
 timeout_seconds = 10
 added_in_epic = 26
 added_in_lane = "task-001"
+
+[tools.read_todos]
+path = "read_todos.py"
+description = "Read the agent todo list from .datum/todos.json."
+permissions = { network = false, write = [], read = [".datum/"] }
+timeout_seconds = 10
+added_in_epic = 26
+added_in_lane = "issue-70"
+
+[tools.write_todos]
+path = "write_todos.py"
+description = "Validate and persist the agent todo list to .datum/todos.json."
+permissions = { network = false, write = [".datum/"], read = [".datum/"] }
+timeout_seconds = 10
+added_in_epic = 26
+added_in_lane = "issue-70"
