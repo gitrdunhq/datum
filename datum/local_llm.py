@@ -200,21 +200,26 @@ def generate(
     model_id: str = DEFAULTS["model"],
     max_tokens: int = DEFAULTS["max_tokens"],
     temperature: float = DEFAULTS["temperature"],
+    system: str | None = None,
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
     Routes to oMLX/LM Studio (if omlx_url configured and reachable),
-    falls back to direct mlx_lm.
+    falls back to direct mlx_lm. A stable `system` prompt improves rule
+    adherence and lets the server's prefix cache reuse the static prefix.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
     if _omlx_available():
         url = _omlx_url()
-        return _omlx_generate(prompt, model_id, max_tokens, temperature, url)
+        return _omlx_generate(prompt, model_id, max_tokens, temperature, url, system)
 
     from mlx_lm import stream_generate
 
     model, tokenizer = load_model(model_id)
+
+    if system:
+        prompt = f"{system}\n\n{prompt}"
 
     budget = check_context_budget(prompt, max_tokens, model_id)
     if not budget["fits"]:
@@ -342,7 +347,14 @@ def structured(
     """
     if _omlx_available():
         url = _omlx_url()
-        return _omlx_structured(prompt, schema, model_id, max_tokens, url)
+        return _omlx_structured(
+            prompt,
+            schema,
+            model_id,
+            max_tokens,
+            url,
+            temperature=kwargs.get("temperature"),
+        )
 
     try:
         import outlines
@@ -670,13 +682,24 @@ def _build_turn_prompt(
 
     use_few_shot = mt_config.get("few_shot", True)
 
+    tools_enabled = mt_config.get("enable_tool_execution", False)
+    action_enum = "analyze, decompose, execute, verify, synthesize"
+    if tools_enabled:
+        action_enum += ", tool_execution"
+
     if turn == 0 and mt_config.get("planning_turn", True):
         parts.append(
             "You are in PLANNING mode. Produce a short step-by-step plan.\n"
             "Output JSON: {steps: [{action, description}], rationale}.\n"
-            "Actions: analyze, decompose, execute, verify, synthesize.\n"
+            f"Actions: {action_enum}.\n"
             "Max 4 steps. Each description under 80 chars. Rationale under 80 chars.\n"
         )
+        if tools_enabled:
+            allowed = mt_config.get("allowed_tools", [])
+            parts.append(
+                f"Available tools: {', '.join(allowed)}\n"
+                "Use tool_execution steps to call tools. Each step can call one tool.\n"
+            )
         if use_few_shot:
             parts.append(f"Example output:\n{json.dumps(PLAN_FEW_SHOT)}\n")
         parts.append(f"Phase: {phase}\n")
@@ -705,8 +728,40 @@ def _build_turn_prompt(
     parts.append(f"Phase: {phase}")
     parts.append(f"Problem:\n{original_prompt}")
 
+    if tools_enabled:
+        allowed = mt_config.get("allowed_tools", [])
+        parts.append(
+            f"\nAvailable tools: {', '.join(allowed)}"
+            '\nTo call a tool, set action to "tool_execution" and include a tool_call field:'
+            '\n  "action": "tool_execution",'
+            '\n  "tool_call": {"tool_name": "<name>", "tool_args": {"arg1": "val1"}}'
+            "\nThe tool result will be returned to you for the next turn."
+            "\nWhen you are done (no more tools needed), use a non-tool action"
+            " with needs_more_turns: false."
+        )
+
     if use_few_shot:
-        parts.append(f"\nExample output:\n{json.dumps(STEP_FEW_SHOT)}")
+        if tools_enabled:
+            tool_few_shot = {
+                "step_index": 1,
+                "action": "tool_execution",
+                "finding": "Need to read file before modifying",
+                "evidence": "Must understand current code structure",
+                "recommendation": "proceed",
+                "confidence": 0.8,
+                "needs_more_turns": True,
+                "escalate": False,
+                "tool_call": {
+                    "tool_name": "read_file",
+                    "tool_args": {"path": "example.py"},
+                },
+            }
+            parts.append(f"\nExample tool call:\n{json.dumps(tool_few_shot)}")
+            parts.append(
+                f"\nExample final turn (no tool):\n{json.dumps(STEP_FEW_SHOT)}"
+            )
+        else:
+            parts.append(f"\nExample output:\n{json.dumps(STEP_FEW_SHOT)}")
         parts.append(
             "\nNow produce YOUR answer as JSON with the same fields."
             "\nBe specific. One sentence per field."
@@ -714,12 +769,16 @@ def _build_turn_prompt(
     else:
         parts.append(
             "\nOutput JSON with these exact fields:"
-            "\n  step_index: int, action: one of analyze/decompose/execute/verify/synthesize,"
+            f"\n  step_index: int, action: one of {action_enum},"
             "\n  finding: str (max 80 chars), evidence: str (max 80 chars),"
             "\n  recommendation: one of deepen/properties/escalate/proceed/block/retest,"
             "\n  confidence: float 0-1, needs_more_turns: bool, escalate: bool"
             "\nBe specific. One sentence per field."
         )
+        if tools_enabled:
+            parts.append(
+                '\nFor tool calls, add: "tool_call": {"tool_name": "...", "tool_args": {...}}'
+            )
     return "\n".join(parts)
 
 
@@ -974,13 +1033,13 @@ def multi_turn_phase(
 
         offset = _cache_offset(_mt_cache)
         turn_prompt_to_pass = turn_prompt
-        
+
         if offset > 0:
             model, tokenizer = load_model(model_id)
             tokens = tokenizer.encode(turn_prompt)
             if offset < len(tokens):
                 turn_prompt_to_pass = tokenizer.decode(tokens[offset:])
-        
+
         try:
             if turn == 0 and mt_config.get("planning_turn", True):
                 from datum.schemas import StepPlan
@@ -1447,12 +1506,17 @@ def _omlx_generate(
     max_tokens: int,
     temperature: float,
     url: str,
+    system: str | None = None,
 ) -> dict:
     """Generate unstructured text via oMLX /v1/chat/completions."""
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
     payload = json.dumps(
         {
             "model": model_id,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": False,
@@ -1467,11 +1531,13 @@ def _omlx_generate(
     with urllib.request.urlopen(req, timeout=300) as resp:
         data = json.loads(resp.read())
     text = data["choices"][0]["message"]["content"]
-    tokens = data.get("usage", {}).get("completion_tokens", 0)
+    usage = data.get("usage", {})
+    tokens = usage.get("completion_tokens", 0)
     escalated = ESCALATE in text
     return {
         "text": text,
         "tokens": tokens,
+        "prompt_tokens": usage.get("prompt_tokens", 0),
         "time_s": 0.0,
         "model": model_id,
         "escalated": escalated,
@@ -1486,25 +1552,27 @@ def _omlx_structured(
     model_id: str,
     max_tokens: int,
     url: str,
+    temperature: float | None = None,
 ) -> dict:
     """Grammar-constrained generation via oMLX JSON schema response_format."""
     json_schema = schema.model_json_schema()
-    payload = json.dumps(
-        {
-            "model": model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema.__name__,
-                    "schema": json_schema,
-                    "strict": True,
-                },
+    body: dict = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema.__name__,
+                "schema": json_schema,
+                "strict": True,
             },
-            "stream": False,
-        }
-    ).encode()
+        },
+        "stream": False,
+    }
+    if temperature is not None:
+        body["temperature"] = temperature
+    payload = json.dumps(body).encode()
     req = urllib.request.Request(
         f"{url}/v1/chat/completions",
         data=payload,
@@ -1549,13 +1617,16 @@ def main() -> None:
     except Exception as e:
         import traceback
         from datum.report_bug import _sanitize
-        
+
         trace_str = _sanitize(traceback.format_exc())
         hint = (
             "\n[Agent Hint] If you are an AI, file a bug report for this using:\n"
-            f"datum bugfile datum.local_llm \"{type(e).__name__} in local_llm\" --trace \"<traceback>\"\n"
+            f'datum bugfile datum.local_llm "{type(e).__name__} in local_llm" --trace "<traceback>"\n'
         )
-        print(f"DATUM encountered an unexpected error: {e}\n{trace_str}{hint}", file=sys.stderr)
+        print(
+            f"DATUM encountered an unexpected error: {e}\n{trace_str}{hint}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

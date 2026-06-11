@@ -101,6 +101,20 @@ class ToolCall(BaseModel):
     tool_args: dict
 
 
+class AgentDecision(BaseModel):
+    """One ReAct step: call exactly one tool, or declare the task done.
+
+    Filled by the fast-tier model from the reasoning model's thought text.
+    For write tools the file content is NOT carried here — it is extracted
+    deterministically from the thought's fenced code block (Python boundary).
+    """
+
+    action: Literal["tool", "done"]
+    tool_name: str = Field(default="", max_length=50)
+    tool_args: dict = Field(default_factory=dict)
+    summary: str = Field(default="", max_length=300)
+
+
 class StepResult(BaseModel):
     step_index: int
     action: Literal[
