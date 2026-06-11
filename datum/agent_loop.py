@@ -41,6 +41,7 @@ from datum.prompt_sanitizer import (
     strip_special_tokens,
 )
 from datum.schemas import AgentDecision
+from datum.structural_fingerprint import collapse_fingerprint_groups
 
 # Tool catalog: name → (args signature shown to the model, one-line description)
 TOOL_CATALOG: dict[str, tuple[str, str]] = {
@@ -156,6 +157,65 @@ def _sanitize_observation(text: str) -> str:
     or content written to disk.
     """
     return strip_invisible_unicode(strip_special_tokens(text))
+
+
+# ── #94: structural-fingerprint collapse at the OBSERVE boundary ─────────
+# list_dir over a uniform directory (40 near-identical generated tests,
+# routes, models) floods the context with same-shaped entries. Fingerprint
+# each listed file and collapse same-fingerprint groups to one
+# representative + summary line. Bounded: listings above the file cap and
+# files above the byte cap are left untouched. Compaction is an
+# optimization, never a correctness gate — any error falls back to the raw
+# listing, and _sanitize_observation always runs LAST on whatever this
+# returns (sanitizers stay the outermost defense).
+MAX_FINGERPRINT_FILES = 200  # bigger listings pass through unfingerprinted
+MAX_FINGERPRINT_FILE_BYTES = 131072  # per-file read cap for fingerprinting
+
+
+def _collapse_dir_listing(listing: str, tool_args: dict) -> str:
+    """Collapse same-shaped files in a list_dir observation (#94). Fail-open."""
+    try:
+        base = Path(str(tool_args.get("path", ".")))
+        lines = listing.splitlines()
+        names = [line[4:] for line in lines if line.startswith("[f] ")]
+        if len(names) < 2 or len(names) > MAX_FINGERPRINT_FILES:
+            return listing
+
+        entries: list[tuple[str, str]] = []
+        for name in names:
+            path = base / name
+            # Unreadable or oversized files are simply not fingerprinted;
+            # their raw lines pass through untouched below.
+            if not path.is_file() or path.stat().st_size > MAX_FINGERPRINT_FILE_BYTES:
+                continue
+            entries.append((name, path.read_text(encoding="utf-8", errors="replace")))
+        if len(entries) < 2:
+            return listing
+
+        collapsed = collapse_fingerprint_groups(entries)
+        if len(collapsed) == len(entries):
+            return listing  # all singletons — nothing to compact
+
+        # Map each group's representative (first occurrence) to its line.
+        rendered = {item.split(" (+", 1)[0]: item for item in collapsed}
+        fingerprinted = {name for name, _ in entries}
+        if any(rep not in fingerprinted for rep in rendered):
+            return listing  # representative mis-parse — fail open
+
+        out: list[str] = []
+        for line in lines:
+            if not line.startswith("[f] "):
+                out.append(line)
+                continue
+            name = line[4:]
+            if name not in fingerprinted:
+                out.append(line)  # skipped file: untouched
+            elif name in rendered:
+                out.append(f"[f] {rendered[name]}")
+            # else: non-representative group member — collapsed away
+        return "\n".join(out)
+    except Exception:
+        return listing  # fail open — compaction must never break OBSERVE
 
 
 def _strip_think_tags(text: str) -> str:
@@ -1051,6 +1111,13 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 str(tool_args.get("command", "")), tool_output
             ):
                 _last_passing_test_step = _step
+            # ── #94: structural-fingerprint collapse (context compaction).
+            # Runs on the RAW tool output so a uniform listing compacts
+            # below the truncation cap, and strictly BEFORE the
+            # _sanitize_observation choke point below — the sanitizer stays
+            # the outermost defense on the model-visible text.
+            if tool_name == "list_dir":
+                tool_output = _collapse_dir_listing(tool_output, tool_args)
             # read_file observations use the file-echo cap so any file
             # fully echo-able on write is also fully viewable on read —
             # prevents the 3000-6000 byte deadlock band.  Other tools
