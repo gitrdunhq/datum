@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "30a3cdb2beb2",
+  "strategy": "manual-commit",
+  "branch": "fix/write-echo-truncation",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "pyproject.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/30/a3cdb2beb2/0/metadata.json",
+      "transcript": "/30/a3cdb2beb2/0/full.jsonl",
+      "content_hash": "/30/a3cdb2beb2/0/content_hash.txt",
+      "prompt": "/30/a3cdb2beb2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 129568,
+    "cache_creation_tokens": 3914354,
+    "cache_read_tokens": 144865735,
+    "output_tokens": 505864,
+    "api_call_count": 816
+  }
+}
