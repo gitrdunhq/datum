@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import re
 import subprocess
+import sys
 
 import pytest
 
@@ -84,3 +86,95 @@ def test_cmd_read_no_state_errors_without_checkout(tmp_path, monkeypatch, capsys
     # No branch created, still on main
     assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == "main"
     assert "datum/epic" not in _git_out(tmp_path, "branch", "--list")
+
+
+# ── issue #55: descriptive epic branch names ─────────────────────────────
+
+
+def test_ensure_feature_branch_derives_slug_from_title(tmp_path, monkeypatch, capsys):
+    """A title yields datum/<slug>, not generic datum/epic-N."""
+    _init_main_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    branch = state_mod.ensure_feature_branch(
+        title="Contact Form: Server-Side Submission!"
+    )
+
+    assert branch == "datum/contact-form-server-side-submission"
+    assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == branch
+
+
+def test_ensure_feature_branch_slug_collision_gets_numeric_suffix(
+    tmp_path, monkeypatch, capsys
+):
+    """Existing datum/<slug> branch → make_unique appends -2."""
+    _init_main_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "branch", "datum/contact-form"], check=True
+    )
+    monkeypatch.chdir(tmp_path)
+
+    branch = state_mod.ensure_feature_branch(title="Contact Form")
+
+    assert branch == "datum/contact-form-2"
+    assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == branch
+
+
+def test_ensure_feature_branch_without_title_falls_back_to_epic_n(
+    tmp_path, monkeypatch, capsys
+):
+    _init_main_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    branch = state_mod.ensure_feature_branch()
+
+    assert re.fullmatch(r"datum/epic-\d+", branch)
+    assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == branch
+
+
+def test_ensure_feature_branch_unsluggable_title_falls_back_to_epic_n(
+    tmp_path, monkeypatch, capsys
+):
+    """A title that slugifies to nothing must not produce 'datum/'."""
+    _init_main_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    branch = state_mod.ensure_feature_branch(title="!!! ???")
+
+    assert re.fullmatch(r"datum/epic-\d+", branch)
+
+
+def test_ensure_feature_branch_noop_when_already_on_feature_branch(
+    tmp_path, monkeypatch, capsys
+):
+    """Title is ignored when not on a protected branch — no new branch."""
+    _init_main_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "checkout", "-q", "-b", "feature/x"], check=True
+    )
+    monkeypatch.chdir(tmp_path)
+
+    branch = state_mod.ensure_feature_branch(title="Contact Form")
+
+    assert branch == "feature/x"
+    assert "datum/contact-form" not in _git_out(tmp_path, "branch", "--list")
+
+
+def test_state_init_title_sets_descriptive_work_branch(tmp_path):
+    """`datum state init --title` records the descriptive branch in state."""
+    _init_main_repo(tmp_path)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "datum.state", "init", "--title", "Contact Form API"],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+    assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == (
+        "datum/contact-form-api"
+    )
+    state = json.loads((tmp_path / ".datum" / "state.json").read_text())
+    assert state["git"]["work_branch"] == "datum/contact-form-api"

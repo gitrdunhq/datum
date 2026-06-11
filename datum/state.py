@@ -13,10 +13,10 @@ Usage:
 
 import argparse
 import json
-import sqlite3
 import shutil
+import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DB_FILE = Path(".datum/state.db")
@@ -58,15 +58,47 @@ def current_branch() -> str | None:
         return None
 
 
-def ensure_feature_branch() -> str:
+def _existing_branches() -> set[str]:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return set()
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    except Exception:
+        return set()
+
+
+def ensure_feature_branch(title: str | None = None) -> str:
+    """Switch off protected branches onto a feature branch (issue #55).
+
+    With a title (e.g. the brief/TICKET heading), derive a descriptive
+    `datum/<slug>` via datum.slug.slugify, de-duplicated against existing
+    branches via datum.slug.make_unique. Without one — or when the title
+    slugifies to nothing — fall back to generic `datum/epic-{N}`.
+    """
     import subprocess
 
     branch = current_branch()
     if branch not in PROTECTED_BRANCHES:
         return branch
 
-    n = next_epic_number()
-    new_branch = f"datum/epic-{n}"
+    new_branch = ""
+    if title:
+        from datum.slug import make_unique, slugify
+
+        slug = slugify(title)
+        if slug:
+            new_branch = make_unique(f"datum/{slug}", _existing_branches())
+    if not new_branch:
+        n = next_epic_number()
+        new_branch = f"datum/epic-{n}"
     result = subprocess.run(
         ["git", "checkout", "-b", new_branch],
         capture_output=True,
@@ -173,7 +205,7 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     init_db()
-    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state["updated_at"] = datetime.now(UTC).isoformat()
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO kv_state (key, value) VALUES ('current', ?)",
@@ -211,9 +243,9 @@ def cmd_read(args: argparse.Namespace) -> None:
 
 
 def cmd_init(args: argparse.Namespace) -> None:
-    ensure_feature_branch()
+    work_branch = ensure_feature_branch(getattr(args, "title", None))
     n = next_epic_number()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     run_id = args.run_id or f"epic-{n}-{now.strftime('%Y%m%d-%H%M%S')}"
     state = {
         "schema_version": SCHEMA_VERSION,
@@ -226,7 +258,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         "in_flight_cap": 7,
         "git": {
             "base_branch": args.base_branch or "main",
-            "work_branch": f"datum/epic-{n}",
+            "work_branch": work_branch or f"datum/epic-{n}",
             "head_sha": None,
         },
         "brief_defects": [],
@@ -269,9 +301,9 @@ def cmd_write(args: argparse.Namespace) -> None:
         if args.artifact:
             phase_data["artifact"] = args.artifact
         if args.status == "completed":
-            phase_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+            phase_data["completed_at"] = datetime.now(UTC).isoformat()
         elif args.status == "in_progress":
-            phase_data["started_at"] = datetime.now(timezone.utc).isoformat()
+            phase_data["started_at"] = datetime.now(UTC).isoformat()
         state["phases"][args.phase] = phase_data
 
     save_state(state)
@@ -369,6 +401,10 @@ def main() -> None:
     init_p = subparsers.add_parser("init")
     init_p.add_argument("--run-id")
     init_p.add_argument("--base-branch", default="main")
+    init_p.add_argument(
+        "--title",
+        help="Brief/TICKET title; slugified into a descriptive branch name (#55)",
+    )
 
     write_p = subparsers.add_parser("write")
     write_p.add_argument("--phase")

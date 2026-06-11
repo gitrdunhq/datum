@@ -57,7 +57,10 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
         '{"pattern": "<regex>", "path": ".", "include": "*.py"}',
         "search file contents",
     ),
-    "run_command": ('{"command": "pytest -q"}', "run a shell command"),
+    "run_command": (
+        '{"command": "pytest -q"}',
+        "run one allowlisted command (no shell, no ;/&&/| chaining)",
+    ),
     "find_callers": ('{"symbol": "<name>"}', "find callers of a symbol"),
     "filter_gitnexus_output": (
         '{"query": "<text>"}',

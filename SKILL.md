@@ -35,7 +35,7 @@ Orchestration is deterministic. State, transitions, routing, gates — all enfor
 
 Execute in order before any phase work:
 
-**0. Branch Guard** — If on `main`/`master`, auto-create `datum/epic-{N}` and switch. No exceptions.
+**0. Branch Guard** — If on `main`/`master`, auto-create a feature branch and switch. No exceptions. The branch name is descriptive, not generic (#55): slugify the brief/TICKET title into `datum/<slug>` (lowercase ASCII, hyphen-separated, ≤60 chars — `datum.slug.slugify`), de-duplicated against existing branches with a numeric suffix (`datum.slug.make_unique`). Pass the title via `datum state init --title "<title>"` (or `datum init --name "<title>"`); only when no title exists yet does it fall back to `datum/epic-{N}`. Example: "Contact Form: Server-Side Submission" → `datum/contact-form-server-side-submission`, not `datum/epic-8`.
 
 **0.5. Self-check** — `datum doctor`. If it fails, halt.
 

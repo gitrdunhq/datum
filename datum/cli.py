@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import typer
@@ -5,7 +6,6 @@ from rich.console import Console
 
 from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
-import json
 
 __version__ = "2.0.0"
 
@@ -46,6 +46,7 @@ def floor():
     """Launch the Factory Floor TUI dashboard."""
     import subprocess
     import sys
+
     from datum.path_utils import skill_root
 
     tui_app = skill_root() / "datum-tui" / "app.py"
@@ -77,10 +78,11 @@ def status(json_output: bool = typer.Option(False, "--json", help="Output raw JS
 @app.command(name="language-detect")
 def language_detect_cmd(path: str = typer.Option(".", help="Path to the repository")):
     """Detect primary repo language."""
-    from datum.language_detect import detect
     import json
     from pathlib import Path
-    
+
+    from datum.language_detect import detect
+
     root = Path(path).resolve()
     result = detect(root)
     console.print(json.dumps(result))
@@ -90,37 +92,51 @@ def language_detect_cmd(path: str = typer.Option(".", help="Path to the reposito
 def lane_plan_cmd(
     validate: bool = typer.Option(False, "--validate", help="Validate tasks.json only"),
     input_file: str = typer.Option("tasks.json", "--input", help="Input tasks JSON"),
-    output_file: str = typer.Option(".datum/lane-plan.json", "--output", help="Output lane plan JSON"),
-    md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD")
+    output_file: str = typer.Option(
+        ".datum/lane-plan.json", "--output", help="Output lane plan JSON"
+    ),
+    md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD"),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
     from unittest.mock import patch
+
     from datum.lane_plan import main as lane_plan_main
 
     args = ["lane_plan.py"]
     if validate:
         args.append("--validate")
-    args.extend(["--input", input_file, "--output", output_file, "--md-output", md_output])
-    
-    with patch.object(sys, 'argv', args):
+    args.extend(
+        ["--input", input_file, "--output", output_file, "--md-output", md_output]
+    )
+
+    with patch.object(sys, "argv", args):
         lane_plan_main()
 
 
 @app.command()
-def init():
+def init(
+    name: str = typer.Option(
+        None,
+        "--name",
+        help="Epic title; slugified into a descriptive datum/<slug> branch (#55).",
+    ),
+):
     """Bootstrap the repository for DATUM execution."""
-    from datum.state import ensure_feature_branch
-    from datum.bootstrap import seed_state_docs
-    import sys
     import subprocess
+    import sys
+
+    from datum.bootstrap import seed_state_docs
+    from datum.state import ensure_feature_branch
 
     res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
     if res.returncode != 0:
-        console.print("[bold red]Cannot init — repo has no commits. Run `git commit` first.[/bold red]")
+        console.print(
+            "[bold red]Cannot init — repo has no commits. Run `git commit` first.[/bold red]"
+        )
         raise typer.Exit(1)
 
-    branch = ensure_feature_branch()
+    branch = ensure_feature_branch(name)
     console.print(f"[dim]Branch: {branch}[/dim]")
     console.print("[bold green]Bootstrapping DATUM...[/bold green]")
     try:
@@ -139,11 +155,12 @@ def migrate(
 ):
     """Migrate legacy .wfc repositories to .datum and upgrade schemas."""
     import sys
+
     from datum.migrate import (
-        migrate_wfc_directory,
+        current_skill_version,
         load_state,
         migrate_state,
-        current_skill_version,
+        migrate_wfc_directory,
         save_state,
     )
 
@@ -195,6 +212,7 @@ def install(
 ):
     """Register DATUM with all detected AI coding tools via symlinks."""
     import sys
+
     from datum.bootstrap.install_skill import install_skill_snapshot
 
     console.print("[bold blue]Registering DATUM with AI tools...[/bold blue]")
@@ -221,8 +239,7 @@ def classify(
     """Classify epic complexity and determine pipeline shape."""
     import subprocess
 
-    from datum.classify import classify as do_classify
-    from datum.classify import parse_classification_metadata
+    from datum.classify import classify as do_classify, parse_classification_metadata
 
     def _resolve_epic_dir():
         branch = subprocess.run(
@@ -271,38 +288,52 @@ def landscape(
     console.print(f"[bold green]✓ docs/LANDSCAPE.md ({status})[/bold green]")
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def gate(ctx: typer.Context):
     """Run DATUM gate validator (internal)."""
     import subprocess
     import sys
+
     res = subprocess.run([sys.executable, "-m", "datum.gate"] + ctx.args)
     raise typer.Exit(res.returncode)
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="test-signal")
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    name="test-signal",
+)
 def test_signal(ctx: typer.Context):
     """Run DATUM test signal extractor (internal)."""
     import subprocess
     import sys
+
     res = subprocess.run([sys.executable, "-m", "datum.test_signal"] + ctx.args)
     raise typer.Exit(res.returncode)
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def skeleton(ctx: typer.Context):
     """Run DATUM skeleton creator (internal)."""
     import subprocess
     import sys
+
     res = subprocess.run([sys.executable, "-m", "datum.skeleton_creator"] + ctx.args)
     raise typer.Exit(res.returncode)
 
 
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, name="commit-queue")
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    name="commit-queue",
+)
 def commit_queue(ctx: typer.Context):
     """Run DATUM commit queue manager (internal)."""
     import subprocess
     import sys
+
     res = subprocess.run([sys.executable, "-m", "datum.commit_queue"] + ctx.args)
     raise typer.Exit(res.returncode)
 
@@ -380,7 +411,7 @@ def local_llm_cmd(
     ),
 ):
     """Local LLM inference via MLX. Use --json for pipeline integration."""
-    from datum.local_llm import is_available, load_config, chat
+    from datum.local_llm import chat, is_available, load_config
 
     if ctx.args:
         prompt = (
@@ -707,6 +738,7 @@ def dream(
 def walkthrough():
     """Generate a walkthrough document for the current epic."""
     import subprocess
+
     from datum.walkthrough import generate_walkthrough
 
     try:
@@ -724,7 +756,7 @@ def walkthrough():
         console.print(
             "[bold red]git not available — cannot resolve epic directory.[/bold red]"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     if not epic_dir.exists():
         console.print(f"[bold red]Epic directory not found: {epic_dir}[/bold red]")
@@ -762,7 +794,7 @@ def closeout(
         ctx = detect_context(run_id, base_sha, merge_sha, epic_number)
     except Exception as e:
         console.print(f"[bold red]Closeout failed: {e}[/bold red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     console.print(
         f"[bold blue]Closeout run {ctx['run_id']} — epic {ctx['epic_number']}[/bold blue]"
@@ -784,28 +816,35 @@ def closeout(
         )
     except Exception as e:
         console.print(f"[bold red]Collate failed: {e}[/bold red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     if synthesize:
         console.print("[dim]Synthesizing RETRO.md...[/dim]")
         try:
             from datum.render import render_closeout_retro
+
             retro_path = Path(f"docs/epics/{ctx['branch']}/RETRO.md")
             render_closeout_retro(closeout_data, retro_path)
-            console.print(f"[bold green]✓ RETRO.md generated → {retro_path}[/bold green]")
+            console.print(
+                f"[bold green]✓ RETRO.md generated → {retro_path}[/bold green]"
+            )
         except Exception as e:
             console.print(f"[bold yellow]Synthesis failed: {e}[/bold yellow]")
 
     console.print("[dim]Generating walkthrough...[/dim]")
     from datum.walkthrough import generate_walkthrough
-    
+
     epic_dir = Path(f"docs/epics/{ctx['branch']}")
     if epic_dir.exists():
         try:
             wt_path = generate_walkthrough(epic_dir)
-            console.print(f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]")
+            console.print(
+                f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]"
+            )
         except Exception as e:
-            console.print(f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]")
+            console.print(
+                f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]"
+            )
     else:
         console.print(f"[dim]Skipping walkthrough: {epic_dir} not found[/dim]")
 
@@ -842,34 +881,45 @@ def main():
     except Exception as e:
         import sys
         import traceback
+
         import click
         import typer
-        
-        if isinstance(e, (click.exceptions.Exit, click.exceptions.ClickException, typer.Exit)):
+
+        if isinstance(
+            e, (click.exceptions.Exit, click.exceptions.ClickException, typer.Exit)
+        ):
             raise
-            
+
         from datum.report_bug import _sanitize
+
         trace_str = _sanitize(traceback.format_exc())
-            
-        console.print(f"[bold red]DATUM encountered an unexpected error: {e}[/bold red]")
+
+        console.print(
+            f"[bold red]DATUM encountered an unexpected error: {e}[/bold red]"
+        )
         console.print(f"[dim]{trace_str}[/dim]")
         console.print(
             "\n[yellow][Agent Hint] If you are an AI, file a bug report for this using:\n"
-            "datum bugfile <module> \"<one-line description>\" --trace \"<traceback>\"[/yellow]"
+            'datum bugfile <module> "<one-line description>" --trace "<traceback>"[/yellow]'
         )
-        
+
         if sys.stdout.isatty() and sys.stdin.isatty():
             try:
-                if typer.confirm("\nWould you like to auto-file this bug to GitHub?", default=False):
+                if typer.confirm(
+                    "\nWould you like to auto-file this bug to GitHub?", default=False
+                ):
                     from datum.report_bug import report_bug
+
                     url = report_bug("datum.cli", str(e), {"trace": trace_str})
                     if url:
                         console.print(f"[bold green]✓ Bug filed: {url}[/bold green]")
                     else:
-                        console.print("[yellow]Skipped — duplicate issue already open or failed to file.[/yellow]")
+                        console.print(
+                            "[yellow]Skipped — duplicate issue already open or failed to file.[/yellow]"
+                        )
             except Exception:
                 pass
-                
+
         sys.exit(1)
 
 

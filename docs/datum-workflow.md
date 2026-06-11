@@ -7,7 +7,7 @@ flowchart TD
     %% ── Node Declarations ──
     Start(["⚡ datum go"])
     BranchCheck{"🔐 On main/master?"}
-    CreateBranch["🔀 Create datum/epic-N branch"]
+    CreateBranch["🔀 Create datum/&lt;slug&gt; branch"]
     SelfCheck["🧪 Self-Check Contracts"]
     HaltCheck["❌ HARD STOP — Assets Drifted"]
     ReadState["💾 Read State + Detect Language"]
@@ -161,7 +161,7 @@ flowchart TD
 
 | Phase | Input | Output | Gate |
 |-------|-------|--------|------|
-| **Branch Guard** | Current branch | Feature branch `datum/epic-N` (auto-incremented) | Hard — auto-creates branch |
+| **Branch Guard** | Current branch + epic title | Feature branch `datum/<slug>` (title slugified, de-duplicated; fallback `datum/epic-N` when no title) | Hard — auto-creates branch |
 | **Discovery** | CURRENT_STATE.md | Orientation context + `docs/LANDSCAPE.md` (optional) | — |
 | **Refine** | `docs/epics/$BRANCH/TICKET.md` | `SPEC.md` (with Assumption Audit + Classification Metadata) + `QUESTIONS.md` | Skippable in yolo |
 | **Classify** | SPEC.md Classification Metadata | Pipeline shape: Patch→Express, Feature→Standard, System→Extended | Auto (user override at Plan gate) |

@@ -25,7 +25,7 @@ proceed to RED normally. See `references/04-act-skeleton-preflight.md` for full 
 ## Pre-flight checks
 
 Before starting any lane:
-1. Confirm the work branch exists: `datum/epic-<N>`; if not, create from main
+1. Confirm the work branch from state (`git.work_branch` — `datum/<slug>`, or legacy `datum/epic-<N>`) exists; if not, create from main
 2. Confirm `scripts/test_signal.py` supports the detected test framework. If not, halt:
    "test_signal.py does not support framework X. Extend the parser or skip ACT for this repo."
 3. Confirm no pending flakies above the configured threshold (default: 3). If exceeded: halt.
@@ -118,6 +118,6 @@ Transition to Validate phase.
 
 ## Outputs
 
-- Commits on `datum/epic-<N>` branch: stub commits, RED commits, GREEN commits, REFACTOR commits
+- Commits on the work branch: stub commits, RED commits, GREEN commits, REFACTOR commits
 - `brief_defects` accumulated in state (missing ACs found by REFACTOR)
 - `lane_tools_added` accumulated in state

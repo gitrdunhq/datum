@@ -62,7 +62,7 @@ added_in_lane = "aci-loop"
 
 [tools.run_command]
 path = "run_command.py"
-description = "Execute a command (argv, no shell — metacharacters are literal)."
+description = "Execute one allowlisted command (argv, no shell; chaining/substitution metacharacters are rejected)."
 permissions = { network = true, write = ["."], read = ["."] }
 timeout_seconds = 60
 added_in_epic = 1

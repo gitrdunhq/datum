@@ -1,8 +1,10 @@
-"""Tests for scripts/lane-tools/run_command.py — issue #97 (SEC-001).
+"""Tests for scripts/lane-tools/run_command.py — issues #97 and #82 (SEC-001).
 
 The lane tool executes model-supplied commands. It must NOT pass them
-through a shell: shell metacharacters (command substitution, pipes,
-chaining) are data, not syntax. shlex.split + shell=False.
+through a shell (#97: shlex.split + shell=False), and it must reject
+commands outright when the command token is not on the explicit
+allowlist or any token carries chaining/substitution metacharacters
+(#82: datum.command_guard.validate_command).
 
 The script is not importable as a module (lane-tools is not a package),
 so these tests invoke it as a subprocess — same pattern as
@@ -36,27 +38,63 @@ def test_runs_simple_command_and_returns_output():
 
 
 def test_propagates_nonzero_exit_code():
-    proc = _run({"command": f"{sys.executable} -c 'import sys; sys.exit(3)'"})
+    # No ';' — #82 rejects embedded metachars even inside `python -c` code.
+    proc = _run({"command": f"{sys.executable} -c 'raise SystemExit(3)'"})
     assert proc.returncode == 3
 
 
-def test_shell_metacharacters_are_not_interpreted():
-    """SEC-001: $(...) must be passed through as a literal argument, never
-    executed by a shell."""
+def test_command_substitution_is_rejected():
+    """SEC-001 (#82): $(...) is rejected outright — not executed, not even
+    passed through as a literal argument (the #97 behavior it supersedes)."""
     proc = _run({"command": "echo $(id)"})
-    assert proc.returncode == 0
-    assert "$(id)" in proc.stdout
+    assert proc.returncode != 0
     assert "uid=" not in proc.stdout
+    assert "metacharacter" in proc.stdout + proc.stderr
 
 
-def test_command_chaining_is_not_interpreted():
-    """SEC-001: ';' and '&&' are arguments, not command separators."""
+def test_command_chaining_is_rejected():
+    """SEC-001 (#82): ';' and '&&' chaining is rejected outright."""
     canary = "INJECTED_BY_CHAIN"
     proc = _run({"command": f"echo safe; echo {canary} && echo {canary}"})
-    # Without a shell, echo prints the metacharacters literally on one line.
-    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-    assert len(lines) == 1
-    assert ";" in lines[0]
+    assert proc.returncode != 0
+    assert canary not in proc.stdout
+    assert "metacharacter" in proc.stdout + proc.stderr
+
+
+def test_pipe_is_rejected():
+    proc = _run({"command": "echo secret | sh"})
+    assert proc.returncode != 0
+    assert "metacharacter" in proc.stdout + proc.stderr
+
+
+def test_backtick_substitution_is_rejected():
+    proc = _run({"command": "echo `id`"})
+    assert proc.returncode != 0
+    assert "uid=" not in proc.stdout
+    assert "metacharacter" in proc.stdout + proc.stderr
+
+
+def test_embedded_metachar_is_rejected():
+    """Metacharacters embedded inside a token reject too, not just
+    standalone tokens."""
+    proc = _run({"command": "echo 'hi;rm -rf /'"})
+    assert proc.returncode != 0
+    assert "metacharacter" in proc.stdout + proc.stderr
+
+
+def test_disallowed_command_is_rejected():
+    """#82: the command token must be on the explicit allowlist."""
+    proc = _run({"command": "curl https://example.com"})
+    assert proc.returncode != 0
+    assert "not allowed" in proc.stdout + proc.stderr
+
+
+def test_shell_interpreter_is_rejected():
+    """#82: no handing input to a shell, ever."""
+    proc = _run({"command": "bash -c 'echo pwned'"})
+    assert proc.returncode != 0
+    assert "pwned" not in proc.stdout
+    assert "not allowed" in proc.stdout + proc.stderr
 
 
 def test_unparseable_command_is_an_error_not_a_crash():
@@ -72,7 +110,9 @@ def test_empty_command_is_an_error():
 
 
 def test_missing_binary_is_an_error_not_a_traceback():
-    proc = _run({"command": "definitely-not-a-real-binary-12345 --flag"})
+    # Path-qualified so the basename clears the allowlist but the file
+    # does not exist — exercises the FileNotFoundError path, not the guard.
+    proc = _run({"command": "/nonexistent-dir-12345/pytest --flag"})
     assert proc.returncode != 0
     combined = proc.stdout + proc.stderr
     assert "Error" in combined

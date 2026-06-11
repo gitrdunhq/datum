@@ -4,6 +4,14 @@ import shlex
 import subprocess
 import sys
 
+# SEC-001 (#82): fail closed — if the guard cannot be imported, no
+# model-supplied command runs at all.
+try:
+    from datum.command_guard import validate_command
+except ImportError:  # pragma: no cover - broken install only
+    print("Error: datum.command_guard unavailable; refusing to run commands.")
+    sys.exit(1)
+
 TIMEOUT_S = 55
 
 
@@ -33,6 +41,13 @@ def main():
         sys.exit(1)
     if not argv:
         print("Error: 'command' argument is empty.")
+        sys.exit(1)
+
+    # SEC-001 (#82): explicit command-token allowlist + outright rejection
+    # of chaining/substitution metacharacters, standalone or embedded.
+    verdict = validate_command(argv)
+    if not verdict.ok:
+        print(f"Error: command rejected: {verdict.reason}")
         sys.exit(1)
 
     try:
