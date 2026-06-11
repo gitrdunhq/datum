@@ -25,6 +25,10 @@ memory = [
     "outlines>=1.3.0",
 ]
 
+# eedom integration: optional, install via editable path from ../eedom.
+# Not declared as a dependency since eedom is not on PyPI.
+# The import is wrapped in try/except ImportError (graceful degradation).
+
 [project.scripts]
 datum = "datum.cli:app"
 

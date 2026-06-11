@@ -24,6 +24,7 @@ import secrets
 import time
 from pathlib import Path
 
+from datum.eedom_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
     WRITE_TOOLS,
     _execute_tool,
@@ -108,6 +109,12 @@ MIN_STEP_BUDGET_S = 5.0
 # Small grace past the deadline so a request finishing right at the wire
 # isn't cut off mid-response.
 BUDGET_SLACK_S = 2.0
+
+# ── Eedom blast-radius advisory state (per-episode, fail open) ──────────
+# Initialized at episode start in agent_loop(); used on each .py write.
+# Module-level so tests can patch them.
+_eedom_graph: object | None = None
+_eedom_repo_dir: str = ""
 
 
 def _sanitize_observation(text: str) -> str:
@@ -624,6 +631,15 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     )
     system_prompt = _build_system_prompt(allowed_tools, rules_salt=rules_salt)
     transcript = _TranscriptWriter(phase)
+
+    # ── Eedom blast-radius: init graph at episode start (fail open) ─────
+    global _eedom_graph, _eedom_repo_dir
+    _eedom_repo_dir = str(Path.cwd())
+    try:
+        _eedom_graph = init_code_graph(Path.cwd())
+    except Exception:
+        _eedom_graph = None
+
     # No-progress breaker state: fires once per episode when consecutive
     # steps repeat the same (tool, args) AND observation identically.
     _prev_signature: str | None = None
@@ -916,6 +932,14 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 # immediately instead of waiting for a test run.
                 if str(target).endswith(".py"):
                     for warning in _lint_python(content):
+                        observation += f"\nWARNING: {warning}"
+
+                    # Tier-2: eedom blast-radius advisory (fail open).
+                    # Runs after lint so structural warnings appear even
+                    # if eedom is absent or errors out.
+                    for warning in check_written_file(
+                        _eedom_graph, str(target), _eedom_repo_dir
+                    ):
                         observation += f"\nWARNING: {warning}"
 
                 # Defect-3: overwrite-loss detection — warn when an
