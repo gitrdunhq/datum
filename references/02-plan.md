@@ -15,9 +15,9 @@
 
 Before decomposing tasks, read two sources of prior-epic intelligence:
 
-**Brief defects:**
+**Brief defects** (`brief_defects` arrays in prior runs' `closeout-data.json`):
 ```
-datum learn-patterns --brief-defects
+jq -r '.brief_defects[]? | "\(.surfaced_by_stage)\t\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null || echo "(no prior closeout data)"
 ```
 If recurring AC gaps appear (e.g., "timeout handling" or "error logging" chronically missing), write more explicit RED notes for tasks in those categories this epic.
 
