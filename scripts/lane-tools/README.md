@@ -34,7 +34,9 @@ Search for a regex pattern in files under a directory.
 Usage: `datum lane-tool grep_search '{"pattern": "def main", "path": "src/"}'`
 
 ## run_command.py
-Execute a shell command and return its output.
+Execute a command and return its output. The command string is split into
+argv (`shlex.split`) and run without a shell — pipes, redirection, `;`/`&&`
+chaining, and `$(...)` substitution are not interpreted.
 Usage: `datum lane-tool run_command '{"command": "uv run pytest tests/ -q"}'`
 
 ## write_to_file.py

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from datum.agent_loop import (
     _build_decide_prompt,
     _build_system_prompt,
@@ -19,6 +21,19 @@ from datum.agent_loop import (
     assemble_tool_args,
     extract_fenced_content,
 )
+
+# ── Test isolation ───────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cwd(tmp_path, monkeypatch):
+    """Issue #68: agent_loop writes .datum/transcripts/ (and loop state)
+    under cwd. Tests that mocked datum.agent_loop.time produced files named
+    '<MagicMock ...>-act_red.jsonl' in the repo's real .datum/transcripts/.
+    Run every test in this module from tmp_path so nothing leaks into the
+    repo's runtime state dir."""
+    monkeypatch.chdir(tmp_path)
+
 
 # ── Fenced-block extraction ──────────────────────────────────────────────────
 
@@ -1834,7 +1849,6 @@ def test_write_tool_missing_path_gets_clear_error(tmp_path, monkeypatch):
 def test_think_max_time_is_remaining_budget_plus_slack():
     """THINK and DECIDE receive max_time_s = remaining loop budget + slack,
     shrinking as wall-clock time drains."""
-    import pytest
 
     from datum.agent_loop import BUDGET_SLACK_S
 
