@@ -83,7 +83,12 @@ _FENCE_RE = re.compile(r"```\w*[ \t]*\n?(.*?)```", re.DOTALL)
 
 MAX_OLD_OBSERVATION_CHARS = 400
 MAX_RECENT_OBSERVATION_CHARS = 3000
-MAX_WRITE_ECHO_CHARS = 6000
+# Shared cap for file content displayed to the model: both read_file
+# observations and write_to_file echoes use this threshold.  A file fully
+# echo-able on write is also fully viewable on read — eliminating the
+# 3000-6000 byte deadlock band where a file was writable but marked as
+# partially-read (and therefore un-overwritable).
+MAX_FILE_ECHO_CHARS = 6000
 RECENT_STEPS_KEPT_FULL = 2
 LOOP_DETECT_REPEATS = 3
 
@@ -691,9 +696,16 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             tool_output, exec_truncated = _execute_tool(
                 {"tool_name": tool_name, "tool_args": tool_args}, config
             )
-            observation, obs_truncated = _truncate_tool_output(
-                tool_output, MAX_RECENT_OBSERVATION_CHARS
+            # read_file observations use the file-echo cap so any file
+            # fully echo-able on write is also fully viewable on read —
+            # prevents the 3000-6000 byte deadlock band.  Other tools
+            # (run_command, etc.) use the tighter observation cap.
+            obs_cap = (
+                MAX_FILE_ECHO_CHARS
+                if tool_name == "read_file"
+                else MAX_RECENT_OBSERVATION_CHARS
             )
+            observation, obs_truncated = _truncate_tool_output(tool_output, obs_cap)
             if tool_name == "read_file" and tool_args.get("path"):
                 if exec_truncated or obs_truncated:
                     partial_read_paths.add(resolved)
@@ -707,9 +719,9 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 read_paths.add(str(target.resolve()))
                 content = tool_args.get("content", "")
                 observation += (
-                    f"\nFile content now on disk:\n{content[:MAX_WRITE_ECHO_CHARS]}"
+                    f"\nFile content now on disk:\n{content[:MAX_FILE_ECHO_CHARS]}"
                 )
-                if len(content) > MAX_WRITE_ECHO_CHARS:
+                if len(content) > MAX_FILE_ECHO_CHARS:
                     # A silently cut-off echo reads as a failed write to
                     # literal models, which then rewrite the file forever.
                     observation += (

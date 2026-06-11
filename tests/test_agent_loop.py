@@ -1275,6 +1275,73 @@ def test_truncated_read_still_allows_surgical_replace(tmp_path, monkeypatch):
     assert any(c["tool_name"] == "replace_file_content" for c in executed)
 
 
+def test_read_file_in_deadlock_band_allows_write(tmp_path, monkeypatch):
+    """A file between the old read cap (3000) and write echo cap (6000) must
+    NOT land in partial_read_paths — it must be fully readable and therefore
+    writable.  Before this fix, read_file observations were truncated at
+    MAX_RECENT_OBSERVATION_CHARS (3000) which marked the path partial, while
+    the write echo used MAX_WRITE_ECHO_CHARS (6000). Files in the 3000-6000
+    band deadlocked: the model could not rewrite them because they were
+    marked partial, and the corrective prompt demanded a full rewrite."""
+    monkeypatch.chdir(tmp_path)
+    # 4000 chars: squarely in the old deadlock band (> 3000, < 6000)
+    file_content = "x = 1\n" * 667  # 6 chars * 667 = 4002 chars
+    (tmp_path / "mid.py").write_text(file_content)
+    executed = []
+
+    def exec_read(tool_call, mt_config):
+        executed.append(tool_call)
+        if tool_call["tool_name"] == "read_file":
+            # Tool itself returns the full content; truncation is internal
+            return file_content, False
+        return '{"ok": true}', False
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\ny = 2\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "mid.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "mid.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", exec_read),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # The write must have been executed, not blocked
+    write_calls = [c for c in executed if c["tool_name"] == "write_to_file"]
+    assert len(write_calls) == 1, (
+        f"write was blocked for a file in the deadlock band; "
+        f"observation: {result['steps'][1]['observation']}"
+    )
+
+
+def test_read_file_uses_shared_cap_not_old_observation_cap():
+    """The read_file observation must use the same cap as write echoes
+    (MAX_FILE_ECHO_CHARS), not the generic MAX_RECENT_OBSERVATION_CHARS.
+    Verify the constant exists and is used for read_file truncation."""
+    from datum.agent_loop import MAX_FILE_ECHO_CHARS, MAX_RECENT_OBSERVATION_CHARS
+
+    # The shared cap must be >= old write echo cap and > old observation cap
+    assert MAX_FILE_ECHO_CHARS >= 6000
+    assert MAX_FILE_ECHO_CHARS > MAX_RECENT_OBSERVATION_CHARS
+
+
 def test_unclosed_think_tag_stripped_and_turn_skipped():
     """MEDIUM: truncated <think> must not leak stale fenced blocks."""
     from datum.agent_loop import _strip_think_tags
