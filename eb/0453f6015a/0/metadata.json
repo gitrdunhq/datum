@@ -3,19 +3,21 @@
   "checkpoint_id": "eb0453f6015a",
   "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
   "strategy": "manual-commit",
-  "created_at": "2026-06-11T19:05:14.191746Z",
+  "created_at": "2026-06-11T18:40:39.003653Z",
   "branch": "fix/95-strip-secrets",
   "checkpoints_count": 1,
-  "files_touched": [],
+  "files_touched": [
+    "datum/agent_loop.py"
+  ],
   "agent": "Claude Code",
   "model": "claude-fable-5",
-  "turn_id": "d95b5048296d",
+  "turn_id": "fbfd4fac27e8",
   "token_usage": {
-    "input_tokens": 310138,
-    "cache_creation_tokens": 6451969,
-    "cache_read_tokens": 264533885,
-    "output_tokens": 1030301,
-    "api_call_count": 1383
+    "input_tokens": 308389,
+    "cache_creation_tokens": 6428147,
+    "cache_read_tokens": 258180272,
+    "output_tokens": 1014843,
+    "api_call_count": 1357
   },
   "skill_events_version": 1,
   "skill_events": [
@@ -30,7 +32,7 @@
         "signal": "skill_tool_use",
         "confidence": "explicit"
       },
-      "turn_id": "d95b5048296d",
+      "turn_id": "fbfd4fac27e8",
       "transcript_anchor": {
         "unit": "line",
         "start": 6890,
@@ -61,7 +63,7 @@
         "signal": "skill_tool_use",
         "confidence": "explicit"
       },
-      "turn_id": "d95b5048296d",
+      "turn_id": "fbfd4fac27e8",
       "transcript_anchor": {
         "unit": "line",
         "start": 7164,
@@ -83,18 +85,18 @@
     }
   ],
   "session_metrics": {
-    "turn_count": 159
+    "turn_count": 157
   },
-  "prompt_attributions": [
-    {
-      "checkpoint_number": 2,
-      "user_lines_added": 131,
-      "user_lines_removed": 0,
-      "agent_lines_added": 0,
-      "agent_lines_removed": 0,
-      "user_added_per_file": {
-        ".datum/config.toml": 131
-      }
-    }
-  ]
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T18:40:38.303068Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 283,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 283,
+    "total_lines_changed": 294,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
 }
