@@ -502,18 +502,26 @@ def _distill_rules_text(repo_dir) -> str | None:
         return None
 
     rule_lines = []
+    header_lines = []
     for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
-        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
+        if stripped.startswith(("-", "*")) or re.match(r"\d{1,2}[.)]\s", stripped):
             rule_lines.append(stripped)
+        elif stripped.startswith("#"):
+            # #60: headers are section context, not rules — de-prioritized
+            # below every bullet/numbered line so a doc-heavy rules file
+            # cannot fill the cap with headers before real rules.
+            header_lines.append(stripped)
 
-    text = "\n".join(rule_lines)
+    text = "\n".join(rule_lines + header_lines)
     return strip_invisible_unicode(strip_special_tokens(text))[:2000]
 
 
 def load_project_rules(repo_dir) -> str:
     """Read the target repo's agent rules — AGENTS.md preferred, CLAUDE.md
-    fallback — and distill to rule-like lines (bullets, numbered, headers).
+    fallback — and distill to rule-like lines: bullets and numbered items
+    first, then `#` headers (#60: headers are de-prioritized context, they
+    only consume whatever cap budget the real rules leave over).
 
     Capped at 2000 chars so project rules can't crowd out the loop's own
     instructions on a small model.
