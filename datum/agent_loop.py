@@ -372,28 +372,126 @@ def _lint_python(content: str) -> list[str]:
     return warnings
 
 
-def _compact_history(history: list[dict]) -> list[dict]:
-    """Collapse the working history into one digest entry.
+# ── #71/#76: compaction offload + structured handoff ─────────────────────
+# Observations longer than this are offloaded to .datum/context/step-N.txt
+# and referenced by path in the digest; the agent's read_file tool re-fetches
+# them on demand (deepagents-inspired filesystem offload, #71).
+_COMPACT_INLINE_OBS_CHARS = 80
+_CONTEXT_OFFLOAD_DIR = Path(".datum") / "context"
+
+
+def _next_offload_index() -> int:
+    """First unused step-N number in .datum/context (#71).
+
+    Numbering continues across compactions so a later compaction never
+    clobbers files an earlier digest already points at.
+    """
+    try:
+        nums = [
+            int(p.stem.removeprefix("step-"))
+            for p in _CONTEXT_OFFLOAD_DIR.glob("step-*.txt")
+            if p.stem.removeprefix("step-").isdigit()
+        ]
+        return max(nums, default=0) + 1
+    except OSError:
+        return 1
+
+
+def _offload_observation(index: int, observation: str) -> str | None:
+    """Write one full observation to .datum/context/step-<index>.txt (#71).
+
+    Returns the relative path for the digest, or None when the write fails —
+    offload is an optimization, never a correctness gate.
+    """
+    try:
+        _CONTEXT_OFFLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        path = _CONTEXT_OFFLOAD_DIR / f"step-{index}.txt"
+        path.write_text(observation, encoding="utf-8")
+        return str(path)
+    except OSError:
+        return None
+
+
+def _handoff_sections(history: list[dict]) -> tuple[list[str], list[str]]:
+    """Derive do-not-redo and error lines from the history (#76).
+
+    A step whose observation starts with "Error" failed; everything else
+    completed and must not be repeated post-compaction. Synthetic
+    "checkpoint" entries from earlier compactions are bookkeeping, not
+    actions, and are skipped.
+    """
+    done: list[str] = []
+    errors: list[str] = []
+    for i, step in enumerate(history):
+        tool = step.get("tool_name", "?")
+        if tool == "checkpoint":
+            continue
+        args = step.get("tool_args", {})
+        target = args.get("path") or args.get("command") or json.dumps(args)[:60]
+        obs = step.get("observation", "").replace("\n", " ")
+        if obs.startswith("Error"):
+            errors.append(f"step {i + 1}: {tool} {target} -> {obs[:120]}")
+        elif f"{tool} {target}" not in done:
+            done.append(f"{tool} {target}")
+    return done, errors
+
+
+def _compact_history(history: list[dict], task: str = "") -> list[dict]:
+    """Collapse the working history into one structured handoff entry.
 
     Used when the context monitor trips: the full log is already
-    checkpointed, so the prompt only needs a one-line-per-step digest.
+    checkpointed. Each step becomes a one-line digest; observations too
+    long for the line are offloaded to .datum/context/step-N.txt so the
+    agent can re-read them via read_file (#71). The digest is a structured
+    handoff — objective, active plan, actions, errors, do-not-redo — so the
+    model does not repeat completed work post-compaction (#76).
     """
+    offload_index = _next_offload_index()
     digest_lines = []
     for i, step in enumerate(history):
         args = json.dumps(step.get("tool_args", {}))[:60]
-        obs = step.get("observation", "").replace("\n", " ")[:80]
-        digest_lines.append(
-            f"step {i + 1}: {step.get('tool_name', '?')}({args}) -> {obs}"
+        full_obs = step.get("observation", "")
+        obs = full_obs.replace("\n", " ")[:_COMPACT_INLINE_OBS_CHARS]
+        line = f"step {i + 1}: {step.get('tool_name', '?')}({args}) -> {obs}"
+        if len(full_obs) > _COMPACT_INLINE_OBS_CHARS:
+            path = _offload_observation(offload_index, full_obs)
+            if path is not None:
+                offload_index += 1
+                line += f" [full output: {path}]"
+        digest_lines.append(line)
+
+    done, errors = _handoff_sections(history)
+    last_thought = next(
+        (s.get("thought", "") for s in reversed(history) if s.get("thought")), ""
+    )
+    sections = ["Context was compacted to stay within budget. Handoff:"]
+    if task:
+        sections.append(f"OBJECTIVE: {task}")
+    if last_thought:
+        sections.append(f"ACTIVE PLAN (latest thought): {last_thought[:300]}")
+    sections.append(
+        "ACTIONS TAKEN (use read_file on a [full output: ...] path to "
+        "re-fetch the detail):\n" + "\n".join(digest_lines)
+    )
+    if errors:
+        sections.append(
+            "ERRORS (do not retry the exact same call):\n" + "\n".join(errors)
         )
+    if done:
+        sections.append(
+            "DO NOT REDO — these already succeeded; do not repeat them:\n- "
+            + "\n- ".join(done)
+        )
+    sections.append(
+        "NEXT STEP: continue the task from this state; re-read offloaded "
+        "files only if you need the detail."
+    )
     return [
         {
             "thought": "",
             "tool_name": "checkpoint",
             "tool_args": {},
-            "observation": (
-                "Context was compacted to stay within budget. "
-                "Digest of prior steps:\n" + "\n".join(digest_lines)
-            ),
+            "observation": "\n\n".join(sections),
         }
     ]
 
@@ -885,7 +983,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
             if prompt_tokens >= context_window * checkpoint_pct and len(history) > 1:
                 _write_checkpoint(phase, task, steps_log, read_paths)
-                history = _compact_history(history)
+                history = _compact_history(history, task)
 
             if not thought.strip():
                 # Generation truncated mid-<think>: nothing actionable —

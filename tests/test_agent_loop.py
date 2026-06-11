@@ -7,6 +7,7 @@ extraction, history rendering, and termination conditions.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -1737,6 +1738,180 @@ def test_compact_history_digests_steps():
     assert "read_file" in digest
     assert "run_command" in digest
     assert len(digest) < 1000
+
+
+# ── #71: compaction offloads full observations to .datum/context/ ────────────
+
+
+def _mk_step(tool_name, tool_args, observation, thought="t"):
+    return {
+        "thought": thought,
+        "tool_name": tool_name,
+        "tool_args": tool_args,
+        "observation": observation,
+    }
+
+
+def test_compact_history_offloads_long_observations(tmp_path):
+    """#71: long observations land in .datum/context/step-N.txt and the
+    digest carries the path so read_file can re-fetch them on demand."""
+    from datum.agent_loop import _compact_history
+
+    long_obs = "long file contents " * 50
+    history = [
+        _mk_step("read_file", {"path": "a.py"}, long_obs),
+        _mk_step("run_command", {"command": "pytest"}, "2 passed"),
+    ]
+    digest = _compact_history(history)[0]["observation"]
+
+    offload = tmp_path / ".datum" / "context" / "step-1.txt"
+    assert offload.exists()
+    assert offload.read_text(encoding="utf-8") == long_obs
+    assert str(Path(".datum") / "context" / "step-1.txt") in digest
+    # A short observation fits inline — no file, no path noise.
+    assert not (tmp_path / ".datum" / "context" / "step-2.txt").exists()
+
+
+def test_compact_history_offload_failure_is_nonfatal(tmp_path):
+    """#71: offload is an optimization — an unwritable .datum/context must
+    not crash compaction; the digest simply omits the path."""
+    from datum.agent_loop import _compact_history
+
+    (tmp_path / ".datum").mkdir()
+    (tmp_path / ".datum" / "context").write_text("a file, not a dir")
+    history = [_mk_step("read_file", {"path": "a.py"}, "long contents " * 20)]
+    digest = _compact_history(history)[0]["observation"]
+    assert "read_file" in digest
+    assert "step-1.txt" not in digest
+
+
+def test_compact_history_second_compaction_never_overwrites(tmp_path):
+    """#71: a later compaction continues the step-N numbering instead of
+    clobbering files an earlier digest already points at."""
+    from datum.agent_loop import _compact_history
+
+    first_obs = "first compaction contents " * 10
+    second_obs = "second compaction contents " * 10
+    _compact_history([_mk_step("read_file", {"path": "a.py"}, first_obs)])
+    digest = _compact_history([_mk_step("read_file", {"path": "b.py"}, second_obs)])[0][
+        "observation"
+    ]
+
+    ctx = tmp_path / ".datum" / "context"
+    assert (ctx / "step-1.txt").read_text(encoding="utf-8") == first_obs
+    assert (ctx / "step-2.txt").read_text(encoding="utf-8") == second_obs
+    assert "step-2.txt" in digest
+
+
+# ── #76: structured compaction handoff with do-not-redo ──────────────────────
+
+
+def test_compact_history_structured_handoff(tmp_path):
+    """#76: the digest is a structured handoff — objective, active plan,
+    errors, do-not-redo — so the model does not repeat completed work."""
+    from datum.agent_loop import _compact_history
+
+    history = [
+        _mk_step("read_file", {"path": "a.py"}, "contents of a"),
+        _mk_step("write_to_file", {"path": "b.py"}, '{"ok": true}'),
+        _mk_step(
+            "run_command",
+            {"command": "rm data.db"},
+            "Error: Command 'rm' is blocked for safety.",
+            thought="try removing the database",
+        ),
+    ]
+    digest = _compact_history(history, task="fix the parser")[0]["observation"]
+
+    assert "OBJECTIVE: fix the parser" in digest
+    assert "ACTIVE PLAN" in digest
+    assert "try removing the database" in digest
+    assert "NEXT STEP" in digest
+
+    assert "DO NOT REDO" in digest
+    redo_section = digest.split("DO NOT REDO", 1)[1]
+    assert "read_file a.py" in redo_section
+    assert "write_to_file b.py" in redo_section
+    # The failed command is an ERROR, not a completed action.
+    assert "run_command rm data.db" not in redo_section
+    assert "ERRORS" in digest
+    error_section = digest.split("ERRORS", 1)[1].split("DO NOT REDO", 1)[0]
+    assert "rm data.db" in error_section
+
+
+def test_compact_history_handoff_skips_prior_checkpoint_entry(tmp_path):
+    """#76: a digest entry from an earlier compaction is bookkeeping, not a
+    completed action — it must not pollute the do-not-redo list."""
+    from datum.agent_loop import _compact_history
+
+    history = [
+        _mk_step("checkpoint", {}, "Context was compacted. " * 20, thought=""),
+        _mk_step("read_file", {"path": "a.py"}, "contents of a"),
+    ]
+    digest = _compact_history(history)[0]["observation"]
+    redo_section = digest.split("DO NOT REDO", 1)[1]
+    assert "read_file a.py" in redo_section
+    assert "checkpoint" not in redo_section
+
+
+def test_agent_loop_compaction_offloads_and_carries_objective(tmp_path):
+    """Integration: at the context threshold the loop offloads observations
+    to .datum/context/ and the post-compaction THINK prompt carries the
+    structured handoff with the task as OBJECTIVE."""
+    prompts_seen = []
+    texts = iter(["read a", "read b", "read c", "done"])
+
+    def fat_recording_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        prompts_seen.append(prompt)
+        return {
+            "text": next(texts),
+            "tokens": 10,
+            "time_s": 0.1,
+            "prompt_tokens": 85_000,
+        }
+
+    with (
+        patch("datum.agent_loop._think", fat_recording_think),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "b.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "c.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("x" * 200, False)),
+    ):
+        cfg = dict(BASE_CFG, context_window=100_000)
+        result = agent_loop("refactor the widget", cfg, phase="act_red")
+
+    assert result["escalated"] is False
+    files = sorted((tmp_path / ".datum" / "context").glob("step-*.txt"))
+    assert len(files) >= 2
+    assert files[0].read_text(encoding="utf-8") == "x" * 200
+    assert files[1].read_text(encoding="utf-8") == "x" * 200
+    # Compaction trips after the third THINK (history > 1 at 85% usage), so
+    # the FOURTH think prompt carries the handoff and the offload paths.
+    assert "OBJECTIVE: refactor the widget" in prompts_seen[3]
+    assert "DO NOT REDO" in prompts_seen[3]
+    assert str(Path(".datum") / "context" / "step-1.txt") in prompts_seen[3]
 
 
 # ── Adversarial review fixes ─────────────────────────────────────────────────
