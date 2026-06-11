@@ -24,6 +24,7 @@ import re
 import secrets
 import time
 from pathlib import Path
+from typing import Literal
 
 from datum.eedom_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
@@ -83,6 +84,33 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
         "mark each done as you finish it",
     ),
 }
+
+# ── #74: typed event log ─────────────────────────────────────────────────
+# Discriminator carried as the "event" key on every step dict (steps_log /
+# on_step / history) and every transcript JSONL record, so downstream
+# consumers (the orchestrator, the floor watcher) route events without
+# sniffing tool_name or observation prefixes. Named "event" — NOT "type" —
+# because the floor watcher already emits its own "type" key on derived
+# events. Purely additive: every pre-#74 key is unchanged.
+#
+#   tool_result        — a tool actually executed (success or failure output)
+#   plan_update        — todo/plan bookkeeping executed (#70: write_todos)
+#   error              — loop-generated corrective entry, no tool executed
+#                        (guard rejections, truncated_thought, unverified_done)
+#   final_answer       — the terminal done step carrying the summary
+#   context_compaction — history digest injected by the context monitor;
+#                        also logged to the transcript (never to steps_log)
+#   tool_call          — reserved: split call/result emission for the
+#                        orchestrator; the merged steps this loop writes
+#                        today carry the result, so they type as tool_result
+StepEvent = Literal[
+    "tool_call",
+    "tool_result",
+    "plan_update",
+    "context_compaction",
+    "error",
+    "final_answer",
+]
 
 # Anchored to the start of the response: a real reasoning block only ever
 # opens as the first token of a turn. A <think> appearing later is content
@@ -431,6 +459,8 @@ class _TranscriptWriter:
         tool_name: str,
         tool_args: dict,
         observation: str,
+        *,
+        event: StepEvent = "tool_result",
     ) -> None:
         if self._path is None:
             return
@@ -451,6 +481,7 @@ class _TranscriptWriter:
             record = {
                 "step": step_index,
                 "episode": self._episode,
+                "event": event,
                 "think_raw": think_raw,
                 "decide_raw": decide_raw,
                 "tool_name": tool_name,
@@ -720,8 +751,9 @@ def _decide(prompt: str, model_id: str, max_time_s: float | None = None) -> dict
 def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> dict:
     """Run the ReAct loop until done, max_steps, timeout, or loop detection.
 
-    on_step, if given, is called with each completed step dict (thought,
-    tool_name, tool_args, observation) — for live progress reporting.
+    on_step, if given, is called with each completed step dict (event,
+    thought, tool_name, tool_args, observation) — for live progress
+    reporting. "event" is the #74 StepEvent discriminator.
 
     Returns {"result": {"summary": str} | None, "escalated": bool,
              "reason": str | None, "phase": str, "steps_taken": int,
@@ -886,11 +918,29 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             if prompt_tokens >= context_window * checkpoint_pct and len(history) > 1:
                 _write_checkpoint(phase, task, steps_log, read_paths)
                 history = _compact_history(history)
+                # #74: tag the digest entries at the call site (the dicts are
+                # built inside _compact_history — owned by the compaction
+                # seam; setdefault leaves any already-typed entry alone) and
+                # log a transcript-only context_compaction record so replay/
+                # analysis sees the compaction. Never appended to steps_log —
+                # steps_taken counts model steps, not monitor housekeeping.
+                for entry in history:
+                    entry.setdefault("event", "context_compaction")
+                transcript.log_step(
+                    _step,
+                    "",
+                    {},
+                    "context_compaction",
+                    {},
+                    history[0].get("observation", "") if history else "",
+                    event="context_compaction",
+                )
 
             if not thought.strip():
                 # Generation truncated mid-<think>: nothing actionable —
                 # feed the problem back instead of letting DECIDE hallucinate.
                 step_entry = {
+                    "event": "error",
                     "thought": "",
                     "tool_name": "truncated_thought",
                     "tool_args": {},
@@ -911,6 +961,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     "truncated_thought",
                     {},
                     step_entry["observation"],
+                    event="error",
                 )
                 continue
 
@@ -951,6 +1002,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             if _done_unverified:
                 if _unverified_done_rejections >= MAX_UNVERIFIED_DONE_REJECTIONS:
                     step_entry = {
+                        "event": "error",
                         "thought": thought,
                         "tool_name": "unverified_done",
                         "tool_args": {},
@@ -970,6 +1022,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                         "unverified_done",
                         {},
                         step_entry["observation"],
+                        event="error",
                     )
                     return _finish(
                         None,
@@ -980,6 +1033,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     )
                 _unverified_done_rejections += 1
                 step_entry = {
+                    "event": "error",
                     "thought": thought,
                     "tool_name": "unverified_done",
                     "tool_args": {},
@@ -1000,11 +1054,13 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     "unverified_done",
                     {},
                     step_entry["observation"],
+                    event="error",
                 )
                 continue
 
             steps_log.append(
                 {
+                    "event": "final_answer",
                     "thought": thought,
                     "tool_name": "done",
                     "tool_args": {},
@@ -1014,7 +1070,13 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             if on_step:
                 on_step(steps_log[-1])
             transcript.log_step(
-                _step, think_raw, decision, "done", {}, decision.get("summary", "")
+                _step,
+                think_raw,
+                decision,
+                "done",
+                {},
+                decision.get("summary", ""),
+                event="final_answer",
             )
             return _finish(decision.get("summary", ""), False, None)
 
@@ -1025,6 +1087,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
 
         target = Path(str(tool_args.get("path", "")))
         resolved = str(target.resolve())
+
+        # #74: typed event for this step. Every guard branch below rejects
+        # the call WITHOUT executing a tool — those are loop-generated
+        # "error" events; the else branch actually executes and retypes.
+        step_event: StepEvent = "error"
 
         if tool_name not in allowed_tools:
             observation = (
@@ -1093,6 +1160,8 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             # breaks the rewrite-the-same-file loop before the loop
             # detector has to fire.  Count as a successful read so further
             # writes are not blocked by the read-before-write guard.
+            # #74: a successful no-op outcome, not a rejection — tool_result.
+            step_event = "tool_result"
             read_paths.add(resolved)
             observation = (
                 "File already contains exactly this content — write "
@@ -1124,6 +1193,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 f"block and retry write_to_file."
             )
         else:
+            # #74: a tool actually executes on this path. Todo bookkeeping
+            # (#70) routes as plan_update; everything else is tool_result —
+            # success or failure, the OUTPUT of the call is in observation.
+            step_event = "plan_update" if tool_name == "write_todos" else "tool_result"
+
             # Snapshot old content for overwrite-loss detection (Defect-3).
             _old_py_content: str | None = None
             if (
@@ -1260,6 +1334,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
 
         # ── OBSERVE ──────────────────────────────────────────────────────
         step_entry = {
+            "event": step_event,
             "thought": thought,
             "tool_name": tool_name,
             "tool_args": tool_args,
@@ -1272,7 +1347,13 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
 
         # ── Transcript logging (always-on, never crashes) ────────────────
         transcript.log_step(
-            _step, think_raw, decision, tool_name, tool_args, observation
+            _step,
+            think_raw,
+            decision,
+            tool_name,
+            tool_args,
+            observation,
+            event=step_event,
         )
 
         # Loop detection: identical (tool, args) repeated with no progress

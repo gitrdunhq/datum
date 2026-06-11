@@ -3318,3 +3318,241 @@ def test_transcript_filename_is_timestamp_shaped(tmp_path):
     names = [p.name for p in transcript_dir.glob("*.jsonl")]
     assert len(names) == 1
     assert re.fullmatch(r"\d{8}T\d{6}Z-act_red\.jsonl", names[0]), names[0]
+
+
+# ── Issue #74: typed event log on step entries + transcript records ──────────
+#
+# Every step dict (steps_log / on_step / history) and every transcript record
+# carries an "event" discriminator (StepEvent Literal: tool_call, tool_result,
+# plan_update, context_compaction, error, final_answer) so downstream
+# consumers (orchestrator, floor watcher) can route events without sniffing
+# tool_name / observation prefixes. Purely additive — all existing keys stay.
+
+
+def test_step_event_literal_covers_issue_74_vocabulary():
+    from typing import get_args
+
+    from datum.agent_loop import StepEvent
+
+    assert set(get_args(StepEvent)) == {
+        "tool_call",
+        "tool_result",
+        "plan_update",
+        "context_compaction",
+        "error",
+        "final_answer",
+    }
+
+
+def test_executed_tool_step_typed_tool_result_and_done_final_answer():
+    steps = []
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    assert result["steps"][0]["event"] == "tool_result"
+    assert result["steps"][-1]["event"] == "final_answer"
+    # on_step sees the same typed dicts
+    assert [s["event"] for s in steps] == ["tool_result", "final_answer"]
+    # existing keys untouched (additive change)
+    assert result["steps"][0]["tool_name"] == "read_file"
+    assert result["steps"][0]["observation"] == "contents"
+
+
+def test_guard_rejected_tool_step_typed_error():
+    """A tool the loop refuses to execute (unknown name) is an 'error' event —
+    routable without sniffing the observation's 'Error:' prefix."""
+    with (
+        patch("datum.agent_loop._think", _mk_think(["use a bad tool", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "bogus_tool",
+                        "tool_args": {},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    step = result["steps"][0]
+    assert step["tool_name"] == "bogus_tool"
+    assert step["observation"].startswith("Error")
+    assert step["event"] == "error"
+
+
+def test_truncated_thought_step_typed_error():
+    """The loop-injected truncated_thought corrective entry is an 'error'."""
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["<think>cut off mid reasoning", "all done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "ok"}]),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    step = result["steps"][0]
+    assert step["tool_name"] == "truncated_thought"
+    assert step["event"] == "error"
+
+
+def test_unverified_done_step_typed_error(tmp_path, monkeypatch):
+    """#67 GREEN-guard rejections are loop-generated 'error' events."""
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think([_WRITE_THOUGHT, "done", "run the tests", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    _write_decision(),
+                    {"action": "done", "summary": "premature"},
+                    _pytest_decision(),
+                    {"action": "done", "summary": "verified"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", _exec_router()),
+    ):
+        result = agent_loop("make tests pass", BASE_CFG, phase="act_green")
+
+    events = [(s["tool_name"], s["event"]) for s in result["steps"]]
+    assert ("unverified_done", "error") in events
+    assert events[-1] == ("done", "final_answer")
+
+
+def test_write_todos_step_typed_plan_update():
+    """#70 todo bookkeeping is a 'plan_update' event, not a tool_result."""
+    cfg = dict(BASE_CFG, allowed_tools=["read_file", "write_todos"])
+    with (
+        patch("datum.agent_loop._think", _mk_think(["plan the work", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_todos",
+                        "tool_args": {"items": [{"task": "step 1", "done": False}]},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg_: ('{"ok": true, "count": 1}', False),
+        ),
+    ):
+        result = agent_loop("task", cfg, phase="act_red")
+
+    step = result["steps"][0]
+    assert step["tool_name"] == "write_todos"
+    assert step["event"] == "plan_update"
+
+
+def test_transcript_records_carry_event_field(tmp_path, monkeypatch):
+    """Each transcript JSONL record carries the same 'event' discriminator."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red")
+
+    (transcript,) = (tmp_path / ".datum" / "transcripts").glob("*-act_red.jsonl")
+    records = [_json.loads(line) for line in transcript.read_text().splitlines()]
+    assert [r["event"] for r in records] == ["tool_result", "final_answer"]
+    # existing record keys are all still present (additive change)
+    assert {"step", "episode", "think_raw", "decide_raw", "tool_name"} <= set(
+        records[0]
+    )
+
+
+def test_compaction_emits_typed_transcript_record(tmp_path, monkeypatch):
+    """When the context monitor compacts history, the transcript gains a
+    'context_compaction' record carrying the digest — replay/analysis can see
+    the compaction without diffing step indices. steps_log is untouched."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _fat_think(["read a", "read b", "done"], prompt_tokens=85_000),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "b.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        cfg = dict(BASE_CFG, context_window=100_000)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    (transcript,) = (tmp_path / ".datum" / "transcripts").glob("*-act_red.jsonl")
+    records = [_json.loads(line) for line in transcript.read_text().splitlines()]
+    compactions = [r for r in records if r["event"] == "context_compaction"]
+    assert len(compactions) >= 1
+    assert compactions[0]["tool_name"] == "context_compaction"
+    assert "Digest of prior steps" in compactions[0]["observation"]
+    # steps_log / steps_taken are NOT inflated by the transcript-only record
+    assert result["steps_taken"] == 3
+    assert all("event" in s for s in result["steps"])
+    assert "context_compaction" not in {s["event"] for s in result["steps"]}
