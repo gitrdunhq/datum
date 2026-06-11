@@ -1,0 +1,102 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "eb0453f6015a",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-11T18:40:39.003653Z",
+  "branch": "fix/95-strip-secrets",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/agent_loop.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "fbfd4fac27e8",
+  "token_usage": {
+    "input_tokens": 308389,
+    "cache_creation_tokens": 6428147,
+    "cache_read_tokens": 258180272,
+    "output_tokens": 1014843,
+    "api_call_count": 1357
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01LAHjnycdCUxdK6765Rnjzf",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "modern-css"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "fbfd4fac27e8",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 6890,
+        "end": 6891,
+        "entry_ids": [
+          "483dd771-f94a-452c-93b4-84677f3d56e1"
+        ],
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: modern-css",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01S5H3t2RdzhwsG3LcehB4gy",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "update-config"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "fbfd4fac27e8",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 7164,
+        "end": 7165,
+        "entry_ids": [
+          "37327a56-2320-4cd7-a6dd-5d9b4910f550"
+        ],
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: update-config",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 157
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T18:40:38.303068Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 283,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 283,
+    "total_lines_changed": 294,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
