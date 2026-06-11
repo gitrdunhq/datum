@@ -6,6 +6,7 @@ extraction, history rendering, and termination conditions.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import patch
 
 import pytest
@@ -3249,3 +3250,71 @@ def test_list_dir_observation_collapsed_then_sanitized(tmp_path):
     # sanitizer ran after collapse: special token stripped from final text
     assert token not in obs
     assert "system pwn" in obs
+
+
+# ── Issue #103: transcript writes must never touch the live repo ─────────────
+
+
+def test_transcripts_cannot_leak_into_real_repo(request, tmp_path, monkeypatch):
+    """Issue #103 regression: a test that mocks datum.agent_loop.time
+    wholesale (so time.strftime() returns a MagicMock) AND runs from the
+    repo root — i.e. forgets per-module chdir isolation — must still not
+    drop '<MagicMock ...>-act_red.jsonl' into the repo's real
+    .datum/transcripts/. Isolation is structural: the suite-wide conftest
+    fixture redirects _TranscriptWriter.BASE_DIR to tmp_path."""
+    repo_transcripts = request.config.rootpath / ".datum" / "transcripts"
+    before = (
+        {p.name for p in repo_transcripts.iterdir()}
+        if repo_transcripts.is_dir()
+        else set()
+    )
+    monkeypatch.chdir(request.config.rootpath)  # simulate the forgetful test
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "ok"}]),
+        ),
+        patch(
+            "datum.agent_loop.init_code_graph",
+            side_effect=RuntimeError("no graph in tests"),
+        ),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        mock_time.monotonic.side_effect = [0.0, 10.0, 30.0, 40.0]
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    assert result["escalated"] is False
+
+    after = (
+        {p.name for p in repo_transcripts.iterdir()}
+        if repo_transcripts.is_dir()
+        else set()
+    )
+    assert after == before, f"transcript leaked into live repo: {after - before}"
+
+    # The transcript landed in the redirected dir instead — nothing was lost.
+    redirected = tmp_path / ".datum" / "transcripts"
+    assert redirected.is_dir()
+    assert len(list(redirected.iterdir())) == 1
+
+
+def test_transcript_filename_is_timestamp_shaped(tmp_path):
+    """Issue #103 regression: with time unmocked, transcript filenames are
+    '<YYYYMMDDTHHMMSSZ>-<episode>.jsonl' — a MagicMock-repr filename shape
+    must never be produced by the normal code path."""
+    with (
+        patch("datum.agent_loop._think", _mk_think(["all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "ok"}]),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    assert result["escalated"] is False
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    names = [p.name for p in transcript_dir.glob("*.jsonl")]
+    assert len(names) == 1
+    assert re.fullmatch(r"\d{8}T\d{6}Z-act_red\.jsonl", names[0]), names[0]

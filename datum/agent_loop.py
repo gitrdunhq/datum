@@ -401,20 +401,23 @@ def _compact_history(history: list[dict]) -> list[dict]:
 class _TranscriptWriter:
     """Append-only JSONL transcript for one episode (phase run).
 
-    Writes to .datum/transcripts/<timestamp>-<episode>.jsonl under cwd.
-    All writes are wrapped in try/except OSError so logging never crashes
-    the loop.
+    Writes to <base_dir>/<timestamp>-<episode>.jsonl. base_dir defaults to
+    the class-level BASE_DIR (.datum/transcripts under cwd); BASE_DIR is the
+    seam the test suite redirects to tmp_path so transcript writes can never
+    land in the live repo (issue #103). All writes are wrapped in
+    try/except OSError so logging never crashes the loop.
     """
 
+    BASE_DIR = Path(".datum") / "transcripts"
     CONTENT_TRUNCATE = 500
     OBSERVATION_TRUNCATE = 1000
 
-    def __init__(self, episode: str) -> None:
+    def __init__(self, episode: str, base_dir: Path | None = None) -> None:
         self._episode = episode
         self._path: Path | None = None
         ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         try:
-            transcript_dir = Path(".datum") / "transcripts"
+            transcript_dir = Path(base_dir) if base_dir is not None else self.BASE_DIR
             transcript_dir.mkdir(parents=True, exist_ok=True)
             self._path = transcript_dir / f"{ts}-{episode}.jsonl"
         except OSError:
