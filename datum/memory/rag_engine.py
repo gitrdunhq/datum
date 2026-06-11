@@ -10,14 +10,14 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from datum.memory._strict import is_memory_strict
+from datum.memory._trace import memory_traced
 from datum.memory.chunker import KnowledgeChunk, KnowledgeChunker
 from datum.memory.embeddings import (
     EmbeddingModelMismatchError,
     EmbeddingProvider,
     get_embedding_provider,
 )
-from datum.memory._strict import is_memory_strict
-from datum.memory._trace import memory_traced
 from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,8 +39,9 @@ class VectorStore:
             import chromadb
         except ImportError:
             raise ImportError(
-                "Missing memory dependencies. "
-                "Run: uv tool install .[memory] or pip install .[memory]"
+                "chromadb is not installed (it is not part of any datum "
+                "extra; deferred until the corpus exceeds ~100k chunks). "
+                "Run: pip install chromadb"
             ) from None
 
         store_dir.mkdir(parents=True, exist_ok=True)
@@ -81,8 +82,12 @@ class VectorStore:
         out: list[tuple[str, dict, float]] = []
         if results and results["ids"]:
             ids = results["ids"][0]
-            metadatas = results["metadatas"][0] if results["metadatas"] else [{}] * len(ids)
-            distances = results["distances"][0] if results["distances"] else [0.0] * len(ids)
+            metadatas = (
+                results["metadatas"][0] if results["metadatas"] else [{}] * len(ids)
+            )
+            distances = (
+                results["distances"][0] if results["distances"] else [0.0] * len(ids)
+            )
             for i, cid in enumerate(ids):
                 similarity = max(0.0, 1.0 - distances[i])
                 out.append((cid, metadatas[i], similarity))
@@ -111,7 +116,9 @@ class VectorStore:
             if is_memory_strict():
                 raise
             logger.warning(
-                "Failed to delete %d chunks from collection '%s' in ChromaDB", len(ids), collection
+                "Failed to delete %d chunks from collection '%s' in ChromaDB",
+                len(ids),
+                collection,
             )
             return 0
 
@@ -139,7 +146,7 @@ class VectorStore:
         """Upsert items, skipping near-duplicates. Returns (inserted, deduped)."""
         inserted = 0
         deduped = 0
-        for cid, emb, meta in zip(ids, embeddings, metadatas):
+        for cid, emb, meta in zip(ids, embeddings, metadatas, strict=True):
             if self.should_insert(collection_name, emb, threshold):
                 self.upsert(collection_name, [cid], [emb], [meta])
                 inserted += 1
@@ -173,7 +180,9 @@ class RAGEngine:
             )
         self.store_dir = store_dir
         self.store_dir.mkdir(parents=True, exist_ok=True)
-        self.provider = embedding_provider or get_embedding_provider(persist_dir=self.store_dir)
+        self.provider = embedding_provider or get_embedding_provider(
+            persist_dir=self.store_dir
+        )
         self._chunker = KnowledgeChunker()
         self._hashes: dict[str, str] = {}
         self._hash_file = self.store_dir / "file_hashes.json"
@@ -318,7 +327,9 @@ class RAGEngine:
             try:
                 self._hashes = json.loads(self._hash_file.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Corrupt hash file at %s, starting fresh: %s", self._hash_file, exc)
+                logger.warning(
+                    "Corrupt hash file at %s, starting fresh: %s", self._hash_file, exc
+                )
                 self._hashes = {}
 
     def _save_hashes(self) -> None:

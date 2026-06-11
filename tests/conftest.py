@@ -21,6 +21,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _force_offline_model_hubs(monkeypatch):
+    """Tests must never download models — fail fast instead of fetching.
+
+    Defensive guard for datum/memory tests (and anything else that could
+    touch huggingface): embedding backends are simulated in tests, but if
+    one ever slips through, these flags turn a silent multi-GB download
+    into an immediate offline error.
+    """
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_transcript_writes(tmp_path, monkeypatch):
     """Redirect _TranscriptWriter.BASE_DIR to tmp_path for every test."""
     try:
