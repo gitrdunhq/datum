@@ -1507,6 +1507,28 @@ def _omlx_available() -> bool:
     return False
 
 
+# Sampling knobs a caller may tune per-request. Protected request fields
+# (model, messages, temperature, stream, ...) must come from the explicit
+# parameters — a sampling dict can never override them.
+_SAMPLING_KEYS = frozenset(
+    {
+        "top_p",
+        "top_k",
+        "min_p",
+        "presence_penalty",
+        "frequency_penalty",
+        "repetition_penalty",
+    }
+)
+
+
+def _sampling_params(sampling: dict | None) -> dict:
+    """Filter a sampling dict down to the allowlisted tuning knobs."""
+    if not sampling:
+        return {}
+    return {k: v for k, v in sampling.items() if k in _SAMPLING_KEYS}
+
+
 def _omlx_generate(
     prompt: str,
     model_id: str,
@@ -1527,9 +1549,8 @@ def _omlx_generate(
         "max_tokens": max_tokens,
         "temperature": temperature,
         "stream": False,
+        **_sampling_params(sampling),
     }
-    if sampling:
-        body.update(sampling)
     payload = json.dumps(body).encode()
     req = urllib.request.Request(
         f"{url}/v1/chat/completions",

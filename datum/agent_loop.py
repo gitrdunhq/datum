@@ -375,15 +375,21 @@ THINK_SAMPLING = {"top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.0
 
 
 def _think(
-    prompt: str, model_id: str, max_tokens: int, system: str | None = None
+    prompt: str,
+    model_id: str,
+    max_tokens: int,
+    system: str | None = None,
+    sampling: dict | None = None,
 ) -> dict:
+    # THINK_SAMPLING is Qwen-2507 tuning; a config can route a different
+    # model to the think tier and carry its own sampling via think_sampling.
     return generate(
         prompt,
         model_id,
         max_tokens=max_tokens,
         temperature=0.7,
         system=system,
-        sampling=THINK_SAMPLING,
+        sampling=sampling or THINK_SAMPLING,
     )
 
 
@@ -449,7 +455,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             # ── THINK (main model, freeform) ─────────────────────────────
             think_prompt = _build_think_prompt(task, history)
             think_out = _think(
-                think_prompt, think_model, think_max_tokens, system_prompt
+                think_prompt,
+                think_model,
+                think_max_tokens,
+                system_prompt,
+                sampling=config.get("think_sampling"),
             )
             total_tokens += think_out.get("tokens", 0)
             thought = _strip_think_tags(think_out.get("text", ""))

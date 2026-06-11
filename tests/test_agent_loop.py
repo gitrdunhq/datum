@@ -167,6 +167,23 @@ def test_think_passes_qwen_sampling_params():
     assert sampling["presence_penalty"] == 1.0
 
 
+def test_think_sampling_overridable_per_call():
+    """THINK_SAMPLING is Qwen-2507 card tuning — a different model routed
+    to the think tier must be able to carry its own sampling via config
+    (model tiers and their params come from config, never hardcoded)."""
+    captured = {}
+
+    def fake_generate(prompt, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"text": "ok", "tokens": 1}
+
+    custom = {"top_p": 0.95, "top_k": 40}
+    with patch("datum.agent_loop.generate", fake_generate):
+        _think("p", "model", 2048, "sys", sampling=custom)
+
+    assert captured["sampling"] == custom
+
+
 def test_system_prompt_excludes_unlisted_tools():
     system = _build_system_prompt(["read_file"])
     assert "multi_replace_file_content" not in system
@@ -204,7 +221,7 @@ def _mk_think(texts):
     """Return a fake think() yielding canned thoughts in order."""
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
         return {"text": next(it), "tokens": 10, "time_s": 0.1}
 
     return fake
@@ -802,7 +819,7 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     captured = {}
 
-    def spy_think(prompt, model_id, max_tokens, system=None):
+    def spy_think(prompt, model_id, max_tokens, system=None, sampling=None):
         captured["system"] = system
         return {"text": "all done", "tokens": 1, "time_s": 0}
 
@@ -825,7 +842,7 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
 def _fat_think(texts, prompt_tokens):
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
         return {
             "text": next(it),
             "tokens": 10,
@@ -940,7 +957,7 @@ def test_compact_history_digests_steps():
 def test_agent_loop_model_exception_returns_structured_failure():
     """HIGH: a crashing model call must yield escalated=True, not a traceback."""
 
-    def boom(prompt, model_id, max_tokens, system=None):
+    def boom(prompt, model_id, max_tokens, system=None, sampling=None):
         raise OSError("oMLX connection refused")
 
     with patch("datum.agent_loop._think", boom):
