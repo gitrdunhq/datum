@@ -1292,3 +1292,69 @@ Key local files referenced: `/Volumes/Extra/repos/gitrdunhq/datum/datum/state.py
 ---
 
 hey stop coding get the subsgent to do it
+
+---
+
+<task-notification>
+<task-id>a5a4c92623f5c09eb</task-id>
+<tool-use-id>toolu_01W1ZmwAgWo2QhzbEQzkV61W</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/cfcf9319-f888-40b0-bf5c-ac78e2d72546/tasks/a5a4c92623f5c09eb.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix oMLX client hygiene (Opus)" completed</summary>
+<result>Here is the summary.
+
+---
+
+**What changed**
+
+Two files modified, both on branch `fix/write-echo-truncation`. Commit `881db81`.
+
+**`datum/local_llm.py`** (3 fixes, +62 lines / -4 lines):
+
+1. **Retry with capped backoff (DPS-200).** New `_omlx_urlopen_with_retry` helper (lines 1538-1581). Retries on HTTP 429, 503, and `URLError(ConnectionRefusedError)` with jittered exponential backoff (base 2^attempt + uniform jitter). Honors `Retry-After` response header when present. Caps at 4 attempts. Non-retryable HTTP errors (400, 401, 500, etc.) raise immediately. After exhaustion, re-raises the original error so the existing escalation ladder fires. Both `_omlx_generate` and `_omlx_structured` now use this helper instead of bare `urlopen`.
+
+2. **Config-driven timeout.** Added `"request_timeout_s": 300` to `DEFAULTS` dict (line 39). Both functions read `load_config().get("request_timeout_s", 300)` instead of hardcoded `timeout=300`. Follows the same `DEFAULTS` merge pattern as all other config values.
+
+3. **Real `time_s`.** Both functions wrap the HTTP call with `time.monotonic()` and return the elapsed seconds instead of hardcoded `0.0`. This fixes zeroed tokens/sec metrics for every oMLX call.
+
+**`tests/test_local_llm_hardening.py`** — 14 new tests added (total now 24):
+
+| Test | Validates |
+|------|-----------|
+| `test_retry_on_429_then_succeeds` | 429 retries, succeeds on 2nd attempt |
+| `test_retry_on_503_then_succeeds` | 503 retries, succeeds on 2nd attempt |
+| `test_retry_on_connection_refused_then_succeeds` | ConnectionRefused retries |
+| `test_retry_exhaustion_raises_original_error` | All 4 attempts fail -&gt; original HTTPError raised |
+| `test_no_retry_on_400` | 400 raises immediately, zero sleeps |
+| `test_no_retry_on_500` | 500 raises immediately, zero sleeps |
+| `test_retry_after_header_honored` | Retry-After: 7 -&gt; sleep &gt;= 7.0 |
+| `test_retry_structured_on_503` | _omlx_structured retries on 503 |
+| `test_retry_exhaustion_structured_raises` | _omlx_structured exhausts retries |
+| `test_config_timeout_default_300` | DEFAULTS has request_timeout_s=300 |
+| `test_config_timeout_flows_to_urlopen` | Custom timeout=42 reaches urlopen |
+| `test_config_timeout_structured` | Custom timeout=99 reaches _omlx_structured |
+| `test_generate_returns_real_time_s` | Mocked monotonic proves time_s=2.5 |
+| `test_structured_returns_real_time_s` | Mocked monotonic proves time_s=3.7 |
+
+**Final test counts:** 363 passed, 0 failed, 2 warnings.
+**Commit:** `881db81` on branch `fix/write-echo-truncation`. Not pushed.
+
+---
+
+**Code-quality advisory for the oMLX path (lines ~1488-1680)**
+
+Observations only -- no changes made beyond the three scoped fixes.
+
+1. **[Severity: Medium] Structural duplication between `_omlx_generate` and `_omlx_structured` (lines 1584-1630 vs 1634-1680).** Both functions build an identical `urllib.request.Request`, call `load_config()` for timeout, wrap `_omlx_urlopen_with_retry`, parse the JSON response, and extract from `data["choices"][0]["message"]["content"]`. The only differences are: the request body shape (structured adds `response_format`), the response parsing (structured does `json.loads(raw)`), and the return dict keys. A shared `_omlx_call(body, url, timeout_s)` -&gt; `(data, elapsed)` helper would eliminate ~20 duplicated lines and ensure future fixes (auth headers, logging, etc.) only need one touch point.
+
+2. **[Severity: Medium] Double `load_config()` call per request (lines 1614+1488).** Both functions call `load_config()` to get `request_timeout_s`. The callers of these functions (likely in the pipeline layer) probably already have config loaded. Accepting `timeout_s` as a parameter with a default would avoid redundant TOML parsing on every request and make the functions easier to test without patching `load_config`.
+
+3. **[Severity: Medium] Silent fallback in `_omlx_available` (lines 1492-1508, DPS-204).** When the health check fails (connection refused, DNS error, timeout), the function returns `False` silently. No log, no structured error. The pipeline then falls back to the local MLX path (or cloud API), and the operator has no signal that their oMLX server is down. At minimum this should `structlog.get_logger().warning("omlx_health_check_failed", url=url, error=str(e))`.
+
+4. **[Severity: Low] No boundary validation on oMLX response shape (DPS-102, lines 1615-1616 / 1669-1670).** Both functions blindly index `data["choices"][0]["message"]["content"]` without validating the response shape. A malformed response (missing `choices`, empty array, missing `content` key) produces an opaque `KeyError`/`IndexError` instead of a structured error with context (which model, what URL, what was returned). A guard like `if not data.get("choices"): raise ValueError(...)` would be a small improvement.
+
+5. **[Severity: Low] `_omlx_structured` doesn't validate parsed JSON against the schema (line 1670).** The function requests `"strict": True` grammar-constrained generation, then does `parsed = json.loads(raw)` and returns the dict without checking it against the Pydantic `schema`. If the server ignores `strict` or returns malformed JSON that parses but doesn't match the schema, the error surfaces much later in the pipeline. A `schema.model_validate(parsed)` call here would fail fast at the boundary.
+
+6. **[Severity: Low] Testability of retry timing.** The `_omlx_urlopen_with_retry` helper imports `random` internally and uses `time.sleep` from the module-level `time` import. Tests patch `time.sleep` at the `time.sleep` path (which works because the module does `import time` and calls `time.sleep`). This is fine, but if someone later changes the import to `from time import sleep`, the patches break silently. Accepting a `sleep_fn` parameter (defaulting to `time.sleep`) would make the retry helper fully deterministic in tests without fragile patching.</result>
+<usage><subagent_tokens>57384</subagent_tokens><tool_uses>41</tool_uses><duration_ms>336840</duration_ms></usage>
+</task-notification>
