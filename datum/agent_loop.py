@@ -27,6 +27,7 @@ from pathlib import Path
 
 from datum.eedom_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
+    PATHLESS_WRITE_TOOLS,
     WRITE_TOOLS,
     _execute_tool,
     _truncate_tool_output,
@@ -72,6 +73,13 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
     "multi_replace_file_content": (
         '{"path": "<file>", "replacements": [{"old_text": "...", "new_text": "..."}]}',
         "several exact replacements",
+    ),
+    # #70: planning tools — persist to .datum/todos.json under the working repo
+    "read_todos": ("{}", "read your todo list to check remaining steps"),
+    "write_todos": (
+        '{"items": [{"task": "<step>", "done": false}]}',
+        "save your todo list — break a multi-step task into steps, "
+        "mark each done as you finish it",
     ),
 }
 
@@ -993,7 +1001,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 f"Error: '{tool_name}' is not a valid tool. "
                 f"Valid tools: {', '.join(allowed_tools)}."
             )
-        elif tool_name in WRITE_TOOLS and not tool_args.get("path"):
+        elif (
+            tool_name in WRITE_TOOLS
+            and tool_name not in PATHLESS_WRITE_TOOLS
+            and not tool_args.get("path")
+        ):
             observation = (
                 f"Error: {tool_name} requires a 'path' argument naming the target file."
             )
@@ -1028,6 +1040,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         elif (
             tool_name in WRITE_TOOLS
             and tool_name != "write_to_file"
+            and tool_name not in PATHLESS_WRITE_TOOLS
             and target.exists()
             and resolved not in read_paths
             and resolved not in partial_read_paths
@@ -1102,10 +1115,16 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
             # ── #67: track (last write, last passing test) for the GREEN
             # done-verification guard. Only writes that actually mutated
-            # disk count (every lane write tool prints '"ok": true' on
-            # success); pass detection runs on the UNTRUNCATED output so
-            # the pytest summary line is never clipped away.
-            if tool_name in WRITE_TOOLS and '"ok": true' in tool_output:
+            # disk count (every path-writing lane tool prints '"ok": true'
+            # on success); pass detection runs on the UNTRUNCATED output so
+            # the pytest summary line is never clipped away. Pathless write
+            # tools (#70: write_todos) are exempt — todo bookkeeping never
+            # mutates source, so it must not invalidate a passing test run.
+            if (
+                tool_name in WRITE_TOOLS
+                and tool_name not in PATHLESS_WRITE_TOOLS
+                and '"ok": true' in tool_output
+            ):
                 _last_write_step = _step
             if tool_name == "run_command" and _is_passing_test_run(
                 str(tool_args.get("command", "")), tool_output
