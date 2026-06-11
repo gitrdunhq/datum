@@ -874,6 +874,60 @@ def closeout(
     )
 
 
+@app.command()
+def gc(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Scan and report without deleting anything"
+    ),
+    transcript_days: int = typer.Option(
+        7, "--transcript-days", help="Retain transcripts for this many days"
+    ),
+    checkpoint_days: int = typer.Option(
+        3, "--checkpoint-days", help="Retain agent checkpoints for this many days"
+    ),
+    failure_days: int = typer.Option(
+        30, "--failure-days", help="Retain failure records for this many days"
+    ),
+    context_days: int = typer.Option(
+        1, "--context-days", help="Retain context/step-*.txt files for this many days"
+    ),
+    run_days: int = typer.Option(
+        90, "--run-days", help="Retain completed run directories for this many days"
+    ),
+):
+    """Garbage-collect stale .datum/ artifacts past their retention windows.
+
+    Cleans transcripts, agent checkpoints, failure records, and context
+    offload files. Use --dry-run to preview without deleting.
+    """
+    from datum.gc import GcConfig, format_gc_report, run_gc
+    from datum.path_utils import datum_dir
+
+    cfg = GcConfig(
+        transcript_retention_days=transcript_days,
+        checkpoint_retention_days=checkpoint_days,
+        failure_retention_days=failure_days,
+        context_retention_days=context_days,
+        run_retention_days=run_days,
+        dry_run=dry_run,
+    )
+
+    target = datum_dir()
+    if not target.exists():
+        console.print("[dim].datum/ directory not found — nothing to collect.[/dim]")
+        return
+
+    result = run_gc(target, cfg)
+    report = format_gc_report(result)
+
+    if dry_run:
+        console.print(f"[yellow]{report}[/yellow]")
+    elif result.deleted_count == 0:
+        console.print(f"[dim]{report}[/dim]")
+    else:
+        console.print(f"[bold green]{report}[/bold green]")
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
