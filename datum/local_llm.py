@@ -220,10 +220,14 @@ def generate(
     presence_penalty, min_p) — the server does NOT read the model's
     generation_config.json, so card-recommended values must be sent
     per-request. Only honored on the oMLX path.
-    `max_time_s` caps the request's wall-clock budget (socket timeout and
-    retry backoff) below the configured request_timeout_s, so a caller with
-    its own deadline (the agent loop, #61) is never blocked longer than its
-    remaining budget. Like `sampling`, only honored on the oMLX path.
+    `max_time_s` caps the request's wall-clock budget on BOTH paths. On the
+    oMLX path it bounds socket timeout and retry backoff below the configured
+    request_timeout_s (#61). On the in-process mlx_lm fallback a monotonic
+    deadline is checked inside the token streaming loop (#104): when exceeded,
+    generation stops and the partial output is returned with
+    abort_reason="max_time_exceeded" and escalated=True. Either way a caller
+    with its own deadline (the agent loop, #61) is never blocked longer than
+    its remaining budget.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
@@ -275,6 +279,9 @@ def generate(
         kv_kwargs["max_kv_size"] = max_kv_size
 
     start = time.monotonic()
+    # #104: enforce the caller's wall-clock budget on the fallback path too —
+    # a slow in-process stream must not overrun the agent loop's deadline.
+    deadline = start + max_time_s if max_time_s is not None else None
     text = ""
     token_count = 0
     abort_reason = None
@@ -284,6 +291,10 @@ def generate(
     ):
         text += response.text
         token_count += 1
+
+        if deadline is not None and time.monotonic() >= deadline:
+            abort_reason = "max_time_exceeded"
+            break
 
         if token_count % 50 == 0 and _detect_repetition(text, ngram_size, max_count):
             abort_reason = "repetition_detected"

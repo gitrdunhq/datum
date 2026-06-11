@@ -817,6 +817,126 @@ def test_structured_threads_max_time_to_omlx():
     assert mock_struct.call_args.kwargs.get("max_time_s") == 22
 
 
+# ── Fix (#104): in-process fallback path honors max_time_s ──────────────────
+# When oMLX is down, generate() falls back to in-process mlx_lm streaming.
+# That path must enforce the caller's wall-clock budget too: check a
+# monotonic deadline inside the token loop, stop promptly when exceeded,
+# and return the partial output flagged via abort_reason (escalated=True),
+# consistent with the existing structured abort signals (#65 direction).
+
+
+class _TickingClock:
+    """Fake monotonic clock the fake stream advances manually."""
+
+    def __init__(self, start: float = 100.0):
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _fake_stream(clock: _TickingClock, n_tokens: int, seconds_per_token: float):
+    """Build a fake mlx_lm.stream_generate: each yielded token advances the
+    clock by *seconds_per_token* (simulating slow generation). Returns
+    (stream_fn, yielded) where *yielded* records how many tokens were
+    actually consumed — proving the loop break-ed out promptly."""
+    yielded: list[int] = []
+
+    def stream(*args, **kwargs):
+        for i in range(n_tokens):
+            clock.now += seconds_per_token
+            resp = MagicMock()
+            resp.text = f"tok{i} "
+            yielded.append(i)
+            yield resp
+
+    return stream, yielded
+
+
+def _inprocess_patches(clock, stream_fn):
+    """Common patch set for the in-process (oMLX-down) generate() path."""
+    return (
+        patch("datum.local_llm._omlx_available", return_value=False),
+        patch("datum.local_llm.load_model", return_value=(MagicMock(), MagicMock())),
+        patch(
+            "datum.local_llm.check_context_budget",
+            return_value={"fits": True, "prompt_tokens": 5, "window": 131072},
+        ),
+        patch("datum.local_llm.load_config", return_value={}),
+        patch("datum.local_llm._log_metric"),
+        patch("mlx_lm.stream_generate", stream_fn),
+        patch("time.monotonic", clock),
+    )
+
+
+def test_inprocess_deadline_exceeded_midstream_truncates_and_stops():
+    """Deadline blown mid-stream → stops promptly, returns partial text
+    flagged as truncated via abort_reason, escalated=True."""
+    import contextlib
+
+    from datum.local_llm import generate
+
+    clock = _TickingClock(start=100.0)
+    # 10 tokens at 2s each; budget 5s → deadline t=105 trips on token 3 (t=106).
+    stream_fn, yielded = _fake_stream(clock, n_tokens=10, seconds_per_token=2.0)
+
+    with contextlib.ExitStack() as stack:
+        for p in _inprocess_patches(clock, stream_fn):
+            stack.enter_context(p)
+        result = generate("hello", model_id="test-model", max_time_s=5.0)
+
+    assert result["abort_reason"] == "max_time_exceeded"
+    assert result["escalated"] is True
+    # Partial output produced so far is returned, not discarded.
+    assert result["text"] == "tok0 tok1 tok2 "
+    assert result["tokens"] == 3
+    # Stops promptly: the stream was NOT consumed to exhaustion.
+    assert len(yielded) == 3
+    assert result["time_s"] == 6.0
+
+
+def test_inprocess_generous_budget_returns_full_output():
+    """Budget never exceeded → full output, no abort, not escalated."""
+    import contextlib
+
+    from datum.local_llm import generate
+
+    clock = _TickingClock(start=100.0)
+    stream_fn, yielded = _fake_stream(clock, n_tokens=5, seconds_per_token=1.0)
+
+    with contextlib.ExitStack() as stack:
+        for p in _inprocess_patches(clock, stream_fn):
+            stack.enter_context(p)
+        result = generate("hello", model_id="test-model", max_time_s=1000.0)
+
+    assert result["abort_reason"] is None
+    assert result["escalated"] is False
+    assert result["text"] == "tok0 tok1 tok2 tok3 tok4 "
+    assert result["tokens"] == 5
+    assert len(yielded) == 5
+
+
+def test_inprocess_no_max_time_means_no_deadline():
+    """max_time_s=None → no deadline enforcement, however slow the stream."""
+    import contextlib
+
+    from datum.local_llm import generate
+
+    clock = _TickingClock(start=100.0)
+    # Absurdly slow stream: 1000s per token. Without a budget it must run out.
+    stream_fn, yielded = _fake_stream(clock, n_tokens=5, seconds_per_token=1000.0)
+
+    with contextlib.ExitStack() as stack:
+        for p in _inprocess_patches(clock, stream_fn):
+            stack.enter_context(p)
+        result = generate("hello", model_id="test-model", max_time_s=None)
+
+    assert result["abort_reason"] is None
+    assert result["escalated"] is False
+    assert result["tokens"] == 5
+    assert len(yielded) == 5
+
+
 # ── Issue #65 item 3: _omlx_available logs a warning on silent fallback ─────
 # Server configured but unreachable must emit a structured warning (DPS-204)
 # instead of silently returning False and falling back to a local MLX load.
