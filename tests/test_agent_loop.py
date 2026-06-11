@@ -1208,6 +1208,49 @@ def test_load_project_rules_captures_numbered_list_items(tmp_path):
     assert "10. Keep diffs minimal" in rules
 
 
+def test_load_project_rules_deprioritizes_headers_below_rules(tmp_path):
+    """#60: '#' headers are context, not rules — every bullet/numbered line
+    wins cap budget before any header line is admitted."""
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text(
+        "# Title\n- first rule\n## Section\n1. numbered rule\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "first rule" in rules
+    assert "1. numbered rule" in rules
+    # Headers survive (de-prioritized, not dropped) ...
+    assert "# Title" in rules
+    assert "## Section" in rules
+    # ... but only AFTER every real rule line.
+    assert rules.index("# Title") > rules.index("1. numbered rule")
+
+
+def test_load_project_rules_headers_cannot_crowd_out_rules_at_cap(tmp_path):
+    """#60: a doc-heavy file whose headers alone exceed the 2000-char cap
+    must still surface the real rules buried at the bottom of the file."""
+    from datum.agent_loop import load_project_rules
+
+    headers = "\n".join(f"## Section {i} " + "y" * 80 for i in range(40))
+    (tmp_path / "CLAUDE.md").write_text(
+        headers + "\n- buried real rule: never push to main\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "buried real rule: never push to main" in rules
+    assert len(rules) <= 2000
+
+
+def test_load_project_rules_header_only_file_still_distills(tmp_path):
+    """#60: a rules file with ONLY headers still distills to those headers,
+    so the mid-episode tampering pin keeps covering header-only files."""
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text("# Only\n## Headers\n")
+    rules = load_project_rules(tmp_path)
+    assert "# Only" in rules
+    assert "## Headers" in rules
+
+
 def test_system_prompt_excludes_rules_text_names_salted_tag():
     """S0 Change 2: project rules are demoted OUT of the system prompt. The
     system prompt only names the per-episode salted tag and declares that
