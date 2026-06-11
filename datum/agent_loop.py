@@ -45,46 +45,74 @@ from datum.prompt_sanitizer import (
 )
 from datum.schemas import AgentDecision
 from datum.structural_fingerprint import collapse_fingerprint_groups
+from datum.tool_risk import ToolRiskClass, classify_tool, retry_safe  # noqa: F401
 
-# Tool catalog: name → (args signature shown to the model, one-line description)
-TOOL_CATALOG: dict[str, tuple[str, str]] = {
-    "read_file": ('{"path": "<file>"}', "read a whole file"),
+# Tool catalog: name → (args signature, one-line description, ToolRiskClass)
+# The third element feeds the retry/no-progress guard (#77): read_only and
+# compute_only tools are retry-safe; write_local, process_execution, and
+# destructive tools must never be auto-retried.
+TOOL_CATALOG: dict[str, tuple[str, str, ToolRiskClass]] = {
+    "read_file": (
+        '{"path": "<file>"}',
+        "read a whole file",
+        ToolRiskClass.read_only,
+    ),
     "read_file_range": (
         '{"path": "<file>", "start_line": 1, "end_line": 50}',
         "read a line range",
+        ToolRiskClass.read_only,
     ),
-    "list_dir": ('{"path": "."}', "list a directory"),
+    "list_dir": (
+        '{"path": "."}',
+        "list a directory",
+        ToolRiskClass.read_only,
+    ),
     "grep_search": (
         '{"pattern": "<regex>", "path": ".", "include": "*.py"}',
         "search file contents",
+        ToolRiskClass.read_only,
     ),
     "run_command": (
         '{"command": "pytest -q"}',
         "run one allowlisted command (no shell, no ;/&&/| chaining)",
+        ToolRiskClass.process_execution,
     ),
-    "find_callers": ('{"symbol": "<name>"}', "find callers of a symbol"),
+    "find_callers": (
+        '{"symbol": "<name>"}',
+        "find callers of a symbol",
+        ToolRiskClass.read_only,
+    ),
     "filter_gitnexus_output": (
         '{"query": "<text>"}',
         "filter GitNexus graph output",
+        ToolRiskClass.read_only,
     ),
     "write_to_file": (
         '{"path": "<file>"}',
         "create/overwrite a file — put the FULL content in a fenced code block",
+        ToolRiskClass.write_local,
     ),
     "replace_file_content": (
         '{"path": "<file>", "old_text": "<exact>", "new_text": "<exact>"}',
         "exact text replacement",
+        ToolRiskClass.write_local,
     ),
     "multi_replace_file_content": (
         '{"path": "<file>", "replacements": [{"old_text": "...", "new_text": "..."}]}',
         "several exact replacements",
+        ToolRiskClass.write_local,
     ),
     # #70: planning tools — persist to .datum/todos.json under the working repo
-    "read_todos": ("{}", "read your todo list to check remaining steps"),
+    "read_todos": (
+        "{}",
+        "read your todo list to check remaining steps",
+        ToolRiskClass.read_only,
+    ),
     "write_todos": (
         '{"items": [{"task": "<step>", "done": false}]}',
         "save your todo list — break a multi-step task into steps, "
         "mark each done as you finish it",
+        ToolRiskClass.write_local,
     ),
 }
 
@@ -686,7 +714,7 @@ def load_project_rules(repo_dir) -> str:
 def _catalog_lines(allowed_tools: list[str]) -> str:
     lines = []
     for name in allowed_tools:
-        sig, desc = TOOL_CATALOG.get(name, ("{}", ""))
+        sig, desc, _risk = TOOL_CATALOG.get(name, ("{}", "", ToolRiskClass.destructive))
         lines.append(f"  {name} {sig} — {desc}")
     return "\n".join(lines)
 
