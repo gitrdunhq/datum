@@ -899,6 +899,34 @@ def test_load_project_rules_caps_length(tmp_path):
     assert len(load_project_rules(tmp_path)) <= 2000
 
 
+def test_load_project_rules_ignores_digit_leading_prose(tmp_path):
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text(
+        "3 devs maintain this repo\n"
+        "2026 roadmap is ambitious\n"
+        "64 GB machines are required\n"
+        "- real bullet rule\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "3 devs maintain this repo" not in rules
+    assert "2026 roadmap is ambitious" not in rules
+    assert "64 GB machines are required" not in rules
+    assert "real bullet rule" in rules
+
+
+def test_load_project_rules_captures_numbered_list_items(tmp_path):
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text(
+        "1. Always run tests\n" "2) Never push to main\n" "10. Keep diffs minimal\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "1. Always run tests" in rules
+    assert "2) Never push to main" in rules
+    assert "10. Keep diffs minimal" in rules
+
+
 def test_system_prompt_includes_project_rules():
     system = _build_system_prompt(["read_file"], extra_rules="- project rule X")
     assert "project rule X" in system
