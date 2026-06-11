@@ -2,11 +2,8 @@
 """Seed CURRENT_STATE.md and ROADMAP.md if missing."""
 
 import json
-import sys
 from pathlib import Path
 
-# Fix relative imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from datum.path_utils import templates_dir
 
 
