@@ -144,6 +144,38 @@ def check_questions_answered(content: str) -> list[str]:
     return errors
 
 
+def check_open_questions(spec_content: str) -> list[str]:
+    """Scan the Open Questions section body for unresolved markers (#57).
+
+    The '[ ]'/TBD/TODO scan is scoped to the Open Questions section only, so
+    checkbox-style acceptance criteria elsewhere in the SPEC don't trip the
+    refine gate. Returns a list of error strings.
+    """
+    heading = re.search(
+        r"^(#{2,6})\s+(?:\d+\.\s+)?Open Questions\b.*$",
+        spec_content,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if not heading:
+        return []
+
+    level = len(heading.group(1))
+    body_start = heading.end()
+    # Section ends at the next heading of the same or higher level
+    next_heading = re.search(
+        rf"^#{{2,{level}}}\s", spec_content[body_start:], re.MULTILINE
+    )
+    body = (
+        spec_content[body_start : body_start + next_heading.start()]
+        if next_heading
+        else spec_content[body_start:]
+    )
+
+    if "[ ]" in body or "TBD" in body or "TODO" in body:
+        return ["SPEC.md Open Questions section has unresolved items ([ ]/TBD/TODO)"]
+    return []
+
+
 def check_assumption_audit(
     spec_content: str,
     questions_content: str | None,
@@ -288,10 +320,10 @@ def gate_refine(yolo: bool, config: dict) -> None:
     if missing:
         fail(f"SPEC.md missing sections: {missing}")
 
-    # Check for open questions
-    if re.search(r"open question", content, re.IGNORECASE):
-        if "[ ]" in content or "TBD" in content or "TODO" in content:
-            fail("SPEC.md has unresolved open questions or TODOs")
+    # Check for unresolved open questions (scoped to the section body, #57)
+    oq_errors = check_open_questions(content)
+    if oq_errors:
+        fail(oq_errors[0])
 
     # Check QUESTIONS.md for unanswered entries
     questions_path = resolve_artifact("QUESTIONS.md")

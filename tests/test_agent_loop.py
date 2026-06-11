@@ -51,6 +51,63 @@ def test_extract_fenced_content_preserves_interior_blank_lines():
     )
 
 
+def test_extract_fenced_content_docstring_on_info_line():
+    """Defect-1 regression: model places opening triple-quote on the fence's
+    info-string line (```python \"\"\").  With standard Markdown semantics the
+    info line is discarded, so the triple-quote is lost.  The ast syntax gate
+    catches this as a SyntaxError BEFORE it lands on disk — the model gets
+    feedback and re-emits with the content on the next line."""
+    thought = '```python """\nTest cases for strip_special_tokens function."""\n```'
+    content = extract_fenced_content(thought)
+    assert content is not None
+    # Standard semantics: everything on the opening fence line is info string
+    # and discarded.  The content starts on the NEXT line.
+    assert content == 'Test cases for strip_special_tokens function."""\n'
+
+
+def test_extract_fenced_content_info_line_discarded():
+    """Standard Markdown: everything after ``` on the opening line is the
+    info string and is discarded.  Only content starting from the next line
+    is captured."""
+    thought = "```python x = 1\ny = 2\n```"
+    content = extract_fenced_content(thought)
+    assert content is not None
+    # "x = 1" was on the info line — discarded
+    assert content == "y = 2\n"
+
+
+def test_extract_fenced_content_filename_on_info_line():
+    """Run-5 regression: model labels a fence ```python tests/test_file.py
+    and the filename must NOT leak into captured content — standard Markdown
+    semantics discards the entire info-string line.  Without this fix, the
+    filename became line 1, triggering a SyntaxError that the model could
+    not diagnose (its own emission was valid)."""
+    file_body = (
+        '"""Test cases for strip_special_tokens function."""\n\n'
+        "from datum.prompt_sanitizer import strip_special_tokens\n\n\n"
+        "def test_strips_im_start_end():\n"
+        '    assert strip_special_tokens("hello world") == "hello world"\n'
+    )
+    thought = "```python tests/test_prompt_sanitizer.py\n" + file_body + "```"
+    content = extract_fenced_content(thought)
+    assert content is not None
+    # The filename must NOT appear in the captured content
+    assert "tests/test_prompt_sanitizer.py" not in content
+    # The actual file body must be valid Python
+    import ast
+
+    ast.parse(content)  # must not raise
+
+
+def test_extract_fenced_content_unbalanced_odd_fences():
+    """Odd number of ``` markers — should still extract what it can."""
+    thought = "```python\nfirst block\n```\nextra text\n```\n"
+    content = extract_fenced_content(thought)
+    # first block should be captured (the trailing ``` has no closer)
+    assert content is not None
+    assert "first block" in content
+
+
 # ── Think-tag stripping (Qwen3 thinking mode) ────────────────────────────────
 
 
@@ -66,6 +123,24 @@ def test_strip_think_tags_no_tags_passthrough():
 def test_strip_think_tags_multiline():
     text = "<think>\nline1\nline2\n</think>\nVisible."
     assert _strip_think_tags(text).strip() == "Visible."
+
+
+def test_strip_think_tags_preserves_literals_in_file_content():
+    """Only the LEADING reasoning block is stripped. <think> literals later in
+    the response are content — e.g. a file that processes think tags. Stripping
+    them corrupted the S0.1 sanitizer in transit and looped the GREEN phase."""
+    thought = (
+        "REASONING: add the tag patterns\n"
+        "FILE:\n"
+        '```python\ntags = [r"<think>", r"</think>"]\n```\n'
+        'NEXT: write_to_file {"path": "datum/prompt_sanitizer.py"}'
+    )
+    assert _strip_think_tags(thought) == thought
+
+
+def test_strip_think_tags_leading_block_then_literals_kept():
+    text = '<think>real reasoning</think>keep r"<think>" this'
+    assert _strip_think_tags(text) == 'keep r"<think>" this'
 
 
 # ── Arg assembly (Python boundary for write content) ─────────────────────────
@@ -221,7 +296,7 @@ def _mk_think(texts):
     """Return a fake think() yielding canned thoughts in order."""
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         return {"text": next(it), "tokens": 10, "time_s": 0.1}
 
     return fake
@@ -230,7 +305,7 @@ def _mk_think(texts):
 def _mk_decide(decisions):
     it = iter(decisions)
 
-    def fake(prompt, model_id):
+    def fake(prompt, model_id, max_time_s=None):
         return {"data": next(it), "tokens": 5, "time_s": 0.05}
 
     return fake
@@ -360,6 +435,119 @@ def test_agent_loop_repeated_identical_call_escalates():
 
     assert result["escalated"] is True
     assert result["reason"] == "loop_detected"
+
+
+def test_write_echo_over_cap_carries_truncation_notice():
+    """A successful write larger than the echo cap must tell the model the
+    FULL file landed on disk — a silently cut-off echo makes literal models
+    (2507) conclude the write failed and rewrite forever (S0.1 loop)."""
+    long_content = "# pad line\n" * 600  # 6600 chars, valid Python, lint-clean
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "big.py", "content": long_content},
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "big.py", "bytes_written": 6600, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert "echo truncated" in obs
+    assert f"{len(long_content)} chars" in obs
+    assert "Do NOT rewrite" in obs
+
+
+def test_write_echo_under_cap_has_no_truncation_notice():
+    short_content = "x = 1\n"
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "small.py", "content": short_content},
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "small.py", "bytes_written": 6, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert "echo truncated" not in obs
+    assert short_content in obs
+
+
+def test_write_echo_realistic_test_file_is_echoed_complete():
+    """A realistic generated-test-file (~2.5KB) must appear COMPLETE in the
+    observation with no truncation notice. Live S0.2a runs proved a 2380-byte
+    file over the old 1500-char cap made the model rewrite the file until
+    loop detection fired, even though the file on disk was perfect."""
+    medium_content = "# pad line\n" * 230  # 2530 chars, valid Python, lint-clean
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {
+                            "path": "test_s02a.py",
+                            "content": medium_content,
+                        },
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "test_s02a.py", "bytes_written": 2530, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert medium_content in obs
+    assert "echo truncated" not in obs
 
 
 def test_agent_loop_write_tool_missing_content_feeds_error_back():
@@ -575,7 +763,7 @@ def test_agent_loop_write_observation_echoes_content(tmp_path, monkeypatch):
     with (
         patch(
             "datum.agent_loop._think",
-            _mk_think(["write\n```\nthe payload\n```", "done"]),
+            _mk_think(["write\n```\nthe_payload = True\n```", "done"]),
         ),
         patch(
             "datum.agent_loop._decide",
@@ -596,15 +784,122 @@ def test_agent_loop_write_observation_echoes_content(tmp_path, monkeypatch):
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
 
-    assert "the payload" in result["steps"][0]["observation"]
+    assert "the_payload" in result["steps"][0]["observation"]
+
+
+# ── Idempotent-write short-circuit (Fix 3, run-5 loop breaker) ──────────────
+
+
+def test_idempotent_write_skips_and_warns_no_rewrite(tmp_path, monkeypatch):
+    """Run-5 fix: when write_to_file content is byte-identical to what is
+    already on disk, the write is skipped and the observation tells the model
+    to stop rewriting.  This deterministically breaks the identical-rewrite
+    loop before the loop detector has to fire."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "stable.py"
+    existing_content = "def test_a():\n    pass\n"
+    existing.write_text(existing_content)
+    executed = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\n" + existing_content + "```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "stable.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "stable.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Only the read should have been executed — the write was short-circuited
+    assert len(executed) == 1
+    assert executed[0]["tool_name"] == "read_file"
+
+    # The write step observation must say the write was skipped
+    write_obs = result["steps"][1]["observation"]
+    assert "already contains exactly this content" in write_obs
+    assert (
+        "do NOT write it again" in write_obs.lower()
+        or "DO NOT write it again" in write_obs
+    )
+
+    # The file must still count as read (path in read_paths) so further
+    # writes are not blocked by the read-before-write guard
+    assert result["escalated"] is False
+
+
+def test_idempotent_write_does_not_trigger_for_different_content(tmp_path, monkeypatch):
+    """When the content differs from what is on disk, the write proceeds normally."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "changing.py"
+    existing.write_text("x = 1\n")
+    executed = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\nx = 2\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "changing.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "changing.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Both read and write should have been executed
+    assert len(executed) == 2
+    assert executed[1]["tool_name"] == "write_to_file"
+    assert "already contains" not in result["steps"][1]["observation"]
 
 
 # ── Syntax lint gate on writes ───────────────────────────────────────────────
 
 
-def test_agent_loop_write_with_syntax_error_warns(tmp_path, monkeypatch):
-    """Writing a .py file with a syntax error appends a warning observation."""
+def test_agent_loop_write_with_syntax_error_rejects(tmp_path, monkeypatch):
+    """Defect-2a: writing a .py file with a SyntaxError must REJECT the write
+    (tool not executed, file not written) and return an error observation
+    with the line number and error message so the model can fix it."""
     monkeypatch.chdir(tmp_path)
+    executed = []
 
     with (
         patch(
@@ -625,12 +920,74 @@ def test_agent_loop_write_with_syntax_error_warns(tmp_path, monkeypatch):
             ),
         ),
         patch(
-            "datum.agent_loop._execute_tool", lambda tc, cfg: ('{"ok": true}', False)
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
         ),
     ):
         result = agent_loop("task", BASE_CFG, phase="act_red")
 
-    assert "syntax error" in result["steps"][0]["observation"].lower()
+    # Write must have been rejected — tool never executed
+    assert executed == []
+    obs = result["steps"][0]["observation"]
+    assert "syntax" in obs.lower()
+    assert "NOT written" in obs or "not written" in obs.lower()
+    # Must tell the model the line number
+    assert "line" in obs.lower()
+
+
+def test_syntax_gate_shows_captured_line_1(tmp_path, monkeypatch):
+    """Run-5 fix: when the syntax gate rejects at line 1, the observation must
+    include a repr of captured line 1 so a model whose own emission was valid
+    can see what the extractor actually captured and diagnose the mismatch."""
+    monkeypatch.chdir(tmp_path)
+    executed = []
+
+    # Simulate content where a leaked filename concatenated with the
+    # docstring creates a SyntaxError at line 1 — this is the exact
+    # shape of the run-5 defect when the old \w* regex stopped after
+    # "python" and the filename ran directly into the triple-quote.
+    bad_content = (
+        'tests/test_prompt_sanitizer.py"""Test cases."""\n' "def test_a():\n    pass\n"
+    )
+    # Confirm it really is a SyntaxError at line 1
+    import ast as _ast
+
+    try:
+        _ast.parse(bad_content)
+        raise AssertionError("bad_content should not parse")
+    except SyntaxError as _e:
+        assert _e.lineno == 1
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["write\n```\n" + bad_content + "```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "bad.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: executed.append(tc) or ('{"ok": true}', False),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    assert executed == []
+    obs = result["steps"][0]["observation"]
+    # The observation must show what captured line 1 actually was
+    assert "Captured line 1" in obs
+    assert "test_prompt_sanitizer" in obs
 
 
 def test_agent_loop_write_valid_python_no_warning(tmp_path, monkeypatch):
@@ -809,6 +1166,34 @@ def test_load_project_rules_caps_length(tmp_path):
     assert len(load_project_rules(tmp_path)) <= 2000
 
 
+def test_load_project_rules_ignores_digit_leading_prose(tmp_path):
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text(
+        "3 devs maintain this repo\n"
+        "2026 roadmap is ambitious\n"
+        "64 GB machines are required\n"
+        "- real bullet rule\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "3 devs maintain this repo" not in rules
+    assert "2026 roadmap is ambitious" not in rules
+    assert "64 GB machines are required" not in rules
+    assert "real bullet rule" in rules
+
+
+def test_load_project_rules_captures_numbered_list_items(tmp_path):
+    from datum.agent_loop import load_project_rules
+
+    (tmp_path / "AGENTS.md").write_text(
+        "1. Always run tests\n" "2) Never push to main\n" "10. Keep diffs minimal\n"
+    )
+    rules = load_project_rules(tmp_path)
+    assert "1. Always run tests" in rules
+    assert "2) Never push to main" in rules
+    assert "10. Keep diffs minimal" in rules
+
+
 def test_system_prompt_includes_project_rules():
     system = _build_system_prompt(["read_file"], extra_rules="- project rule X")
     assert "project rule X" in system
@@ -819,7 +1204,9 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     captured = {}
 
-    def spy_think(prompt, model_id, max_tokens, system=None, sampling=None):
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
         captured["system"] = system
         return {"text": "all done", "tokens": 1, "time_s": 0}
 
@@ -842,7 +1229,7 @@ def test_agent_loop_passes_extra_rules_to_system(tmp_path, monkeypatch):
 def _fat_think(texts, prompt_tokens):
     it = iter(texts)
 
-    def fake(prompt, model_id, max_tokens, system=None, sampling=None):
+    def fake(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         return {
             "text": next(it),
             "tokens": 10,
@@ -957,7 +1344,7 @@ def test_compact_history_digests_steps():
 def test_agent_loop_model_exception_returns_structured_failure():
     """HIGH: a crashing model call must yield escalated=True, not a traceback."""
 
-    def boom(prompt, model_id, max_tokens, system=None, sampling=None):
+    def boom(prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None):
         raise OSError("oMLX connection refused")
 
     with patch("datum.agent_loop._think", boom):
@@ -969,7 +1356,7 @@ def test_agent_loop_model_exception_returns_structured_failure():
 
 
 def test_agent_loop_decide_exception_returns_structured_failure():
-    def boom(prompt, model_id):
+    def boom(prompt, model_id, max_time_s=None):
         raise ValueError("Unterminated string starting at: line 1")
 
     with (
@@ -1077,18 +1464,90 @@ def test_truncated_read_still_allows_surgical_replace(tmp_path, monkeypatch):
     assert any(c["tool_name"] == "replace_file_content" for c in executed)
 
 
+def test_read_file_in_deadlock_band_allows_write(tmp_path, monkeypatch):
+    """A file between the old read cap (3000) and write echo cap (6000) must
+    NOT land in partial_read_paths — it must be fully readable and therefore
+    writable.  Before this fix, read_file observations were truncated at
+    MAX_RECENT_OBSERVATION_CHARS (3000) which marked the path partial, while
+    the write echo used MAX_WRITE_ECHO_CHARS (6000). Files in the 3000-6000
+    band deadlocked: the model could not rewrite them because they were
+    marked partial, and the corrective prompt demanded a full rewrite."""
+    monkeypatch.chdir(tmp_path)
+    # 4000 chars: squarely in the old deadlock band (> 3000, < 6000)
+    file_content = "x = 1\n" * 667  # 6 chars * 667 = 4002 chars
+    (tmp_path / "mid.py").write_text(file_content)
+    executed = []
+
+    def exec_read(tool_call, mt_config):
+        executed.append(tool_call)
+        if tool_call["tool_name"] == "read_file":
+            # Tool itself returns the full content; truncation is internal
+            return file_content, False
+        return '{"ok": true}', False
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read it", "write\n```\ny = 2\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "mid.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "mid.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", exec_read),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # The write must have been executed, not blocked
+    write_calls = [c for c in executed if c["tool_name"] == "write_to_file"]
+    assert len(write_calls) == 1, (
+        f"write was blocked for a file in the deadlock band; "
+        f"observation: {result['steps'][1]['observation']}"
+    )
+
+
+def test_read_file_uses_shared_cap_not_old_observation_cap():
+    """The read_file observation must use the same cap as write echoes
+    (MAX_FILE_ECHO_CHARS), not the generic MAX_RECENT_OBSERVATION_CHARS.
+    Verify the constant exists and is used for read_file truncation."""
+    from datum.agent_loop import MAX_FILE_ECHO_CHARS, MAX_RECENT_OBSERVATION_CHARS
+
+    # The shared cap must be >= old write echo cap and > old observation cap
+    assert MAX_FILE_ECHO_CHARS >= 6000
+    assert MAX_FILE_ECHO_CHARS > MAX_RECENT_OBSERVATION_CHARS
+
+
 def test_unclosed_think_tag_stripped_and_turn_skipped():
     """MEDIUM: truncated <think> must not leak stale fenced blocks."""
     from datum.agent_loop import _strip_think_tags
 
     assert _strip_think_tags("<think>old file:\n```\nold = 1\n```") == ""
-    assert _strip_think_tags("<think>a</think>keep<think>unclosed") == "keep"
+    # A mid-response <think> is content, not reasoning — only the leading
+    # block is stripped (see test_strip_think_tags_preserves_literals_*).
+    assert (
+        _strip_think_tags("<think>a</think>keep<think>unclosed")
+        == "keep<think>unclosed"
+    )
 
 
 def test_agent_loop_empty_thought_feeds_error_not_decide():
     decide_calls = []
 
-    def spy_decide(prompt, model_id):
+    def spy_decide(prompt, model_id, max_time_s=None):
         decide_calls.append(prompt)
         return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
 
@@ -1134,3 +1593,647 @@ def test_write_tool_missing_path_gets_clear_error(tmp_path, monkeypatch):
     obs = result["steps"][0]["observation"]
     assert "path" in obs.lower()
     assert "exists but you have not read" not in obs
+
+
+# ── Budget-capped model calls (#61) ──────────────────────────────────────────
+# The wall-clock deadline was only checked between steps: a single THINK call
+# could hang for the full HTTP request timeout (request_timeout_s, default
+# 300s) past the loop budget. Each model call now carries max_time_s capped
+# at the remaining budget, and a call is never issued below a sane floor.
+
+
+def test_think_max_time_is_remaining_budget_plus_slack():
+    """THINK and DECIDE receive max_time_s = remaining loop budget + slack,
+    shrinking as wall-clock time drains."""
+    import pytest
+
+    from datum.agent_loop import BUDGET_SLACK_S
+
+    captured = {}
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        captured["think_max_time_s"] = max_time_s
+        return {"text": "all done", "tokens": 1}
+
+    def spy_decide(prompt, model_id, max_time_s=None):
+        captured["decide_max_time_s"] = max_time_s
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch("datum.agent_loop._decide", spy_decide),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        # start=0; remaining check at t=10 → 50 left; decide at t=30 → 30 left
+        mock_time.monotonic.side_effect = [0.0, 10.0, 30.0, 40.0]
+        cfg = dict(BASE_CFG, timeout_s=60)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert result["escalated"] is False
+    assert captured["think_max_time_s"] == pytest.approx(50.0 + BUDGET_SLACK_S)
+    assert captured["decide_max_time_s"] == pytest.approx(30.0 + BUDGET_SLACK_S)
+
+
+def test_think_not_called_when_budget_below_floor_midrun():
+    """When the remaining budget drops below the floor mid-run, the loop
+    escalates with the existing timeout reason instead of issuing a THINK
+    that could overrun by up to the HTTP timeout."""
+    think_calls = []
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        think_calls.append(max_time_s)
+        return {"text": "go", "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    }
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("out", False)),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        # iter1 at t=1 (59 left, call issued); iter2 at t=57 (3 left < floor)
+        mock_time.monotonic.side_effect = [0.0, 1.0, 2.0, 57.0, 58.0]
+        cfg = dict(BASE_CFG, timeout_s=60)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert len(think_calls) == 1
+    assert result["escalated"] is True
+    assert result["reason"] == "timeout_exceeded"
+    assert result["steps_taken"] == 1
+
+
+def test_budget_exhausted_before_first_think_makes_no_call():
+    """Negative path: budget already exhausted → no model call at all,
+    escalates with the existing timeout reason."""
+    think_calls = []
+    decide_calls = []
+
+    def spy_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        think_calls.append(max_time_s)
+        return {"text": "go", "tokens": 1}
+
+    def spy_decide(prompt, model_id, max_time_s=None):
+        decide_calls.append(max_time_s)
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with (
+        patch("datum.agent_loop._think", spy_think),
+        patch("datum.agent_loop._decide", spy_decide),
+        patch("datum.agent_loop.time") as mock_time,
+    ):
+        mock_time.monotonic.side_effect = [0.0, 100.0, 100.0]
+        cfg = dict(BASE_CFG, timeout_s=50)
+        result = agent_loop("task", cfg, phase="act_red")
+
+    assert think_calls == []
+    assert decide_calls == []
+    assert result["escalated"] is True
+    assert result["reason"] == "timeout_exceeded"
+    assert result["steps_taken"] == 0
+
+
+def test_think_threads_max_time_s_to_generate():
+    """_think forwards max_time_s to generate (same threading as sampling)."""
+    captured = {}
+
+    def fake_generate(prompt, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"text": "ok", "tokens": 1}
+
+    with patch("datum.agent_loop.generate", fake_generate):
+        _think("p", "model", 2048, "sys", max_time_s=37.5)
+
+    assert captured["max_time_s"] == 37.5
+
+
+def test_decide_threads_max_time_s_to_structured():
+    """_decide forwards max_time_s to structured."""
+    from datum.agent_loop import _decide
+
+    captured = {}
+
+    def fake_structured(prompt, schema, model_id, **kwargs):
+        captured.update(kwargs)
+        return {"data": {"action": "done", "summary": "ok"}, "tokens": 1}
+
+    with patch("datum.agent_loop.structured", fake_structured):
+        _decide("p", "model", max_time_s=12.5)
+
+    assert captured["max_time_s"] == 12.5
+
+
+# ── Overwrite-loss warning (Defect-3: clobbered test file) ──────────────────
+
+
+def test_overwrite_removing_defs_warns(tmp_path, monkeypatch):
+    """When write_to_file overwrites a .py file and removes top-level
+    definitions, the observation must include a WARNING naming what was lost."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "test_thing.py"
+    existing.write_text(
+        "def test_a():\n    pass\n\n"
+        "def test_b():\n    pass\n\n"
+        "def test_c():\n    pass\n"
+    )
+
+    # New content only has test_c — a and b removed
+    new_content = "def test_c():\n    pass\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "test_thing.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "test_thing.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "test_thing.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    # The write step's observation must warn about the removed definitions
+    write_obs = steps[1]["observation"]
+    assert "WARNING" in write_obs
+    assert "REMOVED" in write_obs
+    assert "test_a" in write_obs
+    assert "test_b" in write_obs
+
+
+def test_overwrite_keeping_all_defs_no_warning(tmp_path, monkeypatch):
+    """When an overwrite preserves all definitions, no removal warning."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "calc.py"
+    existing.write_text("def add(a, b):\n    return a + b\n")
+
+    new_content = (
+        "def add(a, b):\n    return a + b\n\ndef mul(a, b):\n    return a * b\n"
+    )
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "calc.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "calc.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "calc.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[1]["observation"]
+    assert "REMOVED" not in write_obs
+
+
+def test_overwrite_unparseable_old_skips_comparison(tmp_path, monkeypatch):
+    """If the old file doesn't parse, the comparison is skipped (no crash)."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "broken.py"
+    existing.write_text("def broken(:\n    pass\n")
+
+    new_content = "def fixed():\n    pass\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "broken.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "broken.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "broken.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    # No crash, no REMOVED warning
+    write_obs = steps[1]["observation"]
+    assert "REMOVED" not in write_obs
+
+
+def test_overwrite_loss_warning_truncates_long_name_list(tmp_path, monkeypatch):
+    """When more than 10 defs are removed, the name list is truncated."""
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "big.py"
+    defs = "\n".join(f"def func_{i}():\n    pass\n" for i in range(15))
+    existing.write_text(defs)
+
+    new_content = "x = 1\n"
+    steps = []
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["read", "write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "big.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                (
+                    existing.read_text(),
+                    False,
+                )
+                if tc["tool_name"] == "read_file"
+                else ('{"path": "big.py", "ok": true}', False)
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[1]["observation"]
+    assert "WARNING" in write_obs
+    assert "+5 more" in write_obs
+
+
+def test_overwrite_new_file_no_warning(tmp_path, monkeypatch):
+    """Writing a brand-new .py file (no old content) produces no warning."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    new_content = "def test_new():\n    pass\n"
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think(["write\n```\n" + new_content + "\n```", "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "new_test.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: ('{"path": "new_test.py", "ok": true}', False),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    write_obs = steps[0]["observation"]
+    assert "REMOVED" not in write_obs
+
+
+# ── Per-step transcript logging ──────────────────────────────────────────────
+
+
+def test_transcript_file_created_with_per_step_fields(tmp_path, monkeypatch):
+    """Change 1: the agent loop writes a JSONL transcript under
+    .datum/transcripts/ with one line per step containing step index, episode
+    name, raw think text (pre-strip), raw decide, tool_name, tool_args
+    (content truncated), and observation (truncated)."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+
+    # We need to capture the raw think output BEFORE think-tag stripping.
+    raw_think = "<think>internal</think>REASONING: read it\nFILE: NONE\nNEXT: read_file"
+
+    def fake_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        return {"text": raw_think, "tokens": 10}
+
+    with (
+        patch("datum.agent_loop._think", fake_think),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ("file contents", False)
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Find the transcript file
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    assert transcript_dir.is_dir(), ".datum/transcripts/ must be created"
+    jsonl_files = list(transcript_dir.glob("*-act_red.jsonl"))
+    assert len(jsonl_files) == 1, f"expected 1 transcript, got {jsonl_files}"
+
+    lines = jsonl_files[0].read_text().strip().split("\n")
+    assert len(lines) >= 1  # at least the tool step
+
+    record = _json.loads(lines[0])
+    assert record["step"] == 0
+    assert record["episode"] == "act_red"
+    assert "<think>" in record["think_raw"]  # pre-strip text
+    assert "tool_name" in record
+    assert record["tool_name"] == "read_file"
+    assert "tool_args" in record
+    assert "observation" in record
+
+
+def test_transcript_truncates_content_and_observation(tmp_path, monkeypatch):
+    """Transcript content field truncated ~500 chars, observation ~1000 chars."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+
+    long_content = "x" * 2000
+    long_thought = f"write it\n```\n{long_content}\n```"
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think([long_thought, "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "new.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: ('{"ok": true}', False),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_green")
+
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    jsonl_files = list(transcript_dir.glob("*-act_green.jsonl"))
+    assert len(jsonl_files) == 1
+
+    lines = jsonl_files[0].read_text().strip().split("\n")
+    record = _json.loads(lines[0])
+
+    # content must be truncated to ~500
+    args = record["tool_args"]
+    if "content" in args:
+        assert len(args["content"]) <= 550
+    # observation must be truncated to ~1000
+    assert len(record["observation"]) <= 1100
+
+
+def test_transcript_logging_never_crashes_loop(tmp_path, monkeypatch):
+    """Transcript logging failure must not crash the agent loop — silently
+    continues (OSError wrapped in try/except)."""
+    monkeypatch.chdir(tmp_path)
+    # Make .datum/transcripts a file so mkdir fails
+    datum_dir = tmp_path / ".datum"
+    datum_dir.mkdir()
+    transcripts_blocker = datum_dir / "transcripts"
+    transcripts_blocker.write_text("block")
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "ok"}]),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Loop completed successfully despite transcript write failure
+    assert result["escalated"] is False
+    assert result["result"]["summary"] == "ok"
+
+
+# ── Repeated-no-progress breaker ─────────────────────────────────────────────
+
+
+def test_no_progress_breaker_injects_corrective_before_loop_detect(
+    tmp_path, monkeypatch
+):
+    """Change 2: when (tool_name, tool_args) AND observation repeat identically
+    on consecutive steps, the observation gets a corrective instruction appended
+    BEFORE the loop detector fires (which needs LOOP_DETECT_REPEATS identical
+    signatures)."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 10)),
+        patch("datum.agent_loop._decide", _mk_decide([same_decision] * 10)),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("1 failed", False)),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # Step 0: normal observation
+    # Step 1: same tool+args+observation -> corrective injected
+    assert len(steps) >= 2
+    assert "write_to_file" in steps[1]["observation"]
+    assert "repeated" in steps[1]["observation"].lower()
+
+    # Loop detector should still fire eventually
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"
+
+
+def test_no_progress_breaker_fires_only_once_per_episode(tmp_path, monkeypatch):
+    """The corrective injection happens at most once per episode so the loop
+    detector still catches truly stuck models on the next repeat."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 10)),
+        patch("datum.agent_loop._decide", _mk_decide([same_decision] * 10)),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("1 failed", False)),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # Count how many times the corrective text appears
+    corrective_count = sum(
+        1
+        for s in steps
+        if "repeated" in s.get("observation", "").lower()
+        and "write_to_file" in s.get("observation", "")
+    )
+    assert (
+        corrective_count == 1
+    ), f"corrective injected {corrective_count} times, expected 1"
+    # And the loop detector still escalates the truly stuck model
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"
+
+
+def test_no_progress_breaker_does_not_fire_on_different_observations(
+    tmp_path, monkeypatch
+):
+    """When consecutive steps have the same tool+args but DIFFERENT observations,
+    the breaker does not fire."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    obs_counter = [0]
+
+    def varying_exec(tc, cfg):
+        obs_counter[0] += 1
+        return f"output {obs_counter[0]}", False
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 5 + ["done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([same_decision] * 5 + [{"action": "done", "summary": "ok"}]),
+        ),
+        patch("datum.agent_loop._execute_tool", varying_exec),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # No corrective should have fired
+    for s in steps:
+        obs = s.get("observation", "")
+        assert "repeated" not in obs.lower() or "write_to_file" not in obs
+    # The signature-only loop detector still fires on identical (tool, args)
+    # even with varying observations — that behavior is unchanged.
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"

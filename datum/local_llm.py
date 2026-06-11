@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import sys
 import time
+import urllib.error
 import urllib.request  # noqa: F401 — used in oMLX backend helpers below
+from collections.abc import Callable
 from pathlib import Path
 
 _model_cache: dict = {}
@@ -34,6 +36,7 @@ DEFAULTS = {
     "kv_bits": 8,
     "kv_group_size": 64,
     "max_kv_size": 32768,
+    "request_timeout_s": 300,
     "repetition_ngram_size": 6,
     "repetition_max_count": 3,
     "phases": [
@@ -202,6 +205,7 @@ def generate(
     temperature: float = DEFAULTS["temperature"],
     system: str | None = None,
     sampling: dict | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
@@ -212,13 +216,25 @@ def generate(
     presence_penalty, min_p) — the server does NOT read the model's
     generation_config.json, so card-recommended values must be sent
     per-request. Only honored on the oMLX path.
+    `max_time_s` caps the request's wall-clock budget (socket timeout and
+    retry backoff) below the configured request_timeout_s, so a caller with
+    its own deadline (the agent loop, #61) is never blocked longer than its
+    remaining budget. Like `sampling`, only honored on the oMLX path.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
     if _omlx_available():
-        url = _omlx_url()
+        config = load_config()
         return _omlx_generate(
-            prompt, model_id, max_tokens, temperature, url, system, sampling
+            prompt,
+            model_id,
+            max_tokens,
+            temperature,
+            config.get("omlx_url"),
+            system,
+            sampling,
+            timeout_s=config.get("request_timeout_s", 300),
+            max_time_s=max_time_s,
         )
 
     from mlx_lm import stream_generate
@@ -349,18 +365,22 @@ def structured(
 
     Routes to oMLX JSON schema response_format if server is available,
     falls back to outlines grammar-constrained generation otherwise.
+    `max_time_s` (kwarg) caps the request's wall-clock budget below the
+    configured request_timeout_s — only honored on the oMLX path (#61).
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
     if _omlx_available():
-        url = _omlx_url()
+        omlx_config = load_config()
         return _omlx_structured(
             prompt,
             schema,
             model_id,
             max_tokens,
-            url,
+            omlx_config.get("omlx_url"),
             temperature=kwargs.get("temperature"),
+            timeout_s=omlx_config.get("request_timeout_s", 300),
+            max_time_s=kwargs.get("max_time_s"),
         )
 
     try:
@@ -1529,6 +1549,148 @@ def _sampling_params(sampling: dict | None) -> dict:
     return {k: v for k, v in sampling.items() if k in _SAMPLING_KEYS}
 
 
+_RETRYABLE_HTTP_CODES = frozenset({429, 503})
+_OMLX_MAX_ATTEMPTS = 4
+
+
+def _omlx_urlopen_with_retry(
+    req: urllib.request.Request,
+    timeout: int | float,
+    max_attempts: int = _OMLX_MAX_ATTEMPTS,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    deadline: float | None = None,
+) -> object:
+    """urlopen with jittered exponential backoff on 429/503/ConnectionRefused.
+
+    Honors ``Retry-After`` response header when present.
+    Non-retryable HTTP errors (400, 401, 500, ...) raise immediately.
+    After *max_attempts* exhausted, re-raises the original error.
+    *sleep_fn* is the backoff sleep (injectable for tests).
+    ``deadline`` (time.monotonic() value) caps the whole call including
+    retries (#61): each attempt's socket timeout shrinks to the remaining
+    budget, and a backoff sleep that would land past the deadline re-raises
+    the pending error instead.
+    """
+    import random as _random
+
+    def _sleep_or_raise(delay: float, exc: Exception) -> None:
+        if deadline is not None and time.monotonic() + delay >= deadline:
+            raise exc
+        sleep_fn(delay)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        attempt_timeout = timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if last_exc is not None:
+                    raise last_exc
+                raise TimeoutError(
+                    "request budget exhausted before issuing the request"
+                )
+            attempt_timeout = min(attempt_timeout, remaining)
+        try:
+            return urllib.request.urlopen(req, timeout=attempt_timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _RETRYABLE_HTTP_CODES:
+                raise
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            if retry_after is not None:
+                try:
+                    delay = float(retry_after)
+                except (ValueError, TypeError):
+                    delay = 2**attempt
+            else:
+                delay = 2**attempt
+            delay += _random.uniform(0, 1)
+            _sleep_or_raise(delay, exc)
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, ConnectionRefusedError):
+                last_exc = exc
+                if attempt == max_attempts - 1:
+                    raise
+                delay = 2**attempt + _random.uniform(0, 1)
+                _sleep_or_raise(delay, exc)
+            else:
+                raise
+    # Unreachable, but satisfies the type checker.
+    raise last_exc  # type: ignore[misc]
+
+
+def _omlx_call(
+    body: dict,
+    url: str,
+    timeout_s: int | float,
+    deadline: float | None = None,
+) -> tuple[dict, float]:
+    """POST a chat-completions body to oMLX; return (response_data, elapsed_s).
+
+    Shared by _omlx_generate and _omlx_structured: builds the request,
+    applies the retry wrapper, measures wall-clock time, parses the JSON
+    response, and validates its shape at the boundary (DPS-102).
+
+    ``deadline`` (time.monotonic() value) is threaded through to the retry
+    wrapper so the whole call — retries and backoff included — never runs
+    past the caller's wall-clock budget (#61).
+
+    A 200 response whose message content is missing/None/empty-string is
+    RETRYABLE (Defect-3): the model occasionally emits only tokens the
+    server's reasoning parser strips, yielding empty content.  Retries up
+    to ``_OMLX_MAX_ATTEMPTS`` with exponential backoff before raising.
+
+    Raises ValueError naming the model and URL when the response has a
+    missing/empty "choices" list or no message content after retries.
+    """
+    import random as _random
+
+    endpoint = f"{url}/v1/chat/completions"
+    model_id = body.get("model", "<unknown>")
+
+    for attempt in range(_OMLX_MAX_ATTEMPTS):
+        payload = json.dumps(body).encode()
+        req = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        t0 = time.monotonic()
+        with _omlx_urlopen_with_retry(
+            req, timeout=timeout_s, deadline=deadline
+        ) as resp:
+            data = json.loads(resp.read())
+        elapsed = time.monotonic() - t0
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not choices:
+            raise ValueError(
+                f"oMLX response has missing or empty 'choices' "
+                f"(model={model_id}, url={endpoint})"
+            )
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        message = first.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+
+        # Defect-3: treat missing/None/empty-string content as retryable.
+        if content is not None and content != "":
+            return data, elapsed
+
+        # Empty content — retry with backoff unless exhausted.
+        if attempt < _OMLX_MAX_ATTEMPTS - 1:
+            delay = 2**attempt + _random.uniform(0, 1)
+            if deadline is not None and time.monotonic() + delay >= deadline:
+                break  # budget exhausted, fall through to raise
+            time.sleep(delay)
+
+    raise ValueError(
+        f"oMLX response message has no content " f"(model={model_id}, url={endpoint})"
+    )
+
+
 def _omlx_generate(
     prompt: str,
     model_id: str,
@@ -1537,8 +1699,15 @@ def _omlx_generate(
     url: str,
     system: str | None = None,
     sampling: dict | None = None,
+    timeout_s: int | float | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
-    """Generate unstructured text via oMLX /v1/chat/completions."""
+    """Generate unstructured text via oMLX /v1/chat/completions.
+
+    ``max_time_s`` caps the wall-clock budget for the request including
+    retries: the socket timeout becomes min(request_timeout_s, max_time_s)
+    and backoff never sleeps past the deadline (#61).
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -1551,15 +1720,13 @@ def _omlx_generate(
         "stream": False,
         **_sampling_params(sampling),
     }
-    payload = json.dumps(body).encode()
-    req = urllib.request.Request(
-        f"{url}/v1/chat/completions",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    if timeout_s is None:
+        timeout_s = load_config().get("request_timeout_s", 300)
+    deadline = None
+    if max_time_s is not None:
+        timeout_s = min(timeout_s, max_time_s)
+        deadline = time.monotonic() + max_time_s
+    data, elapsed = _omlx_call(body, url, timeout_s, deadline=deadline)
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage", {})
     tokens = usage.get("completion_tokens", 0)
@@ -1568,7 +1735,7 @@ def _omlx_generate(
         "text": text,
         "tokens": tokens,
         "prompt_tokens": usage.get("prompt_tokens", 0),
-        "time_s": 0.0,
+        "time_s": elapsed,
         "model": model_id,
         "escalated": escalated,
         "abort_reason": "model_requested_escalation" if escalated else None,
@@ -1583,8 +1750,13 @@ def _omlx_structured(
     max_tokens: int,
     url: str,
     temperature: float | None = None,
+    timeout_s: int | float | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
-    """Grammar-constrained generation via oMLX JSON schema response_format."""
+    """Grammar-constrained generation via oMLX JSON schema response_format.
+
+    ``max_time_s`` caps the wall-clock budget exactly as in _omlx_generate.
+    """
     json_schema = schema.model_json_schema()
     body: dict = {
         "model": model_id,
@@ -1602,22 +1774,23 @@ def _omlx_structured(
     }
     if temperature is not None:
         body["temperature"] = temperature
-    payload = json.dumps(body).encode()
-    req = urllib.request.Request(
-        f"{url}/v1/chat/completions",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    if timeout_s is None:
+        timeout_s = load_config().get("request_timeout_s", 300)
+    deadline = None
+    if max_time_s is not None:
+        timeout_s = min(timeout_s, max_time_s)
+        deadline = time.monotonic() + max_time_s
+    data, elapsed = _omlx_call(body, url, timeout_s, deadline=deadline)
     raw = data["choices"][0]["message"]["content"]
     parsed = json.loads(raw)
+    # Fail fast at the boundary on schema mismatch (DPS-102). The return
+    # type is unchanged: callers still receive the plain parsed dict.
+    schema.model_validate(parsed)
     return {
         "data": parsed,
         "raw": raw,
         "tokens": data.get("usage", {}).get("completion_tokens", 0),
-        "time_s": 0.0,
+        "time_s": elapsed,
         "model": model_id,
         "quality": {"ok": True, "reason": None},
     }
