@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "8e2f4de81487",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-11T02:56:42.106457Z",
+  "branch": "feat/react-agent-loop",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/agent_loop.py",
+    "tests/test_agent_loop.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "ccca90b618bc",
+  "token_usage": {
+    "input_tokens": 59578,
+    "cache_creation_tokens": 2903759,
+    "cache_read_tokens": 103854410,
+    "output_tokens": 320051,
+    "api_call_count": 541
+  },
+  "session_metrics": {
+    "turn_count": 33
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T02:56:42.004968Z",
+    "agent_lines": 135,
+    "agent_removed": 0,
+    "human_added": 62,
+    "human_modified": 28,
+    "human_removed": 0,
+    "total_committed": 225,
+    "total_lines_changed": 225,
+    "agent_percentage": 60,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 22
+      }
+    }
+  ]
+}
