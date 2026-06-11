@@ -81,6 +81,14 @@ MAX_WRITE_ECHO_CHARS = 1500
 RECENT_STEPS_KEPT_FULL = 2
 LOOP_DETECT_REPEATS = 3
 
+# Wall-clock budget enforcement (#61): below this floor a THINK call cannot
+# do useful work, so the loop escalates instead of issuing a call that could
+# overrun timeout_s by up to the HTTP request timeout.
+MIN_STEP_BUDGET_S = 5.0
+# Small grace past the deadline so a request finishing right at the wire
+# isn't cut off mid-response.
+BUDGET_SLACK_S = 2.0
+
 
 def _strip_think_tags(text: str) -> str:
     """Remove Qwen3-style <think>...</think> blocks from model output."""
@@ -299,8 +307,7 @@ def _build_system_prompt(allowed_tools: list[str], extra_rules: str = "") -> str
     CLAUDE.md distillate (see load_project_rules).
     """
     project_section = (
-        f"\n\nPROJECT RULES (from the repository's agent instructions):\n"
-        f"{extra_rules}"
+        f"\n\nPROJECT RULES (from the repository's agent instructions):\n{extra_rules}"
         if extra_rules
         else ""
     )
@@ -385,9 +392,11 @@ def _think(
     max_tokens: int,
     system: str | None = None,
     sampling: dict | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
     # THINK_SAMPLING is Qwen-2507 tuning; a config can route a different
     # model to the think tier and carry its own sampling via think_sampling.
+    # max_time_s caps the HTTP request at the loop's remaining budget (#61).
     return generate(
         prompt,
         model_id,
@@ -395,14 +404,22 @@ def _think(
         temperature=0.7,
         system=system,
         sampling=sampling or THINK_SAMPLING,
+        max_time_s=max_time_s,
     )
 
 
-def _decide(prompt: str, model_id: str) -> dict:
+def _decide(prompt: str, model_id: str, max_time_s: float | None = None) -> dict:
     # Extraction is classification — temperature 0 is free accuracy.
     # 1200 tokens: replace_file_content args carry old_text/new_text spans;
     # 400 truncated mid-JSON on multi-line replacements.
-    return structured(prompt, AgentDecision, model_id, max_tokens=1200, temperature=0.0)
+    return structured(
+        prompt,
+        AgentDecision,
+        model_id,
+        max_tokens=1200,
+        temperature=0.0,
+        max_time_s=max_time_s,
+    )
 
 
 def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> dict:
@@ -453,7 +470,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         }
 
     for _step in range(max_steps):
-        if time.monotonic() - start >= timeout_s:
+        remaining_s = timeout_s - (time.monotonic() - start)
+        if remaining_s < MIN_STEP_BUDGET_S:
+            # Budget gone (or too thin for useful work): escalate instead of
+            # issuing a THINK that could overrun timeout_s by up to the HTTP
+            # request timeout (#61).
             return _finish(None, True, "timeout_exceeded")
 
         try:
@@ -465,6 +486,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 think_max_tokens,
                 system_prompt,
                 sampling=config.get("think_sampling"),
+                max_time_s=remaining_s + BUDGET_SLACK_S,
             )
             total_tokens += think_out.get("tokens", 0)
             thought = _strip_think_tags(think_out.get("text", ""))
@@ -497,8 +519,17 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 continue
 
             # ── DECIDE (fast model, structured) ──────────────────────────
+            # Re-measure the budget — THINK may have consumed most of it.
+            # Floored at MIN_STEP_BUDGET_S so the thought is never wasted:
+            # worst-case overrun is bounded by floor + slack, not the full
+            # HTTP request timeout.
+            decide_remaining_s = timeout_s - (time.monotonic() - start)
             decide_prompt = _build_decide_prompt(thought, allowed_tools)
-            decide_out = _decide(decide_prompt, decide_model)
+            decide_out = _decide(
+                decide_prompt,
+                decide_model,
+                max_time_s=max(decide_remaining_s, MIN_STEP_BUDGET_S) + BUDGET_SLACK_S,
+            )
             total_tokens += decide_out.get("tokens", 0)
             decision = decide_out.get("data") or {}
         except Exception as e:
@@ -534,8 +565,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
         elif tool_name in WRITE_TOOLS and not tool_args.get("path"):
             observation = (
-                f"Error: {tool_name} requires a 'path' argument naming the "
-                f"target file."
+                f"Error: {tool_name} requires a 'path' argument naming the target file."
             )
         elif tool_name == "write_to_file" and "content" not in tool_args:
             observation = (

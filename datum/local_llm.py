@@ -205,6 +205,7 @@ def generate(
     temperature: float = DEFAULTS["temperature"],
     system: str | None = None,
     sampling: dict | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
     """Generate text with repetition detection and context monitoring.
 
@@ -215,6 +216,10 @@ def generate(
     presence_penalty, min_p) — the server does NOT read the model's
     generation_config.json, so card-recommended values must be sent
     per-request. Only honored on the oMLX path.
+    `max_time_s` caps the request's wall-clock budget (socket timeout and
+    retry backoff) below the configured request_timeout_s, so a caller with
+    its own deadline (the agent loop, #61) is never blocked longer than its
+    remaining budget. Like `sampling`, only honored on the oMLX path.
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
@@ -229,6 +234,7 @@ def generate(
             system,
             sampling,
             timeout_s=config.get("request_timeout_s", 300),
+            max_time_s=max_time_s,
         )
 
     from mlx_lm import stream_generate
@@ -359,6 +365,8 @@ def structured(
 
     Routes to oMLX JSON schema response_format if server is available,
     falls back to outlines grammar-constrained generation otherwise.
+    `max_time_s` (kwarg) caps the request's wall-clock budget below the
+    configured request_timeout_s — only honored on the oMLX path (#61).
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
@@ -372,6 +380,7 @@ def structured(
             omlx_config.get("omlx_url"),
             temperature=kwargs.get("temperature"),
             timeout_s=omlx_config.get("request_timeout_s", 300),
+            max_time_s=kwargs.get("max_time_s"),
         )
 
     try:
@@ -1549,6 +1558,7 @@ def _omlx_urlopen_with_retry(
     timeout: int | float,
     max_attempts: int = _OMLX_MAX_ATTEMPTS,
     sleep_fn: Callable[[float], None] = time.sleep,
+    deadline: float | None = None,
 ) -> object:
     """urlopen with jittered exponential backoff on 429/503/ConnectionRefused.
 
@@ -1556,13 +1566,32 @@ def _omlx_urlopen_with_retry(
     Non-retryable HTTP errors (400, 401, 500, ...) raise immediately.
     After *max_attempts* exhausted, re-raises the original error.
     *sleep_fn* is the backoff sleep (injectable for tests).
+    ``deadline`` (time.monotonic() value) caps the whole call including
+    retries (#61): each attempt's socket timeout shrinks to the remaining
+    budget, and a backoff sleep that would land past the deadline re-raises
+    the pending error instead.
     """
     import random as _random
 
+    def _sleep_or_raise(delay: float, exc: Exception) -> None:
+        if deadline is not None and time.monotonic() + delay >= deadline:
+            raise exc
+        sleep_fn(delay)
+
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
+        attempt_timeout = timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if last_exc is not None:
+                    raise last_exc
+                raise TimeoutError(
+                    "request budget exhausted before issuing the request"
+                )
+            attempt_timeout = min(attempt_timeout, remaining)
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            return urllib.request.urlopen(req, timeout=attempt_timeout)
         except urllib.error.HTTPError as exc:
             if exc.code not in _RETRYABLE_HTTP_CODES:
                 raise
@@ -1578,26 +1607,35 @@ def _omlx_urlopen_with_retry(
             else:
                 delay = 2**attempt
             delay += _random.uniform(0, 1)
-            sleep_fn(delay)
+            _sleep_or_raise(delay, exc)
         except urllib.error.URLError as exc:
             if isinstance(exc.reason, ConnectionRefusedError):
                 last_exc = exc
                 if attempt == max_attempts - 1:
                     raise
                 delay = 2**attempt + _random.uniform(0, 1)
-                sleep_fn(delay)
+                _sleep_or_raise(delay, exc)
             else:
                 raise
     # Unreachable, but satisfies the type checker.
     raise last_exc  # type: ignore[misc]
 
 
-def _omlx_call(body: dict, url: str, timeout_s: int | float) -> tuple[dict, float]:
+def _omlx_call(
+    body: dict,
+    url: str,
+    timeout_s: int | float,
+    deadline: float | None = None,
+) -> tuple[dict, float]:
     """POST a chat-completions body to oMLX; return (response_data, elapsed_s).
 
     Shared by _omlx_generate and _omlx_structured: builds the request,
     applies the retry wrapper, measures wall-clock time, parses the JSON
     response, and validates its shape at the boundary (DPS-102).
+
+    ``deadline`` (time.monotonic() value) is threaded through to the retry
+    wrapper so the whole call — retries and backoff included — never runs
+    past the caller's wall-clock budget (#61).
 
     Raises ValueError naming the model and URL when the response has a
     missing/empty "choices" list or no message content.
@@ -1611,7 +1649,7 @@ def _omlx_call(body: dict, url: str, timeout_s: int | float) -> tuple[dict, floa
         method="POST",
     )
     t0 = time.monotonic()
-    with _omlx_urlopen_with_retry(req, timeout=timeout_s) as resp:
+    with _omlx_urlopen_with_retry(req, timeout=timeout_s, deadline=deadline) as resp:
         data = json.loads(resp.read())
     elapsed = time.monotonic() - t0
 
@@ -1641,8 +1679,14 @@ def _omlx_generate(
     system: str | None = None,
     sampling: dict | None = None,
     timeout_s: int | float | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
-    """Generate unstructured text via oMLX /v1/chat/completions."""
+    """Generate unstructured text via oMLX /v1/chat/completions.
+
+    ``max_time_s`` caps the wall-clock budget for the request including
+    retries: the socket timeout becomes min(request_timeout_s, max_time_s)
+    and backoff never sleeps past the deadline (#61).
+    """
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -1657,7 +1701,11 @@ def _omlx_generate(
     }
     if timeout_s is None:
         timeout_s = load_config().get("request_timeout_s", 300)
-    data, elapsed = _omlx_call(body, url, timeout_s)
+    deadline = None
+    if max_time_s is not None:
+        timeout_s = min(timeout_s, max_time_s)
+        deadline = time.monotonic() + max_time_s
+    data, elapsed = _omlx_call(body, url, timeout_s, deadline=deadline)
     text = data["choices"][0]["message"]["content"]
     usage = data.get("usage", {})
     tokens = usage.get("completion_tokens", 0)
@@ -1682,8 +1730,12 @@ def _omlx_structured(
     url: str,
     temperature: float | None = None,
     timeout_s: int | float | None = None,
+    max_time_s: float | None = None,
 ) -> dict:
-    """Grammar-constrained generation via oMLX JSON schema response_format."""
+    """Grammar-constrained generation via oMLX JSON schema response_format.
+
+    ``max_time_s`` caps the wall-clock budget exactly as in _omlx_generate.
+    """
     json_schema = schema.model_json_schema()
     body: dict = {
         "model": model_id,
@@ -1703,7 +1755,11 @@ def _omlx_structured(
         body["temperature"] = temperature
     if timeout_s is None:
         timeout_s = load_config().get("request_timeout_s", 300)
-    data, elapsed = _omlx_call(body, url, timeout_s)
+    deadline = None
+    if max_time_s is not None:
+        timeout_s = min(timeout_s, max_time_s)
+        deadline = time.monotonic() + max_time_s
+    data, elapsed = _omlx_call(body, url, timeout_s, deadline=deadline)
     raw = data["choices"][0]["message"]["content"]
     parsed = json.loads(raw)
     # Fail fast at the boundary on schema mismatch (DPS-102). The return
