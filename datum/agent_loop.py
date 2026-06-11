@@ -249,7 +249,7 @@ def load_project_rules(repo_dir) -> str:
     rule_lines = []
     for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
-        if stripped.startswith(("-", "*", "#")) or stripped[:2].rstrip(".").isdigit():
+        if stripped.startswith(("-", "*", "#")) or re.match(r"\d{1,2}[.)]\s", stripped):
             rule_lines.append(stripped)
 
     text = "\n".join(rule_lines)
