@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Fix relative imports
 sys.path.insert(0, str(Path(__file__).parent))
-from datum.path_utils import assets_dir, templates_dir, existing_review_packets_dir
+from datum.path_utils import assets_dir, existing_review_packets_dir, templates_dir
 
 
 def _contracts():
@@ -790,10 +790,9 @@ GATES = {
 
 
 def main() -> None:
-    from datum.state import ensure_feature_branch
-
-    ensure_feature_branch()
-
+    # Gates are READ-ONLY validators: they must never create or checkout
+    # branches, or otherwise mutate git state (issue #69). Branch setup is
+    # an explicit operation owned by `datum init` / `datum state init`.
     parser = argparse.ArgumentParser(description="DATUM gate validator")
     parser.add_argument("phase")
     parser.add_argument("--yolo", action="store_true")
@@ -817,6 +816,7 @@ def main() -> None:
         GATES[args.phase](args.yolo or args.skip_human, config)
     except Exception as e:
         import traceback
+
         from datum.report_bug import _sanitize, report_bug
 
         trace_str = _sanitize(traceback.format_exc())

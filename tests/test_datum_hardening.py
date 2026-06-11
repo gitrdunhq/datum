@@ -63,11 +63,53 @@ class TestContracts(unittest.TestCase):
 
 
 class TestGate(unittest.TestCase):
+    def _init_temp_repo(self, path: Path) -> None:
+        """Create a throwaway git repo on a protected branch (main)."""
+        steps = [
+            ["git", "init", "-b", "main"],
+            ["git", "config", "user.email", "datum-test@example.com"],
+            ["git", "config", "user.name", "datum-test"],
+            ["git", "commit", "--allow-empty", "-m", "init"],
+        ]
+        for step in steps:
+            res = run_cmd(step, cwd=path)
+            self.assertEqual(res.returncode, 0, res.stderr or res.stdout)
+
     def test_validate_profiles_gate(self) -> None:
-        result = run_module("datum.gate", ["validate-profiles"])
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        payload = json.loads(result.stdout)
-        self.assertTrue(payload["passed"])
+        """validate-profiles must be read-only and hermetic (issue #69).
+
+        Runs against a throwaway temp repo — never the working repo — and
+        asserts the gate neither creates branches nor moves HEAD.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._init_temp_repo(repo)
+
+            head_before = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
+            branches_before = run_cmd(
+                ["git", "branch", "--list"], cwd=repo
+            ).stdout.strip()
+
+            result = run_module("datum.gate", ["validate-profiles"], cwd=repo)
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["passed"])
+
+            head_after = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
+            current_branch = run_cmd(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo
+            ).stdout.strip()
+            branches_after = run_cmd(
+                ["git", "branch", "--list"], cwd=repo
+            ).stdout.strip()
+
+            self.assertEqual(head_after, head_before, "validate-profiles moved HEAD")
+            self.assertEqual(
+                current_branch, "main", "validate-profiles checked out a new branch"
+            )
+            self.assertEqual(
+                branches_after, branches_before, "validate-profiles created a branch"
+            )
 
 
 class TestRulesDoctor(unittest.TestCase):
