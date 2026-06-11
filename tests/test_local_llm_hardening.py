@@ -625,7 +625,7 @@ def test_retry_helper_sleep_fn_injection():
 
     resp_ok = _mock_resp(_make_omlx_response("ok"))
     sleep_fn = MagicMock()
-    req = _ur.Request(
+    req = _ur.Request(  # nosemgrep: insecure-request-object -- intentional http:// in security hardening test
         "http://localhost:9999/v1/chat/completions", data=b"{}", method="POST"
     )
     with patch(
@@ -726,7 +726,9 @@ def test_retry_does_not_sleep_past_deadline():
     from datum.local_llm import _omlx_urlopen_with_retry
 
     sleep_fn = MagicMock()
-    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    req = _ur.Request(  # nosemgrep: insecure-request-object -- intentional http:// in security hardening test
+        "http://localhost:9999/v1/chat/completions", data=b"{}"
+    )
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
@@ -749,7 +751,9 @@ def test_retry_within_deadline_still_retries():
 
     resp_ok = MagicMock()
     sleep_fn = MagicMock()
-    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    req = _ur.Request(  # nosemgrep: insecure-request-object -- intentional http:// in security hardening test
+        "http://localhost:9999/v1/chat/completions", data=b"{}"
+    )
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
@@ -772,7 +776,9 @@ def test_retry_expired_deadline_raises_before_request():
 
     from datum.local_llm import _omlx_urlopen_with_retry
 
-    req = _ur.Request("http://localhost:9999/v1/chat/completions", data=b"{}")
+    req = _ur.Request(  # nosemgrep: insecure-request-object -- intentional http:// in security hardening test
+        "http://localhost:9999/v1/chat/completions", data=b"{}"
+    )
     with (
         patch("datum.local_llm.urllib.request.urlopen") as mock_open,
         patch("time.monotonic", side_effect=[100.0]),

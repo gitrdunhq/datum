@@ -1,0 +1,41 @@
+rules:
+  - id: verify-gate-fails-open
+    pattern-either:
+      - pattern: |
+          if [ -z $...EXPR ]; then
+            ...
+            exit 0
+          fi
+      - pattern: |
+          ... || exit 0
+      - pattern: |
+          ... || true
+    message: >
+      Security verification step exits 0 (or suppresses failure with
+      `|| true`) when the expected value is missing. This means the gate
+      fails open — an attacker who prevents the status from being posted
+      can bypass verification entirely. Consider exiting non-zero or
+      requiring the status to exist.
+    languages: [bash]
+    severity: WARNING
+    paths:
+      include:
+        - "*verify*"
+        - "*gate*"
+        - "*release*"
+        - "*check*"
+    metadata:
+      kirby_id: KIRBY-SEC-004
+      category: security
+      subcategory: fail-open-gate
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: nist-800-53-r5
+          controls: ["CM-6", "SA-11"]
+        - framework: iso-27001-2022
+          controls: ["A.8.25"]
+        - framework: soc2-tsc
+          controls: ["CC8.1"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

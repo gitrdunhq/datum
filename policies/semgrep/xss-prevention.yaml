@@ -1,0 +1,54 @@
+rules:
+  - id: xss-prevention
+    patterns:
+      - pattern-either:
+          # Flask Markup wrapping a non-literal value — bypasses auto-escaping
+          - patterns:
+              - pattern: Markup($INPUT)
+              - pattern-not: Markup("...")
+          # Django mark_safe on a non-literal value — opts out of template escaping
+          - patterns:
+              - pattern: mark_safe($INPUT)
+              - pattern-not: mark_safe("...")
+          # Flask/Werkzeug Response built from a non-literal body with HTML content-type
+          - patterns:
+              - pattern: Response($BODY, content_type="text/html")
+              - pattern-not: Response("...", content_type="text/html")
+          # Flask/Werkzeug Response built from a non-literal body with HTML mimetype
+          - patterns:
+              - pattern: Response($BODY, mimetype="text/html")
+              - pattern-not: Response("...", mimetype="text/html")
+          # Jinja2 template constructed from user input (SSTI and XSS vector)
+          - patterns:
+              - pattern: jinja2.Template($INPUT).render(...)
+              - pattern-not: jinja2.Template("...").render(...)
+    message: >
+      Unsanitized user input is being passed to an HTML-safe or raw-HTML context.
+      Flask's Markup(), Django's mark_safe(), raw Response objects with text/html, and
+      Jinja2 templates built from user input all bypass automatic HTML escaping and can
+      allow Cross-Site Scripting (XSS). Use render_template() with Jinja2 auto-escaping,
+      apply escape() or bleach.clean() before wrapping in Markup/mark_safe, and never
+      construct Jinja2 Template objects from user-supplied strings.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-012
+      category: security
+      subcategory: xss
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A03:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V5.3.3"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: hipaa-security
+          controls: ["164.312(a)(1)"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

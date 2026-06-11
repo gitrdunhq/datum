@@ -1,0 +1,32 @@
+rules:
+  - id: retry-loop-without-error-contract
+    pattern-either:
+      - pattern: |
+          for $I in range($N):
+              try:
+                  ...
+              except $E:
+                  ...
+      - pattern: |
+          while $COND:
+              try:
+                  ...
+              except $E:
+                  ...
+    message: >
+      Retry-shaped loop around a broad exception boundary detected. Retries
+      without an explicit error contract, backoff policy, and terminal failure
+      path are often voodoo programming: they hide the real ordering or
+      availability bug. Classify retryable errors and make failure observable.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-016
+      category: code-quality
+      subcategory: voodoo-retry
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+        - https://learn.microsoft.com/azure/architecture/patterns/retry

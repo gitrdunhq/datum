@@ -1,0 +1,26 @@
+rules:
+  - id: dispatch-conditionals-should-be-table
+    pattern: |
+      if $KEY == $A:
+          ...
+      elif $KEY == $B:
+          ...
+      elif $KEY == $C:
+          ...
+    message: >
+      Repeated equality dispatch on the same value detected. This is usually a
+      missing lookup table or command map: the data model is forcing behavior
+      into a branch pile. Replace the conditional ladder with a dictionary,
+      enum table, or explicit dispatcher when the cases are data-driven.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-018
+      category: code-quality
+      subcategory: conditional-complexity
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/switch-statements
+        - https://luzkan.github.io/smells/conditional-complexity

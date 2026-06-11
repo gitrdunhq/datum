@@ -1,0 +1,32 @@
+rules:
+  - id: dead-code-after-return-js
+    pattern-either:
+      - pattern: |
+          function $F(...) {
+            ...
+            return $X;
+            $DEAD;
+          }
+      - pattern: |
+          function $F(...) {
+            ...
+            throw $E;
+            $DEAD;
+          }
+    message: >
+      Unreachable code detected after an unconditional return or throw. The
+      statement following the return or throw will never execute, indicating a
+      refactoring mistake or logical error. Remove the dead statement or move
+      it before the return.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-007
+      category: code-quality
+      subcategory: dead-code
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/dead-code
+        - https://luzkan.github.io/smells/dead-code

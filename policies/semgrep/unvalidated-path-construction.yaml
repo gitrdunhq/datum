@@ -1,0 +1,40 @@
+rules:
+  - id: unvalidated-path-construction
+    patterns:
+      - pattern-either:
+          - pattern: |
+              Path(...) / $USER_INPUT
+          - pattern: |
+              $ROOT / $USER_INPUT
+      - pattern-not-inside: |
+          if not $RE.match($USER_INPUT):
+              ...
+      - pattern-not-inside: |
+          $VALIDATE($USER_INPUT)
+          ...
+    message: >
+      User-controlled input used in path construction without validation.
+      An attacker could use path separators or '..' to escape the intended
+      directory. Validate the input against an allowlist pattern
+      (e.g., r'^[A-Za-z0-9_-]+$') before using it in path operations.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      kirby_id: KIRBY-SEC-001
+      category: security
+      subcategory: path-traversal
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A01:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V12.3.1"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

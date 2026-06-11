@@ -26,13 +26,13 @@ Requirements:
 """
 
 import argparse
+import hashlib
 import re
-import sys
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Dict
-import hashlib
+from typing import Dict, List, Optional
 
 
 class MermaidDiagram:
@@ -42,6 +42,7 @@ class MermaidDiagram:
         self.content = content.strip()
         self.line_number = line_number
         self.index = index
+        # nosemgrep: weak-crypto-algorithms, insecure-hash-algorithm-md5 -- md5 for deterministic filename, not security
         self.hash = hashlib.md5(content.encode()).hexdigest()[:8]
 
     def get_filename(self, prefix: str = "diagram", extension: str = "mmd") -> str:
@@ -65,7 +66,7 @@ class MermaidExtractor:
     def __init__(self, markdown_file: Path):
         self.markdown_file = markdown_file
         self.content = markdown_file.read_text(encoding="utf-8")
-        self.diagrams: List[MermaidDiagram] = []
+        self.diagrams: list[MermaidDiagram] = []
         self._extract_diagrams()
 
     def _extract_diagrams(self):
@@ -79,7 +80,7 @@ class MermaidExtractor:
             diagram = MermaidDiagram(diagram_content, lines_before + 1, index)
             self.diagrams.append(diagram)
 
-    def save_diagrams(self, output_dir: Path, prefix: str = "diagram") -> List[Path]:
+    def save_diagrams(self, output_dir: Path, prefix: str = "diagram") -> list[Path]:
         """
         Save all diagrams to separate .mmd files.
 
@@ -118,7 +119,7 @@ class MermaidExtractor:
             print(f"    Lines: {len(diagram.content.splitlines())}")
             print()
 
-    def validate_diagrams(self) -> Dict[int, Optional[str]]:
+    def validate_diagrams(self) -> dict[int, str | None]:
         """
         Validate all diagrams by attempting to render them with mmdc.
 
@@ -154,7 +155,7 @@ class MermaidExtractor:
 
         return results
 
-    def _validate_single_diagram(self, diagram: MermaidDiagram) -> Optional[str]:
+    def _validate_single_diagram(self, diagram: MermaidDiagram) -> str | None:
         """Validate a single diagram. Returns error message if invalid, None if valid."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)

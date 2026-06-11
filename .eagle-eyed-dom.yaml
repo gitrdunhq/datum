@@ -1,0 +1,31 @@
+# eedom repo config for datum — refs gitrdunhq/datum#96
+plugins:
+  enabled:
+    - semgrep
+    - blast-radius
+    - complexity
+    - gitleaks
+
+  semgrep:
+    # Community rules live in policies/semgrep/ (auto-discovered by runner).
+    # extra_config_dirs is for ADDITIONAL dirs beyond the repo-local policies/.
+    extra_config_dirs: []
+
+    exclude_rules:
+      # Over-broad path rules: 480+199 FPs on a path-heavy CLI, 0 TPs.
+      - unvalidated-path-construction
+      - path-traversal
+      # Test-fixture bait (security fixtures with intentional bad patterns).
+      - hardcoded-credentials
+      - contains-bidirectional-characters
+      # Code-quality / report-only (not blocking).
+      - magic-number
+      - boolean-flag-argument-call
+      - long-parameter-list
+      - global-mutable-state
+      # INFO-level code-quality (advisory, not gate-blocking).
+      - long-if-elif-chain
+      - assert-for-validation
+      - dispatch-conditionals-should-be-table
+      - enterprise-class-name
+      - sleep-based-synchronization

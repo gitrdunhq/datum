@@ -1,0 +1,60 @@
+rules:
+  - id: ssrf-prevention
+    patterns:
+      - pattern-either:
+          # requests.get with non-literal URL (user-controlled destination)
+          - patterns:
+              - pattern: requests.get($URL, ...)
+              - pattern-not: requests.get("...", ...)
+          # requests.post with non-literal URL
+          - patterns:
+              - pattern: requests.post($URL, ...)
+              - pattern-not: requests.post("...", ...)
+          # requests.put with non-literal URL
+          - patterns:
+              - pattern: requests.put($URL, ...)
+              - pattern-not: requests.put("...", ...)
+          # urllib.request.urlopen with non-literal URL
+          - patterns:
+              - pattern: urllib.request.urlopen($URL)
+              - pattern-not: urllib.request.urlopen("...")
+          # urllib.request.urlopen with extra args (e.g. data=)
+          - patterns:
+              - pattern: urllib.request.urlopen($URL, ...)
+              - pattern-not: urllib.request.urlopen("...", ...)
+          # httpx.get with non-literal URL
+          - patterns:
+              - pattern: httpx.get($URL, ...)
+              - pattern-not: httpx.get("...", ...)
+          # httpx.post with non-literal URL
+          - patterns:
+              - pattern: httpx.post($URL, ...)
+              - pattern-not: httpx.post("...", ...)
+    message: >
+      A non-literal URL is passed directly to an HTTP client. If this value originates
+      from user-controlled input (request parameters, headers, form fields), an attacker
+      can redirect the server to internal endpoints, cloud metadata APIs, or other
+      network resources (SSRF). Validate URLs against an allowlist of permitted schemes
+      and hosts before issuing outbound requests. Never forward a raw user-supplied URL
+      to an HTTP client.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-013
+      category: security
+      subcategory: ssrf
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A10:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V12.6.1"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

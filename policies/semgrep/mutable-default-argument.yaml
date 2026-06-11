@@ -1,0 +1,26 @@
+rules:
+  - id: mutable-default-argument
+    pattern-either:
+      - pattern: "def $F(..., $P=[], ...): ..."
+      - pattern: "def $F(..., $P={}, ...): ..."
+      - pattern: "def $F(..., $P=set(), ...): ..."
+      - pattern: "def $F(..., $P=list(), ...): ..."
+      - pattern: "def $F(..., $P=dict(), ...): ..."
+    message: >
+      Mutable default argument detected. Python evaluates default argument
+      values once at function definition time, not on each call, so a mutable
+      object is shared across every invocation that relies on the default,
+      causing state to leak silently between calls. Replace the mutable default
+      with None and initialise the collection inside the function body instead.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-003
+      category: code-quality
+      subcategory: correctness
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://docs.python-guide.org/writing/gotchas/#mutable-default-arguments
+        - https://luzkan.github.io/smells/mutable-data

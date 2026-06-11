@@ -1,0 +1,8 @@
+# Tool side-effect dirs (may contain broken symlinks that abort opengrep)
+.antigravitycli/
+.entire/
+.datum/
+.runs/
+
+# Vendored third-party reference code — not ours to lint
+datum-tui/reference-openrouter/

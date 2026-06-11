@@ -1,0 +1,25 @@
+rules:
+  - id: long-if-elif-chain-js
+    pattern: |
+      if ($C1) { ... }
+      else if ($C2) { ... }
+      else if ($C3) { ... }
+      else if ($C4) { ... }
+      else if ($C5) { ... }
+    message: >
+      Long if/else-if chain with five or more branches detected. Chains this
+      long are a switch-statement smell indicating a missing dispatch table or
+      polymorphism opportunity. Replace with a switch statement, object dispatch,
+      or strategy pattern to reduce conditional complexity.
+    languages: [javascript, typescript]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-010
+      category: code-quality
+      subcategory: bloater
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/switch-statements
+        - https://luzkan.github.io/smells/conditional-complexity

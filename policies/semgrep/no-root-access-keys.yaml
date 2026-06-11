@@ -1,0 +1,45 @@
+rules:
+  - id: no-root-access-keys
+    pattern-either:
+      - patterns:
+          - pattern: boto3.client(..., aws_access_key_id=$KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: '"AKIA[0-9A-Z]{16}"'
+      - patterns:
+          - pattern: boto3.Session(..., aws_access_key_id=$KEY, ...)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: '"AKIA[0-9A-Z]{16}"'
+      - patterns:
+          - pattern: $CLIENT.$API(RoleArn=$ARN, ...)
+          - metavariable-regex:
+              metavariable: $ARN
+              regex: '"arn:aws:iam::[0-9]{12}:root"'
+    message: >
+      AWS root account credentials detected. Hardcoded root access keys (AKIA prefix)
+      or root user ARNs (arn:aws:iam::<account>:root) must never appear in code.
+      Root credentials have unrestricted access to all AWS services and cannot be
+      scoped by IAM policies. Rotate and delete the root access key immediately,
+      then replace with a least-privilege IAM role or instance profile.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      kirby_id: KIRBY-SEC-006
+      category: security
+      subcategory: credential-exposure
+      property-domain: confidentiality
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: cis-aws-v2.0
+          controls: ["1.4"]
+        - framework: nist-800-53-r5
+          controls: ["AC-6(2)"]
+        - framework: soc2-tsc
+          controls: ["CC6.1"]
+        - framework: pci-dss-v4.0
+          controls: ["7.1.1", "8.2.2"]
+        - framework: iso-27001-2022
+          controls: ["A.5.15"]
+      references:
+        - https://github.com/sam-fakhreddine/eedom-community-rules

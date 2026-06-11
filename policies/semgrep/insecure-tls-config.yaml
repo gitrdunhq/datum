@@ -1,0 +1,42 @@
+rules:
+  - id: insecure-tls-config
+    pattern-either:
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_TLSv1_1)
+      - pattern: $CTX.minimum_version = ssl.TLSVersion.TLSv1
+      - pattern: $CTX.minimum_version = ssl.TLSVersion.TLSv1_1
+      - pattern: requests.$METHOD(..., verify=False)
+      - pattern: $CTX.check_hostname = False
+      - pattern: $CTX.verify_mode = ssl.CERT_NONE
+      - pattern: urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    message: >
+      Insecure TLS configuration detected. This code disables certificate
+      verification or uses a deprecated TLS protocol version, leaving
+      connections vulnerable to man-in-the-middle attacks. Use TLS 1.2 or
+      higher, keep certificate verification enabled (verify=True), and
+      never suppress InsecureRequestWarning in production code.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-007
+      category: security
+      subcategory: encryption-in-transit
+      property-domain: confidentiality
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A02:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V9.1.1"]
+        - framework: nist-800-53-r5
+          controls: ["SC-8", "SC-8(1)"]
+        - framework: soc2-tsc
+          controls: ["CC6.1"]
+        - framework: pci-dss-v4.0
+          controls: ["4.2.1"]
+        - framework: hipaa-security
+          controls: ["164.312(e)(1)"]
+        - framework: iso-27001-2022
+          controls: ["A.8.24"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

@@ -1,0 +1,26 @@
+rules:
+  - id: sbom-from-environment
+    pattern-either:
+      - pattern: cyclonedx-py environment ...
+      - pattern: python -m cyclonedx_py environment ...
+    message: >
+      SBOM generated from the runtime environment, not the artifact's
+      actual dependencies. Use 'cyclonedx-py requirements' with the
+      lockfile to produce an SBOM that matches what ships in the wheel.
+    languages: [bash]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-INF-007
+      category: infrastructure
+      subcategory: sbom-accuracy
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: nist-800-53-r5
+          controls: ["SA-12", "SR-4"]
+        - framework: pci-dss-v4.0
+          controls: ["6.3.1"]
+        - framework: iso-27001-2022
+          controls: ["A.8.8"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

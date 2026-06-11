@@ -1,0 +1,27 @@
+rules:
+  - id: bool-comparison
+    pattern-either:
+      - pattern: "$X == True"
+      - pattern: "$X == False"
+      - pattern: "$X != True"
+      - pattern: "$X != False"
+      - pattern: "True == $X"
+      - pattern: "False == $X"
+    message: >
+      Equality comparison against a boolean literal detected. Using == or !=
+      with True or False invokes __eq__, which can be overridden, and is
+      slower than a truthiness check. PEP 8 mandates using the value directly
+      in a boolean context: replace == True with a bare truthiness check and
+      == False with not.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-005
+      category: code-quality
+      subcategory: correctness
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://peps.python.org/pep-0008/#programming-recommendations
+        - https://refactoring.guru/smells/switch-statements

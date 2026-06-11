@@ -1,0 +1,28 @@
+rules:
+  - id: legacy-branch-pileup
+    patterns:
+      - pattern: |
+          if $C1:
+              ...
+          elif $C2:
+              ...
+          elif $C3:
+              ...
+      - pattern-regex: '(legacy|compat|fallback|deprecated|v[0-9]+)'
+    message: >
+      Legacy or compatibility branch pileup detected. Multiple version,
+      fallback, or compatibility branches tend to institutionalize special
+      cases instead of isolating the old behavior behind a clear adapter or
+      migration boundary. Collapse the model or isolate the legacy path.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-017
+      category: code-quality
+      subcategory: special-case-complexity
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/switch-statements
+        - https://luzkan.github.io/smells/conditional-complexity

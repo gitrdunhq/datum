@@ -1,0 +1,44 @@
+rules:
+  - id: dead-code-after-return
+    patterns:
+      - pattern-either:
+          - pattern: |
+              return $X
+              $DEAD
+          - pattern: |
+              raise $E
+              $DEAD
+      - pattern-not-inside: |
+          if ...:
+              ...
+      - pattern-not-inside: |
+          try:
+              ...
+          except ...:
+              ...
+      - pattern-not-inside: |
+          for ... in ...:
+              ...
+      - pattern-not-inside: |
+          while ...:
+              ...
+      - pattern-not-inside: |
+          with ...:
+              ...
+    message: >
+      Unreachable code detected after an unconditional return or raise at the
+      top level of a function body. The statement following the return or
+      raise will never execute, indicating a refactoring mistake or logical
+      error. Remove the dead statement or move it before the return.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-007
+      category: code-quality
+      subcategory: dead-code
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/dead-code
+        - https://luzkan.github.io/smells/dead-code

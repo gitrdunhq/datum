@@ -1,0 +1,20 @@
+rules:
+  - id: long-parameter-list
+    pattern: "def $F($A, $B, $C, $D, $E, $G, ...): ..."
+    message: >
+      Function has six or more parameters, a long-parameter-list bloat smell.
+      Long parameter lists are hard to read, easy to call in the wrong order,
+      and signal the function is doing too much. Introduce a parameter object,
+      a dataclass, or split the function into smaller focused units.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-009
+      category: code-quality
+      subcategory: bloater
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/long-parameter-list
+        - https://luzkan.github.io/smells/long-parameter-list

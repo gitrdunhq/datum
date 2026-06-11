@@ -1,0 +1,47 @@
+rules:
+  - id: jwt-verification-bypass
+    patterns:
+      - pattern-either:
+          - pattern: |
+              jwt.decode($TOKEN, ..., options={"verify_signature": False, ...})
+          - pattern: |
+              jwt.decode($TOKEN, ..., options={..., "verify_signature": False})
+          - pattern: |
+              jwt.decode($TOKEN, ..., algorithms=["none"])
+          - pattern: |
+              jwt.decode($TOKEN, ..., verify=False)
+          - pattern: |
+              jose.jwt.decode($TOKEN, ..., options={"verify_aud": False, ...})
+          - pattern: |
+              jose.jwt.decode($TOKEN, ..., options={..., "verify_aud": False})
+          - pattern: |
+              jose.jwt.decode($TOKEN, ..., options={"verify_exp": False, ...})
+          - pattern: |
+              jose.jwt.decode($TOKEN, ..., options={..., "verify_exp": False})
+    message: >
+      JWT signature or claims verification has been disabled. Decoding a token without
+      verifying the signature or critical claims (expiry, audience) allows an attacker
+      to forge tokens and authenticate as any user. Remove verify=False,
+      verify_signature=False, or algorithms=["none"]. Always supply a signing key and
+      specify a strong algorithm (e.g. HS256, RS256). Never accept unsigned tokens.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      kirby_id: KIRBY-SEC-011
+      category: security
+      subcategory: jwt-verification-bypass
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A07:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V3.5.3"]
+        - framework: nist-800-53-r5
+          controls: ["IA-2"]
+        - framework: pci-dss-v4.0
+          controls: ["8.3.1"]
+        - framework: iso-27001-2022
+          controls: ["A.8.5"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

@@ -1,0 +1,25 @@
+rules:
+  - id: none-comparison-equality
+    pattern-either:
+      - pattern: "$X == None"
+      - pattern: "$X != None"
+      - pattern: "None == $X"
+      - pattern: "None != $X"
+    message: >
+      Equality comparison against None detected. Using == or != with None
+      invokes __eq__, which can be overridden by a class and may return an
+      unexpected result. PEP 8 mandates identity checks with is or is not,
+      which test object identity and cannot be overridden. Replace == None
+      with is None and != None with is not None.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-004
+      category: code-quality
+      subcategory: correctness
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://peps.python.org/pep-0008/#programming-recommendations
+        - https://luzkan.github.io/smells/null-check

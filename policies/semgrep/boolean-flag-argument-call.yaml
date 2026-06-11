@@ -1,0 +1,22 @@
+rules:
+  - id: boolean-flag-argument-call
+    pattern-either:
+      - pattern: $FUNC(..., True, ...)
+      - pattern: $FUNC(..., False, ...)
+    message: >
+      Boolean literal passed as a positional argument. Positional flags hide
+      intent at the call site and create branchy APIs where the caller has to
+      know what True or False means. Prefer a named keyword, a clearer split
+      function, or a small data object that makes the mode explicit.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-013
+      category: code-quality
+      subcategory: flag-argument
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://luzkan.github.io/smells/flag-argument
+        - https://refactoring.guru/smells/long-parameter-list

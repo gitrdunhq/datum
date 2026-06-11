@@ -1,0 +1,46 @@
+rules:
+  - id: xxe-prevention
+    pattern-either:
+      - pattern: xml.etree.ElementTree.parse(...)
+      - pattern: xml.etree.ElementTree.fromstring(...)
+      - pattern: xml.etree.ElementTree.fromstringlist(...)
+      - pattern: xml.etree.ElementTree.iterparse(...)
+      - pattern: xml.sax.parse(...)
+      - pattern: xml.sax.parseString(...)
+      - pattern: xml.dom.minidom.parse(...)
+      - pattern: xml.dom.minidom.parseString(...)
+      - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
+      - pattern: etree.XMLParser(..., resolve_entities=True, ...)
+    message: >
+      Vulnerable XML parser detected. The stdlib parsers xml.etree.ElementTree,
+      xml.sax, and xml.dom.minidom are vulnerable to XML External Entity (XXE)
+      attacks by default. An XXE attack can exfiltrate local files, trigger
+      server-side request forgery (SSRF), or cause denial of service via entity
+      expansion (billion laughs attack). Replace all stdlib XML parsing with the
+      defusedxml library, which disables dangerous XML features automatically.
+      Safe replacements: use defusedxml.ElementTree instead of
+      xml.etree.ElementTree, defusedxml.sax instead of xml.sax, and
+      defusedxml.minidom instead of xml.dom.minidom. If lxml is required,
+      construct the parser with resolve_entities=False:
+      etree.XMLParser(resolve_entities=False).
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-015
+      category: security
+      subcategory: xxe-prevention
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A05:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V5.5.2"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

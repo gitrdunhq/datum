@@ -1360,7 +1360,7 @@ def _log_multi_turn_metric(result: dict) -> None:
     import datetime
 
     entry = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "multi_turn",
         "phase": result.get("phase", "unknown"),
         "turns": len(result.get("turns", [])),
@@ -1391,7 +1391,7 @@ def _log_metric(result: dict) -> None:
     import datetime
 
     entry = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "model": result.get("model", "unknown"),
         "tokens": result.get("tokens", 0),
         "time_s": result.get("time_s", 0),
@@ -1519,7 +1519,9 @@ def _omlx_available() -> bool:
         return False
     for path in ("/health", "/v1/models"):
         try:
-            resp = urllib.request.urlopen(f"{url}{path}", timeout=1)
+            resp = urllib.request.urlopen(  # nosemgrep: ssrf-prevention, dynamic-urllib-use-detected -- local-only oMLX endpoint from config, no user input
+                f"{url}{path}", timeout=1
+            )
             if resp.status == 200:
                 return True
         except Exception:
@@ -1591,7 +1593,9 @@ def _omlx_urlopen_with_retry(
                 )
             attempt_timeout = min(attempt_timeout, remaining)
         try:
-            return urllib.request.urlopen(req, timeout=attempt_timeout)
+            return urllib.request.urlopen(  # nosemgrep: ssrf-prevention, dynamic-urllib-use-detected -- local-only oMLX endpoint from config, no user input
+                req, timeout=attempt_timeout
+            )
         except urllib.error.HTTPError as exc:
             if exc.code not in _RETRYABLE_HTTP_CODES:
                 raise
@@ -1819,6 +1823,7 @@ def main() -> None:
         print(json.dumps(result, indent=2))
     except Exception as e:
         import traceback
+
         from datum.report_bug import _sanitize
 
         trace_str = _sanitize(traceback.format_exc())

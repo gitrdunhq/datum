@@ -1,0 +1,53 @@
+rules:
+  - id: weak-crypto-algorithms
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+      - patterns:
+          - pattern: hashlib.new($ALGO, ...)
+          - metavariable-regex:
+              metavariable: $ALGO
+              regex: '(?i)^["''](md5|sha1|sha-1)["'']$'
+      - patterns:
+          - pattern: hmac.new($KEY, $MSG, $DIGEST)
+          - metavariable-regex:
+              metavariable: $DIGEST
+              regex: '(?i)^["''](md5|sha1|sha-1)["'']$'
+      - pattern: hmac.new($KEY, $MSG, hashlib.md5)
+      - pattern: hmac.new($KEY, $MSG, hashlib.sha1)
+      - pattern: Crypto.Hash.MD5.new(...)
+      - pattern: Crypto.Hash.SHA.new(...)
+    message: >
+      Weak cryptographic hash algorithm detected. MD5 and SHA-1 are
+      cryptographically broken: MD5 has known practical collision attacks and
+      SHA-1 has been practically broken since 2017 (SHAttered). Do not use
+      either for password hashing, digital signatures, certificate generation,
+      HMAC in security-sensitive contexts, or any use case where collision
+      resistance is required. Use SHA-256, SHA-384, SHA-512, or BLAKE2b
+      instead (hashlib.sha256, hashlib.sha512, hashlib.blake2b).
+      Note: MD5 and SHA-1 remain acceptable for non-security purposes such as
+      cache keys, file deduplication identifiers, and non-critical integrity
+      checksums where collision resistance is not a requirement. If this usage
+      is a non-security checksum, suppress the finding with a nosemgrep comment
+      and document the rationale inline.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-016
+      category: security
+      subcategory: weak-cryptography
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A02:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V6.2.1"]
+        - framework: nist-800-53-r5
+          controls: ["SC-13"]
+        - framework: pci-dss-v4.0
+          controls: ["4.2.1"]
+        - framework: iso-27001-2022
+          controls: ["A.8.24"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

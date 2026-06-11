@@ -1,0 +1,60 @@
+rules:
+  - id: path-traversal
+    patterns:
+      - pattern-either:
+          # open() with string concatenation as path — classic traversal vector
+          - pattern: open($BASE + $USER, ...)
+          # open() with os.path.join result — join can be escaped with an absolute path
+          - pattern: open(os.path.join($BASE, $USER), ...)
+          # open() with a non-literal path inside a web route handler
+          - patterns:
+              - pattern: open($PATH, ...)
+              - pattern-not: open("...", ...)
+              - pattern-inside: |
+                  @$DECORATOR.route(...)
+                  def $FUNC(...):
+                      ...
+          # pathlib.Path() constructed from a non-literal value (complements KIRBY-SEC-001)
+          - patterns:
+              - pattern: pathlib.Path($VAR)
+              - pattern-not: pathlib.Path("...")
+          # Path() (imported name) constructed from a non-literal value
+          - patterns:
+              - pattern: Path($VAR)
+              - pattern-not: Path("...")
+          # shutil.copy with non-literal source path
+          - patterns:
+              - pattern: shutil.copy($SRC, ...)
+              - pattern-not: shutil.copy("...", ...)
+          # shutil.copyfile with non-literal source path
+          - patterns:
+              - pattern: shutil.copyfile($SRC, ...)
+              - pattern-not: shutil.copyfile("...", ...)
+    message: >
+      User-supplied input flows into a file-system operation without path validation.
+      An attacker can supply path separators or '..' sequences to read or write files
+      outside the intended directory (path traversal). Validate the final resolved path
+      against the intended base directory using os.path.realpath() and verify it starts
+      with the expected prefix. Never pass raw user input to open(), shutil operations,
+      or pathlib.Path without canonicalization and allowlist checks.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-SEC-014
+      category: security
+      subcategory: path-traversal
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A01:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V12.3.1"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

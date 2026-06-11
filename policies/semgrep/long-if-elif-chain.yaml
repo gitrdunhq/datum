@@ -1,0 +1,30 @@
+rules:
+  - id: long-if-elif-chain
+    pattern: |
+      if $C1:
+          ...
+      elif $C2:
+          ...
+      elif $C3:
+          ...
+      elif $C4:
+          ...
+      elif $C5:
+          ...
+    message: >
+      Long if/elif chain with five or more branches detected. Chains this long
+      are a switch-statement smell indicating a missing dispatch table or
+      polymorphism opportunity. Replace with a dictionary dispatch, strategy
+      pattern, or enum-based lookup to reduce conditional complexity.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-010
+      category: code-quality
+      subcategory: bloater
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/switch-statements
+        - https://luzkan.github.io/smells/conditional-complexity

@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from datum.shared.logging import get_logger
 
@@ -107,14 +108,18 @@ def _upgrade_to_v4(conn: sqlite3.Connection) -> None:
     if not _reflexion_has_column(conn, "last_seen"):
         conn.execute("ALTER TABLE reflexion ADD COLUMN last_seen TEXT")
     if not _reflexion_has_column(conn, "entry_type"):
-        conn.execute("ALTER TABLE reflexion ADD COLUMN entry_type TEXT DEFAULT 'hook_event'")
+        conn.execute(
+            "ALTER TABLE reflexion ADD COLUMN entry_type TEXT DEFAULT 'hook_event'"
+        )
 
     conn.execute("UPDATE reflexion SET last_seen = created_at WHERE last_seen IS NULL")
 
     conn.execute(
         "UPDATE reflexion SET entry_type = 'review_finding' WHERE rule LIKE 'review-finding%'"
     )
-    conn.execute("UPDATE reflexion SET entry_type = 'plan_entry' WHERE rule = 'plan-generated'")
+    conn.execute(
+        "UPDATE reflexion SET entry_type = 'plan_entry' WHERE rule = 'plan-generated'"
+    )
 
     conn.execute("""
         UPDATE reflexion SET hit_count = (
@@ -140,7 +145,9 @@ def _upgrade_to_v4(conn: sqlite3.Connection) -> None:
         )
     """)
 
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_reflexion_entry_type ON reflexion(entry_type)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reflexion_entry_type ON reflexion(entry_type)"
+    )
 
 
 MIGRATIONS[4] = _upgrade_to_v4
@@ -155,7 +162,7 @@ def get_expected_schema_version() -> int:
     return EXPECTED_SCHEMA_VERSION
 
 
-def get_schema_version(store: "MemoryStore") -> int:
+def get_schema_version(store: MemoryStore) -> int:
     """Return the stored schema version via SQLite `PRAGMA user_version`.
 
     A fresh SQLite database reports 0 until a migration sets the pragma.
@@ -165,7 +172,7 @@ def get_schema_version(store: "MemoryStore") -> int:
     return store.user_version
 
 
-def _require_store_connection(store: "MemoryStore") -> sqlite3.Connection | None:
+def _require_store_connection(store: MemoryStore) -> sqlite3.Connection | None:
     """Return the underlying sqlite connection when the store exposes one."""
 
     conn = getattr(store, "_conn", None)
@@ -173,7 +180,7 @@ def _require_store_connection(store: "MemoryStore") -> sqlite3.Connection | None
 
 
 def _apply_migration_step(
-    store: "MemoryStore",
+    store: MemoryStore,
     *,
     version: int,
     migrator: Callable[[sqlite3.Connection], None],
@@ -189,7 +196,9 @@ def _apply_migration_step(
     conn.execute("BEGIN IMMEDIATE")
     try:
         store.apply_migration(migrator)
-        conn.execute(f"PRAGMA user_version = {int(version)}")
+        conn.execute(  # nosemgrep: sql-injection, subprocess-f-string-sql, formatted-sql-query, sqlalchemy-execute-raw-query -- int()-cast version constant, no user input
+            f"PRAGMA user_version = {int(version)}"
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -207,7 +216,7 @@ def _expected_path_versions(current: int, target: int) -> list[int]:
     return list(range(baseline + 1, target + 1))
 
 
-def run_migrations(store: "MemoryStore") -> int:
+def run_migrations(store: MemoryStore) -> int:
     """Bring the store up to `EXPECTED_SCHEMA_VERSION`.
 
     Reads the current `PRAGMA user_version`, runs any registered migration
@@ -233,7 +242,9 @@ def run_migrations(store: "MemoryStore") -> int:
         store.set_user_version(target)
         return target
 
-    missing_versions = [version for version in path_versions if version not in MIGRATIONS]
+    missing_versions = [
+        version for version in path_versions if version not in MIGRATIONS
+    ]
     if missing_versions:
         raise SchemaMigrationError(
             "Migration gap: "
@@ -309,7 +320,9 @@ def migrate_jsonl_to_sqlite(old_dir: Path, db_path: Path) -> dict[str, int]:
                     store.save_pattern(record)
                     counts["patterns"] += 1
                 except KeyError as exc:
-                    logger.warning("migrate: skipping pattern with missing key: %s", exc)
+                    logger.warning(
+                        "migrate: skipping pattern with missing key: %s", exc
+                    )
 
     logger.info("migrate: imported %s", counts)
     return counts

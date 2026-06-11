@@ -1,0 +1,30 @@
+rules:
+  - id: enterprise-class-name
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $CLASS:
+                  ...
+          - pattern: |
+              class $CLASS(...):
+                  ...
+      - metavariable-regex:
+          metavariable: $CLASS
+          regex: '.*(Manager|Factory|Builder|Strategy|Provider|Service|Helper|Util)$'
+    message: >
+      Generic enterprise-style class suffix detected. Names like Manager,
+      Factory, Builder, Strategy, Provider, Service, Helper, or Util often hide
+      one-off abstractions that do not pay for themselves. Keep the class only
+      if there is a real shared boundary or multiple concrete implementations.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-014
+      category: code-quality
+      subcategory: speculative-generality
+      property-domain: boundedness
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://refactoring.guru/smells/speculative-generality
+        - https://luzkan.github.io/smells/speculative-generality

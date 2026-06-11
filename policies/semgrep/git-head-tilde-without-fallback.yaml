@@ -1,0 +1,24 @@
+rules:
+  - id: git-head-tilde-without-fallback
+    patterns:
+      - pattern: |
+          subprocess.run(["git", "diff", "--name-only", "HEAD~1"], ...)
+      - pattern-not-inside: |
+          if $CHECK.returncode != 0:
+              ...
+    message: >
+      'git diff HEAD~1' will fail on repos with a single commit (no parent).
+      Handle the non-zero exit code explicitly — fall back to
+      'git diff-tree --no-commit-id --name-only -r HEAD' for initial commits,
+      or return an empty file list.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-001
+      category: code-quality
+      subcategory: boundary-condition
+      property-domain: availability
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

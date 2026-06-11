@@ -1,0 +1,24 @@
+rules:
+  - id: sleep-based-synchronization
+    pattern-either:
+      - pattern: time.sleep(...)
+      - pattern: sleep(...)
+      - pattern: asyncio.sleep(...)
+    message: >
+      Sleep call detected in code that may be relying on time as a
+      synchronization or readiness signal. Sleeps make tests flaky and hide the
+      real event or state transition being waited on. Prefer an explicit
+      condition, timeout-bounded poll, event, lock, or task synchronization
+      primitive.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-015
+      category: code-quality
+      subcategory: sleep-synchronization
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://docs.python.org/3/library/threading.html#event-objects
+        - https://docs.python.org/3/library/asyncio-sync.html

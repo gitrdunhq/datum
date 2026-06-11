@@ -1,0 +1,35 @@
+rules:
+  - id: magic-number
+    patterns:
+      - pattern-either:
+          - pattern: $X == $N
+          - pattern: $X != $N
+          - pattern: $X === $N
+          - pattern: $X !== $N
+          - pattern: $X > $N
+          - pattern: $X < $N
+          - pattern: $X >= $N
+          - pattern: $X <= $N
+          - pattern: time.sleep($N)
+          - pattern: setTimeout($F, $N)
+      - metavariable-regex:
+          metavariable: $N
+          regex: '^(?:[2-9][0-9]|[0-9]{3,})(?:\.[0-9]+)?$'
+    message: >
+      Magic number detected in a comparison or timer call. Hard-coded numeric
+      literals obscure the intent of the value and make the codebase fragile
+      when the threshold changes. Extract the value into a named constant that
+      explains its domain meaning, for example `MAX_RETRIES = 100` or
+      `SESSION_TIMEOUT_SECS = 3600`.
+    languages: [python, javascript, typescript]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-011
+      category: code-quality
+      subcategory: maintainability
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://luzkan.github.io/smells/magic-number
+        - https://refactoring.guru/smells/primitive-obsession

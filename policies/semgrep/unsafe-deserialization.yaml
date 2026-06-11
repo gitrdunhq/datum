@@ -1,0 +1,48 @@
+rules:
+  - id: unsafe-deserialization
+    patterns:
+      - pattern-either:
+          # pickle.load and pickle.loads — deserializing untrusted data allows arbitrary code execution
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          # yaml.load without SafeLoader or CSafeLoader — FullLoader, UnsafeLoader, and bare calls are all dangerous
+          - patterns:
+              - pattern: yaml.load(...)
+              - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+              - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader)
+          # marshal.load — no integrity guarantees on the format
+          - pattern: marshal.load(...)
+          # shelve.open — uses pickle internally for value serialization
+          - pattern: shelve.open(...)
+    message: >
+      Unsafe deserialization detected. Deserializing data from untrusted sources
+      using pickle, yaml.load without SafeLoader, marshal, or shelve can allow
+      attackers to execute arbitrary code by crafting payloads that invoke
+      Python's object protocol during deserialization. For YAML, use
+      yaml.safe_load() or yaml.load(data, Loader=yaml.SafeLoader) — these
+      restrict deserialized types to safe Python primitives. For pickle and
+      marshal, avoid deserializing untrusted data entirely; prefer JSON or a
+      schema-validated format such as protobuf or msgspec. If pickle is
+      required for internal transport, ensure the source is cryptographically
+      signed and verified before deserialization.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      kirby_id: KIRBY-SEC-010
+      category: security
+      subcategory: unsafe-deserialization
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A08:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V5.5.3"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

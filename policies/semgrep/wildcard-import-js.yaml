@@ -1,0 +1,21 @@
+rules:
+  - id: wildcard-import-js
+    pattern: export * from $MODULE
+    message: >
+      Wildcard re-export detected. `export * from 'module'` leaks all public
+      exports into the current module's namespace, polluting the public API and
+      causing accidental name conflicts whenever the upstream module adds new
+      exports. Use named re-exports instead: `export { name1, name2 } from 'module'`.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-006
+      category: code-quality
+      subcategory: correctness
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://luzkan.github.io/smells/global-data
+        - https://refactoring.guru/refactoring/smells
+        - https://github.com/Luzkan/smells

@@ -1,0 +1,54 @@
+rules:
+  - id: command-injection
+    patterns:
+      - pattern-either:
+          # os.system — always executes via a shell, no shell=True needed
+          - pattern: os.system(f"...")
+          - pattern: os.system(f'...')
+          - pattern: os.system("..." + $VAR)
+          # os.popen — always executes via a shell
+          - pattern: os.popen(f"...")
+          - pattern: os.popen(f'...')
+          # subprocess.call with shell=True and dynamic string
+          - pattern: subprocess.call(f"...", ..., shell=True)
+          - pattern: subprocess.call(f'...', ..., shell=True)
+          - pattern: subprocess.call("..." + $VAR, ..., shell=True)
+          # subprocess.run with shell=True and dynamic string
+          - pattern: subprocess.run(f"...", ..., shell=True)
+          - pattern: subprocess.run(f'...', ..., shell=True)
+          - pattern: subprocess.run("..." + $VAR, ..., shell=True)
+          # subprocess.Popen with shell=True and dynamic string
+          - pattern: subprocess.Popen(f"...", ..., shell=True)
+          - pattern: subprocess.Popen(f'...', ..., shell=True)
+          - pattern: subprocess.Popen("..." + $VAR, ..., shell=True)
+    message: >
+      Command injection vulnerability detected. User-controlled input is
+      interpolated into a shell command string via f-string or string
+      concatenation. When executed via os.system, os.popen, or subprocess with
+      shell=True, an attacker can inject shell metacharacters (;, |, &&, $(),
+      backticks) to run arbitrary commands on the host. Never pass
+      user-controlled data to shell execution functions as a string. Use
+      subprocess with a list of arguments and shell=False (the default):
+      subprocess.run(["cmd", user_arg]). Validate and sanitize any input that
+      must appear in a command invocation.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      kirby_id: KIRBY-SEC-009
+      category: security
+      subcategory: command-injection
+      property-domain: integrity
+      eedom-plugin: semgrep
+      compliance_mappings:
+        - framework: owasp-top10-2021
+          controls: ["A03:2021"]
+        - framework: owasp-asvs-v4.0
+          controls: ["V5.3.8"]
+        - framework: nist-800-53-r5
+          controls: ["SI-10"]
+        - framework: pci-dss-v4.0
+          controls: ["6.2.4"]
+        - framework: iso-27001-2022
+          controls: ["A.8.26"]
+      references:
+        - https://github.com/gitrdunhq/eedom-community-rules

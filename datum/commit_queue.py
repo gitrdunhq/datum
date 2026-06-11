@@ -14,12 +14,12 @@ import argparse
 import fcntl
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
-import shutil
 from pathlib import Path
 
 LOCK_FILE = Path(".datum/locks/branch.lock")
@@ -28,7 +28,9 @@ DEFAULT_SOCKET_TEMPLATE = ".datum/runs/{run_id}/commit-queue.sock"
 
 def acquire_lock() -> int:
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd = open(LOCK_FILE, "w")  # noqa: SIM115 — intentionally kept open
+    fd = open(  # noqa: SIM115  # nosemgrep: missing-oserror-on-file-open -- parent dir created above; lock fd kept open intentionally
+        LOCK_FILE, "w"
+    )
     fcntl.flock(fd, fcntl.LOCK_EX)
     return fd
 
@@ -135,7 +137,9 @@ def apply_patch_and_commit(
             changed_files = {
                 f for f in git("diff", "--name-only").stdout.splitlines() if f
             } | {
-                f for f in git("diff", "--cached", "--name-only").stdout.splitlines() if f
+                f
+                for f in git("diff", "--cached", "--name-only").stdout.splitlines()
+                if f
             }
             unexpected = sorted(changed_files - allowed_files)
             if unexpected:

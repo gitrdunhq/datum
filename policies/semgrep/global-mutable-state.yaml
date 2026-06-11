@@ -1,0 +1,35 @@
+rules:
+  - id: global-mutable-state
+    patterns:
+      - pattern-either:
+          - pattern: "$VAR = []"
+          - pattern: "$VAR = [...]"
+          - pattern: "$VAR = {}"
+          - pattern: "$VAR = set()"
+      - pattern-not-inside: |
+          class $C:
+              ...
+      - pattern-not-inside: |
+          def $F(...):
+              ...
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '^_?[a-z][a-z0-9_]*$'
+    message: >
+      Module-level mutable container detected. Mutable objects assigned at
+      module scope are shared across all importers and all calls in the
+      process, making them an implicit global side-channel that breaks
+      isolation and makes tests order-dependent. Move the container into a
+      function, class, or explicit dependency injection boundary instead.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-008
+      category: code-quality
+      subcategory: correctness
+      property-domain: isolation
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://luzkan.github.io/smells/global-data
+        - https://refactoring.guru/smells/comments

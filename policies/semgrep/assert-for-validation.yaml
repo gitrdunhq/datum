@@ -1,0 +1,30 @@
+rules:
+  - id: assert-for-validation
+    pattern-either:
+      - pattern: "assert $COND"
+      - pattern: "assert $COND, $MSG"
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/*_test.py"
+        - "**/tests/**"
+        - "**/conftest.py"
+    message: >
+      Assert statement used for runtime validation. Python removes all assert
+      statements when the interpreter runs with the -O (optimise) flag, which
+      means any validation guard written as assert disappears silently in
+      production builds or when tests run with optimisation enabled. Replace
+      assert with an explicit conditional raise using ValueError, TypeError, or
+      a domain-specific exception so the check survives in all execution modes.
+    languages: [python]
+    severity: INFO
+    metadata:
+      kirby_id: KIRBY-QUA-012
+      category: code-quality
+      subcategory: correctness
+      property-domain: availability
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement
+        - https://luzkan.github.io/smells/

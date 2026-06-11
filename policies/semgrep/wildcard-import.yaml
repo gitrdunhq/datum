@@ -1,0 +1,21 @@
+rules:
+  - id: wildcard-import
+    pattern: from $MODULE import *
+    message: >
+      Wildcard import detected. `from module import *` dumps all public names
+      into the current namespace, hiding where names originate and risking silent
+      collisions when the upstream module adds new exports. Replace with explicit
+      imports: `from module import name1, name2`.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      kirby_id: KIRBY-QUA-006
+      category: code-quality
+      subcategory: correctness
+      property-domain: determinism
+      eedom-plugin: semgrep
+      compliance_mappings: []
+      references:
+        - https://luzkan.github.io/smells/global-data
+        - https://refactoring.guru/refactoring/smells
+        - https://github.com/Luzkan/smells

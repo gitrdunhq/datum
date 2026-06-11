@@ -73,7 +73,9 @@ def _omlx_available() -> bool:
     try:
         from urllib.request import urlopen
 
-        resp = urlopen("http://localhost:12200/health", timeout=2)  # noqa: S310
+        resp = urlopen(  # noqa: S310  # nosemgrep: dynamic-urllib-use-detected, insecure-urlopen -- test template targeting local dev server
+            "http://localhost:12200/health", timeout=2
+        )
         return resp.status == 200
     except Exception:
         return False

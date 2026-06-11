@@ -82,7 +82,9 @@ class SentenceTransformerEmbeddings(EmbeddingProvider):
 class TfidfEmbeddings(EmbeddingProvider):
     """TF-IDF fallback when sentence-transformers is unavailable."""
 
-    def __init__(self, max_features: int = 384, persist_path: Path | None = None) -> None:
+    def __init__(
+        self, max_features: int = 384, persist_path: Path | None = None
+    ) -> None:
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
         except ImportError:
@@ -108,7 +110,9 @@ class TfidfEmbeddings(EmbeddingProvider):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         tmp = Path(str(path) + ".tmp")
         with open(tmp, "wb") as f:
-            pickle.dump(self.vectorizer, f)
+            pickle.dump(  # nosemgrep: avoid-pickle -- self-produced cache file, not external input
+                self.vectorizer, f
+            )
         tmp.replace(path)
 
     def _load(self, path: Path) -> None:
@@ -117,11 +121,15 @@ class TfidfEmbeddings(EmbeddingProvider):
 
         try:
             with open(path, "rb") as f:
-                self.vectorizer = pickle.load(f)  # noqa: S301
+                self.vectorizer = pickle.load(  # noqa: S301  # nosemgrep: unsafe-deserialization, avoid-pickle -- self-produced cache file, not external input
+                    f
+                )
             self._fitted = True
         except (OSError, pickle.UnpicklingError) as exc:
             get_logger(__name__).warning(
-                "TfidfEmbeddings: failed to load from %s: %s — starting fresh", path, exc
+                "TfidfEmbeddings: failed to load from %s: %s — starting fresh",
+                path,
+                exc,
             )
 
     def fit(self, texts: list[str]) -> None:
@@ -144,7 +152,9 @@ class TfidfEmbeddings(EmbeddingProvider):
 
     def embed_query(self, query: str) -> list[float]:
         if not self._fitted:
-            raise RuntimeError("TF-IDF vectorizer not fitted. Call embed() or fit() first.")
+            raise RuntimeError(
+                "TF-IDF vectorizer not fitted. Call embed() or fit() first."
+            )
         matrix = self.vectorizer.transform([query])
         return matrix.toarray().flatten().tolist()
 
