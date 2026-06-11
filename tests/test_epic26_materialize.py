@@ -31,6 +31,7 @@ Adversarial findings from fixture lane (task-006):
 
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -156,25 +157,65 @@ class TestScaffoldCreation:
             target / "pyproject.toml"
         ).exists(), "pyproject.toml was not created by materialize.sh."
 
-    def test_pyproject_has_uv_sources_editable(self, target, materialized):
+    def test_pyproject_has_uv_sources_editable(self, tmp_path):
         """AC1.1 / COMPAT-005: pyproject.toml must declare [tool.uv.sources] with
-        datum editable path dep.
+        a datum editable path dep that resolves to the datum repo materialize.sh
+        ran from.
 
-        Expected form:
-            [tool.uv.sources]
-            datum = { path = "../datum", editable = true }
+        Asserted structurally (tomllib), not as a literal "../datum" string:
+        the rendered path is derived from the datum checkout's own location, so
+        a literal match breaks in git worktrees and renamed clones even though
+        the scaffold is correct (#66).
+
+        The datum repo is simulated as a sibling directory whose basename is
+        deliberately NOT "datum", proving the contract is name-independent:
+        whatever path the script writes must resolve (relative to the
+        materialized project dir) to the repo it ran from.
         """
-        content = (target / "pyproject.toml").read_text()
-        assert "tool.uv.sources" in content, (
-            "pyproject.toml is missing [tool.uv.sources] section.\n"
-            'The editable dep must use: datum = { path = "../datum", editable = true }'
+        if not MATERIALIZE_SH.exists():
+            pytest.fail(
+                f"Precondition: {MATERIALIZE_SH} does not exist (RED phase — expected)."
+            )
+
+        # Sibling layout inside tmp_path; basename intentionally not "datum"
+        # (simulates a git worktree / renamed clone).
+        datum_repo = tmp_path / "datum-renamed-checkout"
+        datum_repo.mkdir()
+        (datum_repo / "pyproject.toml").write_text(
+            '[project]\nname = "datum"\nversion = "0.0.0"\n'
+        )
+        target = tmp_path / "datum-local"
+
+        result = run_materialize(target, datum_repo=datum_repo)
+        assert result.returncode == 0, (
+            f"materialize.sh exited {result.returncode}.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+        parsed = tomllib.loads((target / "pyproject.toml").read_text())
+        sources = parsed.get("tool", {}).get("uv", {}).get("sources")
+        assert sources is not None, (
+            "pyproject.toml is missing the [tool.uv.sources] section.\n"
+            "The editable dep must be declared as: "
+            "datum = { path = <path-to-datum-repo>, editable = true }"
+        )
+        datum_dep = sources.get("datum")
+        assert isinstance(datum_dep, dict), (
+            "[tool.uv.sources] has no 'datum' entry — the editable path dep "
+            "for the datum repo is missing."
         )
         assert (
-            "editable" in content
-        ), "pyproject.toml does not contain 'editable' — the datum dep must be editable."
-        assert (
-            "../datum" in content
-        ), "pyproject.toml does not reference '../datum' as the path dep."
+            datum_dep.get("editable") is True
+        ), "the datum dep in [tool.uv.sources] must set editable = true."
+        dep_path = datum_dep.get("path")
+        assert dep_path, "the datum dep in [tool.uv.sources] must declare a 'path'."
+        resolved = (target / dep_path).resolve()
+        assert resolved == datum_repo.resolve(), (
+            f"datum dep path {dep_path!r} resolves to {resolved}, expected the "
+            f"datum repo materialize.sh ran from: {datum_repo.resolve()}.\n"
+            "The rendered path must point back at the source checkout "
+            "regardless of its directory name."
+        )
 
     def test_pyproject_requires_python_312(self, target, materialized):
         """AC1.1: pyproject.toml must declare requires-python >= 3.12."""
