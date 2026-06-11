@@ -145,6 +145,23 @@ def _conn_refused_urlerror() -> Exception:
     return _ue.URLError(ConnectionRefusedError("Connection refused"))
 
 
+def _retry_sleep_spy():
+    """Route the retry helper's backoff through a recording no-op mock.
+
+    Uses the sleep_fn injection point on _omlx_urlopen_with_retry instead
+    of fragile global time.sleep patching. Returns (patcher, sleep_mock).
+    """
+    import datum.local_llm as _mod
+
+    real = _mod._omlx_urlopen_with_retry
+    sleep_mock = MagicMock()
+
+    def _with_spy(req, timeout, max_attempts=_mod._OMLX_MAX_ATTEMPTS):
+        return real(req, timeout, max_attempts, sleep_fn=sleep_mock)
+
+    return patch.object(_mod, "_omlx_urlopen_with_retry", _with_spy), sleep_mock
+
+
 # ── Fix 1: retry with capped backoff ───────────────────────────────────────
 
 
@@ -158,12 +175,13 @@ def test_retry_on_429_then_succeeds():
     resp_ok.__enter__ = MagicMock(return_value=resp_ok)
     resp_ok.__exit__ = MagicMock(return_value=False)
 
+    sleep_patch, mock_sleep = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=[_make_http_error(429), resp_ok],
         ),
-        patch("time.sleep") as mock_sleep,
+        sleep_patch,
     ):
         result = _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
     assert result["text"] == "ok"
@@ -179,12 +197,13 @@ def test_retry_on_503_then_succeeds():
     resp_ok.__enter__ = MagicMock(return_value=resp_ok)
     resp_ok.__exit__ = MagicMock(return_value=False)
 
+    sleep_patch, _ = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=[_make_http_error(503), resp_ok],
         ),
-        patch("time.sleep"),
+        sleep_patch,
     ):
         result = _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
     assert result["text"] == "ok"
@@ -199,12 +218,13 @@ def test_retry_on_connection_refused_then_succeeds():
     resp_ok.__enter__ = MagicMock(return_value=resp_ok)
     resp_ok.__exit__ = MagicMock(return_value=False)
 
+    sleep_patch, _ = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=[_conn_refused_urlerror(), resp_ok],
         ),
-        patch("time.sleep"),
+        sleep_patch,
     ):
         result = _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
     assert result["text"] == "ok"
@@ -219,9 +239,10 @@ def test_retry_exhaustion_raises_original_error():
     from datum.local_llm import _omlx_generate
 
     errors = [_make_http_error(429) for _ in range(4)]
+    sleep_patch, _ = _retry_sleep_spy()
     with (
         patch("datum.local_llm.urllib.request.urlopen", side_effect=errors),
-        patch("time.sleep"),
+        sleep_patch,
         pytest.raises(_ue.HTTPError) as exc_info,
     ):
         _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
@@ -236,12 +257,13 @@ def test_no_retry_on_400():
 
     from datum.local_llm import _omlx_generate
 
+    sleep_patch, mock_sleep = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=_make_http_error(400),
         ),
-        patch("time.sleep") as mock_sleep,
+        sleep_patch,
         pytest.raises(_ue.HTTPError) as exc_info,
     ):
         _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
@@ -257,12 +279,13 @@ def test_no_retry_on_500():
 
     from datum.local_llm import _omlx_generate
 
+    sleep_patch, mock_sleep = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=_make_http_error(500),
         ),
-        patch("time.sleep") as mock_sleep,
+        sleep_patch,
         pytest.raises(_ue.HTTPError),
     ):
         _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
@@ -279,12 +302,13 @@ def test_retry_after_header_honored():
     resp_ok.__exit__ = MagicMock(return_value=False)
 
     err_429 = _make_http_error(429, headers={"Retry-After": "7"})
+    sleep_patch, mock_sleep = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=[err_429, resp_ok],
         ),
-        patch("time.sleep") as mock_sleep,
+        sleep_patch,
     ):
         _omlx_generate("hi", "m", 100, 0.5, "http://localhost:9999")
     # The sleep must be at least 7 (Retry-After value)
@@ -305,12 +329,13 @@ def test_retry_structured_on_503():
     resp_ok.__enter__ = MagicMock(return_value=resp_ok)
     resp_ok.__exit__ = MagicMock(return_value=False)
 
+    sleep_patch, _ = _retry_sleep_spy()
     with (
         patch(
             "datum.local_llm.urllib.request.urlopen",
             side_effect=[_make_http_error(503), resp_ok],
         ),
-        patch("time.sleep"),
+        sleep_patch,
     ):
         result = _omlx_structured("hi", schema, "m", 100, "http://localhost:9999")
     assert result["data"] == {"a": 1}
@@ -329,9 +354,10 @@ def test_retry_exhaustion_structured_raises():
     schema.__name__ = "TestSchema"
 
     errors = [_make_http_error(503) for _ in range(4)]
+    sleep_patch, _ = _retry_sleep_spy()
     with (
         patch("datum.local_llm.urllib.request.urlopen", side_effect=errors),
-        patch("time.sleep"),
+        sleep_patch,
         pytest.raises(_ue.HTTPError),
     ):
         _omlx_structured("hi", schema, "m", 100, "http://localhost:9999")
@@ -454,3 +480,158 @@ def test_time_s_not_hardcoded_zero():
     # Real call is near-instant but must not be exactly 0.0 (the old hardcoded value)
     # Actually, with mocked urlopen it could be essentially 0 — but must be >= 0
     assert result["time_s"] >= 0.0
+
+
+# ── Issue #65 item 4: response-shape boundary validation ───────────────────
+
+
+def _mock_resp(payload: bytes) -> MagicMock:
+    """Build a context-manager mock for urlopen returning *payload*."""
+    resp = MagicMock()
+    resp.read.return_value = payload
+    resp.__enter__ = MagicMock(return_value=resp)
+    resp.__exit__ = MagicMock(return_value=False)
+    return resp
+
+
+def test_generate_missing_choices_raises_structured_error():
+    """Response without 'choices' → ValueError naming model and URL."""
+    import json as _json
+
+    import pytest
+
+    from datum.local_llm import _omlx_generate
+
+    resp = _mock_resp(_json.dumps({"usage": {"completion_tokens": 0}}).encode())
+    with (
+        patch("datum.local_llm.urllib.request.urlopen", return_value=resp),
+        pytest.raises(ValueError) as exc_info,
+    ):
+        _omlx_generate("hi", "my-model", 100, 0.5, "http://localhost:9999")
+    msg = str(exc_info.value)
+    assert "choices" in msg
+    assert "my-model" in msg
+    assert "http://localhost:9999" in msg
+
+
+def test_generate_empty_choices_raises_structured_error():
+    """Response with empty 'choices' list → structured ValueError."""
+    import json as _json
+
+    import pytest
+
+    from datum.local_llm import _omlx_generate
+
+    resp = _mock_resp(_json.dumps({"choices": [], "usage": {}}).encode())
+    with (
+        patch("datum.local_llm.urllib.request.urlopen", return_value=resp),
+        pytest.raises(ValueError) as exc_info,
+    ):
+        _omlx_generate("hi", "my-model", 100, 0.5, "http://localhost:9999")
+    msg = str(exc_info.value)
+    assert "choices" in msg
+    assert "my-model" in msg
+    assert "http://localhost:9999" in msg
+
+
+def test_generate_missing_message_content_raises_structured_error():
+    """Choice without message content → ValueError, not KeyError."""
+    import json as _json
+
+    import pytest
+
+    from datum.local_llm import _omlx_generate
+
+    resp = _mock_resp(_json.dumps({"choices": [{"message": {}}]}).encode())
+    with (
+        patch("datum.local_llm.urllib.request.urlopen", return_value=resp),
+        pytest.raises(ValueError) as exc_info,
+    ):
+        _omlx_generate("hi", "my-model", 100, 0.5, "http://localhost:9999")
+    msg = str(exc_info.value)
+    assert "my-model" in msg
+    assert "http://localhost:9999" in msg
+
+
+def test_structured_missing_choices_raises_structured_error():
+    """_omlx_structured gets the same boundary validation."""
+    import json as _json
+
+    import pytest
+
+    from datum.local_llm import _omlx_structured
+
+    schema = MagicMock()
+    schema.model_json_schema.return_value = {"type": "object", "properties": {}}
+    schema.__name__ = "TestSchema"
+
+    resp = _mock_resp(_json.dumps({"usage": {}}).encode())
+    with (
+        patch("datum.local_llm.urllib.request.urlopen", return_value=resp),
+        pytest.raises(ValueError) as exc_info,
+    ):
+        _omlx_structured("hi", schema, "my-model", 100, "http://localhost:9999")
+    msg = str(exc_info.value)
+    assert "choices" in msg
+    assert "my-model" in msg
+    assert "http://localhost:9999" in msg
+
+
+# ── Issue #65 item 5: Pydantic schema validation at the boundary ───────────
+
+
+def test_structured_validates_parsed_json_against_schema():
+    """_omlx_structured must run schema.model_validate on the parsed JSON."""
+    from datum.local_llm import _omlx_structured
+
+    schema = MagicMock()
+    schema.model_json_schema.return_value = {"type": "object", "properties": {}}
+    schema.__name__ = "TestSchema"
+
+    resp = _mock_resp(_make_omlx_response('{"a": 1}'))
+    with patch("datum.local_llm.urllib.request.urlopen", return_value=resp):
+        result = _omlx_structured("hi", schema, "m", 100, "http://localhost:9999")
+    schema.model_validate.assert_called_once_with({"a": 1})
+    # Return type unchanged: callers still get the plain parsed dict.
+    assert result["data"] == {"a": 1}
+
+
+def test_structured_schema_mismatch_fails_fast():
+    """Parsed JSON that violates the Pydantic schema raises at the boundary."""
+    import pytest
+    from pydantic import BaseModel, ValidationError
+
+    from datum.local_llm import _omlx_structured
+
+    class _Verdict(BaseModel):
+        action: str
+
+    resp = _mock_resp(_make_omlx_response('{"wrong_field": 1}'))
+    with (
+        patch("datum.local_llm.urllib.request.urlopen", return_value=resp),
+        pytest.raises(ValidationError),
+    ):
+        _omlx_structured("hi", _Verdict, "m", 100, "http://localhost:9999")
+
+
+# ── Issue #65 item 6: sleep_fn injection on the retry helper ───────────────
+
+
+def test_retry_helper_sleep_fn_injection():
+    """_omlx_urlopen_with_retry accepts sleep_fn — no time.sleep patching."""
+    import urllib.request as _ur
+
+    from datum.local_llm import _omlx_urlopen_with_retry
+
+    resp_ok = _mock_resp(_make_omlx_response("ok"))
+    sleep_fn = MagicMock()
+    req = _ur.Request(
+        "http://localhost:9999/v1/chat/completions", data=b"{}", method="POST"
+    )
+    with patch(
+        "datum.local_llm.urllib.request.urlopen",
+        side_effect=[_make_http_error(429), resp_ok],
+    ):
+        resp = _omlx_urlopen_with_retry(req, timeout=5, sleep_fn=sleep_fn)
+    assert resp is resp_ok
+    assert sleep_fn.call_count == 1
