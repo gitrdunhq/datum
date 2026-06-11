@@ -107,3 +107,11 @@ permissions = { network = false, write = [".datum/"], read = [".datum/"] }
 timeout_seconds = 10
 added_in_epic = 26
 added_in_lane = "issue-70"
+
+[tools.corpus_sql]
+path = "corpus_sql.py"
+description = "query run history, failures, lane ownership, token metrics (SQL over views: transcripts, failures, run_state, lane_files, token_metrics, floor_runs)"
+permissions = { network = false, write = [], read = ["."] }
+timeout_seconds = 30
+added_in_epic = 78
+added_in_lane = "corpus-sql"

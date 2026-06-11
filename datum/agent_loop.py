@@ -86,6 +86,13 @@ TOOL_CATALOG: dict[str, tuple[str, str]] = {
         "save your todo list — break a multi-step task into steps, "
         "mark each done as you finish it",
     ),
+    # #78: corpus SQL — read-only DuckDB views over .datum artifacts
+    "corpus_sql": (
+        '{"query": "SELECT * FROM failures LIMIT 5"}',
+        "query run history, failures, lane ownership, token metrics "
+        "(SQL over views: transcripts, failures, run_state, lane_files, "
+        "token_metrics, floor_runs); use SHOW TABLES to discover schema",
+    ),
 }
 
 # ── #74: typed event log ─────────────────────────────────────────────────

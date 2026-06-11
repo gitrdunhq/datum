@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 2,
+  "topological_order": ["lane-001", "lane-002"],
+  "file_ownership": {
+    "datum/foo.py": "lane-001",
+    "datum/bar.py": "lane-001",
+    "tests/test_foo.py": "lane-002"
+  },
+  "lanes": {}
+}
