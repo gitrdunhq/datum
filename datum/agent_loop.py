@@ -275,6 +275,68 @@ def _compact_history(history: list[dict]) -> list[dict]:
     ]
 
 
+class _TranscriptWriter:
+    """Append-only JSONL transcript for one episode (phase run).
+
+    Writes to .datum/transcripts/<timestamp>-<episode>.jsonl under cwd.
+    All writes are wrapped in try/except OSError so logging never crashes
+    the loop.
+    """
+
+    CONTENT_TRUNCATE = 500
+    OBSERVATION_TRUNCATE = 1000
+
+    def __init__(self, episode: str) -> None:
+        self._episode = episode
+        self._path: Path | None = None
+        ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        try:
+            transcript_dir = Path(".datum") / "transcripts"
+            transcript_dir.mkdir(parents=True, exist_ok=True)
+            self._path = transcript_dir / f"{ts}-{episode}.jsonl"
+        except OSError:
+            pass
+
+    def log_step(
+        self,
+        step_index: int,
+        think_raw: str,
+        decide_raw: dict,
+        tool_name: str,
+        tool_args: dict,
+        observation: str,
+    ) -> None:
+        if self._path is None:
+            return
+        try:
+            # Truncate content field in tool_args for sanity
+            args_copy = dict(tool_args)
+            if (
+                "content" in args_copy
+                and len(args_copy["content"]) > self.CONTENT_TRUNCATE
+            ):
+                args_copy["content"] = (
+                    args_copy["content"][: self.CONTENT_TRUNCATE] + "...[truncated]"
+                )
+            obs = observation
+            if len(obs) > self.OBSERVATION_TRUNCATE:
+                obs = obs[: self.OBSERVATION_TRUNCATE] + "...[truncated]"
+
+            record = {
+                "step": step_index,
+                "episode": self._episode,
+                "think_raw": think_raw,
+                "decide_raw": decide_raw,
+                "tool_name": tool_name,
+                "tool_args": args_copy,
+                "observation": obs,
+            }
+            with self._path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+        except OSError:
+            pass
+
+
 def _write_checkpoint(
     phase: str, task: str, steps: list[dict], read_paths: set[str]
 ) -> Path:
@@ -513,6 +575,12 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     system_prompt = _build_system_prompt(
         allowed_tools, extra_rules=config.get("extra_rules", "")
     )
+    transcript = _TranscriptWriter(phase)
+    # No-progress breaker state: fires once per episode when consecutive
+    # steps repeat the same (tool, args) AND observation identically.
+    _prev_signature: str | None = None
+    _prev_observation: str | None = None
+    _no_progress_fired = False
 
     def _finish(summary: str | None, escalated: bool, reason: str | None) -> dict:
         return {
@@ -546,7 +614,8 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 max_time_s=remaining_s + BUDGET_SLACK_S,
             )
             total_tokens += think_out.get("tokens", 0)
-            thought = _strip_think_tags(think_out.get("text", ""))
+            think_raw = think_out.get("text", "")
+            thought = _strip_think_tags(think_raw)
 
             # ── Context monitor: checkpoint + compact at the threshold ───
             prompt_tokens = think_out.get("prompt_tokens") or (
@@ -573,6 +642,14 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 steps_log.append(step_entry)
                 if on_step:
                     on_step(step_entry)
+                transcript.log_step(
+                    _step,
+                    think_raw,
+                    {},
+                    "truncated_thought",
+                    {},
+                    step_entry["observation"],
+                )
                 continue
 
             # ── DECIDE (fast model, structured) ──────────────────────────
@@ -605,6 +682,9 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             )
             if on_step:
                 on_step(steps_log[-1])
+            transcript.log_step(
+                _step, think_raw, decision, "done", {}, decision.get("summary", "")
+            )
             return _finish(decision.get("summary", ""), False, None)
 
         tool_name = decision.get("tool_name", "")
@@ -785,6 +865,26 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                             f"re-emit the COMPLETE file including them."
                         )
 
+        # ── No-progress breaker (fires once, before loop detector) ───────
+        signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+        if (
+            not _no_progress_fired
+            and _prev_signature is not None
+            and signature == _prev_signature
+            and _prev_observation is not None
+            and observation == _prev_observation
+        ):
+            _no_progress_fired = True
+            observation += (
+                "\n\nYou have repeated the same action with the same result. "
+                "Repeating it again will not change anything. If tests are "
+                "failing, the next action MUST be write_to_file (or "
+                "replace_file_content) with the code change that fixes them. "
+                "Do not run the tests again until you have changed a file."
+            )
+        _prev_signature = signature
+        _prev_observation = observation
+
         # ── OBSERVE ──────────────────────────────────────────────────────
         step_entry = {
             "thought": thought,
@@ -797,8 +897,12 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         if on_step:
             on_step(step_entry)
 
+        # ── Transcript logging (always-on, never crashes) ────────────────
+        transcript.log_step(
+            _step, think_raw, decision, tool_name, tool_args, observation
+        )
+
         # Loop detection: identical (tool, args) repeated with no progress
-        signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
         recent_signatures.append(signature)
         if (
             len(recent_signatures) >= LOOP_DETECT_REPEATS

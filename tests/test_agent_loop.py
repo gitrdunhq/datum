@@ -1990,3 +1990,250 @@ def test_overwrite_new_file_no_warning(tmp_path, monkeypatch):
 
     write_obs = steps[0]["observation"]
     assert "REMOVED" not in write_obs
+
+
+# ── Per-step transcript logging ──────────────────────────────────────────────
+
+
+def test_transcript_file_created_with_per_step_fields(tmp_path, monkeypatch):
+    """Change 1: the agent loop writes a JSONL transcript under
+    .datum/transcripts/ with one line per step containing step index, episode
+    name, raw think text (pre-strip), raw decide, tool_name, tool_args
+    (content truncated), and observation (truncated)."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+
+    # We need to capture the raw think output BEFORE think-tag stripping.
+    raw_think = "<think>internal</think>REASONING: read it\nFILE: NONE\nNEXT: read_file"
+
+    def fake_think(
+        prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None
+    ):
+        return {"text": raw_think, "tokens": 10}
+
+    with (
+        patch("datum.agent_loop._think", fake_think),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ("file contents", False)
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Find the transcript file
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    assert transcript_dir.is_dir(), ".datum/transcripts/ must be created"
+    jsonl_files = list(transcript_dir.glob("*-act_red.jsonl"))
+    assert len(jsonl_files) == 1, f"expected 1 transcript, got {jsonl_files}"
+
+    lines = jsonl_files[0].read_text().strip().split("\n")
+    assert len(lines) >= 1  # at least the tool step
+
+    record = _json.loads(lines[0])
+    assert record["step"] == 0
+    assert record["episode"] == "act_red"
+    assert "<think>" in record["think_raw"]  # pre-strip text
+    assert "tool_name" in record
+    assert record["tool_name"] == "read_file"
+    assert "tool_args" in record
+    assert "observation" in record
+
+
+def test_transcript_truncates_content_and_observation(tmp_path, monkeypatch):
+    """Transcript content field truncated ~500 chars, observation ~1000 chars."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+
+    long_content = "x" * 2000
+    long_thought = f"write it\n```\n{long_content}\n```"
+
+    with (
+        patch(
+            "datum.agent_loop._think",
+            _mk_think([long_thought, "done"]),
+        ),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {"path": "new.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: ('{"ok": true}', False),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_green")
+
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    jsonl_files = list(transcript_dir.glob("*-act_green.jsonl"))
+    assert len(jsonl_files) == 1
+
+    lines = jsonl_files[0].read_text().strip().split("\n")
+    record = _json.loads(lines[0])
+
+    # content must be truncated to ~500
+    args = record["tool_args"]
+    if "content" in args:
+        assert len(args["content"]) <= 550
+    # observation must be truncated to ~1000
+    assert len(record["observation"]) <= 1100
+
+
+def test_transcript_logging_never_crashes_loop(tmp_path, monkeypatch):
+    """Transcript logging failure must not crash the agent loop — silently
+    continues (OSError wrapped in try/except)."""
+    monkeypatch.chdir(tmp_path)
+    # Make .datum/transcripts a file so mkdir fails
+    datum_dir = tmp_path / ".datum"
+    datum_dir.mkdir()
+    transcripts_blocker = datum_dir / "transcripts"
+    transcripts_blocker.write_text("block")
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["all done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([{"action": "done", "summary": "ok"}]),
+        ),
+    ):
+        result = agent_loop("task", BASE_CFG, phase="act_red")
+
+    # Loop completed successfully despite transcript write failure
+    assert result["escalated"] is False
+    assert result["result"]["summary"] == "ok"
+
+
+# ── Repeated-no-progress breaker ─────────────────────────────────────────────
+
+
+def test_no_progress_breaker_injects_corrective_before_loop_detect(
+    tmp_path, monkeypatch
+):
+    """Change 2: when (tool_name, tool_args) AND observation repeat identically
+    on consecutive steps, the observation gets a corrective instruction appended
+    BEFORE the loop detector fires (which needs LOOP_DETECT_REPEATS identical
+    signatures)."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 10)),
+        patch("datum.agent_loop._decide", _mk_decide([same_decision] * 10)),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("1 failed", False)),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # Step 0: normal observation
+    # Step 1: same tool+args+observation -> corrective injected
+    assert len(steps) >= 2
+    assert "write_to_file" in steps[1]["observation"]
+    assert "repeated" in steps[1]["observation"].lower()
+
+    # Loop detector should still fire eventually
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"
+
+
+def test_no_progress_breaker_fires_only_once_per_episode(tmp_path, monkeypatch):
+    """The corrective injection happens at most once per episode so the loop
+    detector still catches truly stuck models on the next repeat."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 10)),
+        patch("datum.agent_loop._decide", _mk_decide([same_decision] * 10)),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("1 failed", False)),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # Count how many times the corrective text appears
+    corrective_count = sum(
+        1
+        for s in steps
+        if "repeated" in s.get("observation", "").lower()
+        and "write_to_file" in s.get("observation", "")
+    )
+    assert (
+        corrective_count == 1
+    ), f"corrective injected {corrective_count} times, expected 1"
+    # And the loop detector still escalates the truly stuck model
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"
+
+
+def test_no_progress_breaker_does_not_fire_on_different_observations(
+    tmp_path, monkeypatch
+):
+    """When consecutive steps have the same tool+args but DIFFERENT observations,
+    the breaker does not fire."""
+    monkeypatch.chdir(tmp_path)
+    steps = []
+
+    obs_counter = [0]
+
+    def varying_exec(tc, cfg):
+        obs_counter[0] += 1
+        return f"output {obs_counter[0]}", False
+
+    same_decision = {
+        "action": "tool",
+        "tool_name": "run_command",
+        "tool_args": {"command": "pytest -q"},
+    }
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["go"] * 5 + ["done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide([same_decision] * 5 + [{"action": "done", "summary": "ok"}]),
+        ),
+        patch("datum.agent_loop._execute_tool", varying_exec),
+    ):
+        cfg = dict(BASE_CFG, max_steps=10)
+        result = agent_loop("task", cfg, phase="act_green", on_step=steps.append)
+
+    # No corrective should have fired
+    for s in steps:
+        obs = s.get("observation", "")
+        assert "repeated" not in obs.lower() or "write_to_file" not in obs
+    # The signature-only loop detector still fires on identical (tool, args)
+    # even with varying observations — that behavior is unchanged.
+    assert result["escalated"] is True
+    assert result["reason"] == "loop_detected"
