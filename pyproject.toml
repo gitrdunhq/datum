@@ -24,6 +24,12 @@ memory = [
     "numpy>=2.0.0",
     "outlines>=1.3.0",
 ]
+# RAG/corpus retrieval deps (datum/memory): TF-IDF fallback + corpus SQL.
+# Distinct from [memory], which is local-LLM (mlx/outlines) deps.
+rag = [
+    "duckdb>=1.0",
+    "scikit-learn",
+]
 
 # eedom integration: optional, install via editable path from ../eedom.
 # Not declared as a dependency since eedom is not on PyPI.

@@ -1,4 +1,4 @@
-# tested-by: tests/test_embeddings.py
+# tested-by: tests/test_memory_embeddings.py
 """Generate embeddings for knowledge chunks.
 
 Provides a unified interface with two backends:
@@ -59,8 +59,8 @@ class SentenceTransformerEmbeddings(EmbeddingProvider):
                 from sentence_transformers import SentenceTransformer
             except ImportError:
                 raise ImportError(
-                    "Missing memory dependencies. "
-                    "Run: uv tool install .[memory] or pip install .[memory]"
+                    "sentence-transformers is not installed (it is not part of "
+                    "any datum extra). Run: pip install sentence-transformers"
                 ) from None
             self._model = SentenceTransformer(self.model_name)
         return self._model
@@ -89,8 +89,8 @@ class TfidfEmbeddings(EmbeddingProvider):
             from sklearn.feature_extraction.text import TfidfVectorizer
         except ImportError:
             raise ImportError(
-                "Missing memory dependencies. "
-                "Run: uv tool install .[memory] or pip install .[memory]"
+                "scikit-learn is not installed. "
+                "Run: uv pip install 'datum[rag]' or pip install 'datum[rag]'"
             ) from None
 
         self._max_features = max_features
@@ -180,11 +180,16 @@ def get_embedding_provider(persist_dir: Path | None = None) -> EmbeddingProvider
         RuntimeError: If no embedding backend is available.
     """
     try:
+        # Eager probe: SentenceTransformerEmbeddings() imports nothing (the
+        # real import is lazy inside its .model property), so probing here is
+        # the only way to make the TF-IDF fallback reachable.
+        import sentence_transformers  # noqa: F401
+    except ImportError:
+        logger.debug("sentence-transformers not available, trying TF-IDF fallback")
+    else:
         provider = SentenceTransformerEmbeddings()
         logger.info("Embedding provider: SentenceTransformerEmbeddings (semantic)")
         return provider
-    except ImportError:
-        logger.debug("sentence-transformers not available, trying TF-IDF fallback")
 
     try:
         persist_path = (persist_dir / "tfidf_vectorizer.pkl") if persist_dir else None
@@ -198,6 +203,7 @@ def get_embedding_provider(persist_dir: Path | None = None) -> EmbeddingProvider
         logger.debug("scikit-learn not available, no embedding backend found")
 
     raise ImportError(
-        "Missing memory dependencies. "
-        "Run: uv tool install .[memory] or pip install .[memory]"
+        "No embedding backend available. Install the TF-IDF fallback with "
+        "pip install 'datum[rag]', or pip install sentence-transformers "
+        "for semantic embeddings."
     )
