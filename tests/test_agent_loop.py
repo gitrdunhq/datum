@@ -384,7 +384,7 @@ def test_write_echo_over_cap_carries_truncation_notice():
     """A successful write larger than the echo cap must tell the model the
     FULL file landed on disk — a silently cut-off echo makes literal models
     (2507) conclude the write failed and rewrite forever (S0.1 loop)."""
-    long_content = "# pad line\n" * 300  # 3300 chars, valid Python, lint-clean
+    long_content = "# pad line\n" * 600  # 6600 chars, valid Python, lint-clean
     steps = []
 
     with (
@@ -405,7 +405,7 @@ def test_write_echo_over_cap_carries_truncation_notice():
         patch(
             "datum.agent_loop._execute_tool",
             lambda tc, cfg: (
-                '{"path": "big.py", "bytes_written": 3300, "ok": true}',
+                '{"path": "big.py", "bytes_written": 6600, "ok": true}',
                 False,
             ),
         ),
@@ -450,6 +450,47 @@ def test_write_echo_under_cap_has_no_truncation_notice():
     obs = steps[0]["observation"]
     assert "echo truncated" not in obs
     assert short_content in obs
+
+
+def test_write_echo_realistic_test_file_is_echoed_complete():
+    """A realistic generated-test-file (~2.5KB) must appear COMPLETE in the
+    observation with no truncation notice. Live S0.2a runs proved a 2380-byte
+    file over the old 1500-char cap made the model rewrite the file until
+    loop detection fired, even though the file on disk was perfect."""
+    medium_content = "# pad line\n" * 230  # 2530 chars, valid Python, lint-clean
+    steps = []
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["write it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",
+                        "tool_args": {
+                            "path": "test_s02a.py",
+                            "content": medium_content,
+                        },
+                    },
+                    {"action": "done", "summary": "written"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool",
+            lambda tc, cfg: (
+                '{"path": "test_s02a.py", "bytes_written": 2530, "ok": true}',
+                False,
+            ),
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=steps.append)
+
+    obs = steps[0]["observation"]
+    assert medium_content in obs
+    assert "echo truncated" not in obs
 
 
 def test_agent_loop_write_tool_missing_content_feeds_error_back():
