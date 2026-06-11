@@ -1,7 +1,7 @@
 # Pattern Library
 
-Living catalog of failure patterns used by `scripts/diagnose_failure.py`.
-Updated by `scripts/learn_patterns.py` after each epic's unknown failures are reviewed.
+Living catalog of failure patterns used by `datum/diagnose_failure.py`.
+Updated after each epic's unknown failures are reviewed (see "How to add patterns" below).
 Version-controlled so the library grows with the project.
 
 **Format:** each pattern has a `regex`, a `classification` (ENVIRONMENTAL/REASONING/HARD_STOP),
@@ -147,9 +147,9 @@ cause = "wrong_interpretation"
 
 ## How to add patterns
 
-Run `datum learn-patterns --review` after any epic with UNKNOWN failures.
-The script reads `.datum/runs/*/unknown-failures.json` files, clusters by similarity,
-and prints proposed TOML entries for this file. Review them, paste the ones that
-look correct into the appropriate section above, and commit.
+After any epic with UNKNOWN failures, review `.datum/runs/*/unknown-failures.json`.
+Cluster similar entries and draft TOML entries for this file (the clustering and
+proposal logic lives in `datum/learn_patterns.py`, not yet wired into the CLI).
+Paste the ones that look correct into the appropriate section above, and commit.
 
 Each pattern you add here improves classification for all future epics in this repo.
