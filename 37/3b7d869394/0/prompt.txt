@@ -3341,3 +3341,23 @@ both please
 ---
 
 does datum have its front end in anywway, tui, cli s?
+
+---
+
+- datum/epic-23 stale closeout draft — deletable after a quick diff please
+
+---
+
+tell me how to use datum CLI to delivery a feature
+
+---
+
+yeah i want fully local, build me a step by step document that starts from nopthing and delivers the next feature as an example
+
+---
+
+yeah i want fully local, build me a step by step document that starts from nopthing and delivers the next feature as an example, withouth tripping fables security or usage issues? we are not training other models
+
+---
+
+/dream
