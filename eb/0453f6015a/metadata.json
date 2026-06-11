@@ -4,7 +4,9 @@
   "strategy": "manual-commit",
   "branch": "fix/95-strip-secrets",
   "checkpoints_count": 1,
-  "files_touched": null,
+  "files_touched": [
+    "datum/agent_loop.py"
+  ],
   "sessions": [
     {
       "metadata": "/eb/0453f6015a/0/metadata.json",
@@ -14,10 +16,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 310138,
-    "cache_creation_tokens": 6451969,
-    "cache_read_tokens": 264533885,
-    "output_tokens": 1030301,
-    "api_call_count": 1383
+    "input_tokens": 308389,
+    "cache_creation_tokens": 6428147,
+    "cache_read_tokens": 258180272,
+    "output_tokens": 1014843,
+    "api_call_count": 1357
   }
 }
