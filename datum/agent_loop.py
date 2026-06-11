@@ -32,6 +32,7 @@ from datum.local_llm import (
     load_config,
     structured,
 )
+from datum.prompt_sanitizer import strip_invisible_unicode, strip_special_tokens
 from datum.schemas import AgentDecision
 
 # Tool catalog: name → (args signature shown to the model, one-line description)
@@ -102,6 +103,16 @@ MIN_STEP_BUDGET_S = 5.0
 # Small grace past the deadline so a request finishing right at the wire
 # isn't cut off mid-response.
 BUDGET_SLACK_S = 2.0
+
+
+def _sanitize_observation(text: str) -> str:
+    """Strip injection vectors from observation text before the model sees it.
+
+    Applied at the single OBSERVE choke point so every path (read echo, write
+    echo, command output, error strings) is covered. Never applied to tool_args
+    or content written to disk.
+    """
+    return strip_invisible_unicode(strip_special_tokens(text))
 
 
 def _strip_think_tags(text: str) -> str:
@@ -864,6 +875,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                             f"{suffix}. If that was unintentional, "
                             f"re-emit the COMPLETE file including them."
                         )
+
+        # ── S0: sanitize the model-visible observation at one choke point ─
+        # Covers every path: read echo, write echo, command output, and the
+        # loop's own error strings. tool_args and disk content are untouched.
+        observation = _sanitize_observation(observation)
 
         # ── No-progress breaker (fires once, before loop detector) ───────
         signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
