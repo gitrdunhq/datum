@@ -1,0 +1,107 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "0180dee538d0",
+  "session_id": "b2560ba7-1dda-417e-9475-51de5d026f40",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-12T16:13:55.16834Z",
+  "branch": "datum/epic-28",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-App/Tests/Unit/Presentation/SettingsViewModelEchoCancellationTests.swift",
+    "Record-Foundation/Sources/Domain/Config/AudioCaptureConfig.swift",
+    "Record-ML/Tests/Unit/EchoCancellationConfigTests.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift",
+    "Record-Presentation/Sources/Presentation/Views/SettingsViewGeneralTab.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "c7398170aa60",
+  "checkpoint_transcript_start": 708,
+  "transcript_lines_at_start": 708,
+  "token_usage": {
+    "input_tokens": 25085,
+    "cache_creation_tokens": 377295,
+    "cache_read_tokens": 6822702,
+    "output_tokens": 42139,
+    "api_call_count": 59
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01P7HjN1hcaRGdkZXQwqHhbz",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "c7398170aa60",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 340,
+        "end": 341,
+        "entry_ids": [
+          "bcb054c9-faf5-4bc4-81e3-1a426127eeb2"
+        ],
+        "tool_use_id": "toolu_01P7HjN1hcaRGdkZXQwqHhbz"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01P7HjN1hcaRGdkZXQwqHhbz"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-12T16:13:55.118326Z",
+    "agent_lines": 224,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 224,
+    "total_lines_changed": 228,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

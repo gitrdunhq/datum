@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "0180dee538d0",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-28",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-App/Tests/Unit/Presentation/SettingsViewModelEchoCancellationTests.swift",
+    "Record-Foundation/Sources/Domain/Config/AudioCaptureConfig.swift",
+    "Record-ML/Tests/Unit/EchoCancellationConfigTests.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift",
+    "Record-Presentation/Sources/Presentation/Views/SettingsViewGeneralTab.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/01/80dee538d0/0/metadata.json",
+      "transcript": "/01/80dee538d0/0/full.jsonl",
+      "content_hash": "/01/80dee538d0/0/content_hash.txt",
+      "prompt": "/01/80dee538d0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 25085,
+    "cache_creation_tokens": 377295,
+    "cache_read_tokens": 6822702,
+    "output_tokens": 42139,
+    "api_call_count": 59
+  }
+}
