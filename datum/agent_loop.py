@@ -25,7 +25,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypedDict
 
 from datum.eedom_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
@@ -151,6 +151,97 @@ StepEvent = Literal[
     "error",
     "final_answer",
 ]
+
+# ── #73: structured tool results ─────────────────────────────────────────────
+# Machine-readable companion to the human-readable observation string.
+# Observation stays as a string in history (the model reads strings); this
+# typed dict rides alongside in step_entry["tool_result"] so downstream
+# consumers (triage, orchestrator, progress.json) can route on fields without
+# parsing prose.
+#
+#   status             — "ok" | "error" — derived from the observation text
+#   summary            — first line of the observation (≤200 chars)
+#   next_valid_actions — tools the orchestrator should consider offering next;
+#                        narrowed by outcome so the think model sees a tighter
+#                        action space after each step (agents-best-practices)
+
+
+class ToolResultData(TypedDict):
+    """Structured result for one tool execution step (#73)."""
+
+    status: Literal["ok", "error"]
+    summary: str
+    next_valid_actions: list[str]
+
+
+def _make_tool_result(
+    tool_name: str,
+    observation: str,
+    allowed_tools: list[str],
+) -> ToolResultData:
+    """Derive a ToolResultData from a completed tool execution.
+
+    Pure function — no I/O, no side effects.
+
+    status is "error" when the observation starts with "Error" (every
+    guard-branch and sandboxed-tool failure uses that prefix), "ok" otherwise.
+
+    summary is the first non-empty line of the observation, capped at 200
+    chars — long enough to carry a pytest summary line or a path/message but
+    short enough to stay scannable in a JSON field.
+
+    next_valid_actions narrows the allowed_tools list based on the outcome:
+    - On error: suggest only read tools (to diagnose) and exclude write tools
+      (which likely share the same root cause and would also fail).
+    - After a successful write: suggest run_command (verify) and done
+      (if confident), exclude further writes on the same path.
+    - After a successful read: suggest write tools and done.
+    - Default: return allowed_tools unchanged.
+    """
+    status: Literal["ok", "error"] = (
+        "error" if observation.lstrip().startswith("Error") else "ok"
+    )
+
+    # summary: first non-empty line, capped at 200 chars
+    summary = next(
+        (line.strip() for line in observation.splitlines() if line.strip()),
+        observation[:200],
+    )[:200]
+
+    if status == "error":
+        # On error: read-only and compute tools for diagnosis; exclude writes
+        next_valid_actions = [
+            t
+            for t in allowed_tools
+            if t
+            not in {
+                "write_to_file",
+                "replace_file_content",
+                "multi_replace_file_content",
+                "write_todos",
+            }
+        ]
+    elif tool_name in {
+        "write_to_file",
+        "replace_file_content",
+        "multi_replace_file_content",
+    }:
+        # After a successful write: verify (run_command) or finish (done)
+        next_valid_actions = [
+            t for t in allowed_tools if t in {"run_command", "read_file", "done"}
+        ]
+    elif tool_name in {"read_file", "read_file_range", "grep_search", "find_callers"}:
+        # After a successful read: write to act on findings, or finish
+        next_valid_actions = [t for t in allowed_tools if t != "read_file_range"]
+    else:
+        next_valid_actions = list(allowed_tools)
+
+    return ToolResultData(
+        status=status,
+        summary=summary,
+        next_valid_actions=next_valid_actions,
+    )
+
 
 # Anchored to the start of the response: a real reasoning block only ever
 # opens as the first token of a turn. A <think> appearing later is content
@@ -599,6 +690,7 @@ class _TranscriptWriter:
         observation: str,
         *,
         event: StepEvent = "tool_result",
+        tool_result: ToolResultData | None = None,
     ) -> None:
         if self._path is None:
             return
@@ -616,7 +708,7 @@ class _TranscriptWriter:
             if len(obs) > self.OBSERVATION_TRUNCATE:
                 obs = obs[: self.OBSERVATION_TRUNCATE] + "...[truncated]"
 
-            record = {
+            record: dict = {
                 "step": step_index,
                 "episode": self._episode,
                 "event": event,
@@ -626,6 +718,8 @@ class _TranscriptWriter:
                 "tool_args": args_copy,
                 "observation": obs,
             }
+            if tool_result is not None:
+                record["tool_result"] = tool_result
             with self._path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
         except OSError:
@@ -651,6 +745,8 @@ class _ProgressWriter:
       blockers        — list of observation prefixes for error/escalation steps
       last_tool       — tool_name of the most recent step
       last_event      — StepEvent discriminator of the most recent step
+      last_tool_result — #73 structured result of the most recent tool execution,
+                         or null when no tool has executed yet
       updated_at      — ISO-8601 UTC timestamp of this write
       escalated       — bool, True when status == "escalated"
       reason          — escalation reason string or null
@@ -669,6 +765,7 @@ class _ProgressWriter:
         self._last_tool: str = ""
         self._last_event: str = ""
         self._steps_taken: int = 0
+        self._last_tool_result: ToolResultData | None = None
 
     def _write(self, doc: dict) -> None:
         try:
@@ -702,6 +799,7 @@ class _ProgressWriter:
             "blockers": list(self._blockers),
             "last_tool": self._last_tool,
             "last_event": self._last_event,
+            "last_tool_result": self._last_tool_result,
             "updated_at": self._now(),
             "escalated": escalated,
             "reason": reason,
@@ -722,6 +820,9 @@ class _ProgressWriter:
 
         self._last_tool = tool
         self._last_event = event
+        # #73: carry the structured result when present (tool_result/plan_update events)
+        if "tool_result" in step:
+            self._last_tool_result = step["tool_result"]
 
         target = (
             tool_args.get("path")
@@ -1589,13 +1690,23 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         _prev_observation = observation
 
         # ── OBSERVE ──────────────────────────────────────────────────────
-        step_entry = {
+        # #73: structured tool result — only on steps where a tool actually
+        # executed (tool_result or plan_update events); guard rejections
+        # (event="error") carry no tool_result because no tool ran.
+        step_tr: ToolResultData | None = None
+        if step_event in ("tool_result", "plan_update"):
+            step_tr = _make_tool_result(tool_name, observation, allowed_tools)
+
+        step_entry: dict = {
             "event": step_event,
             "thought": thought,
             "tool_name": tool_name,
             "tool_args": tool_args,
             "observation": observation,
         }
+        if step_tr is not None:
+            step_entry["tool_result"] = step_tr
+
         history.append(step_entry)
         steps_log.append(step_entry)
         progress.record_step(step_entry)
@@ -1611,6 +1722,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             tool_args,
             observation,
             event=step_event,
+            tool_result=step_tr,
         )
 
         # Loop detection: identical (tool, args) repeated with no progress
