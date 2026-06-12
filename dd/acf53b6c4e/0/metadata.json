@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ddacf53b6c4e",
+  "session_id": "2c5a3bd7-ae53-4761-b3a1-925307f8928a",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-12T23:00:41.575506Z",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".datum/state.db",
+    ".datum/state.json",
+    "docs/epics/datum/epic-30-audit-remediation/QUESTIONS.md",
+    "docs/epics/datum/epic-30-audit-remediation/SPEC.md",
+    "docs/epics/datum/epic-30-audit-remediation/TICKET.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "225c3b12a764",
+  "token_usage": {
+    "input_tokens": 7250,
+    "cache_creation_tokens": 338644,
+    "cache_read_tokens": 3927442,
+    "output_tokens": 39042,
+    "api_call_count": 56
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01HoS5VZau7R5MBH2PU9uQ49",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "225c3b12a764",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 36,
+        "end": 37,
+        "entry_ids": [
+          "1e68fd0a-1007-4fb1-b7c7-77866dcd9d45"
+        ],
+        "tool_use_id": "toolu_01HoS5VZau7R5MBH2PU9uQ49"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01HoS5VZau7R5MBH2PU9uQ49"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "initial_attribution": {
+    "calculated_at": "2026-06-12T23:00:41.566844Z",
+    "agent_lines": 346,
+    "agent_removed": 0,
+    "human_added": 267,
+    "human_modified": 39,
+    "human_removed": 0,
+    "total_committed": 652,
+    "total_lines_changed": 652,
+    "agent_percentage": 53.06748466257669,
+    "metric_version": 2
+  }
+}
