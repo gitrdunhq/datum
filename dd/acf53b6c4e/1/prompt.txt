@@ -1,0 +1,651 @@
+get it done
+
+---
+
+lets develop a backlog item
+
+---
+
+how does headroom work, laymans
+
+---
+
+<task-notification>
+<task-id>a50e65e5560ca4e28</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/a50e65e5560ca4e28.output</output-file>
+<status>completed</status>
+<summary>Agent "Lane task-001: AEC settings toggle" completed</summary>
+<result>Done. Here is the report for the orchestrator:
+
+---
+
+**Task-001 complete. Commit: `2af424887`**
+
+**Files changed:**
+- `Record-Foundation/Sources/Domain/Config/AudioCaptureConfig.swift` — `echoCancellationEnabled: Bool` field added with default `true`; custom `Codable` init uses `decodeIfPresent` so legacy configs missing the field decode to `true` (INV-001). The field was pre-wired in a prior pass; no changes needed beyond what was already staged.
+- `Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift` — `echoCancellationEnabled = true` property was already added; this task wired it into `saveAudioDeviceSelection` (passed as `echoCancellationEnabled: echoCancellationEnabled` to `AudioCaptureConfig`).
+- `Record-Presentation/Sources/Presentation/Views/SettingsViewGeneralTab.swift` — Added "Echo cancellation" Toggle after the `tapAllAudio` Toggle, with identical `.onChange` → `saveAudioDeviceSelection()` pattern.
+- `Record-App/Tests/Unit/Presentation/SettingsViewModelEchoCancellationTests.swift` — New (untracked prior to this commit). 4 tests: initial state, save propagates false, save propagates true, idempotent save.
+- `Record-ML/Tests/Unit/EchoCancellationConfigTests.swift` — New (untracked prior to this commit). 4 tests: round-trip false, round-trip true, legacy JSON missing field → true, `AudioCaptureConfig.default` has true.
+
+**Test results:**
+- `SettingsViewModelEchoCancellationTests` — 4/4 pass (run from root `swift test`)
+- `EchoCancellationConfigTests` — 4/4 pass (run from `Record-ML/` package)
+- Full suite: 787 tests; 4 failures — all pre-existing lint violations (`noForWhere`, `noStaticOverFinalClass`, `noCyclomaticComplexity`, `noSetenv`), unrelated to this task.
+
+**Build status:** `Build complete!`
+
+**Persistence location:** `ConfigManager` (actor in `Record-ML/Sources/MLInfrastructure/Config/ConfigManager.swift`) writes `AppConfig` as JSON to `~/.therecord/config.json`. `AudioDeviceConfigStoreImpl` wraps `ConfigManager` and is assembled in `Record-App/Sources/TheRecord/App.swift`. No SQL involved — JSON file persistence only. No `*SQL.swift` changes needed.
+
+**For task-003 (session wiring):** `AudioCaptureConfig.echoCancellationEnabled` is available at recording start via the `AudioDeviceConfigStore.load()` call. The value flows through: `SettingsViewModel.echoCancellationEnabled` → `saveAudioDeviceSelection()` → `AudioCaptureConfig` → `ConfigManager` JSON file → `AudioDeviceConfigStore.load()` → available to `AudioSubAssembler` / `StartRecordingUseCase`. Task-003 should read the flag from the loaded `AudioCaptureConfig` and pass it to the audio engine's AEC configuration — no changes to `SettingsViewModel` or `AudioCaptureConfig` are needed.</result>
+<usage><subagent_tokens>69550</subagent_tokens><tool_uses>95</tool_uses><duration_ms>898541</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>adad81921adda1df9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/adad81921adda1df9.output</output-file>
+<status>completed</status>
+<summary>Agent "Lane task-002: CleanedAudioSink" completed</summary>
+<result>Commit SHA: `457ada163`.
+
+---
+
+**Report**
+
+**Files changed (4):**
+
+1. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Protocols/CleanedAudioSink.swift` — new Domain protocol (no Infrastructure imports)
+2. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Audio/Sources/AudioInfrastructure/WAVCleanedAudioSink.swift` — new Infrastructure implementation
+3. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Audio/Tests/Unit/WAVCleanedAudioSinkTests.swift` — 5 TDD tests
+4. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-App/Sources/TheRecord/AudioSubAssembler.swift` — factory wired into `Built`
+
+**Protocol signature:**
+
+```swift
+public protocol CleanedAudioSink: Sendable {
+    func append(_ buffer: TaggedAudioBuffer)
+    func finalize() async -&gt; CleanedAudioSinkMetadata?
+}
+
+public struct CleanedAudioSinkMetadata: Sendable, Equatable {
+    public let fileURL: URL
+    public let duration: TimeInterval
+    public let sampleCount: Int
+}
+```
+
+**Zero-append behavior (BOUND-003 locked):** `finalize()` with zero appended frames writes a valid 44-byte RIFF/WAV header (no PCM payload) and returns metadata with `sampleCount == 0`, `duration == 0.0`. `AudioFileLoader.loadSamples` will throw `audioTooShort` on such a file — callers must guard.
+
+**Test names + status (all GREEN):**
+- `round-trip: N synthetic buffers → finalize → reload matches sample count and 16kHz mono format` ✔
+- `append after write failure is a no-op; finalize returns nil` ✔
+- `finalize() twice returns the same metadata (idempotent)` ✔
+- `finalize with zero appends writes a valid 44-byte WAV header (empty PCM)` ✔
+- `output file is named with mic-cleaned suffix inside the recording directory` ✔
+
+**Build status:** `Build complete` (no errors)
+
+**Commit SHA:** `457ada163`
+
+**Per-session construction entry point for task-003:**
+```swift
+let sink: any CleanedAudioSink = built.cleanedAudioSinkFactory(sessionStartDate)
+```
+`built` is `AudioSubAssembler.Built`. Pass the recording session's start `Date`. Task-003 should call this factory at recording start (when AEC is enabled) and hold the returned sink for the session lifetime.
+
+**Surprises / API notes:**
+- `WAVWriter.append(_:)` takes `[Float]` not `TaggedAudioBuffer` — the sink extracts `buffer.buffer.samples` before passing down. No API mismatch otherwise.
+- `Directories` is in the `Utilities` module (not `Foundation`) — required `import Utilities` in the infrastructure file.
+- `WAVWriter.finalize()` is `async throws`; the sink wraps it and converts throws to a logged `nil` return.
+- `AudioFileLoader` strips a fixed 44-byte header and divides by `32768.0` (not `32767.0`) for normalization — the round-trip test passes because both writer and loader use fixed-point approximations that are self-consistent, not because they're exactly inverse.</result>
+<usage><subagent_tokens>80647</subagent_tokens><tool_uses>72</tool_uses><duration_ms>449856</duration_ms></usage>
+</task-notification>
+
+---
+
+should we use sed and bash is what I mean
+
+---
+
+yeah and update our AGENTS.md here with teh best of hte recomends
+
+---
+
+commit it anyways
+
+---
+
+<task-notification>
+<task-id>a475adcf54c1ce05d</task-id>
+<tool-use-id>toolu_017Chob7RpqoJYV7RWfQbQ5r</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/a475adcf54c1ce05d.output</output-file>
+<status>completed</status>
+<summary>Agent "Lane task-003: session wiring" completed</summary>
+<result>Commit SHA: `bdbb0f993`
+
+Here is the complete report for the orchestrator:
+
+---
+
+## Task-003 Report
+
+### Commit
+`bdbb0f993` — `feat(epic-28): wire toggle-gated AEC and cleaned-mic WAV into recording session (task-003)`
+
+### Files Changed (24)
+
+**Domain layer**
+- `Record-Foundation/Sources/Domain/Storage/RecordingMetadata.swift` — added `cleanedMicAudioPath: URL?` (optional, default nil, COMPAT-001); split Codable impl out to stay under 100-line limit
+- `Record-Foundation/Sources/Domain/Storage/RecordingMetadata+Codable.swift` — **new**: Codable extension with `decodeIfPresent` for `cleanedMicAudioPath` (legacy-safe)
+- `Record-Foundation/Sources/Domain/Storage/RecordingRepository.swift` — added `updateCleanedMicPath(id:path:) async throws` to `RecordingWriteRepository` protocol
+
+**Infrastructure layer (DuckDB)**
+- `Record-ML/Sources/MLInfrastructure/Storage/DuckDBSQL.swift` — added `recordingColsRead` (SELECT adds `cleaned_mic_audio_url`), `addCleanedMicAudioUrlColumn` migration, `updateCleanedMicPath` UPDATE statement; existing `recordingCols` INSERT binding unchanged
+- `Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActor.swift` — new `addCleanedMicAudioUrlColumn` migration in `setupSchema` (error-swallowed for pre-existing column)
+- `Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActorRows.swift` — reads column 12 (`cleaned_mic_audio_url`), populates `RecordingMetadata.cleanedMicAudioPath`
+- `Record-ML/Sources/MLInfrastructure/Storage/DuckDBWriterActor+Recording.swift` — added `updateCleanedMicPath` implementation
+
+**Mocks / test conformances**
+- `Record-App/Tests/Unit/Business/Mocks/MockStorageEngine.swift` — added `updateCleanedMicPath` with call tracking and in-memory store update
+- 4 Presentation test files + 2 Foundation test files — added `updateCleanedMicPath` no-op stubs to all inline `RecordingWriteRepository` conformances
+
+**Presentation layer**
+- `RecordingStateViewModel.swift` (137 lines) — added `cleanedAudioSinkFactory`, `echoCancellationEnabled`, `cleanedMicPathWriter`, `activeSink`; `startTask` promoted to `internal`; `startRecording()` wires new params; `recordingStartTime` changed from `private(set)` → `internal(set)` to allow extension mutation
+- `RecordingStateViewModelStreaming.swift` (161 lines) — `startMicStream` now reads `echoCancellationEnabled` once at call time (ORD-002); when ON: creates sink via factory, tees every cleaned frame to sink AND transcription (INV-002/ORD-001); when OFF: raw mic frames, no sink (SAFE-001)
+- `RecordingStateViewModel+Stop.swift` (79 lines) — **new** extension: `stopRecording()` + `finalizeCleanedAudioSink(for:)`; guards sampleCount &gt; 0 before persisting (SAFE-003); sink failure never fails recording (SAFE-001/002)
+- `RecordingStateViewModelHelpers.swift` — **new** extension: `nearestSystemFrame` + `logError` extracted from Streaming file
+- `MenuBarViewModel.swift` — `RecordingStateViewModel.init` call wires the three new params
+- `MenuBarViewModelDependencies.swift` — added three `var` properties with defaults; `import Foundation` added
+
+**Composition root**
+- `AppAssemblerBuilders.swift` — `buildMenuBarVM` wires `deps.cleanedAudioSinkFactory = audio.cleanedAudioSinkFactory`, `deps.echoCancellationEnabled = config.audioCapture.echoCancellationEnabled`, `deps.cleanedMicPathWriter = writer`
+
+**Tests**
+- `RecordingStateAECToggleTests.swift` — **new**: 5 tests (a) AEC OFF: processor + sink not invoked; (b) AEC ON: sink frame count == AEC frame count, same order; (c) failing finalize: recording completes, no path persisted; (d) successful finalize with sampleCount &gt; 0: path persisted; (e) zero-sample finalize: not persisted
+- `RecordingStateOrderingTests.swift` — fixed `viewModelSource()` to concatenate main + +Stop files (ordering test was parsing source text)
+- `MenuBarViewModelDependencies+TestHelpers.swift` — added three new params to test convenience init
+
+### Where cleaned-mic reference is persisted
+**Model**: `RecordingMetadata.cleanedMicAudioPath: URL?` (Codable struct in Record-Foundation/Domain)  
+**Store**: DuckDB `recordings` table, column `cleaned_mic_audio_url VARCHAR` (NULL on legacy rows)  
+**SQL touched**: `DuckDBSQL.addCleanedMicAudioUrlColumn` (ALTER TABLE migration), `DuckDBSQL.updateCleanedMicPath` (UPDATE), `DuckDBSQL.recordingColsRead` (SELECT with new column)
+
+### Toggle flow (exact call chain)
+1. `AppConfig.audioCapture.echoCancellationEnabled` loaded from `~/.therecord/config.json` via `AudioDeviceConfigStore.load()` at app launch
+2. `AppAssemblerBuilders.buildMenuBarVM` sets `deps.echoCancellationEnabled = config.audioCapture.echoCancellationEnabled`
+3. `MenuBarViewModel.init` passes it to `RecordingStateViewModel.init(echoCancellationEnabled:)`
+4. `RecordingStateViewModel.startRecording()` calls `startMicStream(micStream:meetingId:)`
+5. `startMicStream` captures `echoCancellationEnabled` once (ORD-002); when ON: creates sink, wraps mic stream in AEC tee loop; when OFF: passes raw `micStream` directly to `transcribeStream`
+
+### Test results
+- `RecordingStateAECToggleTests`: **5/5 ✔** (a–e all green)
+- `PresentationTests`: **500/500 ✔**
+- `BusinessTests`: **263/263 ✔**
+
+### Build
+`swift build` at root: **Build complete** (no errors)
+
+### File line counts (Streaming file)
+- `RecordingStateViewModelStreaming.swift`: **161 lines** (well under 200 limit)
+- `RecordingStateViewModel.swift`: **137 lines**
+- `RecordingStateViewModel+Stop.swift`: **79 lines**
+
+### Notes for task-004 (bypass/latency/echo-energy tests)
+- `SpyPassThroughAECProcessor` and `SpyCleanedAudioSink` (with `SpySinkStorage`) are private in `RecordingStateAECToggleTests.swift` — task-004 can either import them or define equivalent spies
+- The `activeSink` property on `RecordingStateViewModel` is `internal` — accessible from test extensions for state inspection
+- `finalizeCleanedAudioSink` is `internal` — can be called directly in tests to verify finalize-then-persist sequencing
+- `echoCancellationEnabled` is captured once in `startMicStream`; toggling the stored property after start has no effect on the active session (ORD-002 verified by (a))
+- Zero-sample finalize guard is in `finalizeCleanedAudioSink` — `meta.sampleCount &gt; 0` condition (test (e) covers it)</result>
+<usage><subagent_tokens>148573</subagent_tokens><tool_uses>172</tool_uses><duration_ms>1552460</duration_ms></usage>
+</task-notification>
+
+---
+
+actually fix those lint failures inline here and thern keep going
+
+---
+
+can you determiune which is hte production one?
+
+---
+
+lets rename things and file the see-something
+
+---
+
+we can start to plan that change with gitnexus in parallel
+
+---
+
+<task-notification>
+<task-id>afa4d9a844cb2cf45</task-id>
+<tool-use-id>toolu_01NNWwCunCD2kXM1tntVA14w</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/afa4d9a844cb2cf45.output</output-file>
+<status>completed</status>
+<summary>Agent "Plan shared Alignment library extraction" completed</summary>
+<result>I now have all the information needed. Let me compile the complete plan.
+
+---
+
+# Shared Alignment Library Extraction Plan (Issue #186)
+
+## Executive Summary
+
+DTW-alignment code (DER, SentenceAligner, DTW, ConversationFormatter, and related files) is manually triplicated across RecordPro, ProofHarness, and ProofHarnessWindows with a mix of identical copies, cosmetic divergences, and genuine semantic differences. The pure algorithmic files (DTW, DER, SentenceAligner) depend only on `Domain` + `Foundation` + `NaturalLanguage` and are extractable into a shared library target within `Record-CrossPlatform-Foundation`, which already hosts both the cross-platform Domain types and the Windows harness. The harness-orchestration files (PipelineRunner, ResultPrinter, Compare, Terminal) are NOT extractable because they diverge semantically and import platform-specific infrastructure (`AudioInfrastructure`, `MLInfrastructure`, `XGrammarSummarizationPlugin`, `InferenceTelemetry`) that would drag heavy macOS-only dependencies into the shared library. The `NaturalLanguage` framework used by `SentenceAligner.splitSentences()` is Apple-only and requires a `#if canImport(NaturalLanguage)` guard with a regex-based fallback for Windows.
+
+---
+
+## File Inventory Table
+
+### Files present in each copy, with divergence classification
+
+| File | RecordPro | ProofHarness | Windows | Divergence Class |
+|------|-----------|--------------|---------|------------------|
+| **DER.swift** | 91 LOC | 91 LOC | 91 LOC | **Identical** across all three |
+| **DTW.swift** | 63 LOC | 47 LOC | 47 LOC | **Trivially diverged**: RecordPro has doc comments and uses `minVal ==` comparisons; ProofHarness/Windows use `diag &lt;= up, diag &lt;= left` comparisons. Same algorithm, different tie-breaking style. No behavioral difference for typical inputs (tie-breaking differs only when costs are exactly equal). |
+| **SentenceAligner.swift** | 111 LOC | 115 LOC | 115 LOC | **Semantically diverged**: ProofHarness/Windows add a fallback when `rawDuration &lt;= 0` (estimates from last speaker endTime + prints warning), and add a trailing `print("[SentenceAligner] Aligned...")` log. RecordPro uses a hard `guard rawDuration &gt; 0 else { return [] }`. The ProofHarness version is strictly more robust. |
+| **ConversationFormatter.swift** | 62 LOC (public, Sendable) | 92 LOC | 92 LOC | **Semantically diverged**: RecordPro version has `public` access, `Sendable` conformance on `ConversationTurn`, explicit `init`. ProofHarness/Windows version is `internal`, adds `printTUI(turns:)` and `wordWrap(_:width:)` TUI helpers that use `Term` (not available to RecordPro). |
+| **DTWWordAligner.swift** | 278 LOC | -- | -- | **RecordPro-only**: word-level alignment using DTW + audio energy. Not duplicated. |
+| **AlignTranscriptUseCase.swift** | 130 LOC | -- | -- | **RecordPro-only**: business use case orchestrator. Not duplicated. |
+| **AlignmentError.swift** | 7 LOC | -- | -- | **RecordPro-only**: error enum. Not duplicated. |
+| **TranscriptComparisonSpike.swift** | 255 LOC | -- | -- | **RecordPro-only**: excluded from build. Imports HuggingFace/Tokenizers. |
+| **PipelineRunner.swift** | 320 LOC | 273 LOC | 322 LOC | **Semantically diverged** (heavily): RecordPro uses `MLXSummarizationPlugin` (hardcoded `promptTokenCount = 100`), no telemetry; ProofHarness uses `XGrammarSummarizationPlugin` + `InferenceTelemetry`; Windows uses `MLXSummarizationPlugin` via `Infrastructure` stubs, adds `retrySummarize()` + `getRawResponse()` debug dump. All three import different packages. **NOT extractable.** |
+| **ResultPrinter.swift** | -- | 123 LOC | 123 LOC | **Identical** between ProofHarness and Windows |
+| **Terminal.swift** | 57 LOC | 68 LOC | 68 LOC | **Semantically diverged**: RecordPro has a minimal `Term` with RecordPro-branded banner; ProofHarness/Windows have richer TUI with `speakerColors`, ASCII box banner, different formatting. |
+| **Compare.swift** | -- | 305 LOC | -- | **ProofHarness-only**: imports `MLInfrastructure` + `Utilities`, uses `XGrammarSummarizationPlugin`. |
+| **ProofHarness.swift** | -- | 260 LOC | 178 LOC | **Semantically diverged**: ProofHarness adds `SummarizeText` subcommand, `Compare` subcommand, imports `AudioInfrastructure` + `MLInfrastructure` + `Domain`. Windows is simpler, imports `Domain` + `Infrastructure`. |
+| **ChatViewReport.swift** | -- | 95 LOC | 95 LOC | **Identical** |
+| **WebReport.swift** | -- | 374 LOC | 276 LOC | **Semantically diverged**: ProofHarness adds JSON report generation (`JSONReport` struct, `buildJSONPayload`). |
+
+---
+
+## Dependency Map
+
+### Per-file import analysis
+
+| File | RecordPro imports | ProofHarness imports | Windows imports | Cross-platform safe? |
+|------|-------------------|---------------------|-----------------|---------------------|
+| **DER.swift** | Domain, Foundation | Domain, Foundation | Domain, Foundation | YES |
+| **DTW.swift** | Foundation | Foundation | Foundation | YES |
+| **SentenceAligner.swift** | Domain, Foundation, NaturalLanguage | Domain, Foundation, NaturalLanguage | Domain, Foundation, NaturalLanguage | PARTIAL -- NaturalLanguage is Apple-only |
+| **ConversationFormatter.swift** | Domain, Foundation | Domain, Foundation | Domain, Foundation | YES (core logic) |
+| **PipelineRunner.swift** | AudioInfrastructure, Domain, Foundation, MLInfrastructure | AudioInfrastructure, Domain, Foundation, MLInfrastructure, Utilities | Domain, Foundation, Infrastructure | NO |
+| **Compare.swift** | -- | ArgumentParser, Domain, Foundation, MLInfrastructure, Utilities | -- | NO |
+
+### The MLInfrastructure entanglement answer
+
+**PipelineRunner, Compare, and ProofHarness.swift** import `MLInfrastructure` (which brings in MLX, WhisperKit, DuckDB on macOS) or `Infrastructure` (stubs on Windows). These files are harness-orchestration, not pure algorithms. They MUST stay per-consumer. They should NOT be extracted into the shared library.
+
+**The extractable set is: DER.swift, DTW.swift, SentenceAligner.swift, and the core format/formatTime portion of ConversationFormatter.swift.** These depend only on `Domain` + `Foundation` (+ `NaturalLanguage` in SentenceAligner, which needs a platform guard).
+
+---
+
+## Recommended Home for the Shared Target
+
+### Recommendation: New target `Alignment` in `Record-CrossPlatform-Foundation`
+
+**Rationale**:
+1. `Record-CrossPlatform-Foundation` already hosts the cross-platform `Domain` target that the alignment code depends on. Adding an `Alignment` target is a natural extension of its purpose.
+2. It already has a `Package.swift` with `swift-tools-version:6.2` and strict concurrency. The Windows harness (`ProofHarnessWindows`) is already a target in this package, so the dependency is trivial: just add `"Alignment"` to its deps array.
+3. For ProofHarness (standalone macOS CLI in `Tools/ProofHarness/`), it can add a path-based dependency: `.package(path: "../../Record-CrossPlatform-Foundation")` and import the `Alignment` product.
+4. For RecordPro (target in root `Package.swift`), it already depends on `Record-Foundation` for `Domain`. Adding a dependency on `Record-CrossPlatform-Foundation` for `Alignment` is straightforward since `Record-CrossPlatform-Foundation` is a local sub-package.
+5. Per AGENTS.md layer rules, the alignment algorithms are pure Domain-layer code (Foundation only, no Infrastructure). Housing them in the cross-platform foundation package is architecturally correct.
+
+### Rejected alternatives
+
+- **(b) New top-level package `Record-Alignment`**: Creates a new Package.swift just for 4 files (~310 LOC). Excessive ceremony; the monorepo already has enough sub-packages.
+- **(c) Target inside RecordPro**: RecordPro depends on `MLX`, `MLXLMCommon`, `AudioInfrastructure`, `MLInfrastructure` -- all macOS-only. Adding a target here that Windows needs would either require stripping RecordPro's deps or creating a parallel package graph. Defeats the purpose.
+- **(d) Target inside Record-Foundation**: Record-Foundation is used by everyone, but alignment is not foundational -- it is a functional concern that belongs above Domain. Adding it to Record-Foundation would violate the narrow responsibility of that package.
+
+---
+
+## Step-by-Step Migration Plan
+
+### Step 0: Pre-conditions (must be true before starting)
+- Epic-28 lint refactor commit has merged (the agents currently editing PipelineRunner/ResultPrinter/DER/SentenceAligner have committed).
+- Branch from `main` post-merge: `feature/shared-alignment-library`.
+
+### Step 1: Create the `Alignment` target in Record-CrossPlatform-Foundation (GREEN)
+**Files**: `Record-CrossPlatform-Foundation/Sources/Alignment/DTW.swift`, `DER.swift`, `SentenceAligner.swift`, `ConversationFormatter.swift`
+
+1. Create `Record-CrossPlatform-Foundation/Sources/Alignment/` directory.
+2. Copy the **ProofHarness** versions of DTW.swift, DER.swift, SentenceAligner.swift (the most robust/current copies -- ProofHarness and Windows are identical for these; ProofHarness SentenceAligner has the `rawDuration &lt;= 0` fallback that RecordPro lacks).
+3. For ConversationFormatter.swift: take the RecordPro version as base (it has `public` access, `Sendable` on `ConversationTurn`). Add `formatTime` from RecordPro. Do NOT include `printTUI` or `wordWrap` -- those are TUI helpers that depend on `Term` and belong in the harness.
+4. For DTW.swift: take the ProofHarness version (shorter, same behavior). Add `public` access modifiers.
+5. Make all types/functions `public` since they will be consumed across module boundaries.
+6. For SentenceAligner's `NaturalLanguage` dependency: wrap `splitSentences` with `#if canImport(NaturalLanguage)` / `#else` (fallback: split on `.?!` followed by whitespace using `String` APIs -- no regex needed, use `components(separatedBy:)` with a character set).
+7. Add the target to `Record-CrossPlatform-Foundation/Package.swift`:
+   ```swift
+   .target(
+       name: "Alignment",
+       dependencies: ["Domain"],
+       path: "Sources/Alignment",
+       swiftSettings: sharedSwiftSettings
+   )
+   ```
+   Add `Alignment` to the `products` array as a library.
+8. Add `"Alignment"` as a dependency of `ProofHarnessWindows` target.
+
+**Verify**: `cd Record-CrossPlatform-Foundation &amp;&amp; swift build` -- the new target must compile for macOS. (Windows build verified separately.)
+
+### Step 2: Write tests for the shared Alignment target (RED then GREEN)
+**Files**: `Record-CrossPlatform-Foundation/Tests/AlignmentTests/`
+
+1. Create `Record-CrossPlatform-Foundation/Tests/AlignmentTests/` directory.
+2. Port pure-algorithm tests from RecordPro DTWWordAlignerTests (the DTW.align subset) and write new tests for:
+   - `DTW.align` with empty inputs, single elements, tie-breaking.
+   - `DER.compute` with known reference/hypothesis segments.
+   - `SentenceAligner.align` with zero-duration transcript fallback, single speaker, multiple speakers.
+   - `ConversationFormatter.format` with empty segments, single speaker, speaker transitions.
+3. Add test target to `Record-CrossPlatform-Foundation/Package.swift`.
+
+**Verify**: `cd Record-CrossPlatform-Foundation &amp;&amp; swift test --filter AlignmentTests`
+
+### Step 3: Wire ProofHarness (macOS CLI) to use shared Alignment
+**Files**: `Tools/ProofHarness/Package.swift`, `Tools/ProofHarness/Sources/PipelineRunner.swift`, `Tools/ProofHarness/Sources/ResultPrinter.swift`, `Tools/ProofHarness/Sources/ConversationFormatter.swift`
+
+1. Add to ProofHarness `Package.swift`:
+   ```swift
+   .package(path: "../../Record-CrossPlatform-Foundation"),
+   ```
+   And add `.product(name: "Alignment", package: "Record-CrossPlatform-Foundation")` to the target deps.
+2. Delete `Tools/ProofHarness/Sources/DER.swift`, `DTW.swift`, `SentenceAligner.swift`.
+3. Add `import Alignment` to PipelineRunner.swift (it already calls `SentenceAligner.align`).
+4. Retain the local ConversationFormatter.swift but refactor it: keep only `printTUI` and `wordWrap` as a local extension/wrapper. The core `ConversationFormatter.format()` and `ConversationTurn` come from `Alignment` now. Add `import Alignment` and use `Alignment.ConversationFormatter.format(...)` or re-export.
+5. ResultPrinter.swift calls `ConversationFormatter.format` and `ConversationFormatter.printTUI` -- the former now comes from Alignment, the latter stays local.
+
+**Verify**: `cd Tools/ProofHarness &amp;&amp; swift build` then run ProofHarness on a test WAV.
+
+### Step 4: Wire RecordPro to use shared Alignment
+**Files**: Root `Package.swift`, `Record-Pro/Package.swift`, `Record-Pro/Sources/RecordPro/Alignment/`
+
+1. Add to root `Package.swift`:
+   ```swift
+   .package(path: "Record-CrossPlatform-Foundation"),
+   ```
+   (if not already there). Add `.product(name: "Alignment", package: "Record-CrossPlatform-Foundation")` to the RecordPro target dependencies.
+2. Add the same to `Record-Pro/Package.swift`.
+3. Delete `Record-Pro/Sources/RecordPro/Alignment/DER.swift`, `DTW.swift`, `SentenceAligner.swift`, `ConversationFormatter.swift`.
+4. Keep `AlignTranscriptUseCase.swift`, `AlignmentError.swift`, `DTWWordAligner.swift` (these are RecordPro-only, not duplicated). `DTWWordAligner` calls `DTW.align` -- add `import Alignment` to it.
+5. Keep `TranscriptComparisonSpike.swift` (already excluded from build).
+6. RecordPro PipelineRunner.swift calls `SentenceAligner.align` -- add `import Alignment`.
+7. Update RecordPro ConversationFormatter callers (currently zero in RecordPro outside the alignment files -- grep shows none) if any exist.
+
+**Verify**: `swift build` from repo root. Run `swift test --filter RecordProTests`.
+
+### Step 5: Wire ProofHarnessWindows to use shared Alignment
+**Files**: `Record-CrossPlatform-Foundation/Sources/ProofHarnessWindows/`
+
+1. `ProofHarnessWindows` target already has `"Alignment"` as a dependency (added in Step 1).
+2. Delete `Record-CrossPlatform-Foundation/Sources/ProofHarnessWindows/DER.swift`, `DTW.swift`, `SentenceAligner.swift`.
+3. Refactor local ConversationFormatter.swift same as Step 3: keep TUI helpers locally, import core from Alignment.
+4. Add `import Alignment` to PipelineRunner.swift.
+
+**Verify**: `cd Record-CrossPlatform-Foundation &amp;&amp; swift build --target ProofHarnessWindows`
+
+### Step 6: Reconcile SentenceAligner divergence
+The ProofHarness version is strictly more robust (handles `rawDuration &lt;= 0`). The shared library uses the ProofHarness version. RecordPro previously had a hard `guard rawDuration &gt; 0 else { return [] }` -- the new shared code now falls back to estimation, which is a behavior change for RecordPro. This is desirable (the fallback is more correct), but must be documented in the PR description.
+
+### Step 7: Reconcile DTW.swift tie-breaking divergence
+The RecordPro version uses `minVal == cost[...]` (exact equality on Double), which is fragile. The ProofHarness version uses `diag &lt;= up, diag &lt;= left` (inequality), which is numerically better. The shared library uses the ProofHarness version. Verify DTWWordAlignerTests still pass since DTWWordAligner calls `DTW.align`.
+
+### Step 8: Reconcile ConversationFormatter access levels
+The shared library version must be `public` (RecordPro already had this). `ConversationTurn` must be `public struct ConversationTurn: Sendable` with public init (RecordPro pattern). The harness-local extensions for `printTUI`/`wordWrap` use the `Term` type which is harness-specific and stays local.
+
+### Step 9: Final validation
+1. `swift build` from repo root (builds RecordPro, Business, Presentation, TheRecord).
+2. `swift test` from repo root (runs all 1479+ tests).
+3. `cd Tools/ProofHarness &amp;&amp; swift build`.
+4. `cd Record-CrossPlatform-Foundation &amp;&amp; swift build` (all targets).
+5. Verify no duplicate symbols via: `grep -rn 'enum DTW\|enum DER\|enum SentenceAligner\|enum ConversationFormatter\|struct ConversationTurn' --include="*.swift"` -- each should appear exactly once (in `Sources/Alignment/`).
+
+---
+
+## Caller Map / Blast Radius Summary
+
+### SentenceAligner.align
+| Consumer | Call site | Change needed |
+|----------|----------|---------------|
+| RecordPro PipelineRunner | line 77 | Add `import Alignment` |
+| ProofHarness PipelineRunner | line 80 | Add `import Alignment`, delete local copy |
+| ProofHarnessWindows PipelineRunner | line 76 | Add `import Alignment`, delete local copy |
+
+### DTW.align
+| Consumer | Call site | Change needed |
+|----------|----------|---------------|
+| RecordPro SentenceAligner | line 55 | File moves to shared lib, no change |
+| RecordPro DTWWordAligner | line 140 | Add `import Alignment` |
+| ProofHarness SentenceAligner | line 60 | File moves to shared lib |
+| ProofHarnessWindows SentenceAligner | line 60 | File moves to shared lib |
+
+### DER.parseRTTM / DER.compute
+| Consumer | Call site | Change needed |
+|----------|----------|---------------|
+| RecordPro TranscriptComparisonSpike | line 148, 150 | Excluded from build; add `import Alignment` if ever re-enabled |
+
+### ConversationFormatter.format
+| Consumer | Call site | Change needed |
+|----------|----------|---------------|
+| ProofHarness WebReport | lines 173, 331 | Add `import Alignment` |
+| ProofHarness ResultPrinter | line 62 | Add `import Alignment` |
+| ProofHarness ProofHarness.swift | line 198 | Add `import Alignment` |
+| ProofHarnessWindows WebReport | lines 233 | Add `import Alignment` |
+| ProofHarnessWindows ResultPrinter | line 62 | Add `import Alignment` |
+| ProofHarnessWindows ProofHarness.swift | line 116 | Add `import Alignment` |
+| ProofHarness ChatViewReport | line 19 (formatTime) | Add `import Alignment` |
+| ProofHarnessWindows ChatViewReport | line 19 (formatTime) | Add `import Alignment` |
+
+### DTWWordAligner.align (RecordPro-only, not extracted)
+| Consumer | Call site | Change needed |
+|----------|----------|---------------|
+| RecordPro AlignTranscriptUseCase | line 57 | None (same module) |
+| RecordProTests DTWWordAlignerTests | 12 call sites | None (imports RecordPro) |
+
+---
+
+## Risks and Mitigations
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| **NaturalLanguage unavailable on Windows** | HIGH | `SentenceAligner.splitSentences()` uses `NLTokenizer(unit: .sentence)`. Wrap in `#if canImport(NaturalLanguage)` with a fallback that splits on sentence-ending punctuation (`.`, `?`, `!`) followed by whitespace. The fallback is less linguistically accurate but functional. |
+| **No Windows CI** | MEDIUM | The CI config at `.github/workflows/ci.yml` is entirely commented out. There is no CI for any platform, let alone Windows. The `ProofHarnessWindows` target has never been CI-validated. Mitigation: ensure `swift build --target ProofHarnessWindows` succeeds locally in `Record-CrossPlatform-Foundation`. File a follow-up issue to enable CI. |
+| **Two Domain packages** | LOW | `Record-Foundation/Sources/Domain` and `Record-CrossPlatform-Foundation/Sources/Domain` are currently identical (DiarizedTranscript.swift diff is empty). The shared Alignment target depends on the cross-platform Domain. RecordPro depends on Record-Foundation's Domain. Since both define the same types with the same names, there will be a type identity conflict if a consumer imports both `Domain` modules. Mitigation: the root Package.swift already resolves `Domain` from `Record-Foundation`; the `Alignment` product from `Record-CrossPlatform-Foundation` must be compiled against the same `Domain`. This requires Record-CrossPlatform-Foundation to use `Record-Foundation`'s Domain (via path dependency) rather than its own copy. **This is the single hardest technical challenge**: either (a) Record-CrossPlatform-Foundation adds `.package(path: "../Record-Foundation")` and removes its local Domain target, or (b) the Alignment target is defined with an explicit `Domain` dependency that the root Package.swift resolves. Option (a) is cleaner but breaks the cross-platform standalone build (Record-Foundation may have macOS-only deps). Needs investigation. |
+| **SentenceAligner behavior change in RecordPro** | LOW | RecordPro previously returned `[]` when `rawDuration &lt;= 0`. The shared version estimates duration from speaker end-times. This is more robust but a behavior change. Mitigation: document in PR. The old behavior was arguably a bug (silent data loss). |
+| **DTW tie-breaking change** | VERY LOW | RecordPro used exact floating-point equality (`==`) for tie-breaking; the shared version uses `&lt;=`. In practice, DTW costs are sums of `abs()` values and ties are vanishingly rare. Existing DTWWordAlignerTests will validate. |
+| **Concurrent agent edits** | LOW | Other agents are refactoring PipelineRunner/ResultPrinter/DER/SentenceAligner for cyclomatic complexity. This plan runs AFTER their commit. If their refactor changes the function signatures of the extractable files, the shared library versions must be updated to match. |
+
+---
+
+## Estimated LOC and Task Breakdown
+
+### LOC summary
+- **LOC moved to shared library**: ~300 (DTW 47 + DER 91 + SentenceAligner 115 + ConversationFormatter core ~50)
+- **LOC deleted (vendored copies)**: ~600 (DTW 47x2 + DER 91x2 + SentenceAligner 115x2 + ConversationFormatter 92x2, minus the shared versions)
+- **LOC added (platform guards, test file, Package.swift changes)**: ~200
+- **Net LOC change**: approximately -400
+
+### Task breakdown (datum tasks.json format)
+
+```json
+[
+  {
+    "id": "align-001",
+    "title": "Create Alignment target in Record-CrossPlatform-Foundation with DTW, DER, SentenceAligner, ConversationFormatter",
+    "deps": [],
+    "estimated_loc": 120,
+    "notes": "New target + Package.swift wiring + public access modifiers + #if canImport(NaturalLanguage) guard in SentenceAligner"
+  },
+  {
+    "id": "align-002",
+    "title": "Write AlignmentTests for the shared library (DTW, DER, SentenceAligner, ConversationFormatter)",
+    "deps": ["align-001"],
+    "estimated_loc": 150,
+    "notes": "Port relevant DTWWordAlignerTests subset + new DER/SentenceAligner/ConversationFormatter unit tests"
+  },
+  {
+    "id": "align-003",
+    "title": "Wire ProofHarness to shared Alignment, delete vendored copies",
+    "deps": ["align-001"],
+    "estimated_loc": 30,
+    "notes": "Package.swift dep + import Alignment + delete 4 files + refactor local ConversationFormatter to TUI-only extension"
+  },
+  {
+    "id": "align-004",
+    "title": "Wire RecordPro to shared Alignment, delete vendored copies",
+    "deps": ["align-001"],
+    "estimated_loc": 30,
+    "notes": "Root + RecordPro Package.swift deps + import Alignment in DTWWordAligner + PipelineRunner + delete 4 files"
+  },
+  {
+    "id": "align-005",
+    "title": "Wire ProofHarnessWindows to shared Alignment, delete vendored copies",
+    "deps": ["align-001"],
+    "estimated_loc": 30,
+    "notes": "Delete 3 files + import Alignment + refactor local ConversationFormatter"
+  },
+  {
+    "id": "align-006",
+    "title": "Resolve Domain type identity (Record-Foundation vs Record-CrossPlatform-Foundation)",
+    "deps": ["align-001"],
+    "estimated_loc": 40,
+    "notes": "Ensure root Package.swift resolves a single Domain module. May require Record-CrossPlatform-Foundation to depend on Record-Foundation for Domain rather than hosting its own copy."
+  },
+  {
+    "id": "align-007",
+    "title": "Final validation: full build + test suite + manual ProofHarness run",
+    "deps": ["align-002", "align-003", "align-004", "align-005", "align-006"],
+    "estimated_loc": 0,
+    "notes": "swift build &amp;&amp; swift test from root. cd Tools/ProofHarness &amp;&amp; swift build. cd Record-CrossPlatform-Foundation &amp;&amp; swift build. grep for duplicate symbols."
+  }
+]
+```
+
+---
+
+### Critical Files for Implementation
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-CrossPlatform-Foundation/Package.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Package.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Tools/ProofHarness/Package.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Tools/ProofHarness/Sources/SentenceAligner.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Pro/Sources/RecordPro/Alignment/DTWWordAligner.swift`</result>
+<usage><subagent_tokens>110871</subagent_tokens><tool_uses>79</tool_uses><duration_ms>480244</duration_ms></usage>
+</task-notification>
+
+---
+
+It produced a 7-task datum-ready breakdown (align-001 create target → align-007 final validation, net −400 LOC), preconditioned on the lint-fix commit landing first since those agents are touching the same files. Full plan is saved in the task output if you want the file-by-file inventory and caller map.
+
+save tge full plan to gh issues
+
+---
+
+i like this where plans are written to GH issues
+
+---
+
+is it still running?
+
+---
+
+yolo it
+
+---
+
+merge
+
+---
+
+i had tk csncel the
+
+---
+
+<task-notification>
+<task-id>b3ktrwdic</task-id>
+<tool-use-id>toolu_012zNxjyaa4UJJXky8goupMQ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/b3ktrwdic.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun gitnexus full reindex without timeout" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+mergola
+
+---
+
+yes please work on that one in a worktree with subagents. be tokenefficient. I would also like an FABLE5 to do a wholistic codebase audit. lets work together to decide what that scope is after you send off the subagent to build the alignment extraction
+
+---
+
+<task-notification>
+<task-id>af565dfdeb50eddc2</task-id>
+<tool-use-id>toolu_01JWomAjt2PdXtE8JSWhPxHi</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/af565dfdeb50eddc2.output</output-file>
+<status>completed</status>
+<summary>Agent "Fable 5 holistic codebase audit" completed</summary>
+<result>Audit complete. All deliverables are done.
+
+## Report
+
+**`/Volumes/Extra/repos/gitrdunhq/the-record-suite/docs/codebase-audit-20260612-142636.md`** — left untracked (not committed), per instructions. Contains executive summary (top 5 risks), severity-sorted findings table, full details for all 27 findings, and a "what's healthy" section.
+
+## Finding counts
+
+| Severity | Count |
+|---|---|
+| 5 (critical) | 1 |
+| 4 | 3 |
+| 3 | 6 |
+| 2 (report-only) | 15 |
+| 1 (report-only) | 2 |
+| **Total** | **27** |
+
+By category: correctness 9, silent-bug 11, quality 5, test-quality 2. Deduped against all 100 open issues before filing; excluded items (#189, fixture failures, #100–#103, #186 duplication) were honored.
+
+## GitHub issues filed (severity ≥ 3)
+
+- **#190** (sev 5) AEC truncates every mic buffer to 256 samples, discarding ~80% of mic audio
+- **#191** (sev 4) Session/file ID mismatch orphans pending stubs and breaks crash recovery
+- **#192** (sev 4) WAVWriter disk-write failures invisible — errorHandler never wired, header counts failed writes
+- **#193** (sev 4) `defer` deletes the only copy of the recording WAV when DB persistence fails
+- **#194** (sev 3) AVAudioConverter errors silently drop audio buffers with no logging (both taps)
+- **#195** (sev 3) Non-Sendable DiarizerManager escapes actor via `nonisolated(unsafe)` + `Task.detached`; re-entrancy allows concurrent inference
+- **#196** (sev 3) SearchViewModel generic catch swallows non-UserFacingError — empty results, no error shown
+- **#197** (sev 3) Fire-and-forget `Task { await self.start() }` in CalendarAwareMeetingDetector init — unmanaged lifetime
+- **#198** (sev 3) Sleep-based sync + unbounded for-await tests can flake or hang CI (3 files not covered by #134/#136–#138)
+- **#199** (sev 3) SentenceAligner computes speaker-constrained bounds then discards them — dead loop (flagged for the #186 extraction)
+
+## Top 3 risks
+
+1. **AEC destroys most mic audio (#190).** `AECProcessorActor` processes exactly 256 samples per call but the mic stream feeds it ~1,365-sample buffers with no chunking — `fillInt16` truncates the rest. With echo cancellation on, both live transcription and the cleaned-mic WAV silently lose ~80% of speech. Single worst defect; one chunking loop fixes it.
+
+2. **Crash recovery is structurally dead and self-polluting (#191).** Three uncorrelated IDs (session.id stub, capture-internal ID, `AudioFile(id: .generate())` at stop) mean pending stubs are never resolved: they accumulate after every *successful* recording, trigger error spam at each launch, and the recovery read path filters `is_pending = false` so it can't even see the row it's recovering. The cleaned-mic URL is also written to the invisible stub.
+
+3. **Failure paths that delete or hide the user's data (#192 + #193).** WAVWriter's error callback was never connected, errors all become `.diskFull`, and failed writes still increment the header count (corrupt WAV); meanwhile StopAndTranscribe deletes the only copy of the meeting WAV if the DB insert throws. Together: a disk hiccup can silently destroy a recording end to end.
+
+## Overall health
+
+The architecture is doing its job — layer boundaries are respected, actor isolation is disciplined (custom serial executors, documented `@unchecked Sendable` invariants, near-zero leaks across 345 files), every inference call is time-boxed via `TimeoutConfig`, error translation at infrastructure boundaries is unusually consistent, and parts of the test suite have real teeth (source-inspection RED tests, error-injection mocks, temp-dir hygiene). The serious defects cluster in exactly two places: integration seams of the audio money path where individually-correct components are wired with mismatched contracts (256 vs 1,365 samples; three IDs for one recording; an error callback nobody connected), and failure paths written to "never fail the recording" that ended up never *reporting* anything either. None of the top findings require redesign — they're contract fixes at seams plus observability on the paths users depend on when things go wrong.</result>
+<usage><subagent_tokens>62614</subagent_tokens><tool_uses>69</tool_uses><duration_ms>1143643</duration_ms></usage>
+</task-notification>
+
+---
+
+The Fable 5 audit is done — 27 findings, 10 issues filed (#190–#199), report at docs/codebase-audit-20260612-142636.md (untracked, since main commits are hook-blocked). The extraction agent is still working.
+
+The headline finding is rough, and it's fresh: #190 (severity 5) — AEC truncates every mic buffer to 256 samples, discarding ~80% of mic audio. AECProcessorActor processes exactly 256 samples per call, but the mic stream feeds it ~1,365-sample buffers with no chunking loop, so fillInt16 silently drops the rest. With echo cancellation on, both live transcription and the cleaned-mic WAV we just shipped in epic-28 are losing most of the speech. The fix is a single chunking loop — but it means the epic-28 verification numbers were measured on a feature that's quietly eating its own input. These pretzels are making me thirsty.
+
+The other two systemic risks:
+
+2. Crash recovery is structurally dead (#191, sev 4). One recording gets three uncorrelated IDs (session stub, capture-internal, AudioFile(id: .generate()) at stop), so pending stubs are never resolved — they pile up after every successful recording, spam errors at launch, and the recovery read path filters is_pending = false so it can't even see the rows it's supposed to recover.
+3. Failure paths that destroy data instead of reporting it (#192 + #193, both sev 4). WAVWriter's error callback was never wired up, all errors collapse to .diskFull, and failed writes still increment the header sample count (corrupt WAV). Meanwhile a defer in StopAndTranscribe deletes the only copy of the recording WAV if the DB insert throws. A disk hiccup can erase a meeting end to end with zero user-visible signal.
+
+The rest: six sev-3s (silent buffer drops in AVAudioConverter, a nonisolated(unsafe) DiarizerManager escape, swallowed search errors, fire-and-forget detector startup, flaky sleep-based tests, and a dead loop in SentenceAligner that I flagged for the in-flight #186 extraction). Fifteen sev-2s and two sev-1s are report-only.
+
+The good news section is genuinely good: layer boundaries clean across 345 files, disciplined actor isolation, every inference call time-boxed, consistent error translation at infrastructure boundaries. The defects cluster at exactly two spots — integration seams on the audio money path where correct components got wired with mismatched contracts, and "never fail the recording" paths that ended up never reporting anything either. Contract fixes, not redesigns.
+
+My take on sequencing: #190 + #194 belong together as the next epic after alignment lands (both are "AEC/audio chain drops samples silently" — they share test fixtures and the verification harness from epic-28), with #191–#193 as a "failure paths don't lose data" epic after that. Want me to shape #190 into a datum TICKET while the extraction agent finishes? lets plan to fix all these in a mega epic

@@ -3,10 +3,11 @@
   "checkpoint_id": "ddacf53b6c4e",
   "strategy": "manual-commit",
   "branch": "datum/epic-30-audit-remediation",
-  "checkpoints_count": 0,
+  "checkpoints_count": 9,
   "files_touched": [
     ".datum/state.db",
     ".datum/state.json",
+    "docs/codebase-audit-20260612-142636.md",
     "docs/epics/datum/epic-30-audit-remediation/QUESTIONS.md",
     "docs/epics/datum/epic-30-audit-remediation/SPEC.md",
     "docs/epics/datum/epic-30-audit-remediation/TICKET.md"
@@ -17,13 +18,19 @@
       "transcript": "/dd/acf53b6c4e/0/full.jsonl",
       "content_hash": "/dd/acf53b6c4e/0/content_hash.txt",
       "prompt": "/dd/acf53b6c4e/0/prompt.txt"
+    },
+    {
+      "metadata": "/dd/acf53b6c4e/1/metadata.json",
+      "transcript": "/dd/acf53b6c4e/1/full.jsonl",
+      "content_hash": "/dd/acf53b6c4e/1/content_hash.txt",
+      "prompt": "/dd/acf53b6c4e/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 7250,
-    "cache_creation_tokens": 338644,
-    "cache_read_tokens": 3927442,
-    "output_tokens": 39042,
-    "api_call_count": 56
+    "input_tokens": 106099,
+    "cache_creation_tokens": 2515098,
+    "cache_read_tokens": 36332790,
+    "output_tokens": 269948,
+    "api_call_count": 372
   }
 }
