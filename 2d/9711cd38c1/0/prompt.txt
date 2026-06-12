@@ -1,0 +1,118 @@
+get it done
+
+---
+
+lets develop a backlog item
+
+---
+
+how does headroom work, laymans
+
+---
+
+<task-notification>
+<task-id>a50e65e5560ca4e28</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/a50e65e5560ca4e28.output</output-file>
+<status>completed</status>
+<summary>Agent "Lane task-001: AEC settings toggle" completed</summary>
+<result>Done. Here is the report for the orchestrator:
+
+---
+
+**Task-001 complete. Commit: `2af424887`**
+
+**Files changed:**
+- `Record-Foundation/Sources/Domain/Config/AudioCaptureConfig.swift` — `echoCancellationEnabled: Bool` field added with default `true`; custom `Codable` init uses `decodeIfPresent` so legacy configs missing the field decode to `true` (INV-001). The field was pre-wired in a prior pass; no changes needed beyond what was already staged.
+- `Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift` — `echoCancellationEnabled = true` property was already added; this task wired it into `saveAudioDeviceSelection` (passed as `echoCancellationEnabled: echoCancellationEnabled` to `AudioCaptureConfig`).
+- `Record-Presentation/Sources/Presentation/Views/SettingsViewGeneralTab.swift` — Added "Echo cancellation" Toggle after the `tapAllAudio` Toggle, with identical `.onChange` → `saveAudioDeviceSelection()` pattern.
+- `Record-App/Tests/Unit/Presentation/SettingsViewModelEchoCancellationTests.swift` — New (untracked prior to this commit). 4 tests: initial state, save propagates false, save propagates true, idempotent save.
+- `Record-ML/Tests/Unit/EchoCancellationConfigTests.swift` — New (untracked prior to this commit). 4 tests: round-trip false, round-trip true, legacy JSON missing field → true, `AudioCaptureConfig.default` has true.
+
+**Test results:**
+- `SettingsViewModelEchoCancellationTests` — 4/4 pass (run from root `swift test`)
+- `EchoCancellationConfigTests` — 4/4 pass (run from `Record-ML/` package)
+- Full suite: 787 tests; 4 failures — all pre-existing lint violations (`noForWhere`, `noStaticOverFinalClass`, `noCyclomaticComplexity`, `noSetenv`), unrelated to this task.
+
+**Build status:** `Build complete!`
+
+**Persistence location:** `ConfigManager` (actor in `Record-ML/Sources/MLInfrastructure/Config/ConfigManager.swift`) writes `AppConfig` as JSON to `~/.therecord/config.json`. `AudioDeviceConfigStoreImpl` wraps `ConfigManager` and is assembled in `Record-App/Sources/TheRecord/App.swift`. No SQL involved — JSON file persistence only. No `*SQL.swift` changes needed.
+
+**For task-003 (session wiring):** `AudioCaptureConfig.echoCancellationEnabled` is available at recording start via the `AudioDeviceConfigStore.load()` call. The value flows through: `SettingsViewModel.echoCancellationEnabled` → `saveAudioDeviceSelection()` → `AudioCaptureConfig` → `ConfigManager` JSON file → `AudioDeviceConfigStore.load()` → available to `AudioSubAssembler` / `StartRecordingUseCase`. Task-003 should read the flag from the loaded `AudioCaptureConfig` and pass it to the audio engine's AEC configuration — no changes to `SettingsViewModel` or `AudioCaptureConfig` are needed.</result>
+<usage><subagent_tokens>69550</subagent_tokens><tool_uses>95</tool_uses><duration_ms>898541</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>adad81921adda1df9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b2560ba7-1dda-417e-9475-51de5d026f40/tasks/adad81921adda1df9.output</output-file>
+<status>completed</status>
+<summary>Agent "Lane task-002: CleanedAudioSink" completed</summary>
+<result>Commit SHA: `457ada163`.
+
+---
+
+**Report**
+
+**Files changed (4):**
+
+1. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Protocols/CleanedAudioSink.swift` — new Domain protocol (no Infrastructure imports)
+2. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Audio/Sources/AudioInfrastructure/WAVCleanedAudioSink.swift` — new Infrastructure implementation
+3. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Audio/Tests/Unit/WAVCleanedAudioSinkTests.swift` — 5 TDD tests
+4. `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-App/Sources/TheRecord/AudioSubAssembler.swift` — factory wired into `Built`
+
+**Protocol signature:**
+
+```swift
+public protocol CleanedAudioSink: Sendable {
+    func append(_ buffer: TaggedAudioBuffer)
+    func finalize() async -&gt; CleanedAudioSinkMetadata?
+}
+
+public struct CleanedAudioSinkMetadata: Sendable, Equatable {
+    public let fileURL: URL
+    public let duration: TimeInterval
+    public let sampleCount: Int
+}
+```
+
+**Zero-append behavior (BOUND-003 locked):** `finalize()` with zero appended frames writes a valid 44-byte RIFF/WAV header (no PCM payload) and returns metadata with `sampleCount == 0`, `duration == 0.0`. `AudioFileLoader.loadSamples` will throw `audioTooShort` on such a file — callers must guard.
+
+**Test names + status (all GREEN):**
+- `round-trip: N synthetic buffers → finalize → reload matches sample count and 16kHz mono format` ✔
+- `append after write failure is a no-op; finalize returns nil` ✔
+- `finalize() twice returns the same metadata (idempotent)` ✔
+- `finalize with zero appends writes a valid 44-byte WAV header (empty PCM)` ✔
+- `output file is named with mic-cleaned suffix inside the recording directory` ✔
+
+**Build status:** `Build complete` (no errors)
+
+**Commit SHA:** `457ada163`
+
+**Per-session construction entry point for task-003:**
+```swift
+let sink: any CleanedAudioSink = built.cleanedAudioSinkFactory(sessionStartDate)
+```
+`built` is `AudioSubAssembler.Built`. Pass the recording session's start `Date`. Task-003 should call this factory at recording start (when AEC is enabled) and hold the returned sink for the session lifetime.
+
+**Surprises / API notes:**
+- `WAVWriter.append(_:)` takes `[Float]` not `TaggedAudioBuffer` — the sink extracts `buffer.buffer.samples` before passing down. No API mismatch otherwise.
+- `Directories` is in the `Utilities` module (not `Foundation`) — required `import Utilities` in the infrastructure file.
+- `WAVWriter.finalize()` is `async throws`; the sink wraps it and converts throws to a logged `nil` return.
+- `AudioFileLoader` strips a fixed 44-byte header and divides by `32768.0` (not `32767.0`) for normalization — the round-trip test passes because both writer and loader use fixed-point approximations that are self-consistent, not because they're exactly inverse.</result>
+<usage><subagent_tokens>80647</subagent_tokens><tool_uses>72</tool_uses><duration_ms>449856</duration_ms></usage>
+</task-notification>
+
+---
+
+should we use sed and bash is what I mean
+
+---
+
+yeah and update our AGENTS.md here with teh best of hte recomends
+
+---
+
+commit it anyways

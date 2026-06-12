@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "2d9711cd38c1",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-28",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "Record-App/Tests/Unit/Business/Mocks/MockStorageEngine.swift",
+    "Record-Foundation/Sources/Domain/Storage/RecordingMetadata.swift",
+    "Record-Foundation/Sources/Domain/Storage/RecordingRepository.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineNotesConformanceTests.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineProtocolTests.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineTests.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActor.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActorRows.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBSQL.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBWriterActor+Recording.swift",
+    "Record-Presentation/Tests/Unit/Presentation/MeetingDetailStaleSelectionTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/MeetingDetailViewModelSealedStorageTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/MeetingDetailViewModelTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2d/9711cd38c1/0/metadata.json",
+      "transcript": "/2d/9711cd38c1/0/full.jsonl",
+      "content_hash": "/2d/9711cd38c1/0/content_hash.txt",
+      "prompt": "/2d/9711cd38c1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1009,
+    "cache_creation_tokens": 195702,
+    "cache_read_tokens": 2051672,
+    "output_tokens": 17780,
+    "api_call_count": 22
+  }
+}
