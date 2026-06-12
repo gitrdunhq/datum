@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "ff16fd30a129",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-27",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".datum/local-llm-metrics.jsonl",
+    ".datum/state.db",
+    ".datum/state.json",
+    ".gitignore",
+    "TASKS.md",
+    "tasks.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ff/16fd30a129/0/metadata.json",
+      "transcript": "/ff/16fd30a129/0/full.jsonl",
+      "content_hash": "/ff/16fd30a129/0/content_hash.txt",
+      "prompt": "/ff/16fd30a129/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19281,
+    "cache_creation_tokens": 308506,
+    "cache_read_tokens": 6387005,
+    "output_tokens": 37866,
+    "api_call_count": 80
+  }
+}
