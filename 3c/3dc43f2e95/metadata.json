@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "3c3dc43f2e95",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-30-audit-remediation/PROPERTIES.md",
+    "observability/alerts/aec-sample-loss.md",
+    "observability/alerts/audio-capture-failure.md",
+    "observability/metrics/aec-sample-count.md",
+    "observability/metrics/converter-failure-count.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/3dc43f2e95/0/metadata.json",
+      "transcript": "/3c/3dc43f2e95/0/full.jsonl",
+      "content_hash": "/3c/3dc43f2e95/0/content_hash.txt",
+      "prompt": "/3c/3dc43f2e95/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9819,
+    "cache_creation_tokens": 927573,
+    "cache_read_tokens": 19824884,
+    "output_tokens": 89296,
+    "api_call_count": 178
+  }
+}
