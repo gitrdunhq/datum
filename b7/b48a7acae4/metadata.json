@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "b7b48a7acae4",
+  "strategy": "manual-commit",
+  "branch": "chore/epic-28-closeout",
+  "checkpoints_count": 11,
+  "files_touched": [
+    ".datum/lane-plan.json",
+    ".datum/state.db",
+    ".datum/state.json",
+    "REVIEW-REPORT.md",
+    "Record-App/Package.resolved",
+    "Record-Presentation/Package.resolved",
+    "Record-Pro/Package.resolved",
+    "TASKS.md",
+    "docs/epics/datum/epic-28/PROPERTIES.md",
+    "docs/epics/datum/epic-28/QUESTIONS.md",
+    "docs/epics/datum/epic-28/SPEC.md",
+    "docs/epics/datum/epic-28/TASKS.md",
+    "docs/epics/datum/epic-28/TICKET.md",
+    "docs/epics/datum/epic-28/tasks.json",
+    "tasks.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b7/b48a7acae4/0/metadata.json",
+      "transcript": "/b7/b48a7acae4/0/full.jsonl",
+      "content_hash": "/b7/b48a7acae4/0/content_hash.txt",
+      "prompt": "/b7/b48a7acae4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15871,
+    "cache_creation_tokens": 607671,
+    "cache_read_tokens": 8554187,
+    "output_tokens": 71107,
+    "api_call_count": 79
+  }
+}
