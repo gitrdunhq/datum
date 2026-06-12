@@ -16,6 +16,7 @@ from datum.agent_loop import (
     _build_decide_prompt,
     _build_system_prompt,
     _build_think_prompt,
+    _make_tool_result,
     _render_history,
     _strip_think_tags,
     _think,
@@ -3950,3 +3951,210 @@ def test_progress_json_is_valid_json_during_run(tmp_path, monkeypatch):
     assert snapshots[0]["status"] == "running"
     # Second snapshot: done
     assert snapshots[1]["status"] == "done"
+
+
+# ── #73: structured tool results ─────────────────────────────────────────────
+
+
+def test_make_tool_result_success_status():
+    """Non-error observation yields status='ok'."""
+    result = _make_tool_result("read_file", "file contents here", ["read_file", "done"])
+    assert result["status"] == "ok"
+
+
+def test_make_tool_result_error_status():
+    """Observation starting with 'Error' yields status='error'."""
+    result = _make_tool_result(
+        "write_to_file", "Error: file not found", ["write_to_file", "done"]
+    )
+    assert result["status"] == "error"
+
+
+def test_make_tool_result_has_summary():
+    """summary field is a non-empty string (first line of observation)."""
+    result = _make_tool_result(
+        "run_command", "3 passed\n1 warning", ["run_command", "done"]
+    )
+    assert isinstance(result["summary"], str)
+    assert len(result["summary"]) > 0
+
+
+def test_make_tool_result_next_valid_actions_is_list():
+    """next_valid_actions is always a list of strings."""
+    result = _make_tool_result("read_file", "contents", ["read_file", "write_to_file"])
+    assert isinstance(result["next_valid_actions"], list)
+    assert all(isinstance(a, str) for a in result["next_valid_actions"])
+
+
+def test_make_tool_result_error_excludes_write_tools():
+    """After an error observation, write tools should not be in next_valid_actions
+    (they'd likely fail too; read tools to diagnose are more appropriate)."""
+    result = _make_tool_result(
+        "write_to_file",
+        "Error: syntax error at line 5",
+        ["read_file", "write_to_file", "run_command"],
+    )
+    assert result["status"] == "error"
+    # write tools must not be recommended when observation is an error
+    assert "write_to_file" not in result["next_valid_actions"]
+
+
+def test_make_tool_result_read_suggests_write_or_done():
+    """After a successful read, write tools and done are reasonable next actions."""
+    result = _make_tool_result(
+        "read_file", "def foo():\n    pass", ["read_file", "write_to_file", "done"]
+    )
+    assert result["status"] == "ok"
+    # at least one write or done action should be suggested
+    write_or_done = {
+        a for a in result["next_valid_actions"] if a in {"write_to_file", "done"}
+    }
+    assert (
+        write_or_done
+    ), f"Expected write/done in next_valid_actions, got: {result['next_valid_actions']}"
+
+
+def test_step_entry_contains_tool_result_on_execution(tmp_path, monkeypatch):
+    """step_entry dict carries a 'tool_result' key when a tool actually executes."""
+    monkeypatch.chdir(tmp_path)
+    collected = []
+
+    def capturing_on_step(step):
+        collected.append(step)
+
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ("file contents", False)
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red", on_step=capturing_on_step)
+
+    # First step is the read_file tool execution — must have tool_result
+    read_step = collected[0]
+    assert "tool_result" in read_step, "tool_result key missing from step_entry"
+    tr = read_step["tool_result"]
+    assert "status" in tr
+    assert "summary" in tr
+    assert "next_valid_actions" in tr
+
+
+def test_step_entry_no_tool_result_on_error_event(tmp_path, monkeypatch):
+    """Guard-rejected calls (event='error') do NOT get a tool_result field —
+    no tool executed, so there is no tool result to structure."""
+    monkeypatch.chdir(tmp_path)
+    collected = []
+
+    def capturing_on_step(step):
+        collected.append(step)
+
+    cfg = dict(BASE_CFG, allowed_tools=["read_file"])
+    with (
+        patch("datum.agent_loop._think", _mk_think(["try bad", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "write_to_file",  # not in allowed_tools
+                        "tool_args": {"path": "x.py"},
+                    },
+                    {"action": "done", "summary": "ok"},
+                ]
+            ),
+        ),
+    ):
+        agent_loop("task", cfg, phase="act_red", on_step=capturing_on_step)
+
+    # The first step is a guard rejection — no tool ran, no tool_result
+    error_step = collected[0]
+    assert error_step["event"] == "error"
+    assert "tool_result" not in error_step
+
+
+def test_progress_json_last_tool_result_field(tmp_path, monkeypatch):
+    """progress.json carries a 'last_tool_result' field after a tool executes."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch("datum.agent_loop._execute_tool", lambda tc, cfg: ("contents", False)),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red")
+
+    doc = _json.loads((tmp_path / ".datum" / "progress.json").read_text())
+    assert "last_tool_result" in doc
+    ltr = doc["last_tool_result"]
+    assert ltr is not None
+    assert "status" in ltr
+    assert "summary" in ltr
+    assert "next_valid_actions" in ltr
+
+
+def test_transcript_record_carries_tool_result(tmp_path, monkeypatch):
+    """Transcript JSONL records carry 'tool_result' on execution steps."""
+    import json as _json
+
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch("datum.agent_loop._think", _mk_think(["read it", "done"])),
+        patch(
+            "datum.agent_loop._decide",
+            _mk_decide(
+                [
+                    {
+                        "action": "tool",
+                        "tool_name": "read_file",
+                        "tool_args": {"path": "a.py"},
+                    },
+                    {"action": "done", "summary": "finished"},
+                ]
+            ),
+        ),
+        patch(
+            "datum.agent_loop._execute_tool", lambda tc, cfg: ("file contents", False)
+        ),
+    ):
+        agent_loop("task", BASE_CFG, phase="act_red")
+
+    transcript_dir = tmp_path / ".datum" / "transcripts"
+    records = []
+    for f in transcript_dir.glob("*.jsonl"):
+        for line in f.read_text().splitlines():
+            records.append(_json.loads(line))
+
+    # Find the read_file tool_result record
+    tool_records = [r for r in records if r.get("event") == "tool_result"]
+    assert len(tool_records) >= 1
+    for rec in tool_records:
+        assert (
+            "tool_result" in rec
+        ), f"tool_result missing from transcript record: {rec}"
