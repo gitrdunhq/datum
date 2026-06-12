@@ -968,6 +968,244 @@ def corpus(
     console.print(result)
 
 
+memory_app = typer.Typer(name="memory", help="Corpus ingestion and semantic search.")
+app.add_typer(memory_app)
+
+
+@memory_app.command("ingest")
+def memory_ingest(
+    collection: str = typer.Option(
+        "docs",
+        "--collection",
+        "-c",
+        help="Collection name to ingest into (default: docs)",
+    ),
+    paths: list[str] | None = None,
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-ingest even if unchanged."
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Ingest corpus files into the vector index.
+
+    Walks the given paths (or sensible defaults), chunks each file, embeds
+    with the available provider (TF-IDF or sentence-transformers), and writes
+    into .datum/index/<collection>.npz.  Files unchanged since last ingest
+    are skipped automatically (ledger dedup).
+
+    Examples:
+
+      datum memory ingest
+
+      datum memory ingest --collection specs docs/
+
+      datum memory ingest --force --collection docs docs/
+
+    """
+    import hashlib as _hashlib
+    from pathlib import Path as _Path
+
+    repo_root = _Path(repo).resolve()
+    index_dir = repo_root / ".datum" / "index"
+
+    try:
+        from datum.memory.embeddings import get_embedding_provider
+        from datum.memory.generic_chunker import GenericChunker
+        from datum.memory.ledger import IngestionLedger
+        from datum.memory.vector_store import NumpyVectorStore
+    except ImportError as exc:
+        console.print(f"[bold red]Import error: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    # Resolve ingestion targets.
+    target_paths: list[_Path] = []
+    if paths:
+        for p in paths:
+            resolved = _Path(p).resolve()
+            if resolved.exists():
+                target_paths.append(resolved)
+            else:
+                console.print(f"[yellow]Warning: path not found — {p}[/yellow]")
+    else:
+        # Sensible defaults: docs/ and datum/ prose.
+        for candidate in [
+            "docs",
+            "AGENTS.md",
+            "PROPERTIES.md",
+            "CURRENT_STATE.md",
+            "CHANGELOG.md",
+        ]:
+            p = repo_root / candidate
+            if p.exists():
+                target_paths.append(p)
+
+    if not target_paths:
+        console.print(
+            "[yellow]No paths to ingest. Pass paths as arguments or add a docs/ directory.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    ledger = IngestionLedger(index_dir / "ledger.db")
+    store = NumpyVectorStore(index_dir)
+
+    try:
+        provider = get_embedding_provider(persist_dir=index_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        ledger.close()
+        raise typer.Exit(1) from None
+
+    chunker = GenericChunker()
+
+    # Collect all files to process.
+    def _iter_files(p: _Path):
+        if p.is_file():
+            yield p
+        elif p.is_dir():
+            for f in sorted(p.rglob("*")):
+                if f.is_file() and not any(part.startswith(".") for part in f.parts):
+                    yield f
+
+    total_files = 0
+    skipped = 0
+    ingested = 0
+    total_chunks = 0
+
+    for target in target_paths:
+        for file_path in _iter_files(target):
+            # Compute file sha256 for ledger dedup.
+            try:
+                content = file_path.read_bytes()
+            except OSError:
+                continue
+            sha256 = _hashlib.sha256(content).hexdigest()
+            path_str = str(file_path)
+
+            total_files += 1
+
+            if not force and ledger.is_ingested(path_str, sha256):
+                skipped += 1
+                continue
+
+            # Chunk the file.
+            chunks = chunker.chunk_file(
+                file_path, source_label=str(file_path.relative_to(repo_root))
+            )
+            if not chunks:
+                ledger.record_ingestion(path_str, sha256, "doc", 0)
+                ingested += 1
+                continue
+
+            texts = [c.text for c in chunks]
+            metas = [
+                {
+                    "text": c.text,
+                    "source": c.source,
+                    "section": c.section,
+                    "chunk_id": c.chunk_id,
+                }
+                for c in chunks
+            ]
+            ids = [c.chunk_id for c in chunks]
+
+            try:
+                embeddings = provider.embed(texts)
+                store.upsert(
+                    collection=collection,
+                    ids=ids,
+                    embeddings=embeddings,
+                    metadatas=metas,
+                )
+                ledger.record_ingestion(path_str, sha256, "doc", len(chunks))
+                ingested += 1
+                total_chunks += len(chunks)
+            except Exception as exc:  # noqa: BLE001
+                console.print(
+                    f"[yellow]Warning: failed to embed {file_path.name}: {exc}[/yellow]"
+                )
+                continue
+
+    ledger.close()
+
+    console.print(
+        f"[bold green]Ingestion complete:[/bold green] "
+        f"{ingested} ingested, {skipped} skipped (unchanged), "
+        f"{total_chunks} chunks → collection [cyan]{collection}[/cyan]"
+    )
+
+
+@memory_app.command("search")
+def memory_search(
+    query: str = typer.Argument(..., help="Natural-language search query"),
+    collection: str = typer.Option(
+        "docs", "--collection", "-c", help="Collection to search (default: docs)"
+    ),
+    top_k: int = typer.Option(
+        5, "--top-k", "-k", help="Number of results (default: 5)"
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Semantic search over an ingested corpus collection.
+
+    The corpus must be ingested first with `datum memory ingest`.
+
+    Examples:
+
+      datum memory search "cosine similarity implementation"
+
+      datum memory search "spec TOML format" --collection specs --top-k 3
+
+    """
+    from pathlib import Path as _Path
+
+    repo_root = _Path(repo).resolve()
+    index_dir = repo_root / ".datum" / "index"
+
+    if not (index_dir / f"{collection}.npz").exists():
+        console.print(
+            f"[yellow]Collection [cyan]{collection}[/cyan] not indexed — "
+            f"run: datum memory ingest --collection {collection}[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        from datum.memory.embeddings import get_embedding_provider
+        from datum.memory.rag_engine import RAGEngine
+    except ImportError as exc:
+        console.print(f"[bold red]Import error: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    try:
+        provider = get_embedding_provider(persist_dir=index_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    engine = RAGEngine(store_dir=index_dir, embedding_provider=provider)
+
+    try:
+        results = engine.search(query_text=query, collection=collection, top_k=top_k)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold red]Search error: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    if not results:
+        console.print("[dim]No results found.[/dim]")
+        raise typer.Exit(0)
+
+    for i, r in enumerate(results, 1):
+        source = r.chunk.source or collection
+        section = r.chunk.section or ""
+        header = f"[cyan]{source}[/cyan]" + (
+            f"[dim]#{section}[/dim]" if section else ""
+        )
+        console.print(
+            f"\n[bold]{i}.[/bold] {header}  [dim](score: {r.score:.3f})[/dim]"
+        )
+        preview = r.chunk.text[:400].replace("\n", " ")
+        console.print(f"  {preview}")
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
