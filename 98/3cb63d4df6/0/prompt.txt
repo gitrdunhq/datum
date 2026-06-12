@@ -5754,11 +5754,3 @@ samfakhreddine in 🌐 Sams-Mac-mini in datum-local on  master [?⇡] is 📦
 ❯ uv run python -m datum_local.orchestrator --queue queue.toml --omlx-url http://localhost:12200
 2026-06-11 18:42:05,492 [ERROR] __main__: Queue validation errors:
   • no [[spec]] entries
-
----
-
-i thought we had a skill that builds the spec
-
----
-
-yes
