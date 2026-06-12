@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "103566578df2",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-28",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".swiftlint.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/10/3566578df2/0/metadata.json",
+      "transcript": "/10/3566578df2/0/full.jsonl",
+      "content_hash": "/10/3566578df2/0/content_hash.txt",
+      "prompt": "/10/3566578df2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 53477,
+    "cache_creation_tokens": 1041412,
+    "cache_read_tokens": 17961637,
+    "output_tokens": 114947,
+    "api_call_count": 183
+  }
+}
