@@ -1206,6 +1206,81 @@ def memory_search(
         console.print(f"  {preview}")
 
 
+@app.command()
+def retrospect(
+    run_id: str = typer.Option(
+        None, "--run-id", help="Analyse a single run ID (default: last N runs)"
+    ),
+    last_n: int = typer.Option(10, "--last-n", help="Number of recent runs to analyse"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+    datum_dir_opt: str = typer.Option(
+        ".datum", "--datum-dir", help="Path to .datum directory"
+    ),
+):
+    """Analyse completed runs — failure patterns, slow phases, improvement suggestions.
+
+    Reads .datum/runs/*/events.jsonl, groups failures by FailureLayer, and
+    emits structured insights with suggested harness patch locations.
+    """
+    from datum.retrospect import RetrospectConfig, run_retrospect
+
+    cfg = RetrospectConfig(
+        datum_dir=Path(datum_dir_opt),
+        last_n_runs=last_n,
+        run_id=run_id or None,
+    )
+    result = run_retrospect(cfg)
+
+    if json_output:
+        console.print(json.dumps(result.to_dict(), indent=2))
+        return
+
+    console.print(
+        f"\n[bold blue]Retrospect — {result.runs_analysed} run(s) analysed[/bold blue]"
+    )
+
+    if result.runs_analysed == 0:
+        console.print("[dim]No runs found. Run some epics first.[/dim]")
+        return
+
+    console.print(f"\n[bold]Failures by layer[/bold] (total: {result.total_failures})")
+    if result.failures_by_layer:
+        for layer, count in sorted(
+            result.failures_by_layer.items(), key=lambda x: -x[1]
+        ):
+            bar = "█" * min(count, 20)
+            console.print(f"  {layer:<16} {count:>3}  {bar}")
+    else:
+        console.print("  [dim]No failures recorded.[/dim]")
+
+    if result.slow_phases:
+        console.print("\n[bold]Slow phases[/bold]")
+        for sp in result.slow_phases:
+            console.print(
+                f"  {sp['phase']:<14} {sp['total_s']:>7.1f}s  ({sp['event_count']} events)"
+            )
+
+    if result.tool_usage:
+        console.print("\n[bold]Tool usage[/bold]")
+        for tool, count in sorted(result.tool_usage.items(), key=lambda x: -x[1])[:10]:
+            console.print(f"  {tool:<20} {count:>4}")
+
+    if result.recurring_patterns:
+        console.print("\n[bold yellow]Recurring failure patterns[/bold yellow]")
+        for p in result.recurring_patterns:
+            console.print(
+                f"  [{p['layer']}] {p['reason']}  "
+                f"({p['run_count']} runs, {p['total_occurrences']} occurrences)"
+            )
+
+    if result.suggestions:
+        console.print("\n[bold green]Suggested harness patches[/bold green]")
+        for s in result.suggestions:
+            console.print(f"  • {s}")
+
+    console.print()
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
