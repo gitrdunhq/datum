@@ -1,6 +1,7 @@
 """RAG engine for knowledge retrieval.
 
-Uses ChromaDB as the persistent local vector store backend.
+Backend: NumpyVectorStore (brute-force cosine, numpy-only, <5ms up to ~50k
+chunks).  ChromaDB is deferred until the corpus exceeds ~100k chunks.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from datum.memory._strict import is_memory_strict
 from datum.memory._trace import memory_traced
 from datum.memory.chunker import KnowledgeChunk, KnowledgeChunker
 from datum.memory.embeddings import (
@@ -18,6 +18,7 @@ from datum.memory.embeddings import (
     EmbeddingProvider,
     get_embedding_provider,
 )
+from datum.memory.vector_store import NumpyVectorStore
 from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,142 +32,21 @@ class RetrievalResult:
     score: float
 
 
-class VectorStore:
-    """ChromaDB-backed persistent vector store."""
-
-    def __init__(self, store_dir: Path) -> None:
-        try:
-            import chromadb
-        except ImportError:
-            raise ImportError(
-                "chromadb is not installed (it is not part of any datum "
-                "extra; deferred until the corpus exceeds ~100k chunks). "
-                "Run: pip install chromadb"
-            ) from None
-
-        store_dir.mkdir(parents=True, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=str(store_dir))
-
-    def upsert(
-        self,
-        collection: str,
-        ids: list[str],
-        embeddings: list[list[float]],
-        metadatas: list[dict],
-    ) -> None:
-        coll = self._client.get_or_create_collection(
-            name=collection, metadata={"hnsw:space": "cosine"}
-        )
-        coll.upsert(ids=ids, embeddings=embeddings, metadatas=metadatas)
-
-    def query(
-        self,
-        collection: str,
-        query_embedding: list[float],
-        top_k: int = 5,
-    ) -> list[tuple[str, dict, float]]:
-        import chromadb.errors
-
-        try:
-            coll = self._client.get_collection(name=collection)
-        except chromadb.errors.NotFoundError:
-            # Collection has never been indexed — always a valid empty result,
-            # not an infrastructure failure. Never re-raise in strict mode.
-            return []
-        except Exception:
-            if is_memory_strict():
-                raise
-            logger.warning("Collection '%s' not found in ChromaDB", collection)
-            return []
-        results = coll.query(query_embeddings=[query_embedding], n_results=top_k)
-        out: list[tuple[str, dict, float]] = []
-        if results and results["ids"]:
-            ids = results["ids"][0]
-            metadatas = (
-                results["metadatas"][0] if results["metadatas"] else [{}] * len(ids)
-            )
-            distances = (
-                results["distances"][0] if results["distances"] else [0.0] * len(ids)
-            )
-            for i, cid in enumerate(ids):
-                similarity = max(0.0, 1.0 - distances[i])
-                out.append((cid, metadatas[i], similarity))
-        return out
-
-    def list_collections(self) -> list[str]:
-        """Return all collection names in ChromaDB."""
-        return [c.name for c in self._client.list_collections()]
-
-    def delete_collection(self, collection: str) -> None:
-
-        try:
-            self._client.delete_collection(name=collection)
-        except Exception:
-            if is_memory_strict():
-                raise
-            logger.warning("Failed to delete collection '%s' from ChromaDB", collection)
-
-    def delete(self, collection: str, ids: list[str]) -> int:
-        """Remove entries by id. Returns count deleted."""
-        try:
-            coll = self._client.get_collection(name=collection)
-            coll.delete(ids=ids)
-            return len(ids)
-        except Exception:
-            if is_memory_strict():
-                raise
-            logger.warning(
-                "Failed to delete %d chunks from collection '%s' in ChromaDB",
-                len(ids),
-                collection,
-            )
-            return 0
-
-    def should_insert(
-        self,
-        collection_name: str,
-        embedding: list[float],
-        threshold: float = 0.95,
-    ) -> bool:
-        """Return True if no near-duplicate exists above *threshold* similarity."""
-        results = self.query(collection_name, embedding, top_k=1)
-        if not results:
-            return True
-        _cid, _meta, similarity = results[0]
-        return similarity < threshold
-
-    def upsert_with_dedup(
-        self,
-        collection_name: str,
-        ids: list[str],
-        embeddings: list[list[float]],
-        metadatas: list[dict],
-        threshold: float = 0.95,
-    ) -> tuple[int, int]:
-        """Upsert items, skipping near-duplicates. Returns (inserted, deduped)."""
-        inserted = 0
-        deduped = 0
-        for cid, emb, meta in zip(ids, embeddings, metadatas, strict=True):
-            if self.should_insert(collection_name, emb, threshold):
-                self.upsert(collection_name, [cid], [emb], [meta])
-                inserted += 1
-            else:
-                logger.debug(
-                    "Skipping near-duplicate chunk id=%s in collection=%s",
-                    cid,
-                    collection_name,
-                )
-                deduped += 1
-        return inserted, deduped
-
-
-def _get_vector_store(store_dir: Path) -> VectorStore:
-    """Return the ChromaDB-backed vector store."""
-    return VectorStore(store_dir / "chroma")
+def _get_vector_store(store_dir: Path) -> NumpyVectorStore:
+    """Return a NumpyVectorStore rooted at store_dir/numpy_index/."""
+    return NumpyVectorStore(store_dir / "numpy_index")
 
 
 class RAGEngine:
-    """RAG engine for indexing and querying reviewer knowledge."""
+    """RAG engine for indexing and querying reviewer knowledge.
+
+    The storage backend is NumpyVectorStore (vectors.npz + meta.jsonl per
+    collection).  The public API is unchanged so callers are unaffected.
+
+    Key seams for testing:
+      - Pass ``embedding_provider`` to inject FakeEmbeddings (no downloads).
+      - ``store_dir`` is always explicit; no hidden ~/.datum fallback.
+    """
 
     def __init__(
         self,
@@ -292,7 +172,7 @@ class RAGEngine:
             raise EmbeddingModelMismatchError(
                 f"embedding provider mismatch: index built with {old_provider!r}, "
                 f"current provider is {type(self.provider).__name__!r}. "
-                "Run `datum rag-reindex` to rebuild all embeddings."
+                "Run `datum memory reindex` to rebuild all embeddings."
             )
         query_embedding = self.provider.embed_query(query_text)
         collection_name = f"reviewer_{reviewer_id}"
@@ -310,6 +190,58 @@ class RAGEngine:
                 section=metadata.get("section", "unknown"),
                 date=metadata.get("date", "unknown"),
                 source=metadata.get("source", "unknown"),
+                chunk_id=metadata.get("chunk_id", _cid),
+            )
+            results.append(RetrievalResult(chunk=chunk, score=score))
+
+        return results
+
+    def search(
+        self,
+        query_text: str,
+        collection: str,
+        top_k: int = 5,
+    ) -> list[RetrievalResult]:
+        """Search any collection by name (general corpus retrieval).
+
+        Unlike ``query()``, this method works with any collection name (not
+        just reviewer_* collections) and does not enforce the KnowledgeChunk
+        schema.  Metadata is surfaced as-is.
+
+        Args:
+            query_text:  Natural-language search query.
+            collection:  Collection name to search.
+            top_k:       Number of results to return.
+
+        Returns:
+            List of RetrievalResult sorted by cosine similarity (descending).
+            Empty if the collection has not been indexed yet.
+        """
+        if not self._validate_provider_match():
+            stored = json.loads(self._provider_meta_file.read_text(encoding="utf-8"))
+            old_provider = stored.get("provider", "unknown")
+            raise EmbeddingModelMismatchError(
+                f"embedding provider mismatch: index built with {old_provider!r}, "
+                f"current provider is {type(self.provider).__name__!r}. "
+                "Run `datum memory reindex` to rebuild all embeddings."
+            )
+
+        query_embedding = self.provider.embed_query(query_text)
+        raw_results = self._store.query(
+            collection=collection,
+            query_embedding=query_embedding,
+            top_k=top_k,
+        )
+
+        results: list[RetrievalResult] = []
+        for _cid, metadata, score in raw_results:
+            # Build a KnowledgeChunk from whatever metadata is stored.
+            chunk = KnowledgeChunk(
+                text=metadata.get("text", ""),
+                reviewer_id=metadata.get("reviewer_id", ""),
+                section=metadata.get("section", ""),
+                date=metadata.get("date", ""),
+                source=metadata.get("source", collection),
                 chunk_id=metadata.get("chunk_id", _cid),
             )
             results.append(RetrievalResult(chunk=chunk, score=score))
@@ -364,7 +296,7 @@ class RAGEngine:
         if stored_provider != current:
             logger.warning(
                 "embedding provider mismatch: index built with %r, current provider is %r. "
-                "Run `datum rag-reindex` to rebuild all embeddings.",
+                "Run `datum memory reindex` to rebuild all embeddings.",
                 stored_provider,
                 current,
             )
@@ -372,7 +304,7 @@ class RAGEngine:
         return True
 
     def reindex_all(self) -> int:
-        """Drop all ChromaDB collections. Returns count of collections dropped."""
+        """Drop all collections. Returns count of collections dropped."""
         collections = self._store.list_collections()
         for name in collections:
             self._store.delete_collection(name)
