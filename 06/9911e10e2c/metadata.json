@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "069911e10e2c",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "agents/datum-cli.md",
+    "agents/datum-green.md",
+    "agents/datum-reader.md",
+    "agents/datum-red.md",
+    "agents/datum-refactor.md",
+    "assets/hooks/post-tool-use-test-ratchet-live.sh",
+    "assets/hooks/pre-tool-use-commit-format.sh",
+    "assets/hooks/pre-tool-use-lane-file-guard.sh",
+    "assets/hooks/pre-tool-use-protect-tests.sh",
+    "install.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/06/9911e10e2c/0/metadata.json",
+      "transcript": "/06/9911e10e2c/0/full.jsonl",
+      "content_hash": "/06/9911e10e2c/0/content_hash.txt",
+      "prompt": "/06/9911e10e2c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5728,
+    "cache_creation_tokens": 805181,
+    "cache_read_tokens": 54825315,
+    "output_tokens": 151087,
+    "api_call_count": 359
+  }
+}
