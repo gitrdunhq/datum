@@ -310,13 +310,13 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
   let green = await agent(
     `SETUP (run first): ${greenCtxCmd}\n` +
     `TASK PACKET: ${greenPacketStr}`,
-    { label: `green:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA }
+    { label: `green:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA }
   )
 
   if (!green || !green.committed) {
     log(`[${taskId}] GREEN attempt 1 failed, retrying with error context`)
     const retrySignalText = await agent(
-      `cd "${wt}" && ${laneCfg.testCommand} 2>${cfg.testCommand} 2>&11 || true\n` +
+      `cd "${wt}" && ${laneCfg.testCommand} 2>&1 || true\n` +
       `Extract ONLY: exit_code, error messages, assertion failure messages. Output as JSON.`,
       { label: `signal-retry:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
     )
@@ -328,7 +328,7 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     green = await agent(
       `SETUP (run first): ${greenCtxCmd}\n` +
       `TASK PACKET: ${JSON.stringify(retryPacket)}`,
-      { label: `green-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA }
+      { label: `green-retry:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA }
     )
   }
 
