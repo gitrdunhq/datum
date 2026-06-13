@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "3ccd81fd6d3a",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "tests/test_wave_builder.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/cd81fd6d3a/0/metadata.json",
+      "transcript": "/3c/cd81fd6d3a/0/full.jsonl",
+      "content_hash": "/3c/cd81fd6d3a/0/content_hash.txt",
+      "prompt": "/3c/cd81fd6d3a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5951,
+    "cache_creation_tokens": 958817,
+    "cache_read_tokens": 58376480,
+    "output_tokens": 164683,
+    "api_call_count": 409
+  }
+}
