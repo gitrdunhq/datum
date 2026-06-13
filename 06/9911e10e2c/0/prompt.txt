@@ -4036,3 +4036,11 @@ Now that you understand subagents, explore these related features:
 * [Distribute subagents with plugins](/en/plugins) to share subagents across teams or projects
 * [Run Claude Code programmatically](/en/headless) with the Agent SDK for CI/CD and automation
 * [Use MCP servers](/en/mcp) to give subagents access to external tools and data
+
+---
+
+dogfood it up!
+
+---
+
+can we centralize in .agents? and check it in?
