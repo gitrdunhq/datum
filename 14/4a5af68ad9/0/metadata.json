@@ -1,0 +1,109 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "144a5af68ad9",
+  "session_id": "2c5a3bd7-ae53-4761-b3a1-925307f8928a",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-13T05:07:03.50537Z",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "Record-App/Sources/Business/UseCases/StopAndTranscribeUseCase.swift",
+    "Record-App/Tests/Unit/Business/StopAndTranscribeUseCaseTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "225c3b12a764",
+  "token_usage": {
+    "input_tokens": 10334,
+    "cache_creation_tokens": 1548756,
+    "cache_read_tokens": 30910516,
+    "output_tokens": 166729,
+    "api_call_count": 310
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01HoS5VZau7R5MBH2PU9uQ49",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "225c3b12a764",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 36,
+        "end": 37,
+        "entry_ids": [
+          "1e68fd0a-1007-4fb1-b7c7-77866dcd9d45"
+        ],
+        "tool_use_id": "toolu_01HoS5VZau7R5MBH2PU9uQ49"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01HoS5VZau7R5MBH2PU9uQ49"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-13T05:07:03.455715Z",
+    "agent_lines": 36,
+    "agent_removed": 24,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 36,
+    "total_lines_changed": 60,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "144a5af68ad9",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "Record-App/Sources/Business/UseCases/StopAndTranscribeUseCase.swift",
+    "Record-App/Tests/Unit/Business/StopAndTranscribeUseCaseTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/14/4a5af68ad9/0/metadata.json",
+      "transcript": "/14/4a5af68ad9/0/full.jsonl",
+      "content_hash": "/14/4a5af68ad9/0/content_hash.txt",
+      "prompt": "/14/4a5af68ad9/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10334,
+    "cache_creation_tokens": 1548756,
+    "cache_read_tokens": 30910516,
+    "output_tokens": 166729,
+    "api_call_count": 310
+  }
+}

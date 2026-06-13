@@ -1,0 +1,159 @@
+THUNDERDOME
+
+---
+
+soeey it crashed
+
+---
+
+had tocseitch to sonnet
+
+---
+
+<task-notification>
+<task-id>a87741cdddb6577d5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a87741cdddb6577d5.output</output-file>
+<status>completed</status>
+<summary>Agent "Datum Plan: epic-30 tasks.json" completed</summary>
+<result>Note: claude-opus-4-6[1m] (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>5094</subagent_tokens><tool_uses>84</tool_uses><duration_ms>499771</duration_ms></usage>
+</task-notification>
+
+---
+
+datum has been updated
+
+---
+
+go ahead
+
+---
+
+sonnet woll deepen, qwen does work
+
+---
+
+hows the omlx doing
+
+---
+
+haiku and sonnet mix
+
+---
+
+datum bugs have been fixed keep filing what gou see
+
+---
+
+128 ans 129 are inflihjt
+
+---
+
+what % are we at
+
+---
+
+<task-notification>
+<task-id>a4a87aa89d954875f</task-id>
+<tool-use-id>toolu_011Hxqwx9C55xNMV9RmZw6Zi</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a4a87aa89d954875f.output</output-file>
+<status>completed</status>
+<summary>Agent "Act Unit E: MCP provider wiring (tasks 016-021) — Sonnet" completed</summary>
+<result>4 commits made. Tasks 016 and 017 were already done before this session. Here is the final report:
+
+---
+
+## Final Report
+
+**Ratchet floor**: 816 tests / 137 suites / 0 failures at start → **826 tests / 139 suites / 0 failures** at end (+10 tests, +2 suites, 0 regressions).
+
+---
+
+### TASK-016 (F21a) — NotionContextProvider
+**Status: Already done** (commit `0e27646a4` by a prior agent). `NotionProvider.isHealthy()` handles nil credential, Keychain throw, and authenticated ping. `supportedPrivacyTiers` returns `[.off, .meetings]`. Full test coverage in `NotionProviderTests.swift`. No work needed.
+
+### TASK-017 (F21b) — DuckDBContextCache cross-provider isolation
+**Status: Already done** (commit `cbcbb0755`). `selectCached`, `deleteCached`, `getSemantic` all filter on `(query_text, provider_id)`. No work needed.
+
+### TASK-018 (F21c) — AppConfig fields `obsidianVaultPath` and `notionEnabled`
+**What was done**: Added `notionEnabled: Bool = false` and `obsidianVaultPath: String? = nil` to **both** `Record-Foundation/Sources/Domain/Config/AppConfig.swift` and `Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift`. Updated the 3 memberwise-copy sites in `Record-App/Sources/TheRecord/App.swift`. Added 4 E3 round-trip tests to `AppConfigTests.swift`. All JSON encode/decode with missing-key defaults.
+
+### TASK-019 (F21d) — Wire providers in buildMCPProviders
+**What was done**: Rewrote `buildMCPProviders` in `AppAssemblerBuilders.swift` to: (1) construct `KeychainCredentialStore` once with `migrateAccessibilityIfNeeded()`, (2) construct `NotionProvider` when `config.notionEnabled`, (3) construct `ObsidianProvider` when `config.obsidianVaultPath` is non-nil, (4) wrap ALL providers in `CachingContextProvider` with `ContextCacheConfig` params. Created `AppAssemblerMCPWiringTests.swift` with 4 source-inspection tests (E4a–E4d).
+
+### TASK-020 (F21e) — Settings Integrations tab
+**What was done**: Added `isNotionEnabled: Bool = false` and `obsidianVaultPath: String = ""` to `SettingsViewModel`. Created `SettingsViewIntegrationsTab.swift` (Notion toggle + Obsidian path field). Extracted `transcriptionTab`, `speakersTab`, `exportTab`, `cacheTab`, `aboutTab` from `SettingsView.swift` into `SettingsViewTranscriptionTab.swift` to keep the main file under the 150-line limit. Wired `integrationsTab` into `SettingsView.body`. Updated `SwiftUIListsTests.swift` (LazyVStack source-inspection test now checks both file locations). 6 new E5 tests.
+
+**Note on SourceKit false positives**: The coordinator flagged SourceKit errors for missing tab vars — these are IDE-level false positives from the extension-per-file pattern. The Swift compiler compiles cleanly (confirmed by `swift build` and all 826 tests passing). This is the same pattern already used by the pre-existing `SettingsViewGeneralTab.swift`.
+
+### TASK-021 (F21f) — Integration test skeleton
+**What was done**: Created `Record-ML/Tests/Unit/MCPProviderIntegrationTests.swift` with 2 tests gated behind `.enabled(if: integrationEnabled)` where `integrationEnabled = ProcessInfo.processInfo.environment["RUN_INTEGRATION_TESTS"] == "1"`. E6a verifies ObsidianProvider returns file content from a temp vault. E6b verifies CachingContextProvider serves the second query from cache (entry count unchanged). Tests auto-skip in normal CI; run manually with `RUN_INTEGRATION_TESTS=1 swift test --package-path Record-ML`.</result>
+<usage><subagent_tokens>177712</subagent_tokens><tool_uses>210</tool_uses><duration_ms>1703829</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a3bb280604aef95fe</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a3bb280604aef95fe.output</output-file>
+<status>completed</status>
+<summary>Agent "Act task-001: F1 AEC buffer chunking (Sonnet)" completed</summary>
+<result>Note: claude-sonnet-4-6 (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>13187</subagent_tokens><tool_uses>198</tool_uses><duration_ms>5042258</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a9ac8ac67428abb37</task-id>
+<tool-use-id>toolu_019t2DEUgbkDr9i7n7hGJtzC</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a9ac8ac67428abb37.output</output-file>
+<status>completed</status>
+<summary>Agent "Act Unit D: concurrency correctness (task-013, 014, 015) — Sonnet" completed</summary>
+<result>Note: claude-sonnet-4-6 (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>52838</subagent_tokens><tool_uses>221</tool_uses><duration_ms>3305341</duration_ms></usage>
+</task-notification>
+
+---
+
+please continue
+
+---
+
+send a hauiku sgent to get sgents.md snd claude.md best practises snd come bacj then ankther synthesises bith snd then ankther makes the chsnges then another reboews correctness a pipeline
+
+---
+
+/dream
+
+---
+
+dimt build thenworkflow
+
+---
+
+domtvbuild it capture rhe idea in the datum gh issues
+
+---
+
+domtvbuild it capture rhe idea in the datum gh issues
+
+---
+
+<task-notification>
+<task-id>wbl7uv2jb</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/wbl7uv2jb.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Gather AGENTS.md + CLAUDE.md best practices, synthesize, implement improvements, then review" completed</summary>
+<result>{"gaps_addressed":15,"verdict":"needs_fixes","issues":["Duplicate bulk-replacement guidance: the new 'Shell Discipline' section (lines 322-326) and the pre-existing 'Agent Operations Lessons' bullet (line 334) both document the sed/for loop guardrails with slightly different wording. The lessons entry is the canonical, session-proven version and also references gitnexus_rename/serena; the new section should either defer to it with a cross-reference or one of them should be removed.","Contradiction between 'File Placement Rules' (line 304: never use /tmp) and 'Agent Operations Lessons' (line 332: instructs agents to look in /private/tmp/claude-501/... for background agent transcripts). The two rules directly conflict — the transcript recovery tip should be removed or the path should be updated to a non-/tmp location.","Correlation ID requirement in 'Coding Standards — Resiliency' (line 82) is aspirational and not grounded in the project's actual error model. The codebase uses typed Swift enums (AudioError, TranscriptionError, etc.) with no correlationId field — this is a web/Python-backend pattern from the generic WFC CODING-STEERING.md and does not fit Swift's Error protocol conventions. Stating it as a hard rule will mislead agents into adding fields that don't exist and may break the layer import rules.","The 'unset GITHUB_TOKEN &amp;&amp;' prefix in the 'See Something, Say Something' gh command (line 118) is a Claude Code sandbox-specific workaround. AGENTS.md is explicitly a universal file for all agents (Codex, Cursor, OpenCode, Aider, etc.), and injecting Claude Code environment workarounds into it creates noise and confusion for non-Claude agents. This belongs in .claude/-scoped configuration only.","The 'Squash before first push' rule (line 189) prescribes raw 'git rebase -i origin/main' but AGENTS.md establishes datum as the workflow tool for this project (with its own PR phase that handles squashing). Sub-agents following AGENTS.md will bypass datum tooling. The rule should name datum's PR phase as the primary method and list raw git rebase as a fallback only."],"summary":"The commit adds 105 lines of genuinely useful, well-scoped rules (Functional Core/Imperative Shell, Boundary Validation, File Size Cap, Resiliency standards, No Invented APIs, Minimal Diffs, Preserve Diagnostic Logging, Validate Before Applying at Scale, No Re-Planning, See Something Say Something, git constraints, Git Operations Scope, File Placement Rules, Shell Discipline, Sub-Agent Pre-Flight Protocol). The additions are well-structured and do not bloat the file — each section earns its place. However, five issues need fixes before this can be considered clean: two create direct internal contradictions (the /tmp ban vs. the /private/tmp transcript recovery tip; duplicate bulk-replacement guidance), one imports a web-backend pattern that doesn't fit the Swift error model (correlation IDs), one embeds a Claude Code-specific workaround into a universal file (unset GITHUB_TOKEN), and one bypasses the project's own datum tooling in favor of raw git for squashing. None of the additions contradict existing architecture or invariants — the problems are self-contradictions and context-mismatch, not factual errors about the codebase."}</result>
+<usage><agent_count>4</agent_count><subagent_tokens>130699</subagent_tokens><tool_uses>32</tool_uses><duration_ms>637717</duration_ms></usage>
+</task-notification>
