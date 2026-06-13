@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "e703647849b1",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/datum-green.md",
+    "agents/datum-red.md",
+    "agents/datum-refactor.md",
+    "agents/datum-reflect.md",
+    "agents/datum-skeptic.md",
+    "skills/datum-tdd-act.js"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e7/03647849b1/0/metadata.json",
+      "transcript": "/e7/03647849b1/0/full.jsonl",
+      "content_hash": "/e7/03647849b1/0/content_hash.txt",
+      "prompt": "/e7/03647849b1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6490,
+    "cache_creation_tokens": 1010515,
+    "cache_read_tokens": 63174621,
+    "output_tokens": 183514,
+    "api_call_count": 444
+  }
+}
