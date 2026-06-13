@@ -1,0 +1,1939 @@
+please impllement #137 ensuring sorktree true isolation ensure sgents only work in their worktree.
+
+---
+
+hey use gitnexus to trace blast radius
+
+---
+
+use npx gitnexus mcp is down
+
+---
+
+fix those tests
+
+---
+
+fix those tests or the ckde
+
+---
+
+ok merge to main
+
+---
+
+reinstall
+
+---
+
+thefe is on the board an enhancement to make tdd a workflow
+
+---
+
+/workflow-orchestration-patterns
+
+---
+
+/nano-banana-pro-prompts-recommend-skill
+
+---
+
+/nano-banana-pro-prompts-recommend-skill
+
+---
+
+<task-notification>
+<task-id>a5ce40bd5a42b6795</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/a5ce40bd5a42b6795.output</output-file>
+<status>completed</status>
+<summary>Agent "Opus review and enhance TDD workflow plan" completed</summary>
+<result>Now I have a thorough understanding of the codebase. Let me compile the enhanced implementation plan.
+
+---
+
+## Enhanced Implementation Plan: Deterministic TDD Act Workflow Script (Issue #133)
+
+### 1. Wave-Based vs. Per-Task Dependency Tracking
+
+**Analysis of the problem:**
+
+The `topological_order` array in `lane-plan.json` is a **linear ordering** produced by `topological_sort()` in `datum/lane_plan.py` (line 126-151). It is a standard DFS-based topological sort that returns a flat list like `["task-001", "task-003", "task-002"]`. This is NOT wave-grouped. Two independent tasks (both with zero deps) might appear at positions 0 and 2 with a dependent task at position 1.
+
+**Why BFS wave grouping is correct but the draft's approach is incomplete:**
+
+BFS-layered scheduling (Kahn's algorithm) groups tasks into "waves" where wave N contains tasks whose dependencies all appear in waves &lt; N. This correctly identifies maximum parallelism -- tasks in the same wave have no mutual dependencies and can run concurrently.
+
+However, there is a subtlety the draft plan misses: `pipeline-dispatch.md` defines TWO kinds of dependency:
+- **Signature dependency** (satisfied by stub commit) -- unblocks downstream RED
+- **Behavior dependency** (satisfied by GREEN commit) -- unblocks downstream GREEN
+
+This means tasks in different "waves" can actually overlap their RED phases if the dependency is only behavioral. Task C (wave 2, depends on A) can start RED as soon as A's stub commit lands, without waiting for A's GREEN to complete. The wave model is too conservative for RED dispatch but correct for GREEN dispatch.
+
+**Recommendation: Hybrid approach -- wave parallelism with fine-grained GREEN gating.**
+
+Build BFS waves from the dependency DAG for initial dispatch ordering. Within each wave, use `parallel()` for all tasks. Between waves, the barrier from `parallel()` ensures all prior wave tasks' RED+stub is committed before downstream wave tasks begin RED. For GREEN gating, implement per-task dependency checking inside `runLane()` that polls/awaits upstream GREEN commits before starting its own GREEN.
+
+Why NOT `pipeline()`: The `pipeline()` primitive has NO barrier between stages (item A can be in stage 3 while B is in stage 1). This means if we put tasks into a pipeline, a task with dependencies could start before its dependency finishes. There is no hook to add a gate between pipeline stages for a specific item. This makes `pipeline()` unsuitable for the dependency DAG.
+
+**The `buildWaves()` function should:**
+
+```js
+function buildWaves(lanePlan) {
+  const lanes = lanePlan.lanes;
+  const inDeg = {};
+  const adj = {};
+  for (const [id, lane] of Object.entries(lanes)) {
+    inDeg[id] = (lane.depends_on || []).length;
+    for (const dep of (lane.depends_on || [])) {
+      (adj[dep] = adj[dep] || []).push(id);
+    }
+  }
+  const waves = [];
+  let queue = Object.keys(inDeg).filter(id =&gt; inDeg[id] === 0);
+  while (queue.length &gt; 0) {
+    waves.push([...queue]);
+    const next = [];
+    for (const id of queue) {
+      for (const child of (adj[id] || [])) {
+        inDeg[child]--;
+        if (inDeg[child] === 0) next.push(child);
+      }
+    }
+    queue = next;
+  }
+  return waves;
+}
+```
+
+### 2. RED-GREEN Worktree Continuity
+
+**Confirmed model: Pre-created persistent lane worktrees via `setup_pipeline_worktrees()`.**
+
+The `worktree_manager.py` API at line 123-152 creates one worktree per lane under `.datum/worktrees/&lt;run_id&gt;/&lt;lane_id&gt;/`. Each lane gets its own branch `&lt;epic_branch&gt;/&lt;lane_id&gt;` starting from the epic branch tip. The worktree persists for the entire RED-GREEN-REFACTOR cycle.
+
+**Critical: Do NOT use `isolation: 'worktree'` on agent calls.** Per the system facts, `isolation: 'worktree'` creates a FRESH worktree per agent call. Tests written by RED would not be present for GREEN. Instead, each agent must work in the pre-created worktree.
+
+**How to pass the worktree path to agents:**
+
+The worktree path should be injected into the agent prompt as a working-directory instruction AND passed as the `cwd` option (if available in the Workflow script API). The prompt must contain:
+
+```
+WORKING DIRECTORY: /absolute/path/to/.datum/worktrees/&lt;run_id&gt;/&lt;task_id&gt;
+All file operations MUST use this directory as the repository root.
+Run all commands (git, pytest, etc.) from this directory.
+```
+
+If the Workflow script's `agent()` function supports a `cwd:` option, use it. If not, the prompt instruction is the enforcement mechanism -- the agent must `cd` there first.
+
+**The Setup phase must:**
+1. Call `datum worktrees setup --run-id &lt;RUN_ID&gt; --epic-branch &lt;BRANCH&gt; --lane-ids task-001,task-002,...`
+2. Capture the returned JSON mapping of `{lane_id: worktree_path}`
+3. Store this mapping for use by `runLane()`
+
+### 3. Verify-Stage: Agent vs. Direct Bash
+
+**The Workflow script is JS-only -- no direct subprocess calls.** Verification must go through an `agent()` call.
+
+**However, verification is a mechanical, deterministic check** -- run `datum verify-stage red|green &lt;worktree_path&gt;` and check the exit code. Using a full Sonnet-tier LLM for this is wasteful.
+
+**Recommendation: Use a `fast` (Haiku) model agent with a minimal prompt.**
+
+```js
+const verifyResult = await agent(
+  `Run this exact command and report the result:
+  cd ${worktreePath} &amp;&amp; datum verify-stage red --test-command "${testCmd}"
+  If the command succeeds (exit 0), respond with: {"verified": true}
+  If it fails, respond with: {"verified": false, "error": "&lt;stderr output&gt;"}
+  Do NOT interpret the error. Just report it.`,
+  { model: modelConfig.fast, schema: { verified: 'boolean', error: 'string?' } }
+);
+```
+
+This costs ~500 tokens per verification instead of ~5000 for a full Sonnet call.
+
+**New CLI command needed: `datum verify-stage`** -- a thin wrapper around `tdd_driver.verify_red_stage()` and `tdd_driver.verify_green_baseline()`:
+
+```python
+@app.command(name="verify-stage")
+def verify_stage_cmd(
+    stage: str = typer.Argument(..., help="Stage to verify: 'red' or 'green'"),
+    repo_path: str = typer.Option(".", "--repo", help="Repository path"),
+    test_command: str = typer.Option("pytest -q", "--test-command", help="Test command"),
+):
+    """Verify TDD stage gate: RED tests must fail, GREEN tests must pass."""
+```
+
+### 4. File Ownership Sandbox Enforcement
+
+**Current state:** The `lane_tools_runner.py` enforces file sandbox via `allowed_write_dirs` from `manifest.toml`. But this only applies to lane-tools scripts, not to the agent's direct file edits.
+
+**For the Workflow script, enforcement must happen at the prompt level plus post-commit validation.**
+
+**Prompt-level enforcement:**
+Each RED/GREEN/REFACTOR agent prompt must include an explicit file restriction section:
+
+```
+### File Permissions
+You may ONLY write to the following files:
+- src/foo.py
+- src/bar.py
+- tests/test_foo.py  (RED only — GREEN and REFACTOR may not write to test files)
+
+Writing to any file not in this list is a HARD STOP violation.
+The commit queue will reject commits that touch files outside this set.
+```
+
+**Post-commit validation:**
+After each stage commit, the workflow should verify the committed diff only touches files in `lane.files[]`. This is mechanical and can be done by the verify agent:
+
+```js
+// After stage commit, verify file ownership
+const diffFiles = await agent(
+  `cd ${worktreePath} &amp;&amp; git diff --name-only HEAD~1 HEAD`,
+  { model: modelConfig.fast }
+);
+```
+
+Compare diffFiles against `lane.files` + allowed test paths. If violation detected, reject and retry.
+
+**For RED specifically:** The file set is the test files derived from `lane.files` (the skeleton paths from preflight). For GREEN: only implementation files (excluding test directory). For REFACTOR: both.
+
+### 5. RED/GREEN/REFACTOR Agent Prompts
+
+There is NO existing `datum act-red` CLI command. The agents are prompted directly. The brief is constructed per `references/brief-builder.md`.
+
+**RED Agent Prompt Template:**
+
+```js
+function RED_PROMPT(lane, worktreePath, preflight, upstreamStubs, specSections, propertiesFiltered, gitnexusContext) {
+  return `
+## Role: RED Agent — Write Failing Tests
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### Acceptance Criteria (your tests must prove at least one of these)
+${lane.acceptance_criteria.map((ac, i) =&gt; `${i+1}. ${ac}`).join('\n')}
+
+### Property to Prove
+${propertiesFiltered}
+
+### RED Note
+${lane.red_note}
+
+### Files You May Write To
+${(preflight?.outputs || []).map(o =&gt; `- ${o.path}`).join('\n') || lane.files.filter(f =&gt; f.includes('test') || f.includes('Test')).map(f =&gt; `- ${f}`).join('\n')}
+
+### Skeleton (pre-created — fill in assertion bodies, do NOT rename functions or move files)
+${preflight ? JSON.stringify(preflight.outputs, null, 2) : 'No skeleton available — create test structure from scratch.'}
+
+${lane.introduces_stubs ? `### Stub Requirement
+Emit TWO commits in order:
+1. Stub commit — declare public types/methods with fatalError/raise NotImplementedError bodies
+2. Test commit — the failing test written against the stub
+Commit message format: stub(${lane.id}): &lt;description&gt;` : '### Emit one commit: the failing test.'}
+
+### Code Context (GitNexus)
+${gitnexusContext || 'Not available.'}
+
+${upstreamStubs ? `### Upstream Stubs (types you may reference)\n${upstreamStubs}` : ''}
+
+### Done Condition
+Run: cd ${worktreePath} &amp;&amp; ${testCommand}
+Tests MUST FAIL. The failure message must reference the property under test.
+If tests pass, you have green blindness — rewrite the test with a genuinely failing assertion.
+Commit your work: git add . &amp;&amp; git commit -m "red(${lane.id}): &lt;description&gt;"
+`;
+}
+```
+
+**GREEN Agent Prompt Template:**
+
+```js
+function GREEN_PROMPT(lane, worktreePath, testSignal, specSections, propertiesFiltered, gitnexusContext) {
+  return `
+## Role: GREEN Agent — Make Tests Pass with Minimum Code
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### Acceptance Criteria
+${lane.acceptance_criteria.map((ac, i) =&gt; `${i+1}. ${ac}`).join('\n')}
+
+### Property Being Proved
+${propertiesFiltered}
+
+### Files You May Write To (implementation files ONLY — NO test files)
+${lane.files.filter(f =&gt; !f.includes('test') &amp;&amp; !f.includes('Test') &amp;&amp; !f.includes('spec')).map(f =&gt; `- ${f}`).join('\n')}
+
+### What the Test Expects (redacted signal — you do NOT have access to test source)
+${JSON.stringify(testSignal, null, 2)}
+
+For compile errors: implement the missing type/method.
+For assertion failures: implement the behavior described by the assertion message.
+
+### Code Context (GitNexus)
+${gitnexusContext || 'Not available.'}
+
+### Done Condition
+Run: cd ${worktreePath} &amp;&amp; ${testCommand}
+ALL tests MUST PASS. Do not add new tests. Do not edit test files.
+Commit: git add . &amp;&amp; git commit -m "green(${lane.id}): &lt;description&gt;"
+`;
+}
+```
+
+**REFACTOR Agent Prompt Template:**
+
+```js
+function REFACTOR_PROMPT(lane, worktreePath, implementationContent, testContent, testResults, specFull, propertiesFiltered, gitnexusImpact) {
+  return `
+## Role: REFACTOR Agent — Full Correctness + Clean Architecture
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### AC Checklist (verify each before marking done)
+${lane.acceptance_criteria.map((ac, i) =&gt; `- [ ] ${ac}`).join('\n')}
+
+### Properties (all must hold after your changes)
+${propertiesFiltered}
+
+### Implementation (current HEAD)
+${implementationContent}
+
+### Test Source (you may read but NEVER weaken, remove, or skip tests)
+${testContent}
+
+### Test Results
+${testResults}
+
+### Impact Analysis (GitNexus)
+${gitnexusImpact || 'Not available.'}
+
+### What You May NOT Do
+- Remove, rename, or disable a test (test_ratchet.py blocks this)
+- Delete or weaken an assertion
+- Add new tests (if missing AC found: log to brief_defects, signal orchestrator, STOP)
+
+### Done Condition
+ALL tests pass. Hooks pass. Linter clean. Formatter clean. Every AC checked off.
+Commit: git add . &amp;&amp; git commit -m "refactor(${lane.id}): &lt;description&gt;"
+
+Write proof of work to: .datum/runs/${runId}/proof-of-work/${lane.id}.md
+`;
+}
+```
+
+### 6. Skeleton Preflight
+
+**Yes, skeleton preflight should run before RED for each lane.** Per `references/04-act-skeleton-preflight.md` and `references/04-act.md` (line 16-20), the protocol is:
+
+```
+datum skeleton --task-id &lt;id&gt; --language &lt;detected_lang&gt; --tasks .datum/lane-plan.json --output .datum/runs/&lt;RUN_ID&gt;/preflight-&lt;id&gt;.json
+```
+
+**This should be integrated INTO `runLane()`, not as a separate phase.** Each lane runs skeleton preflight at the start of its RED sub-phase, not globally before all lanes. Reason: for lanes with `introduces_stubs = true`, the skeleton must be written AFTER the stub commit so it can import declared types (per the preflight doc).
+
+The skeleton creator (`datum/skeleton_creator.py`) writes test file scaffolding and returns a `preflight-result.json`. This is a mechanical operation that should use the `fast` tier.
+
+### 7. Parallel Within Wave vs. Finer-Grained Deps
+
+**Question 8 analysis in detail:**
+
+Consider tasks A (wave 1, no deps), B (wave 1, no deps), C (wave 2, depends on A).
+
+With wave-based `parallel()`:
+- Wave 1: `parallel([runLane(A), runLane(B)])` -- both run fully (RED-GREEN-REFACTOR) before wave 2 starts
+- Wave 2: `parallel([runLane(C)])` -- C starts RED only after A AND B are completely done
+
+This is OVERLY CONSERVATIVE. C's RED can start as soon as A's stub commit lands. C's GREEN can start as soon as A's GREEN commits. B's completion is irrelevant to C.
+
+**However, the wave model is the simplest correct approach and matches `parallel()`'s barrier semantics.** The performance cost is that some lanes wait unnecessarily. For a typical datum epic with 5-8 tasks, the wave model adds minimal wall-clock overhead because:
+1. Most tasks are independent (wave 1 is large)
+2. Dependent tasks are usually in a chain (wave 2, 3 are small)
+
+**Finer-grained tracking would require:**
+- A custom event loop that monitors each lane's state
+- Per-lane dependency semaphores
+- Polling or callback mechanism for "upstream committed"
+
+This complexity is not warranted for v1. The wave model is correct (never dispatches too early), maximally parallel within waves, and uses the standard `parallel()` primitive.
+
+**Recommendation: Use wave-based parallel for v1. Note the optimization opportunity for v2.**
+
+### 8. Model Selection
+
+Per `references/model-tiers.md`:
+
+| Agent | Tier | Workflow `model:` |
+|---|---|---|
+| Topology reader | fast | `"haiku"` |
+| Setup (worktrees) | fast | `"haiku"` |
+| Skeleton preflight | fast | `"haiku"` |
+| RED | standard | `"sonnet"` |
+| RED verify | fast | `"haiku"` |
+| GREEN | standard | `"sonnet"` |
+| GREEN verify | fast | `"haiku"` |
+| REFACTOR | standard | `"sonnet"` |
+| REFACTOR verify | fast | `"haiku"` |
+| Merge | fast | `"haiku"` |
+| Cleanup | fast | `"haiku"` |
+
+The workflow should read model config from `args` (passed at invocation time) or default to these tiers.
+
+### 9. Closing Issue #138
+
+After all tests pass and the PR is merged, the workflow's final phase should close issue #138 via `gh issue close 138`. This can be done by the merge agent or as a separate cleanup step.
+
+---
+
+## Complete Workflow Script Skeleton
+
+```js
+// .claude/workflows/datum-tdd-act.js
+//
+// Deterministic TDD Act phase orchestration.
+// Replaces manual RED→GREEN→REFACTOR dispatch with a mechanical
+// Workflow script that enforces gates, file ownership, and dependency order.
+//
+// Invocation:
+//   /workflow datum-tdd-act --run-id &lt;ID&gt; --epic-branch &lt;BRANCH&gt; --lane-plan-path .datum/lane-plan.json
+
+export const meta = {
+  name: 'datum-tdd-act',
+  description: 'Deterministic TDD Act phase: RED→GREEN→REFACTOR per lane with dependency gating',
+  version: '1.0.0',
+};
+
+// ── Schema Definitions ──────────────────────────────────────────────────
+
+const LanePlanSchema = {
+  schema_version: 'string',
+  total_lanes: 'number',
+  topological_order: ['string'],
+  file_ownership: 'object',
+  lanes: 'object',
+};
+
+const StageVerifySchema = {
+  verified: 'boolean',
+  error: 'string?',
+  exit_code: 'number?',
+};
+
+const FailureRecord = {
+  task_id: 'string',
+  stage: 'string',   // RED | GREEN | REFACTOR
+  attempt: 'number',
+  error: 'string',
+  timestamp: 'string',
+};
+
+// ── Configuration ──────────────────────────────────────────────────────
+
+const MODEL = {
+  fast:     'haiku',
+  standard: 'sonnet',
+  reasoning: 'opus',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function buildWaves(lanePlan) {
+  const lanes = lanePlan.lanes;
+  const ids = Object.keys(lanes);
+  const inDeg = {};
+  const adj = {};
+
+  for (const id of ids) {
+    const deps = lanes[id].depends_on || [];
+    inDeg[id] = deps.length;
+    for (const dep of deps) {
+      (adj[dep] = adj[dep] || []).push(id);
+    }
+  }
+
+  const waves = [];
+  let queue = ids.filter(id =&gt; inDeg[id] === 0);
+
+  while (queue.length &gt; 0) {
+    waves.push([...queue]);
+    const next = [];
+    for (const id of queue) {
+      for (const child of (adj[id] || [])) {
+        inDeg[child]--;
+        if (inDeg[child] === 0) next.push(child);
+      }
+    }
+    queue = next;
+  }
+
+  return waves;
+}
+
+// ── Per-Lane TDD Execution ──────────────────────────────────────────────
+
+async function runLane(taskId, lanePlan, worktreePaths, runId, testCommand, language) {
+  const lane = lanePlan.lanes[taskId];
+  const worktreePath = worktreePaths[taskId];
+  const isStructural = lane.stage === 'structural';
+
+  log(`[${taskId}] Starting lane: ${lane.title} (${isStructural ? 'structural' : 'behavioral'})`);
+
+  if (isStructural) {
+    // Structural tasks bypass RED and GREEN — REFACTOR only
+    const refactorResult = await runRefactor(taskId, lane, worktreePath, runId, testCommand);
+    if (!refactorResult) {
+      appendFailure(runId, taskId, 'REFACTOR', 'Refactor failed for structural task');
+      return null;
+    }
+    log(`[${taskId}] Structural lane complete`);
+    return { taskId, status: 'completed' };
+  }
+
+  // ── Skeleton Preflight ──────────────────────────────────────────────
+  const preflight = await agent(
+    `Run this command and return the full JSON output:
+cd ${worktreePath} &amp;&amp; datum skeleton --task-id ${taskId} --language ${language} --tasks .datum/lane-plan.json --output .datum/runs/${runId}/preflight-${taskId}.json
+Then read and return the contents of .datum/runs/${runId}/preflight-${taskId}.json`,
+    { model: MODEL.fast }
+  );
+
+  // ── RED ──────────────────────────────────────────────────────────────
+  log(`[${taskId}] RED: writing failing tests`);
+
+  const redResult = await agent(
+    buildRedPrompt(taskId, lane, worktreePath, preflight, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify RED: tests must FAIL
+  const redVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage red --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!redVerify.verified) {
+    log(`[${taskId}] RED verification FAILED: ${redVerify.error}`);
+    appendFailure(runId, taskId, 'RED', redVerify.error || 'Green blindness — tests passed at RED');
+    return null;
+  }
+
+  log(`[${taskId}] RED verified — tests correctly failing`);
+
+  // ── GREEN ─────────────────────────────────────────────────────────────
+  log(`[${taskId}] GREEN: making tests pass`);
+
+  // Get test signal for GREEN brief (redacted — no test source)
+  const testSignal = await agent(
+    `cd ${worktreePath} &amp;&amp; datum test-signal --framework pytest --input &lt;(cd ${worktreePath} &amp;&amp; ${testCommand} 2&gt;&amp;1 || true)
+Return the JSON output only.`,
+    { model: MODEL.fast }
+  );
+
+  const greenResult = await agent(
+    buildGreenPrompt(taskId, lane, worktreePath, testSignal, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify GREEN: tests must PASS
+  const greenVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage green --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!greenVerify.verified) {
+    log(`[${taskId}] GREEN verification FAILED: ${greenVerify.error}`);
+    appendFailure(runId, taskId, 'GREEN', greenVerify.error || 'Tests still failing after GREEN');
+    return null;
+  }
+
+  log(`[${taskId}] GREEN verified — tests passing`);
+
+  // ── REFACTOR ──────────────────────────────────────────────────────────
+  const refactorResult = await runRefactor(taskId, lane, worktreePath, runId, testCommand);
+  if (!refactorResult) {
+    appendFailure(runId, taskId, 'REFACTOR', 'Refactor failed');
+    return null;
+  }
+
+  log(`[${taskId}] Lane complete`);
+  return { taskId, status: 'completed' };
+}
+
+async function runRefactor(taskId, lane, worktreePath, runId, testCommand) {
+  log(`[${taskId}] REFACTOR: cleanup + full AC coverage`);
+
+  const refactorResult = await agent(
+    buildRefactorPrompt(taskId, lane, worktreePath, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify REFACTOR: tests must still PASS
+  const refactorVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage green --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!refactorVerify.verified) {
+    log(`[${taskId}] REFACTOR verification FAILED: ${refactorVerify.error}`);
+    return null;
+  }
+
+  return refactorVerify;
+}
+
+function appendFailure(runId, taskId, stage, error) {
+  // The agent will append to the JSONL file
+  const record = JSON.stringify({
+    task_id: taskId,
+    stage,
+    error,
+    timestamp: new Date().toISOString(),
+  });
+  log(`FAILURE: ${record}`);
+  // Actual file append happens in the cleanup agent
+}
+
+// ── Main Workflow ────────────────────────────────────────────────────────
+
+export default async function run(args) {
+  const runId = args.runId || new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const epicBranch = args.epicBranch;
+  const lanePlanPath = args.lanePlanPath || '.datum/lane-plan.json';
+  const testCommand = args.testCommand || 'pytest -q';
+  const language = args.language || 'python';
+
+  // ── Phase: Topology ──────────────────────────────────────────────────
+  phase('Topology');
+
+  const lanePlan = await agent(
+    `Read the file at ${lanePlanPath} and return its contents as a JSON object.`,
+    { model: MODEL.fast, schema: LanePlanSchema }
+  );
+
+  const waves = buildWaves(lanePlan);
+  log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
+  for (let i = 0; i &lt; waves.length; i++) {
+    log(`  Wave ${i}: [${waves[i].join(', ')}]`);
+  }
+
+  // ── Phase: Setup ──────────────────────────────────────────────────────
+  phase('Setup');
+
+  const laneIds = Object.keys(lanePlan.lanes);
+  const setupResult = await agent(
+    `Run this command and return the output:
+datum worktrees setup --run-id ${runId} --epic-branch ${epicBranch} --lane-ids ${laneIds.join(',')}
+Return the JSON mapping of lane_id to worktree_path.`,
+    { model: MODEL.fast }
+  );
+
+  // Parse worktree paths from setup output
+  const worktreePaths = setupResult; // agent returns parsed JSON
+
+  // ── Phase: Act ────────────────────────────────────────────────────────
+  phase('Act');
+
+  const results = {};
+  const failures = [];
+
+  for (let waveIdx = 0; waveIdx &lt; waves.length; waveIdx++) {
+    const wave = waves[waveIdx];
+    log(`=== Wave ${waveIdx} starting: [${wave.join(', ')}] ===`);
+
+    const waveResults = await parallel(
+      wave.map(taskId =&gt; async () =&gt; {
+        try {
+          return await runLane(taskId, lanePlan, worktreePaths, runId, testCommand, language);
+        } catch (err) {
+          log(`[${taskId}] FATAL ERROR: ${err.message}`);
+          appendFailure(runId, taskId, 'UNKNOWN', err.message);
+          return null;
+        }
+      })
+    );
+
+    for (let i = 0; i &lt; wave.length; i++) {
+      results[wave[i]] = waveResults[i];
+      if (!waveResults[i]) {
+        failures.push(wave[i]);
+      }
+    }
+
+    log(`=== Wave ${waveIdx} complete: ${wave.length - failures.filter(f =&gt; wave.includes(f)).length}/${wave.length} succeeded ===`);
+  }
+
+  // ── Phase: Merge ──────────────────────────────────────────────────────
+  phase('Merge');
+
+  const completedLanes = Object.entries(results)
+    .filter(([_, r]) =&gt; r?.status === 'completed')
+    .map(([id]) =&gt; id);
+
+  if (completedLanes.length === 0) {
+    log('No lanes completed — skipping merge');
+  } else {
+    // Merge in topological order (only completed lanes)
+    const mergeOrder = lanePlan.topological_order
+      .map(item =&gt; typeof item === 'string' ? item : item.root)
+      .filter(id =&gt; completedLanes.includes(id));
+
+    await agent(
+      `Run this command:
+datum worktrees merge --epic-branch ${epicBranch} --lane-order ${mergeOrder.join(',')} --commit-message "act: merge ${completedLanes.length} lanes for ${epicBranch}"`,
+      { model: MODEL.fast }
+    );
+
+    log(`Merged ${completedLanes.length} lanes in order: [${mergeOrder.join(', ')}]`);
+  }
+
+  // ── Phase: Cleanup ────────────────────────────────────────────────────
+  phase('Cleanup');
+
+  await agent(
+    `Run this command:
+datum worktrees cleanup --run-id ${runId} --epic-branch ${epicBranch}`,
+    { model: MODEL.fast }
+  );
+
+  // Write failure records
+  if (failures.length &gt; 0) {
+    await agent(
+      `Write the following failure records to .datum/runs/${runId}/act-failures.jsonl:
+${failures.map(id =&gt; JSON.stringify({ task_id: id, stage: results[id]?.stage || 'UNKNOWN', error: results[id]?.error || 'Lane failed' })).join('\n')}`,
+      { model: MODEL.fast }
+    );
+  }
+
+  // ── Summary ──────────────────────────────────────────────────────────
+  log(`\nAct phase complete:`);
+  log(`  Total lanes: ${lanePlan.total_lanes}`);
+  log(`  Completed: ${completedLanes.length}`);
+  log(`  Failed: ${failures.length}`);
+  if (failures.length &gt; 0) {
+    log(`  Failed lanes: [${failures.join(', ')}]`);
+  }
+
+  return {
+    runId,
+    total: lanePlan.total_lanes,
+    completed: completedLanes.length,
+    failed: failures.length,
+    failedLanes: failures,
+  };
+}
+```
+
+### New CLI Commands
+
+**File: `datum/cli.py`** -- Add a `worktrees` subcommand group and a `verify-stage` command.
+
+```python
+# ── Worktree management ──────────────────────────────────────────────────
+
+worktrees_app = typer.Typer(name="worktrees", help="Pipeline worktree lifecycle management.")
+app.add_typer(worktrees_app)
+
+
+@worktrees_app.command("setup")
+def worktrees_setup(
+    run_id: str = typer.Option(..., "--run-id", help="Unique pipeline run identifier"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_ids: str = typer.Option(..., "--lane-ids", help="Comma-separated lane IDs"),
+):
+    """Create one worktree per lane for parallel ACT execution.
+
+    Creates .datum/worktrees/&lt;run_id&gt;/&lt;lane_id&gt;/ for each lane,
+    each on its own sub-branch starting from the epic branch tip.
+    Prints JSON mapping: {lane_id: worktree_path}.
+    """
+    from datum.worktree_manager import setup_pipeline_worktrees
+
+    ids = [lid.strip() for lid in lane_ids.split(",")]
+    mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    # Convert Path values to strings for JSON serialization
+    result = {k: str(v) for k, v in mapping.items()}
+    console.print(json.dumps(result, indent=2))
+
+
+@worktrees_app.command("merge")
+def worktrees_merge(
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_order: str = typer.Option(..., "--lane-order", help="Comma-separated lane IDs in merge order"),
+    commit_message: str = typer.Option(..., "--commit-message", help="Merge commit message"),
+):
+    """Squash-merge completed lane branches into the epic branch.
+
+    Merges in the specified order (dependency order: depended-on first).
+    All changes land in one commit on the epic branch.
+    """
+    from datum.worktree_manager import merge_lane_branches
+
+    order = [lid.strip() for lid in lane_order.split(",")]
+    sha = merge_lane_branches(epic_branch, order, commit_message)
+    console.print(json.dumps({"sha": sha, "merged": order}))
+
+
+@worktrees_app.command("cleanup")
+def worktrees_cleanup(
+    run_id: str = typer.Option(..., "--run-id", help="Run ID to clean up"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+):
+    """Remove all lane worktrees for a given run.
+
+    Discovers lanes by listing .datum/worktrees/&lt;run_id&gt;/ and
+    removes each worktree and its sub-branch.
+    """
+    from datum.worktree_manager import cleanup_run_worktrees
+
+    cleaned = cleanup_run_worktrees(run_id, epic_branch)
+    console.print(json.dumps({"cleaned": cleaned}))
+
+
+# ── TDD stage verification ────────────────────────────────────────────────
+
+@app.command(name="verify-stage")
+def verify_stage_cmd(
+    stage: str = typer.Argument(..., help="Stage to verify: 'red', 'green', or 'baseline'"),
+    repo_path: str = typer.Option(".", "--repo", help="Repository root path"),
+    test_command: str = typer.Option("pytest -q", "--test-command", help="Test runner command"),
+):
+    """Verify TDD stage gate.
+
+    red:      Tests must FAIL (green blindness check). Exit 0 if failing, exit 1 if passing.
+    green:    Tests must PASS. Exit 0 if passing, exit 1 if failing.
+    baseline: Tests must PASS before starting a new RED cycle. Exit 0 if passing, exit 1 if failing.
+    """
+    import shlex
+    from datum.tdd_driver import (
+        DirtyBaselineError,
+        GreenBlindnessError,
+        verify_green_baseline,
+        verify_red_stage,
+    )
+
+    cmd = shlex.split(test_command)
+    path = Path(repo_path).resolve()
+
+    try:
+        if stage == "red":
+            verify_red_stage(path, test_command=cmd)
+            console.print("[green]RED verified: tests are correctly failing.[/green]")
+        elif stage in ("green", "baseline"):
+            verify_green_baseline(path, test_command=cmd)
+            console.print("[green]GREEN verified: tests are passing.[/green]")
+        else:
+            console.print(f"[red]Unknown stage: {stage}. Use 'red', 'green', or 'baseline'.[/red]")
+            raise typer.Exit(1)
+    except GreenBlindnessError as e:
+        console.print(f"[red]RED verification FAILED: {e}[/red]")
+        raise typer.Exit(1)
+    except DirtyBaselineError as e:
+        console.print(f"[red]Baseline verification FAILED: {e}[/red]")
+        raise typer.Exit(1)
+```
+
+### Test List
+
+**File: `tests/test_tdd_cli_commands.py`**
+
+| Test | What it verifies |
+|---|---|
+| `test_worktrees_setup_creates_worktrees` | `datum worktrees setup` creates one worktree per lane under `.datum/worktrees/&lt;run_id&gt;/`, returns JSON mapping with valid paths. Uses a real git repo in `tmp_path`. |
+| `test_worktrees_setup_fails_without_epic_branch` | `datum worktrees setup` exits non-zero when the epic branch does not exist. Verifies RuntimeError is surfaced. |
+| `test_worktrees_setup_idempotent_error` | Calling setup twice with the same run_id raises a clear error (git worktree add fails for existing worktree). |
+| `test_worktrees_merge_squashes_in_order` | `datum worktrees merge` applies squash-merges in the specified order. Creates 2 lane branches with different file changes, merges, verifies the epic branch has both changes in one commit. |
+| `test_worktrees_merge_skips_nonexistent_lane` | `datum worktrees merge` raises RuntimeError when a lane branch does not exist (e.g., a failed lane that never committed). |
+| `test_worktrees_cleanup_removes_all` | `datum worktrees cleanup` removes all worktrees and sub-branches for a run. After cleanup, `git worktree list` does not include the lane paths. |
+| `test_verify_stage_red_passes_when_tests_fail` | `datum verify-stage red` exits 0 when the test suite fails. Uses a fixture repo with a deliberately failing test. |
+| `test_verify_stage_red_fails_when_tests_pass` | `datum verify-stage red` exits 1 (GreenBlindnessError) when all tests pass. Detects green blindness. |
+| `test_verify_stage_green_passes_when_tests_pass` | `datum verify-stage green` exits 0 when all tests pass. |
+| `test_verify_stage_green_fails_when_tests_fail` | `datum verify-stage green` exits 1 (DirtyBaselineError) when tests fail. |
+| `test_verify_stage_custom_test_command` | `datum verify-stage` respects the `--test-command` flag. Uses a custom command like `python -m pytest tests/specific_test.py`. |
+| `test_verify_stage_unknown_stage_exits_1` | `datum verify-stage foobar` exits 1 with a clear error message. |
+
+**File: `tests/test_workflow_wave_builder.py`** (unit tests for wave-building logic, if extracted to Python)
+
+| Test | What it verifies |
+|---|---|
+| `test_buildwaves_independent_tasks` | All tasks with no deps go into wave 0. |
+| `test_buildwaves_linear_chain` | A-&gt;B-&gt;C produces 3 waves of 1 task each. |
+| `test_buildwaves_diamond` | A, B (both no deps), C (depends on A and B) produces wave 0=[A,B], wave 1=[C]. |
+| `test_buildwaves_complex_dag` | Tests the real lane-plan.json structure: tasks 1,3,4,5,6 (no deps) in wave 0, task 2 (depends on 1) in wave 1, task 7 (depends on 1,3,4,6) in wave 1, task 8 (depends on 7) in wave 2. |
+
+### Gaps and Concerns for the Implementer
+
+1. **FleetView API uncertainty.** The `agent()`, `parallel()`, `phase()`, `log()` primitives are described in the system facts but there is no reference implementation or API documentation in the repo. The implementer should verify:
+   - Whether `agent()` supports `cwd:` as an option (critical for worktree isolation)
+   - Whether `agent()` supports `schema:` for structured output
+   - Whether `parallel()` returns results in order or as a map
+   - Whether there is a way to pass environment variables to agents
+
+2. **Test signal generation for GREEN.** The GREEN agent needs a redacted test signal. The workflow uses `datum test-signal` but the exact invocation pattern (piping test output) needs to match the existing test_signal.py expectations. The test_signal module reads from a file or stdin -- verify the correct invocation.
+
+3. **Commit queue integration.** The existing `pipeline-dispatch.md` describes a commit queue (`datum commit-queue`) for serializing commits. The worktree model (each lane has its own branch) eliminates the commit queue's primary purpose (preventing concurrent writes to the same branch). However, the merge phase still needs serialization. The implementer should decide: keep the commit queue for merge, or rely on `merge_lane_branches()` which already serializes merges.
+
+4. **Retry logic is NOT in v1 scope.** The draft plan does not include the retry ladder (standard -&gt; reasoning -&gt; reasoning+verbose) from `references/model-tiers.md`. Each stage gets one attempt. Retry should be a v2 enhancement. The failure is recorded and the lane is skipped.
+
+5. **Adversarial agent is NOT in v1 scope.** Per `references/04-act.md`, an ADVERSARIAL agent runs after REFACTOR. This is not in the draft plan and should be deferred to v2.
+
+6. **Security and docs sidecars are NOT in v1 scope.** The Act phase doc mentions `security-sidecar` and `docs-scaffolder` running alongside the main loop. These are deferred.
+
+7. **`topological_order` items are `TopologicalOrderItem` (RootModel), not plain strings.** When reading from `lane-plan.json`, the items are strings. But when using the Pydantic schema, they are wrapped in `TopologicalOrderItem.root`. The workflow reads raw JSON, so this is fine -- but the merge-order filtering line must handle this:
+   ```js
+   const mergeOrder = lanePlan.topological_order
+     .map(item =&gt; typeof item === 'string' ? item : item.root)
+   ```
+
+8. **File ownership enforcement is prompt-only in v1.** There is no mechanical post-commit check in the workflow. The test_ratchet pre-commit hook catches some violations, but general file-ownership enforcement relies on the agent following instructions. The implementer should add a post-commit `git diff --name-only` check and fail the lane if non-owned files are touched.
+
+9. **install.sh symlink.** The workflow file lives at `skills/datum-tdd-act.js` in the repo. For Claude Code to discover it, it needs to be symlinked to `~/.claude/workflows/datum-tdd-act.js`. The `install.sh` script's `register_tool` function creates symlinks to `~/.claude/skills/datum`, but workflows live in a different directory. A new registration step is needed in `install.sh`.
+
+10. **No `datum act-red` / `datum act-green` CLI commands exist.** The agents are prompted directly with full briefs. There is no thin CLI wrapper for running a specific TDD stage. The workflow constructs the full brief in JS and passes it as the agent prompt. This is the correct approach -- adding CLI wrappers would create unnecessary indirection.
+
+### Critical Files for Implementation
+
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/cli.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/worktree_manager.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/tdd_driver.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/pipeline_scheduler.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/references/pipeline-dispatch.md`</result>
+<usage><subagent_tokens>114855</subagent_tokens><tool_uses>75</tool_uses><duration_ms>571831</duration_ms></usage>
+</task-notification>
+
+---
+
+ok dogfood pick a feature off the board and use it
+
+---
+
+yes did we run the workflow as a claude workflow?
+
+---
+
+Push
+
+---
+
+so with workflows we can really enforce those JSON contracts we made right?
+
+---
+
+yeah lets wait and see what other friction points came up and then iterate an iterate
+
+---
+
+<task-notification>
+<task-id>wrq2r5p6f</task-id>
+<tool-use-id>toolu_01TeNHg5jgmdhgDpGd2pvc58</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/wrq2r5p6f.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"total":2,"completed":2,"failed":0,"failedLanes":[],"completedLanes":["task-001","task-002"]}</result>
+<usage><agent_count>20</agent_count><subagent_tokens>468326</subagent_tokens><tool_uses>126</tool_uses><duration_ms>902793</duration_ms></usage>
+</task-notification>
+
+---
+
+#3 first and then #4
+
+---
+
+try it out
+
+---
+
+hey the workflow agents, do we control their entire context window?
+
+---
+
+how mich is the system prompt?
+
+---
+
+what are took schemas loading
+
+---
+
+<task-notification>
+<task-id>w6u7s45m5</task-id>
+<tool-use-id>toolu_01JvBwBEtRvdRzJkB3Pop2A3</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/w6u7s45m5.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"total":8,"completed":2,"failed":6,"failedLanes":["task-001","task-004","task-005","task-006","task-002","task-008"],"completedLanes":["task-003","task-007"]}</result>
+<usage><agent_count>51</agent_count><subagent_tokens>1911961</subagent_tokens><tool_uses>768</tool_uses><duration_ms>2757718</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>w72fznnf9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/w72fznnf9.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"total":2,"completed":0,"failed":2,"failedLanes":["task-001","task-002"],"completedLanes":[],"error":"Epic branch 'undefined' not found. Create it before setting up pipeline worktrees."}</result>
+<usage><agent_count>2</agent_count><subagent_tokens>41030</subagent_tokens><tool_uses>4</tool_uses><duration_ms>14688</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>wgbbemmx0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/wgbbemmx0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"total":2,"completed":0,"failed":2,"failedLanes":["task-001","task-002"],"completedLanes":[],"error":"Epic branch 'undefined' not found. Create it before setting up pipeline worktrees."}</result>
+<usage><agent_count>2</agent_count><subagent_tokens>41036</subagent_tokens><tool_uses>4</tool_uses><duration_ms>13663</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>wrprnb0yg</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/wrprnb0yg.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"run-default","total":2,"completed":0,"failed":2,"failedLanes":["task-001","task-002"],"completedLanes":[],"error":"git worktree add failed: cannot lock ref 'refs/heads/main/task-001': 'refs/heads/main' exists; cannot create 'refs/heads/main/task-001'. The worktree manager attempts to create sub-branches with pattern {epic_branch}/{lane_id}, but when epic_branch='main', Git cannot create branches under a leaf branch. Either: (1) use a different epic_branch that is namespace-ready, (2) modify the branch naming scheme to use separators other than '/' (e.g., 'main-task-001'), or (3) ensure the epic_branch is set up as a branch namespace before calling setup."}</result>
+<usage><agent_count>2</agent_count><subagent_tokens>45706</subagent_tokens><tool_uses>6</tool_uses><duration_ms>27672</duration_ms></usage>
+</task-notification>
+
+---
+
+does this help in anyway, send n agent to incorporate changes > ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Orchestrate subagents at scale with dynamic workflows
+
+> Dynamic workflows orchestrate many subagents from a script Claude writes and you can rerun. Use them for codebase audits, large migrations, and cross-checked research.
+
+{/* plan-availability: feature=workflows plans=pro,max,team,enterprise providers=all */}
+
+<Note>
+  Dynamic workflows require Claude Code v2.1.154 or later and are available on all paid plans, with Anthropic API access, and on Amazon Bedrock, Google Cloud Vertex AI, and Microsoft Foundry. On Pro, turn them on from the Dynamic workflows row in `/config`.
+</Note>
+
+A dynamic workflow is a JavaScript script that orchestrates [subagents](/en/sub-agents) at scale. Claude writes the script for the task you describe, and a runtime executes it in the background while your session stays responsive.
+
+Reach for a workflow when a task needs more agents than one conversation can coordinate, or when you want the orchestration codified as a script you can read and rerun. Examples include a codebase-wide bug sweep, a 500-file migration, a research question that needs sources cross-checked against each other, and a hard plan worth drafting from several independent angles before you commit to one.
+
+This page covers how to:
+
+* Decide [when to use a workflow](#when-to-use-a-workflow) instead of subagents or skills
+* [Run a bundled workflow](#run-a-bundled-workflow) with `/deep-research`
+* [Have Claude write a workflow](#have-claude-write-a-workflow) for your task and save it
+* Understand [how a workflow runs](#how-a-workflow-runs) and [manage runs](#manage-runs)
+
+## When to use a workflow
+
+[Subagents](/en/sub-agents), [skills](/en/skills), [agent teams](/en/agent-teams), and workflows can all run a multi-step task. The difference is who holds the plan:
+
+|                                 | Subagents                      | Skills                       | Agent teams                            | Workflows                            |
+| :------------------------------ | :----------------------------- | :--------------------------- | :------------------------------------- | :----------------------------------- |
+| What it is                      | A worker Claude spawns         | Instructions Claude follows  | A lead agent supervising peer sessions | A script the runtime executes        |
+| Who decides what runs next      | Claude, turn by turn           | Claude, following the prompt | The lead agent, turn by turn           | The script                           |
+| Where intermediate results live | Claude's context window        | Claude's context window      | A shared task list                     | Script variables                     |
+| What's repeatable               | The worker definition          | The instructions             | The team definition                    | The orchestration itself             |
+| Scale                           | A few delegated tasks per turn | Same as subagents            | A handful of long-running peers        | Dozens to hundreds of agents per run |
+| Interruption                    | Restarts the turn              | Restarts the turn            | Teammates keep running                 | Resumable in the same session        |
+
+A workflow moves the plan into code. With subagents, skills, and agent teams, Claude is the orchestrator: it decides turn by turn what to spawn or assign next, and every result lands in a context window. A workflow script holds the loop, the branching, and the intermediate results itself, so Claude's context holds only the final answer.
+
+Moving the plan into code also lets a workflow apply a repeatable quality pattern, not just run more agents: it can have independent agents adversarially review each other's findings before they're reported, or draft a plan from several angles and weigh them against each other, so you get a more trustworthy result than a single pass.
+
+## Run a bundled workflow
+
+The quickest way to see a workflow in action is to run `/deep-research`, the [built-in workflow](#bundled-workflows) Claude Code includes for investigating a question across many sources. You'll see agents work through a set of phases in the background while your session stays free, and get one report at the end instead of a turn-by-turn transcript.
+
+<Steps>
+  <Step title="Run the workflow">
+    Run `/deep-research` with a question you want investigated. It fans out web searches across several angles, fetches and cross-checks the sources it finds, and synthesizes a cited report.
+
+    ```text theme={null}
+    /deep-research What changed in the Node.js permission model between v20 and v22?
+    ```
+  </Step>
+
+  <Step title="Allow workflows">
+    Claude Code asks whether to allow the workflow. Select **Yes** to continue. The exact prompt depends on your permission mode. See [Approve the plan before it runs](#approve-the-plan-before-it-runs) for the per-mode options.
+  </Step>
+
+  <Step title="Watch progress">
+    The run starts in the background. Run `/workflows`, use the arrow keys to select the run, and press Enter to open its progress view:
+
+    ```text theme={null}
+    /workflows
+    ```
+
+    The view shows each phase with its agent count, token total, and elapsed time. Drill into any phase to see its agents and what each one found. See [Watch the run](#watch-the-run) for the full set of controls.
+
+    You can also watch from the task panel below the input box: a one-line progress summary appears there while the run is going. Press the down arrow to focus it, then Enter to expand.
+  </Step>
+
+  <Step title="Read the report">
+    When the run finishes, the report lands in your session. It cites the sources each claim came from, with claims that didn't survive cross-checking already filtered out.
+  </Step>
+</Steps>
+
+To run a workflow for your own task, [have Claude write one](#have-claude-write-a-workflow), and once a run does what you wanted you can [save it](#save-the-workflow-for-reuse) as a command of your own.
+
+### Bundled workflows
+
+Claude Code includes `/deep-research` as a built-in workflow:
+
+| Command                     | What it does                                                                                                                                                                                                                                                                                                      |
+| :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/deep-research <question>` | Fans out web searches on a question across several angles, fetches and cross-checks the sources it finds, votes on each claim, and returns a cited report with claims that didn't survive cross-checking filtered out. Requires the [WebSearch tool](/en/tools-reference#websearch-tool-behavior) to be available |
+
+[Workflows you save](#save-the-workflow-for-reuse) yourself become commands the same way and appear in `/` autocomplete alongside the bundled ones.
+
+### Watch the run
+
+Workflows run in the background, so the session stays responsive while agents work. Run `/workflows` at any time to list running and completed workflows, then select one to open its progress view.
+
+```text theme={null}
+/workflows
+```
+
+The progress view shows each phase with its agent counts, token totals, and elapsed time. The footer lists the key for each action:
+
+| Key            | Action                                                                                              |
+| :------------- | :-------------------------------------------------------------------------------------------------- |
+| `↑` / `↓`      | Select a phase or agent                                                                             |
+| `Enter` or `→` | Drill into the selected phase, then into an agent to read its prompt, recent tool calls, and result |
+| `Esc`          | Back out one level                                                                                  |
+| `j` / `k`      | Scroll within the agent detail when it overflows                                                    |
+| `p`            | Pause or resume the run                                                                             |
+| `x`            | Stop the selected agent, or stop the whole workflow when focus is on the run                        |
+| `r`            | Restart the selected running agent                                                                  |
+| `s`            | [Save](#save-the-workflow-for-reuse) the run's script as a command                                  |
+
+## Have Claude write a workflow
+
+You can have Claude write a workflow for your task in two ways:
+
+* [Ask for a workflow](#ask-for-a-workflow-in-your-prompt) in your prompt, either in your own words or by including the keyword `ultracode`, and Claude writes one for the task.
+* [Let Claude decide with ultracode](#let-claude-decide-with-ultracode): set `/effort ultracode` and Claude plans a workflow for every substantive task in the session.
+
+You can also run a workflow command that already exists: a [bundled workflow](#bundled-workflows) like `/deep-research`, or one you've [saved](#save-the-workflow-for-reuse).
+
+### Ask for a workflow in your prompt
+
+To run a single task as a workflow without changing the session's effort level, include the keyword `ultracode` in your prompt. Asking in your own words, for example "use a workflow" or "run a workflow", also works: Claude treats a direct request as the same opt-in. Before v2.1.160 the literal trigger keyword was `workflow`; natural-language requests work in both versions.
+
+```text theme={null}
+ultracode: audit every API endpoint under src/routes/ for missing auth checks
+```
+
+Claude Code highlights the keyword in your input and Claude writes a workflow script for the task instead of working through it turn by turn. If you didn't mean to start a workflow, press `Option+W` on macOS or `Alt+W` on Windows and Linux to dismiss the highlight for this prompt, or press backspace while the cursor is right after the highlighted keyword. To stop the keyword from triggering at all, turn off Ultracode keyword trigger in `/config`.
+
+If the run does what you wanted, you can [save it as a command](#save-the-workflow-for-reuse) afterward.
+
+If you already have an orchestrator built another way, such as a folder of subagent prompts or a skill that fans work out, you can point Claude at it and ask for a workflow that does the same thing.
+
+### Let Claude decide with ultracode
+
+Ultracode is a Claude Code setting that combines `xhigh` [reasoning effort](/en/model-config#adjust-effort-level) with automatic workflow orchestration. With it on, Claude plans a workflow for each substantive task instead of waiting for you to ask.
+
+```text theme={null}
+/effort ultracode
+```
+
+With ultracode on, Claude decides when a task warrants a workflow. A single request can turn into several workflows in a row: one to understand the code, one to make the change, and one to verify it. This applies to every task in the session, so each request uses more tokens and takes longer than at lower effort levels.
+
+Ultracode lasts for the current session and resets when you start a new one. Drop back with `/effort high` when you return to routine work. It's available on models that support `xhigh` [effort](/en/model-config#adjust-effort-level); on other models the `/effort` menu doesn't offer it.
+
+### Approve the plan before it runs
+
+In the CLI, the per-run prompt shows the planned phases and these options:
+
+* **Yes, run it**: start the run
+* **Yes, and don't ask again for `<name>` in `<path>`**: start, and skip this prompt for this workflow in this project from now on
+* **View raw script**: read the script before deciding
+* **No**: cancel
+
+`Ctrl+G` opens the script in your editor. `Tab` lets you adjust the prompt before the run starts.
+
+Whether you see this prompt depends on your [permission mode](/en/permission-modes):
+
+| Permission mode                            | When you're prompted                                                                                                                                    |
+| :----------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Default, accept edits                      | Every run, unless you've selected **Yes, and don't ask again** for that workflow in this project                                                        |
+| Auto                                       | First launch only. Any **Yes** records consent in your user settings, and later launches start without prompting. Skipped entirely when ultracode is on |
+| Bypass permissions, `claude -p`, Agent SDK | Never. The run starts immediately                                                                                                                       |
+
+In the Desktop app, an approval card shows the workflow name, the phase list, and a token-usage caution, with **Once**, **Always**, and **Deny** actions. The progress view appears in the Background tasks side pane.
+
+Your permission mode controls only the launch prompt above. The subagents the workflow spawns always run in `acceptEdits` mode and inherit your [tool allowlist](/en/settings#permission-settings), regardless of your session's mode. File edits are auto-approved.
+
+Shell commands, web fetches, and MCP tools that aren't in your allowlist can still prompt you mid-run. To avoid this on a long run, add the commands the agents need to your allowlist before starting.
+
+In `claude -p` and the Agent SDK there is no one to prompt, so tool calls follow your configured permission rules without interactive confirmation.
+
+### Save the workflow for reuse
+
+When Claude writes a workflow for a task you'll repeat, you can save that run's script as a command. A process like a review you run on every branch then runs the same orchestration each time.
+
+Run `/workflows`, select the run you want to keep, and press `s`. In the save dialog, Tab toggles between the two save locations:
+
+* `.claude/workflows/` in your project: shared with everyone who clones the repo
+* `~/.claude/workflows/` in your home directory: available in every project, visible only to you
+
+Press Enter to save. The workflow runs as `/<name>` in future sessions from either location.
+
+If a project workflow and a personal workflow share a name, the project one runs.
+
+### Pass input to a saved workflow
+
+A saved workflow can accept input through the `args` parameter. The script reads it as a global named `args`. Use this to supply a research question, a list of target paths, or a configuration object at invocation time instead of editing the script for each run.
+
+The following prompt runs a saved workflow with a list of issue numbers:
+
+```text theme={null}
+> Run /triage-issues on issues 1024, 1025, and 1030
+```
+
+Claude passes the list as structured data, so the script can call array and object methods on `args` directly without parsing it first. If `args` is omitted, the global is `undefined` inside the script.
+
+## How a workflow runs
+
+The workflow runtime executes the script in an isolated environment, separate from your conversation. Intermediate results stay in script variables instead of landing in Claude's context.
+
+Every run writes its script to a file under your session's directory in `~/.claude/projects/`. Claude receives the path when the run starts, so you can ask for it. You can open that file to read the orchestration Claude wrote, diff it against a previous run's script, or edit it and ask Claude to relaunch from the edited version.
+
+The runtime tracks each agent's result as the run progresses, which is what makes a run [resumable](#resume-after-a-pause) within the same session.
+
+### Behavior and limits
+
+The runtime applies the following constraints:
+
+| Constraint                                                           | Why                                                                                                            |
+| :------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
+| No mid-run user input                                                | Only agent permission prompts can pause a run. For sign-off between stages, run each stage as its own workflow |
+| No direct filesystem or shell access from the workflow itself        | Agents read, write, and run commands. The script coordinates the agents                                        |
+| Up to 16 concurrent agents, fewer on machines with limited CPU cores | Bounds local resource use                                                                                      |
+| 1,000 agents total per run                                           | Prevents runaway loops                                                                                         |
+
+## Manage runs
+
+Once a run starts, you manage it from the `/workflows` view, or by expanding its progress line in the task panel below the input box.
+
+### Resume after a pause
+
+If you stop a run, you can resume it: agents that already completed return their cached results, and the rest run live. Resume a paused run from `/workflows` by selecting it and pressing `p`, or ask Claude to relaunch the workflow with the same script.
+
+Resume works within the same Claude Code session. If you exit Claude Code while a workflow is running, the next session starts the workflow fresh.
+
+### Cost
+
+A workflow spawns many agents, so a single run can use meaningfully more tokens than working through the same task in conversation. Runs count toward your plan's usage and rate limits like any other session.
+
+To gauge the spend before committing to a large task, run the workflow on a small slice first: one directory instead of the whole repo, or a narrow question instead of a broad one. The `/workflows` view shows each agent's token usage as the run progresses, and you can stop the run there at any time without losing completed work. The runtime's [agent caps](#behavior-and-limits) limit how many agents a single run can spawn, which bounds the cost of a runaway script.
+
+Every agent in a workflow uses your session's model unless the script routes a stage to a different one. To control the model cost:
+
+* Check `/model` before a large run if you usually switch to a smaller model for routine work
+* Ask Claude to use a smaller model for stages that don't need the strongest one when you describe the task
+
+### Turn workflows off
+
+Workflows are available in the CLI, the Desktop app, the IDE extensions, [non-interactive mode](/en/headless) with `claude -p`, and the [Agent SDK](/en/agent-sdk/overview). The same disable settings apply on every surface.
+
+To turn workflows off for yourself:
+
+* Toggle Dynamic workflows off in `/config`. Persists across sessions.
+* Set `"disableWorkflows": true` in `~/.claude/settings.json`. Persists across sessions.
+* Set `CLAUDE_CODE_DISABLE_WORKFLOWS=1`. Read at startup, so it applies wherever you set it.
+
+To turn workflows off for your whole organization, set `"disableWorkflows": true` in [managed settings](/en/server-managed-settings), or use the toggle on the [Claude Code admin settings](https://claude.ai/admin-settings/claude-code) page.
+
+When workflows are disabled, the bundled workflow commands are unavailable, the `ultracode` keyword no longer triggers a run, and `ultracode` is removed from the `/effort` menu.
+
+## Related resources
+
+* [Run agents in parallel](/en/agents): compare subagents, agent view, agent teams, and workflows
+* [Create custom subagents](/en/sub-agents): the worker primitive workflows orchestrate
+* [Manage costs](/en/costs): how multi-agent runs count toward usage limits
+
+---
+
+<task-notification>
+<task-id>a117cc36e4556198f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/a117cc36e4556198f.output</output-file>
+<status>completed</status>
+<summary>Agent "Opus: plan tool-scoped agents for workflow" completed</summary>
+<result>Good. Only one custom agent currently exists (`entire-search`). Now let me produce the comprehensive plan.
+
+---
+
+## Complete Analysis and Implementation Plan: Token-Efficient Agent Typing for datum-tdd-act
+
+### Background and Problem
+
+The workflow at `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act.js` contains 12 `agent()` calls per lane (some running inside `runLane` which is called per task). Each agent call without a custom `agentType` spawns a default workflow subagent that inherits the FULL tool environment from the parent session. This includes:
+
+- All 82+ internal tool schemas
+- MCP server tool schemas for Gmail, Calendar, Drive, Notion, serena, headroom, context7
+- CLAUDE.md / AGENTS.md rules
+- Git status snapshot
+
+From the documentation, a critical distinction exists:
+- **Default/unnamed workflow agents**: inherit all tools from the parent session (the full ~76K token system prompt)
+- **Custom-typed agents** (via `agentType:` referencing a `.claude/agents/*.md` file): receive "only this system prompt (plus basic environment details), not the full Claude Code system prompt" and only the tools listed in their `tools:` frontmatter
+
+This means custom agent types are not just about filtering tools from the same prompt -- they replace the entire system prompt with a minimal one plus the agent's markdown body. This is where the real token savings come from.
+
+### Answer 1: Agent Type Mapping for All 12 Roles
+
+Based on the roles' actual needs:
+
+| # | Role | Current Tools Needed | Recommended agentType | Tools | Model |
+|---|------|---------------------|----------------------|-------|-------|
+| 1 | Topology reader | Read (1 JSON file) | `datum-reader` (new) | `Read` | haiku |
+| 2 | Setup | Bash (1 CLI command) | `datum-cli` (new) | `Bash` | haiku |
+| 3 | Skeleton preflight | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 4 | RED agent | Read, Write, Edit, Bash | (default -- needs full toolbelt) | all | sonnet |
+| 5 | Verify-red | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 6 | Test signal | Bash (1 test command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 7 | GREEN agent | Read, Write, Edit, Bash | (default -- needs full toolbelt) | all | sonnet |
+| 8 | Verify-green | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 9 | REFACTOR agent | Read, Write, Edit, Bash | (default -- needs full toolbelt) | all | sonnet |
+| 10 | Verify-refactor | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 11 | Merge | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+| 12 | Cleanup | Bash (1 CLI command) | `datum-cli` (reuse) | `Bash` | haiku |
+
+### Answer 2: Custom Agent Types to Create
+
+Agent type definitions live in `.claude/agents/*.md`. The project already has one: `.claude/agents/entire-search.md` which demonstrates the format (`tools: Bash`).
+
+Two new custom agent types are needed:
+
+**1. `datum-reader`** -- Read-only JSON reader. Needs only the Read tool.
+
+Location: `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-reader.md`
+
+Frontmatter:
+```yaml
+name: datum-reader
+description: Read JSON files and return structured data. Used by datum workflows for file parsing.
+tools: Read
+model: haiku
+maxTurns: 3
+```
+
+Body: A minimal prompt like "You read files and return their contents as structured JSON. Do not modify files. Do not run commands."
+
+**2. `datum-cli`** -- Bash-only CLI executor. Runs one `datum` CLI command and returns JSON.
+
+Location: `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-cli.md`
+
+Frontmatter:
+```yaml
+name: datum-cli
+description: Execute datum CLI commands and return structured JSON output. Used by datum workflows for verification, setup, merge, and cleanup.
+tools: Bash
+model: haiku
+maxTurns: 3
+```
+
+Body: A minimal prompt like "You execute a single CLI command and return its output as structured JSON. Do not read or modify files directly. Do not use any tools other than Bash."
+
+**Why not a third type for RED/GREEN/REFACTOR?** These agents need the full toolbelt (Read, Write, Edit, Bash, Grep, Glob) plus git operations. Creating a custom type for them would save the MCP tool schemas (Gmail/Calendar/Drive/Notion/serena/headroom/context7) but would lose CLAUDE.md and AGENTS.md rules. Since RED/GREEN/REFACTOR are the reasoning-heavy agents where code quality rules matter, they should keep the default type. However, you could create a `datum-coder` agent type with `tools: Read, Write, Edit, Bash, Grep, Glob` and include the critical coding-steering rules in its body. The tradeoff: more maintenance of the agent body vs. token savings from dropping MCP schemas.
+
+**Decision**: For v1, create only `datum-reader` and `datum-cli`. Evaluate `datum-coder` for v2 after measuring actual savings.
+
+### Answer 3: Expected Token Savings
+
+**Current state**: Every agent call gets the full system prompt. From the problem statement: ~76K tokens of system prompt per agent.
+
+**Per-lane agent distribution** (behavioral lane):
+- 8 mechanical agents (topology, skeleton, verify-red, signal, verify-green, verify-refactor, merge, cleanup): all become `datum-cli` or `datum-reader`
+- 3 reasoning agents (RED, GREEN, REFACTOR): keep default type
+- Setup runs once per workflow, not per lane
+
+**Custom agent system prompt size estimate**:
+- `datum-cli`: ~200 tokens (frontmatter + minimal body) + ~2K tokens (Bash tool schema + environment details) = ~2.2K tokens
+- `datum-reader`: ~200 tokens + ~1.5K tokens (Read tool schema + environment details) = ~1.7K tokens
+- Default agent (RED/GREEN/REFACTOR): ~76K tokens (unchanged)
+
+**Savings per behavioral lane**:
+- 7 agents switch from 76K to ~2.2K each: 7 x (76K - 2.2K) = 7 x 73.8K = **516.6K tokens saved per lane**
+- Plus topology reader: 76K - 1.7K = **74.3K tokens saved** (once per workflow)
+
+**Savings for a 5-lane workflow**:
+- Pre-optimization: (12 agents/lane x 5 lanes + 3 global agents) x 76K = **4.79M tokens** in system prompts
+- Post-optimization: (3 reasoning agents/lane x 5 lanes) x 76K + (8 mechanical/lane x 5 + 3 global) x 2.2K = 1.14M + 94.6K = **1.23M tokens**
+- **Net savings: ~3.56M tokens (74% reduction)**
+
+This is a conservative estimate. The actual savings depend on how many tools the full prompt really contains. The key insight is that custom agent types get "only this system prompt, not the full Claude Code system prompt" per the official docs.
+
+### Answer 4: Agent Merges to Reduce Total Count
+
+Yes, several agents should be merged:
+
+**Merge 1: verify-red + test-signal --&gt; single agent**
+
+Currently these are two separate `agent()` calls at lines 198-215:
+- `verify-red` runs `datum verify-stage red` and returns `{verified, error}`
+- `signal` runs the test command and extracts `{exit_code, errors, assertion_messages}`
+
+These can be a single Bash agent that runs both commands sequentially:
+```
+cd "${wt}" &amp;&amp; datum verify-stage red --test-command "${cfg.testCommand}" &amp;&amp; ${cfg.testCommand} 2&gt;&amp;1 || true
+```
+
+Return a combined schema:
+```json
+{
+  "verified": true,
+  "exit_code": 1,
+  "errors": ["..."],
+  "assertion_messages": ["..."]
+}
+```
+
+**Savings**: 1 fewer agent per lane = 1 x (76K pre-optimization, or ~2.2K post-optimization) per lane. More importantly, eliminates one agent spawn/teardown cycle latency (~2-5 seconds per agent).
+
+**Merge 2: merge + cleanup --&gt; single agent**
+
+Lines 428-441. Both just run a single datum CLI command. Merge into one agent that runs both:
+```
+datum worktrees merge ... &amp;&amp; datum worktrees cleanup ...
+```
+
+**Savings**: 1 fewer agent globally. Minimal token savings but removes latency.
+
+**After merges**: 10 agents per lane (down from 12), removing 2 per lane.
+
+### Answer 5: Implementation Plan
+
+**Phase 1: Create custom agent types (2 files)**
+
+1. Create `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-reader.md`
+2. Create `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-cli.md`
+
+**Phase 2: Modify workflow script (`skills/datum-tdd-act.js`)**
+
+Changes to `skills/datum-tdd-act.js`:
+
+1. **Topology reader** (line 328-335): Add `agentType: 'datum-reader'`
+   ```js
+   const lanePlan = await agent(
+     `Read the file ${lanePlanPath} and return its contents as JSON...`,
+     { label: 'read-plan', phase: 'Topology', model: 'haiku', schema: LANE_PLAN_SCHEMA, agentType: 'datum-reader' }
+   )
+   ```
+
+2. **Setup** (line 346-362): Add `agentType: 'datum-cli'`
+
+3. **Skeleton preflight** (line 166-170): Add `agentType: 'datum-cli'`
+
+4. **Merge verify-red + test-signal** (lines 198-215): Combine into one `agent()` call with `agentType: 'datum-cli'` and a merged schema:
+   ```js
+   const VERIFY_AND_SIGNAL_SCHEMA = {
+     type: 'object',
+     properties: {
+       verified: { type: 'boolean' },
+       stage: { type: 'string' },
+       error: { type: 'string' },
+       exit_code: { type: 'number' },
+       errors: { type: 'array', items: { type: 'string' } },
+       assertion_messages: { type: 'array', items: { type: 'string' } },
+     },
+     required: ['verified', 'exit_code'],
+   }
+   ```
+
+5. **Verify-green** (line 244-247): Add `agentType: 'datum-cli'`
+
+6. **Verify-refactor** (line 299-301): Add `agentType: 'datum-cli'`
+
+7. **Merge merge+cleanup** (lines 410-441): Combine into one `agent()` call with `agentType: 'datum-cli'`
+
+8. **RED, GREEN, REFACTOR** agents: Leave as-is (no `agentType`, keep default). They need the full toolbelt.
+
+**Phase 3: Update `install.sh`**
+
+No change needed. Agent types in `.claude/agents/` are discovered automatically by Claude Code at session start.
+
+**Phase 4: Testing**
+
+Test the workflow on a small lane-plan (1-2 lanes) to verify:
+- `datum-reader` agent can still read lane-plan.json correctly
+- `datum-cli` agents can still run CLI commands and return structured JSON
+- The merged verify-red+signal agent returns the combined schema
+- RED/GREEN/REFACTOR agents still have full tool access
+- No regression in gate enforcement
+
+**Sequencing**
+
+The phases must execute in order:
+1. Phase 1 first (agent types must exist before the workflow references them)
+2. Phase 2 depends on Phase 1
+3. Phase 3 is independent
+4. Phase 4 depends on Phase 2
+
+Phases 1 and 3 can be done in parallel.
+
+### Risk Analysis
+
+**Risk 1: Custom agent types may not load CLAUDE.md rules.** Per the docs: "Explore and Plan skip CLAUDE.md files" but "every other built-in and custom subagent loads both." Custom agents DO load CLAUDE.md. However, the `datum-cli` and `datum-reader` agents are so constrained (only Bash or Read) that CLAUDE.md rules about editing files, GitNexus impact analysis, etc. are irrelevant. The CLAUDE.md overhead is a small constant (~2-3K tokens).
+
+**Risk 2: `agentType` parameter may not be supported by the Workflow `agent()` function.** Evidence that it IS supported: the `design-rfp-shaper` workflow at `/Users/samfakhreddine/.claude/projects/-Users-samfakhreddine--agents-skills-edified-rfp/c1638916-ad3a-4e4e-af4c-3efa9093a1df/workflows/scripts/design-rfp-shaper-wf_f8e71c57-3aa.js` uses `agentType: 'Explore'` successfully (line 76). The changelog entry for v2.1.140 confirms: "Improved Agent tool `subagent_type` matching to accept case- and separator-insensitive values." The Workflow `agent()` function spawns subagents internally and supports the same parameters.
+
+**Risk 3: The `datum-cli` agent's Bash-only toolset may not support structured JSON output with `schema:`.** The `schema:` parameter is enforced at the tool-call layer, independent of which tools the agent has. Existing agents in the workflow already use `schema:` with haiku model for structured output. No risk.
+
+### Critical Files for Implementation
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act.js` -- the workflow script to modify (add `agentType:` to 8 agent calls, merge 2 pairs)
+- `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-cli.md` -- new custom agent type (Bash-only, for all CLI/verify/signal/merge/cleanup agents)
+- `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/datum-reader.md` -- new custom agent type (Read-only, for topology reader)
+- `/Volumes/Extra/repos/gitrdunhq/datum/.claude/agents/entire-search.md` -- existing agent type to reference as a pattern for the new definitions
+- `/Volumes/Extra/repos/gitrdunhq/datum/assets/config.toml.default` -- reference for model tier configuration (already correct, no changes needed)</result>
+<usage><subagent_tokens>124152</subagent_tokens><tool_uses>74</tool_uses><duration_ms>433385</duration_ms></usage>
+</task-notification>
+
+---
+
+does this help in anyway send a subagent to incorproate the best / fixes > ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Orchestrate subagents at scale with dynamic workflows
+
+> Dynamic workflows orchestrate many subagents from a script Claude writes and you can rerun. Use them for codebase audits, large migrations, and cross-checked research.
+
+{/* plan-availability: feature=workflows plans=pro,max,team,enterprise providers=all */}
+
+<Note>
+  Dynamic workflows require Claude Code v2.1.154 or later and are available on all paid plans, with Anthropic API access, and on Amazon Bedrock, Google Cloud Vertex AI, and Microsoft Foundry. On Pro, turn them on from the Dynamic workflows row in `/config`.
+</Note>
+
+A dynamic workflow is a JavaScript script that orchestrates [subagents](/en/sub-agents) at scale. Claude writes the script for the task you describe, and a runtime executes it in the background while your session stays responsive.
+
+Reach for a workflow when a task needs more agents than one conversation can coordinate, or when you want the orchestration codified as a script you can read and rerun. Examples include a codebase-wide bug sweep, a 500-file migration, a research question that needs sources cross-checked against each other, and a hard plan worth drafting from several independent angles before you commit to one.
+
+This page covers how to:
+
+* Decide [when to use a workflow](#when-to-use-a-workflow) instead of subagents or skills
+* [Run a bundled workflow](#run-a-bundled-workflow) with `/deep-research`
+* [Have Claude write a workflow](#have-claude-write-a-workflow) for your task and save it
+* Understand [how a workflow runs](#how-a-workflow-runs) and [manage runs](#manage-runs)
+
+## When to use a workflow
+
+[Subagents](/en/sub-agents), [skills](/en/skills), [agent teams](/en/agent-teams), and workflows can all run a multi-step task. The difference is who holds the plan:
+
+|                                 | Subagents                      | Skills                       | Agent teams                            | Workflows                            |
+| :------------------------------ | :----------------------------- | :--------------------------- | :------------------------------------- | :----------------------------------- |
+| What it is                      | A worker Claude spawns         | Instructions Claude follows  | A lead agent supervising peer sessions | A script the runtime executes        |
+| Who decides what runs next      | Claude, turn by turn           | Claude, following the prompt | The lead agent, turn by turn           | The script                           |
+| Where intermediate results live | Claude's context window        | Claude's context window      | A shared task list                     | Script variables                     |
+| What's repeatable               | The worker definition          | The instructions             | The team definition                    | The orchestration itself             |
+| Scale                           | A few delegated tasks per turn | Same as subagents            | A handful of long-running peers        | Dozens to hundreds of agents per run |
+| Interruption                    | Restarts the turn              | Restarts the turn            | Teammates keep running                 | Resumable in the same session        |
+
+A workflow moves the plan into code. With subagents, skills, and agent teams, Claude is the orchestrator: it decides turn by turn what to spawn or assign next, and every result lands in a context window. A workflow script holds the loop, the branching, and the intermediate results itself, so Claude's context holds only the final answer.
+
+Moving the plan into code also lets a workflow apply a repeatable quality pattern, not just run more agents: it can have independent agents adversarially review each other's findings before they're reported, or draft a plan from several angles and weigh them against each other, so you get a more trustworthy result than a single pass.
+
+## Run a bundled workflow
+
+The quickest way to see a workflow in action is to run `/deep-research`, the [built-in workflow](#bundled-workflows) Claude Code includes for investigating a question across many sources. You'll see agents work through a set of phases in the background while your session stays free, and get one report at the end instead of a turn-by-turn transcript.
+
+<Steps>
+  <Step title="Run the workflow">
+    Run `/deep-research` with a question you want investigated. It fans out web searches across several angles, fetches and cross-checks the sources it finds, and synthesizes a cited report.
+
+    ```text theme={null}
+    /deep-research What changed in the Node.js permission model between v20 and v22?
+    ```
+  </Step>
+
+  <Step title="Allow workflows">
+    Claude Code asks whether to allow the workflow. Select **Yes** to continue. The exact prompt depends on your permission mode. See [Approve the plan before it runs](#approve-the-plan-before-it-runs) for the per-mode options.
+  </Step>
+
+  <Step title="Watch progress">
+    The run starts in the background. Run `/workflows`, use the arrow keys to select the run, and press Enter to open its progress view:
+
+    ```text theme={null}
+    /workflows
+    ```
+
+    The view shows each phase with its agent count, token total, and elapsed time. Drill into any phase to see its agents and what each one found. See [Watch the run](#watch-the-run) for the full set of controls.
+
+    You can also watch from the task panel below the input box: a one-line progress summary appears there while the run is going. Press the down arrow to focus it, then Enter to expand.
+  </Step>
+
+  <Step title="Read the report">
+    When the run finishes, the report lands in your session. It cites the sources each claim came from, with claims that didn't survive cross-checking already filtered out.
+  </Step>
+</Steps>
+
+To run a workflow for your own task, [have Claude write one](#have-claude-write-a-workflow), and once a run does what you wanted you can [save it](#save-the-workflow-for-reuse) as a command of your own.
+
+### Bundled workflows
+
+Claude Code includes `/deep-research` as a built-in workflow:
+
+| Command                     | What it does                                                                                                                                                                                                                                                                                                      |
+| :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/deep-research <question>` | Fans out web searches on a question across several angles, fetches and cross-checks the sources it finds, votes on each claim, and returns a cited report with claims that didn't survive cross-checking filtered out. Requires the [WebSearch tool](/en/tools-reference#websearch-tool-behavior) to be available |
+
+[Workflows you save](#save-the-workflow-for-reuse) yourself become commands the same way and appear in `/` autocomplete alongside the bundled ones.
+
+### Watch the run
+
+Workflows run in the background, so the session stays responsive while agents work. Run `/workflows` at any time to list running and completed workflows, then select one to open its progress view.
+
+```text theme={null}
+/workflows
+```
+
+The progress view shows each phase with its agent counts, token totals, and elapsed time. The footer lists the key for each action:
+
+| Key            | Action                                                                                              |
+| :------------- | :-------------------------------------------------------------------------------------------------- |
+| `↑` / `↓`      | Select a phase or agent                                                                             |
+| `Enter` or `→` | Drill into the selected phase, then into an agent to read its prompt, recent tool calls, and result |
+| `Esc`          | Back out one level                                                                                  |
+| `j` / `k`      | Scroll within the agent detail when it overflows                                                    |
+| `p`            | Pause or resume the run                                                                             |
+| `x`            | Stop the selected agent, or stop the whole workflow when focus is on the run                        |
+| `r`            | Restart the selected running agent                                                                  |
+| `s`            | [Save](#save-the-workflow-for-reuse) the run's script as a command                                  |
+
+## Have Claude write a workflow
+
+You can have Claude write a workflow for your task in two ways:
+
+* [Ask for a workflow](#ask-for-a-workflow-in-your-prompt) in your prompt, either in your own words or by including the keyword `ultracode`, and Claude writes one for the task.
+* [Let Claude decide with ultracode](#let-claude-decide-with-ultracode): set `/effort ultracode` and Claude plans a workflow for every substantive task in the session.
+
+You can also run a workflow command that already exists: a [bundled workflow](#bundled-workflows) like `/deep-research`, or one you've [saved](#save-the-workflow-for-reuse).
+
+### Ask for a workflow in your prompt
+
+To run a single task as a workflow without changing the session's effort level, include the keyword `ultracode` in your prompt. Asking in your own words, for example "use a workflow" or "run a workflow", also works: Claude treats a direct request as the same opt-in. Before v2.1.160 the literal trigger keyword was `workflow`; natural-language requests work in both versions.
+
+```text theme={null}
+ultracode: audit every API endpoint under src/routes/ for missing auth checks
+```
+
+Claude Code highlights the keyword in your input and Claude writes a workflow script for the task instead of working through it turn by turn. If you didn't mean to start a workflow, press `Option+W` on macOS or `Alt+W` on Windows and Linux to dismiss the highlight for this prompt, or press backspace while the cursor is right after the highlighted keyword. To stop the keyword from triggering at all, turn off Ultracode keyword trigger in `/config`.
+
+If the run does what you wanted, you can [save it as a command](#save-the-workflow-for-reuse) afterward.
+
+If you already have an orchestrator built another way, such as a folder of subagent prompts or a skill that fans work out, you can point Claude at it and ask for a workflow that does the same thing.
+
+### Let Claude decide with ultracode
+
+Ultracode is a Claude Code setting that combines `xhigh` [reasoning effort](/en/model-config#adjust-effort-level) with automatic workflow orchestration. With it on, Claude plans a workflow for each substantive task instead of waiting for you to ask.
+
+```text theme={null}
+/effort ultracode
+```
+
+With ultracode on, Claude decides when a task warrants a workflow. A single request can turn into several workflows in a row: one to understand the code, one to make the change, and one to verify it. This applies to every task in the session, so each request uses more tokens and takes longer than at lower effort levels.
+
+Ultracode lasts for the current session and resets when you start a new one. Drop back with `/effort high` when you return to routine work. It's available on models that support `xhigh` [effort](/en/model-config#adjust-effort-level); on other models the `/effort` menu doesn't offer it.
+
+### Approve the plan before it runs
+
+In the CLI, the per-run prompt shows the planned phases and these options:
+
+* **Yes, run it**: start the run
+* **Yes, and don't ask again for `<name>` in `<path>`**: start, and skip this prompt for this workflow in this project from now on
+* **View raw script**: read the script before deciding
+* **No**: cancel
+
+`Ctrl+G` opens the script in your editor. `Tab` lets you adjust the prompt before the run starts.
+
+Whether you see this prompt depends on your [permission mode](/en/permission-modes):
+
+| Permission mode                            | When you're prompted                                                                                                                                    |
+| :----------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Default, accept edits                      | Every run, unless you've selected **Yes, and don't ask again** for that workflow in this project                                                        |
+| Auto                                       | First launch only. Any **Yes** records consent in your user settings, and later launches start without prompting. Skipped entirely when ultracode is on |
+| Bypass permissions, `claude -p`, Agent SDK | Never. The run starts immediately                                                                                                                       |
+
+In the Desktop app, an approval card shows the workflow name, the phase list, and a token-usage caution, with **Once**, **Always**, and **Deny** actions. The progress view appears in the Background tasks side pane.
+
+Your permission mode controls only the launch prompt above. The subagents the workflow spawns always run in `acceptEdits` mode and inherit your [tool allowlist](/en/settings#permission-settings), regardless of your session's mode. File edits are auto-approved.
+
+Shell commands, web fetches, and MCP tools that aren't in your allowlist can still prompt you mid-run. To avoid this on a long run, add the commands the agents need to your allowlist before starting.
+
+In `claude -p` and the Agent SDK there is no one to prompt, so tool calls follow your configured permission rules without interactive confirmation.
+
+### Save the workflow for reuse
+
+When Claude writes a workflow for a task you'll repeat, you can save that run's script as a command. A process like a review you run on every branch then runs the same orchestration each time.
+
+Run `/workflows`, select the run you want to keep, and press `s`. In the save dialog, Tab toggles between the two save locations:
+
+* `.claude/workflows/` in your project: shared with everyone who clones the repo
+* `~/.claude/workflows/` in your home directory: available in every project, visible only to you
+
+Press Enter to save. The workflow runs as `/<name>` in future sessions from either location.
+
+If a project workflow and a personal workflow share a name, the project one runs.
+
+### Pass input to a saved workflow
+
+A saved workflow can accept input through the `args` parameter. The script reads it as a global named `args`. Use this to supply a research question, a list of target paths, or a configuration object at invocation time instead of editing the script for each run.
+
+The following prompt runs a saved workflow with a list of issue numbers:
+
+```text theme={null}
+> Run /triage-issues on issues 1024, 1025, and 1030
+```
+
+Claude passes the list as structured data, so the script can call array and object methods on `args` directly without parsing it first. If `args` is omitted, the global is `undefined` inside the script.
+
+## How a workflow runs
+
+The workflow runtime executes the script in an isolated environment, separate from your conversation. Intermediate results stay in script variables instead of landing in Claude's context.
+
+Every run writes its script to a file under your session's directory in `~/.claude/projects/`. Claude receives the path when the run starts, so you can ask for it. You can open that file to read the orchestration Claude wrote, diff it against a previous run's script, or edit it and ask Claude to relaunch from the edited version.
+
+The runtime tracks each agent's result as the run progresses, which is what makes a run [resumable](#resume-after-a-pause) within the same session.
+
+### Behavior and limits
+
+The runtime applies the following constraints:
+
+| Constraint                                                           | Why                                                                                                            |
+| :------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
+| No mid-run user input                                                | Only agent permission prompts can pause a run. For sign-off between stages, run each stage as its own workflow |
+| No direct filesystem or shell access from the workflow itself        | Agents read, write, and run commands. The script coordinates the agents                                        |
+| Up to 16 concurrent agents, fewer on machines with limited CPU cores | Bounds local resource use                                                                                      |
+| 1,000 agents total per run                                           | Prevents runaway loops                                                                                         |
+
+## Manage runs
+
+Once a run starts, you manage it from the `/workflows` view, or by expanding its progress line in the task panel below the input box.
+
+### Resume after a pause
+
+If you stop a run, you can resume it: agents that already completed return their cached results, and the rest run live. Resume a paused run from `/workflows` by selecting it and pressing `p`, or ask Claude to relaunch the workflow with the same script.
+
+Resume works within the same Claude Code session. If you exit Claude Code while a workflow is running, the next session starts the workflow fresh.
+
+### Cost
+
+A workflow spawns many agents, so a single run can use meaningfully more tokens than working through the same task in conversation. Runs count toward your plan's usage and rate limits like any other session.
+
+To gauge the spend before committing to a large task, run the workflow on a small slice first: one directory instead of the whole repo, or a narrow question instead of a broad one. The `/workflows` view shows each agent's token usage as the run progresses, and you can stop the run there at any time without losing completed work. The runtime's [agent caps](#behavior-and-limits) limit how many agents a single run can spawn, which bounds the cost of a runaway script.
+
+Every agent in a workflow uses your session's model unless the script routes a stage to a different one. To control the model cost:
+
+* Check `/model` before a large run if you usually switch to a smaller model for routine work
+* Ask Claude to use a smaller model for stages that don't need the strongest one when you describe the task
+
+### Turn workflows off
+
+Workflows are available in the CLI, the Desktop app, the IDE extensions, [non-interactive mode](/en/headless) with `claude -p`, and the [Agent SDK](/en/agent-sdk/overview). The same disable settings apply on every surface.
+
+To turn workflows off for yourself:
+
+* Toggle Dynamic workflows off in `/config`. Persists across sessions.
+* Set `"disableWorkflows": true` in `~/.claude/settings.json`. Persists across sessions.
+* Set `CLAUDE_CODE_DISABLE_WORKFLOWS=1`. Read at startup, so it applies wherever you set it.
+
+To turn workflows off for your whole organization, set `"disableWorkflows": true` in [managed settings](/en/server-managed-settings), or use the toggle on the [Claude Code admin settings](https://claude.ai/admin-settings/claude-code) page.
+
+When workflows are disabled, the bundled workflow commands are unavailable, the `ultracode` keyword no longer triggers a run, and `ultracode` is removed from the `/effort` menu.
+
+## Related resources
+
+* [Run agents in parallel](/en/agents): compare subagents, agent view, agent teams, and workflows
+* [Create custom subagents](/en/sub-agents): the worker primitive workflows orchestrate
+* [Manage costs](/en/costs): how multi-agent runs count toward usage limits
+
+---
+
+does this help > ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Run parallel sessions with worktrees
+
+> Isolate parallel Claude Code sessions in separate git worktrees so changes don't collide. Covers the `--worktree` flag, subagent isolation, `.worktreeinclude`, cleanup, and non-git VCS hooks.
+
+A [git worktree](https://git-scm.com/docs/git-worktree) is a separate working directory with its own files and branch, sharing the same repository history and remote as your main checkout. Running each Claude Code session in its own worktree means edits in one session never touch files in another, so you can have Claude building a feature in one terminal while fixing a bug in a second.
+
+This page covers worktree isolation in the CLI. Everything below assumes a git repository. For other version control systems, see [Non-git version control](#non-git-version-control). The [desktop app](/en/desktop#work-in-parallel-with-sessions) creates a worktree for every new session automatically.
+
+Worktrees are one of several ways to run Claude in parallel. They isolate file edits, while [subagents](/en/sub-agents) and [agent teams](/en/agent-teams) coordinate the work itself. See [Run agents in parallel](/en/agents) to compare the approaches, or skip ahead to [Isolate subagents with worktrees](#isolate-subagents-with-worktrees) to use worktrees and subagents together.
+
+## Start Claude in a worktree
+
+Pass `--worktree` or `-w` to create an isolated worktree and start Claude in it. By default, the worktree is created under `.claude/worktrees/<value>/` at your repository root, on a new branch named `worktree-<value>`:
+
+```bash theme={null}
+claude --worktree feature-auth
+```
+
+To put worktrees somewhere else, configure a [`WorktreeCreate` hook](#non-git-version-control). Run the command again with a different name in another terminal to start a second isolated session:
+
+```bash theme={null}
+claude --worktree bugfix-123
+```
+
+If you omit the name, Claude generates one such as `bright-running-fox`:
+
+```bash theme={null}
+claude --worktree
+```
+
+You can also ask Claude to "work in a worktree" during a session, and it will create one with the [`EnterWorktree`](/en/tools-reference) tool. Once in a worktree, Claude can switch directly to another one under `.claude/worktrees/` by calling `EnterWorktree` with the target path. The previous worktree stays on disk untouched.
+
+Before using `--worktree` interactively in a directory for the first time, accept the workspace trust dialog by running `claude` once in that directory. If trust has not yet been accepted, `--worktree` exits with an error and prompts you to run `claude` in the directory first. Non-interactive runs with `-p` skip the [trust check](/en/security), so `claude -p --worktree` proceeds without it.
+
+<Tip>
+  Add `.claude/worktrees/` to your `.gitignore` so worktree contents don't appear as untracked files in your main checkout.
+</Tip>
+
+### Choose the base branch
+
+Worktrees branch from your repository's default branch, `origin/HEAD`, so they start from a clean tree matching the remote. If no remote is configured or the fetch fails, the worktree falls back to your current local `HEAD`. To always branch from local `HEAD` instead, set `worktree.baseRef` to `"head"` in [settings](/en/settings#worktree-settings). Setting `baseRef` to `"head"` makes new worktrees carry your unpushed commits and feature-branch state, which is useful when isolating subagents that need to operate on in-progress work. The setting accepts only `"fresh"` or `"head"`, not arbitrary git refs:
+
+```json theme={null}
+{
+  "worktree": {
+    "baseRef": "head"
+  }
+}
+```
+
+To branch from a specific pull request, pass the PR number prefixed with `#`, or a full GitHub pull request URL. Claude Code fetches `pull/<number>/head` from `origin` and creates the worktree at `.claude/worktrees/pr-<number>`:
+
+```bash theme={null}
+claude --worktree "#1234"
+```
+
+For full control over how worktrees are created, configure a [`WorktreeCreate` hook](/en/hooks#worktreecreate), which replaces the default `git worktree` logic entirely.
+
+## Copy gitignored files into worktrees
+
+A worktree is a fresh checkout, so untracked files like `.env` or `.env.local` from your main repository are not present. To copy them automatically when Claude creates a worktree, add a `.worktreeinclude` file to your project root.
+
+The file uses `.gitignore` syntax. Only files that match a pattern and are also gitignored are copied, so tracked files are never duplicated.
+
+This `.worktreeinclude` copies two env files and a secrets config into each new worktree:
+
+```text .worktreeinclude theme={null}
+.env
+.env.local
+config/secrets.json
+```
+
+This applies to worktrees created with `--worktree`, [subagent worktrees](#isolate-subagents-with-worktrees), and parallel sessions in the [desktop app](/en/desktop#work-in-parallel-with-sessions).
+
+## Isolate subagents with worktrees
+
+Subagents can run in their own worktrees so parallel edits don't conflict. Ask Claude to "use worktrees for your agents", or set it permanently on a [custom subagent](/en/sub-agents#supported-frontmatter-fields) by adding `isolation: worktree` to the frontmatter. Each subagent gets a temporary worktree that is removed automatically when the subagent finishes without changes.
+
+Subagent worktrees use the same [base branch](#choose-the-base-branch) as `--worktree`, so they branch from your repository's default branch unless `worktree.baseRef` is set to `"head"`.
+
+## Clean up worktrees
+
+When you exit a worktree session, cleanup depends on whether you made changes:
+
+* **No uncommitted changes, no untracked files, and no new commits**: the worktree and its branch are removed automatically. If the session has a [name](/en/sessions#name-your-sessions), Claude prompts instead so you can keep the worktree for later
+* **Uncommitted changes, untracked files, or new commits exist**: Claude prompts you to keep or remove the worktree. Keeping preserves the directory and branch so you can return later. Removing deletes the worktree directory and its branch, discarding any uncommitted changes, untracked files, and commits
+* **Non-interactive runs**: worktrees created with `--worktree` alongside `-p` are not cleaned up automatically since there is no exit prompt. Remove them with `git worktree remove`
+
+Worktrees that Claude created for subagents and [background sessions](/en/agent-view#how-file-edits-are-isolated) are removed automatically once they are older than your [`cleanupPeriodDays`](/en/settings#available-settings) setting, provided they have no uncommitted changes, no untracked files, and no unpushed commits. Worktrees you create with `--worktree` are never removed by this sweep.
+
+While an agent is running, Claude runs `git worktree lock` on its worktree so that concurrent cleanup cannot remove it. The lock is released when the agent finishes. To clean up a worktree that the sweep keeps, run `git worktree remove`, adding `--force` if the worktree has uncommitted changes or untracked files.
+
+## Manage worktrees manually
+
+For full control over worktree location and branch configuration, create worktrees with Git directly. This is useful when you need to check out a specific existing branch or place the worktree outside the repository.
+
+Create a worktree on a new branch:
+
+```bash theme={null}
+git worktree add ../project-feature-a -b feature-a
+```
+
+Create a worktree from an existing branch:
+
+```bash theme={null}
+git worktree add ../project-bugfix bugfix-123
+```
+
+Start Claude in the worktree:
+
+```bash theme={null}
+cd ../project-feature-a && claude
+```
+
+List your worktrees:
+
+```bash theme={null}
+git worktree list
+```
+
+Remove one when you're done with it:
+
+```bash theme={null}
+git worktree remove ../project-feature-a
+```
+
+See the [Git worktree documentation](https://git-scm.com/docs/git-worktree) for the full command reference. Remember to initialize your development environment in each new worktree: install dependencies, set up virtual environments, or run whatever your project's setup requires.
+
+## Non-git version control
+
+Worktree isolation uses git by default. For SVN, Perforce, Mercurial, or other systems, configure [`WorktreeCreate` and `WorktreeRemove` hooks](/en/hooks#worktreecreate) to provide custom creation and cleanup logic. Because the hook replaces the default git behavior, [`.worktreeinclude`](#copy-gitignored-files-into-worktrees) is not processed when you use `--worktree`. Copy any local configuration files inside your hook script instead.
+
+This `WorktreeCreate` hook reads the worktree name from stdin, checks out a fresh SVN working copy, and prints the directory path so Claude Code can use it as the session's working directory:
+
+```json theme={null}
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'NAME=$(jq -r .name); DIR=\"$HOME/.claude/worktrees/$NAME\"; svn checkout https://svn.example.com/repo/trunk \"$DIR\" >&2 && echo \"$DIR\"'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Pair it with a `WorktreeRemove` hook to clean up when the session ends. See the [hooks reference](/en/hooks#worktreecreate) for the input schema and a removal example.
+
+## See also
+
+Worktrees handle file isolation. The related pages below cover delegating work into those isolated checkouts and switching between the sessions you create:
+
+* [Subagents](/en/sub-agents): delegate work to isolated agents within a session
+* [Agent teams](/en/agent-teams): coordinate multiple Claude sessions automatically
+* [Manage sessions](/en/sessions): name, resume, and switch between conversations
+* [Desktop parallel sessions](/en/desktop#work-in-parallel-with-sessions): worktree-backed sessions in the desktop app
