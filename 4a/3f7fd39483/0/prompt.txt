@@ -5939,3 +5939,7 @@ can the workflow have an error detector and file issues to the datum boars
 ---
 
 and if another repo is using it how csn you be dispatched to fix as it lands on gh issues
+
+---
+
+how does it trigger claude code

@@ -3,16 +3,10 @@
   "checkpoint_id": "4a3f7fd39483",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
-    "agents/datum-green.md",
-    "agents/datum-refactor.md",
-    "agents/datum-reflect.md",
-    "agents/datum-skeptic.md",
     "tests/test_tdd_args.py",
-    "tests/test_tdd_args_cli.py",
-    "tests/test_tdd_cli_commands.py",
-    "tests/test_workflow_dashboard.py"
+    "tests/test_tdd_cli_commands.py"
   ],
   "sessions": [
     {
@@ -23,10 +17,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 6783,
-    "cache_creation_tokens": 1189424,
-    "cache_read_tokens": 122128120,
-    "output_tokens": 285420,
-    "api_call_count": 678
+    "input_tokens": 6792,
+    "cache_creation_tokens": 1190584,
+    "cache_read_tokens": 123872689,
+    "output_tokens": 286848,
+    "api_call_count": 683
   }
 }
