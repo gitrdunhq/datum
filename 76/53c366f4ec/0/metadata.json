@@ -1,0 +1,168 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "7653c366f4ec",
+  "session_id": "5e0ef979-a632-4cc8-aa42-b353a67179a3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-13T17:24:17.435437Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-26/bootstrap/templates/test_contracts.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "turn_id": "3d523e70391b",
+  "token_usage": {
+    "input_tokens": 389235,
+    "cache_creation_tokens": 8002165,
+    "cache_read_tokens": 327969124,
+    "output_tokens": 1261844,
+    "api_call_count": 1834
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01LAHjnycdCUxdK6765Rnjzf",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "modern-css"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "3d523e70391b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 6890,
+        "end": 6891,
+        "entry_ids": [
+          "483dd771-f94a-452c-93b4-84677f3d56e1"
+        ],
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LAHjnycdCUxdK6765Rnjzf"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: modern-css",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01S5H3t2RdzhwsG3LcehB4gy",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "update-config"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "3d523e70391b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 7164,
+        "end": 7165,
+        "entry_ids": [
+          "37327a56-2320-4cd7-a6dd-5d9b4910f550"
+        ],
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01S5H3t2RdzhwsG3LcehB4gy"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: update-config",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 252
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-13T17:24:16.308449Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 166,
+    "human_modified": 14,
+    "human_removed": 0,
+    "total_committed": 166,
+    "total_lines_changed": 180,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 6217,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1203568,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".datum/config.toml": 18,
+        ".worktrees/w1-allowlist/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-allowlist/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-allowlist/datum/command_guard.py": 103,
+        ".worktrees/w1-budget/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-budget/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-compaction/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-compaction/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-memory-repair/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-memory-repair/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-scoring/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-scoring/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-typed-events/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-typed-events/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-abort-dirty/.datum/config.toml": 18,
+        ".worktrees/w2-abort-dirty/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-abort-dirty/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-abort-dirty/tests/test_tdd_driver.py": 170,
+        ".worktrees/w2-corpus-sql/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-corpus-sql/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-corpus-sql/datum/memory/corpus_sql.py": 508,
+        ".worktrees/w2-corpus-sql/scripts/lane-tools/corpus_sql.py": 54,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/lane-plan.json": 11,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/state.json": 15,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/tdd-failure.json": 7,
+        ".worktrees/w2-corpus-sql/tests/test_corpus_sql.py": 619,
+        ".worktrees/w2-datum-gc/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-datum-gc/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-datum-gc/datum/gc.py": 368,
+        ".worktrees/w2-datum-gc/tests/test_gc.py": 467,
+        ".worktrees/w2-failure-layer/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-failure-layer/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-failure-layer/datum/failure_layer.py": 179,
+        ".worktrees/w2-failure-layer/tests/test_failure_layer.py": 261,
+        ".worktrees/w2-progress/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-progress/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-risk-classes/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-risk-classes/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-risk-classes/datum/tool_risk.py": 98,
+        ".worktrees/w2-risk-classes/tests/test_tool_risk.py": 170,
+        ".worktrees/w3-retrieve/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-retrieve/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-retrieve/tests/test_memory_retrieve.py": 581,
+        ".worktrees/w3-retrospect/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-retrospect/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-skeletons/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-skeletons/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-skeletons/datum/context_skeleton.py": 293,
+        ".worktrees/w3-structured-tools/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-structured-tools/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-vector-store/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-vector-store/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-vector-store/tests/test_memory_rag_engine.py": 324,
+        ".worktrees/w3-vector-store/tests/test_memory_vector_store.py": 314,
+        "datum/web_dashboard/weather_edmonton_34d.py": 92
+      }
+    }
+  ]
+}
