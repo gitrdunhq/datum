@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "fc5dd380057d",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Summarization/MCPSummarizationPlugin.swift",
+    "Record-ML/Tests/Unit/MCPSummarizationPluginTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fc/5dd380057d/0/metadata.json",
+      "transcript": "/fc/5dd380057d/0/full.jsonl",
+      "content_hash": "/fc/5dd380057d/0/content_hash.txt",
+      "prompt": "/fc/5dd380057d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10344,
+    "cache_creation_tokens": 1605960,
+    "cache_read_tokens": 31152005,
+    "output_tokens": 168046,
+    "api_call_count": 314
+  }
+}
