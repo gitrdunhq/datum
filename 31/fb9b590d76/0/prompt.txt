@@ -947,3 +947,7 @@ yeah lets wait and see what other friction points came up and then iterate an it
 <result>{"total":2,"completed":2,"failed":0,"failedLanes":[],"completedLanes":["task-001","task-002"]}</result>
 <usage><agent_count>20</agent_count><subagent_tokens>468326</subagent_tokens><tool_uses>126</tool_uses><duration_ms>902793</duration_ms></usage>
 </task-notification>
+
+---
+
+#3 first and then #4
