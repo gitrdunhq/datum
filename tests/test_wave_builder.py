@@ -1,57 +1,107 @@
-"""Tests for datum.wave_builder — BFS wave grouping."""
+"""Tests for task-002: Missing dependency detection in wave_builder.
 
-from datum.wave_builder import build_waves
+AC2: build_waves with a reference to a nonexistent lane raises MissingDependencyError
+AC3: Existing valid DAGs still work identically (no regression)
+AC4: MissingDependencyError is importable from datum.wave_builder
 
+RED NOTE: MissingDependencyError does not exist yet in datum.wave_builder.
+All tests importing or expecting it will fail until GREEN agent adds it.
+"""
 
-def test_independent_tasks_single_wave():
-    lanes = {
-        "task-001": {"title": "A"},
-        "task-002": {"title": "B"},
-        "task-003": {"title": "C"},
-    }
-    waves = build_waves(lanes)
-    assert len(waves) == 1
-    assert set(waves[0]) == {"task-001", "task-002", "task-003"}
+import pytest
 
-
-def test_linear_chain_three_waves():
-    lanes = {
-        "task-001": {"title": "A"},
-        "task-002": {"title": "B", "depends_on": ["task-001"]},
-        "task-003": {"title": "C", "depends_on": ["task-002"]},
-    }
-    waves = build_waves(lanes)
-    assert len(waves) == 3
-    assert waves[0] == ["task-001"]
-    assert waves[1] == ["task-002"]
-    assert waves[2] == ["task-003"]
+from datum.wave_builder import MissingDependencyError, build_waves
 
 
-def test_diamond_two_waves():
-    lanes = {
-        "task-001": {"title": "A"},
-        "task-002": {"title": "B"},
-        "task-003": {"title": "C", "depends_on": ["task-001", "task-002"]},
-    }
-    waves = build_waves(lanes)
-    assert len(waves) == 2
-    assert set(waves[0]) == {"task-001", "task-002"}
-    assert waves[1] == ["task-003"]
+class TestAC4_MissingDependencyErrorImportable:
+    """AC4: MissingDependencyError must be importable from datum.wave_builder."""
+
+    def test_missing_dependency_error_is_a_class(self):
+        """MissingDependencyError should be a class (not None, not a function)."""
+        assert isinstance(MissingDependencyError, type)
+
+    def test_missing_dependency_error_is_exception_subclass(self):
+        """MissingDependencyError should inherit from Exception."""
+        assert issubclass(MissingDependencyError, Exception)
 
 
-def test_complex_dag():
-    lanes = {
-        "task-001": {"title": "A"},
-        "task-002": {"title": "B", "depends_on": ["task-001"]},
-        "task-003": {"title": "C"},
-        "task-004": {"title": "D"},
-        "task-005": {"title": "E", "depends_on": ["task-003", "task-004"]},
-        "task-006": {"title": "F", "depends_on": ["task-002", "task-005"]},
-    }
-    waves = build_waves(lanes)
-    # Wave 0: no deps. Wave 1: task-002 (dep: 001), task-005 (dep: 003+004).
-    # Wave 2: task-006 (dep: 002+005).
-    assert len(waves) == 3
-    assert set(waves[0]) == {"task-001", "task-003", "task-004"}
-    assert set(waves[1]) == {"task-002", "task-005"}
-    assert waves[2] == ["task-006"]
+class TestAC2_MissingDependencyRaisesError:
+    """AC2: build_waves with a reference to a nonexistent lane raises MissingDependencyError."""
+
+    def test_single_nonexistent_dependency_raises(self):
+        """Lane 'a' depends on 'nonexistent' which is not a key in lanes."""
+        lanes = {"a": {"depends_on": ["nonexistent"]}}
+        with pytest.raises(MissingDependencyError):
+            build_waves(lanes)
+
+    def test_error_message_mentions_missing_dep(self):
+        """The error message should name the missing dependency."""
+        lanes = {"a": {"depends_on": ["ghost"]}}
+        with pytest.raises(MissingDependencyError, match="ghost"):
+            build_waves(lanes)
+
+    def test_multiple_nonexistent_dependencies_raises(self):
+        """Lane depending on two nonexistent lanes should also raise."""
+        lanes = {"a": {"depends_on": ["x", "y"]}}
+        with pytest.raises(MissingDependencyError):
+            build_waves(lanes)
+
+    def test_one_valid_one_missing_dep_raises(self):
+        """A lane with mixed valid + nonexistent deps should raise."""
+        lanes = {
+            "a": {},
+            "b": {"depends_on": ["a", "does_not_exist"]},
+        }
+        with pytest.raises(MissingDependencyError):
+            build_waves(lanes)
+
+    def test_currently_silently_ignored_bad_ref(self):
+        """
+        Regression guard: before the fix build_waves({\"a\": {\"depends_on\": [\"nonexistent\"]}})
+        returned [['a']] silently.  After the fix it must raise.
+        """
+        lanes = {"a": {"depends_on": ["nonexistent"]}}
+        with pytest.raises(MissingDependencyError):
+            build_waves(lanes)
+
+
+class TestAC3_ValidDagsNoRegression:
+    """AC3: Existing valid DAGs still work identically (no regression)."""
+
+    def test_empty_lanes_returns_empty(self):
+        assert build_waves({}) == []
+
+    def test_single_lane_no_deps(self):
+        assert build_waves({"a": {}}) == [["a"]]
+
+    def test_linear_chain(self):
+        lanes = {
+            "a": {},
+            "b": {"depends_on": ["a"]},
+            "c": {"depends_on": ["b"]},
+        }
+        assert build_waves(lanes) == [["a"], ["b"], ["c"]]
+
+    def test_parallel_independent_lanes(self):
+        lanes = {"a": {}, "b": {}, "c": {}}
+        assert build_waves(lanes) == [["a", "b", "c"]]
+
+    def test_diamond_dag(self):
+        lanes = {
+            "a": {},
+            "b": {"depends_on": ["a"]},
+            "c": {"depends_on": ["a"]},
+            "d": {"depends_on": ["b", "c"]},
+        }
+        waves = build_waves(lanes)
+        assert waves[0] == ["a"]
+        assert sorted(waves[1]) == ["b", "c"]
+        assert waves[2] == ["d"]
+
+    def test_none_depends_on_treated_as_no_deps(self):
+        lanes = {"a": {"depends_on": None}}
+        assert build_waves(lanes) == [["a"]]
+
+    def test_empty_depends_on_list(self):
+        lanes = {"a": {"depends_on": []}}
+        assert build_waves(lanes) == [["a"]]

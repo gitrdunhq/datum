@@ -1,13 +1,7 @@
 // datum-tdd-act.js — Deterministic TDD Act phase orchestration.
 //
-// Replaces manual RED→GREEN→REFACTOR dispatch with a mechanical
-// Workflow script that enforces stage gates, file ownership, and
-// dependency ordering via wave-based parallelism.
-//
 // Pattern: Fan-Out/Fan-In with Saga Compensation
-//   - Tasks within a dependency wave run concurrently (parallel)
-//   - Each lane is a saga: RED → GREEN → REFACTOR
-//   - On failure: log + skip lane (no rollback needed — worktree isolation)
+// Contract: JSON packets in, structured JSON out, no prose briefs.
 //
 // Invocation:
 //   Workflow({ name: "datum-tdd-act", args: {
@@ -59,15 +53,25 @@ const VERIFY_SCHEMA = {
   required: ['verified'],
 }
 
-const LANE_RESULT_SCHEMA = {
+const STAGE_RESULT_SCHEMA = {
   type: 'object',
   properties: {
-    task_id: { type: 'string' },
-    status: { type: 'string' },
-    stage: { type: 'string' },
-    error: { type: 'string' },
+    committed: { type: 'boolean' },
+    commit_sha: { type: 'string' },
+    files_written: { type: 'array', items: { type: 'string' } },
+    failure_reason: { type: 'string' },
   },
-  required: ['task_id', 'status'],
+  required: ['committed'],
+}
+
+const SIGNAL_SCHEMA = {
+  type: 'object',
+  properties: {
+    exit_code: { type: 'number' },
+    errors: { type: 'array', items: { type: 'string' } },
+    assertion_messages: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['exit_code'],
 }
 
 // ── Wave builder (Kahn's algorithm) ──────────────────────────────────────────
@@ -104,6 +108,45 @@ function buildWaves(lanePlan) {
   return waves
 }
 
+// ── File classification ──────────────────────────────────────────────────────
+
+function classifyFiles(files) {
+  const testFiles = (files || []).filter(f =>
+    f.includes('test') || f.includes('Test') || f.includes('spec')
+  )
+  const implFiles = (files || []).filter(f =>
+    !f.includes('test') && !f.includes('Test') && !f.includes('spec')
+  )
+  return { testFiles, implFiles }
+}
+
+// ── JSON packet builder ─────────────────────────────────────────────────────
+// Machines receive JSON packets. Prompts contain instructions only — not data.
+
+function buildPacket(taskId, lane, wt, cfg, stage, extras) {
+  const { testFiles, implFiles } = classifyFiles(lane.files)
+  return {
+    schema_version: '1.0',
+    task_id: taskId,
+    stage,
+    title: lane.title,
+    working_directory: wt,
+    test_command: cfg.testCommand,
+    acceptance_criteria: lane.acceptance_criteria || [],
+    red_note: lane.red_note || '',
+    allowed_write_files: stage === 'RED' ? testFiles
+      : stage === 'GREEN' ? implFiles
+      : [...testFiles, ...implFiles],
+    forbidden_write_files: stage === 'RED' ? implFiles
+      : stage === 'GREEN' ? testFiles
+      : [],
+    commit_prefix: stage === 'RED' ? `red(${taskId})`
+      : stage === 'GREEN' ? `green(${taskId})`
+      : `refactor(${taskId})`,
+    ...extras,
+  }
+}
+
 // ── Per-lane TDD saga ────────────────────────────────────────────────────────
 
 async function runLane(taskId, lanePlan, worktreePaths, cfg) {
@@ -121,42 +164,36 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
 
   // ── Skeleton preflight ────────────────────────────────────────────────
   await agent(
-    `Run this command in ${wt}:\n` +
     `cd "${wt}" && datum skeleton --task-id ${taskId} --language ${cfg.language} ` +
-    `--tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json\n` +
-    `Report the exit code. If it fails, that is okay — skeleton is optional.`,
-    { label: `skeleton:${taskId}`, phase: 'Act', model: 'haiku' }
+    `--tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json 2>&1 || true`,
+    { label: `skeleton:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
   )
 
   // ── RED ───────────────────────────────────────────────────────────────
   log(`[${taskId}] RED: writing failing tests`)
 
-  const testFiles = (lane.files || []).filter(f =>
-    f.includes('test') || f.includes('Test') || f.includes('spec')
-  )
-  const implFiles = (lane.files || []).filter(f =>
-    !f.includes('test') && !f.includes('Test') && !f.includes('spec')
-  )
+  const redPacket = buildPacket(taskId, lane, wt, cfg, 'RED', {})
 
   await agent(
-    `## Role: RED Agent — Write Failing Tests\n\n` +
-    `## Working Directory\n${wt}\nALL file operations and commands MUST run from this directory.\n\n` +
-    `## Task: ${taskId} — ${lane.title}\n\n` +
-    `### Acceptance Criteria\n${(lane.acceptance_criteria || []).map((ac, i) => `${i + 1}. ${ac}`).join('\n')}\n\n` +
-    `### RED Note\n${lane.red_note || 'Write a failing test that proves the acceptance criteria are not yet met.'}\n\n` +
-    `### Files You May Write To\n${testFiles.map(f => `- ${f}`).join('\n') || '- Any test file for this task'}\n\n` +
-    `### Done Condition\nRun: cd "${wt}" && ${cfg.testCommand}\n` +
-    `Tests MUST FAIL. If tests pass, rewrite with a genuinely failing assertion.\n` +
-    `Commit: git add . && git commit -m "red(${taskId}): <description>"`,
-    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet' }
+    `${writeLaneContextCmd(redPacket, wt)}`,
+    { label: `ctx-red:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
   )
+
+  const red = await agent(
+    `TASK PACKET: ${JSON.stringify(redPacket)}`,
+    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA, agentType: 'datum-red' }
+  )
+
+  if (!red || !red.committed) {
+    const err = (red && red.failure_reason) || 'RED agent did not commit'
+    log(`[${taskId}] RED FAILED: ${err}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
+  }
 
   // ── Verify RED ────────────────────────────────────────────────────────
   const redCheck = await agent(
-    `Run this exact command and report the JSON result:\n` +
-    `cd "${wt}" && datum verify-stage red --test-command "${cfg.testCommand}"\n` +
-    `Return the JSON output verbatim.`,
-    { label: `verify-red:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA }
+    `cd "${wt}" && datum verify-stage red --test-command "${cfg.testCommand}"\nReturn the JSON output.`,
+    { label: `verify-red:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA, agentType: 'datum-cli' }
   )
 
   if (!redCheck || !redCheck.verified) {
@@ -164,41 +201,42 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     log(`[${taskId}] RED FAILED: ${err}`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
   }
-  log(`[${taskId}] RED verified — tests correctly failing`)
+  log(`[${taskId}] RED verified`)
 
-  // ── Test signal for GREEN brief ───────────────────────────────────────
-  const testSignal = await agent(
-    `Run the test command in the worktree and capture the output:\n` +
+  // ── Test signal for GREEN ─────────────────────────────────────────────
+  const signal = await agent(
     `cd "${wt}" && ${cfg.testCommand} 2>&1 || true\n` +
-    `Return ONLY the test output (compiler errors, assertion messages). ` +
-    `Do NOT include test source code or test function names.`,
-    { label: `signal:${taskId}`, phase: 'Act', model: 'haiku' }
+    `Extract: exit_code, error messages, assertion failure messages. No test source code.`,
+    { label: `signal:${taskId}`, phase: 'Act', model: 'haiku', schema: SIGNAL_SCHEMA, agentType: 'datum-cli' }
   )
 
   // ── GREEN ─────────────────────────────────────────────────────────────
   log(`[${taskId}] GREEN: making tests pass`)
 
+  const greenPacket = buildPacket(taskId, lane, wt, cfg, 'GREEN', {
+    test_signal: signal,
+  })
+
   await agent(
-    `## Role: GREEN Agent — Make Tests Pass with Minimum Code\n\n` +
-    `## Working Directory\n${wt}\nALL file operations and commands MUST run from this directory.\n\n` +
-    `## Task: ${taskId} — ${lane.title}\n\n` +
-    `### Acceptance Criteria\n${(lane.acceptance_criteria || []).map((ac, i) => `${i + 1}. ${ac}`).join('\n')}\n\n` +
-    `### Files You May Write To (implementation files ONLY — NO test files)\n` +
-    `${implFiles.map(f => `- ${f}`).join('\n') || '- Any implementation file for this task'}\n\n` +
-    `### What the Test Expects (redacted signal — you do NOT have access to test source)\n` +
-    `${testSignal || 'No signal available — implement based on acceptance criteria.'}\n\n` +
-    `### Done Condition\nRun: cd "${wt}" && ${cfg.testCommand}\n` +
-    `ALL tests MUST PASS. Do not add new tests. Do not edit test files.\n` +
-    `Commit: git add . && git commit -m "green(${taskId}): <description>"`,
-    { label: `green:${taskId}`, phase: 'Act', model: 'sonnet' }
+    `${writeLaneContextCmd(greenPacket, wt)}`,
+    { label: `ctx-green:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
   )
+
+  const green = await agent(
+    `TASK PACKET: ${JSON.stringify(greenPacket)}`,
+    { label: `green:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA, agentType: 'datum-green' }
+  )
+
+  if (!green || !green.committed) {
+    const err = (green && green.failure_reason) || 'GREEN agent did not commit'
+    log(`[${taskId}] GREEN FAILED: ${err}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: err }
+  }
 
   // ── Verify GREEN ──────────────────────────────────────────────────────
   const greenCheck = await agent(
-    `Run this exact command and report the JSON result:\n` +
-    `cd "${wt}" && datum verify-stage green --test-command "${cfg.testCommand}"\n` +
-    `Return the JSON output verbatim.`,
-    { label: `verify-green:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA }
+    `cd "${wt}" && datum verify-stage green --test-command "${cfg.testCommand}"\nReturn the JSON output.`,
+    { label: `verify-green:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA, agentType: 'datum-cli' }
   )
 
   if (!greenCheck || !greenCheck.verified) {
@@ -206,7 +244,16 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     log(`[${taskId}] GREEN FAILED: ${err}`)
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: err }
   }
-  log(`[${taskId}] GREEN verified — tests passing`)
+  log(`[${taskId}] GREEN verified`)
+
+  // ── File ownership check ──────────────────────────────────────────────
+  const { testFiles, implFiles } = classifyFiles(lane.files)
+  const allAllowed = new Set([...testFiles, ...implFiles])
+  const writtenFiles = [...(red.files_written || []), ...(green.files_written || [])]
+  const violations = writtenFiles.filter(f => !allAllowed.has(f))
+  if (violations.length > 0) {
+    log(`[${taskId}] FILE OWNERSHIP VIOLATION: ${violations.join(', ')}`)
+  }
 
   // ── REFACTOR ──────────────────────────────────────────────────────────
   const refResult = await runRefactor(taskId, lane, wt, cfg)
@@ -219,28 +266,28 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
 }
 
 async function runRefactor(taskId, lane, wt, cfg) {
-  log(`[${taskId}] REFACTOR: cleanup + full AC coverage`)
+  log(`[${taskId}] REFACTOR`)
+
+  const refactorPacket = buildPacket(taskId, lane, wt, cfg, 'REFACTOR', {})
 
   await agent(
-    `## Role: REFACTOR Agent — Full Correctness + Clean Architecture\n\n` +
-    `## Working Directory\n${wt}\nALL file operations and commands MUST run from this directory.\n\n` +
-    `## Task: ${taskId} — ${lane.title}\n\n` +
-    `### AC Checklist (verify each before marking done)\n` +
-    `${(lane.acceptance_criteria || []).map((ac, i) => `- [ ] ${ac}`).join('\n')}\n\n` +
-    `### What You May NOT Do\n` +
-    `- Remove, rename, or disable a test\n` +
-    `- Delete or weaken an assertion\n` +
-    `- Add new tests (if missing AC found: log it and STOP)\n\n` +
-    `### Done Condition\nALL tests pass. Linter clean. Every AC checked off.\n` +
-    `Commit: git add . && git commit -m "refactor(${taskId}): <description>"`,
-    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet' }
+    `${writeLaneContextCmd(refactorPacket, wt)}`,
+    { label: `ctx-refactor:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
   )
 
+  const refactor = await agent(
+    `TASK PACKET: ${JSON.stringify(refactorPacket)}`,
+    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA, agentType: 'datum-refactor' }
+  )
+
+  if (!refactor || !refactor.committed) {
+    log(`[${taskId}] REFACTOR FAILED: ${refactor && refactor.failure_reason}`)
+    return null
+  }
+
   const check = await agent(
-    `Run this exact command and report the JSON result:\n` +
-    `cd "${wt}" && datum verify-stage green --test-command "${cfg.testCommand}"\n` +
-    `Return the JSON output verbatim.`,
-    { label: `verify-refactor:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA }
+    `cd "${wt}" && datum verify-stage green --test-command "${cfg.testCommand}"\nReturn the JSON output.`,
+    { label: `verify-refactor:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_SCHEMA, agentType: 'datum-cli' }
   )
 
   if (!check || !check.verified) {
@@ -250,27 +297,42 @@ async function runRefactor(taskId, lane, wt, cfg) {
   return check
 }
 
+// ── Lane context writer ─────────────────────────────────────────────────────
+// Writes .datum/lane-context.json before each agent dispatch so hooks can
+// mechanically enforce file ownership, commit format, and test ratchet.
+
+function writeLaneContextCmd(packet, wt) {
+  const ctx = JSON.stringify({
+    task_id: packet.task_id,
+    stage: packet.stage,
+    allowed_write_files: packet.allowed_write_files,
+    forbidden_write_files: packet.forbidden_write_files,
+    commit_prefix: packet.commit_prefix,
+    test_count_floor: 0,
+  })
+  return `mkdir -p "${wt}/.datum" && printf '%s' '${ctx.replace(/'/g, "'\\''")}' > "${wt}/.datum/lane-context.json"`
+}
+
 // ── Main workflow ────────────────────────────────────────────────────────────
 
-const lanePlanPath = args.lanePlanPath || '.datum/lane-plan.json'
-const epicBranch = args.epicBranch
-const runId = args.runId
-const testCommand = args.testCommand || 'pytest -q'
-const language = args.language || 'python'
+const a = (typeof args === 'string') ? JSON.parse(args) : (args || {})
+const lanePlanPath = a.lanePlanPath || '.datum/lane-plan.json'
+const epicBranch = a.epicBranch
+const runId = a.runId
+const testCommand = a.testCommand || 'pytest -q'
+const language = a.language || 'python'
 const cfg = { lanePlanPath, epicBranch, runId, testCommand, language }
+
+if (!epicBranch) throw new Error('args.epicBranch is required')
+if (!runId) throw new Error('args.runId is required')
 
 // ── Phase: Topology ──────────────────────────────────────────────────────
 
 phase('Topology')
 
 const lanePlan = await agent(
-  `Read the file at ${lanePlanPath} and return its contents as a JSON object. ` +
-  `The file is a datum lane-plan with fields: schema_version, total_lanes, ` +
-  `topological_order (array of task IDs), file_ownership, lanes (object keyed by task ID). ` +
-  `Also read tasks.json in the same directory and merge each task's depends_on array ` +
-  `into the corresponding lane entry if not already present. ` +
-  `Return the merged result.`,
-  { label: 'read-plan', phase: 'Topology', model: 'haiku', schema: LANE_PLAN_SCHEMA }
+  `Read ${lanePlanPath} and return its contents as JSON. This is the SOLE source of truth — do NOT read tasks.json or any other file.`,
+  { label: 'read-plan', phase: 'Topology', model: 'haiku', schema: LANE_PLAN_SCHEMA, agentType: 'datum-reader' }
 )
 
 const waves = buildWaves(lanePlan)
@@ -285,12 +347,12 @@ phase('Setup')
 
 const laneIds = Object.keys(lanePlan.lanes)
 const worktreePaths = await agent(
-  `Run this command and return the JSON output:\n` +
-  `datum worktrees setup --run-id ${runId} --epic-branch ${epicBranch} ` +
-  `--lane-ids ${laneIds.join(',')}\n` +
-  `The output is a JSON mapping of lane_id to worktree path. Return it verbatim.`,
-  { label: 'setup-worktrees', phase: 'Setup', model: 'haiku', schema: WORKTREE_MAP_SCHEMA }
+  `datum worktrees setup --run-id ${runId} --epic-branch ${epicBranch} --lane-ids ${laneIds.join(',')}\nReturn the JSON output.`,
+  { label: 'setup-worktrees', phase: 'Setup', model: 'haiku', schema: WORKTREE_MAP_SCHEMA, agentType: 'datum-cli' }
 )
+
+const validPaths = Object.values(worktreePaths || {}).filter(Boolean)
+if (validPaths.length === 0) throw new Error('Setup failed: no worktree paths returned')
 
 log(`Setup: ${laneIds.length} worktrees created`)
 
@@ -303,7 +365,7 @@ const failures = []
 
 for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
   const wave = waves[waveIdx]
-  log(`=== Wave ${waveIdx} starting: [${wave.join(', ')}] ===`)
+  log(`=== Wave ${waveIdx}: [${wave.join(', ')}] ===`)
 
   const waveResults = await parallel(
     wave.map(taskId => () =>
@@ -315,13 +377,11 @@ for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
   for (let i = 0; i < wave.length; i++) {
     const r = waveResults[i]
     results[wave[i]] = r
-    if (!r || r.status !== 'completed') {
-      failures.push(wave[i])
-    }
+    if (!r || r.status !== 'completed') failures.push(wave[i])
   }
 
-  const waveSuccesses = wave.length - failures.filter(f => wave.includes(f)).length
-  log(`=== Wave ${waveIdx} complete: ${waveSuccesses}/${wave.length} succeeded ===`)
+  const ok = wave.length - failures.filter(f => wave.includes(f)).length
+  log(`=== Wave ${waveIdx} done: ${ok}/${wave.length} ===`)
 }
 
 // ── Phase: Merge ─────────────────────────────────────────────────────────
@@ -338,11 +398,9 @@ if (completedLanes.length === 0) {
   const mergeOrder = lanePlan.topological_order.filter(id => completedLanes.includes(id))
 
   await agent(
-    `Run this command:\n` +
-    `datum worktrees merge --epic-branch ${epicBranch} ` +
-    `--lane-order ${mergeOrder.join(',')} ` +
+    `datum worktrees merge --epic-branch ${epicBranch} --lane-order ${mergeOrder.join(',')} ` +
     `--commit-message "act(${runId}): merge ${completedLanes.length} lanes"`,
-    { label: 'merge-lanes', phase: 'Merge', model: 'haiku' }
+    { label: 'merge-lanes', phase: 'Merge', model: 'haiku', agentType: 'datum-cli' }
   )
 
   log(`Merged ${completedLanes.length} lanes: [${mergeOrder.join(', ')}]`)
@@ -353,20 +411,19 @@ if (completedLanes.length === 0) {
 phase('Cleanup')
 
 await agent(
-  `Run this command:\n` +
   `datum worktrees cleanup --run-id ${runId} --epic-branch ${epicBranch}`,
-  { label: 'cleanup', phase: 'Cleanup', model: 'haiku' }
+  { label: 'cleanup', phase: 'Cleanup', model: 'haiku', agentType: 'datum-cli' }
 )
 
 if (failures.length > 0) {
-  log(`\nFailed lanes: [${failures.join(', ')}]`)
+  log(`Failed lanes: [${failures.join(', ')}]`)
   for (const fid of failures) {
     const r = results[fid]
     if (r) log(`  ${fid}: ${r.stage} — ${r.error}`)
   }
 }
 
-log(`\nAct phase complete: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed`)
+log(`Act complete: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed`)
 
 return {
   runId,

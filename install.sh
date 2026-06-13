@@ -362,6 +362,16 @@ for e in "${target_entries[@]}"; do
   register_tool "$(_field "$e" 2)" "$(_field "$e" 1)" "$LINK_TARGET"
 done
 
+# ── Agent types ──────────────────────────────────────────────────────────────
+
+AGENTS_SRC="${LINK_TARGET}/agents"
+AGENTS_DEST="${LINK_TARGET}/.claude/agents"
+if [ -d "$AGENTS_SRC" ] && [ ! -e "$AGENTS_DEST" ]; then
+  mkdir -p "$(dirname "$AGENTS_DEST")"
+  ln -sfn ../agents "$AGENTS_DEST"
+  echo "✓ Agents linked: ${AGENTS_DEST}"
+fi
+
 # ── Workflow scripts ──────────────────────────────────────────────────────────
 
 WORKFLOWS_DIR="${HOME}/.claude/workflows"

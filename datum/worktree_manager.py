@@ -1,7 +1,7 @@
 """worktree_manager.py — git worktree lifecycle for parallel ACT lanes.
 
 One worktree per lane under .datum/worktrees/<run_id>/<lane_id>/.
-Each lane gets an isolated sub-branch: <epic_branch>/<lane_id>.
+Each lane gets an isolated sub-branch: <epic_branch>--<lane_id>.
 Agents write and commit freely inside their worktree — no shared index,
 no index.lock contention, no commit queue needed during ACT.
 
@@ -42,7 +42,7 @@ def create_lane_worktree(
     """Create an isolated worktree for a lane and return its path.
 
     Creates:
-      branch:   <epic_branch>/<lane_id>
+      branch:   <epic_branch>--<lane_id>
       worktree: .datum/worktrees/<run_id>/<lane_id>
 
     The worktree starts at base_sha (the epic branch tip at pipeline start),
@@ -50,7 +50,7 @@ def create_lane_worktree(
     """
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
-    lane_branch = f"{epic_branch}/{lane_id}"
+    lane_branch = f"{epic_branch}--{lane_id}"
 
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -80,7 +80,7 @@ def remove_lane_worktree(
     """
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
-    lane_branch = f"{epic_branch}/{lane_id}"
+    lane_branch = f"{epic_branch}--{lane_id}"
 
     flags = ["--force"] if force else []
     _git(["worktree", "remove", str(worktree_path)] + flags, cwd=repo_root, check=False)
@@ -176,7 +176,7 @@ def merge_lane_branches(
         )
 
     for lane_id in lane_order:
-        lane_branch = f"{epic_branch}/{lane_id}"
+        lane_branch = f"{epic_branch}--{lane_id}"
         result = _git(
             ["merge", "--squash", "--no-commit", lane_branch],
             cwd=repo_root,
