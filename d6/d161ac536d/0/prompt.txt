@@ -5951,3 +5951,15 @@ lets just have it file for now
 ---
 
 yes
+
+---
+
+ok why did the other things fail
+
+---
+
+the tdd args should be somnet
+
+---
+
+we need reasoning
