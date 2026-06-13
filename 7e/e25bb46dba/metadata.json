@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "7ee25bb46dba",
+  "strategy": "manual-commit",
+  "branch": "dogfood-v14",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "datum/wave_builder.py",
+    "tests/test_wave_builder.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/7e/e25bb46dba/0/metadata.json",
+      "transcript": "/7e/e25bb46dba/0/full.jsonl",
+      "content_hash": "/7e/e25bb46dba/0/content_hash.txt",
+      "prompt": "/7e/e25bb46dba/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6639,
+    "cache_creation_tokens": 1095056,
+    "cache_read_tokens": 89382345,
+    "output_tokens": 228677,
+    "api_call_count": 571
+  }
+}

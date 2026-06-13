@@ -1,0 +1,94 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "7ee25bb46dba",
+  "session_id": "498c339f-c317-4cee-9251-a540fa9de6b3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-13T20:03:15.526539Z",
+  "branch": "dogfood-v14",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "datum/wave_builder.py",
+    "tests/test_wave_builder.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "01f34ae8e0e8",
+  "token_usage": {
+    "input_tokens": 6639,
+    "cache_creation_tokens": 1095056,
+    "cache_read_tokens": 89382345,
+    "output_tokens": 228677,
+    "api_call_count": 571
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-workflow-orchestration-patterns-2026-06-13T15:20:23.185652Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "workflow-orchestration-patterns"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "a27e4d8c91ae",
+      "timestamp": "2026-06-13T15:20:23.185652Z",
+      "native": {
+        "command": "/workflow-orchestration-patterns"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/workflow-orchestration-patterns",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-nano-banana-pro-prompts-recommend-skill-2026-06-13T15:40:44.105018Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "nano-banana-pro-prompts-recommend-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "17d4801f2976",
+      "timestamp": "2026-06-13T15:40:44.105018Z",
+      "native": {
+        "command": "/nano-banana-pro-prompts-recommend-skill"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/nano-banana-pro-prompts-recommend-skill",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 49
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-13T20:03:14.812803Z",
+    "agent_lines": 0,
+    "agent_removed": 5,
+    "human_added": 388,
+    "human_modified": 9,
+    "human_removed": 0,
+    "total_committed": 394,
+    "total_lines_changed": 402,
+    "agent_percentage": 1.2437810945273633,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
