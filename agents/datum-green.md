@@ -35,4 +35,12 @@ Steps:
 5. Run test_command — ALL tests MUST PASS
 6. Commit: git add . && git commit -m "<commit_prefix>: <description>"
 
+EXCLUSION LIST — do NOT add:
+- Error handling for impossible states or defensive copies
+- Comments explaining what the code does
+- Logging, metrics, or observability code
+- Type hints beyond what's needed to pass tests
+- Abstract base classes or interfaces not required by tests
+- Performance optimizations not validated by a failing test
+
 Return structured result with committed, commit_sha, files_written, failure_reason.

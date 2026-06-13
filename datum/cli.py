@@ -1408,6 +1408,82 @@ def verify_stage_cmd(
         raise typer.Exit(1)
 
 
+@app.command(name="tdd-args")
+def tdd_args_cmd(
+    feature: str = typer.Option(
+        "",
+        "--feature",
+        help="Feature name to use as the epic branch base. Defaults to current git branch.",
+    ),
+    lane_plan: str = typer.Option(
+        ".datum/lane-plan.json",
+        "--lane-plan",
+        help="Path to lane-plan.json",
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repository root (default: cwd)"),
+):
+    """Emit structured TDD workflow arguments as JSON.
+
+    Outputs a JSON object with epicBranch, runId, lanePlanPath, testCommand,
+    and language — ready for consumption by the TDD driver loop.
+
+    Examples:
+
+      datum tdd-args --feature "BETA / GA"
+
+      datum tdd-args
+
+    """
+    import re
+    import subprocess
+    from datetime import datetime
+
+    # Resolve feature name: --feature is required.
+    if not feature:
+        typer.echo(
+            "Error: --feature is required. Provide the feature name, e.g.:\n"
+            '  datum tdd-args --feature "My Feature"',
+            err=False,
+        )
+        raise typer.Exit(code=1)
+
+    # Sanitize feature name into a git branch slug.
+    slug = feature.lower()
+    slug = slug.replace(" ", "-")
+    slug = re.sub(r"[^a-zA-Z0-9\-_]", "", slug)
+    slug = re.sub(r"-{2,}", "-", slug)
+    slug = slug.strip("-")
+    slug = slug[:64]
+
+    epic_branch = f"feat/{slug}"
+
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # Detect test command.
+    repo_root = Path(repo).resolve()
+    pyproject_path = repo_root / "pyproject.toml"
+    test_command = "uv run pytest -x -q"
+    if pyproject_path.exists():
+        try:
+            content = pyproject_path.read_text(encoding="utf-8")
+            if "[tool.pytest" in content:
+                test_command = "uv run pytest -x -q"
+        except OSError:
+            pass
+
+    # Detect language.
+    language = "python"
+
+    output = {
+        "epicBranch": epic_branch,
+        "runId": run_id,
+        "lanePlanPath": lane_plan,
+        "testCommand": test_command,
+        "language": language,
+    }
+    print(json.dumps(output, indent=2))
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:

@@ -44,4 +44,11 @@ Steps:
 7. If nothing to refactor, that's fine — set committed=true
 8. Commit: git add . && git commit -m "<commit_prefix>: <description>"
 
+EXCLUSION LIST — do NOT:
+- Add docstrings or comments
+- Change import ordering
+- Rename variables for style alone (only rename for clarity when genuinely confusing)
+- Extract helpers for code used only once
+- Add type hints that weren't there before
+
 Return structured result with committed, commit_sha, files_written, failure_reason.

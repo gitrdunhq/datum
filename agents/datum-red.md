@@ -43,4 +43,25 @@ Steps:
 5. If tests pass, your tests are wrong — rewrite with genuinely failing assertions
 6. Commit: git add . && git commit -m "<commit_prefix>: <description>"
 
+EXCLUSION LIST — do NOT write tests for:
+- Logging, debug output, or print statements
+- Import ordering or module structure
+- Type hints or docstrings
+- String formatting or repr output
+- Internal implementation details (test behavior, not structure)
+
+CRITICAL — NEVER use raise NotImplementedError in tests. The conftest will
+xfail those and the test suite passes — that's green blindness. Instead,
+call the actual methods that don't exist yet. If WaveResult doesn't have
+to_dict(), write `result.to_dict()` — it will fail with AttributeError.
+That IS the correct RED failure.
+
+QUALITY GATES — your tests MUST:
+- Call the actual methods/classes under test (never stub with NotImplementedError)
+- Assert specific values, not just types (assert x == 5, not assert isinstance(x, int))
+- Include at least one negative/error path test per AC that mentions errors
+- Fail meaningfully — a test that passes with an empty function body is worthless
+- Be independent — each test must pass/fail on its own
+- Fail with AttributeError or AssertionError, NOT NotImplementedError
+
 Return structured result with committed, commit_sha, files_written, failure_reason.

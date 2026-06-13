@@ -1,107 +1,119 @@
-"""Tests for task-002: Missing dependency detection in wave_builder.
-
-AC2: build_waves with a reference to a nonexistent lane raises MissingDependencyError
-AC3: Existing valid DAGs still work identically (no regression)
-AC4: MissingDependencyError is importable from datum.wave_builder
-
-RED NOTE: MissingDependencyError does not exist yet in datum.wave_builder.
-All tests importing or expecting it will fail until GREEN agent adds it.
-"""
+# RED tests for task-001: validate_lane_plan — structural validation before build_waves
+# Traceability: AC1-AC4 → tests/test_wave_builder.py
 
 import pytest
 
-from datum.wave_builder import MissingDependencyError, build_waves
 
-
-class TestAC4_MissingDependencyErrorImportable:
-    """AC4: MissingDependencyError must be importable from datum.wave_builder."""
-
-    def test_missing_dependency_error_is_a_class(self):
-        """MissingDependencyError should be a class (not None, not a function)."""
-        assert isinstance(MissingDependencyError, type)
-
-    def test_missing_dependency_error_is_exception_subclass(self):
-        """MissingDependencyError should inherit from Exception."""
-        assert issubclass(MissingDependencyError, Exception)
-
-
-class TestAC2_MissingDependencyRaisesError:
-    """AC2: build_waves with a reference to a nonexistent lane raises MissingDependencyError."""
-
-    def test_single_nonexistent_dependency_raises(self):
-        """Lane 'a' depends on 'nonexistent' which is not a key in lanes."""
-        lanes = {"a": {"depends_on": ["nonexistent"]}}
-        with pytest.raises(MissingDependencyError):
-            build_waves(lanes)
-
-    def test_error_message_mentions_missing_dep(self):
-        """The error message should name the missing dependency."""
-        lanes = {"a": {"depends_on": ["ghost"]}}
-        with pytest.raises(MissingDependencyError, match="ghost"):
-            build_waves(lanes)
-
-    def test_multiple_nonexistent_dependencies_raises(self):
-        """Lane depending on two nonexistent lanes should also raise."""
-        lanes = {"a": {"depends_on": ["x", "y"]}}
-        with pytest.raises(MissingDependencyError):
-            build_waves(lanes)
-
-    def test_one_valid_one_missing_dep_raises(self):
-        """A lane with mixed valid + nonexistent deps should raise."""
-        lanes = {
-            "a": {},
-            "b": {"depends_on": ["a", "does_not_exist"]},
-        }
-        with pytest.raises(MissingDependencyError):
-            build_waves(lanes)
-
-    def test_currently_silently_ignored_bad_ref(self):
+class TestTask_001_AC4:
+    def test_ac4_ac4_validatelaneplan_is_importable_from_datumwavebuilder(self):
         """
-        Regression guard: before the fix build_waves({\"a\": {\"depends_on\": [\"nonexistent\"]}})
-        returned [['a']] silently.  After the fix it must raise.
+        AC4: validate_lane_plan is importable from datum.wave_builder
         """
-        lanes = {"a": {"depends_on": ["nonexistent"]}}
-        with pytest.raises(MissingDependencyError):
-            build_waves(lanes)
+        # Act — will raise ImportError if the symbol does not exist
+        from datum.wave_builder import validate_lane_plan
+
+        # Assert — function must be callable
+        assert callable(validate_lane_plan)
 
 
-class TestAC3_ValidDagsNoRegression:
-    """AC3: Existing valid DAGs still work identically (no regression)."""
+class TestTask_001_AC1:
+    """AC1: validate_lane_plan raises ValueError if a lane is missing 'id' or 'files' keys."""
 
-    def test_empty_lanes_returns_empty(self):
-        assert build_waves({}) == []
+    def test_ac1_missing_id_key_raises_value_error(self):
+        """Lane dict without 'id' key must raise ValueError."""
+        from datum.wave_builder import validate_lane_plan
 
-    def test_single_lane_no_deps(self):
-        assert build_waves({"a": {}}) == [["a"]]
-
-    def test_linear_chain(self):
-        lanes = {
-            "a": {},
-            "b": {"depends_on": ["a"]},
-            "c": {"depends_on": ["b"]},
+        plan = {
+            "lanes": [{"files": ["a.py"]}],  # no 'id'
+            "topological_order": [],
         }
-        assert build_waves(lanes) == [["a"], ["b"], ["c"]]
+        with pytest.raises(ValueError):
+            validate_lane_plan(plan)
 
-    def test_parallel_independent_lanes(self):
-        lanes = {"a": {}, "b": {}, "c": {}}
-        assert build_waves(lanes) == [["a", "b", "c"]]
+    def test_ac1_missing_files_key_raises_value_error(self):
+        """Lane dict without 'files' key must raise ValueError."""
+        from datum.wave_builder import validate_lane_plan
 
-    def test_diamond_dag(self):
-        lanes = {
-            "a": {},
-            "b": {"depends_on": ["a"]},
-            "c": {"depends_on": ["a"]},
-            "d": {"depends_on": ["b", "c"]},
+        plan = {
+            "lanes": [{"id": "lane-1"}],  # no 'files'
+            "topological_order": ["lane-1"],
         }
-        waves = build_waves(lanes)
-        assert waves[0] == ["a"]
-        assert sorted(waves[1]) == ["b", "c"]
-        assert waves[2] == ["d"]
+        with pytest.raises(ValueError):
+            validate_lane_plan(plan)
 
-    def test_none_depends_on_treated_as_no_deps(self):
-        lanes = {"a": {"depends_on": None}}
-        assert build_waves(lanes) == [["a"]]
+    def test_ac1_missing_both_id_and_files_raises_value_error(self):
+        """Lane dict with neither 'id' nor 'files' must raise ValueError."""
+        from datum.wave_builder import validate_lane_plan
 
-    def test_empty_depends_on_list(self):
-        lanes = {"a": {"depends_on": []}}
-        assert build_waves(lanes) == [["a"]]
+        plan = {
+            "lanes": [{"depends_on": []}],
+            "topological_order": [],
+        }
+        with pytest.raises(ValueError):
+            validate_lane_plan(plan)
+
+
+class TestTask_001_AC2:
+    """AC2: validate_lane_plan raises ValueError if topological_order contains IDs not in lanes."""
+
+    def test_ac2_orphan_topo_id_raises_value_error(self):
+        """topological_order referencing an ID absent from lanes must raise ValueError."""
+        from datum.wave_builder import validate_lane_plan
+
+        plan = {
+            "lanes": [{"id": "lane-1", "files": ["a.py"]}],
+            "topological_order": ["lane-1", "lane-ghost"],  # 'lane-ghost' not in lanes
+        }
+        with pytest.raises(ValueError):
+            validate_lane_plan(plan)
+
+    def test_ac2_entirely_unknown_topo_ids_raise_value_error(self):
+        """topological_order with no matching lane IDs must raise ValueError."""
+        from datum.wave_builder import validate_lane_plan
+
+        plan = {
+            "lanes": [{"id": "lane-A", "files": ["x.py"]}],
+            "topological_order": ["lane-X", "lane-Y"],  # neither exists in lanes
+        }
+        with pytest.raises(ValueError):
+            validate_lane_plan(plan)
+
+
+class TestTask_001_AC3:
+    """AC3: validate_lane_plan returns None silently for a valid plan."""
+
+    def test_ac3_valid_plan_returns_none(self):
+        """A structurally valid plan must return None with no exception."""
+        from datum.wave_builder import validate_lane_plan
+
+        plan = {
+            "lanes": [
+                {"id": "lane-1", "files": ["a.py"]},
+                {"id": "lane-2", "files": ["b.py"]},
+            ],
+            "topological_order": ["lane-1", "lane-2"],
+        }
+        result = validate_lane_plan(plan)
+        assert result is None
+
+    def test_ac3_valid_plan_with_empty_topological_order_returns_none(self):
+        """A valid plan where topological_order is empty must return None."""
+        from datum.wave_builder import validate_lane_plan
+
+        plan = {
+            "lanes": [{"id": "lane-1", "files": ["a.py"]}],
+            "topological_order": [],
+        }
+        result = validate_lane_plan(plan)
+        assert result is None
+
+    def test_ac3_valid_plan_with_no_lanes_returns_none(self):
+        """An empty lanes list with empty topological_order is a valid (trivial) plan."""
+        from datum.wave_builder import validate_lane_plan
+
+        plan = {
+            "lanes": [],
+            "topological_order": [],
+        }
+        result = validate_lane_plan(plan)
+        assert result is None

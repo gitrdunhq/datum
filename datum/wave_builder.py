@@ -7,6 +7,9 @@ can run concurrently.  Wave N's tasks depend only on tasks in waves < N.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from dataclasses import dataclass
+
 
 class CyclicDependencyError(ValueError):
     """Raised when build_waves detects a cycle in the dependency graph."""
@@ -16,10 +19,66 @@ class MissingDependencyError(ValueError):
     """Raised when a lane references a dependency that does not exist in lanes."""
 
 
+@dataclass
+class WaveStats:
+    """Statistics derived from a wave plan."""
+
+    total_tasks: int
+    num_waves: int
+    max_parallelism: int
+    critical_path_length: int
+
+
+class WaveResult:
+    """Return type for build_waves — wraps the wave list with metadata.
+
+    Supports iteration and indexing so existing callers using
+    ``build_waves()[0]`` or ``for wave in build_waves()`` continue to work.
+    """
+
+    def __init__(self, waves: list[list[str]]) -> None:
+        self.waves = waves
+        self.stats = WaveStats(
+            total_tasks=sum(len(w) for w in waves),
+            num_waves=len(waves),
+            max_parallelism=max((len(w) for w in waves), default=0),
+            critical_path_length=len(waves),
+        )
+
+    # --- list-like protocol ---------------------------------------------------
+
+    def __iter__(self) -> Iterator[list[str]]:
+        return iter(self.waves)
+
+    def __getitem__(self, index: int) -> list[str]:
+        return self.waves[index]
+
+    def __len__(self) -> int:
+        return len(self.waves)
+
+    @property
+    def summary(self) -> str:
+        """One-line human summary of the wave plan.
+
+        Returns ``'N tasks in W waves (max parallelism: P, critical path: C)'``
+        for non-empty graphs, or ``'0 tasks in 0 waves'`` for an empty graph.
+        """
+        s = self.stats
+        if s.total_tasks == 0:
+            return "0 tasks in 0 waves"
+        return (
+            f"{s.total_tasks} tasks in {s.num_waves} waves"
+            f" (max parallelism: {s.max_parallelism}, critical path: {s.critical_path_length})"
+        )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"WaveResult(waves={self.waves!r}, stats={self.stats!r})"
+
+
 def build_waves(
     lanes: dict[str, dict],
     depends_on_key: str = "depends_on",
-) -> list[list[str]]:
+) -> WaveResult:
     """Return BFS-layered waves from a lane dependency graph.
 
     Parameters
@@ -32,7 +91,7 @@ def build_waves(
 
     Returns
     -------
-    List of waves, each wave a list of lane IDs that can run concurrently.
+    WaveResult wrapping the list of waves plus a WaveStats summary.
     """
     ids = list(lanes.keys())
     id_set = set(ids)
@@ -74,4 +133,4 @@ def build_waves(
             f"Cycle detected among tasks: {', '.join(cycle_nodes)}"
         )
 
-    return waves
+    return WaveResult(waves)
