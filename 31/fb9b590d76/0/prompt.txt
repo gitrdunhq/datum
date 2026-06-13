@@ -1,0 +1,949 @@
+please impllement #137 ensuring sorktree true isolation ensure sgents only work in their worktree.
+
+---
+
+hey use gitnexus to trace blast radius
+
+---
+
+use npx gitnexus mcp is down
+
+---
+
+fix those tests
+
+---
+
+fix those tests or the ckde
+
+---
+
+ok merge to main
+
+---
+
+reinstall
+
+---
+
+thefe is on the board an enhancement to make tdd a workflow
+
+---
+
+/workflow-orchestration-patterns
+
+---
+
+/nano-banana-pro-prompts-recommend-skill
+
+---
+
+/nano-banana-pro-prompts-recommend-skill
+
+---
+
+<task-notification>
+<task-id>a5ce40bd5a42b6795</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/a5ce40bd5a42b6795.output</output-file>
+<status>completed</status>
+<summary>Agent "Opus review and enhance TDD workflow plan" completed</summary>
+<result>Now I have a thorough understanding of the codebase. Let me compile the enhanced implementation plan.
+
+---
+
+## Enhanced Implementation Plan: Deterministic TDD Act Workflow Script (Issue #133)
+
+### 1. Wave-Based vs. Per-Task Dependency Tracking
+
+**Analysis of the problem:**
+
+The `topological_order` array in `lane-plan.json` is a **linear ordering** produced by `topological_sort()` in `datum/lane_plan.py` (line 126-151). It is a standard DFS-based topological sort that returns a flat list like `["task-001", "task-003", "task-002"]`. This is NOT wave-grouped. Two independent tasks (both with zero deps) might appear at positions 0 and 2 with a dependent task at position 1.
+
+**Why BFS wave grouping is correct but the draft's approach is incomplete:**
+
+BFS-layered scheduling (Kahn's algorithm) groups tasks into "waves" where wave N contains tasks whose dependencies all appear in waves &lt; N. This correctly identifies maximum parallelism -- tasks in the same wave have no mutual dependencies and can run concurrently.
+
+However, there is a subtlety the draft plan misses: `pipeline-dispatch.md` defines TWO kinds of dependency:
+- **Signature dependency** (satisfied by stub commit) -- unblocks downstream RED
+- **Behavior dependency** (satisfied by GREEN commit) -- unblocks downstream GREEN
+
+This means tasks in different "waves" can actually overlap their RED phases if the dependency is only behavioral. Task C (wave 2, depends on A) can start RED as soon as A's stub commit lands, without waiting for A's GREEN to complete. The wave model is too conservative for RED dispatch but correct for GREEN dispatch.
+
+**Recommendation: Hybrid approach -- wave parallelism with fine-grained GREEN gating.**
+
+Build BFS waves from the dependency DAG for initial dispatch ordering. Within each wave, use `parallel()` for all tasks. Between waves, the barrier from `parallel()` ensures all prior wave tasks' RED+stub is committed before downstream wave tasks begin RED. For GREEN gating, implement per-task dependency checking inside `runLane()` that polls/awaits upstream GREEN commits before starting its own GREEN.
+
+Why NOT `pipeline()`: The `pipeline()` primitive has NO barrier between stages (item A can be in stage 3 while B is in stage 1). This means if we put tasks into a pipeline, a task with dependencies could start before its dependency finishes. There is no hook to add a gate between pipeline stages for a specific item. This makes `pipeline()` unsuitable for the dependency DAG.
+
+**The `buildWaves()` function should:**
+
+```js
+function buildWaves(lanePlan) {
+  const lanes = lanePlan.lanes;
+  const inDeg = {};
+  const adj = {};
+  for (const [id, lane] of Object.entries(lanes)) {
+    inDeg[id] = (lane.depends_on || []).length;
+    for (const dep of (lane.depends_on || [])) {
+      (adj[dep] = adj[dep] || []).push(id);
+    }
+  }
+  const waves = [];
+  let queue = Object.keys(inDeg).filter(id =&gt; inDeg[id] === 0);
+  while (queue.length &gt; 0) {
+    waves.push([...queue]);
+    const next = [];
+    for (const id of queue) {
+      for (const child of (adj[id] || [])) {
+        inDeg[child]--;
+        if (inDeg[child] === 0) next.push(child);
+      }
+    }
+    queue = next;
+  }
+  return waves;
+}
+```
+
+### 2. RED-GREEN Worktree Continuity
+
+**Confirmed model: Pre-created persistent lane worktrees via `setup_pipeline_worktrees()`.**
+
+The `worktree_manager.py` API at line 123-152 creates one worktree per lane under `.datum/worktrees/&lt;run_id&gt;/&lt;lane_id&gt;/`. Each lane gets its own branch `&lt;epic_branch&gt;/&lt;lane_id&gt;` starting from the epic branch tip. The worktree persists for the entire RED-GREEN-REFACTOR cycle.
+
+**Critical: Do NOT use `isolation: 'worktree'` on agent calls.** Per the system facts, `isolation: 'worktree'` creates a FRESH worktree per agent call. Tests written by RED would not be present for GREEN. Instead, each agent must work in the pre-created worktree.
+
+**How to pass the worktree path to agents:**
+
+The worktree path should be injected into the agent prompt as a working-directory instruction AND passed as the `cwd` option (if available in the Workflow script API). The prompt must contain:
+
+```
+WORKING DIRECTORY: /absolute/path/to/.datum/worktrees/&lt;run_id&gt;/&lt;task_id&gt;
+All file operations MUST use this directory as the repository root.
+Run all commands (git, pytest, etc.) from this directory.
+```
+
+If the Workflow script's `agent()` function supports a `cwd:` option, use it. If not, the prompt instruction is the enforcement mechanism -- the agent must `cd` there first.
+
+**The Setup phase must:**
+1. Call `datum worktrees setup --run-id &lt;RUN_ID&gt; --epic-branch &lt;BRANCH&gt; --lane-ids task-001,task-002,...`
+2. Capture the returned JSON mapping of `{lane_id: worktree_path}`
+3. Store this mapping for use by `runLane()`
+
+### 3. Verify-Stage: Agent vs. Direct Bash
+
+**The Workflow script is JS-only -- no direct subprocess calls.** Verification must go through an `agent()` call.
+
+**However, verification is a mechanical, deterministic check** -- run `datum verify-stage red|green &lt;worktree_path&gt;` and check the exit code. Using a full Sonnet-tier LLM for this is wasteful.
+
+**Recommendation: Use a `fast` (Haiku) model agent with a minimal prompt.**
+
+```js
+const verifyResult = await agent(
+  `Run this exact command and report the result:
+  cd ${worktreePath} &amp;&amp; datum verify-stage red --test-command "${testCmd}"
+  If the command succeeds (exit 0), respond with: {"verified": true}
+  If it fails, respond with: {"verified": false, "error": "&lt;stderr output&gt;"}
+  Do NOT interpret the error. Just report it.`,
+  { model: modelConfig.fast, schema: { verified: 'boolean', error: 'string?' } }
+);
+```
+
+This costs ~500 tokens per verification instead of ~5000 for a full Sonnet call.
+
+**New CLI command needed: `datum verify-stage`** -- a thin wrapper around `tdd_driver.verify_red_stage()` and `tdd_driver.verify_green_baseline()`:
+
+```python
+@app.command(name="verify-stage")
+def verify_stage_cmd(
+    stage: str = typer.Argument(..., help="Stage to verify: 'red' or 'green'"),
+    repo_path: str = typer.Option(".", "--repo", help="Repository path"),
+    test_command: str = typer.Option("pytest -q", "--test-command", help="Test command"),
+):
+    """Verify TDD stage gate: RED tests must fail, GREEN tests must pass."""
+```
+
+### 4. File Ownership Sandbox Enforcement
+
+**Current state:** The `lane_tools_runner.py` enforces file sandbox via `allowed_write_dirs` from `manifest.toml`. But this only applies to lane-tools scripts, not to the agent's direct file edits.
+
+**For the Workflow script, enforcement must happen at the prompt level plus post-commit validation.**
+
+**Prompt-level enforcement:**
+Each RED/GREEN/REFACTOR agent prompt must include an explicit file restriction section:
+
+```
+### File Permissions
+You may ONLY write to the following files:
+- src/foo.py
+- src/bar.py
+- tests/test_foo.py  (RED only — GREEN and REFACTOR may not write to test files)
+
+Writing to any file not in this list is a HARD STOP violation.
+The commit queue will reject commits that touch files outside this set.
+```
+
+**Post-commit validation:**
+After each stage commit, the workflow should verify the committed diff only touches files in `lane.files[]`. This is mechanical and can be done by the verify agent:
+
+```js
+// After stage commit, verify file ownership
+const diffFiles = await agent(
+  `cd ${worktreePath} &amp;&amp; git diff --name-only HEAD~1 HEAD`,
+  { model: modelConfig.fast }
+);
+```
+
+Compare diffFiles against `lane.files` + allowed test paths. If violation detected, reject and retry.
+
+**For RED specifically:** The file set is the test files derived from `lane.files` (the skeleton paths from preflight). For GREEN: only implementation files (excluding test directory). For REFACTOR: both.
+
+### 5. RED/GREEN/REFACTOR Agent Prompts
+
+There is NO existing `datum act-red` CLI command. The agents are prompted directly. The brief is constructed per `references/brief-builder.md`.
+
+**RED Agent Prompt Template:**
+
+```js
+function RED_PROMPT(lane, worktreePath, preflight, upstreamStubs, specSections, propertiesFiltered, gitnexusContext) {
+  return `
+## Role: RED Agent — Write Failing Tests
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### Acceptance Criteria (your tests must prove at least one of these)
+${lane.acceptance_criteria.map((ac, i) =&gt; `${i+1}. ${ac}`).join('\n')}
+
+### Property to Prove
+${propertiesFiltered}
+
+### RED Note
+${lane.red_note}
+
+### Files You May Write To
+${(preflight?.outputs || []).map(o =&gt; `- ${o.path}`).join('\n') || lane.files.filter(f =&gt; f.includes('test') || f.includes('Test')).map(f =&gt; `- ${f}`).join('\n')}
+
+### Skeleton (pre-created — fill in assertion bodies, do NOT rename functions or move files)
+${preflight ? JSON.stringify(preflight.outputs, null, 2) : 'No skeleton available — create test structure from scratch.'}
+
+${lane.introduces_stubs ? `### Stub Requirement
+Emit TWO commits in order:
+1. Stub commit — declare public types/methods with fatalError/raise NotImplementedError bodies
+2. Test commit — the failing test written against the stub
+Commit message format: stub(${lane.id}): &lt;description&gt;` : '### Emit one commit: the failing test.'}
+
+### Code Context (GitNexus)
+${gitnexusContext || 'Not available.'}
+
+${upstreamStubs ? `### Upstream Stubs (types you may reference)\n${upstreamStubs}` : ''}
+
+### Done Condition
+Run: cd ${worktreePath} &amp;&amp; ${testCommand}
+Tests MUST FAIL. The failure message must reference the property under test.
+If tests pass, you have green blindness — rewrite the test with a genuinely failing assertion.
+Commit your work: git add . &amp;&amp; git commit -m "red(${lane.id}): &lt;description&gt;"
+`;
+}
+```
+
+**GREEN Agent Prompt Template:**
+
+```js
+function GREEN_PROMPT(lane, worktreePath, testSignal, specSections, propertiesFiltered, gitnexusContext) {
+  return `
+## Role: GREEN Agent — Make Tests Pass with Minimum Code
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### Acceptance Criteria
+${lane.acceptance_criteria.map((ac, i) =&gt; `${i+1}. ${ac}`).join('\n')}
+
+### Property Being Proved
+${propertiesFiltered}
+
+### Files You May Write To (implementation files ONLY — NO test files)
+${lane.files.filter(f =&gt; !f.includes('test') &amp;&amp; !f.includes('Test') &amp;&amp; !f.includes('spec')).map(f =&gt; `- ${f}`).join('\n')}
+
+### What the Test Expects (redacted signal — you do NOT have access to test source)
+${JSON.stringify(testSignal, null, 2)}
+
+For compile errors: implement the missing type/method.
+For assertion failures: implement the behavior described by the assertion message.
+
+### Code Context (GitNexus)
+${gitnexusContext || 'Not available.'}
+
+### Done Condition
+Run: cd ${worktreePath} &amp;&amp; ${testCommand}
+ALL tests MUST PASS. Do not add new tests. Do not edit test files.
+Commit: git add . &amp;&amp; git commit -m "green(${lane.id}): &lt;description&gt;"
+`;
+}
+```
+
+**REFACTOR Agent Prompt Template:**
+
+```js
+function REFACTOR_PROMPT(lane, worktreePath, implementationContent, testContent, testResults, specFull, propertiesFiltered, gitnexusImpact) {
+  return `
+## Role: REFACTOR Agent — Full Correctness + Clean Architecture
+
+## Working Directory
+${worktreePath}
+ALL file operations and commands MUST run from this directory.
+
+## Task: ${lane.id} — ${lane.title}
+
+### AC Checklist (verify each before marking done)
+${lane.acceptance_criteria.map((ac, i) =&gt; `- [ ] ${ac}`).join('\n')}
+
+### Properties (all must hold after your changes)
+${propertiesFiltered}
+
+### Implementation (current HEAD)
+${implementationContent}
+
+### Test Source (you may read but NEVER weaken, remove, or skip tests)
+${testContent}
+
+### Test Results
+${testResults}
+
+### Impact Analysis (GitNexus)
+${gitnexusImpact || 'Not available.'}
+
+### What You May NOT Do
+- Remove, rename, or disable a test (test_ratchet.py blocks this)
+- Delete or weaken an assertion
+- Add new tests (if missing AC found: log to brief_defects, signal orchestrator, STOP)
+
+### Done Condition
+ALL tests pass. Hooks pass. Linter clean. Formatter clean. Every AC checked off.
+Commit: git add . &amp;&amp; git commit -m "refactor(${lane.id}): &lt;description&gt;"
+
+Write proof of work to: .datum/runs/${runId}/proof-of-work/${lane.id}.md
+`;
+}
+```
+
+### 6. Skeleton Preflight
+
+**Yes, skeleton preflight should run before RED for each lane.** Per `references/04-act-skeleton-preflight.md` and `references/04-act.md` (line 16-20), the protocol is:
+
+```
+datum skeleton --task-id &lt;id&gt; --language &lt;detected_lang&gt; --tasks .datum/lane-plan.json --output .datum/runs/&lt;RUN_ID&gt;/preflight-&lt;id&gt;.json
+```
+
+**This should be integrated INTO `runLane()`, not as a separate phase.** Each lane runs skeleton preflight at the start of its RED sub-phase, not globally before all lanes. Reason: for lanes with `introduces_stubs = true`, the skeleton must be written AFTER the stub commit so it can import declared types (per the preflight doc).
+
+The skeleton creator (`datum/skeleton_creator.py`) writes test file scaffolding and returns a `preflight-result.json`. This is a mechanical operation that should use the `fast` tier.
+
+### 7. Parallel Within Wave vs. Finer-Grained Deps
+
+**Question 8 analysis in detail:**
+
+Consider tasks A (wave 1, no deps), B (wave 1, no deps), C (wave 2, depends on A).
+
+With wave-based `parallel()`:
+- Wave 1: `parallel([runLane(A), runLane(B)])` -- both run fully (RED-GREEN-REFACTOR) before wave 2 starts
+- Wave 2: `parallel([runLane(C)])` -- C starts RED only after A AND B are completely done
+
+This is OVERLY CONSERVATIVE. C's RED can start as soon as A's stub commit lands. C's GREEN can start as soon as A's GREEN commits. B's completion is irrelevant to C.
+
+**However, the wave model is the simplest correct approach and matches `parallel()`'s barrier semantics.** The performance cost is that some lanes wait unnecessarily. For a typical datum epic with 5-8 tasks, the wave model adds minimal wall-clock overhead because:
+1. Most tasks are independent (wave 1 is large)
+2. Dependent tasks are usually in a chain (wave 2, 3 are small)
+
+**Finer-grained tracking would require:**
+- A custom event loop that monitors each lane's state
+- Per-lane dependency semaphores
+- Polling or callback mechanism for "upstream committed"
+
+This complexity is not warranted for v1. The wave model is correct (never dispatches too early), maximally parallel within waves, and uses the standard `parallel()` primitive.
+
+**Recommendation: Use wave-based parallel for v1. Note the optimization opportunity for v2.**
+
+### 8. Model Selection
+
+Per `references/model-tiers.md`:
+
+| Agent | Tier | Workflow `model:` |
+|---|---|---|
+| Topology reader | fast | `"haiku"` |
+| Setup (worktrees) | fast | `"haiku"` |
+| Skeleton preflight | fast | `"haiku"` |
+| RED | standard | `"sonnet"` |
+| RED verify | fast | `"haiku"` |
+| GREEN | standard | `"sonnet"` |
+| GREEN verify | fast | `"haiku"` |
+| REFACTOR | standard | `"sonnet"` |
+| REFACTOR verify | fast | `"haiku"` |
+| Merge | fast | `"haiku"` |
+| Cleanup | fast | `"haiku"` |
+
+The workflow should read model config from `args` (passed at invocation time) or default to these tiers.
+
+### 9. Closing Issue #138
+
+After all tests pass and the PR is merged, the workflow's final phase should close issue #138 via `gh issue close 138`. This can be done by the merge agent or as a separate cleanup step.
+
+---
+
+## Complete Workflow Script Skeleton
+
+```js
+// .claude/workflows/datum-tdd-act.js
+//
+// Deterministic TDD Act phase orchestration.
+// Replaces manual RED→GREEN→REFACTOR dispatch with a mechanical
+// Workflow script that enforces gates, file ownership, and dependency order.
+//
+// Invocation:
+//   /workflow datum-tdd-act --run-id &lt;ID&gt; --epic-branch &lt;BRANCH&gt; --lane-plan-path .datum/lane-plan.json
+
+export const meta = {
+  name: 'datum-tdd-act',
+  description: 'Deterministic TDD Act phase: RED→GREEN→REFACTOR per lane with dependency gating',
+  version: '1.0.0',
+};
+
+// ── Schema Definitions ──────────────────────────────────────────────────
+
+const LanePlanSchema = {
+  schema_version: 'string',
+  total_lanes: 'number',
+  topological_order: ['string'],
+  file_ownership: 'object',
+  lanes: 'object',
+};
+
+const StageVerifySchema = {
+  verified: 'boolean',
+  error: 'string?',
+  exit_code: 'number?',
+};
+
+const FailureRecord = {
+  task_id: 'string',
+  stage: 'string',   // RED | GREEN | REFACTOR
+  attempt: 'number',
+  error: 'string',
+  timestamp: 'string',
+};
+
+// ── Configuration ──────────────────────────────────────────────────────
+
+const MODEL = {
+  fast:     'haiku',
+  standard: 'sonnet',
+  reasoning: 'opus',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function buildWaves(lanePlan) {
+  const lanes = lanePlan.lanes;
+  const ids = Object.keys(lanes);
+  const inDeg = {};
+  const adj = {};
+
+  for (const id of ids) {
+    const deps = lanes[id].depends_on || [];
+    inDeg[id] = deps.length;
+    for (const dep of deps) {
+      (adj[dep] = adj[dep] || []).push(id);
+    }
+  }
+
+  const waves = [];
+  let queue = ids.filter(id =&gt; inDeg[id] === 0);
+
+  while (queue.length &gt; 0) {
+    waves.push([...queue]);
+    const next = [];
+    for (const id of queue) {
+      for (const child of (adj[id] || [])) {
+        inDeg[child]--;
+        if (inDeg[child] === 0) next.push(child);
+      }
+    }
+    queue = next;
+  }
+
+  return waves;
+}
+
+// ── Per-Lane TDD Execution ──────────────────────────────────────────────
+
+async function runLane(taskId, lanePlan, worktreePaths, runId, testCommand, language) {
+  const lane = lanePlan.lanes[taskId];
+  const worktreePath = worktreePaths[taskId];
+  const isStructural = lane.stage === 'structural';
+
+  log(`[${taskId}] Starting lane: ${lane.title} (${isStructural ? 'structural' : 'behavioral'})`);
+
+  if (isStructural) {
+    // Structural tasks bypass RED and GREEN — REFACTOR only
+    const refactorResult = await runRefactor(taskId, lane, worktreePath, runId, testCommand);
+    if (!refactorResult) {
+      appendFailure(runId, taskId, 'REFACTOR', 'Refactor failed for structural task');
+      return null;
+    }
+    log(`[${taskId}] Structural lane complete`);
+    return { taskId, status: 'completed' };
+  }
+
+  // ── Skeleton Preflight ──────────────────────────────────────────────
+  const preflight = await agent(
+    `Run this command and return the full JSON output:
+cd ${worktreePath} &amp;&amp; datum skeleton --task-id ${taskId} --language ${language} --tasks .datum/lane-plan.json --output .datum/runs/${runId}/preflight-${taskId}.json
+Then read and return the contents of .datum/runs/${runId}/preflight-${taskId}.json`,
+    { model: MODEL.fast }
+  );
+
+  // ── RED ──────────────────────────────────────────────────────────────
+  log(`[${taskId}] RED: writing failing tests`);
+
+  const redResult = await agent(
+    buildRedPrompt(taskId, lane, worktreePath, preflight, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify RED: tests must FAIL
+  const redVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage red --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!redVerify.verified) {
+    log(`[${taskId}] RED verification FAILED: ${redVerify.error}`);
+    appendFailure(runId, taskId, 'RED', redVerify.error || 'Green blindness — tests passed at RED');
+    return null;
+  }
+
+  log(`[${taskId}] RED verified — tests correctly failing`);
+
+  // ── GREEN ─────────────────────────────────────────────────────────────
+  log(`[${taskId}] GREEN: making tests pass`);
+
+  // Get test signal for GREEN brief (redacted — no test source)
+  const testSignal = await agent(
+    `cd ${worktreePath} &amp;&amp; datum test-signal --framework pytest --input &lt;(cd ${worktreePath} &amp;&amp; ${testCommand} 2&gt;&amp;1 || true)
+Return the JSON output only.`,
+    { model: MODEL.fast }
+  );
+
+  const greenResult = await agent(
+    buildGreenPrompt(taskId, lane, worktreePath, testSignal, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify GREEN: tests must PASS
+  const greenVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage green --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!greenVerify.verified) {
+    log(`[${taskId}] GREEN verification FAILED: ${greenVerify.error}`);
+    appendFailure(runId, taskId, 'GREEN', greenVerify.error || 'Tests still failing after GREEN');
+    return null;
+  }
+
+  log(`[${taskId}] GREEN verified — tests passing`);
+
+  // ── REFACTOR ──────────────────────────────────────────────────────────
+  const refactorResult = await runRefactor(taskId, lane, worktreePath, runId, testCommand);
+  if (!refactorResult) {
+    appendFailure(runId, taskId, 'REFACTOR', 'Refactor failed');
+    return null;
+  }
+
+  log(`[${taskId}] Lane complete`);
+  return { taskId, status: 'completed' };
+}
+
+async function runRefactor(taskId, lane, worktreePath, runId, testCommand) {
+  log(`[${taskId}] REFACTOR: cleanup + full AC coverage`);
+
+  const refactorResult = await agent(
+    buildRefactorPrompt(taskId, lane, worktreePath, runId, testCommand),
+    { model: MODEL.standard }
+  );
+
+  // Verify REFACTOR: tests must still PASS
+  const refactorVerify = await agent(
+    `cd ${worktreePath} &amp;&amp; datum verify-stage green --test-command "${testCommand}"
+Report the result as JSON: {"verified": true/false, "error": "...if failed"}`,
+    { model: MODEL.fast, schema: StageVerifySchema }
+  );
+
+  if (!refactorVerify.verified) {
+    log(`[${taskId}] REFACTOR verification FAILED: ${refactorVerify.error}`);
+    return null;
+  }
+
+  return refactorVerify;
+}
+
+function appendFailure(runId, taskId, stage, error) {
+  // The agent will append to the JSONL file
+  const record = JSON.stringify({
+    task_id: taskId,
+    stage,
+    error,
+    timestamp: new Date().toISOString(),
+  });
+  log(`FAILURE: ${record}`);
+  // Actual file append happens in the cleanup agent
+}
+
+// ── Main Workflow ────────────────────────────────────────────────────────
+
+export default async function run(args) {
+  const runId = args.runId || new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const epicBranch = args.epicBranch;
+  const lanePlanPath = args.lanePlanPath || '.datum/lane-plan.json';
+  const testCommand = args.testCommand || 'pytest -q';
+  const language = args.language || 'python';
+
+  // ── Phase: Topology ──────────────────────────────────────────────────
+  phase('Topology');
+
+  const lanePlan = await agent(
+    `Read the file at ${lanePlanPath} and return its contents as a JSON object.`,
+    { model: MODEL.fast, schema: LanePlanSchema }
+  );
+
+  const waves = buildWaves(lanePlan);
+  log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
+  for (let i = 0; i &lt; waves.length; i++) {
+    log(`  Wave ${i}: [${waves[i].join(', ')}]`);
+  }
+
+  // ── Phase: Setup ──────────────────────────────────────────────────────
+  phase('Setup');
+
+  const laneIds = Object.keys(lanePlan.lanes);
+  const setupResult = await agent(
+    `Run this command and return the output:
+datum worktrees setup --run-id ${runId} --epic-branch ${epicBranch} --lane-ids ${laneIds.join(',')}
+Return the JSON mapping of lane_id to worktree_path.`,
+    { model: MODEL.fast }
+  );
+
+  // Parse worktree paths from setup output
+  const worktreePaths = setupResult; // agent returns parsed JSON
+
+  // ── Phase: Act ────────────────────────────────────────────────────────
+  phase('Act');
+
+  const results = {};
+  const failures = [];
+
+  for (let waveIdx = 0; waveIdx &lt; waves.length; waveIdx++) {
+    const wave = waves[waveIdx];
+    log(`=== Wave ${waveIdx} starting: [${wave.join(', ')}] ===`);
+
+    const waveResults = await parallel(
+      wave.map(taskId =&gt; async () =&gt; {
+        try {
+          return await runLane(taskId, lanePlan, worktreePaths, runId, testCommand, language);
+        } catch (err) {
+          log(`[${taskId}] FATAL ERROR: ${err.message}`);
+          appendFailure(runId, taskId, 'UNKNOWN', err.message);
+          return null;
+        }
+      })
+    );
+
+    for (let i = 0; i &lt; wave.length; i++) {
+      results[wave[i]] = waveResults[i];
+      if (!waveResults[i]) {
+        failures.push(wave[i]);
+      }
+    }
+
+    log(`=== Wave ${waveIdx} complete: ${wave.length - failures.filter(f =&gt; wave.includes(f)).length}/${wave.length} succeeded ===`);
+  }
+
+  // ── Phase: Merge ──────────────────────────────────────────────────────
+  phase('Merge');
+
+  const completedLanes = Object.entries(results)
+    .filter(([_, r]) =&gt; r?.status === 'completed')
+    .map(([id]) =&gt; id);
+
+  if (completedLanes.length === 0) {
+    log('No lanes completed — skipping merge');
+  } else {
+    // Merge in topological order (only completed lanes)
+    const mergeOrder = lanePlan.topological_order
+      .map(item =&gt; typeof item === 'string' ? item : item.root)
+      .filter(id =&gt; completedLanes.includes(id));
+
+    await agent(
+      `Run this command:
+datum worktrees merge --epic-branch ${epicBranch} --lane-order ${mergeOrder.join(',')} --commit-message "act: merge ${completedLanes.length} lanes for ${epicBranch}"`,
+      { model: MODEL.fast }
+    );
+
+    log(`Merged ${completedLanes.length} lanes in order: [${mergeOrder.join(', ')}]`);
+  }
+
+  // ── Phase: Cleanup ────────────────────────────────────────────────────
+  phase('Cleanup');
+
+  await agent(
+    `Run this command:
+datum worktrees cleanup --run-id ${runId} --epic-branch ${epicBranch}`,
+    { model: MODEL.fast }
+  );
+
+  // Write failure records
+  if (failures.length &gt; 0) {
+    await agent(
+      `Write the following failure records to .datum/runs/${runId}/act-failures.jsonl:
+${failures.map(id =&gt; JSON.stringify({ task_id: id, stage: results[id]?.stage || 'UNKNOWN', error: results[id]?.error || 'Lane failed' })).join('\n')}`,
+      { model: MODEL.fast }
+    );
+  }
+
+  // ── Summary ──────────────────────────────────────────────────────────
+  log(`\nAct phase complete:`);
+  log(`  Total lanes: ${lanePlan.total_lanes}`);
+  log(`  Completed: ${completedLanes.length}`);
+  log(`  Failed: ${failures.length}`);
+  if (failures.length &gt; 0) {
+    log(`  Failed lanes: [${failures.join(', ')}]`);
+  }
+
+  return {
+    runId,
+    total: lanePlan.total_lanes,
+    completed: completedLanes.length,
+    failed: failures.length,
+    failedLanes: failures,
+  };
+}
+```
+
+### New CLI Commands
+
+**File: `datum/cli.py`** -- Add a `worktrees` subcommand group and a `verify-stage` command.
+
+```python
+# ── Worktree management ──────────────────────────────────────────────────
+
+worktrees_app = typer.Typer(name="worktrees", help="Pipeline worktree lifecycle management.")
+app.add_typer(worktrees_app)
+
+
+@worktrees_app.command("setup")
+def worktrees_setup(
+    run_id: str = typer.Option(..., "--run-id", help="Unique pipeline run identifier"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_ids: str = typer.Option(..., "--lane-ids", help="Comma-separated lane IDs"),
+):
+    """Create one worktree per lane for parallel ACT execution.
+
+    Creates .datum/worktrees/&lt;run_id&gt;/&lt;lane_id&gt;/ for each lane,
+    each on its own sub-branch starting from the epic branch tip.
+    Prints JSON mapping: {lane_id: worktree_path}.
+    """
+    from datum.worktree_manager import setup_pipeline_worktrees
+
+    ids = [lid.strip() for lid in lane_ids.split(",")]
+    mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    # Convert Path values to strings for JSON serialization
+    result = {k: str(v) for k, v in mapping.items()}
+    console.print(json.dumps(result, indent=2))
+
+
+@worktrees_app.command("merge")
+def worktrees_merge(
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_order: str = typer.Option(..., "--lane-order", help="Comma-separated lane IDs in merge order"),
+    commit_message: str = typer.Option(..., "--commit-message", help="Merge commit message"),
+):
+    """Squash-merge completed lane branches into the epic branch.
+
+    Merges in the specified order (dependency order: depended-on first).
+    All changes land in one commit on the epic branch.
+    """
+    from datum.worktree_manager import merge_lane_branches
+
+    order = [lid.strip() for lid in lane_order.split(",")]
+    sha = merge_lane_branches(epic_branch, order, commit_message)
+    console.print(json.dumps({"sha": sha, "merged": order}))
+
+
+@worktrees_app.command("cleanup")
+def worktrees_cleanup(
+    run_id: str = typer.Option(..., "--run-id", help="Run ID to clean up"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+):
+    """Remove all lane worktrees for a given run.
+
+    Discovers lanes by listing .datum/worktrees/&lt;run_id&gt;/ and
+    removes each worktree and its sub-branch.
+    """
+    from datum.worktree_manager import cleanup_run_worktrees
+
+    cleaned = cleanup_run_worktrees(run_id, epic_branch)
+    console.print(json.dumps({"cleaned": cleaned}))
+
+
+# ── TDD stage verification ────────────────────────────────────────────────
+
+@app.command(name="verify-stage")
+def verify_stage_cmd(
+    stage: str = typer.Argument(..., help="Stage to verify: 'red', 'green', or 'baseline'"),
+    repo_path: str = typer.Option(".", "--repo", help="Repository root path"),
+    test_command: str = typer.Option("pytest -q", "--test-command", help="Test runner command"),
+):
+    """Verify TDD stage gate.
+
+    red:      Tests must FAIL (green blindness check). Exit 0 if failing, exit 1 if passing.
+    green:    Tests must PASS. Exit 0 if passing, exit 1 if failing.
+    baseline: Tests must PASS before starting a new RED cycle. Exit 0 if passing, exit 1 if failing.
+    """
+    import shlex
+    from datum.tdd_driver import (
+        DirtyBaselineError,
+        GreenBlindnessError,
+        verify_green_baseline,
+        verify_red_stage,
+    )
+
+    cmd = shlex.split(test_command)
+    path = Path(repo_path).resolve()
+
+    try:
+        if stage == "red":
+            verify_red_stage(path, test_command=cmd)
+            console.print("[green]RED verified: tests are correctly failing.[/green]")
+        elif stage in ("green", "baseline"):
+            verify_green_baseline(path, test_command=cmd)
+            console.print("[green]GREEN verified: tests are passing.[/green]")
+        else:
+            console.print(f"[red]Unknown stage: {stage}. Use 'red', 'green', or 'baseline'.[/red]")
+            raise typer.Exit(1)
+    except GreenBlindnessError as e:
+        console.print(f"[red]RED verification FAILED: {e}[/red]")
+        raise typer.Exit(1)
+    except DirtyBaselineError as e:
+        console.print(f"[red]Baseline verification FAILED: {e}[/red]")
+        raise typer.Exit(1)
+```
+
+### Test List
+
+**File: `tests/test_tdd_cli_commands.py`**
+
+| Test | What it verifies |
+|---|---|
+| `test_worktrees_setup_creates_worktrees` | `datum worktrees setup` creates one worktree per lane under `.datum/worktrees/&lt;run_id&gt;/`, returns JSON mapping with valid paths. Uses a real git repo in `tmp_path`. |
+| `test_worktrees_setup_fails_without_epic_branch` | `datum worktrees setup` exits non-zero when the epic branch does not exist. Verifies RuntimeError is surfaced. |
+| `test_worktrees_setup_idempotent_error` | Calling setup twice with the same run_id raises a clear error (git worktree add fails for existing worktree). |
+| `test_worktrees_merge_squashes_in_order` | `datum worktrees merge` applies squash-merges in the specified order. Creates 2 lane branches with different file changes, merges, verifies the epic branch has both changes in one commit. |
+| `test_worktrees_merge_skips_nonexistent_lane` | `datum worktrees merge` raises RuntimeError when a lane branch does not exist (e.g., a failed lane that never committed). |
+| `test_worktrees_cleanup_removes_all` | `datum worktrees cleanup` removes all worktrees and sub-branches for a run. After cleanup, `git worktree list` does not include the lane paths. |
+| `test_verify_stage_red_passes_when_tests_fail` | `datum verify-stage red` exits 0 when the test suite fails. Uses a fixture repo with a deliberately failing test. |
+| `test_verify_stage_red_fails_when_tests_pass` | `datum verify-stage red` exits 1 (GreenBlindnessError) when all tests pass. Detects green blindness. |
+| `test_verify_stage_green_passes_when_tests_pass` | `datum verify-stage green` exits 0 when all tests pass. |
+| `test_verify_stage_green_fails_when_tests_fail` | `datum verify-stage green` exits 1 (DirtyBaselineError) when tests fail. |
+| `test_verify_stage_custom_test_command` | `datum verify-stage` respects the `--test-command` flag. Uses a custom command like `python -m pytest tests/specific_test.py`. |
+| `test_verify_stage_unknown_stage_exits_1` | `datum verify-stage foobar` exits 1 with a clear error message. |
+
+**File: `tests/test_workflow_wave_builder.py`** (unit tests for wave-building logic, if extracted to Python)
+
+| Test | What it verifies |
+|---|---|
+| `test_buildwaves_independent_tasks` | All tasks with no deps go into wave 0. |
+| `test_buildwaves_linear_chain` | A-&gt;B-&gt;C produces 3 waves of 1 task each. |
+| `test_buildwaves_diamond` | A, B (both no deps), C (depends on A and B) produces wave 0=[A,B], wave 1=[C]. |
+| `test_buildwaves_complex_dag` | Tests the real lane-plan.json structure: tasks 1,3,4,5,6 (no deps) in wave 0, task 2 (depends on 1) in wave 1, task 7 (depends on 1,3,4,6) in wave 1, task 8 (depends on 7) in wave 2. |
+
+### Gaps and Concerns for the Implementer
+
+1. **FleetView API uncertainty.** The `agent()`, `parallel()`, `phase()`, `log()` primitives are described in the system facts but there is no reference implementation or API documentation in the repo. The implementer should verify:
+   - Whether `agent()` supports `cwd:` as an option (critical for worktree isolation)
+   - Whether `agent()` supports `schema:` for structured output
+   - Whether `parallel()` returns results in order or as a map
+   - Whether there is a way to pass environment variables to agents
+
+2. **Test signal generation for GREEN.** The GREEN agent needs a redacted test signal. The workflow uses `datum test-signal` but the exact invocation pattern (piping test output) needs to match the existing test_signal.py expectations. The test_signal module reads from a file or stdin -- verify the correct invocation.
+
+3. **Commit queue integration.** The existing `pipeline-dispatch.md` describes a commit queue (`datum commit-queue`) for serializing commits. The worktree model (each lane has its own branch) eliminates the commit queue's primary purpose (preventing concurrent writes to the same branch). However, the merge phase still needs serialization. The implementer should decide: keep the commit queue for merge, or rely on `merge_lane_branches()` which already serializes merges.
+
+4. **Retry logic is NOT in v1 scope.** The draft plan does not include the retry ladder (standard -&gt; reasoning -&gt; reasoning+verbose) from `references/model-tiers.md`. Each stage gets one attempt. Retry should be a v2 enhancement. The failure is recorded and the lane is skipped.
+
+5. **Adversarial agent is NOT in v1 scope.** Per `references/04-act.md`, an ADVERSARIAL agent runs after REFACTOR. This is not in the draft plan and should be deferred to v2.
+
+6. **Security and docs sidecars are NOT in v1 scope.** The Act phase doc mentions `security-sidecar` and `docs-scaffolder` running alongside the main loop. These are deferred.
+
+7. **`topological_order` items are `TopologicalOrderItem` (RootModel), not plain strings.** When reading from `lane-plan.json`, the items are strings. But when using the Pydantic schema, they are wrapped in `TopologicalOrderItem.root`. The workflow reads raw JSON, so this is fine -- but the merge-order filtering line must handle this:
+   ```js
+   const mergeOrder = lanePlan.topological_order
+     .map(item =&gt; typeof item === 'string' ? item : item.root)
+   ```
+
+8. **File ownership enforcement is prompt-only in v1.** There is no mechanical post-commit check in the workflow. The test_ratchet pre-commit hook catches some violations, but general file-ownership enforcement relies on the agent following instructions. The implementer should add a post-commit `git diff --name-only` check and fail the lane if non-owned files are touched.
+
+9. **install.sh symlink.** The workflow file lives at `skills/datum-tdd-act.js` in the repo. For Claude Code to discover it, it needs to be symlinked to `~/.claude/workflows/datum-tdd-act.js`. The `install.sh` script's `register_tool` function creates symlinks to `~/.claude/skills/datum`, but workflows live in a different directory. A new registration step is needed in `install.sh`.
+
+10. **No `datum act-red` / `datum act-green` CLI commands exist.** The agents are prompted directly with full briefs. There is no thin CLI wrapper for running a specific TDD stage. The workflow constructs the full brief in JS and passes it as the agent prompt. This is the correct approach -- adding CLI wrappers would create unnecessary indirection.
+
+### Critical Files for Implementation
+
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/cli.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/worktree_manager.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/tdd_driver.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/pipeline_scheduler.py`
+- `/Volumes/Extra/repos/gitrdunhq/datum/references/pipeline-dispatch.md`</result>
+<usage><subagent_tokens>114855</subagent_tokens><tool_uses>75</tool_uses><duration_ms>571831</duration_ms></usage>
+</task-notification>
+
+---
+
+ok dogfood pick a feature off the board and use it
+
+---
+
+yes did we run the workflow as a claude workflow?
+
+---
+
+Push
+
+---
+
+so with workflows we can really enforce those JSON contracts we made right?
+
+---
+
+yeah lets wait and see what other friction points came up and then iterate an iterate
+
+---
+
+<task-notification>
+<task-id>wrq2r5p6f</task-id>
+<tool-use-id>toolu_01TeNHg5jgmdhgDpGd2pvc58</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/wrq2r5p6f.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"total":2,"completed":2,"failed":0,"failedLanes":[],"completedLanes":["task-001","task-002"]}</result>
+<usage><agent_count>20</agent_count><subagent_tokens>468326</subagent_tokens><tool_uses>126</tool_uses><duration_ms>902793</duration_ms></usage>
+</task-notification>

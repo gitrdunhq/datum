@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "31fb9b590d76",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "skills/datum-tdd-act.js"
+  ],
+  "sessions": [
+    {
+      "metadata": "/31/fb9b590d76/0/metadata.json",
+      "transcript": "/31/fb9b590d76/0/full.jsonl",
+      "content_hash": "/31/fb9b590d76/0/content_hash.txt",
+      "prompt": "/31/fb9b590d76/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5595,
+    "cache_creation_tokens": 633955,
+    "cache_read_tokens": 29831591,
+    "output_tokens": 115397,
+    "api_call_count": 255
+  }
+}
