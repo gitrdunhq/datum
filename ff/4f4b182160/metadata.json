@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ff4f4b182160",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActor.swift",
+    "Record-Audio/Sources/AudioInfrastructure/WAVCleanedAudioSink.swift",
+    "Record-Audio/Sources/AudioInfrastructure/WAVWriter.swift",
+    "Record-Audio/Tests/Unit/AECProcessorActorTests.swift",
+    "Record-Audio/Tests/Unit/WAVCleanedAudioSinkTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterConcurrencyTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterErrorHandlerTests.swift",
+    "Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift",
+    "Record-CrossPlatform-Foundation/Sources/Domain/Protocols/AudioCaptureEngine.swift",
+    "Record-Foundation/Tests/Unit/Domain/AppConfigTests.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/SearchViewModel.swift",
+    "Record-Presentation/Tests/Unit/Presentation/ConcurrencyCorrectnessTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateAECFarEndTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateAECToggleTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateDualTrackTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateFanOutTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateSeparatePipelinesTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/RecordingStateStructuredTaskTests.swift",
+    "docs/domain-audit-20260612/01-record-foundation-domain.md",
+    "docs/domain-audit-20260612/02-record-crossplatform-domain.md",
+    "docs/domain-audit-20260612/03-record-audio.md",
+    "docs/domain-audit-20260612/04-record-ml.md",
+    "docs/domain-audit-20260612/05-record-app-business.md",
+    "docs/domain-audit-20260612/06-record-presentation.md",
+    "docs/domain-audit-20260612/07-adversarial-review.md",
+    "docs/domain-audit-20260612/round2-cross-platform-silent-failures.md",
+    "docs/domain-audit-20260612/round2-data-flow-error-propagation.md",
+    "docs/domain-audit-20260612/round2-layer-violations-concurrency.md",
+    "docs/domain-contract-audit-20260612.md",
+    "docs/epics/datum/epic-30-audit-remediation/TICKET.md",
+    "test-failures.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ff/4f4b182160/0/metadata.json",
+      "transcript": "/ff/4f4b182160/0/full.jsonl",
+      "content_hash": "/ff/4f4b182160/0/content_hash.txt",
+      "prompt": "/ff/4f4b182160/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2663,
+    "cache_creation_tokens": 590551,
+    "cache_read_tokens": 16207607,
+    "output_tokens": 104871,
+    "api_call_count": 158
+  }
+}
