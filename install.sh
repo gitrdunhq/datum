@@ -362,6 +362,18 @@ for e in "${target_entries[@]}"; do
   register_tool "$(_field "$e" 2)" "$(_field "$e" 1)" "$LINK_TARGET"
 done
 
+# ── Workflow scripts ──────────────────────────────────────────────────────────
+
+WORKFLOWS_DIR="${HOME}/.claude/workflows"
+mkdir -p "$WORKFLOWS_DIR"
+
+WF_SRC="${LINK_TARGET}/skills/datum-tdd-act.js"
+WF_DEST="${WORKFLOWS_DIR}/datum-tdd-act.js"
+if [ -f "$WF_SRC" ]; then
+  ln -sf "$WF_SRC" "$WF_DEST"
+  echo "✓ Workflow linked: ${WF_DEST}"
+fi
+
 # ── Report ────────────────────────────────────────────────────────────────────
 
 [ ${#registered[@]} -gt 0 ] && echo "✓ Registered:"        && printf '    %s\n' "${registered[@]}"

@@ -62,6 +62,7 @@ def retrospect(
 ):
     """Run programmatic loop over recent transcripts to group failures."""
     from datum.observability.retrospect import run_retrospect
+
     run_retrospect(n)
 
 
@@ -948,7 +949,9 @@ def gc(
         project_hash = str(target.parent.resolve()).replace("/", "-")
         memory_dir = Path.home() / ".claude" / "projects" / project_hash / "memory"
         if memory_dir.exists():
-            subprocess.run([sys.executable, "-m", "datum.memory_audit", str(memory_dir)])
+            subprocess.run(
+                [sys.executable, "-m", "datum.memory_audit", str(memory_dir)]
+            )
         else:
             console.print("[dim]No memory dir found; skipping memory audit.[/dim]")
 
@@ -1304,6 +1307,105 @@ def retrospect(
             console.print(f"  • {s}")
 
     console.print()
+
+
+# ── Worktree lifecycle management (#133) ─────────────────────────────────────
+
+worktrees_app = typer.Typer(
+    name="worktrees", help="Pipeline worktree lifecycle management."
+)
+app.add_typer(worktrees_app)
+
+
+@worktrees_app.command("setup")
+def worktrees_setup(
+    run_id: str = typer.Option(..., "--run-id", help="Unique pipeline run identifier"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_ids: str = typer.Option(..., "--lane-ids", help="Comma-separated lane IDs"),
+):
+    """Create one worktree per lane for parallel ACT execution."""
+    from datum.worktree_manager import setup_pipeline_worktrees
+
+    ids = [lid.strip() for lid in lane_ids.split(",") if lid.strip()]
+    mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    result = {k: str(v) for k, v in mapping.items()}
+    typer.echo(json.dumps(result, indent=2))
+
+
+@worktrees_app.command("merge")
+def worktrees_merge(
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+    lane_order: str = typer.Option(
+        ..., "--lane-order", help="Comma-separated lane IDs in dependency order"
+    ),
+    commit_message: str = typer.Option(
+        ..., "--commit-message", help="Merge commit message"
+    ),
+):
+    """Squash-merge completed lane branches into the epic branch."""
+    from datum.worktree_manager import merge_lane_branches
+
+    order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
+    sha = merge_lane_branches(epic_branch, order, commit_message)
+    typer.echo(json.dumps({"sha": sha, "merged": order}))
+
+
+@worktrees_app.command("cleanup")
+def worktrees_cleanup(
+    run_id: str = typer.Option(..., "--run-id", help="Run ID to clean up"),
+    epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
+):
+    """Remove all lane worktrees for a given run."""
+    from datum.worktree_manager import cleanup_run_worktrees
+
+    cleaned = cleanup_run_worktrees(run_id, epic_branch)
+    typer.echo(json.dumps({"cleaned": cleaned}))
+
+
+# ── TDD stage verification (#133) ────────────────────────────────────────────
+
+
+@app.command(name="verify-stage")
+def verify_stage_cmd(
+    stage: str = typer.Argument(
+        ..., help="Stage to verify: 'red', 'green', or 'baseline'"
+    ),
+    repo_path: str = typer.Option(".", "--repo", help="Repository root path"),
+    test_command: str = typer.Option(
+        "pytest -q", "--test-command", help="Test runner command"
+    ),
+):
+    """Verify TDD stage gate: RED tests must fail, GREEN tests must pass."""
+    import shlex
+
+    from datum.tdd_driver import (
+        DirtyBaselineError,
+        GreenBlindnessError,
+        verify_green_baseline,
+        verify_red_stage,
+    )
+
+    cmd = shlex.split(test_command)
+    path = Path(repo_path).resolve()
+
+    try:
+        if stage == "red":
+            verify_red_stage(path, test_command=cmd)
+            typer.echo(json.dumps({"verified": True, "stage": "red"}))
+        elif stage in ("green", "baseline"):
+            verify_green_baseline(path, test_command=cmd)
+            typer.echo(json.dumps({"verified": True, "stage": stage}))
+        else:
+            typer.echo(
+                json.dumps({"verified": False, "error": f"Unknown stage: {stage}"})
+            )
+            raise typer.Exit(1)
+    except GreenBlindnessError as e:
+        typer.echo(json.dumps({"verified": False, "stage": "red", "error": str(e)}))
+        raise typer.Exit(1)
+    except DirtyBaselineError as e:
+        typer.echo(json.dumps({"verified": False, "stage": stage, "error": str(e)}))
+        raise typer.Exit(1)
 
 
 def main():
