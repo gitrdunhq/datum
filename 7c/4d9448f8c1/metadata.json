@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "7c4d9448f8c1",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "Record-Audio/Tests/Unit/AudioSessionDetectorCoreAudioTests.swift",
+    "Record-Audio/Tests/Unit/AudioSessionDetectorTests.swift",
+    "Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/7c/4d9448f8c1/0/metadata.json",
+      "transcript": "/7c/4d9448f8c1/0/full.jsonl",
+      "content_hash": "/7c/4d9448f8c1/0/content_hash.txt",
+      "prompt": "/7c/4d9448f8c1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 13614,
+    "cache_creation_tokens": 2367699,
+    "cache_read_tokens": 53965470,
+    "output_tokens": 341724,
+    "api_call_count": 534
+  }
+}
