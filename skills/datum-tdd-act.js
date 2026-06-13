@@ -292,29 +292,48 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `test quality ${reflectScore}/10` }
   }
 
-  // ── Test signal for GREEN ─────────────────────────────────────────────
+  // ── Context for GREEN: test signal + skeleton preflight ────────────────
   const signalText = await agent(
-    `cd "${wt}" && ${laneCfg.testCommand} 2>${cfg.testCommand} 2>&11 || true\n` +
+    `cd "${wt}" && ${laneCfg.testCommand} 2>&1 || true\n` +
     `Extract ONLY: exit_code (integer), error messages (array of strings), assertion failure messages (array of strings). No test source code. Output as JSON.`,
     { label: `signal:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
   )
   const signal = parseAgentJson(signalText, { exit_code: 1, errors: [], assertion_messages: [] })
 
-  // ── GREEN ─────────────────────────────────────────────────────────────
+  // Read skeleton preflight if it exists — tells GREEN what to create
+  const preflightPath = `${wt}/.datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  const preflightText = await agent(
+    `cat "${preflightPath}" 2>/dev/null || echo '{}'`,
+    { label: `read-preflight:${taskId}`, phase: 'Act', model: 'haiku', agentType: 'datum-cli' }
+  )
+  const preflight = parseAgentJson(preflightText, {})
+
+  // ── GREEN (sonnet first, opus on retry) ───────────────────────────────
   log(`[${taskId}] GREEN: making tests pass`)
 
-  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', { test_signal: signal })
+  // Lane plan can override: lane.green_model (e.g., "opus" for complex tasks)
+  const greenModel = lane.green_model || 'sonnet'
+
+  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', {
+    test_signal: signal,
+    preflight: preflight,
+  })
   const greenPacketStr = JSON.stringify(greenPacket)
   const greenCtxCmd = laneCtxCmd(greenPacket, wt)
 
   let green = await agent(
     `SETUP (run first): ${greenCtxCmd}\n` +
-    `TASK PACKET: ${greenPacketStr}`,
-    { label: `green:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA }
+    `TASK PACKET: ${greenPacketStr}\n\n` +
+    `CONTEXT: Read the implementation files in working_directory to understand existing code before writing. ` +
+    `The preflight field shows what functions/classes the skeleton expects. ` +
+    `Write MINIMUM code to make tests pass — nothing more.`,
+    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA }
   )
 
   if (!green || !green.committed) {
-    log(`[${taskId}] GREEN attempt 1 failed, retrying with error context`)
+    // Escalate to opus on retry — sonnet couldn't handle it
+    const escalatedModel = greenModel === 'opus' ? 'opus' : 'opus'
+    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}), retrying with ${escalatedModel}`)
     const retrySignalText = await agent(
       `cd "${wt}" && ${laneCfg.testCommand} 2>&1 || true\n` +
       `Extract ONLY: exit_code, error messages, assertion failure messages. Output as JSON.`,
@@ -323,12 +342,16 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     const retrySignal = parseAgentJson(retrySignalText, { exit_code: 1, errors: [], assertion_messages: [] })
     const retryPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', {
       test_signal: retrySignal,
-      retry_hint: `Previous attempt failed: ${(green && green.failure_reason) || 'no commit'}. Fix the implementation.`,
+      preflight: preflight,
+      retry_hint: `Previous attempt failed: ${(green && green.failure_reason) || 'no commit'}. Read the FULL error output carefully. Fix the implementation.`,
     })
     green = await agent(
       `SETUP (run first): ${greenCtxCmd}\n` +
-      `TASK PACKET: ${JSON.stringify(retryPacket)}`,
-      { label: `green-retry:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA }
+      `TASK PACKET: ${JSON.stringify(retryPacket)}\n\n` +
+      `CONTEXT: This is a RETRY. The previous attempt failed. Read the existing implementation files, ` +
+      `understand what went wrong from the test_signal errors, and fix it. ` +
+      `The preflight field shows expected function signatures.`,
+      { label: `green-retry:${taskId}`, phase: 'Act', model: escalatedModel, schema: STAGE_RESULT_SCHEMA }
     )
   }
 
