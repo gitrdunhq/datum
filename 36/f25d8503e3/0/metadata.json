@@ -1,0 +1,151 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "36f25d8503e3",
+  "session_id": "498c339f-c317-4cee-9251-a540fa9de6b3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-13T18:01:14.568298Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "skills/datum-tdd-act.js"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "53745a8d74b2",
+  "token_usage": {
+    "input_tokens": 5627,
+    "cache_creation_tokens": 643620,
+    "cache_read_tokens": 34170342,
+    "output_tokens": 120993,
+    "api_call_count": 277
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-workflow-orchestration-patterns-2026-06-13T15:20:23.185652Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "workflow-orchestration-patterns"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "a27e4d8c91ae",
+      "timestamp": "2026-06-13T15:20:23.185652Z",
+      "native": {
+        "command": "/workflow-orchestration-patterns"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/workflow-orchestration-patterns",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-nano-banana-pro-prompts-recommend-skill-2026-06-13T15:40:44.105018Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "nano-banana-pro-prompts-recommend-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "17d4801f2976",
+      "timestamp": "2026-06-13T15:40:44.105018Z",
+      "native": {
+        "command": "/nano-banana-pro-prompts-recommend-skill"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/nano-banana-pro-prompts-recommend-skill",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-13T18:01:14.501925Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 18,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 18,
+    "total_lines_changed": 20,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 6260,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1203568,
+      "agent_lines_removed": 65,
+      "user_added_per_file": {
+        ".datum/config.toml": 18,
+        ".serena/.gitignore": 2,
+        ".serena/project.yml": 133,
+        ".worktrees/w1-allowlist/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-allowlist/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-allowlist/datum/command_guard.py": 103,
+        ".worktrees/w1-budget/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-budget/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-compaction/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-compaction/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-memory-repair/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-memory-repair/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-scoring/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-scoring/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w1-typed-events/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w1-typed-events/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-abort-dirty/.datum/config.toml": 18,
+        ".worktrees/w2-abort-dirty/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-abort-dirty/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-abort-dirty/tests/test_tdd_driver.py": 170,
+        ".worktrees/w2-corpus-sql/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-corpus-sql/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-corpus-sql/datum/memory/corpus_sql.py": 508,
+        ".worktrees/w2-corpus-sql/scripts/lane-tools/corpus_sql.py": 54,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/lane-plan.json": 11,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/state.json": 15,
+        ".worktrees/w2-corpus-sql/tests/fixtures/corpus/tdd-failure.json": 7,
+        ".worktrees/w2-corpus-sql/tests/test_corpus_sql.py": 619,
+        ".worktrees/w2-datum-gc/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-datum-gc/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-datum-gc/datum/gc.py": 368,
+        ".worktrees/w2-datum-gc/tests/test_gc.py": 467,
+        ".worktrees/w2-failure-layer/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-failure-layer/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-failure-layer/datum/failure_layer.py": 179,
+        ".worktrees/w2-failure-layer/tests/test_failure_layer.py": 261,
+        ".worktrees/w2-progress/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-progress/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-risk-classes/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w2-risk-classes/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w2-risk-classes/datum/tool_risk.py": 98,
+        ".worktrees/w2-risk-classes/tests/test_tool_risk.py": 170,
+        ".worktrees/w3-retrieve/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-retrieve/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-retrieve/tests/test_memory_retrieve.py": 581,
+        ".worktrees/w3-retrospect/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-retrospect/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-skeletons/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-skeletons/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-skeletons/datum/context_skeleton.py": 293,
+        ".worktrees/w3-structured-tools/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-structured-tools/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-vector-store/.datum/profiles/environment.yaml": 30,
+        ".worktrees/w3-vector-store/.datum/profiles/quality.yaml": 61,
+        ".worktrees/w3-vector-store/tests/test_memory_rag_engine.py": 324,
+        ".worktrees/w3-vector-store/tests/test_memory_vector_store.py": 314
+      }
+    }
+  ]
+}
