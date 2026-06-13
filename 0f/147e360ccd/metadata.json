@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "0f147e360ccd",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-batch-31",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "Record-Presentation/Sources/Presentation/ViewModels/SearchViewModel.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0f/147e360ccd/0/metadata.json",
+      "transcript": "/0f/147e360ccd/0/full.jsonl",
+      "content_hash": "/0f/147e360ccd/0/content_hash.txt",
+      "prompt": "/0f/147e360ccd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18458,
+    "cache_creation_tokens": 2761531,
+    "cache_read_tokens": 74970070,
+    "output_tokens": 458614,
+    "api_call_count": 716
+  }
+}
