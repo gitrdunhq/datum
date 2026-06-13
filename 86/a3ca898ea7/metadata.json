@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "86a3ca898ea7",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/AECProcessorActor.swift",
+    "Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActor.swift",
+    "Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorSupport.swift",
+    "Record-Audio/Sources/AudioInfrastructure/MicTapBridge.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/86/a3ca898ea7/0/metadata.json",
+      "transcript": "/86/a3ca898ea7/0/full.jsonl",
+      "content_hash": "/86/a3ca898ea7/0/content_hash.txt",
+      "prompt": "/86/a3ca898ea7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9845,
+    "cache_creation_tokens": 1016170,
+    "cache_read_tokens": 21066208,
+    "output_tokens": 106499,
+    "api_call_count": 196
+  }
+}
