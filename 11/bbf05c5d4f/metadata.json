@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "11bbf05c5d4f",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-30-audit-remediation",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "Record-Audio/Tests/Unit/AECProcessorActorTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/11/bbf05c5d4f/0/metadata.json",
+      "transcript": "/11/bbf05c5d4f/0/full.jsonl",
+      "content_hash": "/11/bbf05c5d4f/0/content_hash.txt",
+      "prompt": "/11/bbf05c5d4f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9976,
+    "cache_creation_tokens": 1309268,
+    "cache_read_tokens": 24621614,
+    "output_tokens": 125536,
+    "api_call_count": 241
+  }
+}
