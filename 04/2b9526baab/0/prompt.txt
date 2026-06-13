@@ -5807,3 +5807,7 @@ search for that code bug on gh issues
 ---
 
 we need andocumentstion agent that basicslly uodates all project documentsrion to ensure the code changes are documenten
+
+---
+
+he might need 2 modes new and update if a new thing lands
