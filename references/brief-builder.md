@@ -44,6 +44,7 @@ Once all four are answerable, proceed to build the brief below.
 | GitNexus context | `gitnexus context <symbol>` for each symbol the test will reference | Full output |
 | Lane-tools README | Read `scripts/lane-tools/README.md` | Full content |
 | Upstream stub files | For each dependency lane with a stub commit: read the stub file at that commit | Full stub file content |
+| **Target import context** (Swift/SPM only) | Walk up from each test file in `task.files` to find the nearest `Package.swift`; read its target entry and `dependencies: []` list for the target that owns the test. Read one existing test file from the same `Tests/` directory to capture the established import block. Use `detect_spm_subpackage()` from `tdd_driver.py` to automate the path resolution. | Both: the dependency list and the sample import block |
 
 ### Excluded (never include, verify before dispatch)
 
@@ -96,6 +97,13 @@ Emit one commit: the failing test.
 The test runner returns RED *and* the failure message references the property predicate.
 If the test fails for any other reason (wrong assertion, compile error in unrelated code),
 fix the test until the failure is meaningful — do not submit until the reason is right.
+
+**SourceKit diagnostics are not ground truth.** In SPM monorepos, SourceKit resolves
+imports against the root workspace `Package.swift`, not the subpackage. A `No such
+module 'X'` SourceKit error may be a false positive if `X` is a transitive dependency
+in the subpackage's `Package.swift`. Always run `swift test --package-path <subpackage-dir>`
+to get real compiler output. Do not treat SourceKit errors as blocking without a build
+failure from the actual test runner.
 ```
 
 ---
@@ -214,6 +222,13 @@ If you write a new tool to scripts/lane-tools/:
 
 ### Done condition
 All tests green. Hooks pass. Linter clean. Formatter clean. Every AC is checked off.
+
+**SourceKit diagnostics are not ground truth.** In SPM monorepos, SourceKit resolves
+imports against the root workspace `Package.swift`, not the subpackage. A `No such
+module 'X'` SourceKit error may be a false positive if `X` is a transitive dependency
+in the subpackage's `Package.swift`. Always run `swift test --package-path <subpackage-dir>`
+to get real compiler output. Do not treat SourceKit errors as blocking without a build
+failure from the actual test runner.
 ```
 
 ---

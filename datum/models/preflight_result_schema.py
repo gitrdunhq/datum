@@ -39,4 +39,8 @@ class PreflightResult(BaseModel):
         None,
         description='If set, no skeletons were produced and lane proceeds to RED normally',
     )
+    target_context: str | None = Field(
+        None,
+        description='Context about target membership extracted from package manager (e.g., Package.swift)',
+    )
     outputs: list[Output]

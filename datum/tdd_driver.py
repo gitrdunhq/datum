@@ -84,3 +84,146 @@ def check_clean_working_tree(
         f"Working tree is dirty — commit or stash changes before running the "
         f"TDD driver.\n\nDirty files in {repo_path}:\n  {file_list}"
     )
+
+
+class DirtyBaselineError(RuntimeError):
+    """Raised when the target repo has a failing test suite at episode start.
+    
+    The agent should not build RED on top of a broken repo.
+    """
+
+
+def verify_green_baseline(
+    repo_path: Path, test_command: list[str] | None = None
+) -> None:
+    """Assert that *repo_path*'s test suite currently passes.
+
+    If the tests fail, raises DirtyBaselineError. This ensures the agent does
+    not start a RED cycle on top of a broken codebase.
+
+    Parameters
+    ----------
+    repo_path:
+        Path to the repository root.
+    test_command:
+        Optional custom command to run tests. Defaults to ["pytest", "-q"].
+    """
+    if test_command is None:
+        test_command = ["pytest", "-q"]
+
+    try:
+        result = subprocess.run(
+            test_command,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        # If the test runner isn't installed, we can't verify the baseline.
+        # But failing open here might be better, or we escalate.
+        raise DirtyBaselineError(
+            f"Test command not found: {test_command[0]}. "
+            f"Cannot verify green baseline."
+        )
+
+    if result.returncode != 0:
+        raise DirtyBaselineError(
+            f"Baseline test suite is failing (exit {result.returncode}). "
+            f"Fix existing tests before starting a new RED cycle.\n\n"
+            f"Output:\n{result.stdout}\n{result.stderr}"
+        )
+
+class GreenBlindnessError(RuntimeError):
+    """Raised when tests pass at the end of RED stage.
+    
+    The agent must write a genuinely failing test before proceeding to GREEN.
+    """
+
+def verify_red_stage(
+    repo_path: Path, test_command: list[str] | None = None
+) -> None:
+    """Assert that *repo_path*'s test suite currently fails.
+
+    If the tests pass, raises GreenBlindnessError. This ensures the agent does
+    not proceed to GREEN with a test that already passes (green blindness).
+
+    Parameters
+    ----------
+    repo_path:
+        Path to the repository root.
+    test_command:
+        Optional custom command to run tests. Defaults to ["pytest", "-q"].
+    """
+    if test_command is None:
+        test_command = ["pytest", "-q"]
+
+    try:
+        result = subprocess.run(
+            test_command,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise GreenBlindnessError(
+            f"Test command not found: {test_command[0]}. "
+            f"Cannot verify RED stage."
+        )
+
+    if result.returncode == 0:
+        raise GreenBlindnessError(
+            f"green_blindness_violation: Tests passed at the end of RED stage. "
+            f"You must write a genuinely failing test before GREEN proceeds.\n\n"
+            f"Output:\n{result.stdout}\n{result.stderr}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# SPM subpackage detection — issue #131
+# ---------------------------------------------------------------------------
+
+
+def detect_spm_subpackage(file_path: Path) -> Path | None:
+    """Walk up from *file_path* to find the nearest ``Package.swift``.
+
+    In SPM monorepos, test files live under a subpackage that has its own
+    ``Package.swift`` with a different dependency graph than the root workspace.
+    SourceKit resolves imports against the root ``Package.swift``, which
+    produces false-positive "No such module" errors for modules that are valid
+    transitive dependencies of the subpackage.
+
+    Returns the directory containing the nearest ``Package.swift``, or
+    ``None`` if no ``Package.swift`` is found before hitting the filesystem
+    root.  The orchestrator can then:
+
+    1. Read that ``Package.swift`` to extract the target's dependency list.
+    2. Inject the dependency list into the agent brief so the agent knows
+       which imports are legitimate.
+    3. Use ``swift test --package-path <returned_dir>`` instead of relying
+       on SourceKit diagnostics.
+
+    See: https://github.com/gitrdunhq/datum/issues/131
+    """
+    current = file_path.resolve()
+    if current.is_file():
+        current = current.parent
+
+    while current != current.parent:
+        if (current / "Package.swift").exists():
+            return current
+        current = current.parent
+
+    return None
+
+
+def get_spm_test_command(file_path: Path) -> list[str] | None:
+    """Return the ``swift test`` command scoped to the subpackage owning *file_path*.
+
+    Returns ``None`` if no ``Package.swift`` is found (not an SPM project).
+    The caller should use this instead of a bare ``swift test`` to get
+    ground-truth compiler output rather than SourceKit diagnostics.
+    """
+    subpackage = detect_spm_subpackage(file_path)
+    if subpackage is None:
+        return None
+    return ["swift", "test", "--package-path", str(subpackage)]

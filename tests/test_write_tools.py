@@ -15,7 +15,6 @@ Property IDs covered (PROPERTIES.md task-002 assignment):
 import time
 from pathlib import Path
 
-
 from datum.local_llm import _execute_tool
 
 # ---------------------------------------------------------------------------
@@ -635,3 +634,81 @@ class TestCwdIndependence:
 
         assert lane_tools_runner.MANIFEST.is_absolute()
         assert lane_tools_runner.MANIFEST.exists()
+
+
+class TestWorktreeIsolation:
+    """#137: agents must only operate inside their lane's worktree.
+
+    When worktree_path is set in mt_config:
+    - the lane-tools subprocess runs with cwd=worktree_path
+    - the write sandbox root is the worktree, not the datum process cwd
+    - relative paths in tool_args resolve against the worktree
+    """
+
+    def _wt_config(self, worktree: Path) -> dict:
+        return {
+            "allowed_tools": list(WRITE_TOOLS),
+            "enable_write_tools": True,
+            "allowed_write_dirs": [],
+            "worktree_path": str(worktree),
+        }
+
+    def test_write_lands_in_worktree_not_main_cwd(self, tmp_path, monkeypatch):
+        """File written with a relative path lands in the worktree, not cwd."""
+        worktree = tmp_path / "worktrees" / "lane-001"
+        worktree.mkdir(parents=True)
+        main_cwd = tmp_path / "main"
+        main_cwd.mkdir()
+        monkeypatch.chdir(main_cwd)
+
+        result, _ = _execute_tool(
+            _tc("write_to_file", {"path": "output.txt", "content": "in worktree"}),
+            self._wt_config(worktree),
+        )
+
+        assert '"ok": true' in result, result
+        assert (worktree / "output.txt").exists(), "file must land in worktree"
+        assert not (main_cwd / "output.txt").exists(), "file must NOT land in main cwd"
+
+    def test_sandbox_blocks_escape_from_worktree(self, tmp_path):
+        """Absolute path outside the worktree is rejected even with worktree_path set."""
+        worktree = tmp_path / "worktrees" / "lane-002"
+        worktree.mkdir(parents=True)
+        outside = tmp_path / "secret.py"
+
+        result, _ = _execute_tool(
+            _tc("write_to_file", {"path": str(outside), "content": "bad"}),
+            self._wt_config(worktree),
+        )
+
+        assert "Sandbox violation" in result, result
+        assert not outside.exists()
+
+    def test_relative_path_escape_blocked_against_worktree(self, tmp_path):
+        """Relative path traversal (../../escape.py) is caught against worktree root."""
+        worktree = tmp_path / "worktrees" / "lane-003"
+        worktree.mkdir(parents=True)
+
+        escape = str(worktree / ".." / ".." / "escape.py")
+        result, _ = _execute_tool(
+            _tc("write_to_file", {"path": escape, "content": "bad"}),
+            self._wt_config(worktree),
+        )
+
+        assert "Sandbox violation" in result, result
+
+    def test_no_worktree_path_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        """Omitting worktree_path preserves existing cwd-based behaviour."""
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "fallback.txt"
+        cfg = {
+            "allowed_tools": list(WRITE_TOOLS),
+            "enable_write_tools": True,
+            "allowed_write_dirs": [str(tmp_path)],
+        }
+        result, _ = _execute_tool(
+            _tc("write_to_file", {"path": str(target), "content": "fallback"}),
+            cfg,
+        )
+        assert '"ok": true' in result, result
+        assert target.read_text() == "fallback"

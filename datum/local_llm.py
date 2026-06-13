@@ -108,6 +108,9 @@ ESCALATE = "ESCALATE"
 
 
 def is_available() -> bool:
+    if _omlx_url():
+        return True
+
     import platform
 
     if platform.system() != "Darwin" or platform.machine() != "arm64":
@@ -204,9 +207,9 @@ def _detect_repetition(
 
 def generate(
     prompt: str,
-    model_id: str = DEFAULTS["model"],
-    max_tokens: int = DEFAULTS["max_tokens"],
-    temperature: float = DEFAULTS["temperature"],
+    model_id: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     system: str | None = None,
     sampling: dict | None = None,
     max_time_s: float | None = None,
@@ -231,8 +234,20 @@ def generate(
     Returns {"text": str, "tokens": int, "time_s": float, "model": str,
              "escalated": bool, "abort_reason": str|None, "context": dict}.
     """
+    config = load_config()
+    model_id = model_id or config.get("model", DEFAULTS["model"])
+    max_tokens = (
+        max_tokens
+        if max_tokens is not None
+        else config.get("max_tokens", DEFAULTS["max_tokens"])
+    )
+    temperature = (
+        temperature
+        if temperature is not None
+        else config.get("temperature", DEFAULTS["temperature"])
+    )
+
     if _omlx_available():
-        config = load_config()
         return _omlx_generate(
             prompt,
             model_id,
@@ -372,8 +387,8 @@ def _check_output_quality(text: str) -> dict:
 def structured(
     prompt: str,
     schema,
-    model_id: str = DEFAULTS["model"],
-    max_tokens: int = 500,
+    model_id: str | None = None,
+    max_tokens: int | None = None,
     **kwargs,
 ) -> dict:
     """Grammar-constrained generation via oMLX (preferred) or outlines + MLX.
@@ -395,16 +410,19 @@ def structured(
     Returns {"data": dict, "raw": str, "tokens": int, "time_s": float,
              "model": str, "quality": dict}.
     """
+    config = load_config()
+    model_id = model_id or config.get("model", DEFAULTS["model"])
+    max_tokens = max_tokens if max_tokens is not None else config.get("max_tokens", 500)
+
     if _omlx_available():
-        omlx_config = load_config()
         return _omlx_structured(
             prompt,
             schema,
             model_id,
             max_tokens,
-            omlx_config.get("omlx_url"),
+            config.get("omlx_url"),
             temperature=kwargs.get("temperature"),
-            timeout_s=omlx_config.get("request_timeout_s", 300),
+            timeout_s=config.get("request_timeout_s", 300),
             max_time_s=kwargs.get("max_time_s"),
         )
 
@@ -981,6 +999,11 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
     tool_name = tool_call.get("tool_name", "")
     tool_args = tool_call.get("tool_args", {})
 
+    # Worktree isolation (#137): run tools inside the lane's worktree when one
+    # is configured. Falls back to cwd so single-worktree runs are unaffected.
+    _wt = mt_config.get("worktree_path")
+    exec_cwd = Path(_wt).resolve() if _wt else Path.cwd().resolve()
+
     allowed = mt_config.get("allowed_tools", list(READ_ONLY_TOOLS))
     if tool_name not in allowed:
         return f"Error: Tool '{tool_name}' is not in allowed_tools list.", False
@@ -992,7 +1015,7 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
         ), False
 
     if tool_name in WRITE_TOOLS:
-        repo_root = Path.cwd().resolve()
+        repo_root = exec_cwd
         allowed_dirs = [repo_root]
         for extra in mt_config.get("allowed_write_dirs", []):
             allowed_dirs.append(Path(extra).resolve())
@@ -1004,7 +1027,9 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
                 (".py", ".md", ".toml", ".json", ".txt", ".yaml", ".yml")
             ):
                 try:
-                    resolved_path = Path(arg_val).resolve()
+                    # Resolve relative to exec_cwd so relative paths from an
+                    # agent running inside a worktree are checked correctly.
+                    resolved_path = (exec_cwd / arg_val).resolve()
                     if not any(resolved_path.is_relative_to(d) for d in allowed_dirs):
                         return (
                             f"Error: Sandbox violation. Arg '{arg_key}' path "
@@ -1016,16 +1041,18 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
 
     if tool_name == "run_command" and "command" in tool_args:
         cmd_str = str(tool_args["command"]).strip()
-        cmd_base = cmd_str.split()[0] if cmd_str else ""
-        if cmd_base in BLOCKED_COMMANDS or cmd_str in BLOCKED_COMMANDS:
-            return f"Error: Command '{cmd_base}' is blocked for safety.", False
-        if any(c in cmd_str for c in ["|", ";", "&&", "$(", "`"]):
-            return (
-                "Error: Shell operators (pipes, chains, subshells) are blocked.",
-                False,
-            )
-        if not cmd_str.startswith("rtk "):
-            tool_args["command"] = f"rtk proxy {cmd_str}"
+        import shlex
+
+        try:
+            tokens = shlex.split(cmd_str)
+        except ValueError as e:
+            return f"Error: Malformed command string: {e}", False
+
+        from datum.command_guard import validate_command
+
+        verdict = validate_command(tokens)
+        if not verdict.ok:
+            return f"Error: {verdict.reason}", False
 
     if not isinstance(tool_args, dict):
         return "Error: tool_args must be a dict.", False
@@ -1044,7 +1071,7 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
             capture_output=True,
             text=True,
             timeout=60,
-            cwd=Path(".").resolve(),
+            cwd=exec_cwd,
         )
         out = proc.stdout
         if proc.stderr:

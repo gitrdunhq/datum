@@ -48,12 +48,15 @@ def current_branch() -> str | None:
 
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        return result.stdout.strip() if result.returncode == 0 else None
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            return branch if branch else None
+        return None
     except Exception:
         return None
 
@@ -84,6 +87,7 @@ def ensure_feature_branch(title: str | None = None) -> str:
     slugifies to nothing — fall back to generic `datum/epic-{N}`.
     """
     import subprocess
+    import sys
 
     branch = current_branch()
     if branch not in PROTECTED_BRANCHES:
@@ -96,6 +100,19 @@ def ensure_feature_branch(title: str | None = None) -> str:
         slug = slugify(title)
         if slug:
             new_branch = make_unique(f"datum/{slug}", _existing_branches())
+            
+    if not new_branch:
+        if sys.stdout.isatty():
+            from rich.prompt import Prompt
+            user_input = Prompt.ask(
+                "[bold yellow]Enter a descriptive name for this epic[/bold yellow] (or press Enter for generic)"
+            )
+            if user_input:
+                from datum.slug import make_unique, slugify
+                slug = slugify(user_input)
+                if slug:
+                    new_branch = make_unique(f"datum/{slug}", _existing_branches())
+                    
     if not new_branch:
         n = next_epic_number()
         new_branch = f"datum/epic-{n}"
@@ -239,11 +256,45 @@ def cmd_read(args: argparse.Namespace) -> None:
     if not state:
         print(json.dumps({"error": "no_state", "message": "No .datum/state.db found"}))
         sys.exit(1)
+        
+    # Schema invariant checks
+    import re
+    current_phase = state.get("current_phase")
+    if current_phase:
+        phase_status = state.get("phases", {}).get(current_phase, {}).get("status")
+        if phase_status == "pending":
+            print(json.dumps({
+                "error": "incoherent_state", 
+                "message": f"current_phase '{current_phase}' has 'pending' status"
+            }))
+            sys.exit(1)
+            
+    run_id = state.get("run_id", "")
+    work_branch = state.get("git", {}).get("work_branch", "")
+    if run_id and work_branch and work_branch.startswith("datum/epic-"):
+        epic_match = re.match(r"^(epic-\d+)", run_id)
+        if epic_match:
+            epic_slug = epic_match.group(1)
+            if not work_branch.startswith(f"datum/{epic_slug}"):
+                print(json.dumps({
+                    "error": "incoherent_state", 
+                    "message": f"work_branch '{work_branch}' does not match run_id '{run_id}'"
+                }))
+                sys.exit(1)
+
     print(json.dumps(state, indent=2))
 
 
 def cmd_init(args: argparse.Namespace) -> None:
-    work_branch = ensure_feature_branch(getattr(args, "title", None))
+    base_branch = getattr(args, "base_branch", "main")
+    branch = current_branch()
+    
+    title = getattr(args, "title", None)
+    if title:
+        work_branch = ensure_feature_branch(title)
+    else:
+        work_branch = None if branch == base_branch else branch
+
     n = next_epic_number()
     now = datetime.now(UTC)
     run_id = args.run_id or f"epic-{n}-{now.strftime('%Y%m%d-%H%M%S')}"
@@ -257,8 +308,8 @@ def cmd_init(args: argparse.Namespace) -> None:
         "in_flight_count": 0,
         "in_flight_cap": 7,
         "git": {
-            "base_branch": args.base_branch or "main",
-            "work_branch": work_branch or f"datum/epic-{n}",
+            "base_branch": base_branch,
+            "work_branch": work_branch,
             "head_sha": None,
         },
         "brief_defects": [],
@@ -280,87 +331,116 @@ def cmd_init(args: argparse.Namespace) -> None:
     print(json.dumps({"ok": True, "run_id": run_id}))
 
 
+def update_state(mutator: callable) -> bool:
+    init_db()
+    with sqlite3.connect(DB_FILE, isolation_level="EXCLUSIVE", timeout=30.0) as conn:
+        conn.execute("BEGIN EXCLUSIVE")
+        try:
+            cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
+            row = cur.fetchone()
+            if not row:
+                print(json.dumps({"error": "no_state"}))
+                return False
+            state = json.loads(row[0])
+        except sqlite3.OperationalError:
+            print(json.dumps({"error": "no_state"}))
+            return False
+
+        mutator(state)
+        
+        state["updated_at"] = datetime.now(UTC).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO kv_state (key, value) VALUES ('current', ?)",
+            (json.dumps(state),),
+        )
+        conn.commit()
+    
+    # Write-through cache
+    json_path = Path(".datum/state.json")
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with json_path.open("w") as f:
+        json.dump(state, f, indent=2)
+    return True
+
+
 def cmd_write(args: argparse.Namespace) -> None:
-    state = load_state()
-    if not state:
-        print(json.dumps({"error": "no_state"}))
-        sys.exit(1)
-
-    if args.phase:
-        if args.phase not in PHASES:
-            print(json.dumps({"error": f"unknown phase: {args.phase}"}))
-            sys.exit(1)
-        phase_data = state["phases"].get(args.phase, {})
-        if args.status:
-            if args.status not in VALID_STATUSES:
-                print(json.dumps({"error": f"unknown status: {args.status}"}))
+    def _mutate(state):
+        if args.phase:
+            if args.phase not in PHASES:
+                print(json.dumps({"error": f"unknown phase: {args.phase}"}))
                 sys.exit(1)
-            phase_data["status"] = args.status
-        if args.model:
-            phase_data["model"] = args.model
-        if args.artifact:
-            phase_data["artifact"] = args.artifact
-        if args.status == "completed":
-            phase_data["completed_at"] = datetime.now(UTC).isoformat()
-        elif args.status == "in_progress":
-            phase_data["started_at"] = datetime.now(UTC).isoformat()
-        state["phases"][args.phase] = phase_data
+            phase_data = state["phases"].get(args.phase, {})
+            if args.status:
+                if args.status not in VALID_STATUSES:
+                    print(json.dumps({"error": f"unknown status: {args.status}"}))
+                    sys.exit(1)
+                phase_data["status"] = args.status
+            if args.model:
+                phase_data["model"] = args.model
+            if args.artifact:
+                phase_data["artifact"] = args.artifact
+            if args.status == "completed":
+                phase_data["completed_at"] = datetime.now(UTC).isoformat()
+            elif args.status == "in_progress":
+                phase_data["started_at"] = datetime.now(UTC).isoformat()
+            state["phases"][args.phase] = phase_data
 
-    save_state(state)
-    print(json.dumps({"ok": True}))
+    if update_state(_mutate):
+        print(json.dumps({"ok": True}))
+    else:
+        sys.exit(1)
 
 
 def cmd_transition(args: argparse.Namespace) -> None:
-    state = load_state()
-    if not state:
-        print(json.dumps({"error": "no_state"}))
-        sys.exit(1)
     if args.to not in PHASES:
         print(json.dumps({"error": f"unknown phase: {args.to}"}))
         sys.exit(1)
-    state["current_phase"] = args.to
-    save_state(state)
-    print(json.dumps({"ok": True, "current_phase": args.to}))
+    
+    def _mutate(state):
+        state["current_phase"] = args.to
+
+    if update_state(_mutate):
+        print(json.dumps({"ok": True, "current_phase": args.to}))
+    else:
+        sys.exit(1)
 
 
 def cmd_lane_update(args: argparse.Namespace) -> None:
-    state = load_state()
-    if not state:
-        print(json.dumps({"error": "no_state"}))
+    def _mutate(state):
+        lane = state["lanes"].get(
+            args.lane,
+            {
+                "stage": "queued",
+                "stages": {},
+                "files_touched": [],
+                "depends_on": [],
+                "blocked_on_dependency": [],
+                "blocked_on_file_conflict": None,
+            },
+        )
+        if args.stage:
+            if args.stage not in VALID_STAGES:
+                print(json.dumps({"error": f"unknown stage: {args.stage}"}))
+                sys.exit(1)
+            lane["stage"] = args.stage
+            stage_data = lane["stages"].get(args.stage, {"status": "pending", "retries": 0})
+            if args.status:
+                stage_data["status"] = args.status
+            if args.sha:
+                stage_data["commit_sha"] = args.sha
+            if args.retries is not None:
+                stage_data["retries"] = args.retries
+            lane["stages"][args.stage] = stage_data
+
+        if args.sub_stage:
+            lane["sub_stage"] = args.sub_stage
+
+        state["lanes"][args.lane] = lane
+
+    if update_state(_mutate):
+        print(json.dumps({"ok": True}))
+    else:
         sys.exit(1)
-
-    lane = state["lanes"].get(
-        args.lane,
-        {
-            "stage": "queued",
-            "stages": {},
-            "files_touched": [],
-            "depends_on": [],
-            "blocked_on_dependency": [],
-            "blocked_on_file_conflict": None,
-        },
-    )
-
-    if args.stage:
-        if args.stage not in VALID_STAGES:
-            print(json.dumps({"error": f"unknown stage: {args.stage}"}))
-            sys.exit(1)
-        lane["stage"] = args.stage
-        stage_data = lane["stages"].get(args.stage, {"status": "pending", "retries": 0})
-        if args.status:
-            stage_data["status"] = args.status
-        if args.sha:
-            stage_data["commit_sha"] = args.sha
-        if args.retries is not None:
-            stage_data["retries"] = args.retries
-        lane["stages"][args.stage] = stage_data
-
-    if args.sub_stage:
-        lane["sub_stage"] = args.sub_stage
-
-    state["lanes"][args.lane] = lane
-    save_state(state)
-    print(json.dumps({"ok": True}))
 
 
 def cmd_log_tokens(args: argparse.Namespace) -> None:

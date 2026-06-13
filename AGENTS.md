@@ -89,7 +89,7 @@ This deduplicates against open issues, attaches the current `.datum/state.json` 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rpa** (4229 symbols, 5987 relationships, 114 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **datum** (10720 symbols, 17421 relationships, 240 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -112,10 +112,10 @@ This project is indexed by GitNexus as **rpa** (4229 symbols, 5987 relationships
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/rpa/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/rpa/clusters` | All functional areas |
-| `gitnexus://repo/rpa/processes` | All execution flows |
-| `gitnexus://repo/rpa/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/datum/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/datum/clusters` | All functional areas |
+| `gitnexus://repo/datum/processes` | All execution flows |
+| `gitnexus://repo/datum/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

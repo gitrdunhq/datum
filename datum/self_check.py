@@ -100,10 +100,24 @@ def main() -> None:
     for ref in sorted(documented_script_refs()):
         if not (ROOT / ref).exists():
             missing.append(ref)
+            
+    # Check SKILL.md explicit path references
+    skill_md = ROOT / "SKILL.md"
+    if skill_md.exists():
+        content = skill_md.read_text()
+        for m in re.findall(r"(references/[A-Za-z0-9_./-]+\.md|templates/[A-Za-z0-9_./-]+\.md|assets/[A-Za-z0-9_./-]+)", content):
+            if not (ROOT / m).exists():
+                missing.append(m)
 
     contract_ok, contract_output = run_contract_self_test()
 
     failures = []
+    if not (ROOT / ".git").exists() and "site-packages" not in str(ROOT):
+        failures.append({
+            "check": "installation_type",
+            "message": f"Installation at {ROOT} is a stale copy (not a git clone). Please re-run install.sh to upgrade."
+        })
+
     if missing:
         failures.append({"check": "missing_paths", "paths": sorted(set(missing))})
     if not contract_ok:

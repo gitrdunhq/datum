@@ -79,6 +79,8 @@ def validate_value(schema_path: Path | str, payload: Any) -> list[str]:
 
 def validate_payload(schema_path: Path | str, payload_path: Path) -> list[str]:
     """Validate a JSON file against a model."""
+    if not payload_path.exists():
+        return [f"Fixture file missing: {payload_path}"]
     try:
         payload = json.loads(payload_path.read_text())
         return validate_value(schema_path, payload)

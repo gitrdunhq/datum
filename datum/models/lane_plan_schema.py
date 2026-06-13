@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
+from typing import Any
 
 
 class TopologicalOrderItem(RootModel[constr(pattern=r'^task-\d+$')]):
@@ -32,3 +33,4 @@ class DatumLanePlan(BaseModel):
     topological_order: list[TopologicalOrderItem] = Field(..., min_length=1)
     file_ownership: dict[str, constr(pattern=r'^task-\d+$')]
     lanes: dict[str, Lanes]
+    units: dict[str, Any] | None = None

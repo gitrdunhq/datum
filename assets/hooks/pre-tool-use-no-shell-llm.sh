@@ -2,6 +2,10 @@
 # Block agents from invoking local LLM via shell command.
 # Local inference must go through Python API (run_phase/chat/structured).
 
+if [ "${DATUM_SUBPROCESS:-0}" = "1" ]; then
+  exit 0
+fi
+
 COMMAND="$1"
 
 if echo "$COMMAND" | grep -qE "datum local-llm|datum local_llm|mlx_lm|mlx-lm"; then

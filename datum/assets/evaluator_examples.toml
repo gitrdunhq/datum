@@ -1,0 +1,48 @@
+[test_doesnt_verify_ac]
+diff = """
+--- a/calculator.py
++++ b/calculator.py
+@@ -1,2 +1,5 @@
+ def add(a, b):
+-    pass
++    return a + b
+--- a/test_calculator.py
++++ b/test_calculator.py
+@@ -1,2 +1,3 @@
++from unittest.mock import patch
+ def test_add():
+-    pass
++    with patch('calculator.add', return_value=5):
++        assert add(2, 3) == 5
+"""
+reasoning = "The test uses a mock for the system under test (`calculator.add`), meaning the actual implementation is not verified. This is over-mocked."
+verdict = "FAIL"
+
+[function_not_wired_in]
+diff = """
+--- a/server.py
++++ b/server.py
+@@ -1,2 +1,5 @@
++def parse_new_header(header):
++    return header.split(':')
++
+ def handle_request(req):
+     return 200
+"""
+reasoning = "The new function `parse_new_header` was added to fulfill the AC, but it is never called from `handle_request` or anywhere else in the code. The functionality is unreachable."
+verdict = "FAIL"
+
+[placeholder_behind_interface]
+diff = """
+--- a/auth.py
++++ b/auth.py
+@@ -1,2 +1,5 @@
+ def login(user, password):
+-    pass
++    # TODO: connect to database
++    if user == "admin" and password == "admin":
++        return True
++    return False
+"""
+reasoning = "The implementation contains a placeholder/TODO for the actual database connection, instead hardcoding dummy credentials. The AC requires a real implementation."
+verdict = "FAIL"

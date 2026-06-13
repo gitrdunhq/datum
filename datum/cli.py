@@ -57,6 +57,15 @@ def floor():
 
 
 @app.command()
+def retrospect(
+    n: int = typer.Option(5, "--num", "-n", help="Number of transcripts to analyze"),
+):
+    """Run programmatic loop over recent transcripts to group failures."""
+    from datum.observability.retrospect import run_retrospect
+    run_retrospect(n)
+
+
+@app.command()
 def doctor(
     phase: str = typer.Option("act", help="The current DATUM phase"),
     role: str = typer.Option("general", help="The agent's role"),
@@ -411,7 +420,7 @@ def local_llm_cmd(
     ),
 ):
     """Local LLM inference via MLX. Use --json for pipeline integration."""
-    from datum.local_llm import chat, is_available, load_config
+    from datum.local_llm import generate, is_available, load_config
 
     if ctx.args:
         prompt = (
@@ -586,13 +595,9 @@ def local_llm_cmd(
     if not output_json:
         console_err.print(f"[dim]Loading {config['model']}...[/dim]")
 
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    result = chat(
-        messages,
+    result = generate(
+        prompt=prompt,
+        system=system,
         model_id=config["model"],
         max_tokens=resolved_max_tokens,
         temperature=resolved_temperature,
@@ -926,6 +931,26 @@ def gc(
         console.print(f"[dim]{report}[/dim]")
     else:
         console.print(f"[bold green]{report}[/bold green]")
+
+    if not dry_run:
+        import subprocess
+        import sys
+
+        console.print("\n[bold]Running scheduled entropy pass...[/bold]")
+
+        console.print("\n[dim]--- Knowledge Drift ---[/dim]")
+        subprocess.run([sys.executable, "-m", "datum.knowledge_drift"])
+
+        console.print("\n[dim]--- Rules Doctor ---[/dim]")
+        subprocess.run([sys.executable, "-m", "datum.rules_doctor", "preflight"])
+
+        console.print("\n[dim]--- Memory Audit ---[/dim]")
+        project_hash = str(target.parent.resolve()).replace("/", "-")
+        memory_dir = Path.home() / ".claude" / "projects" / project_hash / "memory"
+        if memory_dir.exists():
+            subprocess.run([sys.executable, "-m", "datum.memory_audit", str(memory_dir)])
+        else:
+            console.print("[dim]No memory dir found; skipping memory audit.[/dim]")
 
 
 @app.command()

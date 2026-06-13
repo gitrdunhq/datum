@@ -9,6 +9,10 @@ Apply these rules when the detected language is `swift`. They supplement `refere
 
 Auto-detect: if `import Testing` appears in existing test files → Swift Testing. If `import XCTest` only → XCTest. If mixed → prefer Swift Testing for new tests.
 
+## SourceKit Diagnostics
+
+SourceKit diagnostics shown by the IDE may be false positives for subpackage files. Always run `swift test --package-path <subpackage>` to get ground-truth compiler output. Do not treat SourceKit errors as blocking without a real build failure.
+
 ## RED agent — Swift specifics
 
 Stub commit format:

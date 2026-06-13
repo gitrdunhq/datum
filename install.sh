@@ -143,6 +143,13 @@ verify_install() {
     echo "⚠ datum doctor did not pass cleanly. This may be OK for first install."
     echo "  Debug with: datum doctor"
   fi
+  if uv run --directory "$dir" scripts/datum.py datum.self_check 2>/dev/null | grep -q '"ok": true'; then
+    echo "✓ datum.self_check passed"
+  else
+    echo "✗ datum.self_check failed! Install is broken or missing assets."
+    echo "  Debug with: cd $dir && uv run scripts/datum.py datum.self_check"
+    exit 1
+  fi
   echo ""
   echo "Try it:"
   echo "  datum status"
@@ -257,6 +264,12 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ "$DEV_MODE" = false ] && [ -d "$SCRIPT_DIR/.git" ] && grep -q '^name = "datum"' "$SCRIPT_DIR/pyproject.toml" 2>/dev/null; then
+  echo "Auto-detected datum source repository. Enabling DEV_MODE (--dev)."
+  DEV_MODE=true
+fi
 
 # ── Status / list ─────────────────────────────────────────────────────────────
 

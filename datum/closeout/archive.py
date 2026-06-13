@@ -24,8 +24,12 @@ def main() -> None:
 
     if state_src.exists():
         shutil.copy2(state_src, run_dir / "state.json")
-        # Clear live state to signal no active run
-        state_src.write_text("{}")
+        state_src.unlink()
+
+    state_db = Path(".datum/state.db")
+    if state_db.exists():
+        shutil.copy2(state_db, run_dir / "state.db")
+        state_db.unlink()
 
     marker.write_text("done")
     print(json.dumps({"ok": True, "archived_to": str(run_dir / "state.json")}))

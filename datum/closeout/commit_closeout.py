@@ -69,6 +69,30 @@ def main() -> None:
         f"closeout: {args.run_id}\n\nPost-epic documentation and state update.\n\nDATUM-Closeout: {args.run_id}",
     )
     if result.returncode != 0:
+        err_out = result.stderr + result.stdout
+        if "guard-main-commit" in err_out or "Direct commits" in err_out:
+            branch_name = f"chore/{args.run_id}-closeout"
+            git("checkout", "-b", branch_name)
+            res_commit = git(
+                "commit",
+                "-m",
+                f"closeout: {args.run_id}\n\nPost-epic documentation and state update.\n\nDATUM-Closeout: {args.run_id}",
+            )
+            if res_commit.returncode != 0:
+                print(json.dumps({"ok": False, "error": res_commit.stderr[:300]}))
+                sys.exit(1)
+            
+            git("push", "-u", "origin", branch_name)
+            subprocess.run(
+                ["gh", "pr", "create", "--title", f"Closeout: {args.run_id}", "--body", f"Automated closeout PR for {args.run_id}"],
+                capture_output=True,
+                text=True
+            )
+            
+            marker.write_text("done")
+            print(json.dumps({"ok": True, "pr_created": True, "branch": branch_name, "files": staged}))
+            return
+
         print(json.dumps({"ok": False, "error": result.stderr[:300]}))
         sys.exit(1)
 

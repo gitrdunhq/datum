@@ -3,6 +3,10 @@
 # Intercepts package install commands and surfaces them to the user via gate.
 # Installed as a PreToolUse hook by: python3 scripts/bootstrap/install_hooks.py
 
+if [ "${DATUM_SUBPROCESS:-0}" = "1" ]; then
+  exit 0
+fi
+
 COMMAND="$1"
 
 INSTALL_PATTERNS=(

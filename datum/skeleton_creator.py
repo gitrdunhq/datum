@@ -17,7 +17,69 @@ import argparse
 import json
 import re
 import sys
+import subprocess
 from pathlib import Path
+
+def _extract_swift_target_context(task_files: list[str]) -> str | None:
+    try:
+        out = subprocess.check_output(
+            ["swift", "package", "dump-package"],
+            text=True,
+            stderr=subprocess.DEVNULL
+        )
+        data = json.loads(out)
+    except Exception:
+        return None
+
+    targets = data.get("targets", [])
+    if not targets:
+        return None
+
+    found_targets = set()
+    for f in task_files:
+        path = Path(f)
+        parts = path.parts
+        if len(parts) >= 2 and parts[0] in ("Sources", "Tests"):
+            target_name = parts[1]
+            found_targets.add(target_name)
+
+    if not found_targets:
+        return None
+
+    context_lines = []
+    for t in targets:
+        name = t.get("name")
+        if name in found_targets:
+            deps = []
+            for d in t.get("dependencies", []):
+                if isinstance(d, dict):
+                    if "byName" in d:
+                        deps.append(d["byName"][0])
+                    elif "target" in d:
+                        deps.append(d["target"][0])
+                    elif "product" in d:
+                        deps.append(d["product"][0])
+            dep_str = ", ".join(deps) if deps else "None"
+            context_lines.append(f"Target: {name}, Depends on: [{dep_str}]")
+
+    if context_lines:
+        return "Swift Package Context:\n" + "\n".join(context_lines)
+    return None
+
+def _detect_swift_framework(test_file: str) -> str:
+    path = Path(test_file)
+    test_dir = path.parent
+    # Check current dir and parents up to Tests/
+    while not test_dir.exists() and test_dir.name and test_dir.name != "Tests":
+        test_dir = test_dir.parent
+    if test_dir.exists():
+        for f in test_dir.rglob("*.swift"):
+            content = f.read_text()
+            if "import XCTest" in content:
+                return "xctest"
+            if "import Testing" in content:
+                return "swift-testing"
+    return "swift-testing"
 
 SUPPORTED = {"swift", "typescript", "javascript", "go", "python"}
 
@@ -40,6 +102,25 @@ struct {struct_name} {{
 
         // Assert — prove {property_id}: {predicate_short}
         fatalError("RED agent: implement this assertion")
+    }}
+}}
+""",
+    "xctest": """\
+// Skeleton: {task_id} {ac_id} — {property_id}
+// RED agent: fill in the assertion body. Do not rename this function or move this file.
+// Traceability: {ac_id} → {function_name} → {path}
+
+import XCTest
+@testable import {module}
+
+final class {struct_name}: XCTestCase {{
+    func {function_name}() async throws {{
+        // Arrange
+
+        // Act
+
+        // Assert — prove {property_id}: {predicate_short}
+        XCTFail("RED agent: implement this assertion")
     }}
 }}
 """,
@@ -174,6 +255,7 @@ def build_skeleton(
     predicate_short: str,
     task_files: list[str],
     language: str,
+    framework: str | None = None,
 ) -> dict:
     function_name = make_function_name(ac_id, ac_text, language)
     path = infer_test_path(task_files, language, ac_id)
@@ -182,7 +264,8 @@ def build_skeleton(
     suite_name = f"{task_id} — {property_id}"
     tag = property_id.lower().replace("-", "")
 
-    template = SKELETON_TEMPLATES.get(language, SKELETON_TEMPLATES["python"])
+    actual_framework = framework or language
+    template = SKELETON_TEMPLATES.get(actual_framework, SKELETON_TEMPLATES.get(language, SKELETON_TEMPLATES["python"]))
     content = template.format(
         task_id=task_id,
         ac_id=ac_id,
@@ -200,7 +283,7 @@ def build_skeleton(
     return {
         "ac_id": ac_id,
         "path": path,
-        "kind": KIND_MAP.get(language, "xctest"),
+        "kind": framework or KIND_MAP.get(language, "xctest"),
         "purpose": f"Verify {ac_text[:60]}",
         "property_id": property_id,
         "function_name": function_name,
@@ -265,6 +348,7 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
+                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
             )
             dest = Path(skeleton["path"])
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -272,11 +356,13 @@ def run_preflight(
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
             
+        target_context = _extract_swift_target_context(files) if language == "swift" else None
         result = {
             "task_id": task_id,
             "language": language,
             "framework": KIND_MAP.get(language, ""),
             "outputs": outputs,
+            "target_context": target_context,
             "no_skeletons_reason": None if outputs else "No acceptance criteria found in JSON",
         }
         if output_path:
@@ -295,6 +381,7 @@ def run_preflight(
             "language": language,
             "framework": KIND_MAP.get(language, ""),
             "outputs": [],
+            "target_context": None,
             "no_skeletons_reason": f"Task {task_id} not found in TASKS.md",
         }
 
@@ -329,6 +416,7 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
+                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
             )
             # Write the file
             dest = Path(skeleton["path"])
@@ -348,6 +436,7 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
+                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
             )
             dest = Path(skeleton["path"])
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -355,19 +444,24 @@ def run_preflight(
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
     else:
+        target_context = _extract_swift_target_context(files) if language == "swift" else None
         return {
             "task_id": task_id,
             "language": language,
             "framework": KIND_MAP.get(language, ""),
             "outputs": [],
+            "target_context": target_context,
             "no_skeletons_reason": "No acceptance criteria found in task block",
         }
+
+    target_context = _extract_swift_target_context(files) if language == "swift" else None
 
     result = {
         "task_id": task_id,
         "language": language,
         "framework": KIND_MAP.get(language, ""),
         "outputs": outputs,
+        "target_context": target_context,
         "no_skeletons_reason": None,
     }
 

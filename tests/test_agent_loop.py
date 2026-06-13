@@ -1719,11 +1719,12 @@ def test_agent_loop_no_checkpoint_below_threshold(tmp_path, monkeypatch):
 def test_compact_history_digests_steps():
     from datum.agent_loop import _compact_history
 
+    # Use a non-.py path so the offload path is exercised (not skeleton retention).
     history = [
         {
             "thought": "t",
             "tool_name": "read_file",
-            "tool_args": {"path": "a.py"},
+            "tool_args": {"path": "a.log"},
             "observation": "long file contents " * 50,
         },
         {
@@ -1759,8 +1760,9 @@ def test_compact_history_offloads_long_observations(tmp_path):
     from datum.agent_loop import _compact_history
 
     long_obs = "long file contents " * 50
+    # Use a non-.py path so the offload mechanism (not skeleton retention) is tested.
     history = [
-        _mk_step("read_file", {"path": "a.py"}, long_obs),
+        _mk_step("read_file", {"path": "a.log"}, long_obs),
         _mk_step("run_command", {"command": "pytest"}, "2 passed"),
     ]
     digest = _compact_history(history)[0]["observation"]
@@ -1793,10 +1795,10 @@ def test_compact_history_second_compaction_never_overwrites(tmp_path):
 
     first_obs = "first compaction contents " * 10
     second_obs = "second compaction contents " * 10
-    _compact_history([_mk_step("read_file", {"path": "a.py"}, first_obs)])
-    digest = _compact_history([_mk_step("read_file", {"path": "b.py"}, second_obs)])[0][
-        "observation"
-    ]
+    _compact_history([_mk_step("read_file", {"path": "a.log"}, first_obs)])
+    digest = _compact_history([_mk_step("read_file", {"path": "b.log"}, second_obs)])[
+        0
+    ]["observation"]
 
     ctx = tmp_path / ".datum" / "context"
     assert (ctx / "step-1.txt").read_text(encoding="utf-8") == first_obs
@@ -1882,17 +1884,17 @@ def test_agent_loop_compaction_offloads_and_carries_objective(tmp_path):
                     {
                         "action": "tool",
                         "tool_name": "read_file",
-                        "tool_args": {"path": "a.py"},
+                        "tool_args": {"path": "a.log"},
                     },
                     {
                         "action": "tool",
                         "tool_name": "read_file",
-                        "tool_args": {"path": "b.py"},
+                        "tool_args": {"path": "b.log"},
                     },
                     {
                         "action": "tool",
                         "tool_name": "read_file",
-                        "tool_args": {"path": "c.py"},
+                        "tool_args": {"path": "c.log"},
                     },
                     {"action": "done", "summary": "ok"},
                 ]
@@ -3727,7 +3729,7 @@ def test_compaction_emits_typed_transcript_record(tmp_path, monkeypatch):
     compactions = [r for r in records if r["event"] == "context_compaction"]
     assert len(compactions) >= 1
     assert compactions[0]["tool_name"] == "context_compaction"
-    assert "Digest of prior steps" in compactions[0]["observation"]
+    assert "Context was compacted" in compactions[0]["observation"]
     # steps_log / steps_taken are NOT inflated by the transcript-only record
     assert result["steps_taken"] == 3
     assert all("event" in s for s in result["steps"])

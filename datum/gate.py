@@ -66,6 +66,73 @@ def pass_gate(message: str = "gate passed") -> None:
 
 # ── Helper functions ────────────────────────────────────────────────────────
 
+def score_context_quality(content: str, working_dir: Path, artifact_path: Path) -> dict:
+    """
+    Rubric for artifact scoring:
+    a) concreteness ratio: lines with backticks/paths/code refs vs abstract prose
+    b) grounding ratio: % of real project dirs/files actually referenced
+    c) git drift: rev-list count since artifact last updated
+    d) reference validation: extracted path-like refs must exist on disk
+    """
+    lines = [line.strip() for line in content.split("\n") if line.strip()]
+    if not lines:
+        return {"concreteness": 0.0, "grounding": 0.0, "drift": 0, "invalid_refs": []}
+
+    concrete_lines = 0
+    path_like_refs = set()
+    
+    # Matches something that looks like a file path
+    path_regex = re.compile(r'\b(?:\w*[/-_]+\w*)+\.\w+\b|\b(?:\w+/)+\w*\b')
+    
+    for line in lines:
+        if "`" in line or path_regex.search(line):
+            concrete_lines += 1
+            
+        for match in path_regex.findall(line):
+            match = match.strip('`"\',.')
+            path_like_refs.add(match)
+
+    concreteness = concrete_lines / len(lines)
+    
+    invalid_refs = []
+    valid_refs = 0
+    for ref in path_like_refs:
+        if (working_dir / ref).exists():
+            valid_refs += 1
+        else:
+            invalid_refs.append(ref)
+            
+    grounding = valid_refs / len(path_like_refs) if path_like_refs else 1.0
+
+    drift = 0
+    try:
+        if (working_dir / ".git").exists():
+            log_out = subprocess.check_output(
+                ["git", "log", "-1", "--format=%H", "--", str(artifact_path)],
+                cwd=working_dir,
+                text=True,
+                stderr=subprocess.DEVNULL
+            ).strip()
+            if log_out:
+                drift_out = subprocess.check_output(
+                    ["git", "rev-list", "--count", f"{log_out}..HEAD"],
+                    cwd=working_dir,
+                    text=True,
+                    stderr=subprocess.DEVNULL
+                ).strip()
+                drift = int(drift_out)
+    except Exception:
+        pass
+
+    return {
+        "concreteness": round(concreteness, 2),
+        "grounding": round(grounding, 2),
+        "drift": drift,
+        "invalid_refs": invalid_refs
+    }
+
+
+
 
 def resolve_epic_dir() -> Path:
     """Return docs/epics/<branch>/ based on current git branch."""
@@ -83,11 +150,19 @@ def resolve_epic_dir() -> Path:
 
 
 def resolve_artifact(name: str) -> Path:
-    """SSOT for artifact path resolution: epic dir first, root fallback."""
+    """SSOT for artifact path resolution: prefers newest copy between epic dir and root."""
+    import sys
     epic_path = resolve_epic_dir() / name
+    root_path = Path(name)
+    
+    if epic_path.exists() and root_path.exists():
+        if root_path.stat().st_mtime > epic_path.stat().st_mtime:
+            print(f"⚠️ Warning: root {name} is newer than epic-dir copy. Using root.", file=sys.stderr)
+            return root_path
+        return epic_path
+        
     if epic_path.exists():
         return epic_path
-    root_path = Path(name)
     if root_path.exists():
         return root_path
     return epic_path
@@ -476,16 +551,52 @@ def gate_plan(yolo: bool, config: dict) -> None:
         for f in lane.get("files", []):
             file_to_lanes.setdefault(f, []).append(lid)
 
+    units = lane_plan.get("units", {})
+    task_to_unit = {}
+    unit_deps = {}
+    if units:
+        for uid, u in units.items():
+            for tid in u.get("tasks", []):
+                task_to_unit[tid] = uid
+            unit_deps[uid] = set(u.get("depends_on", []))
+            
+        # compute transitive dependencies for units
+        changed = True
+        while changed:
+            changed = False
+            for uid, deps in unit_deps.items():
+                old_len = len(deps)
+                for dep in list(deps):
+                    if dep in unit_deps:
+                        deps.update(unit_deps[dep])
+                if len(deps) > old_len:
+                    changed = True
+
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
             continue
-        for owner in owners:
-            deps = set(lanes[owner].get("depends_on", []))
-            others = set(owners) - {owner}
-            if not (deps & others):
-                fail(
-                    f"File overlap {f} across {sorted(owners)} has no dependency edge for {owner}"
-                )
+            
+        owners_list = list(owners)
+        for i in range(len(owners_list)):
+            for j in range(i + 1, len(owners_list)):
+                t1 = owners_list[i]
+                t2 = owners_list[j]
+                
+                # Check task-level dependency
+                if t2 in lanes[t1].get("depends_on", []) or t1 in lanes[t2].get("depends_on", []):
+                    continue
+                    
+                # Check unit-level dependency
+                if units:
+                    u1 = task_to_unit.get(t1)
+                    u2 = task_to_unit.get(t2)
+                    if u1 and u2:
+                        if u1 == u2:
+                            continue # Same unit, executes sequentially
+                        if u2 in unit_deps.get(u1, set()) or u1 in unit_deps.get(u2, set()):
+                            continue # Sequential at unit level
+                            
+                fail(f"File overlap {f} across parallel tasks {t1} and {t2} (no dependency edge)")
 
     # Overconfidence gate: check Assumption Audit in SPEC.md
     spec_path = resolve_artifact("SPEC.md")
@@ -653,7 +764,7 @@ def gate_properties(yolo: bool, config: dict) -> None:
         "OBSERVABILITY",
         "COMPATIBILITY",
     ]
-    missing = [c for c in required_categories if c not in content]
+    missing = [c for c in required_categories if c not in content.upper()]
     if missing:
         fail(f"PROPERTIES.md missing categories: {missing}")
 
@@ -711,6 +822,15 @@ def gate_review(yolo: bool, config: dict) -> None:
         fail("REVIEW-REPORT.md not found")
     if not packets_dir.exists():
         fail(f"review-packets/ directory not found: {packets_dir}")
+
+    unified_json = packets_dir / "unified.json"
+    if not unified_json.exists():
+        fail(f"review-packets/unified.json not found in {packets_dir}")
+
+    validate_payload, _ = _contracts()
+    unified_errors = validate_payload("unified.schema.json", unified_json)
+    if unified_errors:
+        fail(f"unified.json is malformed according to unified.schema.json:\n" + "\n".join(unified_errors))
 
     # Check for high-severity findings
     content = report_path.read_text() if report_path.exists() else ""
@@ -805,6 +925,8 @@ def gate_validate_packets(config: dict) -> None:
     errors = []
     validate_payload, validate_value = _contracts()
     for packet_path in packets_dir.glob("*.json"):
+        if packet_path.name == "unified.json":
+            continue
         packet_errors = validate_payload("packet.schema.json", packet_path)
         errors.extend(f"{packet_path.name}: {err}" for err in packet_errors)
 
@@ -857,6 +979,28 @@ def gate_validate_profiles(config: dict) -> None:
     pass_gate("Profiles valid")
 
 
+def gate_red(yolo: bool, config: dict) -> None:
+    from datum.tdd_driver import verify_red_stage, GreenBlindnessError
+
+    print("--- [GATE] RED Test Verification ---")
+    
+    if not config.get("green_blindness_strict", True):
+        print("green_blindness_strict is false, skipping verification.")
+        pass_gate("RED test verification skipped")
+        return
+
+    test_cmd = config.get("tests", {}).get("command", ["pytest", "-q"])
+    if isinstance(test_cmd, str):
+        import shlex
+        test_cmd = shlex.split(test_cmd)
+
+    try:
+        verify_red_stage(Path("."), test_command=test_cmd)
+        pass_gate("RED tests are failing as expected")
+    except GreenBlindnessError as e:
+        fail(str(e), hard=True)
+
+
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 
 
@@ -870,6 +1014,7 @@ GATES = {
     "validate": gate_validate,
     "review": gate_review,
     "pr-comments": gate_pr_comments,
+    "red": gate_red,
 }
 
 

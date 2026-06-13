@@ -7,6 +7,10 @@
 # Output: rewritten command to STDOUT
 # Exit 0 = proceed (with rewritten command if any)
 
+if [ "${DATUM_SUBPROCESS:-0}" = "1" ]; then
+  exit 0
+fi
+
 COMMAND="$1"
 
 # pip install → uv pip install

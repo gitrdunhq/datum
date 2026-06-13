@@ -43,7 +43,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["datum"]
+packages = ["datum", "scripts"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"assets" = "assets"
+"references" = "references"
+"templates" = "templates"
+"SKILL.md" = "SKILL.md"
 
 
 [tool.pytest.ini_options]

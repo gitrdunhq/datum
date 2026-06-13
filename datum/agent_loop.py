@@ -24,8 +24,17 @@ import os
 import re
 import secrets
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Literal, TypedDict
+
+
+class FailureLayer(str, Enum):
+    CONTEXT = "context"
+    CONSTRAINT = "constraint"
+    VERIFICATION = "verification"
+    PLANNING = "planning"
+
 
 from datum.eedom_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
@@ -45,6 +54,7 @@ from datum.prompt_sanitizer import (
     strip_special_tokens,
 )
 from datum.schemas import AgentDecision
+from datum.skeleton import extract_skeleton, score_file_priority
 from datum.structural_fingerprint import collapse_fingerprint_groups
 from datum.tool_risk import ToolRiskClass, classify_tool, retry_safe  # noqa: F401
 
@@ -122,6 +132,11 @@ TOOL_CATALOG: dict[str, tuple[str, str, ToolRiskClass]] = {
         "(SQL over views: transcripts, failures, run_state, lane_files, "
         "token_metrics, floor_runs); use SHOW TABLES to discover schema",
         ToolRiskClass.read_only,
+    ),
+    "delegate_task": (
+        '{"task": "Analyze the log files and summarize errors", "allowed_tools": ["read_file", "grep_search"]}',
+        "spawn a subagent to perform a read-only analysis task in an isolated context and return a summary",
+        ToolRiskClass.compute_only,
     ),
 }
 
@@ -607,16 +622,50 @@ def _compact_history(history: list[dict], task: str = "") -> list[dict]:
     """
     offload_index = _next_offload_index()
     digest_lines = []
+
+    # Pre-compute priority for read_file operations
+    read_file_scores = {}
+    for step in history:
+        if step.get("tool_name") == "read_file":
+            args = step.get("tool_args", {})
+            if isinstance(args, dict) and "path" in args:
+                path = str(args["path"])
+                if path.endswith(".py"):
+                    read_file_scores[path] = score_file_priority(path)
+
+    # Sort paths by priority descending
+    ranked_paths = sorted(
+        read_file_scores.keys(), key=lambda p: read_file_scores[p], reverse=True
+    )
+    full_fat_paths = set(ranked_paths[:2])  # Keep top 2 full-fat
+
     for i, step in enumerate(history):
-        args = json.dumps(step.get("tool_args", {}))[:60]
+        args_obj = step.get("tool_args", {})
+        args = json.dumps(args_obj)[:60]
         full_obs = step.get("observation", "")
         obs = full_obs.replace("\n", " ")[:_COMPACT_INLINE_OBS_CHARS]
         line = f"step {i + 1}: {step.get('tool_name', '?')}({args}) -> {obs}"
+
         if len(full_obs) > _COMPACT_INLINE_OBS_CHARS:
             path = _offload_observation(offload_index, full_obs)
             if path is not None:
                 offload_index += 1
-                line += f" [full output: {path}]"
+
+                tool_name = step.get("tool_name")
+                file_path = (
+                    str(args_obj.get("path", "")) if isinstance(args_obj, dict) else ""
+                )
+
+                if tool_name == "read_file" and file_path.endswith(".py"):
+                    if file_path in full_fat_paths:
+                        line += f"\n[FULL CONTENT RETAINED]\n{full_obs}"
+                    else:
+                        skeleton = extract_skeleton(full_obs)
+                        line += (
+                            f" [full output offloaded: {path}]\n[SKELETON]\n{skeleton}"
+                        )
+                else:
+                    line += f" [full output offloaded: {path}]"
         digest_lines.append(line)
 
     done, errors = _handoff_sections(history)
@@ -691,6 +740,7 @@ class _TranscriptWriter:
         *,
         event: StepEvent = "tool_result",
         tool_result: ToolResultData | None = None,
+        layer: FailureLayer | None = None,
     ) -> None:
         if self._path is None:
             return
@@ -720,6 +770,8 @@ class _TranscriptWriter:
             }
             if tool_result is not None:
                 record["tool_result"] = tool_result
+            if layer is not None:
+                record["layer"] = layer.value
             with self._path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
         except OSError:
@@ -938,11 +990,14 @@ def load_project_rules(repo_dir) -> str:
     return text
 
 
-def _catalog_lines(allowed_tools: list[str]) -> str:
+def _catalog_lines(allowed_tools: list[str], progressive: bool = False) -> str:
     lines = []
     for name in allowed_tools:
         sig, desc, _risk = TOOL_CATALOG.get(name, ("{}", "", ToolRiskClass.destructive))
-        lines.append(f"  {name} {sig} — {desc}")
+        if progressive:
+            lines.append(f"  {name} — {desc}")
+        else:
+            lines.append(f"  {name} {sig} — {desc}")
     return "\n".join(lines)
 
 
@@ -967,7 +1022,9 @@ def _render_history(history: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_system_prompt(allowed_tools: list[str], rules_salt: str = "") -> str:
+def _build_system_prompt(
+    allowed_tools: list[str], rules_salt: str = "", progressive: bool = False
+) -> str:
     """Static per-run system prompt: role, tool catalog, code rules.
 
     Stable across turns so the inference server's prefix cache can reuse it.
@@ -992,7 +1049,7 @@ def _build_system_prompt(allowed_tools: list[str], rules_salt: str = "") -> str:
     return (
         "You are a coding agent working inside a repository. "
         "You accomplish tasks by calling tools, one per step.\n\n"
-        f"TOOLS (name, args, purpose):\n{_catalog_lines(allowed_tools)}\n\n"
+        f"TOOLS (name, args, purpose):\n{_catalog_lines(allowed_tools, progressive)}\n\n"
         "RULES:\n"
         "1. Read a file before you overwrite it (enforced).\n"
         "2. When writing a file, output the COMPLETE file content in one "
@@ -1126,6 +1183,10 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     timeout_s = config.get("timeout_s", 600)
     think_max_tokens = config.get("think_max_tokens", 2048)
     allowed_tools = config.get("allowed_tools", list(TOOL_CATALOG))
+    progressive_tools = config.get("progressive_tools", False)
+    # Worktree isolation (#137): agents run inside their lane's worktree when
+    # one exists; falls back to cwd so single-worktree runs are unaffected.
+    resolved_repo = Path(config.get("worktree_path") or ".")
 
     history: list[dict] = []  # working set — compacted when the monitor trips
     steps_log: list[dict] = []  # append-only full log — returned + checkpointed
@@ -1146,16 +1207,19 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         if extra_rules
         else ""
     )
-    system_prompt = _build_system_prompt(allowed_tools, rules_salt=rules_salt)
+    system_prompt = _build_system_prompt(
+        allowed_tools, rules_salt=rules_salt, progressive=progressive_tools
+    )
+    disclosed_tools: set[str] = set()
     transcript = _TranscriptWriter(phase)
     progress = _ProgressWriter(phase)
     progress.start(task)
 
     # ── Eedom blast-radius: init graph at episode start (fail open) ─────
     global _eedom_graph, _eedom_repo_dir
-    _eedom_repo_dir = str(Path.cwd())
+    _eedom_repo_dir = str(resolved_repo)
     try:
-        _eedom_graph = init_code_graph(Path.cwd())
+        _eedom_graph = init_code_graph(resolved_repo)
     except Exception:
         _eedom_graph = None
 
@@ -1173,10 +1237,16 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     _last_write_step: int | None = None  # last step a write tool mutated disk
     _last_passing_test_step: int | None = None  # last step pytest passed
     _unverified_done_rejections = 0
+    _eval_retries = 0
 
-    def _finish(summary: str | None, escalated: bool, reason: str | None) -> dict:
+    def _finish(
+        summary: str | None,
+        escalated: bool,
+        reason: str | None,
+        layer: FailureLayer | None = None,
+    ) -> dict:
         progress.finish(escalated, reason)
-        return {
+        res = {
             "result": {"summary": summary} if summary is not None else None,
             "escalated": escalated,
             "reason": reason,
@@ -1186,6 +1256,24 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             "total_tokens": total_tokens,
             "total_time_s": round(time.monotonic() - start, 2),
         }
+        if escalated:
+            if layer:
+                res["layer"] = layer.value
+            transcript.log_step(
+                len(steps_log),
+                "",
+                {
+                    "action": "escalate",
+                    "reason": reason,
+                    "layer": layer.value if layer else None,
+                },
+                "escalate",
+                {},
+                f"Escalated ({layer.value if layer else 'unknown'}): {reason}",
+                event="error",
+                layer=layer,
+            )
+        return res
 
     # ── S0/#85: per-episode rules pinning — IN MEMORY ────────────────────
     # The authoritative pin is a local variable, never agent-writable disk:
@@ -1199,18 +1287,67 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     # Deleting it mid-episode is tampering (the most complete rewrite);
     # verification is skipped only when NO rules file existed at start
     # (extra_rules may legitimately be caller-supplied with none on disk).
-    rules_file_existed_at_start = _distill_rules_text(Path.cwd()) is not None
+    rules_file_existed_at_start = _distill_rules_text(resolved_repo) is not None
     if extra_rules:
         # Advisory audit artifact ONLY — refresh .datum/rules-hash.json so a
         # human can inspect what was pinned. Verification never reads it, so
         # a write failure is harmless and deliberately non-fatal.
-        rules_pin_store = Path(".datum") / "rules-hash.json"
+        rules_pin_store = resolved_repo / ".datum" / "rules-hash.json"
         try:
             rules_pin_store.parent.mkdir(exist_ok=True)
             rules_pin_store.unlink(missing_ok=True)
             hash_pin_rules(extra_rules, rules_pin_store)
         except OSError:
             pass  # advisory only — the in-memory pin is the tripwire
+
+    if phase == "act_red":
+
+        class ContractChecklist(TypedDict):
+            acceptance_criteria: list[str]
+            spec_understood: bool
+
+        try:
+            confirm_prompt = (
+                f"You are starting the act_red phase.\n"
+                f"Please restate the acceptance criteria for this task in your own words, "
+                f"and list out exactly what you need to build to satisfy them.\n\n"
+                f"Task:\n{task}"
+            )
+            confirm_think = generate(
+                confirm_prompt,
+                model_id=think_model,
+                system="You are an expert developer. Read the spec carefully.",
+                max_time_s=120,
+            ).get("text", "")
+
+            checklist_prompt = (
+                f"Extract the acceptance criteria checklist from the following restatement:\n\n"
+                f"{confirm_think}"
+            )
+            checklist = structured(
+                checklist_prompt,
+                schema=ContractChecklist,
+                model_id=decide_model,
+                system="Extract the checklist into the requested schema.",
+                max_time_s=60,
+            )
+            observation = (
+                f"CONTRACT CONFIRMATION:\n\n"
+                f"Restatement:\n{confirm_think}\n\n"
+                f"Checklist:\n{json.dumps(checklist, indent=2)}"
+            )
+            history.append({"role": "user", "content": observation})
+            transcript.log_step(
+                0,
+                confirm_think,
+                {"action": "contract_confirmation", "tool_name": "", "tool_args": {}},
+                "contract_confirmation",
+                {},
+                observation,
+                event="tool_result",
+            )
+        except Exception:
+            pass
 
     for _step in range(max_steps):
         # ── S0/#85/#99: mid-episode rules-tampering tripwire ─────────────
@@ -1223,7 +1360,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         # skipped only when no rules file existed at episode start
         # (extra_rules may be caller-supplied with no rules file on disk).
         if extra_rules or rules_file_existed_at_start:
-            current_rules = _distill_rules_text(Path.cwd())
+            current_rules = _distill_rules_text(resolved_repo)
             if current_rules is None:
                 if rules_file_existed_at_start:
                     return _finish(
@@ -1232,6 +1369,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                         "rules_tampering: rules file deleted mid-episode "
                         "(a rules file existed on disk at episode start "
                         "and is now missing)",
+                        FailureLayer.CONSTRAINT,
                     )
                 # No rules file at start and none now: extra_rules was
                 # caller-supplied — nothing on disk to verify against.
@@ -1253,7 +1391,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             # Budget gone (or too thin for useful work): escalate instead of
             # issuing a THINK that could overrun timeout_s by up to the HTTP
             # request timeout (#61).
-            return _finish(None, True, "timeout_exceeded")
+            return _finish(None, True, "timeout_exceeded", FailureLayer.PLANNING)
 
         try:
             # ── THINK (main model, freeform) ─────────────────────────────
@@ -1385,6 +1523,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                         "done_without_verification: model declared done in a "
                         "GREEN phase after modifying files with no subsequent "
                         "passing test run (rejection cap reached)",
+                        FailureLayer.VERIFICATION,
                     )
                 _unverified_done_rejections += 1
                 step_entry = {
@@ -1413,6 +1552,199 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     event="error",
                 )
                 continue
+
+            # Issue 84: post-GREEN eedom gate
+            if phase in ("act_green", "act_refactor"):
+                import subprocess
+
+                eedom_out = resolved_repo / ".datum" / "eedom_review.json"
+                eedom_out.parent.mkdir(parents=True, exist_ok=True)
+                eedom_out.unlink(missing_ok=True)
+
+                try:
+                    res = subprocess.run(
+                        [
+                            "uv",
+                            "run",
+                            "eedom",
+                            "review",
+                            "--repo-path",
+                            ".",
+                            "--scanners",
+                            "blast-radius,complexity,gitleaks",
+                            "--format",
+                            "json",
+                            "--output",
+                            str(eedom_out),
+                        ],
+                        cwd=resolved_repo,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                except Exception as e:
+                    return _finish(
+                        None, True, f"eedom_gate_crashed: {e}", FailureLayer.PLANNING
+                    )
+
+                if res.returncode != 0:
+                    return _finish(
+                        None,
+                        True,
+                        f"eedom_gate_failed: exit {res.returncode}. Output: {res.stderr}\n{res.stdout}",
+                        FailureLayer.VERIFICATION,
+                    )
+
+                if not eedom_out.exists():
+                    return _finish(
+                        None,
+                        True,
+                        "eedom_gate_failed: missing output file (fail closed)",
+                        FailureLayer.VERIFICATION,
+                    )
+
+                try:
+                    findings = json.loads(eedom_out.read_text())
+                except Exception as e:
+                    return _finish(
+                        None,
+                        True,
+                        f"eedom_gate_failed: invalid json output: {e}",
+                        FailureLayer.VERIFICATION,
+                    )
+
+                critical_high = [
+                    f
+                    for f in findings
+                    if isinstance(f, dict)
+                    and str(f.get("severity", "")).upper() in ("CRITICAL", "HIGH")
+                ]
+
+                if critical_high:
+                    msg = "EEDOM REVIEW REJECTED COMPLETION:\n"
+                    for f in critical_high:
+                        msg += f"- [{f.get('severity')}] {f.get('plugin')}: {f.get('message')}\n"
+                        if "file" in f:
+                            msg += f"  File: {f.get('file')}:{f.get('line', '')}\n"
+
+                    msg += "\nPlease fix these issues and try again."
+
+                    steps_log.append(
+                        {
+                            "event": "error",
+                            "thought": thought,
+                            "tool_name": "done",
+                            "tool_args": {},
+                            "observation": msg,
+                        }
+                    )
+                    progress.record_step(steps_log[-1])
+                    if on_step:
+                        on_step(steps_log[-1])
+                    transcript.log_step(
+                        _step,
+                        think_raw,
+                        decision,
+                        "done",
+                        {},
+                        msg,
+                        event="error",
+                    )
+                    history.append({"role": "user", "content": msg})
+                    _prev_signature = None
+                    _no_progress_fired = False
+                    _step += 1
+                    continue
+
+            # Issue 79: Skeptical evaluator agent
+            if phase in ("act_green", "act_refactor") and _eval_retries < 2:
+                import subprocess
+
+                diff_output = ""
+                try:
+                    subprocess.run(["git", "add", "."], cwd=resolved_repo, check=True)
+                    diff_output = subprocess.check_output(
+                        ["git", "diff", "--cached"], text=True, cwd=resolved_repo
+                    )
+                    subprocess.run(["git", "reset"], cwd=resolved_repo, check=True)
+                except Exception:
+                    pass
+
+                eval_examples_path = (
+                    Path(__file__).parent / "assets" / "evaluator_examples.toml"
+                )
+                few_shot_text = ""
+                if eval_examples_path.exists():
+                    try:
+                        try:
+                            import tomllib
+                        except ImportError:
+                            import tomli as tomllib
+                        examples = tomllib.loads(eval_examples_path.read_text())
+                        for name, ex in examples.items():
+                            few_shot_text += f"\n--- Example: {name} ---\nDiff:\n{ex.get('diff', '')}\nReasoning: {ex.get('reasoning', '')}\nVerdict: {ex.get('verdict', '')}\n"
+                    except Exception:
+                        pass
+
+                eval_prompt = (
+                    f"You are a skeptical quality assurance agent.\n"
+                    f"Review the diff against the task acceptance criteria.\n"
+                    f"Grade the diff on: ACs satisfied, tests actually verify ACs (not over-mocked), "
+                    f"no placeholders/dead code, TDD compliance.\n\n"
+                    f"{few_shot_text}\n"
+                    f"--- CURRENT TASK ---\n"
+                    f"Task:\n{task}\n\nDiff:\n```diff\n{diff_output}\n```\n\n"
+                    f"End your review with exactly 'Verdict: PASS' or 'Verdict: FAIL'."
+                )
+
+                eval_system = "You are a skeptical code reviewer. You grade code strictly. Do not hallucinate."
+                try:
+                    eval_result = generate(
+                        eval_prompt,
+                        model_id=think_model,
+                        system=eval_system,
+                        max_time_s=120,
+                    )
+                    eval_text = eval_result.get("text", "")
+                except Exception:
+                    eval_text = ""
+
+                if (
+                    "Verdict: FAIL" in eval_text.upper()
+                    or "VERDICT: FAIL" in eval_text.upper()
+                ):
+                    _eval_retries += 1
+                    observation = (
+                        f"EVALUATOR REJECTED COMPLETION (Retry {_eval_retries}/2):\n"
+                        f"{eval_text}\n\n"
+                        f"Please fix the issues and try again."
+                    )
+                    steps_log.append(
+                        {
+                            "event": "error",
+                            "thought": thought,
+                            "tool_name": "done",
+                            "tool_args": {},
+                            "observation": observation,
+                        }
+                    )
+                    progress.record_step(steps_log[-1])
+                    if on_step:
+                        on_step(steps_log[-1])
+                    transcript.log_step(
+                        _step,
+                        think_raw,
+                        decision,
+                        "done",
+                        {},
+                        observation,
+                        event="error",
+                    )
+                    history.append({"role": "user", "content": observation})
+                    _prev_signature = None
+                    _no_progress_fired = False
+                    _step += 1
+                    continue
 
             steps_log.append(
                 {
@@ -1454,6 +1786,17 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             observation = (
                 f"Error: '{tool_name}' is not a valid tool. "
                 f"Valid tools: {', '.join(allowed_tools)}."
+            )
+        elif (
+            progressive_tools
+            and tool_name in TOOL_CATALOG
+            and tool_name not in disclosed_tools
+        ):
+            disclosed_tools.add(tool_name)
+            sig, _desc, _ = TOOL_CATALOG[tool_name]
+            observation = (
+                f"System: Tool '{tool_name}' selected. Its required argument schema is: {sig}\n"
+                f"Please call it again with the required arguments."
             )
         elif (
             tool_name in WRITE_TOOLS
@@ -1571,9 +1914,46 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     pass
 
             # ── EXECUTE (sandboxed, deterministic) ───────────────────────
-            tool_output, exec_truncated = _execute_tool(
-                {"tool_name": tool_name, "tool_args": tool_args}, config
-            )
+            if tool_name == "delegate_task":
+                sub_task = tool_args.get("task", "")
+                sub_allowed = tool_args.get(
+                    "allowed_tools", ["read_file", "grep_search"]
+                )
+
+                # M2 deepagents-inspired history isolation (#72)
+                sub_config = dict(config)
+                # Ensure the subagent can't escalate privileges beyond the parent
+                parent_allowed = config.get("allowed_tools", list(TOOL_CATALOG.keys()))
+                sub_config["allowed_tools"] = [
+                    t for t in sub_allowed if t in parent_allowed
+                ]
+                # Child gets a constrained budget
+                sub_config["max_tool_turns"] = min(15, config.get("max_tool_turns", 15))
+
+                # Sentinel to prevent recursive hook cascades (#72)
+                prev_sentinel = os.environ.get("DATUM_SUBPROCESS")
+                os.environ["DATUM_SUBPROCESS"] = "1"
+                try:
+                    sub_result = agent_loop(
+                        task=sub_task,
+                        config=sub_config,
+                        phase=f"{phase}_sub",
+                        on_step=on_step,
+                    )
+                    tool_output = f"Subagent finished. Summary:\n{sub_result.get('summary', 'No summary provided.')}"
+                    exec_truncated = False
+                except Exception as e:
+                    tool_output = f"Error: Subagent crashed: {e}"
+                    exec_truncated = False
+                finally:
+                    if prev_sentinel is None:
+                        os.environ.pop("DATUM_SUBPROCESS", None)
+                    else:
+                        os.environ["DATUM_SUBPROCESS"] = prev_sentinel
+            else:
+                tool_output, exec_truncated = _execute_tool(
+                    {"tool_name": tool_name, "tool_args": tool_args}, config
+                )
             # ── #67: track (last write, last passing test) for the GREEN
             # done-verification guard. Only writes that actually mutated
             # disk count (every path-writing lane tool prints '"ok": true'
@@ -1713,6 +2093,10 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
         if on_step:
             on_step(step_entry)
 
+        _layer = None
+        if _no_progress_fired and signature == _prev_signature:
+            _layer = FailureLayer.PLANNING
+
         # ── Transcript logging (always-on, never crashes) ────────────────
         transcript.log_step(
             _step,
@@ -1723,6 +2107,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             observation,
             event=step_event,
             tool_result=step_tr,
+            layer=_layer,
         )
 
         # Loop detection: identical (tool, args) repeated with no progress
@@ -1731,6 +2116,6 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
             len(recent_signatures) >= LOOP_DETECT_REPEATS
             and len(set(recent_signatures[-LOOP_DETECT_REPEATS:])) == 1
         ):
-            return _finish(None, True, "loop_detected")
+            return _finish(None, True, "loop_detected", FailureLayer.PLANNING)
 
-    return _finish(None, True, "max_steps_exhausted")
+    return _finish(None, True, "max_steps_exhausted", FailureLayer.PLANNING)
