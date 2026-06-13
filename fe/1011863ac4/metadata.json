@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "fe1011863ac4",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "assets/hooks/post-tool-use-test-ratchet-live.sh",
+    "assets/hooks/pre-tool-use-commit-format.sh",
+    "assets/hooks/pre-tool-use-lane-file-guard.sh",
+    "assets/hooks/pre-tool-use-protect-tests.sh",
+    "datum/wave_builder.py",
+    "install.sh",
+    "skills/datum-tdd-act.js",
+    "tests/test_wave_builder.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fe/1011863ac4/0/metadata.json",
+      "transcript": "/fe/1011863ac4/0/full.jsonl",
+      "content_hash": "/fe/1011863ac4/0/content_hash.txt",
+      "prompt": "/fe/1011863ac4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5728,
+    "cache_creation_tokens": 805181,
+    "cache_read_tokens": 54825315,
+    "output_tokens": 151087,
+    "api_call_count": 359
+  }
+}
