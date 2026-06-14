@@ -1,4 +1,18 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act.ts
+export const meta = {
+  name: "datum-tdd-act",
+  description: "Deterministic TDD Act: RED->GREEN->REFACTOR per lane with gate enforcement",
+  phases: [
+    { title: "Topology", detail: "parse lane-plan.json, BFS wave grouping, auto-partition into \u22645 task batches" },
+    { title: "Setup", detail: "create root + per-lane git worktrees (per batch)" },
+    { title: "Act", detail: "RED->verify->GREEN->verify->REFACTOR per lane, DAG-parallel (per batch)" },
+    { title: "Merge", detail: "squash-merge lanes in topological order (per batch)" },
+    { title: "Cleanup", detail: "remove worktrees (per batch)" },
+    { title: "Docs", detail: "haiku pre-check + conditional sonnet sync (once after all batches)" },
+    { title: "Triage", detail: "analyze failures, auto-file issues on the board" }
+  ]
+};
+
 // skills/src/shared/utils.ts
 function buildWaves(lanePlan2) {
   const lanes = lanePlan2.lanes;
@@ -44,19 +58,6 @@ function buildWaves(lanePlan2) {
 }
 
 // skills/src/datum-tdd-act.ts
-export const meta = {
-  name: "datum-tdd-act",
-  description: "Deterministic TDD Act: RED->GREEN->REFACTOR per lane with gate enforcement",
-  phases: [
-    { title: "Topology", detail: "parse lane-plan.json, BFS wave grouping, auto-partition into \u22645 task batches" },
-    { title: "Setup", detail: "create root + per-lane git worktrees (per batch)" },
-    { title: "Act", detail: "RED->verify->GREEN->verify->REFACTOR per lane, DAG-parallel (per batch)" },
-    { title: "Merge", detail: "squash-merge lanes in topological order (per batch)" },
-    { title: "Cleanup", detail: "remove worktrees (per batch)" },
-    { title: "Docs", detail: "haiku pre-check + conditional sonnet sync (once after all batches)" },
-    { title: "Triage", detail: "analyze failures, auto-file issues on the board" }
-  ]
-};
 var a = typeof args === "string" ? JSON.parse(args) : args || {};
 var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
 var epicBranch = a.epicBranch;

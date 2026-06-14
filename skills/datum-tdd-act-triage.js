@@ -1,4 +1,10 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-triage.ts
+export const meta = {
+  name: "datum-tdd-act-triage",
+  description: "Categorize TDD failures and auto-file GitHub issues",
+  phases: [{ title: "Triage" }]
+};
+
 // skills/src/shared/schemas.ts
 var TRIAGE_SCHEMA = {
   type: "object",
@@ -20,11 +26,6 @@ var TRIAGE_SCHEMA = {
 };
 
 // skills/src/datum-tdd-act-triage.ts
-export const meta = {
-  name: "datum-tdd-act-triage",
-  description: "Categorize TDD failures and auto-file GitHub issues",
-  phases: [{ title: "Triage" }]
-};
 var a = args;
 phase("Triage");
 var filed = 0;

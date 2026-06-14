@@ -1,10 +1,11 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-merge.ts
-// skills/src/datum-tdd-act-merge.ts
 export const meta = {
   name: "datum-tdd-act-merge",
   description: "Squash-merge completed lanes in topological order, then cleanup worktrees",
   phases: [{ title: "Merge" }, { title: "Cleanup" }]
 };
+
+// skills/src/datum-tdd-act-merge.ts
 var a = args;
 phase("Merge");
 if (a.completedIds.length === 0) {

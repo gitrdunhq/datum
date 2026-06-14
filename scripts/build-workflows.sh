@@ -33,19 +33,37 @@ for entry in $ENTRY_POINTS; do
     --outfile="$outfile" \
     --log-level=warning
 
-  # ── Post-process: fix export const meta + return ──
-  # esbuild converts `export const meta` to `var meta` with an export block at bottom
-  # The sandbox needs `export const meta = {...}` inline and bare `return {...}` at end
+  # ── Post-process ──
+  # 1. Fix var→export const meta, var→return, remove ESM export block
   sed -i '' \
     -e 's/^var meta = /export const meta = /' \
     -e 's/^var __workflowResult = /return /' \
     -e '/^export {$/,/^};$/d' \
     "$outfile"
 
-  # ── Add banner ──
+  # 2. Hoist `export const meta = {...};` to top (sandbox requires it first)
   tmpfile=$(mktemp)
-  echo "${BANNER}${basename}.ts" > "$tmpfile"
-  cat "$outfile" >> "$tmpfile"
+  python3 -c "
+import sys
+lines = open(sys.argv[1]).readlines()
+meta_lines, body_lines = [], []
+in_meta, brace_depth = False, 0
+for line in lines:
+    if line.startswith('export const meta = '):
+        in_meta = True
+    if in_meta:
+        meta_lines.append(line)
+        brace_depth += line.count('{') - line.count('}')
+        if brace_depth <= 0 and '{' in ''.join(meta_lines):
+            in_meta = False
+    else:
+        body_lines.append(line)
+with open(sys.argv[2], 'w') as f:
+    f.write('${BANNER}${basename}.ts\n')
+    f.writelines(meta_lines)
+    f.write('\n')
+    f.writelines(body_lines)
+" "$outfile" "$tmpfile"
   mv "$tmpfile" "$outfile"
 
   echo "    $basename.js: OK"

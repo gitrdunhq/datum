@@ -1,4 +1,10 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-lane.ts
+export const meta = {
+  name: "datum-tdd-act-lane",
+  description: "DAG-scheduled TDD execution: RED->verify->GREEN->verify->REFACTOR per lane",
+  phases: [{ title: "Act" }]
+};
+
 // skills/src/shared/schemas.ts
 var WRITE_RESULT_SCHEMA = {
   type: "object",
@@ -330,11 +336,6 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
-export const meta = {
-  name: "datum-tdd-act-lane",
-  description: "DAG-scheduled TDD execution: RED->verify->GREEN->verify->REFACTOR per lane",
-  phases: [{ title: "Act" }]
-};
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];

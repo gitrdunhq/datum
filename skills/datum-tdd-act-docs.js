@@ -1,4 +1,10 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-docs.ts
+export const meta = {
+  name: "datum-tdd-act-docs",
+  description: "Haiku pre-check + conditional sonnet docs sync with git commit",
+  phases: [{ title: "Docs" }]
+};
+
 // skills/src/shared/schemas.ts
 var WRITE_RESULT_SCHEMA = {
   type: "object",
@@ -104,11 +110,6 @@ function docsSyncPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-docs.ts
-export const meta = {
-  name: "datum-tdd-act-docs",
-  description: "Haiku pre-check + conditional sonnet docs sync with git commit",
-  phases: [{ title: "Docs" }]
-};
 var a = args;
 phase("Docs");
 var synced = false;
