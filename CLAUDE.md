@@ -2,6 +2,10 @@
 
 All agent instructions live in [AGENTS.md](AGENTS.md). Read that file.
 
+## Workflow Scripts: TypeScript Source, Generated JS
+
+The `skills/datum-tdd-act*.js` files are **generated** — do NOT edit them directly. Edit the TypeScript source in `skills/src/` and run `bash scripts/build-workflows.sh` to regenerate. The `.js` files have a `// @generated` banner as a reminder.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
