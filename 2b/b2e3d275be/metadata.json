@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "2bb2e3d275be",
+  "strategy": "manual-commit",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 23,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Security/CredentialStore.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBMigrationRunner.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActor.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBWriterActor.swift",
+    "Record-Presentation/Sources/Presentation/Views/MenuBarPopover.swift",
+    "Record-Presentation/Sources/Presentation/Views/MenuBarPopoverHelpers.swift",
+    "Record-Presentation/Sources/Presentation/Views/MenuBarPopoverSections.swift",
+    "Record-Presentation/Sources/Presentation/Views/SettingsViewDeleteAllSection.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2b/b2e3d275be/0/metadata.json",
+      "transcript": "/2b/b2e3d275be/0/full.jsonl",
+      "content_hash": "/2b/b2e3d275be/0/content_hash.txt",
+      "prompt": "/2b/b2e3d275be/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1167,
+    "cache_creation_tokens": 622525,
+    "cache_read_tokens": 16795721,
+    "output_tokens": 130576,
+    "api_call_count": 152
+  }
+}

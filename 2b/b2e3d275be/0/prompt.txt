@@ -1,0 +1,81 @@
+show me the board
+
+---
+
+pause after rhe akill file thing
+
+---
+
+FILE that skill issue in datun
+
+---
+
+/datum-tdd-act BETA / GA
+
+---
+
+a
+
+---
+
+yes
+
+---
+
+WOAH! we did it. check the github issues they were from and see if we did it
+
+---
+
+yeah boi.
+
+---
+
+run edom against the PR
+
+---
+
+is it doing
+
+---
+
+you need to only feed in the src folders
+
+---
+
+<task-notification>
+<task-id>bmfym0t4n</task-id>
+<tool-use-id>toolu_019UgLHvHZc3iVaqdicXA3eH</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/bc261f70-3225-4e90-8daa-bb74f7b2236a/tasks/bmfym0t4n.output</output-file>
+<status>completed</status>
+<summary>Background command "Run eedom review with correct localhost-qualified image" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+it should nkt take this ling go into the contsiner
+
+---
+
+<task-notification>
+<task-id>bhxu37s3z</task-id>
+<tool-use-id>toolu_01179rGh3pjpdKmrBoU4D6Em</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/bc261f70-3225-4e90-8daa-bb74f7b2236a/tasks/bhxu37s3z.output</output-file>
+<status>completed</status>
+<summary>Background command "Run eedom with native arm64 image — no QEMU overhead" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+we have comments onm 209 to resolve from gh copilot review
+
+---
+
+/duckdb-skills:duckdb-docs
+
+---
+
+oh i wantged to help with what yo uwere doing
+
+---
+
+/adversarial-reviewer sonnet
