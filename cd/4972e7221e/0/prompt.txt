@@ -284,3 +284,15 @@ retry the fsiled work
 ---
 
 relaunch dashboard
+
+---
+
+<task-notification>
+<task-id>w96odvfbj</task-id>
+<tool-use-id>toolu_0189Ufoav6MiohN6p9n5231F</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w96odvfbj.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260613-223500","total":2,"completed":0,"failed":2,"failedLanes":["task-001","task-002"],"completedLanes":[]}</result>
+<usage><agent_count>16</agent_count><subagent_tokens>340597</subagent_tokens><tool_uses>63</tool_uses><duration_ms>403764</duration_ms></usage>
+</task-notification>
