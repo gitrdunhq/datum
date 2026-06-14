@@ -16,7 +16,9 @@ RULES:
 - Each task maps to one lane in the TDD pipeline
 - Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"
 - No task touches more than 5 files
+- The 'files' array MUST list EVERY file the implementation agent will need to create or modify — not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.
 - Tasks sharing files must have a dependency edge or be in the same lane
+- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo.py`), split tests per lane: `tests/test_foo_create.py`, `tests/test_foo_validate.py`, etc. This prevents reflect score pollution from cross-lane test accumulation.
 - Every task needs: title, acceptance_criteria, files, depends_on, red_note
 - ACs must be specific enough to write a failing test from — function names, expected values, exception types
 - red_note tells the RED agent what the failing test should prove

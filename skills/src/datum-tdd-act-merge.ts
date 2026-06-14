@@ -1,3 +1,4 @@
+import { model } from './shared/models'
 import type { MergeArgs } from './shared/types'
 
 export const meta = {
@@ -18,7 +19,7 @@ if (a.completedIds.length === 0) {
   await agent(
     `datum worktrees merge --epic-branch ${a.epicBranch} --lane-order ${mergeOrder.join(',')} ` +
     `--commit-message "act(${a.batchRunId}): merge ${a.completedIds.length} lanes"`,
-    { label: `merge${a.batchTag}`, phase: 'Merge', model: 'haiku' }
+    { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }
   )
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(' → ')}]`)
 }
@@ -30,7 +31,7 @@ await agent(
   `datum worktrees cleanup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} && ` +
   `git worktree remove .datum/worktrees/${a.batchRunId}-root --force 2>/dev/null; ` +
   `git worktree prune`,
-  { label: `cleanup${a.batchTag}`, phase: 'Cleanup', model: 'haiku' }
+  { label: `cleanup${a.batchTag}`, phase: 'Cleanup', model: model('fast') }
 )
 
 export const __workflowResult = { merged: a.completedIds.length > 0 }

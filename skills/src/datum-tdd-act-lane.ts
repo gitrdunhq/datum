@@ -1,3 +1,4 @@
+import { model, type ModelName } from './shared/models'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -58,7 +59,7 @@ async function verifyFileOwnership(
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
 No markdown fences, no explanation.`,
-    { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: 'haiku' },
+    { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') },
   )
 
   if (!result) return { ok: true, violations: [] }
@@ -75,7 +76,7 @@ No markdown fences, no explanation.`,
       violations.push(`${f} is owned by another lane`)
     }
     if (allowedFiles.length > 0 && !allowedFiles.some((a) => f.endsWith(a) || a.endsWith(f))) {
-      violations.push(`${f} is not in allowed files list`)
+      violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
     }
   }
 
@@ -110,9 +111,28 @@ async function runLane(
 
   // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
-  const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', {})
-  const redCtxCmd: string = laneCtxCmd(redPacket, wt)
   const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg.language} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  const preflightPath = `.datum/runs/${cfg.runId}/preflight-${taskId}.json`
+
+  // Extract target_context from preflight JSON if available
+  let targetContext: Record<string, string[]> | undefined
+  const preflightRaw: string | null = await agent(
+    `Run: ${skeletonCmd}
+Then read the output file: cat "${wt}/${preflightPath}" 2>/dev/null || echo "{}"
+Return ONLY the raw JSON contents of the file. No markdown fences, no explanation.`,
+    { label: `preflight:${taskId}`, phase: 'Act', model: model('fast') },
+  )
+  if (preflightRaw) {
+    const preflightData = parseAgentJson<{ target_context?: Record<string, string[]> }>(preflightRaw, {})
+    if (preflightData.target_context) {
+      targetContext = preflightData.target_context
+      log(`[${taskId}] target_context extracted: ${Object.keys(targetContext).join(', ')}`)
+    }
+  }
+
+  const redExtras: Record<string, unknown> = targetContext ? { target_context: targetContext } : {}
+  const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', redExtras)
+  const redCtxCmd: string = laneCtxCmd(redPacket, wt)
 
   const promptVars = {
     wt,
@@ -122,11 +142,12 @@ async function runLane(
     testCommand: laneTestCmd,
     testFilesList: testFiles.join(' '),
     commitPrefix: redPacket.commit_prefix,
+    taskId,
   }
 
   let red: StageResult | null = await agent(
     redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
+    { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
   )
 
   if (red?.success) {
@@ -137,7 +158,7 @@ async function runLane(
     log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
     red = await agent(
       redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
-      { label: `red-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
+      { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
     )
   }
 
@@ -146,33 +167,50 @@ async function runLane(
     return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
-  // Structural assertion check — catch placeholder tests before relying on the boolean
-  const assertionCheck: { has_placeholders: boolean; detail: string } | null = await agent(
-    `Scan the test files in "${wt}" for placeholder assertions that would never fail.
-Read these files: ${testFiles.join(', ')}
+  // ── New-test-function count gate (deterministic, no LLM) ──
+  const acCount = (lane.acceptance_criteria || []).length
+  if (acCount > 0) {
+    const countResult: string | null = await agent(
+      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(' ')} | grep -c '^+def test_' || echo 0
+Return ONLY the number. No explanation.`,
+      { label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast') },
+    )
+    const newTestCount = parseInt(String(countResult).trim(), 10) || 0
+    if (newTestCount < acCount) {
+      log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` }
+    }
+    log(`[${taskId}] RED: ${newTestCount} new test functions confirmed (>= ${acCount} ACs)`)
+  }
 
-Search for these patterns in NEW test functions (ignore pre-existing tests):
-- \`assert True\` or \`assert 1\`
-- \`pass\` as the only statement in a test function body
-- Empty test functions (just \`def test_...(...):\` with no body or only docstring)
-- \`assert x is not None\` as the ONLY assertion (smoke test, not a real check)
-- \`raise NotImplementedError\` in test bodies
+  // Structural assertion check — deterministic ast-grep scan, no LLM needed
+  const sgPatterns = [
+    { pattern: 'assert True', name: 'assert True' },
+    { pattern: 'assert 1', name: 'assert 1' },
+    { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
+  ]
+  const sgResult = await agent(
+    `Run these ast-grep commands on the test files and report what was found.
+For each command, capture the output. If ast-grep is not available, fall back to grep.
 
-Return JSON: {"has_placeholders": true/false, "detail": "which functions and what pattern"}
-Output raw JSON only. No markdown fences.`,
-    { label: `assert-check:${taskId}`, phase: 'Act', model: 'haiku' },
+${testFiles.map((f) => sgPatterns.map((p) =>
+    `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
+  ).join('\n')).join('\n')}
+
+Also check for pass-only test bodies:
+${testFiles.map((f) =>
+    `grep -A1 'def test_' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+  ).join('\n')}
+
+Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
+Output raw JSON only.`,
+    { label: `assert-check:${taskId}`, phase: 'Act', model: model('fast') },
   )
 
-  let placeholderWarning = ''
-  if (assertionCheck) {
-    const parsed = typeof assertionCheck === 'string'
-      ? parseAgentJson<{ has_placeholders?: boolean; detail?: string }>(assertionCheck, {})
-      : assertionCheck as { has_placeholders?: boolean; detail?: string }
-    if (parsed.has_placeholders) {
-      placeholderWarning = parsed.detail || 'placeholder assertions detected'
-      log(`[${taskId}] RED: placeholder assertions found — ${placeholderWarning}`)
-      return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${placeholderWarning}` }
-    }
+  const assertParsed = parseAgentJson<{ has_placeholders?: boolean; detail?: string }>(sgResult as string, {})
+  if (assertParsed.has_placeholders) {
+    log(`[${taskId}] RED: placeholder assertions found — ${assertParsed.detail}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${assertParsed.detail}` }
   }
 
   if (red.tests_pass) {
@@ -193,10 +231,28 @@ Output raw JSON only. No markdown fences.`,
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
   }
 
+  // ── Pre-reflect: verify new tests were actually written ──
+  const testCountResult = await agent(
+    `Count test functions in these files:
+${testFiles.map(f => `grep -c "def test_\\\\|async def test_" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
+Also check the parent commit:
+${testFiles.map(f => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c "def test_\\\\|async def test_" || echo 0`).join('\n')}
+Return JSON: {"before": <total_before>, "after": <total_after>, "new_count": <after - before>}
+Output raw JSON only.`,
+    { label: `test-count:${taskId}`, phase: 'Act', model: model('fast') },
+  )
+
+  const counts = parseAgentJson<{before?: number; after?: number; new_count?: number}>(testCountResult as string, {})
+  if ((counts.new_count || 0) === 0) {
+    log(`[${taskId}] RED FAILED: no new test functions written (before=${counts.before}, after=${counts.after})`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'no_new_tests_written: RED agent did not append any test functions' }
+  }
+  log(`[${taskId}] RED: ${counts.new_count} new test functions verified (${counts.before} → ${counts.after})`)
+
   // ── Reflect (independent evaluator — stays separate) ──
   const reflectResult: ReflectResult | null = await agent(
     reflectPrompt({ wt, testFiles: testFiles.join(', '), acStr }),
-    { label: `reflect:${taskId}`, phase: 'Act', model: 'haiku', schema: REFLECT_SCHEMA },
+    { label: `reflect:${taskId}`, phase: 'Act', model: model('fast'), schema: REFLECT_SCHEMA },
   )
 
   const reflectScore: number = reflectResult?.score || 0
@@ -210,14 +266,16 @@ Output raw JSON only. No markdown fences.`,
   }
 
   // ── GREEN (writes implementation + verifies tests pass + commits) ──
-  const greenModel = (lane.green_model || 'sonnet') as 'haiku' | 'sonnet' | 'opus'
+  const greenModel = (lane.green_model || model('balanced')) as ModelName
   const contractSummary = extractContractSummary(lane.acceptance_criteria || [])
   log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`)
 
-  const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', {
+  const greenExtras: Record<string, unknown> = {
     test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
     contract_summary: contractSummary,
-  })
+    ...(targetContext ? { target_context: targetContext } : {}),
+  }
+  const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', greenExtras)
   const greenCtxCmd: string = laneCtxCmd(greenPacket, wt)
 
   const greenVars = {
@@ -246,7 +304,7 @@ Output raw JSON only. No markdown fences.`,
         failureReason: green?.failure_reason || 'unknown',
         greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
       }),
-      { label: `green-retry:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA },
+      { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA },
     )
   }
 
@@ -275,7 +333,7 @@ Output raw JSON only. No markdown fences.`,
   const lenses = skepticLenses()
   const skepticResults = await parallel<SkepticResult>(
     lenses.map((lens) => () =>
-      agent(base + lens.prompt, { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model, schema: SKEPTIC_SCHEMA })
+      agent(base + lens.prompt, { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model as ModelName, schema: SKEPTIC_SCHEMA })
     ),
   )
 
@@ -318,7 +376,7 @@ async function runRefactor(
 
   const preCheck: RefactorCheck | null = await agent(
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(', ') }),
-    { label: `refactor-check:${taskId}`, phase: 'Act', model: 'haiku', schema: REFACTOR_CHECK_SCHEMA },
+    { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA },
   )
 
   if (!preCheck?.should_refactor) {
@@ -340,7 +398,7 @@ async function runRefactor(
       allFilesList: [...testFiles, ...implFiles].join(' '),
       commitPrefix: refactorPacket.commit_prefix,
     }),
-    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
+    { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
   )
 
   if (!refactor?.success) {
@@ -357,7 +415,7 @@ async function runRefactor(
     if (refactor.committed) {
       await agent(
         `git -C "${wt}" revert --no-edit HEAD`,
-        { label: `revert-refactor:${taskId}`, phase: 'Act', model: 'haiku' },
+        { label: `revert-refactor:${taskId}`, phase: 'Act', model: model('fast') },
       )
     }
     return { verified: true }

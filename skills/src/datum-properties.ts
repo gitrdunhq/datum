@@ -1,7 +1,7 @@
 import { renderPrompt, parseAgentJson } from './shared/utils'
+import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import readContextTemplate from './prompts/util-read-context.md'
-import commitArtifactTemplate from './prompts/util-commit-artifact.md'
 import runGateTemplate from './prompts/util-run-gate.md'
 
 export const meta = {
@@ -9,8 +9,7 @@ export const meta = {
   description: 'Derive PROPERTIES.md — 11-category invariants with task traceability',
   phases: [
     { title: 'Read', detail: 'read SPEC.md + TASKS.md' },
-    { title: 'Derive', detail: 'map requirements to testable properties across 11 categories' },
-    { title: 'Gate', detail: 'validate coverage and traceability' },
+    { title: 'Derive', detail: 'map requirements to properties, write, commit, gate' },
   ],
 }
 
@@ -29,7 +28,7 @@ const context = await agent(
     extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
 4. "tasks_content": full contents of TASKS.md`,
   }),
-  { label: 'read-inputs', model: 'haiku' },
+  { label: 'read-context', model: model('fast') },
 )
 
 const ctx = typeof context === 'string'
@@ -39,54 +38,32 @@ const ctx = typeof context === 'string'
 if (!ctx.spec_content) throw new Error('SPEC.md not found. Run datum-refine first.')
 if (!ctx.tasks_content) throw new Error('TASKS.md not found. Run datum-plan first.')
 
-log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split('\n').length} lines, TASKS: ${ctx.tasks_content.split('\n').length} lines`)
+log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split('\n').length} lines`)
 
-// ── Derive ──
+// ── Derive + commit + gate (collapsed: derive writes + commits + gates in 2 agents) ──
 
 phase('Derive')
 
-const propertiesContent: string = await agent(
-  renderPrompt(propertiesDeriveTemplate, {
-    specContent: ctx.spec_content,
-    tasksContent: ctx.tasks_content,
-  }),
-  { label: 'derive-properties', model: 'sonnet' },
-) as string
-
-const propsPath = `${ctx.epic_dir}/PROPERTIES.md`
+// Derive agent also writes and commits (collapsed commit-properties)
 await agent(
-  renderPrompt(commitArtifactTemplate, {
-    artifactPath: propsPath,
-    extraCommands: 'Also copy to root: write the same content to "PROPERTIES.md".',
-    gitAddPaths: `"${propsPath}" PROPERTIES.md`,
-    commitMessage: 'properties: derive PROPERTIES.md',
-    content: propertiesContent,
-  }),
-  { label: 'commit-properties', model: 'haiku' },
+  renderPrompt(propertiesDeriveTemplate, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content })
+  + `\n\nAFTER WRITING THE PROPERTIES CONTENT:
+1. Write the output to "${ctx.epic_dir}/PROPERTIES.md" (create dirs if needed)
+2. Also write the same content to "PROPERTIES.md" at repo root
+3. Commit: git add "${ctx.epic_dir}/PROPERTIES.md" PROPERTIES.md && git commit -m "properties: derive PROPERTIES.md"`,
+  { label: 'derive-and-commit', model: model('balanced') },
 )
 
-log(`PROPERTIES.md written to ${propsPath} + root`)
+log('PROPERTIES.md written and committed')
 
-// ── Gate ──
-
-phase('Gate')
-
+// Gate
 const gateResult = await agent(
-  renderPrompt(runGateTemplate, {
-    phase: 'properties',
-    flags: yolo ? ' --approve' : '',
-  }),
-  { label: 'gate-properties', model: 'haiku' },
+  renderPrompt(runGateTemplate, { phase: 'properties', flags: yolo ? ' --approve' : '' }),
+  { label: 'gate', model: model('fast') },
 )
-
-const gate = typeof gateResult === 'string'
-  ? parseAgentJson(gateResult as string, { passed: false, message: 'parse failure' })
-  : gateResult
+const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
 
 if (gate?.passed) log('Properties gate PASSED')
 else log(`Properties gate: ${gate?.message || 'needs review'}`)
 
-export const __workflowResult = {
-  branch: ctx.branch,
-  gatePassed: !!gate?.passed,
-}
+export const __workflowResult = { branch: ctx.branch, gatePassed: !!gate?.passed }

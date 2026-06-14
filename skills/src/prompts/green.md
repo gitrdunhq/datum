@@ -8,6 +8,11 @@ Before reading implementation files, use headroom_compress on any file longer th
 This saves context for reasoning. Use headroom_retrieve with a targeted query when you need
 specific sections back (e.g. query="function signature" or query="class definition").
 
+TARGET CONTEXT (import guard):
+If target_context is present in the task packet, only use imports that are valid for the target.
+Check the dependency list before adding any import statement. DO NOT import modules that are
+not listed as dependencies of the target you are implementing in.
+
 APPROACH:
 1. Read test_signal carefully — each error tells you exactly what to implement
 2. Read impl_stubs — fill in function bodies, do not create new files

@@ -3,6 +3,8 @@ Read-only — do NOT write or modify any files.
 
 Read these test files in "{{wt}}": {{testFiles}}
 
+IMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.
+
 ACCEPTANCE CRITERIA to cover:
 {{acStr}}
 

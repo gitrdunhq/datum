@@ -4,11 +4,8 @@ export const meta = {
   description: "Transform TICKET.md into SPEC.md \u2014 triage addenda, classify ambiguity, scan codebase, write spec",
   phases: [
     { title: "Read", detail: "read TICKET.md and detect branch/epic dir" },
-    { title: "Triage", detail: "classify addenda as same-scope vs roadmap" },
-    { title: "Classify", detail: "determine ambiguity level (high/medium/low/trivial)" },
-    { title: "Scan", detail: "verify referenced symbols and discover codebase patterns" },
-    { title: "Write", detail: "produce SPEC.md + QUESTIONS.md" },
-    { title: "Gate", detail: "run datum gate refine" }
+    { title: "Analyze", detail: "triage addenda + classify ambiguity + scan codebase" },
+    { title: "Write", detail: "produce SPEC.md + QUESTIONS.md, commit, gate" }
   ]
 };
 
@@ -32,6 +29,16 @@ function renderPrompt(template, vars) {
   );
 }
 
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
+
 // skills/src/prompts/refine-triage.md
 var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nRead: {{ticketPath}}\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n';
 
@@ -39,7 +46,7 @@ var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and 
 var refine_classify_default = 'Ambiguity classifier. Read the TICKET and classify how much clarification Refine needs.\n\nTICKET content:\n{{ticketContent}}\n\nCLASSIFICATION LEVELS:\n- HIGH: vague or conceptual \u2014 intent unclear, architecture unspecified\n- MEDIUM: clear intent, detectable gaps in failure modes, NFRs, or scope\n- LOW: specific and concrete \u2014 intent, scope, failure modes all clear\n- TRIVIAL: rename, tooltip, wording fix, single-line config change\n\nIf you must assume a structural pattern to understand the ticket, classify as MEDIUM.\n\nReturn JSON:\n{\n  "level": "high|medium|low|trivial",\n  "reasoning": "why this classification",\n  "gaps": ["list of detected gaps that need clarification"],\n  "assumptions": ["list of assumptions the ticket relies on"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/refine-scan.md
-var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Search the codebase (grep, find, or GitNexus if available) to confirm it exists\n2. Read the relevant source file to understand current behavior\n3. Identify related files (tests, callers, dependencies)\n4. Assess blast radius: what else touches this code?\n\nUse headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file.py",\n      "related_files": ["tests/test_file.py", "other/caller.py"],\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<symbol>\' .` \u2014 AST-aware structural search (finds defs, not just strings)\n2. `scc .` \u2014 repo shape: LOC per language, file counts, complexity (run once, report in classification)\n3. GitNexus (gitnexus_context, gitnexus_query) if available\n4. grep/find as fallback\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Use ast-grep to confirm it exists structurally (function def, class def, import)\n2. Read the relevant source file to understand current behavior\n3. Use ast-grep to find callers: `ast-grep --pattern \'<symbol>($$$)\' .`\n4. Assess blast radius from caller count\n\nRun `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.\n\nUse headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file.py",\n      "related_files": ["tests/test_file.py", "other/caller.py"],\n      "callers_count": 3,\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"],\n  "repo_shape": {\n    "total_loc": 0,\n    "languages": {"Python": 0, "TypeScript": 0},\n    "file_count": 0\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/refine-spec.md
 var refine_spec_default = `SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.
@@ -108,34 +115,35 @@ RULES:
 Output the full QUESTIONS.md content as markdown. No JSON wrapping.
 `;
 
+// skills/src/prompts/util-read-context.md
+var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
+
+// skills/src/prompts/util-run-gate.md
+var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
 phase("Read");
-var branchInfo = await agent(
-  `Run these commands and return ONLY a JSON object:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "epic_dir": "docs/epics/" + the branch name
-3. "ticket_exists": whether the file docs/epics/<branch>/TICKET.md exists (true/false)
-4. "spec_exists": whether docs/epics/<branch>/SPEC.md exists (true/false)
-5. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
-Output raw JSON only. No markdown fences.`,
-  { label: "read-context", model: "haiku" }
+var readResult = await agent(
+  renderPrompt(util_read_context_default, {
+    extraFields: `3. "ticket_exists": whether docs/epics/<branch>/TICKET.md exists (true/false)
+4. "ticket_content": if ticket_exists, read the full file contents, else null
+5. "spec_exists": whether docs/epics/<branch>/SPEC.md exists (true/false)
+6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null`
+  }),
+  { label: "read-context", model: model("fast") }
 );
-var ctx = typeof branchInfo === "string" ? parseAgentJson(branchInfo, {}) : branchInfo;
+var ctx = typeof readResult === "string" ? parseAgentJson(readResult, {}) : readResult;
 var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 var ticketPath = `${epicDir}/TICKET.md`;
-if (!ctx.ticket_exists) {
+var ticketContent = ctx.ticket_content || "";
+if (!ctx.ticket_exists || !ticketContent) {
   throw new Error(`TICKET.md not found at ${ticketPath}. Run \`datum init\` first.`);
 }
-log(`Branch: ${ctx.branch}, Epic dir: ${epicDir}`);
-var ticketContent = await agent(
-  `Read the file "${ticketPath}" and return its full contents as plain text. No JSON, no wrapping.`,
-  { label: "read-ticket", model: "haiku" }
-);
-log(`TICKET.md: ${ticketContent.split("\n").length} lines`);
-phase("Triage");
+log(`Branch: ${ctx.branch}, TICKET: ${ticketContent.split("\n").length} lines`);
+phase("Analyze");
 var hasAddenda = ticketContent.includes("## Addendum");
 var triageResult = {
   original_scope: "",
@@ -145,100 +153,69 @@ var triageResult = {
 };
 if (hasAddenda) {
   const triageRaw = await agent(
-    renderPrompt(refine_triage_default, { ticketPath }),
-    { label: "triage-addenda", model: "sonnet" }
-  );
-  triageResult = typeof triageRaw === "string" ? parseAgentJson(triageRaw, { original_scope: "", addenda: [], roadmap_items: [], merged_requirements: [] }) : triageRaw;
-  if (triageResult.roadmap_items?.length > 0) {
-    log(`Triaged to roadmap: ${triageResult.roadmap_items.join(", ")}`);
-    await agent(
-      `Append these items to ROADMAP.md under "## Planned":
-${triageResult.roadmap_items.map((item) => `- ${item}`).join("\n")}
+    renderPrompt(refine_triage_default, { ticketPath }) + `
 
-Read ROADMAP.md first, append under the Planned section, write it back. Commit: git add ROADMAP.md && git commit -m "roadmap: triage ${triageResult.roadmap_items.length} items from refine"`,
-      { label: "update-roadmap", model: "haiku" }
-    );
-  }
+ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
+1. Read ROADMAP.md
+2. Append the roadmap items under "## Planned"
+3. Commit: git add ROADMAP.md && git commit -m "roadmap: triage items from refine"`,
+    { label: "triage-addenda", model: model("balanced") }
+  );
+  triageResult = parseAgentJson(triageRaw, triageResult);
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
 } else {
-  log("No addenda found \u2014 single-scope TICKET");
+  log("No addenda \u2014 single-scope TICKET");
 }
-phase("Classify");
 var classifyRaw = await agent(
   renderPrompt(refine_classify_default, { ticketContent }),
-  { label: "classify-ambiguity", model: "haiku" }
+  { label: "classify-ambiguity", model: model("fast") }
 );
-var classify = typeof classifyRaw === "string" ? parseAgentJson(classifyRaw, { level: "medium", reasoning: "", gaps: [], assumptions: [] }) : classifyRaw;
+var classify = parseAgentJson(classifyRaw, { level: "medium", reasoning: "", gaps: [], assumptions: [] });
 log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
-if (classify.gaps.length > 0) {
-  log(`Gaps: ${classify.gaps.join("; ")}`);
-}
-phase("Scan");
 var requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
 var scanRaw = await agent(
   renderPrompt(refine_scan_default, { wt: ".", requirements }),
-  { label: "scan-codebase", model: "sonnet" }
+  { label: "scan-codebase", model: model("balanced") }
 );
 var scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
-log(`Scan complete`);
 phase("Write");
-var specContent = await agent(
-  renderPrompt(refine_spec_default, {
+var today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+await agent(
+  `You have TWO tasks. Do them in order.
+
+TASK 1 \u2014 Write SPEC.md:
+${renderPrompt(refine_spec_default, {
     ticketContent,
     scanResults,
     ambiguityLevel: classify.level,
     gaps: classify.gaps.join("\n"),
     assumptions: classify.assumptions.join("\n")
-  }),
-  { label: "write-spec", model: "sonnet" }
-);
-var specPath = `${epicDir}/SPEC.md`;
-await agent(
-  `Write this content to "${specPath}" (create parent dirs if needed), then commit:
-git add "${specPath}" && git commit -m "refine: write SPEC.md"
+  })}
 
-CONTENT TO WRITE:
-${specContent}`,
-  { label: "commit-spec", model: "haiku" }
-);
-log(`SPEC.md written to ${specPath}`);
-var questionsPath = `${epicDir}/QUESTIONS.md`;
-var today = await agent(
-  "Run `date +%Y-%m-%d` and return ONLY the date string. No explanation.",
-  { label: "get-date", model: "haiku" }
-);
-var questionsContent = await agent(
-  renderPrompt(refine_questions_default, {
+Write the SPEC to "${epicDir}/SPEC.md" (create dirs if needed).
+
+TASK 2 \u2014 Write QUESTIONS.md:
+${renderPrompt(refine_questions_default, {
     gaps: classify.gaps.join("\n"),
     assumptions: classify.assumptions.join("\n"),
     ambiguityLevel: classify.level,
-    date: today.trim()
-  }),
-  { label: "write-questions", model: "sonnet" }
-);
-await agent(
-  `Write this content to "${questionsPath}" (create parent dirs if needed), then commit:
-git add "${questionsPath}" && git commit -m "refine: write QUESTIONS.md"
+    date: today
+  })}
 
-CONTENT TO WRITE:
-${questionsContent}`,
-  { label: "commit-questions", model: "haiku" }
+Write the QUESTIONS to "${epicDir}/QUESTIONS.md".
+
+TASK 3 \u2014 Commit both:
+git add "${epicDir}/SPEC.md" "${epicDir}/QUESTIONS.md" && git commit -m "refine: write SPEC.md + QUESTIONS.md"`,
+  { label: "write-spec-and-questions", model: model("balanced") }
 );
-log(`QUESTIONS.md written to ${questionsPath}`);
-phase("Gate");
-var gateFlag = yolo ? " --approve" : "";
+log(`SPEC.md + QUESTIONS.md written to ${epicDir}`);
 var gateResult = await agent(
-  `Run: datum gate refine${gateFlag}
-Return the JSON output from the gate command. If the gate fails, return the failure JSON as-is.
-Output raw JSON only.`,
-  { label: "gate-refine", model: "haiku" }
+  renderPrompt(util_run_gate_default, { phase: "refine", flags: yolo ? " --approve" : "" }),
+  { label: "gate", model: model("fast") }
 );
 var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
-if (gate?.passed) {
-  log("Refine gate PASSED");
-} else {
-  log(`Refine gate FAILED: ${gate?.message || "unknown"}`);
-}
+if (gate?.passed) log("Refine gate PASSED");
+else log(`Refine gate: ${gate?.message || "needs review"}`);
 return {
   branch: ctx.branch,
   epicDir,

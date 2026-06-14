@@ -1,3 +1,4 @@
+import { model, type ReviewDomain, type Severity, type ModelName } from './shared/models'
 import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import readContextTemplate from './prompts/util-read-context.md'
@@ -7,9 +8,8 @@ export const meta = {
   name: 'datum-review',
   description: 'Parallel review swarm — 4 domain agents fan out, synthesize findings',
   phases: [
-    { title: 'Prepare', detail: 'generate diff, set up review context' },
     { title: 'Review', detail: '4 parallel domain reviewers' },
-    { title: 'Synthesize', detail: 'dedup findings, render REVIEW-REPORT.md' },
+    { title: 'Synthesize', detail: 'dedup findings, render + commit REVIEW-REPORT.md' },
   ],
 }
 
@@ -20,55 +20,23 @@ const a = (typeof args === 'string')
 const yolo: boolean = !!a.yolo
 
 const DOMAINS = [
-  { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: 'sonnet' as const },
-  { domain: 'Performance', prefix: 'PERF', focus: 'Hot paths, N+1 queries, unbounded loops, missing pagination, excessive allocations', model: 'haiku' as const },
-  { domain: 'Architecture', prefix: 'ARCH', focus: 'Layer violations, tight coupling, dependency direction, abstraction leaks', model: 'haiku' as const },
-  { domain: 'Correctness', prefix: 'CORR', focus: 'Does implementation match SPEC and ACs? Off-by-one, null handling, edge cases', model: 'sonnet' as const },
+  { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: model('balanced') },
+  { domain: 'Performance', prefix: 'PERF', focus: 'Hot paths, N+1 queries, unbounded loops, missing pagination, excessive allocations', model: model('fast') },
+  { domain: 'Architecture', prefix: 'ARCH', focus: 'Layer violations, tight coupling, dependency direction, abstraction leaks', model: model('fast') },
+  { domain: 'Correctness', prefix: 'CORR', focus: 'Does implementation match SPEC and ACs? Off-by-one, null handling, edge cases', model: model('balanced') },
 ]
 
-// ── Prepare ──
-
-phase('Prepare')
-
-const context = await agent(
-  renderPrompt(readContextTemplate, {
-    extraFields: '3. "diff_lines": line count of `git diff main...HEAD`',
-  }),
-  { label: 'prepare-context', model: 'haiku' },
-)
-
-const ctx = typeof context === 'string'
-  ? parseAgentJson(context as string, {} as Record<string, unknown>)
-  : context
-
-log(`Branch: ${ctx.branch}, diff: ${ctx.diff_lines || '?'} lines`)
-
-// ── Review (parallel swarm) ──
+// ── Review (parallel swarm — each domain agent also reads context itself) ──
 
 phase('Review')
 
-interface Finding {
-  id: string
-  severity: string
-  file: string
-  line: number
-  description: string
-  suggestion: string
-}
-
-interface DomainResult {
-  domain: string
-  findings: Finding[]
-}
+interface Finding { id: string; severity: Severity | 'info'; file: string; line: number; description: string; suggestion: string }
+interface DomainResult { domain: string; findings: Finding[] }
 
 const reviewResults = await parallel<DomainResult>(
   DOMAINS.map((d) => () =>
     agent(
-      renderPrompt(reviewDomainTemplate, {
-        domain: d.domain,
-        domainPrefix: d.prefix,
-        domainFocus: d.focus,
-      }),
+      renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus }),
       { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model },
     ),
   ),
@@ -88,7 +56,7 @@ for (let i = 0; i < DOMAINS.length; i++) {
   }
 }
 
-// ── Synthesize ──
+// ── Synthesize (collapsed: dedup + render + commit-report into one code block + one agent) ──
 
 phase('Synthesize')
 
@@ -96,10 +64,7 @@ const seen = new Set<string>()
 const deduped: Finding[] = []
 for (const f of allFindings) {
   const key = `${f.file}:${f.line}:${f.description.slice(0, 40)}`
-  if (!seen.has(key)) {
-    seen.add(key)
-    deduped.push(f)
-  }
+  if (!seen.has(key)) { seen.add(key); deduped.push(f) }
 }
 
 const critical = deduped.filter((f) => f.severity === 'critical' || f.severity === 'high')
@@ -107,7 +72,6 @@ log(`Findings: ${deduped.length} unique (${critical.length} high/critical)`)
 
 const reportLines = [
   '# Review Report\n',
-  `**Branch:** ${ctx.branch}`,
   `**Findings:** ${deduped.length} unique (${critical.length} high/critical)\n`,
   '## Findings\n',
   '| ID | Severity | File | Line | Description | Suggestion |',
@@ -116,29 +80,19 @@ const reportLines = [
   '',
 ]
 
-const reportContent = reportLines.join('\n')
-const epicDir = ctx.epic_dir || `docs/epics/${ctx.branch}`
-
+// Commit agent (one remaining mechanical agent — needs to know the branch for path)
 await agent(
-  renderPrompt(commitArtifactTemplate, {
-    artifactPath: `${epicDir}/REVIEW-REPORT.md`,
-    extraCommands: '',
-    gitAddPaths: `"${epicDir}/REVIEW-REPORT.md"`,
-    commitMessage: `review: write REVIEW-REPORT.md (${deduped.length} findings)`,
-    content: reportContent,
-  }),
-  { label: 'commit-report', model: 'haiku' },
+  `Run \`git rev-parse --abbrev-ref HEAD\` to get the branch name.
+Write this content to "docs/epics/<branch>/REVIEW-REPORT.md" (create dirs if needed).
+Commit: git add "docs/epics/<branch>/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
+
+CONTENT:
+${reportLines.join('\n')}`,
+  { label: 'commit-report', model: model('fast') },
 )
 
-log('REVIEW-REPORT.md written')
-
-if (critical.length > 0) {
-  log(`${critical.length} high/critical findings — remediation needed before merge`)
-}
+if (critical.length > 0) log(`${critical.length} high/critical — remediation needed`)
 
 export const __workflowResult = {
-  branch: ctx.branch,
-  totalFindings: deduped.length,
-  criticalFindings: critical.length,
-  canMerge: critical.length === 0,
+  totalFindings: deduped.length, criticalFindings: critical.length, canMerge: critical.length === 0,
 }

@@ -13,6 +13,16 @@ export const meta = {
   ]
 };
 
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
+
 // skills/src/shared/utils.ts
 function buildWaves(lanePlan2) {
   const lanes = lanePlan2.lanes;
@@ -56,6 +66,21 @@ function buildWaves(lanePlan2) {
   }
   return waves2;
 }
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
+
+// skills/src/prompts/util-detect-branch.md
+var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
 
 // skills/src/datum-tdd-act.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -63,17 +88,12 @@ var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: tr
 var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
 var testCommand = a.testCommand || "uv run pytest -x -q";
 var language = a.language || "python";
+var test_framework = a.test_framework;
 var epicBranch = a.epicBranch;
 var runId = a.runId;
-var branchInfo = a.yolo ? await agent(
-  `Run these two commands and return ONLY a JSON object with two fields:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "timestamp": output of \`date +%Y%m%d-%H%M%S\`
-Output raw JSON only. No markdown fences, no explanation.`,
-  { label: "yolo-detect", model: "haiku" }
-) : null;
+var branchInfo = a.yolo ? await agent(util_detect_branch_default, { label: "yolo-detect", model: model("fast") }) : null;
 if (branchInfo) {
-  const info = typeof branchInfo === "string" ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, "").trim()) : branchInfo;
+  const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
   epicBranch = epicBranch || info.branch;
   runId = runId || info.timestamp;
 }
@@ -82,7 +102,7 @@ if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or
 phase("Topology");
 var planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
-  { label: "read-plan", phase: "Topology", model: "haiku" }
+  { label: "read-plan", phase: "Topology", model: model("fast") }
 );
 var lanePlan = typeof planText === "string" ? JSON.parse(planText.replace(/```[a-z]*\n?/g, "").trim()) : planText;
 var waves = buildWaves(lanePlan);
@@ -129,7 +149,7 @@ ${"=".repeat(60)}`);
       lanePlan,
       worktreePaths: setup.worktreePaths,
       batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
       priorFailures: failures
     }
   );

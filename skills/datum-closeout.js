@@ -3,9 +3,8 @@ export const meta = {
   name: "datum-closeout",
   description: "Post-merge closeout \u2014 collect data, synthesize artifacts, archive",
   phases: [
-    { title: "Collect", detail: "run datum closeout collectors (scripts, no LLM)" },
-    { title: "Synthesize", detail: "produce CURRENT_STATE, CHANGELOG, RETRO, follow-ups" },
-    { title: "Archive", detail: "commit, tag, reindex, archive state" }
+    { title: "Collect", detail: "run collectors + read context" },
+    { title: "Synthesize", detail: "CURRENT_STATE, CHANGELOG, RETRO, follow-ups, tag, archive" }
   ]
 };
 
@@ -29,6 +28,16 @@ function renderPrompt(template, vars) {
   );
 }
 
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
+
 // skills/src/prompts/closeout-synthesize.md
 var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact:\n- Write the file\n- Commit: git add <file> && git commit -m "closeout: write <artifact>"\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -40,55 +49,37 @@ var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim(
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var runId = a.runId || "";
 phase("Collect");
-var context = await agent(
+var collectResult = await agent(
   renderPrompt(util_read_context_default, {
     extraFields: `3. "merge_sha": output of \`git rev-parse HEAD\`
 4. "base_sha": output of \`git merge-base HEAD origin/main\`
 5. "run_id": "${runId}" if non-empty, else generate from \`date +%Y%m%d-%H%M%S\`
-6. "closeout_data_exists": whether .datum/runs/<run_id>/closeout-data.json exists`
+6. "closeout_data_exists": whether .datum/runs/<run_id>/closeout-data.json exists
+
+ADDITIONAL: If closeout_data_exists is false, also run these collectors (skip failures):
+mkdir -p .datum/runs/<run_id>
+datum closeout-collect-git --run-id <run_id> --base-sha <base_sha> --merge-sha <merge_sha> 2>/dev/null || true
+datum closeout-collect-tasks --run-id <run_id> 2>/dev/null || true
+datum closeout-collect-token-metrics --run-id <run_id> 2>/dev/null || true
+datum closeout-collate --run-id <run_id> --merge-sha <merge_sha> 2>/dev/null || true
+Include "collected": true in the response if you ran collectors.`
   }),
-  { label: "read-context", model: "haiku" }
+  { label: "collect", model: model("fast") }
 );
-var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
+var ctx = typeof collectResult === "string" ? parseAgentJson(collectResult, {}) : collectResult;
 var rid = ctx.run_id || runId;
 log(`Branch: ${ctx.branch}, run: ${rid}`);
-if (!ctx.closeout_data_exists) {
-  await agent(
-    `Run these commands (scripts, not LLM work). Skip any that fail with "command not found":
-mkdir -p .datum/runs/${rid}
-datum closeout-collect-git --run-id ${rid} --base-sha ${ctx.base_sha} --merge-sha ${ctx.merge_sha} 2>/dev/null || echo "skip: closeout-collect-git"
-datum closeout-collect-tasks --run-id ${rid} 2>/dev/null || echo "skip: closeout-collect-tasks"
-datum closeout-collect-token-metrics --run-id ${rid} 2>/dev/null || echo "skip: closeout-collect-token-metrics"
-datum closeout-collate --run-id ${rid} --merge-sha ${ctx.merge_sha} 2>/dev/null || echo "skip: closeout-collate"
-Return JSON: {"collected": true}
-Output raw JSON only.`,
-    { label: "run-collectors", model: "haiku" }
-  );
-  log("Collectors complete");
-} else {
-  log("closeout-data.json already exists \u2014 skipping collectors");
-}
 phase("Synthesize");
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, {
-    closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
-    branch: ctx.branch,
-    runId: rid
-  }),
-  { label: "synthesize", model: "sonnet" }
+  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch: ctx.branch, runId: rid }) + `
+
+AFTER writing artifacts, also:
+1. Tag: git tag "epic/${ctx.branch}/${rid}" HEAD 2>/dev/null || true
+2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true`,
+  { label: "synthesize-and-archive", model: model("balanced") }
 );
 var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
-log(`Synthesis: ${(synth?.artifacts_written || []).join(", ")}`);
-phase("Archive");
-await agent(
-  `Run these commands. Skip any that fail:
-datum closeout-tag 2>/dev/null || git tag "epic/${ctx.branch}/${rid}" HEAD 2>/dev/null || echo "skip: tag"
-datum closeout-archive --run-id ${rid} 2>/dev/null || echo "skip: archive"
-Return JSON: {"archived": true}
-Output raw JSON only.`,
-  { label: "archive", model: "haiku" }
-);
-log("Closeout complete");
+log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
 return {
   branch: ctx.branch,
   runId: rid,

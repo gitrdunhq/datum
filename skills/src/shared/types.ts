@@ -1,3 +1,5 @@
+import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel } from './models'
+
 // Cross-workflow arg/result contracts
 
 export interface SetupArgs {
@@ -70,7 +72,7 @@ export interface Lane {
   acceptance_criteria?: string[]
   red_note?: string
   stage?: 'structural' | 'behavioral'
-  green_model?: string
+  green_model?: ModelName
 }
 
 export interface PipelineConfig {
@@ -79,12 +81,13 @@ export interface PipelineConfig {
   runId: string
   testCommand: string
   language: string
+  test_framework?: string  // e.g. 'xctest', 'swift-testing', 'pytest', 'jest'
 }
 
 export interface LaneOutcome {
   task_id: string
-  status: 'completed' | 'failed'
-  stage?: string
+  status: LaneStatus
+  stage?: FailureStage
   error?: string
 }
 
@@ -125,13 +128,13 @@ export interface ReflectResult {
 export interface SkepticBug {
   description: string
   evidence: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  severity: Severity
 }
 
 export interface SkepticResult {
   bugs_found: SkepticBug[]
   confidence: number
-  verdict: 'PASS' | 'FRAGILE' | 'BROKEN'
+  verdict: SkepticVerdict
 }
 
 export interface RefactorCheck {
@@ -153,8 +156,8 @@ export interface TestSignal {
 
 export interface TriageIssue {
   title: string
-  category: 'workflow-bug' | 'lane-plan' | 'agent-behavior' | 'infrastructure' | 'test-quality'
-  severity: 'critical' | 'high' | 'medium' | 'low'
+  category: TriageCategory
+  severity: Severity
   body: string
   lane?: string
   stage?: string
@@ -169,7 +172,7 @@ export interface TriageAnalysis {
 export interface TaskPacket {
   schema_version: string
   task_id: string
-  stage: 'RED' | 'GREEN' | 'REFACTOR'
+  stage: TddStage
   title: string
   working_directory: string
   test_command: string
@@ -178,11 +181,12 @@ export interface TaskPacket {
   allowed_write_files: string[]
   forbidden_write_files: string[]
   commit_prefix: string
+  target_context?: Record<string, string[]>
   [key: string]: unknown
 }
 
 export interface SkepticLens {
   key: string
-  model: 'haiku' | 'sonnet'
+  model: ModelName
   prompt: string
 }

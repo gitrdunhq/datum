@@ -5,6 +5,16 @@ export const meta = {
   phases: [{ title: "Triage" }]
 };
 
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
+
 // skills/src/shared/schemas.ts
 var TRIAGE_SCHEMA = {
   type: "object",
@@ -57,7 +67,7 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
 - Why it happened (root cause analysis)
 - Suggested fix
 - The lane, stage, and run ID for traceability`,
-    { label: "triage", phase: "Triage", model: "sonnet", schema: TRIAGE_SCHEMA }
+    { label: "triage", phase: "Triage", model: model("balanced"), schema: TRIAGE_SCHEMA }
   );
   if (triage?.issues?.length) {
     for (const issue of triage.issues) {
@@ -74,7 +84,7 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
 If no duplicate exists, create the issue:
 unset GITHUB_TOKEN && gh issue create --repo gitrdunhq/datum --title '${safeTitle}' --label '${labels}' --body '${safeBody}'
 If a duplicate exists, skip and say "duplicate found".`,
-        { label: `file-issue:${issue.lane || "global"}`, phase: "Triage", model: "haiku" }
+        { label: `file-issue:${issue.lane || "global"}`, phase: "Triage", model: model("fast") }
       );
       log(`[triage] Filed: ${issue.title} [${issue.category}/${issue.severity}]`);
       filed++;

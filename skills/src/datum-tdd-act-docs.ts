@@ -1,3 +1,4 @@
+import { model } from './shared/models'
 import type { DocsArgs, WriteResult } from './shared/types'
 import { WRITE_RESULT_SCHEMA, COMMIT_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
 import { commitStage } from './shared/agents'
@@ -22,7 +23,7 @@ if (a.completedLanes.length === 0) {
 
   const docsCheck = await agent(
     docsCheckPrompt({ changedFiles: changedFiles.join(', ') }),
-    { label: 'docs-check', phase: 'Docs', model: 'haiku', schema: REFACTOR_CHECK_SCHEMA }
+    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA }
   )
 
   if (docsCheck?.should_refactor) {
@@ -39,7 +40,7 @@ if (a.completedLanes.length === 0) {
 
     const docs = await agent(
       docsSyncPrompt({ docsPacket }),
-      { label: 'docs-sync', phase: 'Docs', model: 'sonnet', schema: WRITE_RESULT_SCHEMA }
+      { label: 'docs-sync', phase: 'Docs', model: model('balanced'), schema: WRITE_RESULT_SCHEMA }
     ) as WriteResult | null
 
     if (docs?.success) {

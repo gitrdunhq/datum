@@ -1,5 +1,7 @@
+import { model } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
+import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
   name: 'datum-tdd-act',
@@ -26,25 +28,18 @@ const a = (typeof args === 'string')
 const lanePlanPath: string = a.lanePlanPath || '.datum/lane-plan.json'
 const testCommand: string = a.testCommand || 'uv run pytest -x -q'
 const language: string = a.language || 'python'
+const test_framework: string | undefined = a.test_framework
 
 let epicBranch: string = a.epicBranch
 let runId: string = a.runId
 
 // yolo mode: auto-detect branch and generate runId via agent
 const branchInfo = a.yolo
-  ? await agent(
-      `Run these two commands and return ONLY a JSON object with two fields:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "timestamp": output of \`date +%Y%m%d-%H%M%S\`
-Output raw JSON only. No markdown fences, no explanation.`,
-      { label: 'yolo-detect', model: 'haiku' },
-    )
+  ? await agent(detectBranchPrompt, { label: 'yolo-detect', model: model('fast') })
   : null
 
 if (branchInfo) {
-  const info = typeof branchInfo === 'string'
-    ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, '').trim())
-    : branchInfo
+  const info = parseAgentJson(branchInfo, { branch: '', timestamp: '' }) as { branch: string; timestamp: string }
   epicBranch = epicBranch || info.branch
   runId = runId || info.timestamp
 }
@@ -58,7 +53,7 @@ phase('Topology')
 
 const planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth — do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
-  { label: 'read-plan', phase: 'Topology', model: 'haiku' }
+  { label: 'read-plan', phase: 'Topology', model: model('fast') }
 )
 const lanePlan: LanePlan = typeof planText === 'string'
   ? JSON.parse(planText.replace(/```[a-z]*\n?/g, '').trim())
@@ -115,7 +110,7 @@ for (let bi = 0; bi < batches.length; bi++) {
     { scriptPath: 'skills/datum-tdd-act-lane.js' },
     {
       batchLaneIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
       priorFailures: failures,
     }
   ) as LaneResult

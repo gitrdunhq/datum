@@ -9,6 +9,7 @@ import type {
   SkepticResult,
   SkepticLens,
 } from './types'
+import type { TddStage, Severity } from './models'
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -205,7 +206,7 @@ export function extractContractSummary(
 interface CrossValidatedBug {
   description: string
   evidence: string
-  severity: string
+  severity: Severity
   lens: string
 }
 
@@ -249,7 +250,7 @@ export function buildPacket(
   lane: Lane,
   wt: string,
   cfg: PipelineConfig,
-  stage: string,
+  stage: TddStage,
   extras: Record<string, unknown> = {},
 ): TaskPacket {
   return {
@@ -279,6 +280,7 @@ export function buildPacket(
         : stage === 'GREEN'
           ? `green(${taskId})`
           : `refactor(${taskId})`,
+    ...(cfg.test_framework ? { test_framework: cfg.test_framework } : {}),
     ...extras,
   }
 }

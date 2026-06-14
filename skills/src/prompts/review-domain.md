@@ -1,6 +1,10 @@
-You are the {{domain}} reviewer. Read the diff and find issues in your domain ONLY.
+You are the {{domain}} reviewer. Find issues in your domain ONLY.
 
-Read the diff: git diff main...HEAD
+Read the diff using difftastic for structural analysis:
+`difft --display side-by-side-show-both $(git merge-base HEAD main) HEAD 2>/dev/null || git diff main...HEAD`
+
+If difft output is too large, use ast-grep to search changed files for domain-specific patterns:
+{{domainFocus}}
 
 DOMAIN FOCUS — {{domainFocus}}
 

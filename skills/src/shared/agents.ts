@@ -1,3 +1,5 @@
+import { model } from './models'
+import type { TddStage } from './models'
 import { CommitResult } from './types'
 import { COMMIT_RESULT_SCHEMA } from './schemas'
 
@@ -8,7 +10,7 @@ export async function commitStage(
   wt: string,
   commitPrefix: string,
   allowedFiles: string[],
-  stage: string,
+  stage: TddStage | string,
 ): Promise<CommitResult | null> {
   const allowedList = allowedFiles.join(', ')
   const basePrompt =
@@ -28,7 +30,7 @@ export async function commitStage(
   let result = await agent(basePrompt, {
     label: `git-${stage.toLowerCase()}:${taskId}`,
     phase: 'Act',
-    model: 'haiku',
+    model: model('fast'),
     schema: COMMIT_RESULT_SCHEMA,
   })
 
@@ -47,7 +49,7 @@ export async function commitStage(
       {
         label: `git-${stage.toLowerCase()}-fix:${taskId}`,
         phase: 'Act',
-        model: 'sonnet',
+        model: model('balanced'),
         schema: COMMIT_RESULT_SCHEMA,
       },
     )

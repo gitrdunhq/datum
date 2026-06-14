@@ -3,11 +3,20 @@ export const meta = {
   name: "datum-review",
   description: "Parallel review swarm \u2014 4 domain agents fan out, synthesize findings",
   phases: [
-    { title: "Prepare", detail: "generate diff, set up review context" },
     { title: "Review", detail: "4 parallel domain reviewers" },
-    { title: "Synthesize", detail: "dedup findings, render REVIEW-REPORT.md" }
+    { title: "Synthesize", detail: "dedup findings, render + commit REVIEW-REPORT.md" }
   ]
 };
+
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
 
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
@@ -30,70 +39,23 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/prompts/review-domain.md
-var review_domain_default = `You are the {{domain}} reviewer. Read the diff and find issues in your domain ONLY.
-
-Read the diff: git diff main...HEAD
-
-DOMAIN FOCUS \u2014 {{domainFocus}}
-
-For each finding provide:
-- id: {{domainPrefix}}-NNN
-- severity: critical / high / medium / low / info
-- file: the path
-- line: the line number (integer)
-- description: what is wrong
-- suggestion: how to fix
-
-RULES:
-- Only report findings in your domain \u2014 do not cross into other reviewers' territory
-- Every finding must have evidence (file + line). No speculation.
-- Use headroom_compress on the diff if it exceeds 200 lines, then query-retrieve per file.
-
-Return JSON:
-{
-  "domain": "{{domain}}",
-  "findings": [
-    {"id": "{{domainPrefix}}-001", "severity": "high", "file": "...", "line": 0, "description": "...", "suggestion": "..."}
-  ]
-}
-
-Output raw JSON only. No markdown fences.
-`;
-
-// skills/src/prompts/util-read-context.md
-var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
-
-// skills/src/prompts/util-commit-artifact.md
-var util_commit_artifact_default = 'Write this content to "{{artifactPath}}" (create parent dirs if needed).\n{{extraCommands}}\nCommit: git add {{gitAddPaths}} && git commit -m "{{commitMessage}}"\n\nCONTENT:\n{{content}}\n';
+var review_domain_default = 'You are the {{domain}} reviewer. Find issues in your domain ONLY.\n\nRead the diff using difftastic for structural analysis:\n`difft --display side-by-side-show-both $(git merge-base HEAD main) HEAD 2>/dev/null || git diff main...HEAD`\n\nIf difft output is too large, use ast-grep to search changed files for domain-specific patterns:\n{{domainFocus}}\n\nDOMAIN FOCUS \u2014 {{domainFocus}}\n\nFor each finding provide:\n- id: {{domainPrefix}}-NNN\n- severity: critical / high / medium / low / info\n- file: the path\n- line: the line number (integer)\n- description: what is wrong\n- suggestion: how to fix\n\nRULES:\n- Only report findings in your domain \u2014 do not cross into other reviewers\' territory\n- Every finding must have evidence (file + line). No speculation.\n- Use headroom_compress on the diff if it exceeds 200 lines, then query-retrieve per file.\n\nReturn JSON:\n{\n  "domain": "{{domain}}",\n  "findings": [\n    {"id": "{{domainPrefix}}-001", "severity": "high", "file": "...", "line": 0, "description": "...", "suggestion": "..."}\n  ]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/datum-review.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
 var DOMAINS = [
-  { domain: "Security", prefix: "SEC", focus: "OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization", model: "sonnet" },
-  { domain: "Performance", prefix: "PERF", focus: "Hot paths, N+1 queries, unbounded loops, missing pagination, excessive allocations", model: "haiku" },
-  { domain: "Architecture", prefix: "ARCH", focus: "Layer violations, tight coupling, dependency direction, abstraction leaks", model: "haiku" },
-  { domain: "Correctness", prefix: "CORR", focus: "Does implementation match SPEC and ACs? Off-by-one, null handling, edge cases", model: "sonnet" }
+  { domain: "Security", prefix: "SEC", focus: "OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization", model: model("balanced") },
+  { domain: "Performance", prefix: "PERF", focus: "Hot paths, N+1 queries, unbounded loops, missing pagination, excessive allocations", model: model("fast") },
+  { domain: "Architecture", prefix: "ARCH", focus: "Layer violations, tight coupling, dependency direction, abstraction leaks", model: model("fast") },
+  { domain: "Correctness", prefix: "CORR", focus: "Does implementation match SPEC and ACs? Off-by-one, null handling, edge cases", model: model("balanced") }
 ];
-phase("Prepare");
-var context = await agent(
-  renderPrompt(util_read_context_default, {
-    extraFields: '3. "diff_lines": line count of `git diff main...HEAD`'
-  }),
-  { label: "prepare-context", model: "haiku" }
-);
-var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
-log(`Branch: ${ctx.branch}, diff: ${ctx.diff_lines || "?"} lines`);
 phase("Review");
 var reviewResults = await parallel(
   DOMAINS.map(
     (d) => () => agent(
-      renderPrompt(review_domain_default, {
-        domain: d.domain,
-        domainPrefix: d.prefix,
-        domainFocus: d.focus
-      }),
+      renderPrompt(review_domain_default, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus }),
       { label: `review-${d.domain.toLowerCase()}`, phase: "Review", model: d.model }
     )
   )
@@ -126,7 +88,6 @@ var critical = deduped.filter((f) => f.severity === "critical" || f.severity ===
 log(`Findings: ${deduped.length} unique (${critical.length} high/critical)`);
 var reportLines = [
   "# Review Report\n",
-  `**Branch:** ${ctx.branch}`,
   `**Findings:** ${deduped.length} unique (${critical.length} high/critical)
 `,
   "## Findings\n",
@@ -135,24 +96,17 @@ var reportLines = [
   ...deduped.map((f) => `| ${f.id} | ${f.severity} | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} |`),
   ""
 ];
-var reportContent = reportLines.join("\n");
-var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch}`;
 await agent(
-  renderPrompt(util_commit_artifact_default, {
-    artifactPath: `${epicDir}/REVIEW-REPORT.md`,
-    extraCommands: "",
-    gitAddPaths: `"${epicDir}/REVIEW-REPORT.md"`,
-    commitMessage: `review: write REVIEW-REPORT.md (${deduped.length} findings)`,
-    content: reportContent
-  }),
-  { label: "commit-report", model: "haiku" }
+  `Run \`git rev-parse --abbrev-ref HEAD\` to get the branch name.
+Write this content to "docs/epics/<branch>/REVIEW-REPORT.md" (create dirs if needed).
+Commit: git add "docs/epics/<branch>/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
+
+CONTENT:
+${reportLines.join("\n")}`,
+  { label: "commit-report", model: model("fast") }
 );
-log("REVIEW-REPORT.md written");
-if (critical.length > 0) {
-  log(`${critical.length} high/critical findings \u2014 remediation needed before merge`);
-}
+if (critical.length > 0) log(`${critical.length} high/critical \u2014 remediation needed`);
 return {
-  branch: ctx.branch,
   totalFindings: deduped.length,
   criticalFindings: critical.length,
   canMerge: critical.length === 0

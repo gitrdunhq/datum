@@ -1,3 +1,4 @@
+import { model } from './shared/models'
 import type { TriageArgs, TriageAnalysis } from './shared/types'
 import { TRIAGE_SCHEMA } from './shared/schemas'
 
@@ -37,7 +38,7 @@ if (a.failures.length === 0) {
     `- Why it happened (root cause analysis)\n` +
     `- Suggested fix\n` +
     `- The lane, stage, and run ID for traceability`,
-    { label: 'triage', phase: 'Triage', model: 'sonnet', schema: TRIAGE_SCHEMA }
+    { label: 'triage', phase: 'Triage', model: model('balanced'), schema: TRIAGE_SCHEMA }
   ) as TriageAnalysis | null
 
   if (triage?.issues?.length) {
@@ -58,7 +59,7 @@ if (a.failures.length === 0) {
         `--label '${labels}' ` +
         `--body '${safeBody}'\n` +
         `If a duplicate exists, skip and say "duplicate found".`,
-        { label: `file-issue:${issue.lane || 'global'}`, phase: 'Triage', model: 'haiku' }
+        { label: `file-issue:${issue.lane || 'global'}`, phase: 'Triage', model: model('fast') }
       )
       log(`[triage] Filed: ${issue.title} [${issue.category}/${issue.severity}]`)
       filed++

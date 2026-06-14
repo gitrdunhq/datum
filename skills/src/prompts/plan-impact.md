@@ -4,17 +4,24 @@ Working directory: {{wt}}
 Files to analyze:
 {{filesList}}
 
+TOOLS (use in preference order):
+1. `ast-grep --pattern '<function_name>($$$)' .` — find all callers structurally
+2. `scc --no-cocomo <file>` — LOC and complexity for a specific file
+3. GitNexus (gitnexus_impact) if available
+4. grep as fallback
+
 For each file:
-1. Find all callers/importers (grep for imports, function references)
-2. Count how many other modules depend on this file
-3. Check if it's covered by existing tests
-4. Assess risk: will changing this break other things?
+1. Use ast-grep to find all callers/importers (structural, not string match)
+2. Run `scc --no-cocomo <file>` to get LOC and complexity
+3. Check if it's covered by existing tests (ast-grep for test functions referencing it)
+4. Assess risk from caller count + complexity
 
 Return JSON:
 {
   "files": [
     {
       "path": "module/file.py",
+      "loc": 150,
       "callers": ["other/module.py", "cli.py"],
       "caller_count": 2,
       "has_tests": true,

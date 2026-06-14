@@ -5,6 +5,16 @@ export const meta = {
   phases: [{ title: "Setup" }]
 };
 
+// skills/src/shared/models.ts
+var TIER_MAP = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+function model(tier) {
+  return TIER_MAP[tier];
+}
+
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
@@ -24,7 +34,7 @@ var a = args;
 phase("Setup");
 var rootWtText = await agent(
   `git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>&1 && echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
-  { label: `root-wt${a.batchTag}`, phase: "Setup", model: "haiku" }
+  { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var rootWtInfo = parseAgentJson(rootWtText, {});
 var rootWt = rootWtInfo.root;
@@ -33,7 +43,7 @@ log(`Root worktree${a.batchTag}: ${rootWt}`);
 var setupText = await agent(
   `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.join(",")}
 Return ONLY the JSON output, no explanation.`,
-  { label: `setup-wt${a.batchTag}`, phase: "Setup", model: "haiku" }
+  { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var worktreePaths = typeof setupText === "string" ? JSON.parse(setupText.replace(/```[a-z]*\n?/g, "").trim()) : setupText;
 var validPaths = Object.values(worktreePaths || {}).filter(Boolean);
@@ -44,11 +54,11 @@ for (const [lid, wtp] of Object.entries(worktreePaths || {})) {
 var planJson = JSON.stringify(a.lanePlan).replace(/'/g, "'\\''");
 await agent(
   `mkdir -p "${rootWt}/.datum" && printf '%s' '${planJson}' > "${rootWt}/.datum/lane-plan.json"`,
-  { label: `write-plan${a.batchTag}`, phase: "Setup", model: "haiku" }
+  { label: `write-plan${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var cpCmd = validPaths.map((p) => `mkdir -p "${p}/.datum" && cp "${rootWt}/.datum/lane-plan.json" "${p}/.datum/lane-plan.json"`).join(" && ");
 if (cpCmd) {
-  await agent(cpCmd, { label: `copy-plans${a.batchTag}`, phase: "Setup", model: "haiku" });
+  await agent(cpCmd, { label: `copy-plans${a.batchTag}`, phase: "Setup", model: model("fast") });
 }
 log(`Setup${a.batchTag}: ${a.batchLaneIds.length} lane worktrees`);
 return { worktreePaths };

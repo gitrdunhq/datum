@@ -7,12 +7,14 @@ Read TASKS.md, then for each task that touches non-trivial logic:
 3. Find known pitfalls in related code (error handling patterns, edge cases)
 4. Check test conventions in the relevant test directories
 
-Use headroom_compress on large files. Query-retrieve specific sections as needed.
+TOOLS (use in preference order):
+1. `ast-grep --pattern '<pattern>' .` — structural search (e.g. find all try/except, all class defs, all async functions)
+2. `headroom memory list` — check for relevant past learnings
+3. `headroom learn show` — check for past tool call failures relevant to these files
+4. GitNexus (gitnexus_context, gitnexus_query) if available
+5. grep/find for pattern matching
 
-TOOLS (in preference order):
-- GitNexus (gitnexus_context, gitnexus_query) if available
-- grep/find for pattern matching
-- Read files directly for short modules
+Use headroom_compress on large files. Query-retrieve specific sections as needed.
 
 APPEND a single section to the end of TASKS.md titled exactly `## Research Findings`.
 Group findings by task ID. Keep it concise — patterns and pitfalls, not full file dumps.
@@ -25,6 +27,7 @@ Format:
 - **Pattern**: See `module/file.py:45` for existing approach
 - **Convention**: This codebase uses X pattern for Y
 - **Pitfall**: Known issue with Z — handle via W
+- **Past failure**: headroom learn flagged <issue> in this area
 ```
 
 CRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.

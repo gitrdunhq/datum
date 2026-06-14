@@ -1,3 +1,5 @@
+import { model } from './models'
+import preambleTemplate from '../prompts/agent-preamble.md'
 import redTemplate from '../prompts/red.md'
 import redRetryTemplate from '../prompts/red-retry.md'
 import greenTemplate from '../prompts/green.md'
@@ -15,71 +17,73 @@ import docsSyncTemplate from '../prompts/docs-sync.md'
 import { renderPrompt } from './utils'
 import type { SkepticLens } from './types'
 
+const PREAMBLE = preambleTemplate + '\n\n---\n\n'
+
 type PromptVars = { [key: string]: string }
 
 export function redPrompt(vars: {
   wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testFilesList: string; commitPrefix: string
 }): string {
-  return renderPrompt(redTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(redTemplate, vars as PromptVars)
 }
 
 export function redRetryPrompt(vars: {
   wt: string; failureReason: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testFilesList: string; commitPrefix: string
 }): string {
-  return renderPrompt(redRetryTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(redRetryTemplate, vars as PromptVars)
 }
 
 export function greenPrompt(vars: {
   greenCtxCmd: string; greenPacketStr: string
   testCommand: string; implFilesList: string; commitPrefix: string; wt: string
 }): string {
-  return renderPrompt(greenTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(greenTemplate, vars as PromptVars)
 }
 
 export function greenRetryPrompt(vars: {
   wt: string; failureReason: string; greenCtxCmd: string; greenRetryPacketStr: string
   testCommand: string; implFilesList: string; commitPrefix: string
 }): string {
-  return renderPrompt(greenRetryTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(greenRetryTemplate, vars as PromptVars)
 }
 
 export function refactorPrompt(vars: {
   wt: string; refactorCtxCmd: string; refactorPacketStr: string
   testCommand: string; allFilesList: string; commitPrefix: string
 }): string {
-  return renderPrompt(refactorTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
 }
 
 export function commitPrompt(vars: { wt: string; allowedList: string; commitPrefix: string; stage: string }): string {
-  return renderPrompt(commitTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(commitTemplate, vars as PromptVars)
 }
 
 export function reflectPrompt(vars: { wt: string; testFiles: string; acStr: string }): string {
-  return renderPrompt(reflectTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(reflectTemplate, vars as PromptVars)
 }
 
 export function skepticBasePrompt(vars: { wt: string; implFiles: string; testFiles: string; testCommand: string; acStr: string }): string {
-  return renderPrompt(skepticBaseTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(skepticBaseTemplate, vars as PromptVars)
 }
 
 export function skepticLenses(): SkepticLens[] {
   return [
-    { key: 'edge', model: 'haiku', prompt: skepticEdgeTemplate },
-    { key: 'error', model: 'haiku', prompt: skepticErrorTemplate },
-    { key: 'contract', model: 'sonnet', prompt: skepticContractTemplate },
+    { key: 'edge', model: model('fast'), prompt: skepticEdgeTemplate },
+    { key: 'error', model: model('fast'), prompt: skepticErrorTemplate },
+    { key: 'contract', model: model('balanced'), prompt: skepticContractTemplate },
   ]
 }
 
 export function refactorCheckPrompt(vars: { wt: string; allFiles: string }): string {
-  return renderPrompt(refactorCheckTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(refactorCheckTemplate, vars as PromptVars)
 }
 
 export function docsCheckPrompt(vars: { changedFiles: string }): string {
-  return renderPrompt(docsCheckTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(docsCheckTemplate, vars as PromptVars)
 }
 
 export function docsSyncPrompt(vars: { docsPacket: string }): string {
-  return renderPrompt(docsSyncTemplate, vars as PromptVars)
+  return PREAMBLE + renderPrompt(docsSyncTemplate, vars as PromptVars)
 }

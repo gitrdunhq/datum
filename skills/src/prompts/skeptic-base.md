@@ -7,6 +7,13 @@ Test command: {{testCommand}}
 Acceptance criteria:
 {{acStr}}
 
+TOOLS (use before manual reading):
+1. `ast-grep --pattern '<pattern>' {{implFiles}}` — find structural anti-patterns:
+   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used
+   - Missing error handling: `ast-grep --pattern 'except: pass' <file>` or `except Exception: pass`
+   - Bare except: `ast-grep --pattern 'except:' <file>`
+2. headroom_compress on each file after reading, then query-retrieve for specific sections
+
 CONTEXT MANAGEMENT:
 After reading each file, compress it with headroom_compress. This frees context for
 deeper analysis. Use headroom_retrieve with a query (e.g. query="error handling" or
