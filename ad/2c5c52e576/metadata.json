@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ad2c5c52e576",
+  "strategy": "manual-commit",
+  "branch": "datum/gh-issues-as-source-of-truth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "skills/datum-tdd-act.js",
+    "skills/src/datum-awake.ts",
+    "skills/src/datum-closeout.ts",
+    "skills/src/datum-go.ts",
+    "skills/src/datum-plan.ts",
+    "skills/src/datum-properties.ts",
+    "skills/src/datum-refine.ts",
+    "skills/src/datum-review.ts",
+    "skills/src/datum-route.ts",
+    "skills/src/datum-tdd-act-lane.ts",
+    "skills/src/datum-tdd-act.ts",
+    "skills/src/datum-validate.ts",
+    "skills/src/shared/models.ts",
+    "skills/src/shared/prompts.ts",
+    "skills/src/shared/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ad/2c5c52e576/0/metadata.json",
+      "transcript": "/ad/2c5c52e576/0/full.jsonl",
+      "content_hash": "/ad/2c5c52e576/0/content_hash.txt",
+      "prompt": "/ad/2c5c52e576/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2336,
+    "cache_creation_tokens": 754865,
+    "cache_read_tokens": 112196061,
+    "output_tokens": 210464,
+    "api_call_count": 627
+  }
+}
