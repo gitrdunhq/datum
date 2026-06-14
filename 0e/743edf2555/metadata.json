@@ -3,7 +3,7 @@
   "checkpoint_id": "0e743edf2555",
   "strategy": "manual-commit",
   "branch": "datum/beta-ga-readiness",
-  "checkpoints_count": 3,
+  "checkpoints_count": 13,
   "files_touched": [
     "TASKS.md",
     "skills/datum-tdd-act.js"
@@ -14,13 +14,19 @@
       "transcript": "/0e/743edf2555/0/full.jsonl",
       "content_hash": "/0e/743edf2555/0/content_hash.txt",
       "prompt": "/0e/743edf2555/0/prompt.txt"
+    },
+    {
+      "metadata": "/0e/743edf2555/1/metadata.json",
+      "transcript": "/0e/743edf2555/1/full.jsonl",
+      "content_hash": "/0e/743edf2555/1/content_hash.txt",
+      "prompt": "/0e/743edf2555/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 7639,
-    "cache_creation_tokens": 1893880,
-    "cache_read_tokens": 185784563,
-    "output_tokens": 420259,
-    "api_call_count": 935
+    "input_tokens": 7871,
+    "cache_creation_tokens": 1956143,
+    "cache_read_tokens": 188749947,
+    "output_tokens": 435014,
+    "api_call_count": 977
   }
 }
