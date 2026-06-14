@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "cd4972e7221e",
+  "strategy": "manual-commit",
+  "branch": "datum/wave-builder-validation",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "skills/datum-tdd-act-lane.js",
+    "skills/src/shared/schemas.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/cd/4972e7221e/0/metadata.json",
+      "transcript": "/cd/4972e7221e/0/full.jsonl",
+      "content_hash": "/cd/4972e7221e/0/content_hash.txt",
+      "prompt": "/cd/4972e7221e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 914,
+    "cache_creation_tokens": 1006197,
+    "cache_read_tokens": 53345012,
+    "output_tokens": 168503,
+    "api_call_count": 345
+  }
+}

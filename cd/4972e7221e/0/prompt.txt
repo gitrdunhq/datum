@@ -1,0 +1,286 @@
+is it using our new gh issues portion
+
+---
+
+ohhh we wireframed it, i wsnt kt built next
+
+---
+
+and csn we write a claude hook that blocks green frkm resdung or writing test foldees and files
+
+---
+
+set it to count for now and we will tweak ojr stuff
+
+---
+
+metrics needs input output thinking tokens and mode
+
+---
+
+we have a web page that runs 10001 with a dash already
+
+---
+
+nit model thinking mode ir efforr
+
+---
+
+what is service tier il
+
+---
+
+yes dashboard and send s tesesrch agent out to see how we csn utilize flex over night work
+
+---
+
+<task-notification>
+<task-id>a0cf3fa01558e4bab</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a0cf3fa01558e4bab.output</output-file>
+<status>completed</status>
+<summary>Agent "Research flex tier for overnight" completed</summary>
+<result>Now I have all the pieces. Here is the consolidated research report.
+
+---
+
+## Flex Tier / Batch Processing for Claude Code Workflows -- Research Findings
+
+### 1. What is "Flex" Processing?
+
+**"Flex" does not exist on the Anthropic API.** It is an AWS Bedrock-only concept. What Anthropic offers directly is three tiers:
+
+| Tier | Description |
+|------|-------------|
+| **Priority** | Production workloads needing guaranteed availability |
+| **Standard** | Default for all API requests (best-effort) |
+| **Batch** | Asynchronous processing via Message Batches API, **50% discount** |
+
+The **Message Batches API** (`POST /v1/messages/batches`) is the cost-reduction path. It accepts up to 100,000 requests per batch (or 256 MB), processes them asynchronously (most complete in under 1 hour, max 24-hour SLA), and results are available for 29 days.
+
+**If you use Claude via AWS Bedrock**, there IS a `service_tier: "flex"` option that provides ~50% discount with relaxed latency -- but that is a Bedrock feature, not Anthropic direct API.
+
+### 2. How to Opt In
+
+**Anthropic API (direct):**
+- The Messages API `service_tier` parameter only accepts `"auto"` (default) and `"standard_only"`. There is **no** `service_tier: "flex"` or `"batch"` value.
+- To get the 50% discount, you must use the **separate** Message Batches endpoint: `POST /v1/messages/batches`.
+
+**AWS Bedrock:**
+- Claude Code v2.1.122+ supports `ANTHROPIC_BEDROCK_SERVICE_TIER` environment variable with values: `default`, `flex`, `priority`.
+
+### 3. Claude Code Integration
+
+**Claude Code does NOT support service tier selection for the Anthropic API.** Confirmed absent:
+- No CLI flag for service tier
+- No `settings.json` key
+- No `ANTHROPIC_SERVICE_TIER` or `CLAUDE_SERVICE_TIER` environment variable
+- The `agent()` function accepts: `label`, `phase`, `model`, `schema` -- **no `service_tier` parameter**
+- No way to route Claude Code requests through the Batches API
+
+**The only exception:** `ANTHROPIC_BEDROCK_SERVICE_TIER` for Bedrock deployments.
+
+### 4. Scheduling Considerations
+
+**Batch API pricing is always 50% off** -- there is no time-of-day variation. The discount is structural, not temporal. Rate limits for batches are separate from the Messages API (HTTP request limits and queue depth limits apply independently).
+
+### 5. Batch API vs Flex Tier
+
+| Feature | Batch API (Anthropic) | Flex (Bedrock only) |
+|---------|----------------------|-------------------|
+| Access | `POST /v1/messages/batches` | `service_tier: "flex"` on Bedrock InvokeModel |
+| Discount | 50% | ~50% |
+| Latency | Async, up to 24h SLA | Synchronous but deprioritized |
+| Integration | Separate endpoint, poll for results | Drop-in parameter on existing calls |
+| Claude Code support | None | `ANTHROPIC_BEDROCK_SERVICE_TIER=flex` |
+
+These are **different mechanisms**. Batch is Anthropic's own async queue. Flex is Bedrock's deprioritized inference.
+
+### 6. Practical Architecture for Your Pipeline
+
+Since Claude Code's `agent()` function does not support batch/flex, here are the viable paths:
+
+**Option A: Bedrock + Flex (simplest integration)**
+Set `ANTHROPIC_BEDROCK_SERVICE_TIER=flex` before launching the pipeline. This requires:
+- AWS Bedrock access configured for Claude models
+- Claude Code v2.1.122+
+- All `agent()` calls automatically use flex tier -- no code changes needed
+- Synchronous execution preserved (your DAG scheduling still works)
+- Trade-off: Bedrock adds its own markup on top of model pricing
+
+**Option B: Direct Batch API (maximum savings, requires rearchitecture)**
+Replace `agent()` calls with direct Anthropic SDK batch submissions:
+```python
+# Pseudocode -- collect all independent agent prompts
+batch = client.messages.batches.create(requests=[
+    {"custom_id": "red:lane-1", "params": {...}},
+    {"custom_id": "reflect:lane-1", "params": {...}},
+    # ... all independent agents in one batch
+])
+# Poll until complete
+while batch.processing_status != "ended":
+    batch = client.messages.batches.retrieve(batch.id)
+    time.sleep(30)
+# Stream results
+for result in client.messages.batches.results(batch.id):
+    process(result)
+```
+This is a significant rearchitecture -- you lose the Claude Code agent context (tool use, file access, git operations) and need to handle all that yourself.
+
+**Option C: Proxy/middleware (hacky but possible)**
+Intercept Claude Code's outgoing API requests and add `service_tier` to them. This does NOT work for batch (different endpoint), but could work for Bedrock flex if you're routing through a proxy.
+
+**Option D: Schedule with `/schedule` (no tier change)**
+Use Claude Code's `/schedule` skill to run pipeline cron jobs overnight. This doesn't change the tier, but offloads execution to off-peak hours where standard-tier capacity is more available.
+
+**Recommendation: Option A (Bedrock + flex)** is the only path that preserves your existing `agent()` architecture while getting the ~50% discount. It requires Bedrock setup but zero code changes to datum-tdd-act.
+
+### 7. Cost Modeling
+
+Based on your pipeline's actual agent breakdown (from `datum-tdd-act-lane.js`):
+
+| Model | Agents | ~Tokens | Standard Cost | Batch/Flex Cost |
+|-------|--------|---------|--------------|----------------|
+| Haiku 4.5 | 12 | 120K | $0.31 | $0.16 |
+| Sonnet 4.6 | 5 | 200K | $1.68 | $0.84 |
+| Opus 4.8 | 1 (escalation) | 80K | $1.20 | $0.60 |
+| **Total** | **18** | **400K** | **$3.19** | **$1.60** |
+
+**Per-run savings: $1.60 (50%)**
+
+At 3 runs/day overnight: **$143/month saved, ~$1,724/year**.
+
+### Key Files Referenced
+
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act.js` -- main orchestrator
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-lane.js` -- lane execution with all `agent()` calls
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-setup.js` -- setup phase agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-merge.js` -- merge/cleanup agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-triage.js` -- triage agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-docs.js` -- docs sync agents
+
+### Bottom Line
+
+There is no way to get batch/flex pricing through Claude Code's `agent()` function on the Anthropic direct API today. Your two realistic options are:
+
+1. **Bedrock + `ANTHROPIC_BEDROCK_SERVICE_TIER=flex`** -- preserves your architecture, requires AWS Bedrock access, one env var change.
+2. **Rearchitect around the Batches API** -- maximum savings with direct Anthropic API, but loses Claude Code's agent capabilities (tool use, file I/O, git).
+
+For overnight pipeline runs where latency tolerance is high, Bedrock flex is the pragmatic choice. The Batches API is better suited for stateless inference (summarization, classification, evaluation) where you don't need the agent to interact with the filesystem.</result>
+<usage><subagent_tokens>37376</subagent_tokens><tool_uses>4</tool_uses><duration_ms>237534</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a969fc608ddb0463a</task-id>
+<tool-use-id>toolu_01JFFF3dvbbvSCSoVphTYp24</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a969fc608ddb0463a.output</output-file>
+<status>completed</status>
+<summary>Agent "Diagnose pipeline failure" completed</summary>
+<result>Now I have the complete picture. Here is the full diagnosis.
+
+---
+
+## Diagnosis: datum-tdd-act run `wf_289f431e-0c4` (issue #139, wave_builder validation)
+
+### Summary
+
+0/2 lanes completed. 18 agents spawned, 392,601 tokens consumed, 649 seconds elapsed.
+
+---
+
+### Lane-by-Lane Failure Report
+
+**task-001 (Cycle detection)** -- Failed at **RED VERIFY**
+
+- **Failure stage**: RED (specifically, the post-RED verification gate)
+- **Error message**: `green_blindness_violation: tests passed after RED`
+- **Actual error**: This is a **false positive**. Tests were actually failing (exit code 1). The root cause is a schema mismatch between the verify agent's output and what the lane script expects.
+
+**task-002 (Missing dependency)** -- Failed at **SKIPPED**
+
+- **Failure stage**: SKIPPED (dependency gate)
+- **Error message**: `skipped: dep(s) failed [task-001]`
+- **Root cause**: task-002 depends on task-001, which failed. Correct behavior by the DAG scheduler.
+
+---
+
+### Root Cause Analysis for task-001
+
+The failure chain has two bugs, one on top of the other:
+
+**Bug 1: Verify agent ignored its instructions (agent compliance failure)**
+
+The `verify-red:task-001` agent (haiku, `ae9d7bec9473d4c7e`) was prompted to run `datum verify-stage red --repo &lt;path&gt; --test-command &lt;cmd&gt;`. Instead, it ran the raw pytest command directly (`uv run pytest tests/test_wave_builder.py -x -q`). It then fabricated its own JSON result:
+
+```json
+{
+  "stage": "red",
+  "status": "FAILED",
+  "exit_code": 1,
+  "failure_reason": "ImportError: cannot import name 'validate_lane_plan'..."
+}
+```
+
+This JSON has **no `verified` field**. The `datum verify-stage red` command would have returned `{"verified": true, "stage": "red", "test_signal": {...}}` since the tests were genuinely failing.
+
+**Bug 2: Fragile verify result parsing (code defect in datum-tdd-act-lane.js)**
+
+In `verifyStage()` (line 255-262 of `datum-tdd-act-lane.js`), the agent text is parsed with `parseAgentJson(checkText, { verified: false })`. When the agent returns valid JSON without a `verified` field, `parseAgentJson` succeeds and returns the agent's object (which has no `verified` key). The lane then checks:
+
+```javascript
+if (!redVerify || !redVerify.verified) {
+    const err = redVerify &amp;&amp; redVerify.error || "green_blindness_violation: tests passed after RED";
+```
+
+- `redVerify.verified` is `undefined` (falsy) --&gt; enters the failure branch
+- `redVerify.error` is also `undefined` (agent used `failure_reason`, not `error`) --&gt; falls through to the hardcoded string
+- Result: the **misleading** error "green_blindness_violation: tests passed after RED" is logged even though tests actually failed correctly
+
+**Compounding factor: Stale tests from a previous run**
+
+The worktree had stale tests from a prior task that tested a non-existent `validate_lane_plan` function. These were already failing. The RED agent correctly identified this situation and *appended* new cycle-detection tests that also intentionally failed (specifically the "arrow notation" tests asserting `-&gt;` in error messages, which the current implementation does not include). The RED agent's own test run showed **11 failures, 12 passes** -- a correct RED state. The verification should have passed.
+
+---
+
+### Triage Phase
+
+The triage phase **did run** and filed 4 GitHub issues:
+
+| Issue | Title | Severity |
+|-------|-------|----------|
+| #149 | task-001 RED: Test assertion is not failing -- green_blindness violation | high |
+| #150 | task-002 SKIPPED: Dependency gate triggered due to task-001 failure | high |
+| #151 | Skeleton ACs do not match test contracts -- placeholder assertions bypass RED verification | critical |
+| #152 | RED verify gate does not distinguish between no-op assertions and real test failures | high |
+
+Issue #152 is the closest to the actual root cause but frames it as "no-op assertions vs real tests" rather than the actual schema mismatch problem. Issue #149's diagnosis is wrong -- it accepted the false "green_blindness_violation" at face value.
+
+---
+
+### Fixes Needed
+
+1. **`verifyStage()` in `skills/src/datum-tdd-act-lane.ts`**: The verify agent should use structured output (a schema), not freeform text parsing. Alternatively, check for `status === "FAILED"` or `exit_code !== 0` as alternative signals that RED verification passed (tests failing = success for RED). The fallback error string should not be "green_blindness_violation" when the real problem is "verify agent returned unexpected schema."
+
+2. **`verifyStage()` agent prompt**: The prompt says "Run: datum verify-stage ..." but haiku ran pytest directly instead. Either enforce the command more strictly in the prompt, or use a `Bash` tool call directly from the orchestrator rather than delegating to an agent that might improvise.
+
+3. **Stale test cleanup**: The lane setup should ensure the test file starts clean or at least that the skeleton phase produces a test file matching the *current* task's ACs, not a previous run's. The skeleton commit failed (worktree was clean because files were already committed), which means the stale tests from a prior run persisted into the RED phase.</result>
+<usage><subagent_tokens>76206</subagent_tokens><tool_uses>18</tool_uses><duration_ms>190541</duration_ms></usage>
+</task-notification>
+
+---
+
+triage phase shojld be sonnet extended thinking
+
+---
+
+rejnstall
+
+---
+
+retry the fsiled work
+
+---
+
+relaunch dashboard
