@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "85eeec7fd883",
+  "strategy": "manual-commit",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 24,
+  "files_touched": [
+    "CURRENT_STATE.md",
+    "agents/datum-green.md",
+    "datum/cli.py",
+    "datum/gate.py",
+    "datum/skeleton_creator.py",
+    "datum/tdd_driver.py",
+    "scripts/workflow-dashboard.py",
+    "skills/datum-tdd-act.js",
+    "skills/datum-tdd/SKILL.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/85/eeec7fd883/0/metadata.json",
+      "transcript": "/85/eeec7fd883/0/full.jsonl",
+      "content_hash": "/85/eeec7fd883/0/content_hash.txt",
+      "prompt": "/85/eeec7fd883/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7629,
+    "cache_creation_tokens": 1891176,
+    "cache_read_tokens": 182971479,
+    "output_tokens": 419105,
+    "api_call_count": 927
+  }
+}
