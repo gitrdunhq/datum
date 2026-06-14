@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "a98718f00e6f",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167-act",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "datum/gate.py",
+    "skills/src/prompts/refine-spec.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a9/8718f00e6f/0/metadata.json",
+      "transcript": "/a9/8718f00e6f/0/full.jsonl",
+      "content_hash": "/a9/8718f00e6f/0/content_hash.txt",
+      "prompt": "/a9/8718f00e6f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2961,
+    "cache_creation_tokens": 1613740,
+    "cache_read_tokens": 222322662,
+    "output_tokens": 329091,
+    "api_call_count": 1139
+  }
+}
