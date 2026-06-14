@@ -108,3 +108,314 @@ send an opus to review the RESUME feature in case of crash or shit
 ---
 
 send an opus agent to review how to breakup the js files into our three tier approach
+
+---
+
+<task-notification>
+<task-id>a9279c283b1272ed5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/498c339f-c317-4cee-9251-a540fa9de6b3/tasks/a9279c283b1272ed5.output</output-file>
+<status>completed</status>
+<summary>Agent "Review DAG scheduler resume safety" completed</summary>
+<result>Now I have a thorough understanding of the code and its context. The resume feature is a Claude Code Workflow runtime feature where `agent()` calls with the same `label` are replayed from cache. Let me now write the full adversarial review.
+
+---
+
+## Adversarial Review: Resume/Crash Safety in `datum-tdd-act.js`
+
+### BUG 1: DAG Deadlock on Resume (CRITICAL)
+
+**Lines 688-728** — The DAG scheduler creates fresh `depPromises`/`depResolvers` maps on every run, including resume runs.
+
+**The scenario**: Tasks A, B, C are in one batch. B depends on A. Crash happens after A completes but during B's GREEN stage. User resumes with `resumeFromRunId`.
+
+On resume, the Workflow runtime replays cached `agent()` calls. Here is the problem:
+
+1. `depPromises` and `depResolvers` are created fresh (lines 689-692) — they are runtime-only JavaScript objects, not persisted.
+2. All tasks in the batch are launched via `parallel()` (line 696).
+3. Task A's `runLane()` is called. Inside `runLane()`, all its `agent()` calls replay instantly from cache (skeleton, red, verify-red, reflect, green, verify-green, skeptics, refactor). Task A finishes in milliseconds.
+4. Task A's result is passed to `depResolvers[taskA]()` at line 725 — this resolves task A's promise.
+5. Task B was waiting on `depPromises[taskA]` at line 711. It resolves, B proceeds.
+
+**Verdict: This specific path is SAFE.** The `parallel()` call re-runs the full DAG scheduling logic including the dep-wait. Even though A's agents replay from cache, A still calls `depResolvers[taskA](result)` at line 725, which unblocks B. The Promise machinery works correctly regardless of whether the agent calls inside `runLane()` are cache-replayed or fresh.
+
+**BUT there is a subtle race**: If the Workflow runtime replays `runLane()` for task A entirely from cache *synchronously* (zero microtask ticks), then `depResolvers[taskA](result)` at line 725 fires *before* task B has reached its `await Promise.all(...)` at line 711. Since `Promise.resolve()` stores the resolved value and late `.then()` callers receive it immediately, this is still safe in JavaScript's Promise semantics.
+
+**No deadlock here.** The design is sound for this case.
+
+### BUG 2: Cached SKIPPED Results Prevent Re-Execution on Resume (HIGH)
+
+**Lines 697-727** — When task-005 is SKIPPED because task-002 failed, the skip logic at lines 713-719 produces a `skipResult` and returns it. But **the skip decision is not an `agent()` call** — it is inline JavaScript logic. The Workflow runtime only caches `agent()` results by label.
+
+**The scenario**: task-002 fails. task-005 is SKIPPED (lines 713-719). User fixes the underlying issue and resumes.
+
+On resume:
+1. task-002's `agent()` calls replay from cache up to the point of change. If the user changed nothing about task-002's inputs, all cached results replay — **including the failure**. task-002 would re-fail with the same cached result.
+2. If the Workflow runtime detects that the `agent()` call that caused the failure has a changed prompt (because underlying files changed), it re-runs from that point.
+3. task-005's SKIP decision is inline JS, not cached. It checks `depResults.filter(r =&gt; r.status !== 'completed')` at line 713 in real time.
+
+**Verdict: Partially safe, but with a trap.** The SKIP itself will re-evaluate correctly because it is not an `agent()` call. However, **task-002's failure may itself replay from cache**. If the user's fix was to the lane plan or source files but didn't change any `agent()` prompt string, the Workflow runtime would replay the old failure. The user would need to understand that they must change something that affects the agent call's label or prompt to bust the cache.
+
+**This is a documentation/UX gap, not a code bug.** But it is a footgun that will frustrate users.
+
+### BUG 3: Cross-Batch `failures` Array Not Populated from Cache (HIGH)
+
+**Lines 699-701 and 730-739** — Cross-batch dependency checking uses the `failures` array:
+
+```javascript
+const crossBatchFailed = allDeps.filter(d =&gt; !batchLaneIds.includes(d) &amp;&amp; failures.includes(d))
+```
+
+And `failures` is populated at lines 734-736:
+```javascript
+if (!r || r.status !== 'completed') {
+  failures.push(id)
+}
+```
+
+**The scenario**: Batch 0 runs and task-002 fails. `failures` gets `['task-002']`. Batch 1 has task-005 that depends on task-002. At line 699, `failures.includes('task-002')` is `true`, so task-005 is correctly skipped.
+
+On resume:
+1. The batch loop at line 636 runs sequentially (`for` loop, not `parallel`).
+2. Batch 0 re-executes. Its `parallel()` call at line 696 runs all batch-0 tasks.
+3. If task-002's `agent()` calls replay from cache and still show failure, `dagResults` returns the failure. Lines 730-739 push task-002 into `failures`.
+4. Batch 1 starts. `failures` correctly contains `['task-002']`.
+
+**Verdict: SAFE, but only because the batch loop is sequential.** The `for` loop at line 636 guarantees batch 0 finishes (including populating `failures`) before batch 1 starts. If someone ever parallelizes the batch loop, this breaks immediately.
+
+**However, there is a real bug here**: If task-002 was the *cause* of a crash (not just a failure), the Workflow runtime may not have cached task-002's `agent()` results at all. On resume, task-002 would re-run from scratch (correct behavior). But the batch-0 `parallel()` call at line 696 would still include all batch-0 tasks, including tasks that already completed before the crash. Those tasks' `runLane()` calls replay from cache. Their `depResolvers[id](result)` fires correctly. **No bug here either** — the DAG handles partial completion within a batch gracefully.
+
+### BUG 4: Worktree Name Collisions on Resume (CRITICAL)
+
+**Lines 646-654** — Setup creates worktrees with deterministic paths:
+
+```javascript
+`git worktree add --detach .datum/worktrees/${batchRunId}-root ${epicBranch}`
+```
+
+And line 657:
+```javascript
+`datum worktrees setup --run-id ${batchRunId} --epic-branch ${epicBranch} --lane-ids ${batchLaneIds.join(',')}`
+```
+
+**The scenario**: Workflow crashes mid-Act phase. Worktrees exist at `.datum/worktrees/&lt;batchRunId&gt;-root` and `.datum/worktrees/&lt;batchRunId&gt;-&lt;taskId&gt;`. User resumes.
+
+On resume:
+1. The Workflow replays the `agent()` call at line 646 with label `root-wt` (or `root-wt [batch 1/2]`).
+2. **If the agent call replays from cache**, it returns the old JSON `{"root": "/path/to/worktree"}` without running `git worktree add`. The worktree may or may not still exist on disk.
+3. **If the worktree still exists on disk** (crash didn't clean up), the cached path is correct — the worktree is there. But its state may be dirty (partial commits from the crashed run).
+4. **If the worktree was manually cleaned up** by the user before resuming, the cached path points to a nonexistent directory. Every subsequent `cd "${wt}"` command in `runLane()` will fail with "no such file or directory".
+
+**Case 3 (dirty worktree)**: The RED agent at line 257 will see leftover commits from the prior run. If the skeleton commit already exists, `git add -A &amp;&amp; git diff --cached --quiet || git commit` at line 246 might no-op (skeleton already committed). The RED agent then writes tests on top of a dirty state that may include partial GREEN implementation files from the crashed run. **This corrupts the TDD invariant** — RED tests might pass because GREEN code is already present.
+
+**Case 4 (deleted worktree)**: Cached setup agent returns a stale path. All subsequent agent calls with `cd "${wt}"` fail. The errors would look like environmental failures, not resume bugs, making diagnosis harder.
+
+**Suggested fix**: Before the Setup phase, add a worktree health check:
+
+```javascript
+// Before creating worktrees, check for and clean stale ones from prior runs
+await agent(
+  `git worktree list | grep "${batchRunId}" &amp;&amp; git worktree remove --force .datum/worktrees/${batchRunId}-root 2&gt;/dev/null; true`,
+  { label: `cleanup-stale-wt${batchTag}`, phase: 'Setup', model: 'haiku' }
+)
+```
+
+But this creates a new problem: the `label` for this cleanup agent would be deterministic and cached on the *next* resume. You need this to be *un-cached* (always run fresh).
+
+**Better fix**: Make the Setup phase idempotent. The `datum worktrees setup` command should check if worktrees already exist and either reuse-with-reset or remove-and-recreate them. This moves the concern out of the workflow script.
+
+### BUG 5: `parseAgentJson` Silently Swallows Cache Replay Errors (MEDIUM)
+
+**Lines 158-166** — `parseAgentJson` returns `fallback` on any parse failure:
+
+```javascript
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== 'string') return fallback || null
+  // ...
+  try { return JSON.parse(cleaned.slice(start, end + 1)) }
+  catch { return fallback || null }
+}
+```
+
+**The scenario**: On resume, an `agent()` call replays from cache. The cached result was an error message or partial output from a crashed agent (the agent was mid-stream when the crash happened). The Workflow runtime might cache a partial response.
+
+`parseAgentJson` would return the fallback silently. For `redCheck` at line 316, the fallback is `{ verified: false }`, which triggers a RED VERIFY FAILURE. This is arguably correct (fail-safe). But for `preflight` at line 242, the fallback is `{}`, and the workflow proceeds with empty preflight data. The GREEN agent would then lack `impl_stubs` and `existing_api` context, likely producing worse results or failing.
+
+**Verdict: Not catastrophic, but a silent quality degradation.** The workflow doesn't distinguish "no preflight data available" from "preflight ran and found nothing." On resume, stale/partial cached data degrades downstream agents without any visible warning.
+
+### BUG 6: `completedLanes` vs `failures` Not Persisted Across Workflow Restarts (MEDIUM)
+
+**Lines 633-634**:
+```javascript
+const failures = []
+const completedLanes = []
+```
+
+These are initialized empty on every run, including resume runs. They are populated incrementally by the batch loop at lines 730-739.
+
+**The scenario**: 3 batches. Batch 0 and 1 complete successfully. Crash during batch 2. Resume.
+
+On resume, the Workflow runtime replays batch 0 and 1's `agent()` calls from cache. The batch loop re-executes, and `dagResults` for batches 0 and 1 come from cached agent results. Lines 730-739 correctly push into `failures` and `completedLanes` based on cached results.
+
+**Verdict: SAFE.** The arrays are re-populated from cached results during replay. The sequential batch loop ensures correct ordering. No persistence needed because the Workflow runtime guarantees that cached `agent()` results are deterministically replayed in order.
+
+### BUG 7: Docs Phase Runs on Stale `completedLanes` (LOW)
+
+**Lines 777-778**:
+```javascript
+if (completedLanes.length &gt; 0) {
+  const changedFiles = [...new Set(completedLanes.flatMap(id =&gt; lanePlan.lanes[id].files || []))]
+```
+
+On resume after a crash during batch 2, batches 0 and 1 replay from cache. `completedLanes` is correctly populated. Batch 2 re-runs (partially from cache, partially fresh). The Docs phase then runs with the correct `completedLanes`.
+
+**However**: If the Docs phase *itself* was reached and its `agent()` call at line 800 was cached from a prior run that had *fewer* completed lanes (e.g., first run completed 3 lanes, second run completed 5), the cached docs-sync agent result would be stale — it only updated docs for the 3 lanes it saw.
+
+**Verdict**: The `docs-check` haiku at line 780 has a deterministic label (`docs-check`) and its prompt includes the `changedFiles` list. If `changedFiles` changed (more lanes completed), the prompt changed, so the Workflow runtime would bust the cache and re-run. **SAFE — if the runtime caches by prompt content, not just label.** If it caches by label only, this is a bug.
+
+### BUG 8: Agent Label Collisions Across Batches (MEDIUM)
+
+**Lines 649, 657, 679, etc.** — Agent labels include `batchTag`:
+
+```javascript
+{ label: `root-wt${batchTag}`, phase: 'Setup', model: 'haiku' }
+```
+
+Where `batchTag` is:
+```javascript
+const batchTag = batches.length &gt; 1 ? ` [batch ${bi + 1}/${batches.length}]` : ''
+```
+
+**The edge case**: A lane plan initially has 4 tasks (1 batch, `batchTag` is `''`). The user fixes a bug and adds a 6th task, making it 2 batches. On resume, the new run has `batchTag = ' [batch 1/2]'` for what was previously the only batch. The agent labels change from `root-wt` to `root-wt [batch 1/2]`.
+
+**This busts all caches for the Setup phase**, even though the setup for those tasks hasn't changed. Not a correctness bug, but a performance/cost waste — all setup agents re-run unnecessarily.
+
+**Worse**: If someone resumes without changing the lane plan, labels match, and the cached setup results point to worktrees that were already cleaned up (Cleanup phase at line 765 ran before the crash in a later batch). **This is the same stale-worktree-path bug as BUG 4.**
+
+### BUG 9: The `runLane` Label Namespace Assumes Unique Task IDs Across All Runs (LOW)
+
+**Lines 237, 245, 257, etc.** — Inside `runLane`, agent labels are:
+```javascript
+{ label: `skeleton:${taskId}`, ... }
+{ label: `red:${taskId}`, ... }
+{ label: `green:${taskId}`, ... }
+```
+
+These labels don't include `runId` or `batchRunId`. If the same task ID appears in a different run (e.g., the user re-runs the same lane plan with a new `runId`), the Workflow runtime would need to scope its cache by `runId`. If the resume feature uses the prior run's cache (`resumeFromRunId`), these labels are unique within that run.
+
+**Verdict: Depends on runtime semantics.** If `resumeFromRunId` means "load cache from run X", then task IDs are unique per run (lane plans don't have duplicate task IDs). SAFE. If the runtime uses a global label cache across runs, this is a collision bug. Assumed safe given the `resumeFromRunId` scoping.
+
+### BUG 10: Cleanup Phase Destroys State Needed for Resume (CRITICAL)
+
+**Lines 762-770**:
+```javascript
+phase('Cleanup')
+await agent(
+  `datum worktrees cleanup --run-id ${batchRunId} --epic-branch ${epicBranch} &amp;&amp; ` +
+  `git worktree remove .datum/worktrees/${batchRunId}-root --force 2&gt;/dev/null; ` +
+  `git worktree prune`,
+  { label: `cleanup${batchTag}`, phase: 'Cleanup', model: 'haiku' }
+)
+```
+
+**The scenario**: Batch 0 completes: Setup, Act, Merge, Cleanup. Batch 1 crashes during Act. User resumes.
+
+On resume:
+1. Batch 0 replays from cache, including the Cleanup agent call.
+2. **If the Cleanup agent call replays from cache**, it returns success without actually running `git worktree remove`. This is fine — the worktrees were already cleaned up in the first run.
+3. **If the Cleanup agent call is NOT cached** (prompt changed, or runtime re-runs it), it tries to remove worktrees that no longer exist. `--force` and `2&gt;/dev/null` absorb the error. `git worktree prune` is idempotent. **SAFE.**
+
+But consider this: Batch 0 completes successfully including Merge. The merged commits are on `epicBranch`. Batch 1's Setup creates worktrees branching from `epicBranch`, which now includes batch 0's merged work. If the crash happens and on resume batch 0's Merge replays from cache (no-op, already merged), batch 1's Setup also replays from cache (returning paths to worktrees that were cleaned up before the crash but then batch 1 re-created them, and those might still exist from the crashed run).
+
+**This is the same stale/dirty worktree problem as BUG 4, but for the cross-batch case.** The Cleanup of batch 0 runs fine, but batch 1's worktrees from the crashed run are the ones at risk.
+
+### BUG 11: No Crash Handler for the `parallel()` Call Itself (MEDIUM)
+
+**Line 696**:
+```javascript
+const dagResults = await parallel(
+  batchLaneIds.map(taskId =&gt; async () =&gt; { ... })
+)
+```
+
+If one task throws an uncaught exception inside its async function (not a controlled failure return, but an actual `throw`), what does `parallel()` do? The code assumes `parallel()` returns an array of results in order. If one task throws:
+
+- If `parallel()` rejects on first throw: remaining tasks never complete, their `depResolvers` are never called, and any in-flight tasks waiting on `depPromises` will hang forever (the Promise returned by `parallel()` already rejected, but those pending tasks are still running in the background).
+- If `parallel()` catches and returns the error: the code at line 733 would see a non-result object and push to `failures`. Potentially safe.
+
+**Inside `runLane()`**, the `.then()` at line 724 catches `null` returns:
+```javascript
+.then(r =&gt; r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+```
+
+But `.then()` does NOT catch throws — you'd need `.catch()` for that. If `runLane()` throws (e.g., JSON.parse fails on garbled lane plan data), the Promise rejects, `.then()` is skipped, and the rejection propagates to `parallel()`.
+
+**Suggested fix**: Add `.catch()`:
+```javascript
+const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
+  .then(r =&gt; r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+  .catch(e =&gt; ({ task_id: taskId, status: 'failed', stage: 'CRASH', error: String(e) }))
+depResolvers[taskId](result)
+return result
+```
+
+### BUG 12: `depResolvers[taskId]` Never Called on `runLane` Throw (CRITICAL)
+
+This is the actionable version of BUG 11. **Lines 723-726**:
+
+```javascript
+const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
+  .then(r =&gt; r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+depResolvers[taskId](result)
+return result
+```
+
+If `runLane()` rejects (throws), execution jumps past line 725. `depResolvers[taskId]` is **never called**. Any task depending on `taskId` is now waiting on `depPromises[taskId]` forever. Since `parallel()` awaits all task Promises, it hangs indefinitely.
+
+**This is a guaranteed deadlock** on any uncaught exception in `runLane()`.
+
+Paths that could throw inside `runLane()`:
+- `JSON.stringify` on a circular object (unlikely but possible if `lane` has circular refs)
+- Any agent() call that rejects instead of returning null
+- Property access on undefined (e.g., `lanePlan.lanes[taskId]` is undefined — though the lane plan was validated earlier)
+
+**Fix** (same as BUG 11):
+```javascript
+const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
+  .then(r =&gt; r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+  .catch(e =&gt; ({ task_id: taskId, status: 'failed', stage: 'CRASH', error: String(e) }))
+depResolvers[taskId](result)
+return result
+```
+
+---
+
+## Summary: Ranked by Severity
+
+| # | Severity | Issue | Lines |
+|---|----------|-------|-------|
+| 12 | **CRITICAL** | `depResolvers` never called on `runLane()` throw → guaranteed deadlock | 723-726 |
+| 4 | **CRITICAL** | Dirty/stale worktrees on resume corrupt TDD invariant or cause path-not-found | 646-654 |
+| 10 | **CRITICAL** | Cleanup destroys worktrees but cached Setup returns stale paths on resume | 762-770, 646-654 |
+| 11 | **MEDIUM** | No `.catch()` on `runLane()` — uncaught throws propagate uncontrolled | 723-726 |
+| 2 | **HIGH** | Cached failure results prevent task re-execution on resume (UX trap) | 697-727 |
+| 3 | **HIGH** | `failures` array correctness depends on batch loop staying sequential | 633-634, 699 |
+| 5 | **MEDIUM** | `parseAgentJson` silently swallows partial/corrupt cached responses | 158-166, 242 |
+| 8 | **MEDIUM** | Label changes when batch count changes bust caches unnecessarily | 638-639 |
+| 7 | **LOW** | Docs phase cache correctness depends on prompt-content-based cache busting | 777-800 |
+| 9 | **LOW** | Label uniqueness depends on runtime scoping cache by runId | 237-268 |
+
+### Priority Fixes
+
+**Fix 1 (5 minutes, blocks everything)**: Add `.catch()` at line 724 to prevent DAG deadlock:
+```javascript
+const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
+  .then(r =&gt; r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+  .catch(e =&gt; ({ task_id: taskId, status: 'failed', stage: 'CRASH', error: String(e) }))
+```
+
+**Fix 2 (30 minutes)**: Make Setup idempotent — have `datum worktrees setup` detect existing worktrees and either `git checkout -- . &amp;&amp; git clean -fd` (reset to clean) or `git worktree remove &amp;&amp; git worktree add` (recreate). This fixes BUGs 4 and 10.
+
+**Fix 3 (documentation)**: Document that resume replays cached agent results, so fixing a bug that doesn't change any agent prompt string won't bust the cache. Users need to know they may need to change the lane plan or bump `runId` to force re-execution.</result>
+<usage><subagent_tokens>50354</subagent_tokens><tool_uses>4</tool_uses><duration_ms>291256</duration_ms></usage>
+</task-notification>
