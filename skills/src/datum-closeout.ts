@@ -55,7 +55,15 @@ const synthResult = await agent(
   renderPrompt(closeoutSynthTemplate, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch: ctx.branch, runId: rid })
   + `\n\nAFTER writing artifacts, also:
 1. Tag: git tag "epic/${ctx.branch}/${rid}" HEAD 2>/dev/null || true
-2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true`,
+2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true
+3. Clean up root pipeline artifacts — move them to the epic archive dir:
+   EPIC_DIR="docs/epics/${ctx.branch}"
+   mkdir -p "$EPIC_DIR"
+   for f in SPEC.md TASKS.md QUESTIONS.md PROPERTIES.md TICKET.md tasks.json; do
+     [ -f "$f" ] && mv "$f" "$EPIC_DIR/" && echo "archived $f → $EPIC_DIR/"
+   done
+   [ -f .datum/lane-plan.json ] && mv .datum/lane-plan.json "$EPIC_DIR/" && echo "archived lane-plan.json → $EPIC_DIR/"
+4. Commit the cleanup: git add -A && git commit -m "closeout(${rid}): archive pipeline artifacts to $EPIC_DIR"`,
   { label: 'synthesize-and-archive', model: model('balanced') },
 )
 
