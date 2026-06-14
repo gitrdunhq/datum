@@ -1,4 +1,5 @@
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
+// Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
 import type {
   LaneArgs,
@@ -6,36 +7,25 @@ import type {
   LanePlan,
   Lane,
   PipelineConfig,
-  WriteResult,
+  StageResult,
   ReflectResult,
   SkepticResult,
   RefactorCheck,
-  VerifyResult,
-  CommitResult,
-  TestSignal,
   TaskPacket,
 } from './shared/types'
 import {
-  WRITE_RESULT_SCHEMA,
+  STAGE_RESULT_SCHEMA,
   REFLECT_SCHEMA,
   SKEPTIC_SCHEMA,
   REFACTOR_CHECK_SCHEMA,
 } from './shared/schemas'
 import {
   classifyFiles,
-  parseAgentJson,
   laneCtxCmd,
   extractContractSummary,
   crossValidateBugs,
   buildPacket,
 } from './shared/utils'
-import {
-  commitStage,
-  resetWorktree,
-  revertLastCommit,
-  verifyStage,
-  runSkeleton,
-} from './shared/agents'
 import {
   redPrompt,
   redRetryPrompt,
@@ -50,7 +40,7 @@ import {
 
 export const meta = {
   name: 'datum-tdd-act-lane',
-  description: 'DAG-scheduled TDD execution: RED->verify->GREEN->verify->REFACTOR per lane',
+  description: 'DAG-scheduled TDD execution: RED->GREEN->REFACTOR per lane',
   phases: [{ title: 'Act' }],
 }
 
@@ -72,83 +62,72 @@ async function runLane(
     : cfg.testCommand
   const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
 
-  log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test files, ${implFiles.length} impl files)`)
-  log(`[${taskId}]   tests: ${testFiles.join(', ') || '(none)'}`)
-  log(`[${taskId}]   impl:  ${implFiles.join(', ') || '(none)'}`)
-  log(`[${taskId}]   test cmd: ${laneTestCmd}`)
+  log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
-    log(`[${taskId}] STRUCTURAL lane complete`)
     return { task_id: taskId, status: 'completed' }
   }
 
-  // ── Skeleton ──
-  const preflight = await runSkeleton(taskId, wt, cfg)
-  await commitStage(taskId, wt, `skeleton(${taskId})`, [...testFiles, ...implFiles], 'SKELETON')
-
-  // ── RED ──
+  // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
   const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', {})
-  const redPacketStr: string = JSON.stringify(redPacket)
   const redCtxCmd: string = laneCtxCmd(redPacket, wt)
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg.language} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
 
-  let red: WriteResult | null = await agent(
-    redPrompt({ redCtxCmd, redPacketStr }),
-    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA },
+  const promptVars = {
+    wt,
+    skeletonCmd,
+    redCtxCmd,
+    redPacketStr: JSON.stringify(redPacket),
+    testCommand: laneTestCmd,
+    testFilesList: testFiles.join(' '),
+    commitPrefix: redPacket.commit_prefix,
+  }
+
+  let red: StageResult | null = await agent(
+    redPrompt(promptVars),
+    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
   )
 
-  if (red && red.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ') || '(none reported)'}`)
+  if (red?.success) {
+    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
   }
 
   if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${(red && red.failure_reason) || 'no files written'}, retrying with hint`)
-    await resetWorktree(taskId, wt, 'RED')
+    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
     red = await agent(
-      redRetryPrompt({
-        failureReason: (red && red.failure_reason) || 'unknown',
-        redCtxCmd,
-        redPacketStr,
-      }),
-      { label: `red-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA },
+      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
+      { label: `red-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
     )
   }
 
   if (!red || !red.success) {
-    const err: string = (red && red.failure_reason) || 'RED agent did not write files after 2 attempts'
-    log(`[${taskId}] RED FAILED after 2 attempts: ${err}`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
+    log(`[${taskId}] RED FAILED: ${red?.failure_reason || 'no files written after 2 attempts'}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
-  const redCommit: CommitResult | null = await commitStage(taskId, wt, redPacket.commit_prefix, testFiles, 'RED')
-  if (!redCommit || !redCommit.committed) {
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: `git commit failed: ${(redCommit && redCommit.failure_reason) || 'unknown'}` }
+  if (red.tests_pass) {
+    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness)`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'green_blindness_violation: tests passed after RED' }
+  }
+  log(`[${taskId}] RED verified — tests fail as expected (committed: ${red.commit_sha || 'n/a'})`)
+
+  if (!red.committed) {
+    log(`[${taskId}] RED: agent did not commit — failing`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'RED agent did not commit' }
   }
 
-  // ── Verify RED + Reflect (parallel) ──
-  const [redCheck, reflect] = await parallel<VerifyResult | ReflectResult>([
-    () => verifyStage(taskId, wt, 'red', laneCfg.testCommand),
-    () => agent(
-      reflectPrompt({ wt, testFiles: testFiles.join(', '), acStr }),
-      { label: `reflect:${taskId}`, phase: 'Act', model: 'haiku', schema: REFLECT_SCHEMA },
-    ),
-  ])
+  // ── Reflect (independent evaluator — stays separate) ──
+  const reflectResult: ReflectResult | null = await agent(
+    reflectPrompt({ wt, testFiles: testFiles.join(', '), acStr }),
+    { label: `reflect:${taskId}`, phase: 'Act', model: 'haiku', schema: REFLECT_SCHEMA },
+  )
 
-  const redVerify = redCheck as VerifyResult | null
-  const reflectResult = reflect as ReflectResult | null
-
-  if (!redVerify || !redVerify.verified) {
-    const err: string = (redVerify && redVerify.error) || 'green_blindness_violation: tests passed after RED'
-    log(`[${taskId}] RED VERIFY FAILED: ${err}`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
-  }
-  log(`[${taskId}] RED verified — tests fail as expected`)
-
-  const reflectScore: number = (reflectResult && reflectResult.score) || 0
-  log(`[${taskId}] Test quality: ${reflectScore}/10 — ${(reflectResult && reflectResult.reasoning) || 'no reasoning'}`)
-  if (reflectResult && reflectResult.gaps && reflectResult.gaps.length > 0) {
+  const reflectScore: number = reflectResult?.score || 0
+  log(`[${taskId}] Test quality: ${reflectScore}/10 — ${reflectResult?.reasoning || 'no reasoning'}`)
+  if (reflectResult?.gaps?.length) {
     log(`[${taskId}]   gaps: ${reflectResult.gaps.join('; ')}`)
   }
   if (reflectScore < 4) {
@@ -156,129 +135,86 @@ async function runLane(
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `test quality ${reflectScore}/10` }
   }
 
-  // ── GREEN context ──
-  const signal: TestSignal = (redVerify && redVerify.test_signal) || { exit_code: 1, errors: [], assertion_messages: [] }
-  const contractSummary = extractContractSummary(lane.acceptance_criteria || [])
-
-  // ── GREEN (sonnet first, opus on retry) ──
+  // ── GREEN (writes implementation + verifies tests pass + commits) ──
   const greenModel = (lane.green_model || 'sonnet') as 'haiku' | 'sonnet' | 'opus'
-  log(`[${taskId}] GREEN: making tests pass (model: ${greenModel}, contracts: ${contractSummary.length})`)
+  const contractSummary = extractContractSummary(lane.acceptance_criteria || [])
+  log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`)
 
   const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', {
-    test_signal: signal,
-    preflight,
+    test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
     contract_summary: contractSummary,
-    impl_stubs: preflight.impl_stubs || [],
-    existing_api: preflight.existing_api || {},
   })
   const greenCtxCmd: string = laneCtxCmd(greenPacket, wt)
 
-  let green: WriteResult | null = await agent(
-    greenPrompt({ greenCtxCmd, greenPacketStr: JSON.stringify(greenPacket) }),
-    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: WRITE_RESULT_SCHEMA },
-  )
-
-  if (green && green.success) {
-    log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(', ') || '(none reported)'}`)
+  const greenVars = {
+    wt,
+    greenCtxCmd,
+    greenPacketStr: JSON.stringify(greenPacket),
+    testCommand: laneTestCmd,
+    implFilesList: implFiles.join(' '),
+    commitPrefix: greenPacket.commit_prefix,
   }
 
-  if (!green || !green.success) {
-    const escalatedModel: 'opus' = 'opus'
-    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${(green && green.failure_reason) || 'no files written'}, escalating to ${escalatedModel}`)
+  let green: StageResult | null = await agent(
+    greenPrompt(greenVars),
+    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA },
+  )
 
-    await resetWorktree(taskId, wt, 'GREEN')
+  if (green?.success) {
+    log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(', ')}`)
+  }
 
-    const retryCheck: VerifyResult = await verifyStage(taskId, wt, 'red', laneCfg.testCommand)
-    const retrySignal: TestSignal = (retryCheck && retryCheck.test_signal) || signal
-    const retryPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'GREEN', {
-      test_signal: retrySignal,
-      preflight,
-      contract_summary: contractSummary,
-      impl_stubs: preflight.impl_stubs || [],
-      existing_api: preflight.existing_api || {},
-      retry_hint: `Previous attempt failed: ${(green && green.failure_reason) || 'unknown'}. Read the FULL error output carefully. Fix the implementation.`,
-    })
-
+  if (!green || !green.success || !green.tests_pass) {
+    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || 'unknown'}, escalating to opus`)
     green = await agent(
       greenRetryPrompt({
-        failureReason: (green && green.failure_reason) || 'unknown',
-        greenCtxCmd,
-        greenRetryPacketStr: JSON.stringify(retryPacket),
+        ...greenVars,
+        failureReason: green?.failure_reason || 'unknown',
+        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
       }),
-      { label: `green-retry:${taskId}`, phase: 'Act', model: escalatedModel, schema: WRITE_RESULT_SCHEMA },
+      { label: `green-retry:${taskId}`, phase: 'Act', model: 'opus', schema: STAGE_RESULT_SCHEMA },
     )
   }
 
-  if (!green || !green.success) {
-    const err: string = (green && green.failure_reason) || 'GREEN agent did not write files after 2 attempts'
-    log(`[${taskId}] GREEN FAILED after 2 attempts: ${err}`)
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: err }
+  if (!green || !green.success || !green.tests_pass) {
+    log(`[${taskId}] GREEN FAILED: ${green?.failure_reason || 'tests still failing after 2 attempts'}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: green?.failure_reason || 'GREEN failed' }
   }
 
-  const greenCommit: CommitResult | null = await commitStage(taskId, wt, greenPacket.commit_prefix, implFiles, 'GREEN')
-  if (!greenCommit || !greenCommit.committed) {
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `git commit failed: ${(greenCommit && greenCommit.failure_reason) || 'unknown'}` }
+  if (!green.committed) {
+    log(`[${taskId}] GREEN: agent did not commit — failing`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: 'GREEN agent did not commit' }
   }
+  log(`[${taskId}] GREEN verified — all tests pass (committed: ${green.commit_sha || 'n/a'})`)
 
-  // ── Verify GREEN ──
-  const greenCheck: VerifyResult = await verifyStage(taskId, wt, 'green', laneCfg.testCommand)
-
-  if (!greenCheck || !greenCheck.verified) {
-    const err: string = (greenCheck && greenCheck.error) || 'tests still failing after GREEN'
-    log(`[${taskId}] GREEN VERIFY FAILED: ${err}`)
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: err }
-  }
-  log(`[${taskId}] GREEN verified — all tests pass`)
-
-  // ── Adversarial skeptic panel (3 lenses, parallel, consensus) ──
+  // ── Adversarial skeptic panel (independent evaluators — stay separate) ──
   const base: string = skepticBasePrompt({
-    wt,
-    implFiles: implFiles.join(', '),
-    testFiles: testFiles.join(', '),
-    testCommand: laneCfg.testCommand,
-    acStr,
+    wt, implFiles: implFiles.join(', '), testFiles: testFiles.join(', '),
+    testCommand: laneTestCmd, acStr,
   })
-
   const lenses = skepticLenses()
   const skepticResults = await parallel<SkepticResult>(
     lenses.map((lens) => () =>
-      agent(
-        base + lens.prompt,
-        { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model, schema: SKEPTIC_SCHEMA },
-      ),
+      agent(base + lens.prompt, { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model, schema: SKEPTIC_SCHEMA })
     ),
   )
 
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses)
-
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i]
-    if (!s) { log(`[${taskId}] SKEPTIC ${lenses[i].key}: (null — agent failed)`); continue }
-    const bugCount = (s.bugs_found || []).length
-    log(`[${taskId}] SKEPTIC ${lenses[i].key}: ${s.verdict} (${bugCount} bugs, confidence: ${s.confidence || 'N/A'})`)
+    if (!s) { log(`[${taskId}] SKEPTIC ${lenses[i].key}: (null)`); continue }
+    log(`[${taskId}] SKEPTIC ${lenses[i].key}: ${s.verdict} (${(s.bugs_found || []).length} bugs)`)
     for (const bug of (s.bugs_found || [])) {
-      log(`[${taskId}]   - [${bug.severity || '?'}] ${bug.description}`)
+      log(`[${taskId}]   - [${bug.severity}] ${bug.description}`)
     }
   }
-
   if (brokenCount >= 2) {
-    const bugList = crossValidated.map((b) => `[${b.lens}] ${b.description}`).join('; ')
-    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN — ${crossValidated.length} cross-validated: ${bugList || 'none'}`)
-  } else if (brokenCount === 1) {
-    log(`[${taskId}] SKEPTIC VERDICT: 1/3 BROKEN (no consensus) — proceeding`)
+    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN`)
   } else {
-    log(`[${taskId}] SKEPTIC VERDICT: PASS (${allBugs.length} total findings, ${crossValidated.length} cross-validated)`)
+    log(`[${taskId}] SKEPTIC VERDICT: PASS (${crossValidated.length} cross-validated)`)
   }
 
-  // ── File ownership check ──
-  const allAllowed = new Set([...testFiles, ...implFiles])
-  const writtenFiles: string[] = [...(red.files_written || []), ...(green.files_written || [])]
-  const violations: string[] = writtenFiles.filter((f) => !allAllowed.has(f))
-  if (violations.length > 0) {
-    log(`[${taskId}] FILE OWNERSHIP VIOLATION: ${violations.join(', ')}`)
-  }
-
-  // ── REFACTOR ──
+  // ── REFACTOR (writes + verifies + commits in one agent) ──
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg)
   if (!refResult) {
     return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
@@ -305,8 +241,8 @@ async function runRefactor(
     { label: `refactor-check:${taskId}`, phase: 'Act', model: 'haiku', schema: REFACTOR_CHECK_SCHEMA },
   )
 
-  if (!preCheck || !preCheck.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${(preCheck && preCheck.reason) || 'nothing to improve'})`)
+  if (!preCheck?.should_refactor) {
+    log(`[${taskId}] REFACTOR: skipped (${preCheck?.reason || 'nothing to improve'})`)
     return { verified: true }
   }
 
@@ -315,41 +251,40 @@ async function runRefactor(
   const refactorPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', {})
   const refactorCtxCmd: string = laneCtxCmd(refactorPacket, wt)
 
-  const refactor: WriteResult | null = await agent(
-    refactorPrompt({ refactorCtxCmd, refactorPacketStr: JSON.stringify(refactorPacket) }),
-    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA },
+  const refactor: StageResult | null = await agent(
+    refactorPrompt({
+      wt,
+      refactorCtxCmd,
+      refactorPacketStr: JSON.stringify(refactorPacket),
+      testCommand: cfg.testCommand,
+      allFilesList: [...testFiles, ...implFiles].join(' '),
+      commitPrefix: refactorPacket.commit_prefix,
+    }),
+    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA },
   )
 
-  if (!refactor) {
-    log(`[${taskId}] REFACTOR FAILED: agent returned null`)
+  if (!refactor?.success) {
+    if (refactor?.failure_reason?.toLowerCase().includes('nothing to')) {
+      log(`[${taskId}] REFACTOR: nothing to change`)
+      return { verified: true }
+    }
+    log(`[${taskId}] REFACTOR FAILED: ${refactor?.failure_reason || 'null'}`)
     return null
   }
-  if (!refactor.success && refactor.failure_reason && !refactor.failure_reason.toLowerCase().includes('nothing to')) {
-    log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason}`)
-    return null
-  }
-  if (!refactor.success) {
-    log(`[${taskId}] REFACTOR: nothing to change`)
+
+  if (!refactor.tests_pass) {
+    log(`[${taskId}] REFACTOR broke tests — agent should not have committed`)
+    if (refactor.committed) {
+      await agent(
+        `git -C "${wt}" revert --no-edit HEAD`,
+        { label: `revert-refactor:${taskId}`, phase: 'Act', model: 'haiku' },
+      )
+    }
     return { verified: true }
   }
 
-  log(`[${taskId}] REFACTOR wrote: ${(refactor.files_written || []).join(', ') || '(none reported)'}`)
-
-  const refCommit: CommitResult | null = await commitStage(taskId, wt, refactorPacket.commit_prefix, [...testFiles, ...implFiles], 'REFACTOR')
-  if (!refCommit || !refCommit.committed) {
-    log(`[${taskId}] REFACTOR commit failed — reverting`)
-    await resetWorktree(taskId, wt, 'REFACTOR')
-    return { verified: true }
-  }
-
-  const check: VerifyResult = await verifyStage(taskId, wt, 'green', cfg.testCommand)
-
-  if (!check || !check.verified) {
-    log(`[${taskId}] REFACTOR verification FAILED: ${(check && check.error) || 'tests broke'} — reverting`)
-    await revertLastCommit(taskId, wt, 'REFACTOR')
-    return { verified: true }
-  }
-  return check
+  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || 'n/a'})`)
+  return { verified: true }
 }
 
 // ── DAG scheduler ───────────────────────────────────────────────────────────
@@ -366,7 +301,7 @@ for (const id of batchLaneIds) {
   depPromises[id] = new Promise<LaneOutcome>((resolve) => { depResolvers[id] = resolve })
 }
 
-log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks, starting as deps resolve`)
+log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks`)
 
 const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
   batchLaneIds.map((taskId: string) => async (): Promise<LaneOutcome> => {

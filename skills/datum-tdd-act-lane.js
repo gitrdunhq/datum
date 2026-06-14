@@ -1,30 +1,24 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-lane.ts
 export const meta = {
   name: "datum-tdd-act-lane",
-  description: "DAG-scheduled TDD execution: RED->verify->GREEN->verify->REFACTOR per lane",
+  description: "DAG-scheduled TDD execution: RED->GREEN->REFACTOR per lane",
   phases: [{ title: "Act" }]
 };
 
 // skills/src/shared/schemas.ts
-var WRITE_RESULT_SCHEMA = {
+var STAGE_RESULT_SCHEMA = {
   type: "object",
   properties: {
     files_written: { type: "array", items: { type: "string" } },
     success: { type: "boolean" },
-    failure_reason: { type: "string" }
-  },
-  required: ["success"]
-};
-var COMMIT_RESULT_SCHEMA = {
-  type: "object",
-  properties: {
+    tests_pass: { type: "boolean" },
+    test_exit_code: { type: "number" },
+    test_errors: { type: "array", items: { type: "string" } },
     committed: { type: "boolean" },
     commit_sha: { type: "string" },
-    files_staged: { type: "array", items: { type: "string" } },
-    violations: { type: "array", items: { type: "string" } },
     failure_reason: { type: "string" }
   },
-  required: ["committed"]
+  required: ["success", "tests_pass", "committed"]
 };
 var REFLECT_SCHEMA = {
   type: "object",
@@ -52,23 +46,6 @@ var SKEPTIC_SCHEMA = {
   },
   required: ["bugs_found", "confidence", "verdict"]
 };
-var VERIFY_STAGE_SCHEMA = {
-  type: "object",
-  properties: {
-    verified: { type: "boolean" },
-    exit_code: { type: "number" },
-    error: { type: "string" },
-    test_signal: {
-      type: "object",
-      properties: {
-        exit_code: { type: "number" },
-        errors: { type: "array", items: { type: "string" } },
-        assertion_messages: { type: "array", items: { type: "string" } }
-      }
-    }
-  },
-  required: ["verified"]
-};
 var REFACTOR_CHECK_SCHEMA = {
   type: "object",
   properties: {
@@ -87,18 +64,6 @@ function classifyFiles(files) {
   const testFiles = (files || []).filter(isTest);
   const implFiles = (files || []).filter((f) => !isTest(f));
   return { testFiles, implFiles };
-}
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
-  const start = cleaned.search(/[{[]/);
-  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (start === -1 || end === -1) return fallback;
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch {
-    return fallback;
-  }
 }
 function laneCtxCmd(packet, wt) {
   const ctx = JSON.stringify({
@@ -200,113 +165,20 @@ function renderPrompt(template, vars) {
   );
 }
 
-// skills/src/shared/agents.ts
-async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
-  const allowedList = allowedFiles.join(", ");
-  const basePrompt = `You are a GIT COMMIT agent. You ONLY handle git operations \u2014 never edit source files.
-
-TASK:
-1. Run: git -C "${wt}" status --porcelain
-2. Verify ONLY these files were modified: ${allowedList}
-3. If files outside that list were changed, report them as violations and do NOT commit
-4. Stage the allowed files: git -C "${wt}" add <files>
-5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"
-6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD
-
-CONSTRAINTS:
-- NEVER edit, create, or delete source files \u2014 only git operations
-- If there are no changes to commit, return committed=false
-- Use git -C "${wt}" for ALL git commands to enforce directory`;
-  let result = await agent(basePrompt, {
-    label: `git-${stage.toLowerCase()}:${taskId}`,
-    phase: "Act",
-    model: "haiku",
-    schema: COMMIT_RESULT_SCHEMA
-  });
-  if (result && result.violations && result.violations.length > 0) {
-    log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(", ")}`);
-  }
-  if (!result || !result.committed && result.failure_reason) {
-    log(`[${taskId}] GIT ${stage}: haiku failed (${result && result.failure_reason || "null"}), escalating to sonnet`);
-    result = await agent(
-      basePrompt + `
-
-RETRY CONTEXT: Previous commit attempt failed: ${result && result.failure_reason || "null result"}.
-Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.
-Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.
-If the worktree is in a broken state, report failure_reason with details.`,
-      {
-        label: `git-${stage.toLowerCase()}-fix:${taskId}`,
-        phase: "Act",
-        model: "sonnet",
-        schema: COMMIT_RESULT_SCHEMA
-      }
-    );
-  }
-  if (result && result.committed) {
-    log(`[${taskId}] GIT ${stage} committed: ${result.commit_sha || "(no sha)"}`);
-    log(`[${taskId}]   staged: ${(result.files_staged || []).join(", ") || "(none reported)"}`);
-  } else {
-    log(`[${taskId}] GIT ${stage} FAILED: ${result && result.failure_reason || "no commit after escalation"}`);
-  }
-  return result;
-}
-async function resetWorktree(taskId, wt, stage) {
-  await agent(
-    `You are a GIT RESET agent. Reset the worktree to the last commit.
-Run: git -C "${wt}" checkout -- . && git -C "${wt}" clean -fd --exclude=.datum/
-Do NOT edit, create, or delete source files \u2014 only git operations.`,
-    { label: `reset-${stage.toLowerCase()}:${taskId}`, phase: "Act", model: "haiku" }
-  );
-  log(`[${taskId}] GIT RESET ${stage}: worktree cleaned`);
-}
-async function revertLastCommit(taskId, wt, stage) {
-  await agent(
-    `You are a GIT REVERT agent. Revert the most recent commit.
-Run: git -C "${wt}" revert --no-edit HEAD
-Do NOT edit, create, or delete source files \u2014 only git operations.`,
-    { label: `revert-${stage.toLowerCase()}:${taskId}`, phase: "Act", model: "haiku" }
-  );
-  log(`[${taskId}] GIT REVERT ${stage}: last commit reverted`);
-}
-async function verifyStage(taskId, wt, stage, testCommand) {
-  const verifyCmd = stage === "red" ? `cd "${wt}" && ${testCommand} 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "TESTS_FAILED"; fi; exit 0` : `cd "${wt}" && ${testCommand} 2>&1; exit 0`;
-  const expectedOutcome = stage === "red" ? "For RED verification: tests MUST FAIL (exit code != 0). If they fail, set verified=true. If they pass, set verified=false." : "For GREEN verification: tests MUST PASS (exit code 0). If they pass, set verified=true. If they fail, set verified=false.";
-  return await agent(
-    `Verification agent. Run the test command and report whether the stage passed.
-
-Run this command: ${verifyCmd}
-
-${expectedOutcome}
-
-Set error to the failure reason if verified=false.
-Set test_signal with exit_code, errors (list of error lines), and assertion_messages.`,
-    { label: `verify-${stage}:${taskId}`, phase: "Act", model: "haiku", schema: VERIFY_STAGE_SCHEMA }
-  );
-}
-async function runSkeleton(taskId, wt, cfg2) {
-  const text = await agent(
-    `Run: datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json 2>&1
-Return ONLY the JSON output, nothing else.`,
-    { label: `skeleton:${taskId}`, phase: "Act", model: "haiku" }
-  );
-  return parseAgentJson(text, {});
-}
-
 // skills/src/prompts/red.md
-var red_default = "RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP (run first): {{redCtxCmd}}\nTASK PACKET: {{redPacketStr}}\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just \"doesn't crash\"\n4. Call methods that don't exist yet (e.g., result.to_dict()) \u2014 AttributeError is the correct RED failure\n5. Run test_command and confirm every new test FAILS with AttributeError or AssertionError\n\nCONSTRAINTS:\n- cd into working_directory before any operation\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- NEVER use `raise NotImplementedError` in tests \u2014 conftest xfail catches it and tests pass (green blindness)\n- Git operations are handled by a separate agent \u2014 do not run git add, git commit, or any git command\n";
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTASK PACKET: {{redPacketStr}}\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet (e.g., result.to_dict()) \u2014 AttributeError is the correct RED failure\n\nAFTER WRITING:\n5. Run {{testCommand}} \u2014 your new tests MUST fail. Report tests_pass=false and the exit code.\n6. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n7. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- NEVER use `raise NotImplementedError` in tests \u2014 conftest xfail catches it and tests pass (green blindness)\n- Only write and commit test files: {{testFilesList}}\n';
 
 // skills/src/prompts/red-retry.md
-var red_retry_default = "RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nSETUP (run first): {{redCtxCmd}}\nTASK PACKET: {{redPacketStr}}\n\nWrite simple, concrete tests. One test per acceptance criterion. Assert specific values.\nCall methods that don't exist yet \u2014 AttributeError is your RED signal.\nNEVER use `raise NotImplementedError` \u2014 conftest will xfail it.\nDo not run any git commands.\n";
+var red_retry_default = 'RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{redCtxCmd}}\nTASK PACKET: {{redPacketStr}}\n\nWrite simple, concrete tests. One test per acceptance criterion. Assert specific values.\nCall methods that don\'t exist yet \u2014 AttributeError is your RED signal.\nNEVER use `raise NotImplementedError` \u2014 conftest will xfail it.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 tests must fail. Report tests_pass=false.\n2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n3. Report commit_sha.\n\nOnly write and commit test files: {{testFilesList}}\n';
 
 // skills/src/prompts/green.md
-var green_default = "GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 these files already have function signatures with `...` bodies. Fill them in.\n3. Check existing_api \u2014 understand the module shape before adding to it\n4. Implement only what the errors require \u2014 if a test expects foo() to return 42, make foo() return 42\n5. Run test_command to verify all tests pass\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- contract_summary: function signatures extracted from acceptance criteria\n- impl_stubs: skeleton files with function signatures \u2014 fill these in, do not create new files\n- existing_api: current module code shape \u2014 extend it, do not replace it\n- red_note: what behaviors the tests check for\n\nCONSTRAINTS:\n- Write to allowed_write_files only\n- Fill in existing stubs rather than creating new files from scratch\n- Git operations are handled by a separate agent \u2014 do not run any git command\n";
+var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 fill in function bodies, do not create new files\n3. Check existing_api \u2014 extend it, do not replace it\n4. Implement only what the errors require\n\nAFTER WRITING:\n5. Run {{testCommand}} \u2014 ALL tests must pass. Report tests_pass=true and the exit code.\n6. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"\n7. Report commit_sha.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- contract_summary: function signatures extracted from acceptance criteria\n- impl_stubs: skeleton files \u2014 fill these in\n- existing_api: current module code shape\n\nCONSTRAINTS:\n- Only write and commit implementation files: {{implFilesList}}\n';
 
 // skills/src/prompts/green-retry.md
-var green_retry_default = "GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nRead the test_signal errors carefully \u2014 they tell you exactly what is still wrong.\nRead existing implementation files first. Fix the specific failures. Do not start from scratch.\n\nPACKET FIELDS:\n- test_signal: current errors to fix \u2014 read every line\n- impl_stubs / existing_api: fill in bodies, extend existing code\n- contract_summary: function signatures to implement\n\nDo not run any git commands.\n";
+var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 all tests must pass. Report tests_pass=true.\n2. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"\n3. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n';
 
 // skills/src/prompts/refactor.md
-var refactor_default = "REFACTOR agent. Clean up the implementation without changing behavior. All existing tests must still pass.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code from this task\n- Write to allowed_write_files only \u2014 do not touch files outside your lane\n- Run test_command after changes \u2014 every existing test must still pass\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features or tests \u2014 only improve existing implementation code\n- Git operations are handled by a separate agent \u2014 do not run any git command\n";
+var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 every test must still pass. Report tests_pass=true.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: REFACTOR complete"\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
 
 // skills/src/prompts/reflect.md
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nACCEPTANCE CRITERIA to cover:\n{{acStr}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
@@ -368,174 +240,137 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const acStr = (lane.acceptance_criteria || []).join("\n");
   const laneTestCmd = testFiles.length > 0 ? `uv run pytest ${testFiles.join(" ")} -x -q` : cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
-  log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test files, ${implFiles.length} impl files)`);
-  log(`[${taskId}]   tests: ${testFiles.join(", ") || "(none)"}`);
-  log(`[${taskId}]   impl:  ${implFiles.join(", ") || "(none)"}`);
-  log(`[${taskId}]   test cmd: ${laneTestCmd}`);
+  log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
-    log(`[${taskId}] STRUCTURAL lane complete`);
     return { task_id: taskId, status: "completed" };
   }
-  const preflight = await runSkeleton(taskId, wt, cfg2);
-  await commitStage(taskId, wt, `skeleton(${taskId})`, [...testFiles, ...implFiles], "SKELETON");
   log(`[${taskId}] RED: writing failing tests`);
   const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", {});
-  const redPacketStr = JSON.stringify(redPacket);
   const redCtxCmd = laneCtxCmd(redPacket, wt);
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const promptVars = {
+    wt,
+    skeletonCmd,
+    redCtxCmd,
+    redPacketStr: JSON.stringify(redPacket),
+    testCommand: laneTestCmd,
+    testFilesList: testFiles.join(" "),
+    commitPrefix: redPacket.commit_prefix
+  };
   let red = await agent(
-    redPrompt({ redCtxCmd, redPacketStr }),
-    { label: `red:${taskId}`, phase: "Act", model: "sonnet", schema: WRITE_RESULT_SCHEMA }
+    redPrompt(promptVars),
+    { label: `red:${taskId}`, phase: "Act", model: "sonnet", schema: STAGE_RESULT_SCHEMA }
   );
-  if (red && red.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ") || "(none reported)"}`);
+  if (red?.success) {
+    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
   }
   if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${red && red.failure_reason || "no files written"}, retrying with hint`);
-    await resetWorktree(taskId, wt, "RED");
+    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
     red = await agent(
-      redRetryPrompt({
-        failureReason: red && red.failure_reason || "unknown",
-        redCtxCmd,
-        redPacketStr
-      }),
-      { label: `red-retry:${taskId}`, phase: "Act", model: "sonnet", schema: WRITE_RESULT_SCHEMA }
+      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
+      { label: `red-retry:${taskId}`, phase: "Act", model: "sonnet", schema: STAGE_RESULT_SCHEMA }
     );
   }
   if (!red || !red.success) {
-    const err = red && red.failure_reason || "RED agent did not write files after 2 attempts";
-    log(`[${taskId}] RED FAILED after 2 attempts: ${err}`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: err };
+    log(`[${taskId}] RED FAILED: ${red?.failure_reason || "no files written after 2 attempts"}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: red?.failure_reason || "RED failed" };
   }
-  const redCommit = await commitStage(taskId, wt, redPacket.commit_prefix, testFiles, "RED");
-  if (!redCommit || !redCommit.committed) {
-    return { task_id: taskId, status: "failed", stage: "RED", error: `git commit failed: ${redCommit && redCommit.failure_reason || "unknown"}` };
+  if (red.tests_pass) {
+    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness)`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: "green_blindness_violation: tests passed after RED" };
   }
-  const [redCheck, reflect] = await parallel([
-    () => verifyStage(taskId, wt, "red", laneCfg.testCommand),
-    () => agent(
-      reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
-      { label: `reflect:${taskId}`, phase: "Act", model: "haiku", schema: REFLECT_SCHEMA }
-    )
-  ]);
-  const redVerify = redCheck;
-  const reflectResult = reflect;
-  if (!redVerify || !redVerify.verified) {
-    const err = redVerify && redVerify.error || "green_blindness_violation: tests passed after RED";
-    log(`[${taskId}] RED VERIFY FAILED: ${err}`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: err };
+  log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
+  if (!red.committed) {
+    log(`[${taskId}] RED: agent did not commit \u2014 failing`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
   }
-  log(`[${taskId}] RED verified \u2014 tests fail as expected`);
-  const reflectScore = reflectResult && reflectResult.score || 0;
-  log(`[${taskId}] Test quality: ${reflectScore}/10 \u2014 ${reflectResult && reflectResult.reasoning || "no reasoning"}`);
-  if (reflectResult && reflectResult.gaps && reflectResult.gaps.length > 0) {
+  const reflectResult = await agent(
+    reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
+    { label: `reflect:${taskId}`, phase: "Act", model: "haiku", schema: REFLECT_SCHEMA }
+  );
+  const reflectScore = reflectResult?.score || 0;
+  log(`[${taskId}] Test quality: ${reflectScore}/10 \u2014 ${reflectResult?.reasoning || "no reasoning"}`);
+  if (reflectResult?.gaps?.length) {
     log(`[${taskId}]   gaps: ${reflectResult.gaps.join("; ")}`);
   }
   if (reflectScore < 4) {
     log(`[${taskId}] RED FAILED: test quality too low (${reflectScore}/10)`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `test quality ${reflectScore}/10` };
   }
-  const signal = redVerify && redVerify.test_signal || { exit_code: 1, errors: [], assertion_messages: [] };
-  const contractSummary = extractContractSummary(lane.acceptance_criteria || []);
   const greenModel = lane.green_model || "sonnet";
-  log(`[${taskId}] GREEN: making tests pass (model: ${greenModel}, contracts: ${contractSummary.length})`);
+  const contractSummary = extractContractSummary(lane.acceptance_criteria || []);
+  log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`);
   const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "GREEN", {
-    test_signal: signal,
-    preflight,
-    contract_summary: contractSummary,
-    impl_stubs: preflight.impl_stubs || [],
-    existing_api: preflight.existing_api || {}
+    test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
+    contract_summary: contractSummary
   });
   const greenCtxCmd = laneCtxCmd(greenPacket, wt);
+  const greenVars = {
+    wt,
+    greenCtxCmd,
+    greenPacketStr: JSON.stringify(greenPacket),
+    testCommand: laneTestCmd,
+    implFilesList: implFiles.join(" "),
+    commitPrefix: greenPacket.commit_prefix
+  };
   let green = await agent(
-    greenPrompt({ greenCtxCmd, greenPacketStr: JSON.stringify(greenPacket) }),
-    { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: WRITE_RESULT_SCHEMA }
+    greenPrompt(greenVars),
+    { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA }
   );
-  if (green && green.success) {
-    log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ") || "(none reported)"}`);
+  if (green?.success) {
+    log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ")}`);
   }
-  if (!green || !green.success) {
-    const escalatedModel = "opus";
-    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green && green.failure_reason || "no files written"}, escalating to ${escalatedModel}`);
-    await resetWorktree(taskId, wt, "GREEN");
-    const retryCheck = await verifyStage(taskId, wt, "red", laneCfg.testCommand);
-    const retrySignal = retryCheck && retryCheck.test_signal || signal;
-    const retryPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "GREEN", {
-      test_signal: retrySignal,
-      preflight,
-      contract_summary: contractSummary,
-      impl_stubs: preflight.impl_stubs || [],
-      existing_api: preflight.existing_api || {},
-      retry_hint: `Previous attempt failed: ${green && green.failure_reason || "unknown"}. Read the FULL error output carefully. Fix the implementation.`
-    });
+  if (!green || !green.success || !green.tests_pass) {
+    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || "unknown"}, escalating to opus`);
     green = await agent(
       greenRetryPrompt({
-        failureReason: green && green.failure_reason || "unknown",
-        greenCtxCmd,
-        greenRetryPacketStr: JSON.stringify(retryPacket)
+        ...greenVars,
+        failureReason: green?.failure_reason || "unknown",
+        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason })
       }),
-      { label: `green-retry:${taskId}`, phase: "Act", model: escalatedModel, schema: WRITE_RESULT_SCHEMA }
+      { label: `green-retry:${taskId}`, phase: "Act", model: "opus", schema: STAGE_RESULT_SCHEMA }
     );
   }
-  if (!green || !green.success) {
-    const err = green && green.failure_reason || "GREEN agent did not write files after 2 attempts";
-    log(`[${taskId}] GREEN FAILED after 2 attempts: ${err}`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: err };
+  if (!green || !green.success || !green.tests_pass) {
+    log(`[${taskId}] GREEN FAILED: ${green?.failure_reason || "tests still failing after 2 attempts"}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: green?.failure_reason || "GREEN failed" };
   }
-  const greenCommit = await commitStage(taskId, wt, greenPacket.commit_prefix, implFiles, "GREEN");
-  if (!greenCommit || !greenCommit.committed) {
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: `git commit failed: ${greenCommit && greenCommit.failure_reason || "unknown"}` };
+  if (!green.committed) {
+    log(`[${taskId}] GREEN: agent did not commit \u2014 failing`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: "GREEN agent did not commit" };
   }
-  const greenCheck = await verifyStage(taskId, wt, "green", laneCfg.testCommand);
-  if (!greenCheck || !greenCheck.verified) {
-    const err = greenCheck && greenCheck.error || "tests still failing after GREEN";
-    log(`[${taskId}] GREEN VERIFY FAILED: ${err}`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: err };
-  }
-  log(`[${taskId}] GREEN verified \u2014 all tests pass`);
+  log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
     testFiles: testFiles.join(", "),
-    testCommand: laneCfg.testCommand,
+    testCommand: laneTestCmd,
     acStr
   });
   const lenses = skepticLenses();
   const skepticResults = await parallel(
     lenses.map(
-      (lens) => () => agent(
-        base + lens.prompt,
-        { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }
-      )
+      (lens) => () => agent(base + lens.prompt, { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA })
     )
   );
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses);
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i];
     if (!s) {
-      log(`[${taskId}] SKEPTIC ${lenses[i].key}: (null \u2014 agent failed)`);
+      log(`[${taskId}] SKEPTIC ${lenses[i].key}: (null)`);
       continue;
     }
-    const bugCount = (s.bugs_found || []).length;
-    log(`[${taskId}] SKEPTIC ${lenses[i].key}: ${s.verdict} (${bugCount} bugs, confidence: ${s.confidence || "N/A"})`);
+    log(`[${taskId}] SKEPTIC ${lenses[i].key}: ${s.verdict} (${(s.bugs_found || []).length} bugs)`);
     for (const bug of s.bugs_found || []) {
-      log(`[${taskId}]   - [${bug.severity || "?"}] ${bug.description}`);
+      log(`[${taskId}]   - [${bug.severity}] ${bug.description}`);
     }
   }
   if (brokenCount >= 2) {
-    const bugList = crossValidated.map((b) => `[${b.lens}] ${b.description}`).join("; ");
-    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN \u2014 ${crossValidated.length} cross-validated: ${bugList || "none"}`);
-  } else if (brokenCount === 1) {
-    log(`[${taskId}] SKEPTIC VERDICT: 1/3 BROKEN (no consensus) \u2014 proceeding`);
+    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN`);
   } else {
-    log(`[${taskId}] SKEPTIC VERDICT: PASS (${allBugs.length} total findings, ${crossValidated.length} cross-validated)`);
-  }
-  const allAllowed = /* @__PURE__ */ new Set([...testFiles, ...implFiles]);
-  const writtenFiles = [...red.files_written || [], ...green.files_written || []];
-  const violations = writtenFiles.filter((f) => !allAllowed.has(f));
-  if (violations.length > 0) {
-    log(`[${taskId}] FILE OWNERSHIP VIOLATION: ${violations.join(", ")}`);
+    log(`[${taskId}] SKEPTIC VERDICT: PASS (${crossValidated.length} cross-validated)`);
   }
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg);
   if (!refResult) {
@@ -550,43 +385,44 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(", ") }),
     { label: `refactor-check:${taskId}`, phase: "Act", model: "haiku", schema: REFACTOR_CHECK_SCHEMA }
   );
-  if (!preCheck || !preCheck.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${preCheck && preCheck.reason || "nothing to improve"})`);
+  if (!preCheck?.should_refactor) {
+    log(`[${taskId}] REFACTOR: skipped (${preCheck?.reason || "nothing to improve"})`);
     return { verified: true };
   }
   log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`);
   const refactorPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, "REFACTOR", {});
   const refactorCtxCmd = laneCtxCmd(refactorPacket, wt);
   const refactor = await agent(
-    refactorPrompt({ refactorCtxCmd, refactorPacketStr: JSON.stringify(refactorPacket) }),
-    { label: `refactor:${taskId}`, phase: "Act", model: "sonnet", schema: WRITE_RESULT_SCHEMA }
+    refactorPrompt({
+      wt,
+      refactorCtxCmd,
+      refactorPacketStr: JSON.stringify(refactorPacket),
+      testCommand: cfg2.testCommand,
+      allFilesList: [...testFiles, ...implFiles].join(" "),
+      commitPrefix: refactorPacket.commit_prefix
+    }),
+    { label: `refactor:${taskId}`, phase: "Act", model: "sonnet", schema: STAGE_RESULT_SCHEMA }
   );
-  if (!refactor) {
-    log(`[${taskId}] REFACTOR FAILED: agent returned null`);
+  if (!refactor?.success) {
+    if (refactor?.failure_reason?.toLowerCase().includes("nothing to")) {
+      log(`[${taskId}] REFACTOR: nothing to change`);
+      return { verified: true };
+    }
+    log(`[${taskId}] REFACTOR FAILED: ${refactor?.failure_reason || "null"}`);
     return null;
   }
-  if (!refactor.success && refactor.failure_reason && !refactor.failure_reason.toLowerCase().includes("nothing to")) {
-    log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason}`);
-    return null;
-  }
-  if (!refactor.success) {
-    log(`[${taskId}] REFACTOR: nothing to change`);
+  if (!refactor.tests_pass) {
+    log(`[${taskId}] REFACTOR broke tests \u2014 agent should not have committed`);
+    if (refactor.committed) {
+      await agent(
+        `git -C "${wt}" revert --no-edit HEAD`,
+        { label: `revert-refactor:${taskId}`, phase: "Act", model: "haiku" }
+      );
+    }
     return { verified: true };
   }
-  log(`[${taskId}] REFACTOR wrote: ${(refactor.files_written || []).join(", ") || "(none reported)"}`);
-  const refCommit = await commitStage(taskId, wt, refactorPacket.commit_prefix, [...testFiles, ...implFiles], "REFACTOR");
-  if (!refCommit || !refCommit.committed) {
-    log(`[${taskId}] REFACTOR commit failed \u2014 reverting`);
-    await resetWorktree(taskId, wt, "REFACTOR");
-    return { verified: true };
-  }
-  const check = await verifyStage(taskId, wt, "green", cfg2.testCommand);
-  if (!check || !check.verified) {
-    log(`[${taskId}] REFACTOR verification FAILED: ${check && check.error || "tests broke"} \u2014 reverting`);
-    await revertLastCommit(taskId, wt, "REFACTOR");
-    return { verified: true };
-  }
-  return check;
+  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || "n/a"})`);
+  return { verified: true };
 }
 var a = args;
 phase("Act");
@@ -599,7 +435,7 @@ for (const id of batchLaneIds) {
     depResolvers[id] = resolve;
   });
 }
-log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks, starting as deps resolve`);
+log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks`);
 var dagResults = await parallel(
   batchLaneIds.map((taskId) => async () => {
     const allDeps = lanes[taskId].depends_on || [];

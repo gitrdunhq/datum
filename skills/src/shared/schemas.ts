@@ -8,6 +8,21 @@ export const WRITE_RESULT_SCHEMA = {
   required: ['success'],
 } as const
 
+export const STAGE_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    files_written: { type: 'array', items: { type: 'string' } },
+    success: { type: 'boolean' },
+    tests_pass: { type: 'boolean' },
+    test_exit_code: { type: 'number' },
+    test_errors: { type: 'array', items: { type: 'string' } },
+    committed: { type: 'boolean' },
+    commit_sha: { type: 'string' },
+    failure_reason: { type: 'string' },
+  },
+  required: ['success', 'tests_pass', 'committed'],
+} as const
+
 export const COMMIT_RESULT_SCHEMA = {
   type: 'object',
   properties: {

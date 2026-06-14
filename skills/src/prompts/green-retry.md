@@ -1,14 +1,15 @@
 GREEN TDD agent — RETRY. Previous attempt failed: {{failureReason}}.
 
-SETUP (run first): {{greenCtxCmd}}
+First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
+
+SETUP: {{greenCtxCmd}}
 TASK PACKET: {{greenRetryPacketStr}}
 
-Read the test_signal errors carefully — they tell you exactly what is still wrong.
-Read existing implementation files first. Fix the specific failures. Do not start from scratch.
+Read test_signal errors carefully. Read existing implementation files first. Fix specific failures.
 
-PACKET FIELDS:
-- test_signal: current errors to fix — read every line
-- impl_stubs / existing_api: fill in bodies, extend existing code
-- contract_summary: function signatures to implement
+AFTER WRITING:
+1. Run {{testCommand}} — all tests must pass. Report tests_pass=true.
+2. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"
+3. Report commit_sha.
 
-Do not run any git commands.
+Only write and commit implementation files: {{implFilesList}}
