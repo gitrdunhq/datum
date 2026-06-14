@@ -14,6 +14,7 @@ var STAGE_RESULT_SCHEMA = {
     tests_pass: { type: "boolean" },
     test_exit_code: { type: "number" },
     test_errors: { type: "array", items: { type: "string" } },
+    test_output: { type: "string" },
     committed: { type: "boolean" },
     commit_sha: { type: "string" },
     failure_reason: { type: "string" }
@@ -64,6 +65,18 @@ function classifyFiles(files) {
   const testFiles = (files || []).filter(isTest);
   const implFiles = (files || []).filter((f) => !isTest(f));
   return { testFiles, implFiles };
+}
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
 }
 function laneCtxCmd(packet, wt) {
   const ctx = JSON.stringify({
@@ -166,7 +179,7 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/prompts/red.md
-var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTASK PACKET: {{redPacketStr}}\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet (e.g., result.to_dict()) \u2014 AttributeError is the correct RED failure\n\nAFTER WRITING:\n5. Run {{testCommand}} \u2014 your new tests MUST fail. Report tests_pass=false and the exit code.\n6. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n7. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- NEVER use `raise NotImplementedError` in tests \u2014 conftest xfail catches it and tests pass (green blindness)\n- Only write and commit test files: {{testFilesList}}\n';
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTASK PACKET: {{redPacketStr}}\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet (e.g., result.to_dict()) \u2014 AttributeError is the correct RED failure\n\nAFTER WRITING:\n5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- `assert True`, `assert 1`, `assert not False` \u2014 always passes\n- `pass` as the only statement in a test body\n- Empty test functions with no assertions\n- `raise NotImplementedError` \u2014 conftest xfail catches it and tests pass\n- `assert x is not None` as the ONLY assertion \u2014 smoke test, not a real check\nEach test MUST assert a specific expected value or exception type.\n';
 
 // skills/src/prompts/red-retry.md
 var red_retry_default = 'RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{redCtxCmd}}\nTASK PACKET: {{redPacketStr}}\n\nWrite simple, concrete tests. One test per acceptance criterion. Assert specific values.\nCall methods that don\'t exist yet \u2014 AttributeError is your RED signal.\nNEVER use `raise NotImplementedError` \u2014 conftest will xfail it.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 tests must fail. Report tests_pass=false.\n2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n3. Report commit_sha.\n\nOnly write and commit test files: {{testFilesList}}\n';
@@ -232,6 +245,27 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
+async function verifyFileOwnership(taskId, wt, stage, allowedFiles, forbiddenFiles) {
+  const result = await agent(
+    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
+Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
+No markdown fences, no explanation.`,
+    { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: "haiku" }
+  );
+  if (!result) return { ok: true, violations: [] };
+  const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
+  const changed = parsed.files_changed || [];
+  const violations = [];
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
+      violations.push(`${f} is owned by another lane`);
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a2) => f.endsWith(a2) || a2.endsWith(f))) {
+      violations.push(`${f} is not in allowed files list`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];
@@ -277,14 +311,44 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
     log(`[${taskId}] RED FAILED: ${red?.failure_reason || "no files written after 2 attempts"}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: red?.failure_reason || "RED failed" };
   }
+  const assertionCheck = await agent(
+    `Scan the test files in "${wt}" for placeholder assertions that would never fail.
+Read these files: ${testFiles.join(", ")}
+
+Search for these patterns in NEW test functions (ignore pre-existing tests):
+- \`assert True\` or \`assert 1\`
+- \`pass\` as the only statement in a test function body
+- Empty test functions (just \`def test_...(...):\` with no body or only docstring)
+- \`assert x is not None\` as the ONLY assertion (smoke test, not a real check)
+- \`raise NotImplementedError\` in test bodies
+
+Return JSON: {"has_placeholders": true/false, "detail": "which functions and what pattern"}
+Output raw JSON only. No markdown fences.`,
+    { label: `assert-check:${taskId}`, phase: "Act", model: "haiku" }
+  );
+  let placeholderWarning = "";
+  if (assertionCheck) {
+    const parsed = typeof assertionCheck === "string" ? parseAgentJson(assertionCheck, {}) : assertionCheck;
+    if (parsed.has_placeholders) {
+      placeholderWarning = parsed.detail || "placeholder assertions detected";
+      log(`[${taskId}] RED: placeholder assertions found \u2014 ${placeholderWarning}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${placeholderWarning}` };
+    }
+  }
   if (red.tests_pass) {
-    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness)`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: "green_blindness_violation: tests passed after RED" };
+    const diag = red.test_output || red.test_errors?.join("; ") || "no test output captured";
+    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness). Output: ${diag}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: `green_blindness_violation: tests passed after RED. Test output: ${diag}` };
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   if (!red.committed) {
     log(`[${taskId}] RED: agent did not commit \u2014 failing`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
+  }
+  const redOwnership = await verifyFileOwnership(taskId, wt, "RED", testFiles, implFiles);
+  if (!redOwnership.ok) {
+    log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
   }
   const reflectResult = await agent(
     reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
@@ -340,6 +404,11 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   if (!green.committed) {
     log(`[${taskId}] GREEN: agent did not commit \u2014 failing`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: "GREEN agent did not commit" };
+  }
+  const greenOwnership = await verifyFileOwnership(taskId, wt, "GREEN", implFiles, testFiles);
+  if (!greenOwnership.ok) {
+    log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(", ")}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   const base = skepticBasePrompt({

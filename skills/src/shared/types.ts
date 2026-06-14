@@ -102,6 +102,7 @@ export interface StageResult {
   tests_pass: boolean
   test_exit_code?: number
   test_errors?: string[]
+  test_output?: string
   committed: boolean
   commit_sha?: string
   failure_reason?: string

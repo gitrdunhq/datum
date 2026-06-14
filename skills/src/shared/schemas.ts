@@ -16,6 +16,7 @@ export const STAGE_RESULT_SCHEMA = {
     tests_pass: { type: 'boolean' },
     test_exit_code: { type: 'number' },
     test_errors: { type: 'array', items: { type: 'string' } },
+    test_output: { type: 'string' },
     committed: { type: 'boolean' },
     commit_sha: { type: 'string' },
     failure_reason: { type: 'string' },

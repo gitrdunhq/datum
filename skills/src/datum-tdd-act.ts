@@ -18,8 +18,9 @@ export const meta = {
 // ── Parse args ──
 // "yolo" mode: auto-detect epicBranch from current git branch, generate runId from timestamp
 
+const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g, '').trim() : ''
 const a = (typeof args === 'string')
-  ? (args.trim().toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
+  ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})
 
 const lanePlanPath: string = a.lanePlanPath || '.datum/lane-plan.json'
@@ -29,19 +30,23 @@ const language: string = a.language || 'python'
 let epicBranch: string = a.epicBranch
 let runId: string = a.runId
 
-if (a.yolo && (!epicBranch || !runId)) {
-  const branchInfo = await agent(
-    `Run these two commands and return ONLY a JSON object with two fields:
+// yolo mode: auto-detect branch and generate runId via agent
+const branchInfo = a.yolo
+  ? await agent(
+      `Run these two commands and return ONLY a JSON object with two fields:
 1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
 2. "timestamp": output of \`date +%Y%m%d-%H%M%S\`
 Output raw JSON only. No markdown fences, no explanation.`,
-    { label: 'yolo-detect', model: 'haiku' }
-  )
+      { label: 'yolo-detect', model: 'haiku' },
+    )
+  : null
+
+if (branchInfo) {
   const info = typeof branchInfo === 'string'
     ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, '').trim())
     : branchInfo
-  if (!epicBranch) epicBranch = info.branch
-  if (!runId) runId = info.timestamp
+  epicBranch = epicBranch || info.branch
+  runId = runId || info.timestamp
 }
 
 if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')

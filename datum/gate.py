@@ -435,7 +435,7 @@ def gate_refine(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "SPEC.md ready for human review. Approve to continue.",
+                    "message": "SPEC.md ready for human review. Re-run with --approve to continue.",
                     "artifact": "SPEC.md",
                 }
             )
@@ -501,7 +501,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
         changed = True
         while changed:
             changed = False
-            for uid, deps in unit_deps.items():
+            for _uid, deps in unit_deps.items():
                 old_len = len(deps)
                 for dep in list(deps):
                     if dep in unit_deps:
@@ -568,7 +568,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "TASKS.md and lane-plan.json ready for human approval. Re-run with --yolo or --skip-human to approve.",
+                    "message": "TASKS.md and lane-plan.json ready for human approval. Re-run with --approve to approve.",
                     "artifacts": ["TASKS.md", ".datum/lane-plan.json"],
                 }
             )
@@ -629,7 +629,7 @@ def gate_prior_art(yolo: bool, config: dict) -> None:
                     {
                         "passed": False,
                         "needs_human": True,
-                        "message": "Security audit has accept_risk verdicts requiring human sign-off.",
+                        "message": "Security audit has accept_risk verdicts requiring human sign-off. Re-run with --approve after review.",
                     }
                 )
             )
@@ -647,7 +647,7 @@ def gate_prior_art(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "PRIOR_ART.md ready for human review.",
+                    "message": "PRIOR_ART.md ready for human review. Re-run with --approve to continue.",
                 }
             )
         )
@@ -721,7 +721,7 @@ def gate_properties(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "PROPERTIES.md ready for human review.",
+                    "message": "PROPERTIES.md ready for human review. Re-run with --approve to continue.",
                     "artifact": "PROPERTIES.md",
                 }
             )
@@ -747,7 +747,7 @@ def gate_validate(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "Validation results ready for review.",
+                    "message": "Validation results ready for review. Re-run with --approve to continue.",
                 }
             )
         )
@@ -852,7 +852,7 @@ def gate_pr_comments(yolo: bool, config: dict) -> None:
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "Triage results ready for human approval.",
+                    "message": "Triage results ready for human approval. Re-run with --approve to continue.",
                     "artifact": ".datum/triage.json",
                 }
             )
@@ -971,7 +971,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="DATUM gate validator")
     parser.add_argument("phase")
     parser.add_argument("--yolo", action="store_true")
-    parser.add_argument("--skip-human", action="store_true")
+    parser.add_argument("--skip-human", "--approve", action="store_true")
     parser.add_argument(
         "--artifact",
         default="SPEC.md",

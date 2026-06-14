@@ -25,6 +25,7 @@ import {
   extractContractSummary,
   crossValidateBugs,
   buildPacket,
+  parseAgentJson,
 } from './shared/utils'
 import {
   redPrompt,
@@ -42,6 +43,43 @@ export const meta = {
   name: 'datum-tdd-act-lane',
   description: 'DAG-scheduled TDD execution: RED->GREEN->REFACTOR per lane',
   phases: [{ title: 'Act' }],
+}
+
+// ── File ownership verification ─────────────────────────────────────────────
+
+async function verifyFileOwnership(
+  taskId: string,
+  wt: string,
+  stage: string,
+  allowedFiles: string[],
+  forbiddenFiles: string[],
+): Promise<{ ok: boolean; violations: string[] }> {
+  const result: string | null = await agent(
+    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
+Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
+No markdown fences, no explanation.`,
+    { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: 'haiku' },
+  )
+
+  if (!result) return { ok: true, violations: [] }
+
+  const parsed = typeof result === 'string'
+    ? parseAgentJson<{ files_changed?: string[] }>(result, {})
+    : result as { files_changed?: string[] }
+
+  const changed = parsed.files_changed || []
+  const violations: string[] = []
+
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
+      violations.push(`${f} is owned by another lane`)
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a) => f.endsWith(a) || a.endsWith(f))) {
+      violations.push(`${f} is not in allowed files list`)
+    }
+  }
+
+  return { ok: violations.length === 0, violations }
 }
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────
@@ -108,15 +146,51 @@ async function runLane(
     return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
+  // Structural assertion check — catch placeholder tests before relying on the boolean
+  const assertionCheck: { has_placeholders: boolean; detail: string } | null = await agent(
+    `Scan the test files in "${wt}" for placeholder assertions that would never fail.
+Read these files: ${testFiles.join(', ')}
+
+Search for these patterns in NEW test functions (ignore pre-existing tests):
+- \`assert True\` or \`assert 1\`
+- \`pass\` as the only statement in a test function body
+- Empty test functions (just \`def test_...(...):\` with no body or only docstring)
+- \`assert x is not None\` as the ONLY assertion (smoke test, not a real check)
+- \`raise NotImplementedError\` in test bodies
+
+Return JSON: {"has_placeholders": true/false, "detail": "which functions and what pattern"}
+Output raw JSON only. No markdown fences.`,
+    { label: `assert-check:${taskId}`, phase: 'Act', model: 'haiku' },
+  )
+
+  let placeholderWarning = ''
+  if (assertionCheck) {
+    const parsed = typeof assertionCheck === 'string'
+      ? parseAgentJson<{ has_placeholders?: boolean; detail?: string }>(assertionCheck, {})
+      : assertionCheck as { has_placeholders?: boolean; detail?: string }
+    if (parsed.has_placeholders) {
+      placeholderWarning = parsed.detail || 'placeholder assertions detected'
+      log(`[${taskId}] RED: placeholder assertions found — ${placeholderWarning}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${placeholderWarning}` }
+    }
+  }
+
   if (red.tests_pass) {
-    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness)`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'green_blindness_violation: tests passed after RED' }
+    const diag = red.test_output || red.test_errors?.join('; ') || 'no test output captured'
+    log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness). Output: ${diag}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `green_blindness_violation: tests passed after RED. Test output: ${diag}` }
   }
   log(`[${taskId}] RED verified — tests fail as expected (committed: ${red.commit_sha || 'n/a'})`)
 
   if (!red.committed) {
     log(`[${taskId}] RED: agent did not commit — failing`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: 'RED agent did not commit' }
+  }
+
+  const redOwnership = await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles)
+  if (!redOwnership.ok) {
+    log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(', ')}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
   }
 
   // ── Reflect (independent evaluator — stays separate) ──
@@ -184,6 +258,12 @@ async function runLane(
   if (!green.committed) {
     log(`[${taskId}] GREEN: agent did not commit — failing`)
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: 'GREEN agent did not commit' }
+  }
+
+  const greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+  if (!greenOwnership.ok) {
+    log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(', ')}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `file_ownership_violation: ${greenOwnership.violations.join(', ')}` }
   }
   log(`[${taskId}] GREEN verified — all tests pass (committed: ${green.commit_sha || 'n/a'})`)
 

@@ -256,13 +256,27 @@ def classify(
 
     epic_dir = _resolve_epic_dir()
     epic_spec = epic_dir / spec_path
+    # Also try the relative epic path (works when git toplevel resolves differently, e.g. /Volumes)
+    rel_epic_spec = (
+        Path("docs")
+        / "epics"
+        / subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        / spec_path
+    )
+
     if epic_spec.exists():
         spec_text = epic_spec.read_text()
+    elif rel_epic_spec.exists():
+        spec_text = rel_epic_spec.read_text()
     elif Path(spec_path).exists():
         spec_text = Path(spec_path).read_text()
     else:
         console.print(
-            f"[bold red]SPEC.md not found at {epic_spec} or {spec_path}[/bold red]"
+            f"[bold red]SPEC.md not found at {epic_spec}, {rel_epic_spec}, or {spec_path}[/bold red]"
         )
         raise typer.Exit(1)
 
@@ -1399,10 +1413,10 @@ def verify_stage_cmd(
             raise typer.Exit(1)
     except GreenBlindnessError as e:
         typer.echo(json.dumps({"verified": False, "stage": "red", "error": str(e)}))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except DirtyBaselineError as e:
         typer.echo(json.dumps({"verified": False, "stage": stage, "error": str(e)}))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command(name="tdd-args")
@@ -1432,7 +1446,6 @@ def tdd_args_cmd(
 
     """
     import re
-    import subprocess
     from datetime import datetime
 
     # Resolve feature name: --feature is required.

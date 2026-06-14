@@ -19,23 +19,21 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum resume      Resume from .datum/state.json after interruption.
 /datum status      Print phase, RUN_ID, lane progress, last failure.
 /datum init        Bootstrap repo: hooks, linter, AGENTS.md, CURRENT_STATE.md, ROADMAP.md.
-/datum rollback    Revert a merged epic. See references/rollback.md.
 /datum classify    Auto-classify epic complexity (Patch/Feature/System)
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
-/datum mermaid     Generate Mermaid diagrams — ALWAYS activates on "mermaid", "diagram", "visualize"
+/datum mermaid     Generate Mermaid diagrams
 /datum dream       Memory consolidation — staleness audit + transcript extraction + pruning
-/datum local-llm   Test local MLX inference (beta) — status check or prompt test
 ```
 
 ## Rule: Determinism
 
-Orchestration is deterministic. State, transitions, routing, gates — all enforced by Python scripts. No improvisation. The LLM works within one phase. It does not decide pipeline structure or skip steps. If you are parsing history to figure out where you are, read the state file.
+Orchestration is deterministic. State, transitions, routing, gates — all enforced by Python scripts and TypeScript workflow pipelines. No improvisation. The LLM works within one phase. It does not decide pipeline structure or skip steps.
 
 ## Dispatcher
 
 Execute in order before any phase work:
 
-**0. Branch Guard** — If on `main`/`master`, auto-create a feature branch and switch. No exceptions. The branch name is descriptive, not generic (#55): slugify the brief/TICKET title into `datum/<slug>` (lowercase ASCII, hyphen-separated, ≤60 chars — `datum.slug.slugify`), de-duplicated against existing branches with a numeric suffix (`datum.slug.make_unique`). Pass the title via `datum state init --title "<title>"` (or `datum init --name "<title>"`); only when no title exists yet does it fall back to `datum/epic-{N}`. Example: "Contact Form: Server-Side Submission" → `datum/contact-form-server-side-submission`, not `datum/epic-8`.
+**0. Branch Guard** — If on `main`/`master`, auto-create a feature branch and switch. Slugify the brief/TICKET title into `datum/<slug>`.
 
 **0.5. Self-check** — `datum doctor`. If it fails, halt.
 
@@ -51,141 +49,79 @@ Execute in order before any phase work:
 | PR URL | PR Comments |
 | Nothing | Offer `datum init` |
 
-Epic artifacts always live at `docs/epics/<branch>/`. Never `docs/TICKET.md`.
+Epic artifacts always live at `docs/epics/<branch>/`.
 
-**2.5. Classify Complexity** — After SPEC.md is detected, run `datum classify`. Routes:
+**3. Dispatch Phase** — Load the reference doc, execute it, run the gate.
 
-| Tier | Criteria | Pipeline |
+| Phase | Reference | Gate |
 |---|---|---|
-| Patch | < 50 LOC, ≤ 1 cluster, no new public API | Express (`0x-express.md`) |
-| Feature | Standard scope | Standard (full pipeline) |
-| System | > 5 clusters, or new subsystem, or multi-package | Extended (units in Plan, all Properties, architect sidecar) |
+| Refine | `01-refine.md` | skippable |
+| Plan | `02-plan.md` | **required** |
+| Prior Art | `02.3-prior-art.md` | skippable |
+| Triage | `02.5-triage.md` | **required** |
+| Act | `datum-tdd-act` workflow | per-lane gates |
+| Validate | `05-validate.md` | skippable |
+| Review | `06-review.md` | max 3 iterations |
+| Closeout | `08-closeout.md` | — |
 
-User can override at `plan_human_approval` gate.
+After each phase: `datum gate <phase> [--approve]`
 
-**3. Detect Language** — `datum language-detect`. Maps to `references/04-act-{lang}.md`.
+## Act Phase — TDD Workflow Pipeline
 
-**4. Resolve Tier** — `resolve_tier(phase)` returns `{phase, tier, model}` from config. See `references/model-tiers.md`.
+Act is handled by the `datum-tdd-act` TypeScript workflow (`skills/src/datum-tdd-act.ts`).
 
-**MANDATORY: Every subagent spawn MUST include an explicit `model:` parameter.** Read `[models.phases]` to get the tier name (e.g., `act_red = "standard"`), then resolve it via `[models]` (e.g., `standard = "claude-sonnet-4-6"`). Map to Agent parameter: `reasoning` → `model: "opus"`, `standard` → `model: "sonnet"`, `fast` → `model: "haiku"`. Never rely on the default model. The config is the authority.
+**Invocation:**
+```
+Workflow({ name: "datum-tdd-act", args: "yolo" })
+```
+Yolo mode auto-detects the current branch and generates a run ID. Or pass explicit args:
+```
+Workflow({ name: "datum-tdd-act", args: { epicBranch: "datum/epic-17", runId: "20260614-010000" } })
+```
 
-**5. Dispatch Phase** — Load the reference doc, execute it, run the gate.
+**Pipeline stages per lane:**
+1. **RED** — write failing tests (sonnet), structural assertion check (haiku)
+2. **REFLECT** — score test quality 0-10 (haiku), gate at <4
+3. **GREEN** — make tests pass (sonnet, escalates to opus on retry)
+4. **SKEPTIC** — adversarial verification panel (3 lenses: edge/error/contract)
+5. **REFACTOR** — optional cleanup if haiku pre-check finds improvements
+6. **File ownership** — verify each commit only touches allowed files
 
-| Phase | Reference | Gate | Notes |
-|---|---|---|---|
-| Discovery | `00-discovery.md` | — | |
-| Refine | `01-refine.md` | skippable | |
-| Plan | `02-plan.md` | **required** | System-tier epics include unit decomposition (step 2.5 in 02-plan.md), grouping tasks into parallelizable units of work. |
-| Prior Art | `02.3-prior-art.md` | skippable | Parallel subagents search GitHub, PyPI, internal repos, and the web for existing solutions per task. Can downgrade tasks from "build" to "wrap." |
-| Triage | `02.5-triage.md` | **required** | **ALWAYS runs after Prior Art.** Non-skippable, even in Express. |
-| Deepen | `02.8-deepen.md` | skipped if triage routes to properties | Triage decides: deepen or skip to properties. |
-| Properties | `03-properties.md` | skippable | |
-| Architect | `03.5-architect.md` | blocks if ADRs missing | |
-| Act | `04-act.md` | per-lane retry ladder | |
-| Validate | `05-validate.md` | skippable | |
-| Review | `06-review.md` | max 3 iterations | |
-| PR Comments | `07-pr-comments.md` | — | |
-| Closeout | `08-closeout.md` | — | |
+**Source:** `skills/src/` (TypeScript) -> `skills/*.js` (generated via `bash scripts/build-workflows.sh`)
 
-**Sequencing rule:** After Plan gate passes, the next phase is ALWAYS Prior Art, then Triage. Never skip directly to Properties or Act. Prior Art searches for existing solutions per task (can reduce scope). Triage evaluates the plan and routes to Deepen or Properties. This is non-negotiable — skipping Triage in epic-1 caused the pipeline to miss evidence gathering.
+**Prompt templates:** `skills/src/prompts/*.md` with `{{placeholder}}` syntax
 
-After each phase: `datum gate <phase> [--yolo]`
-
-For Act, also load: `agent-contracts.md`, `brief-builder.md`, `04-act-red-brief.md`, `04-act-green-brief.md`, `04-act-refactor-brief.md`, `04-act-adversarial-brief.md`, `04-act-skeleton-preflight.md`, `pipeline-dispatch.md`, `proof-of-work.md`, `spec-drift.md`, `quality-profiles.md`, language override, `gitnexus-playbook.md` (if available).
+**Model tiers:** haiku (evaluators), sonnet (writers), sonnet->opus (GREEN retry)
 
 ## Gates
 
-| Gate | Policy | yolo? |
+| Gate | Policy | --approve? |
 |---|---|---|
-| `refine_human_review` | skippable_if_complete | skipped |
+| `refine_human_review` | skippable | skipped |
 | `plan_human_approval` | **required** | **halts** |
 | `triage_human_approval` | **required** | **halts** |
-| `properties_human_review` | skippable_if_complete | skipped |
-| `validate_human_review` | skippable_if_complete | skipped |
+| `properties_human_review` | skippable | skipped |
+| `validate_human_review` | skippable | skipped |
 | `merge_human_approval` | **required** | **halts** |
 
-> Plan gate also checks: `## Assumption Audit` in SPEC.md (fails if missing or has unresolved guesses). Emits warning if Refine generated zero questions in QUESTIONS.md.
+Hard stops never bypass: `tests_red_after_3x_retry`, `hook_blocked_write`, `merge_conflict`, `schema_validation_failed`, `file_ownership_violation`.
 
-Hard stops never bypass: `tests_red_after_3x_retry`, `hook_blocked_write`, `merge_conflict`, `git_push_rejected`, `schema_validation_failed`, `test_ratchet_violation`, `lane_tool_sandbox_violation`, `external_dependency_install_proposed`.
+## Error Recovery
 
-## Brief Construction
-
-The brief is the agent's entire context. Get it wrong and the contract breaks. Read `references/brief-builder.md`.
-
-- **RED**: task entry, filtered PROPERTIES, GitNexus context, lane-tools README, stub deps. Exclude: test dir, implementation files, other lanes.
-- **GREEN**: same as RED + redacted TestSignal JSON. Exclude: test source, test names, RED output.
-- **REFACTOR**: everything. Full SPEC, PROPERTIES, tests, implementation, GitNexus impact.
+- `ENVIRONMENTAL` -> fix in place, same tier, counter not incremented
+- `REASONING` -> retry ladder: standard -> reasoning
+- Self-healing: `datum bugfile <module> "<description>" --trace "<traceback>"`
 
 ## Artifacts
-
-These artifacts are committed to `docs/epics/<branch>/` and archived to `.datum/runs/<RUN_ID>/`:
 
 | Artifact | Phase | Purpose |
 |---|---|---|
 | `TICKET.md` | Input | Original request |
-| `SPEC.md` | Refine | Refined requirements + Assumption Audit + Classification Metadata |
-| `QUESTIONS.md` | Refine + Plan | Structured Q&A with [Answer]: tags |
-| `TASKS.md` | Plan | Implementation plan (root = execution copy, epic dir = archive) |
+| `SPEC.md` | Refine | Refined requirements |
+| `TASKS.md` | Plan | Implementation plan |
+| `.datum/lane-plan.json` | Plan | Machine-readable task DAG for Act |
 | `PROPERTIES.md` | Properties | 11-category invariant set |
-| `LANDSCAPE.md` | Discovery | Codebase architecture scaffold (project-level, not per-epic) |
-
-## Error Recovery
-
-- `ENVIRONMENTAL` → fix in place, same tier, counter not incremented
-- `REASONING` → retry ladder: local (if enabled) → standard → reasoning → reasoning+verbose
-- See `references/recovery-modes.md`
-
-**Gemma-First Flow:** When `[local_llm] enabled = true` in config, most phases attempt local MLX inference (Gemma 4 26B) before Claude. The retry ladder: local → standard (Sonnet) → reasoning (Opus). Features:
-- **Context monitoring** — checks prompt fits in 128K window before inference
-- **Repetition detection** — aborts and escalates if output loops (n-gram detection)
-- **Grammar-constrained output** — `datum.local_llm.structured(prompt, Schema)` via outlines forces valid JSON
-- **Escalation signal** — model outputs `ESCALATE` or pipeline detects failure → bumps to Claude
-- **Metrics** — `datum local-llm --stats` tracks calls, tokens, escalation rate, estimated savings
-- Phases routed locally: triage, skeleton, RED, GREEN, REFACTOR, validate, sidecars, closeout collectors
-
-**Self-healing:** On any unexpected error (script crash, missing asset, schema failure on DATUM-generated artifacts), run `datum bugfile <module> "<description>" --trace "<traceback>"` or call `datum.report_bug.report_bug(module, error, context)` from Python. Auto-files a deduplicated GitHub issue with `datum-bug` label. See `AGENTS.md` for the full policy.
-
-## Resume
-
-`datum resume` reads state and continues where it stopped. Completed phases are not re-run. ACT lanes with `in_progress` are re-queued. See `references/recovery-modes.md`.
-
-## Session End
-
-On "session end" or "wrapping up" during a DATUM run, write a handoff to memory:
-
-```
-Run ID / Phase / Branch / Lane summary / Decisions / Next action
-```
-
-Write to: `~/.claude/projects/<slug>/memory/datum-session-<timestamp>.md`
-
-## Mermaid Diagrams
-
-**Trigger:** Always activates on "mermaid", "diagram", "visualize", "draw the flow", "sequence diagram", "architecture diagram", or `/datum mermaid`.
-
-Built-in diagram and design-doc capability. References and templates are part of the datum package:
-
-| Resource | Use for |
-|----------|---------|
-| `references/mermaid-diagram-guide.md` | Syntax reference for all diagram types |
-| `references/sequence-diagrams.md` | Sequence diagram patterns |
-| `references/activity-diagrams.md` | Activity/flowchart patterns |
-| `references/architecture-diagrams.md` | C4 and architecture patterns |
-| `references/deployment-diagrams.md` | Infrastructure diagrams |
-| `references/diagram-legibility.md` | High-contrast styling rules |
-| `references/unicode-symbols.md` | Semantic unicode for diagram labels |
-| `references/troubleshooting.md` | Mermaid syntax error fixes |
-| `references/resilient-workflow.md` | Validate-before-embed workflow |
-
-**Templates:** `templates/system-design-template.md`, `templates/architecture-design-template.md`, `templates/api-design-template.md`, `templates/feature-design-template.md`, `templates/database-design-template.md`
-
-**Scripts:** `scripts/resilient_diagram.py` (validate), `scripts/mermaid_to_image.py` (render PNG), `scripts/extract_mermaid.py` (extract from markdown)
-
-**Rules:**
-1. NEVER embed a diagram without validating it first via `datum mermaid validate`
-2. ALWAYS use high-contrast styling and unicode semantic symbols
-3. PREFER design templates from `templates/` when creating design documents
 
 ## Cross-Tool
 
-SKILL.md is tool-agnostic. Subagent primitives are in `assets/config.toml.default` under `[tools]`. Model tiers resolve per-tool via `[models]`. See `references/model-tiers.md`.
+SKILL.md is tool-agnostic. Model tiers resolve per-tool via `[models]` in config. See `references/model-tiers.md`.
