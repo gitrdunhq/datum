@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "0e743edf2555",
+  "strategy": "manual-commit",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "TASKS.md",
+    "skills/datum-tdd-act.js"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0e/743edf2555/0/metadata.json",
+      "transcript": "/0e/743edf2555/0/full.jsonl",
+      "content_hash": "/0e/743edf2555/0/content_hash.txt",
+      "prompt": "/0e/743edf2555/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7639,
+    "cache_creation_tokens": 1893880,
+    "cache_read_tokens": 185784563,
+    "output_tokens": 420259,
+    "api_call_count": 935
+  }
+}
