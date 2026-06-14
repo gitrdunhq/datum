@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "95024c5c4e2d",
+  "strategy": "manual-commit",
+  "branch": "datum/gh-issues-as-source-of-truth",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "skills/src/prompts/red.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/95/024c5c4e2d/0/metadata.json",
+      "transcript": "/95/024c5c4e2d/0/full.jsonl",
+      "content_hash": "/95/024c5c4e2d/0/content_hash.txt",
+      "prompt": "/95/024c5c4e2d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2234,
+    "cache_creation_tokens": 682685,
+    "cache_read_tokens": 100553509,
+    "output_tokens": 177071,
+    "api_call_count": 540
+  }
+}
