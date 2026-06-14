@@ -1,0 +1,219 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "a63e4110b4ad",
+  "session_id": "498c339f-c317-4cee-9251-a540fa9de6b3",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-14T02:33:24.074898Z",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CURRENT_STATE.md",
+    "agents/datum-green.md",
+    "datum/cli.py",
+    "datum/gate.py",
+    "datum/skeleton_creator.py",
+    "datum/tdd_driver.py",
+    "scripts/workflow-dashboard.py",
+    "skills/datum-tdd/SKILL.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "cf04e3e7e42a",
+  "token_usage": {
+    "input_tokens": 7639,
+    "cache_creation_tokens": 1893880,
+    "cache_read_tokens": 185784563,
+    "output_tokens": 420259,
+    "api_call_count": 935
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-workflow-orchestration-patterns-2026-06-13T15:20:23.185652Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "workflow-orchestration-patterns"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "a27e4d8c91ae",
+      "timestamp": "2026-06-13T15:20:23.185652Z",
+      "native": {
+        "command": "/workflow-orchestration-patterns"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/workflow-orchestration-patterns",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-nano-banana-pro-prompts-recommend-skill-2026-06-13T15:40:44.105018Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "nano-banana-pro-prompts-recommend-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "17d4801f2976",
+      "timestamp": "2026-06-13T15:40:44.105018Z",
+      "native": {
+        "command": "/nano-banana-pro-prompts-recommend-skill"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/nano-banana-pro-prompts-recommend-skill",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-current-state-2026-06-13T21:57:47.361915Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "current-state"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "34e3dfa32ee5",
+      "timestamp": "2026-06-13T21:57:47.361915Z",
+      "native": {
+        "command": "/current-state"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/current-state",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-datum-tdd-act-2026-06-13T23:26:40.436062Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "datum-tdd-act"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "c6082979439f",
+      "timestamp": "2026-06-13T23:26:40.436062Z",
+      "native": {
+        "command": "/datum-tdd-act"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/datum-tdd-act",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-plan-2026-06-14T01:23:58.5397Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "plan"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "4577b6b52ba5",
+      "timestamp": "2026-06-14T01:23:58.5397Z",
+      "native": {
+        "command": "/plan"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/plan",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01WBNuEaXwB711FZa3s5vYuJ",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "skill-creator:skill-creator"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "cf04e3e7e42a",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 4460,
+        "end": 4461,
+        "entry_ids": [
+          "9c9546ee-9465-41a1-b077-5e521ea33fd6"
+        ],
+        "tool_use_id": "toolu_01WBNuEaXwB711FZa3s5vYuJ"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01WBNuEaXwB711FZa3s5vYuJ"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: skill-creator:skill-creator",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01CMfWTJLckvdGLAcd4wCNxE",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum-tdd"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "cf04e3e7e42a",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 4512,
+        "end": 4513,
+        "entry_ids": [
+          "6b2409b9-acd9-4c4d-badc-dd324a7cd9da"
+        ],
+        "tool_use_id": "toolu_01CMfWTJLckvdGLAcd4wCNxE"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01CMfWTJLckvdGLAcd4wCNxE"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum-tdd",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 91
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-14T02:33:23.241758Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 337,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 337,
+    "total_lines_changed": 573,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
