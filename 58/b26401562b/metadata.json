@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "58b26401562b",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "package-lock.json",
+    "package.json",
+    "scripts/build-workflows.sh",
+    "skills/datum-tdd-act-docs.js",
+    "skills/datum-tdd-act-lane.js",
+    "skills/datum-tdd-act-merge.js",
+    "skills/datum-tdd-act-setup.js",
+    "skills/datum-tdd-act-triage.js",
+    "skills/datum-tdd-act.js",
+    "skills/src/datum-tdd-act-docs.ts",
+    "skills/src/datum-tdd-act-lane.ts",
+    "skills/src/datum-tdd-act-merge.ts",
+    "skills/src/datum-tdd-act-setup.ts",
+    "skills/src/datum-tdd-act-triage.ts",
+    "skills/src/datum-tdd-act.ts",
+    "skills/src/prompts/commit.md",
+    "skills/src/prompts/docs-check.md",
+    "skills/src/prompts/docs-sync.md",
+    "skills/src/prompts/green-retry.md",
+    "skills/src/prompts/green.md",
+    "skills/src/prompts/red-retry.md",
+    "skills/src/prompts/red.md",
+    "skills/src/prompts/refactor-check.md",
+    "skills/src/prompts/refactor.md",
+    "skills/src/prompts/reflect.md",
+    "skills/src/prompts/skeptic-base.md",
+    "skills/src/prompts/skeptic-contract.md",
+    "skills/src/prompts/skeptic-edge.md",
+    "skills/src/prompts/skeptic-error.md",
+    "skills/src/shared/agents.ts",
+    "skills/src/shared/prompts.ts",
+    "skills/src/shared/sandbox.d.ts",
+    "skills/src/shared/schemas.ts",
+    "skills/src/shared/types.ts",
+    "skills/src/shared/utils.ts",
+    "skills/tsconfig.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/58/b26401562b/0/metadata.json",
+      "transcript": "/58/b26401562b/0/full.jsonl",
+      "content_hash": "/58/b26401562b/0/content_hash.txt",
+      "prompt": "/58/b26401562b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 181,
+    "cache_creation_tokens": 291688,
+    "cache_read_tokens": 11849647,
+    "output_tokens": 41474,
+    "api_call_count": 67
+  }
+}

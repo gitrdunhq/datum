@@ -1,0 +1,47 @@
+yes push to main
+
+---
+
+and what will that give us
+
+---
+
+we are iterating, lets do it
+
+---
+
+lets plan this and then run it through the workflow
+
+---
+
+<task-notification>
+<task-id>a7a7000399580b8c1</task-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a7a7000399580b8c1.output</output-file>
+<status>completed</status>
+<summary>Agent "Research best TDD agent prompts" completed</summary>
+<result>The plan is now complete with all research integrated. Here's the summary:
+
+---
+
+**Plan file:** `/Users/samfakhreddine/.claude/plans/inherited-spinning-wand-agent-a7a7000399580b8c1.md`
+
+**What's in it:**
+
+**9 cross-cutting research findings** with citations from 16+ academic papers, Anthropic's own docs, and industry sources:
+1. Role framing -- functional roles, not narrative personas (EMNLP 2024, PRISM paper)
+2. Task decomposition -- goals+constraints for coding, steps for procedural
+3. Negative constraints -- the Pink Elephant Problem: negation amplifies the forbidden thing (ironic rebound confirmed in 3 independent studies)
+4. Evidence-first evaluation -- 10-15% accuracy improvement from reasoning-before-verdict (J1, G-Eval)
+5. Chain-of-thought -- yes for evaluators, no for code writers
+6. Structured output -- field ordering is load-bearing, constrained decoding degrades reasoning 10-15%
+7. Multi-agent personas -- teams underperform their best individual by 8-37% when personas are narrative rather than functional
+8. Prompt length cliff -- degradation starts at ~3,000 tokens (current prompts are safely under)
+9. Context efficiency -- front-load critical info before JSON packets
+
+**Complete rewritten prompts** for all 8 agents (+ retry variants where applicable), with before/after analysis for each.
+
+**Schema changes:** REFLECT field reorder (reasoning before score), SKEPTIC severity enum + required evidence fields.
+
+**Implementation priority** ranked by expected impact, and **token budget analysis** showing ~$0.002/lane increase vs the cost of a failed retry.</result>
+<usage><subagent_tokens>207865</subagent_tokens><tool_uses>21</tool_uses><duration_ms>561793</duration_ms></usage>
+</task-notification>
