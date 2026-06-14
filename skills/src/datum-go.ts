@@ -1,15 +1,7 @@
 export const meta = {
   name: 'datum-go',
   description: 'Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout',
-  phases: [
-    { title: 'Refine', detail: 'TICKET.md → SPEC.md' },
-    { title: 'Plan', detail: 'SPEC.md → tasks.json + lane-plan.json' },
-    { title: 'Properties', detail: '11-category invariants' },
-    { title: 'Act', detail: 'TDD pipeline: RED → GREEN → REFACTOR per lane' },
-    { title: 'Validate', detail: 'full test suite + lint + AC check' },
-    { title: 'Review', detail: '4-domain parallel review swarm' },
-    { title: 'Closeout', detail: 'collect → synthesize → archive' },
-  ],
+  phases: [],
 }
 
 // ── Parse args ──
@@ -50,7 +42,7 @@ let haltedAt = ''
 
 // Refine
 if (!haltedAt && startIdx <= 0) {
-  phase('Refine')
+  log('── Refine ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-refine.js' }, yolo ? 'yolo' : {}) as PhaseResult
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = 'refine'
@@ -62,7 +54,7 @@ if (!haltedAt && startIdx <= 0) {
 
 // Plan
 if (!haltedAt && startIdx <= 1) {
-  phase('Plan')
+  log('── Plan ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-plan.js' }, yolo ? 'yolo' : {}) as PhaseResult
   if (!lastResult.gatePassed) {
     haltedAt = 'plan'
@@ -74,14 +66,14 @@ if (!haltedAt && startIdx <= 1) {
 
 // Properties
 if (!haltedAt && startIdx <= 2) {
-  phase('Properties')
+  log('── Properties ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-properties.js' }, yolo ? 'yolo' : {}) as PhaseResult
   log('Properties complete')
 }
 
 // Act
 if (!haltedAt && startIdx <= 3) {
-  phase('Act')
+  log('── Act ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-tdd-act.js' }, yolo ? 'yolo' : {}) as PhaseResult
   log(`Act complete — ${lastResult.completed || 0} succeeded, ${lastResult.failed || 0} failed`)
   if ((lastResult.failed || 0) > 0) {
@@ -91,7 +83,7 @@ if (!haltedAt && startIdx <= 3) {
 
 // Validate
 if (!haltedAt && startIdx <= 4) {
-  phase('Validate')
+  log('── Validate ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-validate.js' }, yolo ? 'yolo' : {}) as PhaseResult
   if (!lastResult.testsPassed) {
     haltedAt = 'validate'
@@ -103,7 +95,7 @@ if (!haltedAt && startIdx <= 4) {
 
 // Review
 if (!haltedAt && startIdx <= 5) {
-  phase('Review')
+  log('── Review ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-review.js' }, yolo ? 'yolo' : {}) as PhaseResult
   if (!lastResult.canMerge) {
     haltedAt = 'review'
@@ -115,7 +107,7 @@ if (!haltedAt && startIdx <= 5) {
 
 // Closeout
 if (!haltedAt && startIdx <= 6) {
-  phase('Closeout')
+  log('── Closeout ──')
   lastResult = await workflow({ scriptPath: 'skills/datum-closeout.js' }, yolo ? 'yolo' : {}) as PhaseResult
   log('Closeout complete')
 }

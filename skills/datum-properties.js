@@ -10,6 +10,18 @@ export const meta = {
 };
 
 // skills/src/shared/utils.ts
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -41,7 +53,7 @@ var context = await agent(
   }),
   { label: "read-inputs", model: "haiku" }
 );
-var ctx = typeof context === "string" ? JSON.parse(context.replace(/```[a-z]*\n?/g, "").trim()) : context;
+var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
 if (!ctx.spec_content) throw new Error("SPEC.md not found. Run datum-refine first.");
 if (!ctx.tasks_content) throw new Error("TASKS.md not found. Run datum-plan first.");
 log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split("\n").length} lines, TASKS: ${ctx.tasks_content.split("\n").length} lines`);
@@ -73,7 +85,7 @@ var gateResult = await agent(
   }),
   { label: "gate-properties", model: "haiku" }
 );
-var gate = typeof gateResult === "string" ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, "").trim()) : gateResult;
+var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false, message: "parse failure" }) : gateResult;
 if (gate?.passed) log("Properties gate PASSED");
 else log(`Properties gate: ${gate?.message || "needs review"}`);
 return {

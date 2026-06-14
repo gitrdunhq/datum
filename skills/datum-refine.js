@@ -13,6 +13,18 @@ export const meta = {
 };
 
 // skills/src/shared/utils.ts
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -111,7 +123,7 @@ var branchInfo = await agent(
 Output raw JSON only. No markdown fences.`,
   { label: "read-context", model: "haiku" }
 );
-var ctx = typeof branchInfo === "string" ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, "").trim()) : branchInfo;
+var ctx = typeof branchInfo === "string" ? parseAgentJson(branchInfo, {}) : branchInfo;
 var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 var ticketPath = `${epicDir}/TICKET.md`;
 if (!ctx.ticket_exists) {
@@ -136,7 +148,7 @@ if (hasAddenda) {
     renderPrompt(refine_triage_default, { ticketPath }),
     { label: "triage-addenda", model: "sonnet" }
   );
-  triageResult = typeof triageRaw === "string" ? JSON.parse(triageRaw.replace(/```[a-z]*\n?/g, "").trim()) : triageRaw;
+  triageResult = typeof triageRaw === "string" ? parseAgentJson(triageRaw, { original_scope: "", addenda: [], roadmap_items: [], merged_requirements: [] }) : triageRaw;
   if (triageResult.roadmap_items?.length > 0) {
     log(`Triaged to roadmap: ${triageResult.roadmap_items.join(", ")}`);
     await agent(
@@ -156,7 +168,7 @@ var classifyRaw = await agent(
   renderPrompt(refine_classify_default, { ticketContent }),
   { label: "classify-ambiguity", model: "haiku" }
 );
-var classify = typeof classifyRaw === "string" ? JSON.parse(classifyRaw.replace(/```[a-z]*\n?/g, "").trim()) : classifyRaw;
+var classify = typeof classifyRaw === "string" ? parseAgentJson(classifyRaw, { level: "medium", reasoning: "", gaps: [], assumptions: [] }) : classifyRaw;
 log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
 if (classify.gaps.length > 0) {
   log(`Gaps: ${classify.gaps.join("; ")}`);
@@ -221,7 +233,7 @@ Return the JSON output from the gate command. If the gate fails, return the fail
 Output raw JSON only.`,
   { label: "gate-refine", model: "haiku" }
 );
-var gate = typeof gateResult === "string" ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, "").trim()) : gateResult;
+var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
 if (gate?.passed) {
   log("Refine gate PASSED");
 } else {

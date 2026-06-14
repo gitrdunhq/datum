@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
@@ -30,7 +30,7 @@ const context = await agent(
 )
 
 const ctx = typeof context === 'string'
-  ? JSON.parse(context.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
 
 const epicDir: string = ctx.epic_dir || 'docs/epics/unknown'
@@ -51,7 +51,7 @@ const checkResult = await agent(
 )
 
 const check = typeof checkResult === 'string'
-  ? JSON.parse(checkResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(checkResult as string, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] })
   : checkResult
 
 log(`Tests: ${check?.tests_pass ? 'PASS' : 'FAIL'} (${check?.test_count || '?'} tests)`)
@@ -78,7 +78,7 @@ if (!check?.tests_pass) {
   )
 
   const gate = typeof gateResult === 'string'
-    ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, '').trim())
+    ? parseAgentJson(gateResult as string, { passed: false, message: 'parse failure' })
     : gateResult
 
   gatePassed = !!gate?.passed

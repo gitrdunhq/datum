@@ -15,6 +15,18 @@ export const meta = {
 };
 
 // skills/src/shared/utils.ts
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -125,7 +137,7 @@ var context = await agent(
 Output raw JSON only. No markdown fences.`,
   { label: "read-context", model: "sonnet" }
 );
-var ctx = typeof context === "string" ? JSON.parse(context.replace(/```[a-z]*\n?/g, "").trim()) : context;
+var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
 var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 var specContent = ctx.spec_content || "";
 if (!specContent) {
@@ -144,7 +156,7 @@ var approachesRaw = await agent(
   }),
   { label: "propose-approaches", model: "sonnet" }
 );
-var approaches = typeof approachesRaw === "string" ? JSON.parse(approachesRaw.replace(/```[a-z]*\n?/g, "").trim()) : approachesRaw;
+var approaches = typeof approachesRaw === "string" ? parseAgentJson(approachesRaw, { approaches: [], recommended: 0, recommendation_reason: "" }) : approachesRaw;
 for (let i = 0; i < approaches.approaches.length; i++) {
   const ap = approaches.approaches[i];
   const marker = i === approaches.recommended ? " \u2190 recommended" : "";
@@ -174,8 +186,8 @@ var tasksRaw = await agent(
   }),
   { label: "decompose-tasks", model: decomposeModel }
 );
-var tasksJson = typeof tasksRaw === "string" ? tasksRaw.replace(/```[a-z]*\n?/g, "").trim() : JSON.stringify(tasksRaw);
-var tasks = JSON.parse(tasksJson);
+var tasks = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
+var tasksJson = JSON.stringify(tasks);
 log(`Decomposed into ${tasks.length} tasks`);
 for (const task of tasks) {
   const deps = task.depends_on?.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
@@ -202,7 +214,7 @@ var lanePlanResult = await agent(
 Output raw JSON only.`,
   { label: "build-lane-plan", model: "haiku" }
 );
-var lpResult = typeof lanePlanResult === "string" ? JSON.parse(lanePlanResult.replace(/```[a-z]*\n?/g, "").trim()) : lanePlanResult;
+var lpResult = typeof lanePlanResult === "string" ? parseAgentJson(lanePlanResult, { exit_code: 1, error: "parse failure" }) : lanePlanResult;
 if (lpResult?.exit_code && lpResult.exit_code !== 0) {
   log(`lane-plan failed: ${lpResult.error || "unknown"}`);
   throw new Error(`datum lane-plan failed: ${lpResult.error}`);
@@ -213,7 +225,7 @@ var triageRaw = await agent(
   plan_triage_default,
   { label: "triage-decision", model: "haiku" }
 );
-var triage = typeof triageRaw === "string" ? JSON.parse(triageRaw.replace(/```[a-z]*\n?/g, "").trim()) : triageRaw;
+var triage = typeof triageRaw === "string" ? parseAgentJson(triageRaw, { decision: "skip", reason: "parse failure", triggers: [] }) : triageRaw;
 await agent(
   `Write this JSON to ".datum/routing.json":
 ${JSON.stringify(triage, null, 2)}
@@ -230,7 +242,7 @@ if (triage.decision === "deepen") {
     plan_deepen_default,
     { label: "deepen-research", model: "sonnet" }
   );
-  const deepen = typeof deepenRaw === "string" ? JSON.parse(deepenRaw.replace(/```[a-z]*\n?/g, "").trim()) : deepenRaw;
+  const deepen = typeof deepenRaw === "string" ? parseAgentJson(deepenRaw, { tasks_researched: 0, findings_count: 0 }) : deepenRaw;
   log(`Deepen: researched ${deepen?.tasks_researched || "?"} tasks, ${deepen?.findings_count || "?"} findings`);
   await agent(
     `Run: datum lane-plan --input tasks.json --output .datum/lane-plan.json --md-output TASKS.md
@@ -250,7 +262,7 @@ Return the JSON output from the gate command. If the gate fails, return the fail
 Output raw JSON only.`,
   { label: "gate-plan", model: "haiku" }
 );
-var gate = typeof gateResult === "string" ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, "").trim()) : gateResult;
+var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false, message: "parse failure" }) : gateResult;
 if (gate?.passed) {
   log("Plan gate PASSED");
 } else {

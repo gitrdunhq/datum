@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
@@ -38,7 +38,7 @@ const context = await agent(
 )
 
 const ctx = typeof context === 'string'
-  ? JSON.parse(context.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
 
 log(`Branch: ${ctx.branch}, diff: ${ctx.diff_lines || '?'} lines`)
@@ -79,7 +79,7 @@ for (let i = 0; i < DOMAINS.length; i++) {
   const result = reviewResults[i]
   if (!result) { log(`${DOMAINS[i].domain}: (null)`); continue }
   const parsed: DomainResult = typeof result === 'string'
-    ? JSON.parse((result as string).replace(/```[a-z]*\n?/g, '').trim())
+    ? parseAgentJson(result as string, { domain: DOMAINS[i].domain, findings: [] } as DomainResult)
     : result as DomainResult
   log(`${parsed.domain}: ${parsed.findings.length} findings`)
   for (const f of parsed.findings) {

@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import refineTriageTemplate from './prompts/refine-triage.md'
 import refineClassifyTemplate from './prompts/refine-classify.md'
 import refineScanTemplate from './prompts/refine-scan.md'
@@ -43,7 +43,7 @@ Output raw JSON only. No markdown fences.`,
 )
 
 const ctx = typeof branchInfo === 'string'
-  ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(branchInfo as string, {})
   : branchInfo
 
 const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
@@ -88,7 +88,7 @@ if (hasAddenda) {
     { label: 'triage-addenda', model: 'sonnet' },
   )
   triageResult = typeof triageRaw === 'string'
-    ? JSON.parse(triageRaw.replace(/```[a-z]*\n?/g, '').trim())
+    ? parseAgentJson(triageRaw as string, { original_scope: '', addenda: [], roadmap_items: [], merged_requirements: [] })
     : triageRaw as TriageResult
 
   if (triageResult.roadmap_items?.length > 0) {
@@ -123,7 +123,7 @@ const classifyRaw = await agent(
 )
 
 const classify: ClassifyResult = typeof classifyRaw === 'string'
-  ? JSON.parse(classifyRaw.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(classifyRaw as string, { level: 'medium', reasoning: '', gaps: [], assumptions: [] })
   : classifyRaw as ClassifyResult
 
 log(`Ambiguity: ${classify.level} — ${classify.reasoning}`)
@@ -213,7 +213,7 @@ Output raw JSON only.`,
 )
 
 const gate = typeof gateResult === 'string'
-  ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(gateResult as string, { passed: false })
   : gateResult
 
 if (gate?.passed) {

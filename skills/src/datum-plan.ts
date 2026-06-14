@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planDecomposeTemplate from './prompts/plan-decompose.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -46,7 +46,7 @@ Output raw JSON only. No markdown fences.`,
 )
 
 const ctx = typeof context === 'string'
-  ? JSON.parse(context.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
 
 const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
@@ -91,7 +91,7 @@ interface ApproachResult {
 }
 
 const approaches: ApproachResult = typeof approachesRaw === 'string'
-  ? JSON.parse(approachesRaw.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(approachesRaw as string, { approaches: [], recommended: 0, recommendation_reason: '' } as ApproachResult)
   : approachesRaw as ApproachResult
 
 for (let i = 0; i < approaches.approaches.length; i++) {
@@ -140,11 +140,11 @@ const tasksRaw = await agent(
   { label: 'decompose-tasks', model: decomposeModel },
 )
 
-const tasksJson: string = typeof tasksRaw === 'string'
-  ? tasksRaw.replace(/```[a-z]*\n?/g, '').trim()
-  : JSON.stringify(tasksRaw)
+const tasks = typeof tasksRaw === 'string'
+  ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[])
+  : tasksRaw
 
-const tasks = JSON.parse(tasksJson)
+const tasksJson: string = JSON.stringify(tasks)
 log(`Decomposed into ${tasks.length} tasks`)
 
 for (const task of tasks) {
@@ -181,7 +181,7 @@ Output raw JSON only.`,
 )
 
 const lpResult = typeof lanePlanResult === 'string'
-  ? JSON.parse(lanePlanResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(lanePlanResult as string, { exit_code: 1, error: 'parse failure' })
   : lanePlanResult
 
 if (lpResult?.exit_code && lpResult.exit_code !== 0) {
@@ -207,7 +207,7 @@ const triageRaw = await agent(
 )
 
 const triage: TriageDecision = typeof triageRaw === 'string'
-  ? JSON.parse(triageRaw.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(triageRaw as string, { decision: 'skip', reason: 'parse failure', triggers: [] } as TriageDecision)
   : triageRaw as TriageDecision
 
 // Write routing decision
@@ -234,7 +234,7 @@ if (triage.decision === 'deepen') {
   )
 
   const deepen = typeof deepenRaw === 'string'
-    ? JSON.parse(deepenRaw.replace(/```[a-z]*\n?/g, '').trim())
+    ? parseAgentJson(deepenRaw as string, { tasks_researched: 0, findings_count: 0 })
     : deepenRaw
 
   log(`Deepen: researched ${deepen?.tasks_researched || '?'} tasks, ${deepen?.findings_count || '?'} findings`)
@@ -264,7 +264,7 @@ Output raw JSON only.`,
 )
 
 const gate = typeof gateResult === 'string'
-  ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(gateResult as string, { passed: false, message: 'parse failure' })
   : gateResult
 
 if (gate?.passed) {

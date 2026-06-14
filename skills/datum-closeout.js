@@ -10,6 +10,18 @@ export const meta = {
 };
 
 // skills/src/shared/utils.ts
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -37,7 +49,7 @@ var context = await agent(
   }),
   { label: "read-context", model: "haiku" }
 );
-var ctx = typeof context === "string" ? JSON.parse(context.replace(/```[a-z]*\n?/g, "").trim()) : context;
+var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
 var rid = ctx.run_id || runId;
 log(`Branch: ${ctx.branch}, run: ${rid}`);
 if (!ctx.closeout_data_exists) {
@@ -65,7 +77,7 @@ var synthResult = await agent(
   }),
   { label: "synthesize", model: "sonnet" }
 );
-var synth = typeof synthResult === "string" ? JSON.parse(synthResult.replace(/```[a-z]*\n?/g, "").trim()) : synthResult;
+var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
 log(`Synthesis: ${(synth?.artifacts_written || []).join(", ")}`);
 phase("Archive");
 await agent(

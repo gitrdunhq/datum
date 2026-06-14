@@ -51,18 +51,17 @@ Execute in order before any phase work:
 
 Epic artifacts always live at `docs/epics/<branch>/`.
 
-**3. Dispatch Phase** — Load the reference doc, execute it, run the gate.
+**3. Dispatch Phase** — Each phase is a TypeScript workflow. `datum-go` chains them all.
 
-| Phase | Reference | Gate |
+| Phase | Workflow | Gate |
 |---|---|---|
-| Refine | `01-refine.md` | skippable |
-| Plan | `02-plan.md` | **required** |
-| Prior Art | `02.3-prior-art.md` | skippable |
-| Triage | `02.5-triage.md` | **required** |
-| Act | `datum-tdd-act` workflow | per-lane gates |
-| Validate | `05-validate.md` | skippable |
-| Review | `06-review.md` | max 3 iterations |
-| Closeout | `08-closeout.md` | — |
+| Refine | `datum-refine` | skippable |
+| Plan | `datum-plan` (includes triage + deepen) | **required** |
+| Properties | `datum-properties` | skippable |
+| Act | `datum-tdd-act` | per-lane gates |
+| Validate | `datum-validate` | skippable |
+| Review | `datum-review` | max 3 iterations |
+| Closeout | `datum-closeout` | — |
 
 After each phase: `datum gate <phase> [--approve]`
 

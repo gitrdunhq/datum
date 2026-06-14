@@ -2,15 +2,7 @@
 export const meta = {
   name: "datum-go",
   description: "Full pipeline: TICKET \u2192 SPEC \u2192 Plan \u2192 Properties \u2192 Act \u2192 Validate \u2192 Review \u2192 Closeout",
-  phases: [
-    { title: "Refine", detail: "TICKET.md \u2192 SPEC.md" },
-    { title: "Plan", detail: "SPEC.md \u2192 tasks.json + lane-plan.json" },
-    { title: "Properties", detail: "11-category invariants" },
-    { title: "Act", detail: "TDD pipeline: RED \u2192 GREEN \u2192 REFACTOR per lane" },
-    { title: "Validate", detail: "full test suite + lint + AC check" },
-    { title: "Review", detail: "4-domain parallel review swarm" },
-    { title: "Closeout", detail: "collect \u2192 synthesize \u2192 archive" }
-  ]
+  phases: []
 };
 
 // skills/src/datum-go.ts
@@ -27,7 +19,7 @@ log(`datum go \u2014 starting from ${startFrom}${yolo ? " (yolo mode)" : ""}`);
 var lastResult = {};
 var haltedAt = "";
 if (!haltedAt && startIdx <= 0) {
-  phase("Refine");
+  log("\u2500\u2500 Refine \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-refine.js" }, yolo ? "yolo" : {});
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = "refine";
@@ -37,7 +29,7 @@ if (!haltedAt && startIdx <= 0) {
   }
 }
 if (!haltedAt && startIdx <= 1) {
-  phase("Plan");
+  log("\u2500\u2500 Plan \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-plan.js" }, yolo ? "yolo" : {});
   if (!lastResult.gatePassed) {
     haltedAt = "plan";
@@ -47,12 +39,12 @@ if (!haltedAt && startIdx <= 1) {
   }
 }
 if (!haltedAt && startIdx <= 2) {
-  phase("Properties");
+  log("\u2500\u2500 Properties \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-properties.js" }, yolo ? "yolo" : {});
   log("Properties complete");
 }
 if (!haltedAt && startIdx <= 3) {
-  phase("Act");
+  log("\u2500\u2500 Act \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-tdd-act.js" }, yolo ? "yolo" : {});
   log(`Act complete \u2014 ${lastResult.completed || 0} succeeded, ${lastResult.failed || 0} failed`);
   if ((lastResult.failed || 0) > 0) {
@@ -60,7 +52,7 @@ if (!haltedAt && startIdx <= 3) {
   }
 }
 if (!haltedAt && startIdx <= 4) {
-  phase("Validate");
+  log("\u2500\u2500 Validate \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-validate.js" }, yolo ? "yolo" : {});
   if (!lastResult.testsPassed) {
     haltedAt = "validate";
@@ -70,7 +62,7 @@ if (!haltedAt && startIdx <= 4) {
   }
 }
 if (!haltedAt && startIdx <= 5) {
-  phase("Review");
+  log("\u2500\u2500 Review \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-review.js" }, yolo ? "yolo" : {});
   if (!lastResult.canMerge) {
     haltedAt = "review";
@@ -80,7 +72,7 @@ if (!haltedAt && startIdx <= 5) {
   }
 }
 if (!haltedAt && startIdx <= 6) {
-  phase("Closeout");
+  log("\u2500\u2500 Closeout \u2500\u2500");
   lastResult = await workflow({ scriptPath: "skills/datum-closeout.js" }, yolo ? "yolo" : {});
   log("Closeout complete");
 }

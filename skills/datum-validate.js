@@ -10,6 +10,18 @@ export const meta = {
 };
 
 // skills/src/shared/utils.ts
+function parseAgentJson(text, fallback) {
+  if (!text || typeof text !== "string") return fallback;
+  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const start = cleaned.search(/[{[]/);
+  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (start === -1 || end === -1) return fallback;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return fallback;
+  }
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -36,7 +48,7 @@ var context = await agent(
   renderPrompt(util_read_context_default, { extraFields: "" }),
   { label: "read-context", model: "haiku" }
 );
-var ctx = typeof context === "string" ? JSON.parse(context.replace(/```[a-z]*\n?/g, "").trim()) : context;
+var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
 var epicDir = ctx.epic_dir || "docs/epics/unknown";
 log(`Branch: ${ctx.branch}`);
 phase("Validate");
@@ -49,7 +61,7 @@ var checkResult = await agent(
   }),
   { label: "validate-check", model: "sonnet" }
 );
-var check = typeof checkResult === "string" ? JSON.parse(checkResult.replace(/```[a-z]*\n?/g, "").trim()) : checkResult;
+var check = typeof checkResult === "string" ? parseAgentJson(checkResult, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] }) : checkResult;
 log(`Tests: ${check?.tests_pass ? "PASS" : "FAIL"} (${check?.test_count || "?"} tests)`);
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
 if (check?.ac_gaps?.length > 0) {
@@ -67,7 +79,7 @@ if (!check?.tests_pass) {
     }),
     { label: "gate-validate", model: "haiku" }
   );
-  const gate = typeof gateResult === "string" ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, "").trim()) : gateResult;
+  const gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false, message: "parse failure" }) : gateResult;
   gatePassed = !!gate?.passed;
   if (gate?.passed) log("Validate gate PASSED");
   else log(`Validate gate: ${gate?.message || "needs review"}`);

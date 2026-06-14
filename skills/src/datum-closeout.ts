@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import readContextTemplate from './prompts/util-read-context.md'
 
@@ -33,7 +33,7 @@ const context = await agent(
 )
 
 const ctx = typeof context === 'string'
-  ? JSON.parse(context.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
 
 const rid: string = ctx.run_id || runId
@@ -70,7 +70,7 @@ const synthResult = await agent(
 )
 
 const synth = typeof synthResult === 'string'
-  ? JSON.parse(synthResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(synthResult as string, { artifacts_written: [], follow_up_count: 0 })
   : synthResult
 
 log(`Synthesis: ${(synth?.artifacts_written || []).join(', ')}`)

@@ -1,4 +1,4 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJson } from './shared/utils'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
@@ -33,7 +33,7 @@ const context = await agent(
 )
 
 const ctx = typeof context === 'string'
-  ? JSON.parse(context.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
 
 if (!ctx.spec_content) throw new Error('SPEC.md not found. Run datum-refine first.')
@@ -80,7 +80,7 @@ const gateResult = await agent(
 )
 
 const gate = typeof gateResult === 'string'
-  ? JSON.parse(gateResult.replace(/```[a-z]*\n?/g, '').trim())
+  ? parseAgentJson(gateResult as string, { passed: false, message: 'parse failure' })
   : gateResult
 
 if (gate?.passed) log('Properties gate PASSED')
