@@ -838,7 +838,7 @@ if (failures.length > 0) {
   const failureDetails = failures.map(fid => {
     const r = results[fid]
     const lane = lanePlan.lanes[fid]
-    return `Lane ${fid} ("${lane.title}"): failed at ${r.stage} — ${r.error}`
+    return `Lane ${fid} ("${(lane && lane.title) || 'unknown'}"): failed at ${(r && r.stage) || 'UNKNOWN'} — ${(r && r.error) || 'null result'}`
   }).join('\n')
 
   const triage = await agent(
