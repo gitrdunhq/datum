@@ -1,0 +1,169 @@
+whats next
+
+---
+
+yes
+
+---
+
+144,143,132
+
+---
+
+what are thise 3 for
+
+---
+
+reinstall then run the workflow
+
+---
+
+so since our workflow oattern changes theres a bunch if steps that are no linger used and they still show
+
+---
+
+did the new fh issue as source of truth land
+
+---
+
+lets do it now you can head off epic 18 and in thag work epics need desrvdiptve names same with the task desceiptions
+
+---
+
+<task-notification>
+<task-id>w4y1jfei0</task-id>
+<tool-use-id>toolu_01PLMMaW7Bb1xYxhBCQjcohd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w4y1jfei0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-093229","total":2,"completed":1,"failed":1,"failedLanes":["task-002"],"completedLanes":["task-001"]}</result>
+<usage><agent_count>30</agent_count><subagent_tokens>964232</subagent_tokens><tool_uses>396</tool_uses><duration_ms>1826146</duration_ms></usage>
+</task-notification>
+
+---
+
+we have haiku writing tasks but wbo decomposes the mega ask into yasks
+
+---
+
+ok but look at the datum skill flow we had before our workflow thats what datum is
+
+---
+
+give me the ascii workflow of how you envision the 2 things joined
+
+---
+
+ok lets work on 1 step a time. TICKET.md first. lets come up with the requirements to build one, we already have it but lets review
+
+---
+
+yeah lets nail it down and the structure. look up old Tickets and see how they look
+
+---
+
+<task-notification>
+<task-id>w32f5rqna</task-id>
+<tool-use-id>toolu_017XQc1qoYt9cfod5hafNEUL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w32f5rqna.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-095621","total":3,"completed":2,"failed":1,"failedLanes":["link-parent-child-sub-issues"],"completedLanes":["create-gh-issues-from-lane-plan","embed-metadata-in-issue-body"]}</result>
+<usage><agent_count>37</agent_count><subagent_tokens>961501</subagent_tokens><tool_uses>353</tool_uses><duration_ms>1634182</duration_ms></usage>
+</task-notification>
+
+---
+
+lets pause that gh issue work once we fix this pre-act work it will be better positioned
+
+---
+
+that looks good, but the references as option is questionable. the agents need to be handed best practises always etc? right?
+
+---
+
+ok yes
+
+---
+
+lets extract all markdown to files that are templates
+
+---
+
+can our agents CODE benefit from https://github.com/chopratejas/headroom i already wrap claude, but if its in our code thatd be cool
+
+---
+
+yes
+
+---
+
+TICKET-datetimeslug becuase there might be many tickets? what if we do 2 tickets in a branch
+
+---
+
+APPEND, but if its a new feature we write the ticket and enter the roadmap, the workflow is smartr enough to say "we will triage this o nteh roadmap"
+
+---
+
+ok push and lets start wiring Refine as a workflow
+
+---
+
+move to plan
+
+---
+
+wheres our deepend decision point
+
+---
+
+its part of the phase
+
+---
+
+look at how datum worked before compare to know draw both ascii workflows so we can compare
+
+---
+
+yeah lets work through Properties etc
+
+---
+
+fet fingers sorry
+
+---
+
+yes
+
+---
+
+reinstall
+
+---
+
+ok we gave my epic about tasks and gitnhun issues
+
+---
+
+<task-notification>
+<task-id>wsoahrb6g</task-id>
+<tool-use-id>toolu_015xZduVLtL91VVZsv6FmH5M</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wsoahrb6g.output</output-file>
+<status>failed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" failed: Error: JSON Parse error: Unexpected identifier "Based"
+    at parse (native)
+    at &lt;anonymous&gt; (workflow.js:146:60)
+    at processTicksAndRejections (native)</summary>
+<recovery>Agent transcripts: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-datum/23544e83-baf5-4017-b588-7b253963271e/subagents/workflows/wf_88676564-9f4</recovery>
+<failures>▸ datum-refine: SyntaxError: JSON Parse error: Unexpected identifier "Based"</failures>
+<usage><agent_count>3</agent_count><subagent_tokens>65979</subagent_tokens><tool_uses>20</tool_uses><duration_ms>66461</duration_ms></usage>
+</task-notification>
+
+---
+
+see those extra steps we dont use anytmore
+
+---
+
+reinstall always after a fix
