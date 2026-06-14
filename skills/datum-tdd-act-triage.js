@@ -57,7 +57,7 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
 - Why it happened (root cause analysis)
 - Suggested fix
 - The lane, stage, and run ID for traceability`,
-    { label: "triage", phase: "Triage", model: "haiku", schema: TRIAGE_SCHEMA }
+    { label: "triage", phase: "Triage", model: "sonnet", schema: TRIAGE_SCHEMA }
   );
   if (triage?.issues?.length) {
     for (const issue of triage.issues) {
