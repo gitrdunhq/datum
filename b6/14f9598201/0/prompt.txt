@@ -268,3 +268,7 @@ Issue #152 is the closest to the actual root cause but frames it as "no-op asser
 3. **Stale test cleanup**: The lane setup should ensure the test file starts clean or at least that the skeleton phase produces a test file matching the *current* task's ACs, not a previous run's. The skeleton commit failed (worktree was clean because files were already committed), which means the stale tests from a prior run persisted into the RED phase.</result>
 <usage><subagent_tokens>76206</subagent_tokens><tool_uses>18</tool_uses><duration_ms>190541</duration_ms></usage>
 </task-notification>
+
+---
+
+triage phase shojld be sonnet extended thinking
