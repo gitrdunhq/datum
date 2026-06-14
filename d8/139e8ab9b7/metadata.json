@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "d8139e8ab9b7",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167-act",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "skills/src/datum-tdd-act-lane.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d8/139e8ab9b7/0/metadata.json",
+      "transcript": "/d8/139e8ab9b7/0/full.jsonl",
+      "content_hash": "/d8/139e8ab9b7/0/content_hash.txt",
+      "prompt": "/d8/139e8ab9b7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2827,
+    "cache_creation_tokens": 1467147,
+    "cache_read_tokens": 207536169,
+    "output_tokens": 303483,
+    "api_call_count": 1009
+  }
+}
