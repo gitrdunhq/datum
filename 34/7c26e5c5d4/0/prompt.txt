@@ -91,3 +91,7 @@ lets extract all markdown to files that are templates
 ---
 
 can our agents CODE benefit from https://github.com/chopratejas/headroom i already wrap claude, but if its in our code thatd be cool
+
+---
+
+yes
