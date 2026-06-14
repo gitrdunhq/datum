@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "b938fb0999ab",
+  "strategy": "manual-commit",
+  "branch": "datum/fail-fast-validation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "skills/src/datum-go.ts",
+    "skills/src/datum-plan.ts",
+    "skills/src/datum-properties.ts",
+    "skills/src/datum-refine.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b9/38fb0999ab/0/metadata.json",
+      "transcript": "/b9/38fb0999ab/0/full.jsonl",
+      "content_hash": "/b9/38fb0999ab/0/content_hash.txt",
+      "prompt": "/b9/38fb0999ab/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2510,
+    "cache_creation_tokens": 1044942,
+    "cache_read_tokens": 138689175,
+    "output_tokens": 246029,
+    "api_call_count": 750
+  }
+}
