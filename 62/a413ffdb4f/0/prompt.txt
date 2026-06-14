@@ -1,0 +1,29 @@
+whats next
+
+---
+
+yes
+
+---
+
+144,143,132
+
+---
+
+what are thise 3 for
+
+---
+
+reinstall then run the workflow
+
+---
+
+so since our workflow oattern changes theres a bunch if steps that are no linger used and they still show
+
+---
+
+did the new fh issue as source of truth land
+
+---
+
+lets do it now you can head off epic 18 and in thag work epics need desrvdiptve names same with the task desceiptions
