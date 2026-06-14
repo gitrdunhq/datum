@@ -58,14 +58,26 @@ function buildWaves(lanePlan2) {
 }
 
 // skills/src/datum-tdd-act.ts
-var a = typeof args === "string" ? JSON.parse(args) : args || {};
+var a = typeof args === "string" ? args.trim().toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
-var epicBranch = a.epicBranch;
-var runId = a.runId;
 var testCommand = a.testCommand || "uv run pytest -x -q";
 var language = a.language || "python";
-if (!epicBranch) throw new Error("args.epicBranch is required. If resuming, pass the original args: Workflow({scriptPath, resumeFromRunId, args: {epicBranch, runId, ...}})");
-if (!runId) throw new Error("args.runId is required. If resuming, pass the original args alongside resumeFromRunId");
+var epicBranch = a.epicBranch;
+var runId = a.runId;
+if (a.yolo && (!epicBranch || !runId)) {
+  const branchInfo = await agent(
+    `Run these two commands and return ONLY a JSON object with two fields:
+1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
+2. "timestamp": output of \`date +%Y%m%d-%H%M%S\`
+Output raw JSON only. No markdown fences, no explanation.`,
+    { label: "yolo-detect", model: "haiku" }
+  );
+  const info = typeof branchInfo === "string" ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, "").trim()) : branchInfo;
+  if (!epicBranch) epicBranch = info.branch;
+  if (!runId) runId = info.timestamp;
+}
+if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
+if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
 phase("Topology");
 var planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,

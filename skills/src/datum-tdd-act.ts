@@ -16,16 +16,36 @@ export const meta = {
 }
 
 // ── Parse args ──
+// "yolo" mode: auto-detect epicBranch from current git branch, generate runId from timestamp
 
-const a = (typeof args === 'string') ? JSON.parse(args) : (args || {})
+const a = (typeof args === 'string')
+  ? (args.trim().toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
+  : (args || {})
+
 const lanePlanPath: string = a.lanePlanPath || '.datum/lane-plan.json'
-const epicBranch: string = a.epicBranch
-const runId: string = a.runId
 const testCommand: string = a.testCommand || 'uv run pytest -x -q'
 const language: string = a.language || 'python'
 
-if (!epicBranch) throw new Error('args.epicBranch is required. If resuming, pass the original args: Workflow({scriptPath, resumeFromRunId, args: {epicBranch, runId, ...}})')
-if (!runId) throw new Error('args.runId is required. If resuming, pass the original args alongside resumeFromRunId')
+let epicBranch: string = a.epicBranch
+let runId: string = a.runId
+
+if (a.yolo && (!epicBranch || !runId)) {
+  const branchInfo = await agent(
+    `Run these two commands and return ONLY a JSON object with two fields:
+1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
+2. "timestamp": output of \`date +%Y%m%d-%H%M%S\`
+Output raw JSON only. No markdown fences, no explanation.`,
+    { label: 'yolo-detect', model: 'haiku' }
+  )
+  const info = typeof branchInfo === 'string'
+    ? JSON.parse(branchInfo.replace(/```[a-z]*\n?/g, '').trim())
+    : branchInfo
+  if (!epicBranch) epicBranch = info.branch
+  if (!runId) runId = info.timestamp
+}
+
+if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
+if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
 
 // ── Topology ──
 

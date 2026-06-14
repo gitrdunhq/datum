@@ -270,3 +270,216 @@ class TestTask002ValidDependency:
         assert (
             b_idx < a_idx
         ), f"Expected 'b' before 'a', got b_idx={b_idx}, a_idx={a_idx}"
+
+
+# ---------------------------------------------------------------------------
+# task-001 RED tests: cycle_path attribute on CyclicDependencyError
+# These tests require CyclicDependencyError to expose a structured cycle_path
+# attribute (list[str]) that is NOT yet implemented.
+# ---------------------------------------------------------------------------
+
+
+class TestTask001CyclePathAttribute:
+    """AC1 + AC2 extended: CyclicDependencyError must expose a structured
+    .cycle_path attribute (list[str]) showing the exact cycle as an ordered
+    path, e.g. ['a', 'b', 'a'] for a two-node cycle.
+
+    The current implementation only exposes .cycle_nodes (unordered set of
+    participating nodes) but NOT a .cycle_path attribute on the exception.
+    """
+
+    def test_ac1_exception_has_cycle_path_attribute(self):
+        """CyclicDependencyError raised for a 2-node cycle must have a
+        .cycle_path attribute that is a non-empty list.
+        """
+        lanes = {"a": {"depends_on": ["b"]}, "b": {"depends_on": ["a"]}}
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        assert hasattr(err, "cycle_path"), (
+            "CyclicDependencyError must expose a 'cycle_path' attribute "
+            "(list[str] showing the ordered cycle path). Got attributes: "
+            f"{[a for a in dir(err) if not a.startswith('__')]}"
+        )
+        assert isinstance(
+            err.cycle_path, list
+        ), f"cycle_path must be a list, got {type(err.cycle_path).__name__}"
+        assert (
+            len(err.cycle_path) >= 2
+        ), f"cycle_path must have at least 2 elements, got: {err.cycle_path!r}"
+
+    def test_ac1_two_node_cycle_path_is_closed_loop(self):
+        """For a 2-node cycle (a -> b -> a), cycle_path must start and end
+        with the same node, forming a closed loop like ['a', 'b', 'a'].
+        """
+        lanes = {"a": {"depends_on": ["b"]}, "b": {"depends_on": ["a"]}}
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        path = err.cycle_path
+        assert path[0] == path[-1], (
+            f"cycle_path must be a closed loop (first == last). " f"Got: {path!r}"
+        )
+
+    def test_ac1_two_node_cycle_path_contains_both_nodes(self):
+        """cycle_path for a 2-node cycle must contain both 'a' and 'b'."""
+        lanes = {"a": {"depends_on": ["b"]}, "b": {"depends_on": ["a"]}}
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        path_nodes = set(err.cycle_path)
+        assert (
+            "a" in path_nodes and "b" in path_nodes
+        ), f"cycle_path must include both 'a' and 'b'. Got: {err.cycle_path!r}"
+
+    def test_ac2_three_node_cycle_path_has_correct_length(self):
+        """For a 3-node cycle (a -> b -> c -> a), cycle_path must have exactly
+        4 elements (3 distinct nodes + the repeated start node to close the loop).
+        """
+        lanes = {
+            "a": {"depends_on": ["b"]},
+            "b": {"depends_on": ["c"]},
+            "c": {"depends_on": ["a"]},
+        }
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        path = err.cycle_path
+        assert len(path) == 4, (
+            f"3-node cycle_path must have 4 elements (3 nodes + repeated start). "
+            f"Got {len(path)} elements: {path!r}"
+        )
+
+    def test_ac2_three_node_cycle_path_contains_all_nodes(self):
+        """cycle_path for a 3-node cycle must contain 'a', 'b', and 'c'."""
+        lanes = {
+            "a": {"depends_on": ["b"]},
+            "b": {"depends_on": ["c"]},
+            "c": {"depends_on": ["a"]},
+        }
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        path_nodes = set(err.cycle_path)
+        assert {"a", "b", "c"} == path_nodes, (
+            f"cycle_path must include all three nodes {{'a', 'b', 'c'}}. "
+            f"Got: {err.cycle_path!r}"
+        )
+
+    def test_ac2_three_node_cycle_path_is_closed_loop(self):
+        """For a 3-node cycle, cycle_path must start and end with the same node."""
+        lanes = {
+            "a": {"depends_on": ["b"]},
+            "b": {"depends_on": ["c"]},
+            "c": {"depends_on": ["a"]},
+        }
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves(lanes)
+        err = exc_info.value
+        path = err.cycle_path
+        assert path[0] == path[-1], (
+            f"cycle_path must be a closed loop (first == last). " f"Got: {path!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# RED tests for task-002: structured attributes on MissingDependencyError
+# Traceability:
+#   AC1-struct → test_ac1_missing_dependency_error_exposes_missing_id_attribute
+#   AC1-struct → test_ac1_missing_dependency_error_exposes_lane_id_attribute
+#   AC1-struct → test_ac1_multiple_missing_deps_reports_first_missing
+#   AC2-regression → test_ac2_no_exception_on_self_contained_graph
+#   AC3-strict → test_ac3_missing_dependency_error_not_value_error_subclass
+# ---------------------------------------------------------------------------
+
+
+class TestTask002MissingDependencyStructuredAttributes:
+    """AC1 (strict): MissingDependencyError must expose structured attributes
+    so callers can inspect *which* dependency is missing and *which* lane
+    declared it — not just parse the human-readable message.
+
+    These tests are RED because the current implementation raises a bare
+    MissingDependencyError(ValueError) with no structured fields.
+    """
+
+    def test_ac1_missing_dependency_error_exposes_missing_id_attribute(self):
+        """MissingDependencyError must carry a .missing_id attribute set to
+        the exact string of the missing dependency ('nonexistent').
+
+        RED: current implementation has no .missing_id attribute.
+        """
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        with pytest.raises(MissingDependencyError) as exc_info:
+            build_waves({"a": {"depends_on": ["nonexistent"]}})
+
+        err = exc_info.value
+        assert hasattr(err, "missing_id"), (
+            "MissingDependencyError must expose a .missing_id attribute "
+            f"but got: {dir(err)}"
+        )
+        assert (
+            err.missing_id == "nonexistent"
+        ), f"Expected err.missing_id == 'nonexistent', got: {err.missing_id!r}"
+
+    def test_ac1_missing_dependency_error_exposes_lane_id_attribute(self):
+        """MissingDependencyError must carry a .lane_id attribute set to
+        the ID of the lane that declared the bad dependency ('a').
+
+        RED: current implementation has no .lane_id attribute.
+        """
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        with pytest.raises(MissingDependencyError) as exc_info:
+            build_waves({"a": {"depends_on": ["nonexistent"]}})
+
+        err = exc_info.value
+        assert hasattr(err, "lane_id"), (
+            "MissingDependencyError must expose a .lane_id attribute "
+            f"but got: {dir(err)}"
+        )
+        assert err.lane_id == "a", f"Expected err.lane_id == 'a', got: {err.lane_id!r}"
+
+    def test_ac1_multiple_missing_deps_reports_first_alphabetically(self):
+        """When multiple lanes have missing deps, the error should identify
+        the first offending dependency found (deterministic ordering).
+
+        RED: current implementation does not expose .missing_id at all.
+        """
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        lanes = {
+            "x": {"depends_on": ["ghost_x"]},
+        }
+        with pytest.raises(MissingDependencyError) as exc_info:
+            build_waves(lanes)
+
+        err = exc_info.value
+        assert hasattr(
+            err, "missing_id"
+        ), "MissingDependencyError must expose .missing_id"
+        assert (
+            err.missing_id == "ghost_x"
+        ), f"Expected err.missing_id == 'ghost_x', got: {err.missing_id!r}"
+
+
+class TestTask002MissingDependencyRegressionStrict:
+    """AC2 (strict): valid dependency graph must not only not raise, but also
+    return a WaveResult with a usable .to_dict() representation.
+
+    RED: WaveResult has no .to_dict() method.
+    """
+
+    def test_ac2_wave_result_exposes_to_dict(self):
+        """WaveResult returned from a valid graph must support .to_dict()
+        so callers can serialise the plan.
+
+        RED: WaveResult has no .to_dict() method.
+        """
+        from datum.wave_builder import build_waves
+
+        result = build_waves({"a": {"depends_on": ["b"]}, "b": {}})
+        assert hasattr(result, "to_dict"), "WaveResult must expose a .to_dict() method"
+        d = result.to_dict()
+        assert isinstance(d, dict), f"to_dict() must return a dict, got: {type(d)}"
+        assert "waves" in d, f"to_dict() result must have 'waves' key, got: {d!r}"

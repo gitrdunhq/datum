@@ -14,13 +14,24 @@ from dataclasses import dataclass
 class CyclicDependencyError(ValueError):
     """Raised when build_waves detects a cycle in the dependency graph."""
 
-    def __init__(self, message: str, cycle_nodes: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        cycle_nodes: list[str] | None = None,
+        cycle_path: list[str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.cycle_nodes: list[str] = cycle_nodes or []
+        self.cycle_path: list[str] = cycle_path or []
 
 
 class MissingDependencyError(ValueError):
     """Raised when a lane references a dependency that does not exist in lanes."""
+
+    def __init__(self, message: str, missing_id: str = "", lane_id: str = "") -> None:
+        super().__init__(message)
+        self.missing_id: str = missing_id
+        self.lane_id: str = lane_id
 
 
 @dataclass
@@ -79,6 +90,18 @@ class WaveResult:
     def cycle_path(self) -> list[str] | None:
         """None for acyclic graphs; reserved for future cyclic result support."""
         return None
+
+    def to_dict(self) -> dict:
+        """Serialise the wave plan to a plain dict."""
+        return {
+            "waves": self.waves,
+            "stats": {
+                "total_tasks": self.stats.total_tasks,
+                "num_waves": self.stats.num_waves,
+                "max_parallelism": self.stats.max_parallelism,
+                "critical_path_length": self.stats.critical_path_length,
+            },
+        }
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"WaveResult(waves={self.waves!r}, stats={self.stats!r})"
@@ -179,23 +202,21 @@ def build_waves(
     ids = list(lanes.keys())
     id_set = set(ids)
 
-    # Validate all dependency references before running BFS.
-    for lane_id in ids:
-        deps = lanes[lane_id].get(depends_on_key) or []
-        for dep in deps:
-            if dep not in id_set:
-                raise MissingDependencyError(
-                    f"Lane '{lane_id}' depends on '{dep}', which does not exist in lanes."
-                )
-
     in_deg: dict[str, int] = {}
     adj: dict[str, list[str]] = {}
 
+    # Single pass: validate references, build in-degree map, and build adjacency list.
     for lane_id in ids:
-        deps = lanes[lane_id].get(depends_on_key) or []
-        in_deg[lane_id] = len(deps)
+        deps: list[str] = lanes[lane_id].get(depends_on_key) or []
         for dep in deps:
+            if dep not in id_set:
+                raise MissingDependencyError(
+                    f"Lane '{lane_id}' depends on '{dep}', which does not exist in lanes.",
+                    missing_id=dep,
+                    lane_id=lane_id,
+                )
             adj.setdefault(dep, []).append(lane_id)
+        in_deg[lane_id] = len(deps)
 
     waves: list[list[str]] = []
     queue = sorted(lid for lid in ids if in_deg[lid] == 0)
@@ -218,6 +239,7 @@ def build_waves(
         raise CyclicDependencyError(
             f"Cycle detected: {path_str}",
             cycle_nodes=cycle_nodes,
+            cycle_path=cycle_path,
         )
 
     return WaveResult(waves)
