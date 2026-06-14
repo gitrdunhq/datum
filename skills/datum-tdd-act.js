@@ -300,11 +300,19 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     log(`[${taskId}]   files: ${(red.files_written || []).join(', ') || '(none reported)'}`)
   }
 
-  // ── Verify RED ────────────────────────────────────────────────────────
-  const redCheckText = await agent(
-    `cd "${wt}" && datum verify-stage red --repo "${wt}" --test-command "${laneCfg.testCommand}"\nReturn ONLY the JSON output, nothing else.`,
-    { label: `verify-red:${taskId}`, phase: 'Act', model: 'haiku' }
-  )
+  // ── Verify RED + Reflect (parallel — both read committed test files independently) ──
+  const [redCheckText, reflect] = await parallel([
+    () => agent(
+      `cd "${wt}" && datum verify-stage red --repo "${wt}" --test-command "${laneCfg.testCommand}"\nReturn ONLY the JSON output, nothing else.`,
+      { label: `verify-red:${taskId}`, phase: 'Act', model: 'haiku' }
+    ),
+    () => agent(
+      `Read these test files in "${wt}": ${testFiles.join(', ')}\n` +
+      `Score the tests written for these acceptance criteria:\n${acStr}\n` +
+      `Return your score (0-10), reasoning, and gaps found.`,
+      { label: `reflect:${taskId}`, phase: 'Act', model: 'haiku', schema: REFLECT_SCHEMA }
+    ),
+  ])
   const redCheck = parseAgentJson(redCheckText, { verified: false })
 
   if (!redCheck || !redCheck.verified) {
@@ -313,14 +321,6 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
   }
   log(`[${taskId}] RED verified — tests fail as expected`)
-
-  // ── Reflect on test quality ───────────────────────────────────────────
-  const reflect = await agent(
-    `Read these test files in "${wt}": ${testFiles.join(', ')}\n` +
-    `Score the tests written for these acceptance criteria:\n${acStr}\n` +
-    `Return your score (0-10), reasoning, and gaps found.`,
-    { label: `reflect:${taskId}`, phase: 'Act', model: 'haiku', schema: REFLECT_SCHEMA }
-  )
 
   const reflectScore = (reflect && reflect.score) || 0
   log(`[${taskId}] Test quality: ${reflectScore}/10 — ${(reflect && reflect.reasoning) || 'no reasoning'}`)
@@ -611,40 +611,19 @@ for (let i = 0; i < waves.length; i++) {
   log(`  Wave ${i}: [${waves[i].join(', ')}]`)
 }
 
-// ── Auto-partition: group waves into batches of ≤5 tasks ────────────────
+// ── Auto-partition into batches of ≤5 tasks (worktree lifecycle boundary) ──
 
 const MAX_BATCH = 5
-
-// Split oversized waves — intra-wave tasks are independent, so splitting is safe
-const splitWaves = []
-for (const wave of waves) {
-  if (wave.length <= MAX_BATCH) {
-    splitWaves.push(wave)
-  } else {
-    for (let i = 0; i < wave.length; i += MAX_BATCH) {
-      splitWaves.push(wave.slice(i, i + MAX_BATCH))
-    }
-  }
-}
-
+const allLaneIds = lanePlan.topological_order
 const batches = []
-let curBatch = []
-let curCount = 0
-for (const wave of splitWaves) {
-  if (curCount + wave.length > MAX_BATCH && curBatch.length > 0) {
-    batches.push(curBatch)
-    curBatch = []
-    curCount = 0
-  }
-  curBatch.push(wave)
-  curCount += wave.length
+for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
+  batches.push(allLaneIds.slice(i, i + MAX_BATCH))
 }
-if (curBatch.length > 0) batches.push(curBatch)
 
 if (batches.length > 1) {
   log(`Auto-partitioned ${lanePlan.total_lanes} tasks into ${batches.length} batches (max ${MAX_BATCH}/batch)`)
   for (let b = 0; b < batches.length; b++) {
-    log(`  Batch ${b}: [${batches[b].flat().join(', ')}]`)
+    log(`  Batch ${b}: [${batches[b].join(', ')}]`)
   }
 }
 
@@ -655,8 +634,7 @@ const failures = []
 const completedLanes = []
 
 for (let bi = 0; bi < batches.length; bi++) {
-  const batchWaves = batches[bi]
-  const batchLaneIds = batchWaves.flat()
+  const batchLaneIds = batches[bi]
   const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : ''
   const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId
 
@@ -703,37 +681,64 @@ for (let bi = 0; bi < batches.length; bi++) {
 
   log(`Setup${batchTag}: ${batchLaneIds.length} lane worktrees`)
 
-  // ── Act ────────────────────────────────────────────────────────────
+  // ── Act (DAG scheduler — each task starts when its own deps complete) ──
   phase('Act')
 
-  for (let waveIdx = 0; waveIdx < batchWaves.length; waveIdx++) {
-    const wave = batchWaves[waveIdx]
-    log(`=== Wave ${waveIdx}${batchTag}: [${wave.join(', ')}] ===`)
+  const lanes = lanePlan.lanes
+  const depResolvers = {}
+  const depPromises = {}
+  for (const id of batchLaneIds) {
+    depPromises[id] = new Promise(resolve => { depResolvers[id] = resolve })
+  }
 
-    const waveResults = await parallel(
-      wave.map(taskId => () =>
-        runLane(taskId, lanePlan, worktreePaths, cfg)
-          .then(r => r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
-      )
-    )
+  log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks, starting as deps resolve`)
 
-    for (let i = 0; i < wave.length; i++) {
-      const r = waveResults[i]
-      results[wave[i]] = r
-      if (!r || r.status !== 'completed') failures.push(wave[i])
-      else completedLanes.push(wave[i])
-    }
-
-    const waveFailed = wave.filter(id => failures.includes(id))
-    const ok = wave.length - waveFailed.length
-    log(`=== Wave ${waveIdx}${batchTag} done: ${ok}/${wave.length} ===`)
-    if (waveFailed.length > 0) {
-      for (const fid of waveFailed) {
-        const r = results[fid]
-        log(`  FAILED ${fid}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
+  const dagResults = await parallel(
+    batchLaneIds.map(taskId => async () => {
+      const allDeps = lanes[taskId].depends_on || []
+      const crossBatchFailed = allDeps.filter(d => !batchLaneIds.includes(d) && failures.includes(d))
+      if (crossBatchFailed.length > 0) {
+        const err = `skipped: cross-batch dep(s) failed [${crossBatchFailed.join(', ')}]`
+        log(`[${taskId}] ${err}`)
+        const skipResult = { task_id: taskId, status: 'failed', stage: 'SKIPPED', error: err }
+        depResolvers[taskId](skipResult)
+        return skipResult
       }
+
+      const inBatchDeps = allDeps.filter(d => batchLaneIds.includes(d))
+      if (inBatchDeps.length > 0) {
+        log(`[${taskId}] waiting on deps: [${inBatchDeps.join(', ')}]`)
+        const depResults = await Promise.all(inBatchDeps.map(d => depPromises[d]))
+        const failedDeps = depResults.filter(r => r.status !== 'completed')
+        if (failedDeps.length > 0) {
+          const err = `skipped: dep(s) failed [${failedDeps.map(r => r.task_id).join(', ')}]`
+          log(`[${taskId}] ${err}`)
+          const skipResult = { task_id: taskId, status: 'failed', stage: 'SKIPPED', error: err }
+          depResolvers[taskId](skipResult)
+          return skipResult
+        }
+      }
+
+      log(`[${taskId}] deps satisfied — launching`)
+      const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
+        .then(r => r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+      depResolvers[taskId](result)
+      return result
+    })
+  )
+
+  for (let i = 0; i < batchLaneIds.length; i++) {
+    const id = batchLaneIds[i]
+    const r = dagResults[i]
+    results[id] = r
+    if (!r || r.status !== 'completed') {
+      failures.push(id)
+      log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
+    } else {
+      completedLanes.push(id)
     }
   }
+  log(`Act${batchTag} done: ${batchLaneIds.filter(id => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`)
 
   // ── Merge ──────────────────────────────────────────────────────────
   phase('Merge')
