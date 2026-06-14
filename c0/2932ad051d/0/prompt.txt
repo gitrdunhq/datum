@@ -1,0 +1,651 @@
+THUNDERDOME
+
+---
+
+soeey it crashed
+
+---
+
+had tocseitch to sonnet
+
+---
+
+<task-notification>
+<task-id>a87741cdddb6577d5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a87741cdddb6577d5.output</output-file>
+<status>completed</status>
+<summary>Agent "Datum Plan: epic-30 tasks.json" completed</summary>
+<result>Note: claude-opus-4-6[1m] (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>5094</subagent_tokens><tool_uses>84</tool_uses><duration_ms>499771</duration_ms></usage>
+</task-notification>
+
+---
+
+datum has been updated
+
+---
+
+go ahead
+
+---
+
+sonnet woll deepen, qwen does work
+
+---
+
+hows the omlx doing
+
+---
+
+haiku and sonnet mix
+
+---
+
+datum bugs have been fixed keep filing what gou see
+
+---
+
+128 ans 129 are inflihjt
+
+---
+
+what % are we at
+
+---
+
+<task-notification>
+<task-id>a4a87aa89d954875f</task-id>
+<tool-use-id>toolu_011Hxqwx9C55xNMV9RmZw6Zi</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a4a87aa89d954875f.output</output-file>
+<status>completed</status>
+<summary>Agent "Act Unit E: MCP provider wiring (tasks 016-021) — Sonnet" completed</summary>
+<result>4 commits made. Tasks 016 and 017 were already done before this session. Here is the final report:
+
+---
+
+## Final Report
+
+**Ratchet floor**: 816 tests / 137 suites / 0 failures at start → **826 tests / 139 suites / 0 failures** at end (+10 tests, +2 suites, 0 regressions).
+
+---
+
+### TASK-016 (F21a) — NotionContextProvider
+**Status: Already done** (commit `0e27646a4` by a prior agent). `NotionProvider.isHealthy()` handles nil credential, Keychain throw, and authenticated ping. `supportedPrivacyTiers` returns `[.off, .meetings]`. Full test coverage in `NotionProviderTests.swift`. No work needed.
+
+### TASK-017 (F21b) — DuckDBContextCache cross-provider isolation
+**Status: Already done** (commit `cbcbb0755`). `selectCached`, `deleteCached`, `getSemantic` all filter on `(query_text, provider_id)`. No work needed.
+
+### TASK-018 (F21c) — AppConfig fields `obsidianVaultPath` and `notionEnabled`
+**What was done**: Added `notionEnabled: Bool = false` and `obsidianVaultPath: String? = nil` to **both** `Record-Foundation/Sources/Domain/Config/AppConfig.swift` and `Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift`. Updated the 3 memberwise-copy sites in `Record-App/Sources/TheRecord/App.swift`. Added 4 E3 round-trip tests to `AppConfigTests.swift`. All JSON encode/decode with missing-key defaults.
+
+### TASK-019 (F21d) — Wire providers in buildMCPProviders
+**What was done**: Rewrote `buildMCPProviders` in `AppAssemblerBuilders.swift` to: (1) construct `KeychainCredentialStore` once with `migrateAccessibilityIfNeeded()`, (2) construct `NotionProvider` when `config.notionEnabled`, (3) construct `ObsidianProvider` when `config.obsidianVaultPath` is non-nil, (4) wrap ALL providers in `CachingContextProvider` with `ContextCacheConfig` params. Created `AppAssemblerMCPWiringTests.swift` with 4 source-inspection tests (E4a–E4d).
+
+### TASK-020 (F21e) — Settings Integrations tab
+**What was done**: Added `isNotionEnabled: Bool = false` and `obsidianVaultPath: String = ""` to `SettingsViewModel`. Created `SettingsViewIntegrationsTab.swift` (Notion toggle + Obsidian path field). Extracted `transcriptionTab`, `speakersTab`, `exportTab`, `cacheTab`, `aboutTab` from `SettingsView.swift` into `SettingsViewTranscriptionTab.swift` to keep the main file under the 150-line limit. Wired `integrationsTab` into `SettingsView.body`. Updated `SwiftUIListsTests.swift` (LazyVStack source-inspection test now checks both file locations). 6 new E5 tests.
+
+**Note on SourceKit false positives**: The coordinator flagged SourceKit errors for missing tab vars — these are IDE-level false positives from the extension-per-file pattern. The Swift compiler compiles cleanly (confirmed by `swift build` and all 826 tests passing). This is the same pattern already used by the pre-existing `SettingsViewGeneralTab.swift`.
+
+### TASK-021 (F21f) — Integration test skeleton
+**What was done**: Created `Record-ML/Tests/Unit/MCPProviderIntegrationTests.swift` with 2 tests gated behind `.enabled(if: integrationEnabled)` where `integrationEnabled = ProcessInfo.processInfo.environment["RUN_INTEGRATION_TESTS"] == "1"`. E6a verifies ObsidianProvider returns file content from a temp vault. E6b verifies CachingContextProvider serves the second query from cache (entry count unchanged). Tests auto-skip in normal CI; run manually with `RUN_INTEGRATION_TESTS=1 swift test --package-path Record-ML`.</result>
+<usage><subagent_tokens>177712</subagent_tokens><tool_uses>210</tool_uses><duration_ms>1703829</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a3bb280604aef95fe</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a3bb280604aef95fe.output</output-file>
+<status>completed</status>
+<summary>Agent "Act task-001: F1 AEC buffer chunking (Sonnet)" completed</summary>
+<result>Note: claude-sonnet-4-6 (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>13187</subagent_tokens><tool_uses>198</tool_uses><duration_ms>5042258</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a9ac8ac67428abb37</task-id>
+<tool-use-id>toolu_019t2DEUgbkDr9i7n7hGJtzC</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a9ac8ac67428abb37.output</output-file>
+<status>completed</status>
+<summary>Agent "Act Unit D: concurrency correctness (task-013, 014, 015) — Sonnet" completed</summary>
+<result>Note: claude-sonnet-4-6 (the safety classifier) was unavailable when reviewing this subagent's work. Please carefully verify the subagent's actions and output before acting on them.
+
+You've hit your weekly limit · resets Jun 13 at 9pm (America/Edmonton)</result>
+<usage><subagent_tokens>52838</subagent_tokens><tool_uses>221</tool_uses><duration_ms>3305341</duration_ms></usage>
+</task-notification>
+
+---
+
+please continue
+
+---
+
+send a hauiku sgent to get sgents.md snd claude.md best practises snd come bacj then ankther synthesises bith snd then ankther makes the chsnges then another reboews correctness a pipeline
+
+---
+
+/dream
+
+---
+
+dimt build thenworkflow
+
+---
+
+domtvbuild it capture rhe idea in the datum gh issues
+
+---
+
+domtvbuild it capture rhe idea in the datum gh issues
+
+---
+
+<task-notification>
+<task-id>wbl7uv2jb</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/wbl7uv2jb.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Gather AGENTS.md + CLAUDE.md best practices, synthesize, implement improvements, then review" completed</summary>
+<result>{"gaps_addressed":15,"verdict":"needs_fixes","issues":["Duplicate bulk-replacement guidance: the new 'Shell Discipline' section (lines 322-326) and the pre-existing 'Agent Operations Lessons' bullet (line 334) both document the sed/for loop guardrails with slightly different wording. The lessons entry is the canonical, session-proven version and also references gitnexus_rename/serena; the new section should either defer to it with a cross-reference or one of them should be removed.","Contradiction between 'File Placement Rules' (line 304: never use /tmp) and 'Agent Operations Lessons' (line 332: instructs agents to look in /private/tmp/claude-501/... for background agent transcripts). The two rules directly conflict — the transcript recovery tip should be removed or the path should be updated to a non-/tmp location.","Correlation ID requirement in 'Coding Standards — Resiliency' (line 82) is aspirational and not grounded in the project's actual error model. The codebase uses typed Swift enums (AudioError, TranscriptionError, etc.) with no correlationId field — this is a web/Python-backend pattern from the generic WFC CODING-STEERING.md and does not fit Swift's Error protocol conventions. Stating it as a hard rule will mislead agents into adding fields that don't exist and may break the layer import rules.","The 'unset GITHUB_TOKEN &amp;&amp;' prefix in the 'See Something, Say Something' gh command (line 118) is a Claude Code sandbox-specific workaround. AGENTS.md is explicitly a universal file for all agents (Codex, Cursor, OpenCode, Aider, etc.), and injecting Claude Code environment workarounds into it creates noise and confusion for non-Claude agents. This belongs in .claude/-scoped configuration only.","The 'Squash before first push' rule (line 189) prescribes raw 'git rebase -i origin/main' but AGENTS.md establishes datum as the workflow tool for this project (with its own PR phase that handles squashing). Sub-agents following AGENTS.md will bypass datum tooling. The rule should name datum's PR phase as the primary method and list raw git rebase as a fallback only."],"summary":"The commit adds 105 lines of genuinely useful, well-scoped rules (Functional Core/Imperative Shell, Boundary Validation, File Size Cap, Resiliency standards, No Invented APIs, Minimal Diffs, Preserve Diagnostic Logging, Validate Before Applying at Scale, No Re-Planning, See Something Say Something, git constraints, Git Operations Scope, File Placement Rules, Shell Discipline, Sub-Agent Pre-Flight Protocol). The additions are well-structured and do not bloat the file — each section earns its place. However, five issues need fixes before this can be considered clean: two create direct internal contradictions (the /tmp ban vs. the /private/tmp transcript recovery tip; duplicate bulk-replacement guidance), one imports a web-backend pattern that doesn't fit the Swift error model (correlation IDs), one embeds a Claude Code-specific workaround into a universal file (unset GITHUB_TOKEN), and one bypasses the project's own datum tooling in favor of raw git for squashing. None of the additions contradict existing architecture or invariants — the problems are self-contradictions and context-mismatch, not factual errors about the codebase."}</result>
+<usage><agent_count>4</agent_count><subagent_tokens>130699</subagent_tokens><tool_uses>32</tool_uses><duration_ms>637717</duration_ms></usage>
+</task-notification>
+
+---
+
+lets have an oous wgent review each domain thoroughly. deliversble is my domain expects this shape in abd this shape out, it ensure all inner shapes sre consistent snd it ensjre corrext ess
+
+---
+
+lets have an oous wgent review each domain thoroughly. deliversble is my domain expects this shape in abd this shape out, it ensure all inner shapes sre consistent snd it ensjre corrext ess
+
+---
+
+<task-notification>
+<task-id>a9b8bf5b065eb2d4e</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a9b8bf5b065eb2d4e.output</output-file>
+<status>completed</status>
+<summary>Agent "Opus domain review: Record-Foundation/Domain" completed</summary>
+<result>I have now read all 105 files in the Domain layer. Let me compile the audit.
+
+---
+
+## Domain Contract Audit: Record-Foundation/Sources/Domain
+
+**Scope:** 105 Swift files across 14 subdirectories in `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/`
+
+---
+
+### 1. In-Shape (Boundary Inputs)
+
+These are the public protocols, parameters, and types that consumers/infrastructure must supply INTO the domain:
+
+| Protocol / Type | Method / Parameter | Supplied By |
+|---|---|---|
+| `AudioCaptureEngine` | `start(sessionID: RecordingID, configuration: AudioConfiguration) -&gt; AudioBufferStream` | Infrastructure (CoreAudio/SCK) |
+| `AudioCaptureEngine` | `stop() -&gt; AudioFile` | Infrastructure |
+| `AudioExportEngine` | `exportToAAC(source: URL, destination: URL)` | Infrastructure (AVFoundation) |
+| `AudioSampleLoader` | `loadSamples(from url: URL) -&gt; [Float]` | Infrastructure (AVFoundation) |
+| `AudioDeviceEnumeration` | `listOutputDevices/listInputDevices/defaultOutputDevice/defaultInputDevice` | Infrastructure (CoreAudio) |
+| `AudioDeviceConfigStore` | `load() -&gt; AudioCaptureConfig`, `save(_ config:)` | Infrastructure (UserDefaults/disk) |
+| `CalendarEngine` | `upcomingMeetings(within:) -&gt; [CalendarMeeting]`, `calendarChanges() -&gt; AsyncStream&lt;Void&gt;` | Infrastructure (EventKit) |
+| `TranscriptionEngine` | `loadModel(_ modelId: ModelID)`, `transcribe(samples:context:) -&gt; TranscriptionSegment` | Infrastructure (WhisperKit/Parakeet) |
+| `DiarizationEngine` | `prepare()`, `diarize(samples:sampleRate:) -&gt; [SpeakerSegment]` | Infrastructure (pyannote) |
+| `SummarizationEngine` | `loadModel(_ config: SummaryConfig)`, `summarize(transcript:speakers:meetingType:) -&gt; MeetingSummary` | Infrastructure (MLX) |
+| `TranslationEngine` | `translate(text:from:to:) -&gt; String`, `supportedLanguages()`, `isAvailable(from:to:)` | Infrastructure (Apple Translation) |
+| `ContextProvider` | `query(text:) -&gt; [KnowledgeResult]`, `providerID`, `isHealthy()`, `supportedPrivacyTiers` | Infrastructure (MCP/Notion/Obsidian) |
+| `ConsentGate` | `isConsentGranted: Bool` | Presentation/Infrastructure |
+| `PermissionService` | `microphoneStatus`, `screenCaptureStatus`, `requestMicrophone()`, `requestScreenCapture()` | Infrastructure (system APIs) |
+| `MeetingDetector` | `events() -&gt; AsyncStream&lt;MeetingDetectorEvent&gt;`, `isActive()` | Infrastructure (Record-ML) |
+| `LiveClassifier` | `classify(text:) -&gt; ClassificationResult`, `extractEntities(text:) -&gt; [Entity]` | Infrastructure (NLP) |
+| `ModelDownloadDelegate` | `downloadProgress(_ progress: ModelDownloadProgress)` | Presentation (ViewModel) |
+| `TokenStore` | `loadToken()`, `saveToken(_:)`, `deleteToken()` | Infrastructure (Keychain) |
+| `LicenseProvider` | `currentTier: LicenseTier`, `canAccess(_ feature: Feature) -&gt; Bool` | Infrastructure/Business |
+| `SpeakerProfileStore` | `save(_:)`, `allProfiles()`, `delete(id:)`, `update(_:)`, `updateProfile(id:transform:)` | Infrastructure (JSON/DuckDB) |
+| `VoiceEmbeddingEngine` | `extract(from:) -&gt; [Float]`, `cosineSimilarity(_:_:) -&gt; Float` | Infrastructure (wespeaker) |
+| `CommitmentStore` | `record(_:)`, `openCommitments()`, `commitments(for:)` | Infrastructure (DuckDB) |
+| `InferenceMetricsRecorder` | `record(_ entry: InferenceMetrics)` | Infrastructure (telemetry) |
+| `WaveformProcessing` | `magnitudes(from:) -&gt; AsyncStream&lt;[Float]&gt;` | Infrastructure (FFT) |
+| `MicCaptureEngine` | `start(sessionStartTick:) -&gt; AsyncThrowingStream&lt;TaggedAudioBuffer, Error&gt;`, `stop()` | Infrastructure (AVAudioEngine) |
+| `MicAECProcessor` | `process(mic:farEnd:) -&gt; TaggedAudioBuffer` | Infrastructure (Speex) |
+| `CleanedAudioSink` | `append(_ buffer: TaggedAudioBuffer)`, `finalize() -&gt; CleanedAudioSinkMetadata?` | Infrastructure (WAV writer) |
+| `AudioActivityObserver` | `rawAudioChanges() -&gt; AsyncStream&lt;Bool&gt;` | Infrastructure |
+| `PrivacyModeProvider` | `currentPrivacyMode: PrivacyMode` | Infrastructure/Presentation |
+| `SelfRecordingStateProvider` | `isSelfRecording() -&gt; Bool` | Business/Infrastructure |
+| `TranscriptRepairService` | `repair(transcript:) -&gt; String` | Infrastructure (LLM) |
+| `AlignmentUseCase` | `callAsFunction(recordingId:)` | Business (RecordPro) |
+| `SystemHardwarePollerProtocol` | `getResidentMemoryMB()`, `getCPUBrand()`, `captureProcessSnapshot()`, etc. | Infrastructure (Mach APIs) |
+| `StorageEngine` (typealias) | Composition of 10 repository protocols (read/write for recordings, transcripts, diarization, notes, summaries) | Infrastructure (DuckDB) |
+| `WordTimingsWriteRepository` | `saveWordTimings(recordingId:segments:)` | Infrastructure (DuckDB) |
+
+---
+
+### 2. Out-Shape (Boundary Outputs)
+
+What this domain exports to downstream layers:
+
+| Name | Kind | Primary Consumer(s) |
+|---|---|---|
+| **ID types** | | |
+| `Tagged&lt;Tag, RawValue&gt;` | struct (generic) | All layers |
+| `RecordingID`, `MeetingID`, `SpeakerID`, `SegmentID`, `DeviceID`, `ModelID`, `ProviderID`, `CommitmentID`, `SuggestionID` | typealias | All layers |
+| **Audio types** | | |
+| `AudioBuffer` | struct (COW) | Infrastructure, Business |
+| `TaggedAudioBuffer` | struct | Infrastructure, Business |
+| `AudioTrack` | enum | Infrastructure, Business, Presentation |
+| `AudioBufferStream` | struct | Business |
+| `AudioConfiguration` | struct | Infrastructure, Business |
+| `AudioFormat` | enum | Infrastructure |
+| `AudioDevice` | struct | Presentation, Infrastructure |
+| `AudioFile` | struct | Business, Infrastructure |
+| `AudioSource` | enum | Business |
+| `AudioTapTarget` | struct | Infrastructure |
+| **Recording types** | | |
+| `RecordingSession` | struct | Business |
+| `StoredRecording` | struct | Business, Presentation |
+| `RecordingSummary` | struct | Presentation |
+| `TranscribedRecording` | struct | Business |
+| `RecordingMetadata` | struct (Codable) | Infrastructure, Presentation |
+| **Transcription types** | | |
+| `TranscriptionResult` | struct | Business, Presentation |
+| `TranscriptionSegment` | struct | Business, Infrastructure |
+| `TranscriptionContext` | struct | Business, Infrastructure |
+| `TranscriptionPassType` | enum | Business |
+| `ComputeUnit` | enum | Business, Infrastructure |
+| `WordTimestamp` | struct (Codable) | Business, Infrastructure |
+| `ModelDownloadProgress` | struct | Presentation |
+| `DownloadPhase` | enum | Presentation |
+| `InferenceMetrics` + sub-structs | struct | Infrastructure |
+| `ModelIDs` | enum (constants) | Business, Infrastructure |
+| `ModelEntry`, `ModelCatalog`, `ModelCategory`, `ModelStatus` | struct/enum | Presentation |
+| `StreamingSegment`, `TranslatedSegment` | struct | Business, Presentation |
+| **Diarization types** | | |
+| `SpeakerSegment` | struct | Business |
+| `DiarizedSegment`, `DiarizedTranscript` | struct | Business, Presentation |
+| **Config types** | | |
+| `AppConfig`, `MCPEndpointConfig` | struct (Codable) | Business, Infrastructure, Presentation |
+| `AudioCaptureConfig` | struct (Codable) | Infrastructure |
+| `TranscriptionConfig` | struct (Codable) | Business |
+| `TranscriptionEngineKey` | enum | Business |
+| `SummaryConfig` | struct (Codable) | Business, Infrastructure |
+| `StorageConfig` | struct (Codable) | Infrastructure |
+| `TranslationConfig` | struct (Codable) | Business |
+| `ContextCacheConfig` | struct (Codable) | Business |
+| `TimeoutConfig` | enum (static constants) | Business, Infrastructure |
+| `UITheme` | enum (Codable) | Presentation |
+| `PrivacyMode` | enum (Codable, CaseIterable) | All layers |
+| `CleanupPolicy` | struct (Codable) | Business, Infrastructure |
+| **Calendar types** | | |
+| `CalendarMeeting` | struct | Business, Presentation |
+| `Attendee`, `AttendeeRole`, `AttendeeStatus` | struct/enum | Business, Presentation |
+| `CalendarSourceType` | enum | Business |
+| **Intelligence types** | | |
+| `ClassificationResult`, `ClassificationCategory` | struct/enum | Business |
+| `Commitment`, `CommitmentStatus`, `CommitmentDropReason` | struct/enum | Business, Presentation |
+| `Entity`, `EntityType` | struct/enum | Business |
+| `MeetingDetectionConfig` | struct | Business |
+| `PreMeetingBrief` | struct | Business, Presentation |
+| `Suggestion`, `SuggestionType` | struct/enum | Presentation |
+| `MeetingContext`, `TriggerSource`, `MeetingDetectorEvent` | struct/enum | Business |
+| **Summarization types** | | |
+| `MeetingSummary`, `ActionItem` | struct (Codable) | Business, Presentation |
+| `MeetingType` | enum (CaseIterable, Codable) | Business, Presentation |
+| `SummarizationError` | enum (Error) | Business, Infrastructure |
+| **Speaker types** | | |
+| `SpeakerProfile` | struct (Codable) | Business, Infrastructure |
+| `SpeakerMatch` | struct | Business |
+| `SpeakerError` | enum (Error) | Business, Infrastructure |
+| **Licensing types** | | |
+| `Feature` | enum (CaseIterable, Codable) | Business, Presentation |
+| `LicenseTier` | enum (Comparable, Codable) | Business, Presentation |
+| `LicenseError` | enum (Error) | Business |
+| **Sharing types** | | |
+| `ShareFormat` | enum (CaseIterable, Codable) | Presentation |
+| `ShareMethod` | enum | Presentation |
+| **Storage types** | | |
+| `FolderSizeWarning` | struct | Business, Presentation |
+| `KnowledgeResult` | struct | Business |
+| `LanguagePair` | struct | Business |
+| **Error types** | | |
+| `UserFacingError` | protocol | All error enums, Presentation |
+| `AudioError` | enum (Error, UserFacingError) | Business, Presentation |
+| `CalendarError` | enum (Error, UserFacingError) | Business, Presentation |
+| `ConfigError` | enum (Error, UserFacingError) | Business |
+| `ExportError` | enum (Error, UserFacingError) | Business |
+| `MCPError` | enum (Error, UserFacingError) | Business |
+| `PreMeetingBriefError` | enum (Error, UserFacingError) | Business |
+| `RecordingLifecycleError` | enum (Error, UserFacingError) | Business |
+| `RecordingError` | enum (Error, UserFacingError) | Business, Presentation |
+| `StorageError` | enum (Error, UserFacingError) | Infrastructure, Business |
+| `TranscriptionError` | enum (Error, UserFacingError) | Business, Infrastructure |
+| `TranslationError` | enum (Error) | Business |
+| **UI types** | | |
+| `ToastMessage` | struct | Presentation |
+| `PermissionStatus` | enum | Presentation |
+| **Misc** | | |
+| `AppConstants` | enum (caseless, static) | All layers |
+
+---
+
+### 3. Internal Consistency
+
+**FINDING IC-1: `SpeakerError` does not conform to `UserFacingError`**
+Severity: **MEDIUM**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Speaker/SpeakerError.swift` (lines 3-9)
+
+Every other error enum in the domain (`AudioError`, `CalendarError`, `ConfigError`, `ExportError`, `MCPError`, `PreMeetingBriefError`, `RecordingLifecycleError`, `RecordingError`, `StorageError`, `TranscriptionError`, `SummarizationError`) conforms to `UserFacingError`. `SpeakerError` does not. If any of its five cases propagate to the UI, they will fall through to `localizedDescription` (the `Error` extension in `UserFacingError.swift`, line 30), which produces generic system text like "The operation couldn't be completed" -- useless for the user.
+
+**FINDING IC-2: `TranslationError` does not conform to `UserFacingError`**
+Severity: **MEDIUM**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Protocols/TranslationEngine.swift` (lines 11-15)
+
+Same issue as IC-1. `TranslationError` conforms to `Error` and `Sendable` but not `UserFacingError`. Three cases (`languageNotSupported`, `translationFailed`, `notInstalled`) can surface to the user without meaningful messages.
+
+**FINDING IC-3: `LicenseError` does not conform to `UserFacingError`**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Licensing/LicenseError.swift` (lines 3-5)
+
+Single-case enum with no `userMessage` or `debugDescription`. If this error reaches the UI layer (e.g., user tries to access a pro feature), the toast will show the raw system error description.
+
+**FINDING IC-4: Duplicate `retentionDays` + `folderSizeWarningGB` concept in `CleanupPolicy` vs `StorageConfig`**
+Severity: **MEDIUM**
+
+Files:
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Storage/CleanupPolicy.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/StorageConfig.swift`
+
+Both types carry `retentionDays: Int` and `folderSizeWarningGB: Double` with identical validation logic, identical defaults (90 days, 5.0 GB), identical throwing initializers, and identical `Codable` implementations. One of these is redundant. The risk is that a consumer updates one but not the other, leading to config drift where the cleanup job uses stale thresholds.
+
+**FINDING IC-5: `DiarizedSegment.id` is a computed `String`, not a `SegmentID`**
+Severity: **MEDIUM**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Diarization/DiarizedTranscript.swift` (lines 8-10)
+
+`DiarizedSegment` conforms to `Identifiable` with `id: String` computed as `"\(speakerId)-\(startTime)"`. Every other identifiable type in the domain uses a typed `Tagged` ID (`RecordingID`, `SegmentID`, `SpeakerID`, etc.). This breaks the pattern and produces non-unique IDs when two segments from the same speaker start at the same floating-point second (possible after merging/rounding). Furthermore, `TranscriptionSegment.id` is `SegmentID` but `DiarizedSegment.id` is `String`, so any code that operates generically on "segments" cannot use a unified identity type.
+
+**FINDING IC-6: `Commitment.meetingId` is `RecordingID`, not `MeetingID`**
+Severity: **MEDIUM**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Intelligence/Commitment.swift` (line 15)
+
+`Commitment.meetingId` is typed as `RecordingID`. The `CommitmentStore` protocol's `commitments(for meetingId: RecordingID)` also takes `RecordingID`. But semantically, a commitment is associated with a meeting -- `MeetingID` exists for exactly this purpose. Using `RecordingID` here conflates two distinct domain concepts. This works today because recordings and meetings are 1:1, but if that ever changes (e.g., a meeting with multiple recordings, or a commitment without a recording), the types will actively mislead.
+
+**FINDING IC-7: `ProviderID` has no `generate()` factory**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/IDs/ProviderID.swift`
+
+Every other ID type (`RecordingID`, `MeetingID`, `SpeakerID`, `SegmentID`, `DeviceID`, `ModelID`, `CommitmentID`, `SuggestionID`) has a `static func generate() -&gt; Self` that calls `UUID().uuidString`. `ProviderID` does not. This is likely intentional (providers have stable well-known IDs like `"notion"`), but the inconsistency means generic code that calls `.generate()` on an ID type would fail to compile for `ProviderID`.
+
+**FINDING IC-8: `TaggedAudioBuffer.timestamp` duplicates `AudioBuffer.timestamp`**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Audio/AudioTrack.swift` (lines 8-14)
+
+`TaggedAudioBuffer` has its own `timestamp: TimeInterval` field AND wraps an `AudioBuffer` which also has a `timestamp: TimeInterval`. There is no documented contract about which one is authoritative when they disagree. The `silentFarEnd(matching:)` factory sets both to the same value, but nothing prevents construction where `buffer.timestamp != timestamp`.
+
+---
+
+### 4. Correctness
+
+**FINDING C-1: `NotesReadRepository` and `NotesWriteRepository` default implementations silently swallow calls**
+Severity: **HIGH**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Storage/NotesRepository.swift` (lines 11-19)
+
+Both protocols provide default implementations that return empty string / do nothing:
+```swift
+public extension NotesReadRepository {
+    func getNotes(meetingId _: RecordingID) async throws -&gt; String { "" }
+}
+public extension NotesWriteRepository {
+    func saveNotes(meetingId _: RecordingID, text _: String) async throws {}
+}
+```
+
+These defaults mean any type that conforms to `NotesReadRepository` or `NotesWriteRepository` (including via `StorageEngine`) will compile without implementing notes, and silently discard saved notes or return empty reads. The `StorageEngine` typealias composes these, so a DuckDB implementation that forgets to implement `saveNotes` will compile and silently lose data. This violates DPS-204 (No Silent Fallbacks).
+
+**FINDING C-2: `SummaryReadRepository` and `SummaryWriteRepository` have identical silent-default problem**
+Severity: **HIGH**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Storage/SummaryRepository.swift` (lines 12-24)
+
+Same pattern as C-1. `getSummary` defaults to returning `nil`, `recordingIDsWithSummaries` defaults to `[]`, and `saveSummary` defaults to a no-op. A conforming type that forgets to implement any of these will compile without warning and silently lose summaries.
+
+**FINDING C-3: `RecordingLifecycleError` is not `Equatable`**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Errors/RecordingLifecycleError.swift` (line 3)
+
+`RecordingLifecycleError` wraps `(any Error &amp; Sendable)?` in its `.storageFailed` case, which prevents synthesized `Equatable`. This is fine at runtime but makes it impossible to assert on specific error cases in tests using `XCTAssertEqual`. Most other error enums (`ExportError`, `MCPError`, `PreMeetingBriefError`) do conform to `Equatable`.
+
+**FINDING C-4: `InferenceMetrics` is not `Codable` despite containing `Codable` sub-structs**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Transcription/InferenceMetrics.swift` (line 128)
+
+`InferenceMetrics` is `Sendable` but not `Codable`, even though all four optional sub-structs (`ProcessMetrics`, `InputOutputShapeMetrics`, `EnvironmentMetrics`, `TimingSplits`) are `Codable`. If telemetry needs to persist or serialize metrics (e.g., for the InferenceTelemetry infrastructure), this forces manual encoding at the infrastructure boundary.
+
+**FINDING C-5: `AlignmentUseCase` contract says "never throws" but is not enforced at the type level**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Protocols/AlignmentUseCase.swift` (lines 15-24)
+
+The doc comment states "This method never throws. All errors are logged and swallowed." But the signature is `func callAsFunction(recordingId: RecordingID) async` -- which is non-throwing. So this is correct at the type level. However, conforming types that need to `try` internally must `catch` and swallow, and there is no compile-time enforcement that they actually log. This is a design note, not a bug.
+
+**FINDING C-6: `WordTimestamp` invariant (`startTime &lt;= endTime`) is not enforced**
+Severity: **MEDIUM**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Transcription/WordTimestamp.swift` (lines 10, 25-34)
+
+The doc comment on line 10 states the invariant `startTime &lt;= endTime`, but the initializer on lines 25-34 performs no validation. Any caller can construct `WordTimestamp(word: "test", startTime: 10.0, endTime: 5.0, probability: 0.9)` and the domain will accept it. This could cause downstream features (acoustic scrubbing, karaoke highlighting) to behave incorrectly with negative-duration words.
+
+**FINDING C-7: `SpeakerSegment` and `TranscriptionSegment` have no temporal invariant enforcement**
+Severity: **LOW**
+
+Files:
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Diarization/SpeakerSegment.swift` (init, lines 24-31)
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Transcription/TranscriptionSegment.swift` (init, lines 39-57)
+
+Neither validates that `startTime &lt;= endTime`. `SpeakerSegment.duration` is a computed property (`endTime - startTime`) that would return a negative number if the invariant were violated. Unlike `WordTimestamp`, neither even documents the invariant.
+
+**FINDING C-8: `Sendable` gap on `TranscriptionResult` and `DiarizedTranscript`**
+Severity: **LOW**
+
+Files:
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Transcription/TranscriptionResult.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Diarization/DiarizedTranscript.swift`
+
+Both are `Sendable` and contain only `Sendable` fields. However, `TranscriptionResult` is not `Codable` and `TranscriptionSegment` is not `Codable` either. They are stored by `StoredRecording.transcript` (which is also not `Codable`). This means serialization for storage must be handled entirely at the infrastructure layer via manual mapping, which is fine architecturally but is worth noting as intentional.
+
+**FINDING C-9: `ModelDownloadProgress.fractionCompleted` has no clamping or validation**
+Severity: **LOW**
+
+File: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Transcription/ModelDownloadProgress.swift` (lines 25-29)
+
+The doc says `[0.0, 1.0]` but the initializer does not validate. A buggy infrastructure implementation could pass `1.5` or `-0.1` and the domain would accept it, potentially causing UI progress bars to display incorrectly.
+
+---
+
+### 5. Summary
+
+The domain contract is **solid overall**. The ID system using `Tagged&lt;Tag, RawValue&gt;` is well-designed and consistently applied across 9 ID types. The protocol portfolio cleanly abstracts every infrastructure concern with proper `Sendable` enforcement. The `UserFacingError` protocol provides a good pattern for error presentation.
+
+**Top priority to fix:** The silent default implementations in `NotesRepository` and `SummaryRepository` (findings C-1 and C-2) are the most dangerous issues. They let a storage conformer compile without implementing save/read for notes and summaries, silently discarding user data. These defaults should be removed so the compiler forces every `StorageEngine` conformer to provide real implementations. The duplicate `CleanupPolicy` vs `StorageConfig` (IC-4) is the next priority, as it creates a config-drift risk that could cause the cleanup job to use stale retention thresholds. After that, adding `UserFacingError` conformance to `SpeakerError`, `TranslationError`, and `LicenseError` (IC-1, IC-2, IC-3) would close the last gaps in user-facing error messaging.</result>
+<usage><subagent_tokens>93846</subagent_tokens><tool_uses>120</tool_uses><duration_ms>244933</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a8ab56e33074473a3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a8ab56e33074473a3.output</output-file>
+<status>completed</status>
+<summary>Agent "Round 2: Data flow + error propagation cross-dimensional review" completed</summary>
+<result>Line 109-112: `try?` on date parse inside a `guard...else { continue }` -- silently drops commitments with unparseable dates. No log, no error.
+
+Now I have enough data to compile the full report. Let me verify one final thing - the `saveSummary` `?? "{}"` fallback:
+
+I already have the file. Line 10 of `DuckDBWriterActor+Summary.swift`:
+```swift
+let json = try String(data: encoder.encode(summary), encoding: .utf8) ?? "{}"
+```
+
+The `try` covers `encoder.encode(summary)` -- if encoding succeeds but `String(data:encoding:)` returns nil (possible but rare with UTF-8), it falls back to `"{}"`. But the `try` means an encode failure would actually throw and be caught by the outer `catch`, making it `StorageError.writeFailed`. The `?? "{}"` only triggers if the Data-to-String conversion itself returns nil. Still, storing `"{}"` and then failing to decode it on read is a real issue.
+
+I now have all the evidence I need. Here is the complete report.
+
+---
+
+## Cross-Dimensional Review: Data Flow Integrity + Error Propagation Completeness
+
+### Data Flow Gaps
+
+| # | Source Layer -&gt; Destination Layer | What's Lost/Changed | Severity | File + Line |
+|---|---|---|---|---|
+| DF-1 | Infrastructure (DuckDB) -&gt; Business/Presentation | **DiarizedSegment.id is computed `"\(speakerId)-\(startTime)"` (String), not a stable `SegmentID`.** When two segments from the same speaker start at the same second (truncated TimeInterval), they produce identical `id` values. SwiftUI `ForEach` with `Identifiable` will deduplicate/corrupt rendering. The domain type `TranscriptionSegment` uses `SegmentID` (typed Tagged ID) but after diarization merge this typing is lost. | **HIGH** | `Record-Foundation/Sources/Domain/Diarization/DiarizedTranscript.swift:8-10` |
+| DF-2 | Infrastructure (DuckDB Writer) -&gt; Infrastructure (DuckDB Reader) | **Word timings silently dropped on roundtrip in `getSegments`.** `DuckDBWriterActor+Diarization.swift` does NOT store word timings during `attachDiarization` -- the `upsertSegment` SQL binds 7 columns (`recording_id, segment_index, text, speaker_id, start_time, end_time, confidence`) but `word_timings` is NOT among them. A separate `saveWordTimings` call is required. If `AlignTranscriptUseCase` doesn't run (or fails), `getSegments` returns segments with `wordTimings: nil` even though the original `TranscriptionSegment` had them. | **MEDIUM** | `DuckDBWriterActor+Diarization.swift:29-41` (upsert binds 7 cols, no word_timings), `DuckDBSQL.swift:171-177` (upsert SQL excludes word_timings) |
+| DF-3 | Infrastructure (DuckDB Reader) -&gt; Business/Presentation | **`getSegments` silently drops corrupt word_timings JSON with zero diagnostic signal.** Uses `try?` with no log or warning. The parallel method `getWordTimings` logs a warning on decode failure. Same data, different observability. | **MEDIUM** | `DuckDBReaderActor+Diarization.swift:28-29` |
+| DF-4 | Infrastructure (DuckDB Writer) -&gt; Infrastructure (DuckDB Reader) | **`saveSummary` fallback `?? "{}"` stores empty JSON on rare UTF-8 encoding failure.** `String(data: encoder.encode(summary), encoding: .utf8) ?? "{}"` -- if Data-to-String returns nil, `"{}"` is stored. Subsequent `getSummary` attempts to decode `"{}"` as `MeetingSummary`, which throws `StorageError.readFailed`. The original encoding issue is completely masked. | **MEDIUM** | `DuckDBWriterActor+Summary.swift:10` |
+| DF-5 | Infrastructure (DuckDB Reader) -&gt; Presentation | **`rowToStoredRecording` builds `TranscriptionResult` with empty `segments: []` array.** The base reader returns a `StoredRecording` with a `TranscriptionResult` containing `fullText` from the DB but `segments: []`. The `getRecording(id:)` method then re-populates segments from `getSegments`, but only if `base.transcript != nil`. The intermediate state -- a `TranscriptionResult` with text but no segments -- can leak to callers of `listAllRecordingsWithMetadata()` (which does NOT re-populate segments). Any caller using `metadata.transcript?.segments` from `listAllRecordingsWithMetadata` gets an empty array. | **MEDIUM** | `DuckDBReaderActorRows.swift:44-48` (empty segments), `DuckDBReaderActor+Recording.swift:33-56` (re-populates only for `getRecording`) |
+| DF-6 | Domain (CPF) &lt;-&gt; Domain (RF) | **`RecordingMetadata` field count divergence (12 vs 13 fields).** CPF lacks `cleanedMicAudioPath: URL?`. If cross-platform code serializes/deserializes `RecordingMetadata`, this field is silently dropped. | **HIGH** | `Record-CrossPlatform-Foundation/Sources/Domain/Storage/RecordingMetadata.swift` vs `Record-Foundation/Sources/Domain/Storage/RecordingMetadata.swift:19` |
+| DF-7 | Domain (CPF) &lt;-&gt; Domain (RF) | **`Feature` enum case count divergence (21 vs 17).** Codable roundtrip between RF and CPF produces `DecodingError.dataCorrupted` on unknown cases -- no `case unknown(String)` fallback exists. | **HIGH** | Audit file `02-record-crossplatform-domain.md`, finding C-3 |
+| DF-8 | Domain (CPF) &lt;-&gt; Domain (RF) | **`LicenseTier` has `addon` case (rank -1) in CPF, absent in RF.** The rank-(-1) means ANY tier `&gt;= .addon` is true, effectively ungating addon features for all users on cross-platform targets. | **HIGH** | Audit file `02-record-crossplatform-domain.md`, finding C-4 |
+| DF-9 | Business -&gt; Infrastructure (DuckDB) | **`Commitment.meetingId` is typed `RecordingID`, not `MeetingID`.** The `DuckDBCommitmentStore` stores it as a raw string (`meeting_id VARCHAR`). When meetings and recordings are eventually separate concepts, this conflation will cause incorrect joins. | **LOW** | `Record-Foundation/Sources/Domain/Intelligence/Commitment.swift` |
+| DF-10 | Infrastructure (DuckDB) -&gt; Business | **DuckDBCommitmentStore silently drops commitments with unparseable dates.** `try?` on date parse inside `guard...else { continue }` -- no log, no error. Commitments with corrupted `created_at` or non-ISO8601 dates simply vanish from query results. | **MEDIUM** | `DuckDBCommitmentStore.swift:109-112` |
+
+### Error Chain Breaks
+
+| # | Operation | Where Error is Swallowed | What User Sees Instead | Severity | File + Line |
+|---|---|---|---|---|---|
+| EC-1 | **Summarize meeting** | `SummarizeMeetingUseCase.summarize()` catches storage persistence failure (line 102) and logs it but does NOT re-throw or surface to UI. Summary is returned successfully to caller. | User sees summary in-session but it is **missing on app relaunch**. No error indicator, no retry prompt. User discovers data loss only when reopening the meeting. | **HIGH** | `Record-App/Sources/Business/UseCases/SummarizeMeetingUseCase.swift:98-108` |
+| EC-2 | **Select meeting (load detail)** | `BroadsheetAppStateLifecycle.selectMeeting()` catches all non-cancellation errors at line 18-19 and logs them, but does NOT set any error state on `detailVM` or show a toast/banner. | **Stale content from previous meeting remains visible** -- the user sees old transcript/summary/notes for a different meeting. No error banner, no blank state, no indication that load failed. | **HIGH** | `Record-Presentation/Sources/Presentation/ViewModels/BroadsheetAppStateLifecycle.swift:17-19` |
+| EC-3 | **Search recordings** | `SearchViewModel.searchError` is set on failure (line 54-60) but **never rendered in any View**. The property exists at the ViewModel level but no SwiftUI view reads or displays it. | User sees empty search results with no explanation. Cannot distinguish "no matches" from "search failed". | **HIGH** | `Record-Presentation/Sources/Presentation/ViewModels/SearchViewModel.swift:16` (property defined), no View renders it |
+| EC-4 | **Stop recording (error path)** | `MenuBarViewModel.stopRecordingTapped()` sets `errorMessage` on failure (line 190) but does **NOT clear errorMessage on success** (line 187-188 -- `handleRecordingCompleted` does not clear `errorMessage`). | A stale error banner from a **previous** failed start persists through a successful stop+transcribe cycle. User sees an error message that no longer applies. | **MEDIUM** | `Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModel.swift:179-194` |
+| EC-5 | **WAV write (system audio)** | `CoreAudioTapCaptureActor` creates `WAVWriter` at line 97 **without an `errorHandler`** parameter. WAVWriter defaults `errorHandler` to nil. When disk-full or write failure occurs, `WAVWriter.append()` increments an internal counter but the error is never surfaced. | User's recording completes but the audio file is **truncated or corrupt**. No warning during recording, no error at stop time. Playback fails silently or plays partial audio. | **HIGH** | `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActor.swift:97-101` (no errorHandler), `Record-Audio/Sources/AudioInfrastructure/WAVWriter.swift:70` (default nil) |
+| EC-6 | **Save notes** | `MeetingDetailViewModel.saveNotes()` sets `saveError` (line 136) but `saveError` is typed `any Error` and **never rendered in any View**. The `notesError` property has the same problem. | Notes save fails silently. User types notes, navigates away, returns -- notes are gone. No save indicator, no error banner. | **MEDIUM** | `Record-Presentation/Sources/Presentation/ViewModels/MeetingDetailViewModel.swift:30-31` (`notesError`, `saveError` never rendered) |
+| EC-7 | **Speaker identification errors** | `SpeakerError` does **not** conform to `UserFacingError`. Any thrown `SpeakerError` falls through to the generic `error.localizedDescription` path, producing a raw Swift error dump string in the UI. | User sees something like `"SpeakerError.insufficientAudio"` or a generic `localizedDescription` -- not a human-readable message. | **MEDIUM** | `Record-Foundation/Sources/Domain/Speaker/SpeakerError.swift:3` (no `UserFacingError` conformance) |
+| EC-8 | **Translation errors** | `TranslationError` does **not** conform to `UserFacingError`. Same problem as EC-7. | User sees raw error type name instead of helpful message for translation failures. | **MEDIUM** | `Record-Foundation/Sources/Domain/Protocols/TranslationEngine.swift:11` (no `UserFacingError` conformance) |
+| EC-9 | **License tier check** | `LicenseError` does **not** conform to `UserFacingError`. | User sees raw error for license tier violations. | **LOW** | `Record-Foundation/Sources/Domain/Licensing/LicenseError.swift:3` (no `UserFacingError` conformance) |
+| EC-10 | **NotesRepository / SummaryRepository** | Protocols have **silent default implementations** -- `saveNotes` is a no-op, `getNotes` returns `""`, `saveSummary` is a no-op, `getSummary` returns `nil`. Any conformer that forgets to implement these methods compiles successfully and **silently discards all data**. | User's notes and summaries are silently lost with zero error signal. Looks like the feature "works" but data never persists. | **HIGH** | `Record-Foundation/Sources/Domain/Storage/NotesRepository.swift:11-18`, `Record-Foundation/Sources/Domain/Storage/SummaryRepository.swift:12-24` |
+| EC-11 | **Pipeline diarization/summarization failure** | `PipelineCoordinator` converts errors to `String` via `.userFacingMessage` at lines 131, 159, 179, 199 and passes them through `onPipelineError` closure. **The original typed error is permanently lost** -- only the string message survives. No retry capability, no programmatic error handling downstream. | Error message reaches UI as a string, but the type information (was it a network error? disk full? model not loaded?) that would enable retry logic is gone. | **MEDIUM** | `Record-App/Sources/Business/UseCases/PipelineCoordinator.swift:131,159,179,199` |
+| EC-12 | **MCP consent flag** | `AppConfig.mcpConsentGranted` defaults to `false`. The `buildMCPProviders` method correctly checks this flag. The audit file (05) says this is "hardcoded false" but in reality it comes from `AppConfig` which is user-configurable. **Not a bug** -- the audit file finding IC-2 is inaccurate. The config is loaded from UserDefaults. | N/A -- this is correct behavior. | N/A | `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:142` |
+
+### Summary
+
+**Top 3 issues with specific file:line references:**
+
+1. **EC-5 + EC-1: Silent data loss on write failures (HIGHEST IMPACT).** `CoreAudioTapCaptureActor.swift:97` creates `WAVWriter` without an `errorHandler`, meaning disk-full scenarios produce truncated audio files with zero user notification. Combined with `SummarizeMeetingUseCase.swift:98-108` where summary persistence failure is caught-and-swallowed, users lose both audio quality and summary data without any indication. The WAV issue is the single most dangerous bug: a user records an important meeting, the disk fills mid-recording, and they discover only later that the audio is truncated/corrupt.
+
+2. **EC-2 + EC-3: Invisible failures in core UI operations.** `BroadsheetAppStateLifecycle.swift:17-19` swallows meeting load errors -- the user sees stale content from a previous meeting with no error indicator. `SearchViewModel.swift:16` defines `searchError` but no View renders it -- search failures are invisible. Together, these mean the two primary content-access operations (browse meetings, search meetings) can fail silently.
+
+3. **EC-10 + DF-1: Silent-default protocol implementations + unstable ID generation.** `NotesRepository.swift:11-18` and `SummaryRepository.swift:12-24` provide no-op default implementations that compile without warning when conformers forget to implement them. `DiarizedSegment` at `DiarizedTranscript.swift:8-10` uses a computed `id` that can collide when same-speaker segments start within the same second, causing SwiftUI rendering corruption. Both are type-system-level defects that produce silent data loss.</result>
+<usage><subagent_tokens>111799</subagent_tokens><tool_uses>72</tool_uses><duration_ms>1010823</duration_ms></usage>
+</task-notification>
+
+---
+
+send an abrnt to architecht a better git workflowmfor datum give 3 options opus researchnwgent feeds best prsctises and variatikns to architecht who provides the vest 3 options ge can
+
+---
+
+<task-notification>
+<task-id>a65d748d1baf298fb</task-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/55b21067-d7f8-4156-99cb-f0c27b7fec22/tasks/a65d748d1baf298fb.output</output-file>
+<status>completed</status>
+<summary>Agent "Opus research agent: git workflow best practices for datum" completed</summary>
+<result>You've hit your session limit · resets 3:10am (America/Edmonton)</result>
+<usage><subagent_tokens>0</subagent_tokens><tool_uses>5</tool_uses><duration_ms>8221813</duration_ms></usage>
+</task-notification>
+
+---
+
+whats up
+
+---
+
+csn you check their .output file?
+
+---
+
+yeah
+
+---
+
+yewh
+
+---
+
+/code-review
+
+---
+
+lets implement https://github.com/gitrdunhq/datum/issues/137 with 1 change ensure agents work in fheir iwn worktree
+
+---
+
+sorry i will get the datum repo to do tgat work not record. hkh continue wjth the review fixes top to bottom
+
+---
+
+/adversarial-reviewer
+
+---
+
+ok fix jt all
+
+---
+
+/gitnexus-bug-hunt
+
+---
+
+use npx gitnexus update it first
+
+---
+
+run cli command eedom review
+
+---
+
+you cant point eedom at the whole repo point him at the pr #
+
+---
+
+forget it merge
+
+---
+
+lets merge
+
+---
+
+/datum pick 15 bugs triage them group and them and yolo
+
+---
+
+yolo
+
+---
+
+PR bro
+
+---
+
+why do you use wfc, i thought we gfot rid of wfc referfence,s can you check for them
+
+---
+
+fix thise and merge

@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "c02932ad051d",
+  "strategy": "manual-commit",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".datum/lane-plan.json",
+    "TASKS.md",
+    "tasks.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c0/2932ad051d/0/metadata.json",
+      "transcript": "/c0/2932ad051d/0/full.jsonl",
+      "content_hash": "/c0/2932ad051d/0/content_hash.txt",
+      "prompt": "/c0/2932ad051d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18672,
+    "cache_creation_tokens": 2965772,
+    "cache_read_tokens": 83990379,
+    "output_tokens": 500023,
+    "api_call_count": 797
+  }
+}
