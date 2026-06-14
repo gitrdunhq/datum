@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "2f257302deb1",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167-act",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "skills/src/prompts/red.md",
+    "skills/src/shared/prompts.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2f/257302deb1/0/metadata.json",
+      "transcript": "/2f/257302deb1/0/full.jsonl",
+      "content_hash": "/2f/257302deb1/0/content_hash.txt",
+      "prompt": "/2f/257302deb1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2930,
+    "cache_creation_tokens": 1603044,
+    "cache_read_tokens": 218375513,
+    "output_tokens": 324217,
+    "api_call_count": 1110
+  }
+}
