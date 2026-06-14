@@ -304,3 +304,7 @@ some of these steps seem to be determistic cli calls you use an agent to run?
 ---
 
 why not just move the request tkvthe agent that needs it
+
+---
+
+yes
