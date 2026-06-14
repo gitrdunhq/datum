@@ -1,0 +1,809 @@
+is it using our new gh issues portion
+
+---
+
+ohhh we wireframed it, i wsnt kt built next
+
+---
+
+and csn we write a claude hook that blocks green frkm resdung or writing test foldees and files
+
+---
+
+set it to count for now and we will tweak ojr stuff
+
+---
+
+metrics needs input output thinking tokens and mode
+
+---
+
+we have a web page that runs 10001 with a dash already
+
+---
+
+nit model thinking mode ir efforr
+
+---
+
+what is service tier il
+
+---
+
+yes dashboard and send s tesesrch agent out to see how we csn utilize flex over night work
+
+---
+
+<task-notification>
+<task-id>a0cf3fa01558e4bab</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a0cf3fa01558e4bab.output</output-file>
+<status>completed</status>
+<summary>Agent "Research flex tier for overnight" completed</summary>
+<result>Now I have all the pieces. Here is the consolidated research report.
+
+---
+
+## Flex Tier / Batch Processing for Claude Code Workflows -- Research Findings
+
+### 1. What is "Flex" Processing?
+
+**"Flex" does not exist on the Anthropic API.** It is an AWS Bedrock-only concept. What Anthropic offers directly is three tiers:
+
+| Tier | Description |
+|------|-------------|
+| **Priority** | Production workloads needing guaranteed availability |
+| **Standard** | Default for all API requests (best-effort) |
+| **Batch** | Asynchronous processing via Message Batches API, **50% discount** |
+
+The **Message Batches API** (`POST /v1/messages/batches`) is the cost-reduction path. It accepts up to 100,000 requests per batch (or 256 MB), processes them asynchronously (most complete in under 1 hour, max 24-hour SLA), and results are available for 29 days.
+
+**If you use Claude via AWS Bedrock**, there IS a `service_tier: "flex"` option that provides ~50% discount with relaxed latency -- but that is a Bedrock feature, not Anthropic direct API.
+
+### 2. How to Opt In
+
+**Anthropic API (direct):**
+- The Messages API `service_tier` parameter only accepts `"auto"` (default) and `"standard_only"`. There is **no** `service_tier: "flex"` or `"batch"` value.
+- To get the 50% discount, you must use the **separate** Message Batches endpoint: `POST /v1/messages/batches`.
+
+**AWS Bedrock:**
+- Claude Code v2.1.122+ supports `ANTHROPIC_BEDROCK_SERVICE_TIER` environment variable with values: `default`, `flex`, `priority`.
+
+### 3. Claude Code Integration
+
+**Claude Code does NOT support service tier selection for the Anthropic API.** Confirmed absent:
+- No CLI flag for service tier
+- No `settings.json` key
+- No `ANTHROPIC_SERVICE_TIER` or `CLAUDE_SERVICE_TIER` environment variable
+- The `agent()` function accepts: `label`, `phase`, `model`, `schema` -- **no `service_tier` parameter**
+- No way to route Claude Code requests through the Batches API
+
+**The only exception:** `ANTHROPIC_BEDROCK_SERVICE_TIER` for Bedrock deployments.
+
+### 4. Scheduling Considerations
+
+**Batch API pricing is always 50% off** -- there is no time-of-day variation. The discount is structural, not temporal. Rate limits for batches are separate from the Messages API (HTTP request limits and queue depth limits apply independently).
+
+### 5. Batch API vs Flex Tier
+
+| Feature | Batch API (Anthropic) | Flex (Bedrock only) |
+|---------|----------------------|-------------------|
+| Access | `POST /v1/messages/batches` | `service_tier: "flex"` on Bedrock InvokeModel |
+| Discount | 50% | ~50% |
+| Latency | Async, up to 24h SLA | Synchronous but deprioritized |
+| Integration | Separate endpoint, poll for results | Drop-in parameter on existing calls |
+| Claude Code support | None | `ANTHROPIC_BEDROCK_SERVICE_TIER=flex` |
+
+These are **different mechanisms**. Batch is Anthropic's own async queue. Flex is Bedrock's deprioritized inference.
+
+### 6. Practical Architecture for Your Pipeline
+
+Since Claude Code's `agent()` function does not support batch/flex, here are the viable paths:
+
+**Option A: Bedrock + Flex (simplest integration)**
+Set `ANTHROPIC_BEDROCK_SERVICE_TIER=flex` before launching the pipeline. This requires:
+- AWS Bedrock access configured for Claude models
+- Claude Code v2.1.122+
+- All `agent()` calls automatically use flex tier -- no code changes needed
+- Synchronous execution preserved (your DAG scheduling still works)
+- Trade-off: Bedrock adds its own markup on top of model pricing
+
+**Option B: Direct Batch API (maximum savings, requires rearchitecture)**
+Replace `agent()` calls with direct Anthropic SDK batch submissions:
+```python
+# Pseudocode -- collect all independent agent prompts
+batch = client.messages.batches.create(requests=[
+    {"custom_id": "red:lane-1", "params": {...}},
+    {"custom_id": "reflect:lane-1", "params": {...}},
+    # ... all independent agents in one batch
+])
+# Poll until complete
+while batch.processing_status != "ended":
+    batch = client.messages.batches.retrieve(batch.id)
+    time.sleep(30)
+# Stream results
+for result in client.messages.batches.results(batch.id):
+    process(result)
+```
+This is a significant rearchitecture -- you lose the Claude Code agent context (tool use, file access, git operations) and need to handle all that yourself.
+
+**Option C: Proxy/middleware (hacky but possible)**
+Intercept Claude Code's outgoing API requests and add `service_tier` to them. This does NOT work for batch (different endpoint), but could work for Bedrock flex if you're routing through a proxy.
+
+**Option D: Schedule with `/schedule` (no tier change)**
+Use Claude Code's `/schedule` skill to run pipeline cron jobs overnight. This doesn't change the tier, but offloads execution to off-peak hours where standard-tier capacity is more available.
+
+**Recommendation: Option A (Bedrock + flex)** is the only path that preserves your existing `agent()` architecture while getting the ~50% discount. It requires Bedrock setup but zero code changes to datum-tdd-act.
+
+### 7. Cost Modeling
+
+Based on your pipeline's actual agent breakdown (from `datum-tdd-act-lane.js`):
+
+| Model | Agents | ~Tokens | Standard Cost | Batch/Flex Cost |
+|-------|--------|---------|--------------|----------------|
+| Haiku 4.5 | 12 | 120K | $0.31 | $0.16 |
+| Sonnet 4.6 | 5 | 200K | $1.68 | $0.84 |
+| Opus 4.8 | 1 (escalation) | 80K | $1.20 | $0.60 |
+| **Total** | **18** | **400K** | **$3.19** | **$1.60** |
+
+**Per-run savings: $1.60 (50%)**
+
+At 3 runs/day overnight: **$143/month saved, ~$1,724/year**.
+
+### Key Files Referenced
+
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act.js` -- main orchestrator
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-lane.js` -- lane execution with all `agent()` calls
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-setup.js` -- setup phase agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-merge.js` -- merge/cleanup agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-triage.js` -- triage agents
+- `/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-docs.js` -- docs sync agents
+
+### Bottom Line
+
+There is no way to get batch/flex pricing through Claude Code's `agent()` function on the Anthropic direct API today. Your two realistic options are:
+
+1. **Bedrock + `ANTHROPIC_BEDROCK_SERVICE_TIER=flex`** -- preserves your architecture, requires AWS Bedrock access, one env var change.
+2. **Rearchitect around the Batches API** -- maximum savings with direct Anthropic API, but loses Claude Code's agent capabilities (tool use, file I/O, git).
+
+For overnight pipeline runs where latency tolerance is high, Bedrock flex is the pragmatic choice. The Batches API is better suited for stateless inference (summarization, classification, evaluation) where you don't need the agent to interact with the filesystem.</result>
+<usage><subagent_tokens>37376</subagent_tokens><tool_uses>4</tool_uses><duration_ms>237534</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a969fc608ddb0463a</task-id>
+<tool-use-id>toolu_01JFFF3dvbbvSCSoVphTYp24</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a969fc608ddb0463a.output</output-file>
+<status>completed</status>
+<summary>Agent "Diagnose pipeline failure" completed</summary>
+<result>Now I have the complete picture. Here is the full diagnosis.
+
+---
+
+## Diagnosis: datum-tdd-act run `wf_289f431e-0c4` (issue #139, wave_builder validation)
+
+### Summary
+
+0/2 lanes completed. 18 agents spawned, 392,601 tokens consumed, 649 seconds elapsed.
+
+---
+
+### Lane-by-Lane Failure Report
+
+**task-001 (Cycle detection)** -- Failed at **RED VERIFY**
+
+- **Failure stage**: RED (specifically, the post-RED verification gate)
+- **Error message**: `green_blindness_violation: tests passed after RED`
+- **Actual error**: This is a **false positive**. Tests were actually failing (exit code 1). The root cause is a schema mismatch between the verify agent's output and what the lane script expects.
+
+**task-002 (Missing dependency)** -- Failed at **SKIPPED**
+
+- **Failure stage**: SKIPPED (dependency gate)
+- **Error message**: `skipped: dep(s) failed [task-001]`
+- **Root cause**: task-002 depends on task-001, which failed. Correct behavior by the DAG scheduler.
+
+---
+
+### Root Cause Analysis for task-001
+
+The failure chain has two bugs, one on top of the other:
+
+**Bug 1: Verify agent ignored its instructions (agent compliance failure)**
+
+The `verify-red:task-001` agent (haiku, `ae9d7bec9473d4c7e`) was prompted to run `datum verify-stage red --repo &lt;path&gt; --test-command &lt;cmd&gt;`. Instead, it ran the raw pytest command directly (`uv run pytest tests/test_wave_builder.py -x -q`). It then fabricated its own JSON result:
+
+```json
+{
+  "stage": "red",
+  "status": "FAILED",
+  "exit_code": 1,
+  "failure_reason": "ImportError: cannot import name 'validate_lane_plan'..."
+}
+```
+
+This JSON has **no `verified` field**. The `datum verify-stage red` command would have returned `{"verified": true, "stage": "red", "test_signal": {...}}` since the tests were genuinely failing.
+
+**Bug 2: Fragile verify result parsing (code defect in datum-tdd-act-lane.js)**
+
+In `verifyStage()` (line 255-262 of `datum-tdd-act-lane.js`), the agent text is parsed with `parseAgentJson(checkText, { verified: false })`. When the agent returns valid JSON without a `verified` field, `parseAgentJson` succeeds and returns the agent's object (which has no `verified` key). The lane then checks:
+
+```javascript
+if (!redVerify || !redVerify.verified) {
+    const err = redVerify &amp;&amp; redVerify.error || "green_blindness_violation: tests passed after RED";
+```
+
+- `redVerify.verified` is `undefined` (falsy) --&gt; enters the failure branch
+- `redVerify.error` is also `undefined` (agent used `failure_reason`, not `error`) --&gt; falls through to the hardcoded string
+- Result: the **misleading** error "green_blindness_violation: tests passed after RED" is logged even though tests actually failed correctly
+
+**Compounding factor: Stale tests from a previous run**
+
+The worktree had stale tests from a prior task that tested a non-existent `validate_lane_plan` function. These were already failing. The RED agent correctly identified this situation and *appended* new cycle-detection tests that also intentionally failed (specifically the "arrow notation" tests asserting `-&gt;` in error messages, which the current implementation does not include). The RED agent's own test run showed **11 failures, 12 passes** -- a correct RED state. The verification should have passed.
+
+---
+
+### Triage Phase
+
+The triage phase **did run** and filed 4 GitHub issues:
+
+| Issue | Title | Severity |
+|-------|-------|----------|
+| #149 | task-001 RED: Test assertion is not failing -- green_blindness violation | high |
+| #150 | task-002 SKIPPED: Dependency gate triggered due to task-001 failure | high |
+| #151 | Skeleton ACs do not match test contracts -- placeholder assertions bypass RED verification | critical |
+| #152 | RED verify gate does not distinguish between no-op assertions and real test failures | high |
+
+Issue #152 is the closest to the actual root cause but frames it as "no-op assertions vs real tests" rather than the actual schema mismatch problem. Issue #149's diagnosis is wrong -- it accepted the false "green_blindness_violation" at face value.
+
+---
+
+### Fixes Needed
+
+1. **`verifyStage()` in `skills/src/datum-tdd-act-lane.ts`**: The verify agent should use structured output (a schema), not freeform text parsing. Alternatively, check for `status === "FAILED"` or `exit_code !== 0` as alternative signals that RED verification passed (tests failing = success for RED). The fallback error string should not be "green_blindness_violation" when the real problem is "verify agent returned unexpected schema."
+
+2. **`verifyStage()` agent prompt**: The prompt says "Run: datum verify-stage ..." but haiku ran pytest directly instead. Either enforce the command more strictly in the prompt, or use a `Bash` tool call directly from the orchestrator rather than delegating to an agent that might improvise.
+
+3. **Stale test cleanup**: The lane setup should ensure the test file starts clean or at least that the skeleton phase produces a test file matching the *current* task's ACs, not a previous run's. The skeleton commit failed (worktree was clean because files were already committed), which means the stale tests from a prior run persisted into the RED phase.</result>
+<usage><subagent_tokens>76206</subagent_tokens><tool_uses>18</tool_uses><duration_ms>190541</duration_ms></usage>
+</task-notification>
+
+---
+
+triage phase shojld be sonnet extended thinking
+
+---
+
+rejnstall
+
+---
+
+retry the fsiled work
+
+---
+
+relaunch dashboard
+
+---
+
+<task-notification>
+<task-id>w96odvfbj</task-id>
+<tool-use-id>toolu_0189Ufoav6MiohN6p9n5231F</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w96odvfbj.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260613-223500","total":2,"completed":0,"failed":2,"failedLanes":["task-001","task-002"],"completedLanes":[]}</result>
+<usage><agent_count>16</agent_count><subagent_tokens>340597</subagent_tokens><tool_uses>63</tool_uses><duration_ms>403764</duration_ms></usage>
+</task-notification>
+
+---
+
+some of these steps seem to be determistic cli calls you use an agent to run?
+
+---
+
+why not just move the request tkvthe agent that needs it
+
+---
+
+yes
+
+---
+
+retrt
+
+---
+
+mo its running pick the next thing
+
+---
+
+mo its running pick the next thing, yiu need tocreinstall
+
+---
+
+/current-state
+
+---
+
+<task-notification>
+<task-id>a7568e0b7496be64e</task-id>
+<tool-use-id>toolu_016rgt16Gw48G7ieS7wUvWYX</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a7568e0b7496be64e.output</output-file>
+<status>completed</status>
+<summary>Agent "Research GH sub-issues API" completed</summary>
+<result>I now have everything needed. Here is the complete research report.
+
+---
+
+## GitHub Sub-Issues: Complete API Reference
+
+### 1. Sub-Issues API -- Confirmed Working
+
+Sub-issues are a **public preview feature** (launched January 2025). Both REST and GraphQL APIs are live and functional -- I verified against your `gitrdunhq/datum` repo.
+
+#### REST API
+
+All endpoints work with the standard API version (`2022-11-28`) -- no special preview header required for REST.
+
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List sub-issues | `GET` | `/repos/{owner}/{repo}/issues/{issue_number}/sub_issues` |
+| Get parent | `GET` | `/repos/{owner}/{repo}/issues/{issue_number}/parent` |
+| Add sub-issue | `POST` | `/repos/{owner}/{repo}/issues/{issue_number}/sub_issues` |
+| Remove sub-issue | `DELETE` | `/repos/{owner}/{repo}/issues/{issue_number}/sub_issue` |
+| Reprioritize | `PATCH` | `/repos/{owner}/{repo}/issues/{issue_number}/sub_issues/priority` |
+
+REST `POST` body uses the **numeric issue ID** (not issue number, not node_id):
+```json
+{ "sub_issue_id": 4657937828 }
+```
+
+Example `gh` CLI call to add a sub-issue:
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh api -X POST repos/gitrdunhq/datum/issues/100/sub_issues -f sub_issue_id=4657937828
+```
+
+#### GraphQL API
+
+Requires the header `GraphQL-Features: sub_issues` for queries. Three mutations confirmed in the schema:
+
+**`addSubIssue`** -- Input: `issueId` (required, node_id), `subIssueId` (optional, node_id), `subIssueUrl` (optional, string URL), `replaceParent` (optional, boolean). You can use **either** `subIssueId` or `subIssueUrl` -- the URL option is simpler since you don't need to look up node IDs.
+
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh api graphql -H "GraphQL-Features: sub_issues" -f query='
+  mutation {
+    addSubIssue(input: {
+      issueId: "I_kwDOSkfrNM8AAAABPARENTID"
+      subIssueId: "I_kwDOSkfrNM8AAAAABCHILDID"
+    }) {
+      issue { number title }
+      subIssue { number title }
+    }
+  }
+'
+```
+
+**`removeSubIssue`** -- Input: `issueId` (required), `subIssueId` (required). Both are node_ids.
+
+**`reprioritizeSubIssue`** -- Input: `issueId` (required), `subIssueId` (required), `afterId` or `beforeId` (one required).
+
+#### Query Fields on Issue Type
+
+```graphql
+{
+  repository(owner: "gitrdunhq", name: "datum") {
+    issue(number: 100) {
+      subIssues(first: 50) {
+        nodes { id number title state }
+        totalCount
+      }
+      subIssuesSummary {
+        total
+        completed
+        percentCompleted
+      }
+      parent { number title }
+    }
+  }
+}
+```
+
+**Limits:** 50 sub-issues per parent, 8 levels of nesting, cross-repo within same org.
+
+---
+
+### 2. `gh` CLI Support
+
+**No `--parent` flag exists.** `gh issue create` supports: `--title`, `--body`, `--body-file`, `--label`, `--milestone`, `--project`, `--assignee`, `--template`. No sub-issue support whatsoever.
+
+**Workaround:** Use `gh api` for the linking step. The workflow is:
+
+```bash
+# Step 1: Create parent issue, capture node_id
+PARENT_ID=$(unset GITHUB_TOKEN &amp;&amp; gh issue create --title "Epic: Feature X" --label "epic" --repo gitrdunhq/datum --json id --jq '.id' 2&gt;/dev/null)
+
+# Actually, gh issue create doesn't output JSON. Use this instead:
+PARENT_URL=$(unset GITHUB_TOKEN &amp;&amp; gh issue create --title "Epic: Feature X" --label "epic" --body "..." --repo gitrdunhq/datum 2&gt;&amp;1)
+PARENT_NUM=$(echo "$PARENT_URL" | grep -o '[0-9]*$')
+PARENT_ID=$(unset GITHUB_TOKEN &amp;&amp; gh issue view "$PARENT_NUM" --repo gitrdunhq/datum --json id --jq '.id')
+
+# Step 2: Create child issue
+CHILD_URL=$(unset GITHUB_TOKEN &amp;&amp; gh issue create --title "Task 1" --label "task" --body "..." --repo gitrdunhq/datum 2&gt;&amp;1)
+CHILD_NUM=$(echo "$CHILD_URL" | grep -o '[0-9]*$')
+CHILD_ID=$(unset GITHUB_TOKEN &amp;&amp; gh issue view "$CHILD_NUM" --repo gitrdunhq/datum --json id --jq '.id')
+
+# Step 3: Link child to parent via GraphQL
+unset GITHUB_TOKEN &amp;&amp; gh api graphql -H "GraphQL-Features: sub_issues" \
+  -f parentId="$PARENT_ID" \
+  -f childId="$CHILD_ID" \
+  -f query='
+    mutation($parentId: ID!, $childId: ID!) {
+      addSubIssue(input: { issueId: $parentId, subIssueId: $childId }) {
+        issue { number title }
+        subIssue { number title }
+      }
+    }
+  '
+```
+
+---
+
+### 3. Tasklist Syntax -- Retired
+
+The `` ```[tasklist] `` markdown syntax was **retired in 2024**. It no longer creates machine-readable relationships. Use the sub-issues API directly. The old syntax:
+```markdown
+```[tasklist]
+- [ ] #123
+- [ ] #456
+```
+```
+is now just rendered as regular markdown -- no relationship is created.
+
+---
+
+### 4. Issue Body as Structured Data
+
+There is no GitHub convention for this, but HTML comments are the standard workaround since they're invisible in rendered markdown but machine-parseable:
+
+```markdown
+## Epic: Feature X
+
+Human-readable description here.
+
+### Tasks
+- [ ] Task 1 (#201)
+- [ ] Task 2 (#202)
+
+&lt;!-- datum:metadata
+epic_id: feat-x
+files: [src/foo.py, tests/test_foo.py]
+depends_on: [201, 202]
+acceptance_criteria:
+  - foo() returns 42
+  - bar() handles null input
+--&gt;
+```
+
+This approach is solid because:
+- HTML comments are preserved in the raw body but invisible in rendered view
+- Parseable with a simple regex: `&lt;!-- datum:metadata\n(.*?)\n--&gt;` then YAML parse the contents
+- Survives GitHub's markdown rendering pipeline
+- Won't confuse humans reading the issue
+- Easy to update via `gh issue edit --body`
+
+---
+
+### 5. Labels and Milestones
+
+**Creating labels programmatically:**
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh label create "epic" --color "7057FF" --description "Parent epic issue" --repo gitrdunhq/datum
+unset GITHUB_TOKEN &amp;&amp; gh label create "task" --color "0E8A16" --description "Child task of an epic" --repo gitrdunhq/datum
+unset GITHUB_TOKEN &amp;&amp; gh label create "datum-epic" --color "5319E7" --description "Datum pipeline epic" --force --repo gitrdunhq/datum
+```
+
+The `--force` flag updates color/description if the label already exists (idempotent).
+
+**Creating issues with labels:**
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh issue create --title "Task 1" --label "task,enhancement" --milestone "Sprint 1" --repo gitrdunhq/datum --body "..."
+```
+
+Multiple labels: comma-separated or repeated `--label` flags.
+
+**Creating milestones** (no `gh` shortcut, use API):
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh api repos/gitrdunhq/datum/milestones -f title="Epic: Feature X" -f state="open" -f description="Feature X delivery"
+```
+
+---
+
+### 6. Listing Child Issues
+
+**REST:**
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh api repos/gitrdunhq/datum/issues/100/sub_issues
+```
+Returns a JSON array of issue objects. Supports `?per_page=50&amp;page=1` pagination.
+
+**GraphQL** (richer, includes summary stats):
+```bash
+unset GITHUB_TOKEN &amp;&amp; gh api graphql -H "GraphQL-Features: sub_issues" -f owner="gitrdunhq" -f repo="datum" -F number=100 -f query='
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        title
+        subIssues(first: 50) {
+          nodes {
+            number
+            title
+            state
+            labels(first: 5) { nodes { name } }
+            assignees(first: 3) { nodes { login } }
+          }
+          totalCount
+        }
+        subIssuesSummary {
+          total
+          completed
+          percentCompleted
+        }
+      }
+    }
+  }
+'
+```
+
+---
+
+### 7. Issue Templates
+
+No `.github/ISSUE_TEMPLATE/` directory exists in datum. You can create YAML-form issue templates that include the structured metadata block:
+
+**File: `.github/ISSUE_TEMPLATE/datum-task.yml`**
+```yaml
+name: Datum Task
+description: A task generated by the datum pipeline
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: "## Task"
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: How to verify completion
+    validations:
+      required: true
+  - type: input
+    id: files
+    attributes:
+      label: Files
+      description: Comma-separated file paths
+```
+
+However, for programmatic issue creation via `gh issue create`, templates are optional. The `--template` flag selects a template for interactive use but `--body` / `--body-file` bypasses templates entirely. For CLI automation, just pass the body directly.
+
+---
+
+### Recommended Architecture for Your CLI
+
+The full workflow for `datum` to create an epic with sub-issues:
+
+```
+1. Create labels (idempotent with --force)
+2. Create parent issue via gh issue create, capture URL
+3. Extract parent issue number from URL
+4. Get parent node_id via gh issue view --json id
+5. For each task:
+   a. Create child issue via gh issue create
+   b. Get child node_id
+   c. Link via addSubIssue GraphQL mutation
+6. Update parent body with metadata block listing all child issue numbers
+```
+
+**Key IDs you need:**
+- `issue_number` (e.g., 153) -- visible in URLs, used in REST paths
+- `numeric id` (e.g., 4657937828) -- internal ID, used in REST POST bodies for `sub_issue_id`
+- `node_id` (e.g., `I_kwDOSkfrNM8AAAABFaJ9pA`) -- GraphQL global ID, used in all GraphQL mutations
+
+Get all three from: `gh issue view 153 --json id,number --jq '{node_id: .id, number: .number}'` (the `id` field in `gh` JSON output is the node_id). For the numeric ID, use: `gh api repos/OWNER/REPO/issues/153 --jq '.id'`.</result>
+<usage><subagent_tokens>40256</subagent_tokens><tool_uses>23</tool_uses><duration_ms>234758</duration_ms></usage>
+</task-notification>
+
+---
+
+feinstall first
+
+---
+
+geah
+
+---
+
+yes please
+
+---
+
+<task-notification>
+<task-id>ac35bb0cc9f6fa843</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/ac35bb0cc9f6fa843.output</output-file>
+<status>completed</status>
+<summary>Agent "Run /dream analysis" completed</summary>
+<result>I now have enough data to write the definitive report. Here it is:
+
+---
+
+## Dream Report — datum (2026-06-13)
+
+---
+
+### 1. CRITICAL: `gate.score_context_quality` defined twice — first copy (66 lines) is unreachable dead code
+**Severity: critical | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/gate.py` defines `score_context_quality` at line 70 (pure rubric helper, 3 args) and again at line 414 (artifact delegator, 1 arg). Python last-definition-wins, so the line 70 body is never executed. Every call in `test_artifact_score.py` gets the line 414 version. The line 70 definition is 66 lines of dead code. Either delete it or rename it.
+
+---
+
+### 2. CRITICAL: Duplicate `@app.command("retrospect")` registered in cli.py
+**Severity: critical | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/cli.py` lines 60 and 1243 both register `def retrospect(...)` on the same Typer `app`. The line 60 version (calls `datum.observability.retrospect.run_retrospect`) is silently shadowed by line 1243. Running `datum retrospect` always invokes the newer version; the first definition is unreachable zombie code.
+
+---
+
+### 3. HIGH: Three independent `load_config()` implementations with diverging semantics
+**Severity: high | Effort: small**
+`gate.py:31`, `local_llm.py:1589`, and `state.py:150` all independently read `.datum/config.toml`. The `gate.py` and `state.py` versions handle the default fallback via `assets_dir()` correctly; the `local_llm.py` version makes 13 call-sites inside its own file, accumulating silent drift. A bug in config lookup requires three fixes. Should be a single `datum.config.load_config()` in `path_utils.py` or a new `datum/config.py`.
+
+---
+
+### 4. HIGH: `skills/src/shared/agents.ts` — dead TypeScript, not imported by the compiled pipeline
+**Severity: high | Effort: small**
+`agents.ts` exports `commitStage`, `resetWorktree`, `revertLastCommit`, and `verifyStage` — but none of these are imported by `datum-tdd-act-lane.ts`. Only `datum-tdd-act-docs.ts` imports `commitStage`. The compiled `datum-tdd-act-lane.js` does not contain any of these functions. `CURRENT_STATE.md` claims "Dedicated git agent (`commitStage`) with haiku→sonnet escalation" and "`verifyStage()` extracted" — accurate for the TS source, false for the compiled artifact the skill actually runs. Either wire the imports or document the split.
+
+---
+
+### 5. HIGH: `local_llm.py` is a 1990-line god module (6+ distinct responsibilities)
+**Severity: high | Effort: large**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/local_llm.py` owns: model loading, token counting, streaming generation, structured extraction with voting, multi-turn orchestration, tool execution primitives (`WRITE_TOOLS`, `_execute_tool`, `_truncate_tool_output`), metrics, config loading, and the entire oMLX HTTP backend. `agent_loop.py` directly imports the private `_execute_tool` and `_truncate_tool_output` from here, creating a hidden cross-module dependency. Natural split lines: `datum.model_backend` (oMLX + load), `datum.inference` (generate/structured/vote), `datum.tool_executor` (execute + write tools).
+
+---
+
+### 6. HIGH: `test_signal.py` and `test_ratchet.py` — 700 combined lines, zero test coverage
+**Severity: high | Effort: medium**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/test_signal.py` (12KB, ~340 lines) extracts TDD test signals for the entire skill pipeline. `/Volumes/Extra/repos/gitrdunhq/datum/datum/test_ratchet.py` (8KB, ~256 lines) is a gating mechanism. Neither has a corresponding test file. These are called by the TDD Act skill on every lane run — signal extraction bugs silently produce wrong GREEN/RED verdicts.
+
+---
+
+### 7. HIGH: `github_issues.py`, `telemetry.py`, `backfill.py` — completely unconnected modules
+**Severity: high | Effort: trivial**
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/github_issues.py` (7KB): defines `create_epic`, `create_task`, `update_issue_stage`. Zero imports from any other datum module, never referenced in cli.py.
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/telemetry.py` (1KB): `log_event` / `init_telemetry`. Zero callers anywhere in the codebase.
+- `/Volumes/Extra/repos/gitrdunhq/datum/datum/backfill.py` (1KB): DuckDB analytics on telemetry.jsonl. Zero callers — and its upstream (`telemetry.py`) is itself dead.
+
+All three are either proto-features that were never wired or features that were ripped out and left behind. Verify intent and either wire or delete.
+
+---
+
+### 8. MEDIUM: `agent_loop.py` imports private tool-executor symbols from `local_llm` — leaky abstraction
+**Severity: medium | Effort: medium**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/agent_loop.py:40-48` imports `_execute_tool`, `_truncate_tool_output`, `PATHLESS_WRITE_TOOLS`, and `WRITE_TOOLS` from `local_llm`. These execution primitives were designed for `multi_turn_phase`'s `mt_config` contract, not the `agent_loop` config dict. The mismatch is a latent bug surface and makes `local_llm` impossible to refactor without touching `agent_loop`.
+
+---
+
+### 9. MEDIUM: `commit_queue.py` and `worktree_manager.py` — pipeline-critical, zero tests
+**Severity: medium | Effort: medium**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/commit_queue.py` (9KB) manages commit ordering for parallel lanes. `/Volumes/Extra/repos/gitrdunhq/datum/datum/worktree_manager.py` (8KB) handles worktree lifecycle (setup, merge, cleanup). Both run on every TDD Act cycle in the critical path. Neither has a test file. A bad merge-order or worktree-stale bug produces silent data loss.
+
+---
+
+### 10. MEDIUM: `schemas.py` — 280-line typed schema layer, zero tests
+**Severity: medium | Effort: small**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/schemas.py` defines `AgentDecision` and other Pydantic/dataclass schemas used across `agent_loop`. No validation tests exist. Schema field changes are invisible until runtime.
+
+---
+
+### 11. MEDIUM: Duplicate `slugify` — `skeleton_creator.py:299` vs `datum/slug.py:7`
+**Severity: medium | Effort: trivial**
+`skeleton_creator.py` defines its own `slugify(text) -&gt; str` (strip non-alphanum, join 6 words with underscores). `datum/slug.py` has a full `slugify(text, max_len=60)` with Unicode normalization. They produce different outputs for the same input. `skeleton_creator` should import from `datum.slug` or the divergence should be documented.
+
+---
+
+### 12. MEDIUM: `package.json` has three contradictions with the actual build
+**Severity: medium | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/package.json`:
+- `"type": "commonjs"` — but esbuild outputs `--format=esm` and the compiled files use `export const meta`
+- `"main": "index.js"` — no such file exists
+- `"version": "1.0.0"` — pyproject.toml is at `2.0.0`
+- `"scripts": { "test": "echo 'Error: no test specified' &amp;&amp; exit 1" }` — placeholder, no build script registered
+
+---
+
+### 13. MEDIUM: Model tier names hardcoded across 6 TS/JS source files
+**Severity: medium | Effort: small**
+`"haiku"`, `"sonnet"`, `"opus"` appear as inline string literals scattered across `datum-tdd-act-lane.ts`, `shared/agents.ts`, `shared/prompts.ts`, and the compiled JS. The `SkepticLens` type in `types.ts` bakes the tier names into the type system (`'haiku' | 'sonnet'`). Changing a tier requires grep-and-replace across 6 files. A constants file (`shared/models.ts`) with exported tier constants would make this a single-point change.
+
+---
+
+### 14. MEDIUM: `docs-sync` commit stage filters the wrong file list
+**Severity: medium | Effort: small**
+`/Volumes/Extra/repos/gitrdunhq/datum/skills/datum-tdd-act-docs.js` (~line 141): after the docs-sync agent writes updated docs, the commit agent is handed `changedFiles.filter(f =&gt; f.endsWith('.md'))` where `changedFiles` comes from `lane.files` (implementation files). For a Python lane with no `.md` files, this filter produces an empty array, so the docs commit stages nothing. The commit should use the docs agent's actual written-file list, not the lane's implementation files.
+
+---
+
+### 15. LOW: `Record-Presentation/` directory is untracked, unreferenced, and unignored
+**Severity: low | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/Record-Presentation/` shows in `git status` as untracked. It is not referenced anywhere in the codebase, not gitignored, and appears to be a stray test run artifact. Either add to `.gitignore` or delete.
+
+---
+
+### 16. LOW: `skeleton_creator.py` exposes 6 public functions that are never externally imported
+**Severity: low | Effort: trivial**
+`build_impl_stubs`, `infer_test_path`, `infer_module`, `make_function_name`, `make_struct_name`, `build_skeleton` — all are internal pipeline steps, never imported by any other module (cli.py invokes the module as `python -m datum.skeleton_creator`). Should be underscore-prefixed to signal they are not API surface.
+
+---
+
+### 17. LOW: `ROADMAP.md` — "Closeout automation" listed as Planned but shipped as PR #56
+**Severity: low | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/ROADMAP.md` was last updated 2026-05-29 and lists Closeout automation as "Planned". It has been live on main since PR #56. The roadmap is two epics behind reality and will mislead new contributors.
+
+---
+
+### 18. LOW: `cli.py` is 1,544 lines with 25+ commands and no sub-package structure
+**Severity: low | Effort: large**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/cli.py` has grown to a 1,544-line monolith. It has no corresponding test file. The DPS-103 hard cap is 500 lines. Natural split: a `datum/commands/` package with one file per command group (`memory`, `tdd`, `local_llm`, `worktrees`, `core`).
+
+---
+
+### 19. LOW: `events.py` — defined but appears to have no callers
+**Severity: low | Effort: trivial**
+`/Volumes/Extra/repos/gitrdunhq/datum/datum/events.py` (1KB) has no `from datum.events` imports anywhere in the project outside of `.venv`. Likely the original event-bus stub that was superseded by the telemetry module (which is itself dead — see #7).
+
+---
+
+### 20. QUICK WIN: `tests/Unit/` untracked directories may contain new tests not yet staged
+**Severity: low | Effort: trivial**
+`git status` shows three untracked directories: `tests/Unit/bootstrap/`, `tests/Unit/lane-tools/`, `tests/Unit/templates/`. These are not mentioned in `TASKS.md` (which references `tests/test_*.py` paths). Either stage them or clarify if the `tests/Unit/` layout is the intended future structure (and update TASKS.md accordingly).
+
+---
+
+**Summary by category:**
+
+| # | Category | Severity | Effort |
+|---|----------|----------|--------|
+| 1 | Dead code (shadowed fn) | critical | trivial |
+| 2 | Dead code (zombie cmd) | critical | trivial |
+| 3 | Architecture (3x load_config) | high | small |
+| 4 | Dead code (agents.ts) + stale docs | high | small |
+| 5 | Architecture (god module) | high | large |
+| 6 | Missing tests (test_signal/ratchet) | high | medium |
+| 7 | Dead code (3 unconnected modules) | high | trivial |
+| 8 | Architecture (leaky import) | medium | medium |
+| 9 | Missing tests (commit_queue/worktree) | medium | medium |
+| 10 | Missing tests (schemas.py) | medium | small |
+| 11 | Inconsistency (duplicate slugify) | medium | trivial |
+| 12 | Config contradiction (package.json) | medium | trivial |
+| 13 | Inconsistency (hardcoded model tiers) | medium | small |
+| 14 | Bug (docs-sync wrong file filter) | medium | small |
+| 15 | Dead code (stray directory) | low | trivial |
+| 16 | API surface (public-but-private fns) | low | trivial |
+| 17 | Stale docs (ROADMAP.md) | low | trivial |
+| 18 | Architecture (CLI monolith) | low | large |
+| 19 | Dead code (events.py) | low | trivial |
+| 20 | Quick win (untracked Unit tests) | low | trivial |</result>
+<usage><subagent_tokens>47767</subagent_tokens><tool_uses>49</tool_uses><duration_ms>768589</duration_ms></usage>
+</task-notification>
+
+---
+
+fix sll now
