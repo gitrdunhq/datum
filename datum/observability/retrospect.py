@@ -1,6 +1,7 @@
 import json
 from collections import defaultdict
 from pathlib import Path
+
 from rich.console import Console
 from rich.table import Table
 

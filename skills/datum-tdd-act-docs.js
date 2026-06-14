@@ -35,14 +35,6 @@ var REFACTOR_CHECK_SCHEMA = {
   required: ["should_refactor"]
 };
 
-// skills/src/shared/utils.ts
-function renderPrompt(template, vars) {
-  return template.replace(
-    /\{\{(\w+)\}\}/g,
-    (_match, key) => vars[key] ?? `{{${key}}}`
-  );
-}
-
 // skills/src/shared/agents.ts
 async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
   const allowedList = allowedFiles.join(", ");
@@ -101,6 +93,14 @@ var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation
 // skills/src/prompts/docs-sync.md
 var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nTASK PACKET: {{docsPacket}}\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n';
 
+// skills/src/shared/utils.ts
+function renderPrompt(template, vars) {
+  return template.replace(
+    /\{\{(\w+)\}\}/g,
+    (_match, key) => vars[key] ?? `{{${key}}}`
+  );
+}
+
 // skills/src/shared/prompts.ts
 function docsCheckPrompt(vars) {
   return renderPrompt(docs_check_default, vars);
@@ -138,9 +138,12 @@ if (a.completedLanes.length === 0) {
       { label: "docs-sync", phase: "Docs", model: "sonnet", schema: WRITE_RESULT_SCHEMA }
     );
     if (docs?.success) {
-      const docFiles = changedFiles.filter((f) => f.endsWith(".md"));
-      const docsWritten = docs.files_written || docFiles;
-      await commitStage("docs", ".", `docs(${a.runId})`, docsWritten, "DOCS");
+      const docsWritten = docs.files_written || [];
+      if (docsWritten.length === 0) {
+        log("Docs: agent reported success but no files_written \u2014 skipping commit");
+      } else {
+        await commitStage("docs", ".", `docs(${a.runId})`, docsWritten, "DOCS");
+      }
       log(`Docs synced: ${docsWritten.join(", ")}`);
       synced = true;
       syncedFiles = docsWritten;

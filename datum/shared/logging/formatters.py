@@ -6,7 +6,7 @@ with secret sanitization and request ID tracking.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any, Dict
 
 from datum.shared.logging.sanitizer import sanitize_message
@@ -69,8 +69,8 @@ class JSONFormatter(logging.Formatter):
         Returns:
             JSON-formatted log string.
         """
-        log_data: Dict[str, Any] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+        log_data: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": sanitize_message(record.getMessage()),

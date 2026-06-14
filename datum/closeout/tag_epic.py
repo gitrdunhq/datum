@@ -4,7 +4,7 @@
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 
@@ -26,7 +26,7 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    date_str = datetime.now(UTC).strftime("%Y%m%d")
     tag_name = f"closeout-epic-{args.epic_number}-{date_str}"
 
     # Check if tag already exists

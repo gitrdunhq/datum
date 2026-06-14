@@ -8,7 +8,7 @@ from .extractor import (
     RuleFamilyCandidate,
     RuleFamilyExtractor,
 )
-from .miner import EvidenceFile, EvidenceMiner, EvidenceManifest
+from .miner import EvidenceFile, EvidenceManifest, EvidenceMiner
 from .orchestrator import CodingSteeringOrchestrator, SteeringPacket, SteeringRunConfig
 from .validator import RuleBlock, SteeringDocValidator, ValidationIssue
 

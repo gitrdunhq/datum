@@ -15,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+
 def generate_remediation_package(run_id: str, findings_path: str) -> None:
     p = Path(findings_path)
     if not p.exists():

@@ -3,6 +3,7 @@
 import ast
 from collections import OrderedDict
 
+
 def structural_fingerprint(content: str, filename: str = "") -> str:
     """Fingerprint the shape of a source file."""
     ext = ""

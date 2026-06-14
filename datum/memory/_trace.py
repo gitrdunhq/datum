@@ -20,7 +20,8 @@ import functools
 import hashlib
 import os
 import weakref
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from datum.shared.logging import get_logger
 

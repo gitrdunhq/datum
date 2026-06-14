@@ -298,9 +298,9 @@ def build_impl_stubs(
 
 def slugify(text: str) -> str:
     """Convert AC text to a valid identifier fragment."""
-    text = re.sub(r"[^a-zA-Z0-9 ]", "", text)
-    words = text.lower().split()[:6]
-    return "_".join(words)
+    from datum.slug import slugify as _slugify
+
+    return _slugify(text, max_len=60)
 
 
 def infer_test_path(task_files: list[str], language: str, ac_id: str) -> str:

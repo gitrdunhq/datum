@@ -8,10 +8,10 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Optional
 
-_request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+_request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
-def get_request_id() -> Optional[str]:
+def get_request_id() -> str | None:
     """Get the current request ID from context.
 
     Returns:

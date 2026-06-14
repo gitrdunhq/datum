@@ -52,7 +52,7 @@ def load_json(path: Path, default: Any = _UNSET) -> Any:
         config = load_json(Path('config.json'), default=None)  # Returns None if missing
     """
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError as e:
         if default is not _UNSET:
@@ -65,7 +65,7 @@ def load_json(path: Path, default: Any = _UNSET) -> Any:
 
 
 def save_json(
-    path: Path, data: Dict[str, Any], indent: int = 2, ensure_parent: bool = True
+    path: Path, data: dict[str, Any], indent: int = 2, ensure_parent: bool = True
 ) -> None:
     """
     Save JSON file safely with proper formatting.
@@ -98,10 +98,10 @@ def save_json(
 
 def update_json(
     path: Path,
-    updates: Dict[str, Any],
+    updates: dict[str, Any],
     create_if_missing: bool = True,
     timeout: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update JSON file with new values (merge operation).
 
@@ -147,7 +147,7 @@ def update_json(
         raise FileIOError(f"Error updating {path}: {e}") from e
 
 
-def load_text(path: Path, default: Optional[str] = None) -> str:
+def load_text(path: Path, default: str | None = None) -> str:
     """
     Load text file safely.
 
@@ -166,7 +166,7 @@ def load_text(path: Path, default: Optional[str] = None) -> str:
         content = load_text(Path('notes.txt'), default='')
     """
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError as e:
         if default is not None:

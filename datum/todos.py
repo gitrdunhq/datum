@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+
 def write_todos(items, path):
     checked = []
     for item in items:

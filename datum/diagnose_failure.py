@@ -216,7 +216,7 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
 
     import datetime
 
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+    timestamp = datetime.datetime.now(datetime.UTC).strftime(
         "%Y-%m-%d %H:%M UTC"
     )
     errors_path = Path(".datum/ERRORS.md")

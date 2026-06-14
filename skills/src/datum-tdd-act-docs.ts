@@ -43,9 +43,12 @@ if (a.completedLanes.length === 0) {
     ) as WriteResult | null
 
     if (docs?.success) {
-      const docFiles = changedFiles.filter(f => f.endsWith('.md'))
-      const docsWritten = docs.files_written || docFiles
-      await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS')
+      const docsWritten = docs.files_written || []
+      if (docsWritten.length === 0) {
+        log('Docs: agent reported success but no files_written — skipping commit')
+      } else {
+        await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS')
+      }
       log(`Docs synced: ${docsWritten.join(', ')}`)
       synced = true
       syncedFiles = docsWritten

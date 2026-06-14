@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+
 def extract_skeleton(content: str) -> str:
     """
     Indent-based Python skeleton extractor.
@@ -105,6 +106,7 @@ def extract_skeleton_from_file(path: Path) -> str:
         return f"# Error extracting skeleton: {e}"
 
 import subprocess
+
 
 def get_git_frequency(path: str, repo_dir: str = ".") -> int:
     try:

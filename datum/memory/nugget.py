@@ -14,7 +14,7 @@ import os
 import re
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -68,7 +68,7 @@ def sequence_match_ratio(a: str, b: str) -> float:
 
 def _now_iso() -> str:
     """Current UTC time as ISO-8601 string."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _validate_name(name: str) -> None:
@@ -101,7 +101,7 @@ class Fact:
         return asdict(self)
 
     @staticmethod
-    def from_dict(d: dict[str, Any]) -> "Fact":
+    def from_dict(d: dict[str, Any]) -> Fact:
         raw_key = str(d["key"])
         raw_value = str(d["value"])
         key = raw_key[:_MAX_FACT_KEY_LEN]
@@ -325,7 +325,7 @@ class Nugget:
             self._pending_saves = 0
 
     @classmethod
-    def load(cls, path: str, auto_save: bool = True, save_dir: str | None = None) -> "Nugget":
+    def load(cls, path: str, auto_save: bool = True, save_dir: str | None = None) -> Nugget:
         """Load a Nugget from a JSON file. Validates parameters.
 
         Args:
@@ -395,7 +395,7 @@ class Nugget:
         Returns list of expired keys.
         Facts with empty or unparseable timestamps are skipped (not expired).
         """
-        cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
+        cutoff = datetime.now(UTC).timestamp() - days * 86400
         expired: list[str] = []
 
         for key, fact in list(self._facts.items()):

@@ -10,7 +10,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 RUNS_DIR = Path(".datum/runs")
@@ -135,7 +135,7 @@ def main() -> None:
     pr_url = pr_result.stdout.strip() if pr_result.returncode == 0 else ""
 
     # Step 6: Generate new RUN_ID
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     new_run_id = f"epic-{n}-rollback-{now.strftime('%Y%m%d-%H%M%S')}"
 
     # Step 7: Write state for the rollback run

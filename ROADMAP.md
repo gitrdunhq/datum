@@ -1,31 +1,30 @@
 # Roadmap
 
-**Last updated:** 2026-05-29
+**Last updated:** 2026-06-13
 
 ---
 
+## In Progress
+
+- GitHub sub-issues: `datum plan` creates real GH issues with parent/child relationships, metadata in HTML comments
+- Pipeline hardening: stale test cleanup, idempotent worktree setup, verify schema enforcement
+
 ## Planned
 
-- Closeout automation: implement collector scripts + collate + synthesis pipeline (`08-closeout.md`)
+- Bedrock flex tier for overnight pipeline runs (~50% cost reduction)
+- Headless orchestrator for datum-local variant
+- 3-round adversarial review pipeline (#134)
 
 ## Completed
 
+- TypeScript workflow pipeline + esbuild transpilation — 2026-06-13
+- Consolidated TDD agents (14→7 per lane) — 2026-06-13
+- Phase split (6 workflow files via workflow() nesting) — 2026-06-13
+- Dedicated git agent (single writer pattern) — 2026-06-13
+- DAG scheduler + parallel verify/reflect — 2026-06-13
+- TDD Act pipeline (datum-tdd-act.js) — 2026-06-08 — 2026-06-13
+- Closeout automation — 2026-06-11 — PR #56
 - Epic 25 — chore: remove turret from datum — 2026-05-29
-- Epic 18 — Multi-turn local LLM + ACI + lane tools (direct-to-main, Claude×Gemini pair) — 2026-05-28
+- Epic 18 — Multi-turn local LLM + ACI + lane tools — 2026-05-28
 - Epic 17 — datum-tui beta (factory floor dashboard) — 2026-05-28 — PR #41
-- Epic 16 — `datum init` seeds hooks/config/lane-tools — 2026-05-28 — PR #40
-- Epic 15 — Enforce local LLM via subagent only — 2026-05-28 — PR #39
-- Epic 14 — Grammar-constrained generation (outlines + pydantic) — 2026-05-28 — PR #38
-- Epic 13 — `datum --version` flag — 2026-05-28 — PR #37
-- Epic 12 — Fix local-llm chat import + SSOT max_tokens — 2026-05-28 — PR #36
-- Epic 11 — Local LLM beta (MLX Gemma inference) — 2026-05-28 — PR #35
-- Epic 10 — Semantic memory extraction (MLX + Jina v5) — 2026-05-28 — PR #34
-- Epic 9 — `datum dream` (memory consolidation) — 2026-05-28 — PR #33
-- Epic 8 — Documentation cleanup (datum CLI) — 2026-05-28 — PR #32
-- Epic 7 — Rock-solid installer — 2026-05-27 — PR #31
-- Epic 6 — Mermaid diagram skill ingested — 2026-05-27 — PR #30
-- Epic 5 — Self-healing (`datum bugfile`) — 2026-05-27 — PR #29
-- Epic 4 — Express pipeline reference doc — 2026-05-27 — PR #28
-- Epic 3 — Lint cleanup — 2026-05-27 — PR #27
-- Epic 2 — Post-epic-1 hardening — 2026-05-27 — PR #26
-- Epic 1 — AIDLC-inspired pipeline enhancements — 2026-05-27 — PR #25
+- Epics 1–16 — Core pipeline, installer, local LLM, memory, self-healing — PRs #25-#40

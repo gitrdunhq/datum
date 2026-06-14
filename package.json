@@ -1,27 +1,17 @@
 {
   "name": "datum",
-  "version": "1.0.0",
-  "description": "DATUM automates the full software delivery cycle — from ticket to merged PR to closeout. It runs inside AI coding tools (Claude Code, Codex, Gemini CLI, Kiro, opencode) as a skill that orchestrates TDD pipelines, manages state deterministically, and enforces quality gates.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
-  },
+  "version": "2.0.0",
+  "private": true,
+  "description": "DATUM TDD pipeline — TypeScript workflow scripts transpiled via esbuild",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "bash scripts/build-workflows.sh",
+    "check": "bash scripts/build-workflows.sh --check"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gitrdunhq/datum.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/gitrdunhq/datum/issues"
-  },
-  "homepage": "https://github.com/gitrdunhq/datum#readme",
   "devDependencies": {
     "esbuild": "^0.28.1",
     "typescript": "^6.0.3"

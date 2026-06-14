@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
 class TopologicalOrderItem(RootModel[constr(pattern=r'^task-\d+$')]):

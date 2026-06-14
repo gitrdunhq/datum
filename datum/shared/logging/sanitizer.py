@@ -23,7 +23,7 @@ CONTROL_CHARS = {
 }
 
 
-def sanitize_message(message: Optional[str]) -> str:
+def sanitize_message(message: str | None) -> str:
     """Sanitize a log message by redacting secrets and escaping control characters.
 
     Args:

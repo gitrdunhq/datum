@@ -44,3 +44,5 @@ scripts/transcript-demo.html
 !.datum/config.toml
 !.datum/profiles/
 HEY_*.md
+Record-Presentation/
+tests/Unit/

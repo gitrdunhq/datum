@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 STATE_FILE = Path(".datum/state.json")
@@ -32,7 +32,7 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     tmp = STATE_FILE.with_suffix(".tmp")
-    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state["updated_at"] = datetime.now(UTC).isoformat()
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(STATE_FILE)
 

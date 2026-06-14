@@ -57,16 +57,6 @@ def floor():
 
 
 @app.command()
-def retrospect(
-    n: int = typer.Option(5, "--num", "-n", help="Number of transcripts to analyze"),
-):
-    """Run programmatic loop over recent transcripts to group failures."""
-    from datum.observability.retrospect import run_retrospect
-
-    run_retrospect(n)
-
-
-@app.command()
 def doctor(
     phase: str = typer.Option("act", help="The current DATUM phase"),
     role: str = typer.Option("general", help="The agent's role"),

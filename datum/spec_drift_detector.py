@@ -15,7 +15,7 @@ import hashlib
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 SPEC_FILE = Path("SPEC.md")
@@ -36,7 +36,7 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state["updated_at"] = datetime.now(UTC).isoformat()
     tmp = STATE_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(STATE_FILE)
@@ -93,7 +93,7 @@ def write_drift_event(
 ) -> None:
     state = load_state()
     event = {
-        "detected_at": datetime.now(timezone.utc).isoformat(),
+        "detected_at": datetime.now(UTC).isoformat(),
         "old_hash": old_hash,
         "new_hash": new_hash,
         "impact": impact,
@@ -133,7 +133,7 @@ def check_once(run_id: str) -> bool:
     if not stored_hash:
         # First check — record the hash
         state["spec_hash"] = current_hash
-        state["spec_hash_at"] = datetime.now(timezone.utc).isoformat()
+        state["spec_hash_at"] = datetime.now(UTC).isoformat()
         save_state(state)
         return False
 

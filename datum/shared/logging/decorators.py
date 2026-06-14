@@ -10,7 +10,8 @@ import asyncio
 import functools
 import logging
 import time
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from datum.shared.logging import get_logger
 

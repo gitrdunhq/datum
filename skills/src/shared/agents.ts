@@ -1,6 +1,5 @@
-import { CommitResult, PipelineConfig } from './types'
-import { COMMIT_RESULT_SCHEMA, VERIFY_STAGE_SCHEMA } from './schemas'
-import { parseAgentJson } from './utils'
+import { CommitResult } from './types'
+import { COMMIT_RESULT_SCHEMA } from './schemas'
 
 // ── Git agents (single-writer pattern) ──────────────────────────────────────
 
@@ -64,76 +63,3 @@ export async function commitStage(
   return result
 }
 
-// ── Git reset agent ─────────────────────────────────────────────────────────
-
-export async function resetWorktree(
-  taskId: string,
-  wt: string,
-  stage: string,
-): Promise<void> {
-  await agent(
-    `You are a GIT RESET agent. Reset the worktree to the last commit.\n` +
-      `Run: git -C "${wt}" checkout -- . && git -C "${wt}" clean -fd --exclude=.datum/\n` +
-      `Do NOT edit, create, or delete source files — only git operations.`,
-    { label: `reset-${stage.toLowerCase()}:${taskId}`, phase: 'Act', model: 'haiku' },
-  )
-  log(`[${taskId}] GIT RESET ${stage}: worktree cleaned`)
-}
-
-// ── Git revert agent ────────────────────────────────────────────────────────
-
-export async function revertLastCommit(
-  taskId: string,
-  wt: string,
-  stage: string,
-): Promise<void> {
-  await agent(
-    `You are a GIT REVERT agent. Revert the most recent commit.\n` +
-      `Run: git -C "${wt}" revert --no-edit HEAD\n` +
-      `Do NOT edit, create, or delete source files — only git operations.`,
-    { label: `revert-${stage.toLowerCase()}:${taskId}`, phase: 'Act', model: 'haiku' },
-  )
-  log(`[${taskId}] GIT REVERT ${stage}: last commit reverted`)
-}
-
-// ── Verification agent (read-only, deterministic) ───────────────────────────
-
-export async function verifyStage(
-  taskId: string,
-  wt: string,
-  stage: string,
-  testCommand: string,
-): Promise<any> {
-  const verifyCmd = stage === 'red'
-    ? `cd "${wt}" && ${testCommand} 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "TESTS_FAILED"; fi; exit 0`
-    : `cd "${wt}" && ${testCommand} 2>&1; exit 0`
-
-  const expectedOutcome = stage === 'red'
-    ? 'For RED verification: tests MUST FAIL (exit code != 0). If they fail, set verified=true. If they pass, set verified=false.'
-    : 'For GREEN verification: tests MUST PASS (exit code 0). If they pass, set verified=true. If they fail, set verified=false.'
-
-  return await agent(
-    `Verification agent. Run the test command and report whether the stage passed.\n\n` +
-    `Run this command: ${verifyCmd}\n\n` +
-    `${expectedOutcome}\n\n` +
-    `Set error to the failure reason if verified=false.\n` +
-    `Set test_signal with exit_code, errors (list of error lines), and assertion_messages.`,
-    { label: `verify-${stage}:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_STAGE_SCHEMA },
-  )
-}
-
-// ── Skeleton runner ─────────────────────────────────────────────────────────
-
-export async function runSkeleton(
-  taskId: string,
-  wt: string,
-  cfg: PipelineConfig,
-): Promise<any> {
-  const text = await agent(
-    `Run: datum skeleton --task-id ${taskId} --language ${cfg.language} ` +
-      `--tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json 2>&1\n` +
-      `Return ONLY the JSON output, nothing else.`,
-    { label: `skeleton:${taskId}`, phase: 'Act', model: 'haiku' },
-  )
-  return parseAgentJson(text, {})
-}

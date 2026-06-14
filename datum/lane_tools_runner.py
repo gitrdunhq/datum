@@ -50,7 +50,7 @@ def set_resource_limits(timeout: int) -> None:
         resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
         # 1000 file descriptors
         resource.setrlimit(resource.RLIMIT_NOFILE, (1000, 1000))
-    except (ValueError, resource.error):
+    except (OSError, ValueError):
         pass  # Some limits may not be settable in all environments
 
 
