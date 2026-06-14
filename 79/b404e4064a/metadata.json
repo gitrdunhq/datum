@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "79b404e4064a",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/79/b404e4064a/0/metadata.json",
+      "transcript": "/79/b404e4064a/0/full.jsonl",
+      "content_hash": "/79/b404e4064a/0/content_hash.txt",
+      "prompt": "/79/b404e4064a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2632,
+    "cache_creation_tokens": 1341293,
+    "cache_read_tokens": 166656056,
+    "output_tokens": 270866,
+    "api_call_count": 850
+  }
+}
