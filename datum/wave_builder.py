@@ -126,6 +126,38 @@ def _find_cycle_path(
     return cycle_nodes + [cycle_nodes[0]]
 
 
+def validate_lane_plan(plan: dict) -> None:
+    """Validate a lane plan dict for structural correctness.
+
+    Parameters
+    ----------
+    plan:
+        Dict with 'lanes' (list of lane dicts) and 'topological_order' (list of IDs).
+
+    Raises
+    ------
+    ValueError
+        If any lane is missing 'id' or 'files', or if topological_order references
+        an ID not present in lanes.
+    """
+    lanes = plan.get("lanes", [])
+    topological_order = plan.get("topological_order", [])
+
+    lane_ids: set[str] = set()
+    for lane in lanes:
+        if "id" not in lane:
+            raise ValueError(f"Lane is missing required key 'id': {lane!r}")
+        if "files" not in lane:
+            raise ValueError(f"Lane '{lane['id']}' is missing required key 'files'")
+        lane_ids.add(lane["id"])
+
+    for topo_id in topological_order:
+        if topo_id not in lane_ids:
+            raise ValueError(
+                f"topological_order references '{topo_id}', which is not in lanes"
+            )
+
+
 def build_waves(
     lanes: dict[str, dict],
     depends_on_key: str = "depends_on",

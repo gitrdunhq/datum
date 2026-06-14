@@ -181,8 +181,6 @@ class TestTask001CyclicDependencyErrorImportable:
     def test_ac4_cyclicdependencyerror_exposes_cycle_nodes_attribute(self):
         """CyclicDependencyError instance must expose a .cycle_nodes attribute
         listing the nodes participating in the cycle.
-
-        This attribute does not yet exist on CyclicDependencyError — RED failure expected.
         """
         lanes = {"a": {"depends_on": ["b"]}, "b": {"depends_on": ["a"]}}
         with pytest.raises(CyclicDependencyError) as exc_info:
@@ -195,3 +193,80 @@ class TestTask001CyclicDependencyErrorImportable:
             "a",
             "b",
         }, f"Expected cycle_nodes={{'a', 'b'}}, got: {err.cycle_nodes!r}"
+
+
+class TestTask002MissingDependency:
+    """AC3: MissingDependencyError is importable from datum.wave_builder."""
+
+    def test_ac3_missing_dependency_error_is_importable(self):
+        """MissingDependencyError must be importable from datum.wave_builder."""
+        from datum.wave_builder import MissingDependencyError
+
+        # Must be a class and must be a subclass of Exception
+        assert isinstance(MissingDependencyError, type)
+        assert issubclass(MissingDependencyError, Exception)
+
+
+class TestTask002MissingDependencyAC1:
+    """AC1: build_waves raises MissingDependencyError with the missing id in the message."""
+
+    def test_ac1_unknown_dependency_raises_missing_dependency_error(self):
+        """build_waves({'a': {'depends_on': ['nonexistent']}}) must raise MissingDependencyError."""
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        with pytest.raises(MissingDependencyError):
+            build_waves({"a": {"depends_on": ["nonexistent"]}})
+
+    def test_ac1_error_message_contains_missing_id(self):
+        """The MissingDependencyError message must contain the missing dependency id 'nonexistent'."""
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        with pytest.raises(MissingDependencyError) as exc_info:
+            build_waves({"a": {"depends_on": ["nonexistent"]}})
+
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_ac1_not_a_generic_value_error(self):
+        """MissingDependencyError must NOT be a plain ValueError — must be the specific type."""
+        from datum.wave_builder import MissingDependencyError, build_waves
+
+        try:
+            build_waves({"a": {"depends_on": ["ghost"]}})
+            pytest.fail("Expected MissingDependencyError was not raised")
+        except MissingDependencyError as exc:
+            # Confirm the caught exception is the exact type, not a generic ValueError
+            assert type(exc).__name__ == "MissingDependencyError"
+            assert "ghost" in str(exc)
+        except Exception as exc:
+            pytest.fail(
+                f"Expected MissingDependencyError but got {type(exc).__name__}: {exc}"
+            )
+
+
+class TestTask002ValidDependency:
+    """AC2: build_waves does NOT raise when all dependencies exist (regression check)."""
+
+    def test_ac2_valid_dependency_does_not_raise(self):
+        """build_waves({'a': {'depends_on': ['b']}, 'b': {}}) must NOT raise any exception."""
+        from datum.wave_builder import build_waves
+
+        # Should complete without raising — 'b' exists in lanes
+        result = build_waves({"a": {"depends_on": ["b"]}, "b": {}})
+        assert result is not None
+
+    def test_ac2_valid_dependency_produces_correct_wave_order(self):
+        """With a -> b dependency, 'b' must appear in an earlier wave than 'a'."""
+        from datum.wave_builder import build_waves
+
+        result = build_waves({"a": {"depends_on": ["b"]}, "b": {}})
+
+        waves = list(result)
+        # 'b' has no dependencies → must be in wave 0
+        assert "b" in waves[0], f"Expected 'b' in wave 0, got waves={waves}"
+        # 'a' depends on 'b' → must be in a later wave
+        flat = [task for wave in waves for task in wave]
+        b_idx = flat.index("b")
+        a_idx = flat.index("a")
+        assert (
+            b_idx < a_idx
+        ), f"Expected 'b' before 'a', got b_idx={b_idx}, a_idx={a_idx}"
