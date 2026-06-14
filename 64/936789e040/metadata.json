@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "64936789e040",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".worktrees/w1-allowlist",
+    ".worktrees/w1-budget",
+    ".worktrees/w1-compaction",
+    ".worktrees/w1-memory-repair",
+    ".worktrees/w1-scoring",
+    ".worktrees/w1-typed-events",
+    ".worktrees/w2-abort-dirty",
+    ".worktrees/w2-corpus-sql",
+    ".worktrees/w2-datum-gc",
+    ".worktrees/w2-failure-layer",
+    ".worktrees/w2-progress",
+    ".worktrees/w2-risk-classes",
+    ".worktrees/w3-retrieve",
+    ".worktrees/w3-retrospect",
+    ".worktrees/w3-skeletons",
+    ".worktrees/w3-structured-tools",
+    ".worktrees/w3-vector-store"
+  ],
+  "sessions": [
+    {
+      "metadata": "/64/936789e040/0/metadata.json",
+      "transcript": "/64/936789e040/0/full.jsonl",
+      "content_hash": "/64/936789e040/0/content_hash.txt",
+      "prompt": "/64/936789e040/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 29,
+    "cache_creation_tokens": 40049,
+    "cache_read_tokens": 1293632,
+    "output_tokens": 5668,
+    "api_call_count": 25
+  }
+}
