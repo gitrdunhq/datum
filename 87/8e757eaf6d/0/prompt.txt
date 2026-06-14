@@ -1,0 +1,105 @@
+whats next
+
+---
+
+yes
+
+---
+
+144,143,132
+
+---
+
+what are thise 3 for
+
+---
+
+reinstall then run the workflow
+
+---
+
+so since our workflow oattern changes theres a bunch if steps that are no linger used and they still show
+
+---
+
+did the new fh issue as source of truth land
+
+---
+
+lets do it now you can head off epic 18 and in thag work epics need desrvdiptve names same with the task desceiptions
+
+---
+
+<task-notification>
+<task-id>w4y1jfei0</task-id>
+<tool-use-id>toolu_01PLMMaW7Bb1xYxhBCQjcohd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w4y1jfei0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-093229","total":2,"completed":1,"failed":1,"failedLanes":["task-002"],"completedLanes":["task-001"]}</result>
+<usage><agent_count>30</agent_count><subagent_tokens>964232</subagent_tokens><tool_uses>396</tool_uses><duration_ms>1826146</duration_ms></usage>
+</task-notification>
+
+---
+
+we have haiku writing tasks but wbo decomposes the mega ask into yasks
+
+---
+
+ok but look at the datum skill flow we had before our workflow thats what datum is
+
+---
+
+give me the ascii workflow of how you envision the 2 things joined
+
+---
+
+ok lets work on 1 step a time. TICKET.md first. lets come up with the requirements to build one, we already have it but lets review
+
+---
+
+yeah lets nail it down and the structure. look up old Tickets and see how they look
+
+---
+
+<task-notification>
+<task-id>w32f5rqna</task-id>
+<tool-use-id>toolu_017XQc1qoYt9cfod5hafNEUL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w32f5rqna.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-095621","total":3,"completed":2,"failed":1,"failedLanes":["link-parent-child-sub-issues"],"completedLanes":["create-gh-issues-from-lane-plan","embed-metadata-in-issue-body"]}</result>
+<usage><agent_count>37</agent_count><subagent_tokens>961501</subagent_tokens><tool_uses>353</tool_uses><duration_ms>1634182</duration_ms></usage>
+</task-notification>
+
+---
+
+lets pause that gh issue work once we fix this pre-act work it will be better positioned
+
+---
+
+that looks good, but the references as option is questionable. the agents need to be handed best practises always etc? right?
+
+---
+
+ok yes
+
+---
+
+lets extract all markdown to files that are templates
+
+---
+
+can our agents CODE benefit from https://github.com/chopratejas/headroom i already wrap claude, but if its in our code thatd be cool
+
+---
+
+yes
+
+---
+
+TICKET-datetimeslug becuase there might be many tickets? what if we do 2 tickets in a branch
+
+---
+
+APPEND, but if its a new feature we write the ticket and enter the roadmap, the workflow is smartr enough to say "we will triage this o nteh roadmap"
