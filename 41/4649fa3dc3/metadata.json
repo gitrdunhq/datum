@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "414649fa3dc3",
+  "strategy": "manual-commit",
+  "branch": "datum/fail-fast-validation",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/41/4649fa3dc3/0/metadata.json",
+      "transcript": "/41/4649fa3dc3/0/full.jsonl",
+      "content_hash": "/41/4649fa3dc3/0/content_hash.txt",
+      "prompt": "/41/4649fa3dc3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2473,
+    "cache_creation_tokens": 1031221,
+    "cache_read_tokens": 131329408,
+    "output_tokens": 240526,
+    "api_call_count": 721
+  }
+}
