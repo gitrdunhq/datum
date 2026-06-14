@@ -297,10 +297,10 @@ def build_impl_stubs(
 
 
 def slugify(text: str) -> str:
-    """Convert AC text to a valid identifier fragment."""
+    """Convert AC text to a valid Python/Swift/Go identifier fragment."""
     from datum.slug import slugify as _slugify
 
-    return _slugify(text, max_len=60)
+    return _slugify(text, max_len=60).replace("-", "_")
 
 
 def infer_test_path(task_files: list[str], language: str, ac_id: str) -> str:

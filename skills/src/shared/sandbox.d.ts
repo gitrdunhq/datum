@@ -17,7 +17,7 @@ declare function parallel<T>(thunks: Array<() => Promise<T>>): Promise<(T | null
 declare function pipeline<T>(items: T[], ...stages: Function[]): Promise<any[]>
 declare function phase(title: string): void
 declare function log(message: string): void
-declare function workflow(ref: string | { scriptPath: string }, args?: any): Promise<any>
+declare function workflow(ref: string | { scriptPath: string } | { name: string }, args?: any): Promise<any>
 declare const args: any
 declare const budget: {
   total: number | null

@@ -1,6 +1,6 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
-import { model, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
+import { model, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
@@ -14,8 +14,9 @@ export const meta = {
 const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g, '').trim() : ''
 function parseArgs(raw: string): Record<string, unknown> {
   if (!raw || raw.toLowerCase() === 'yolo') return { yolo: true }
+  if (/^#?\d+$/.test(raw)) return { yolo: true, issueNumber: parseInt(raw.replace('#', ''), 10) }
   try { return JSON.parse(raw) } catch {
-    throw new Error(`Invalid args: expected "yolo" or JSON object, got: "${raw.slice(0, 80)}"`)
+    return { yolo: true, freeText: raw }
   }
 }
 const a = (typeof args === 'string') ? parseArgs(rawArgs) : (args || {})
@@ -56,10 +57,15 @@ function shouldRun(p: Phase, idx: number): boolean {
 
 log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
 
+// Read config early — needed for skillPath resolution across all phases
+const cfgTextEarly = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+const globalCfg = parseAgentJson(cfgTextEarly, { ...DEFAULT_CONFIG }) as Record<string, string>
+const sk = (name: string) => skillPath(globalCfg.skills_dir || '', name)
+
 // Refine
 if (shouldRun('refine', 0)) {
   log('── Refine ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-refine.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-refine') }, yolo ? 'yolo' : {}) as PhaseResult
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = 'refine'
     log(`Refine gate held: ${lastResult.gateMessage || 'needs review'}. Address QUESTIONS.md, then: datum go --start-from plan`)
@@ -71,7 +77,7 @@ if (shouldRun('refine', 0)) {
 // Plan
 if (shouldRun('plan', 1)) {
   log('── Plan ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-plan.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-plan') }, yolo ? 'yolo' : {}) as PhaseResult
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = 'plan'
     log(`Plan gate held: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
@@ -83,21 +89,20 @@ if (shouldRun('plan', 1)) {
 // Properties
 if (shouldRun('properties', 2)) {
   log('── Properties ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-properties.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-properties') }, yolo ? 'yolo' : {}) as PhaseResult
   log('Properties complete')
 }
 
 // Act — inlined from datum-tdd-act to avoid workflow() nesting limit
 // (datum-tdd-act calls setup/lane/merge/docs/triage as child workflows;
 //  if datum-go also called datum-tdd-act as a child, that would be 2 levels deep)
+log(`[debug] shouldRun act=${shouldRun('act', 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`)
+
 if (shouldRun('act', 3)) {
   log('── Act ──')
 
-  // Read config (written by datum init) or fall back to defaults
-  const cfgText = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
-  const repoCfg = parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as { language: string; test_framework: string; test_command: string }
-  const testCommand = repoCfg.test_command
-  const language = repoCfg.language
+  const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
+  const language = globalCfg.language || DEFAULT_CONFIG.language
 
   // Detect branch + generate runId
   const branchInfo = await agent(detectBranchPrompt, { label: 'act-detect', model: model('fast') })
@@ -148,13 +153,13 @@ if (shouldRun('act', 3)) {
 
     // Setup — direct child workflow
     const setup = await workflow(
-      { scriptPath: 'skills/datum-tdd-act-setup.js' },
+      { scriptPath: sk('datum-tdd-act-setup') },
       { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag },
     ) as SetupResult
 
     // Lane execution — direct child workflow
     const act = await workflow(
-      { scriptPath: 'skills/datum-tdd-act-lane.js' },
+      { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
@@ -176,7 +181,7 @@ if (shouldRun('act', 3)) {
 
     // Merge + Cleanup — direct child workflow
     await workflow(
-      { scriptPath: 'skills/datum-tdd-act-merge.js' },
+      { scriptPath: sk('datum-tdd-act-merge') },
       {
         epicBranch,
         completedIds: batchLaneIds.filter(id => actCompleted.includes(id)),
@@ -189,26 +194,28 @@ if (shouldRun('act', 3)) {
 
   // Docs — direct child workflow
   await workflow(
-    { scriptPath: 'skills/datum-tdd-act-docs.js' },
+    { scriptPath: sk('datum-tdd-act-docs') },
     { completedLanes: actCompleted, lanePlan, runId },
   )
 
   // Triage — direct child workflow
   if (actFailures.length > 0) {
     await workflow(
-      { scriptPath: 'skills/datum-tdd-act-triage.js' },
+      { scriptPath: sk('datum-tdd-act-triage') },
       { failures: actFailures, results: actResults, lanePlan, runId, epicBranch },
     )
   }
 
   log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed`)
   lastResult = { completed: actCompleted.length, failed: actFailures.length, failedLanes: actFailures }
+} else if (activePhases.includes('act' as Phase)) {
+  log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
 }
 
 // Validate
 if (shouldRun('validate', 4)) {
   log('── Validate ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-validate.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-validate') }, yolo ? 'yolo' : {}) as PhaseResult
   if (!yolo && !lastResult.testsPassed) {
     haltedAt = 'validate'
     log('Validate FAILED — tests are red. Pipeline halted.')
@@ -220,7 +227,7 @@ if (shouldRun('validate', 4)) {
 // Review
 if (shouldRun('review', 5)) {
   log('── Review ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-review.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-review') }, yolo ? 'yolo' : {}) as PhaseResult
   if (!yolo && !lastResult.canMerge) {
     haltedAt = 'review'
     log(`Review: ${lastResult.criticalFindings || '?'} critical issues. Fix, then: datum go --start-from validate`)
@@ -232,7 +239,7 @@ if (shouldRun('review', 5)) {
 // Closeout
 if (shouldRun('closeout', 6)) {
   log('── Closeout ──')
-  lastResult = await workflow({ scriptPath: 'skills/datum-closeout.js' }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, yolo ? 'yolo' : {}) as PhaseResult
   log('Closeout complete')
 }
 

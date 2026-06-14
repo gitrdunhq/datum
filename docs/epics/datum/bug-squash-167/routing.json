@@ -1,0 +1,8 @@
+{
+  "decision": "deepen",
+  "reason": "Plan spans multiple domains (Python core + TypeScript workflows + test infrastructure) and requires deep understanding of lane-planning architecture, workflow generation pipeline, and TDD gate patterns.",
+  "triggers": [
+    "task spans multiple domains: Python (datum/lane_plan.py, skeleton_creator.py), TypeScript (skills/src/), and test infrastructure (tests/)",
+    "requires adhering to complex architectural patterns: lane-planning dependency resolution, TypeScript→JS build pipeline, TDD gate system with grep-based test counting"
+  ]
+}

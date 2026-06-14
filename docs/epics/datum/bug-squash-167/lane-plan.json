@@ -1,0 +1,158 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 6,
+  "topological_order": [
+    "task-1",
+    "task-2",
+    "task-3",
+    "task-4",
+    "task-5",
+    "task-6"
+  ],
+  "file_ownership": {
+    "datum/skeleton_creator.py": "task-1",
+    "tests/test_make_function_name.py": "task-1",
+    "datum/lane_plan.py": "task-2",
+    "tests/test_lane_plan_conflicts.py": "task-2",
+    "tests/test_skeleton_append.py": "task-3",
+    "skills/src/datum-go.ts": "task-4",
+    "tests/test_act_phase_logging.py": "task-4",
+    "skills/src/datum-tdd-act-lane.ts": "task-5",
+    "tests/test_grep_test_count.py": "task-5",
+    "skills/datum-go.js": "task-6",
+    "skills/datum-tdd-act-lane.js": "task-6"
+  },
+  "lanes": {
+    "task-1": {
+      "id": "task-1",
+      "title": "make_function_name() replaces hyphens with underscores for valid Python identifiers",
+      "files": [
+        "datum/skeleton_creator.py",
+        "tests/test_make_function_name.py"
+      ],
+      "acceptance_criteria": [
+        "make_function_name('ac1', 'when mypy-output has error-lines', 'python') returns a string containing no hyphens and matching ^[a-zA-Z_][a-zA-Z0-9_]*$",
+        "make_function_name('ac1', 'simple text', 'python') still returns a valid identifier (no regression)",
+        "make_function_name('ac1', 'mixed--punctuation and spaces', 'python') returns a valid Python identifier with no hyphens",
+        "slugify() in datum/slug.py is NOT modified \u2014 it continues to produce hyphen-separated slugs",
+        "make_function_name('ac1', 'swift-test case', 'swift') also produces a valid Swift test function name with no hyphens"
+      ],
+      "red_note": "Write tests that call make_function_name() with AC text containing hyphens (e.g. 'when mypy-output has error-lines') and assert the result matches ^[a-zA-Z_][a-zA-Z0-9_]*$ and contains no hyphens. Currently make_function_name uses slugify() output directly which contains hyphens, so these tests will fail.",
+      "introduces_stubs": false,
+      "estimated_loc": 30,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "task-2": {
+      "id": "task-2",
+      "title": "build_lane_plan() converts file conflicts into dependency edges",
+      "files": [
+        "datum/lane_plan.py",
+        "tests/test_lane_plan_conflicts.py"
+      ],
+      "acceptance_criteria": [
+        "Given two tasks that both write 'datum/foo.py', build_lane_plan() produces a lane plan where exactly one of the two lanes depends on the other",
+        "The _ at line 356 of lane_plan.py is replaced with a named variable 'conflicts' and its value is passed to build_lane_plan()",
+        "build_lane_plan() accepts a new 'conflicts' parameter (dict[str, list[str]]) and uses it to add dependency edges",
+        "For any lane with non-empty file_conflict_with, that lane's depends_on includes all lanes that own the conflicting files",
+        "No lane is its own dependency \u2014 self-edges are excluded",
+        "build_file_ownership() return signature and behavior are unchanged",
+        "file_conflict_with field is retained in the schema for observability"
+      ],
+      "red_note": "Write tests that create two tasks sharing a file (e.g. both write 'datum/foo.py'), call build_lane_plan() via the full main() flow or directly, and assert that the resulting lane plan has exactly one dependency edge between the two lanes. Currently build_file_ownership() conflicts are discarded with _ at line 356 and build_lane_plan() does not add conflict-based dependency edges, so the test will fail (depends_on will be empty).",
+      "introduces_stubs": false,
+      "estimated_loc": 50,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "task-3": {
+      "id": "task-3",
+      "title": "Skeleton creator appends to existing test files instead of overwriting",
+      "files": [
+        "datum/skeleton_creator.py",
+        "tests/test_skeleton_append.py"
+      ],
+      "acceptance_criteria": [
+        "At each of the three write_text() call sites, if the destination file already exists, the new skeleton content is appended with a blank-line separator",
+        "Running build_skeleton() twice on the same dest path results in a file containing both sets of def test_* functions",
+        "If the destination file does not exist, the file is created with the skeleton content (unchanged behavior)",
+        "A blank-line separator is inserted between existing content and appended content"
+      ],
+      "red_note": "Write a test that calls the skeleton-writing code path twice targeting the same destination file and asserts both sets of test function definitions are present. Currently Path.write_text() overwrites unconditionally, so the second call will destroy the first call's content, and the test will fail.",
+      "introduces_stubs": false,
+      "estimated_loc": 45,
+      "depends_on": [],
+      "file_conflict_with": {
+        "datum/skeleton_creator.py": "task-1"
+      },
+      "stage": "queued"
+    },
+    "task-4": {
+      "id": "task-4",
+      "title": "Act phase logs paths and throws descriptive errors on missing lane plan",
+      "files": [
+        "skills/src/datum-go.ts",
+        "tests/test_act_phase_logging.py"
+      ],
+      "acceptance_criteria": [
+        "When lane-plan.json is not found, the thrown error message includes literal strings of both the primary path (docs/epics/{branch}/lane-plan.json) and the fallback path (.datum/lane-plan.json)",
+        "When lanePlan.lanes is empty or waves.length === 0, the Act phase logs the lane count (0) before throwing 'Lane plan has 0 tasks'",
+        "When lane-plan.json is found and has lanes, the Act phase logs: path where found, number of lanes detected, number of waves",
+        "The agent prompt for reading lane-plan.json instructs the agent to return which path was found (primary or fallback) as part of its response",
+        "No silent completion: every Act-phase execution either logs a non-zero lane count or throws"
+      ],
+      "red_note": "Write a test that validates the error message format when lane-plan.json is missing \u2014 it must contain both path strings. Also test that the log output includes path, lane count, and wave count when the plan is found. Since the current code throws a generic 'Failed to parse lane-plan.json' message without paths, the path-assertion test will fail. Note: for the TS workflow, the test validates the source code patterns (grep-based or snapshot) since direct execution requires the Claude Code runtime.",
+      "introduces_stubs": false,
+      "estimated_loc": 40,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "task-5": {
+      "id": "task-5",
+      "title": "Test-count gate grep matches indented class-based test methods",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "tests/test_grep_test_count.py"
+      ],
+      "acceptance_criteria": [
+        "The grep pattern at the diff-context check ('^+def test_') is replaced with a pattern that also matches '+    def test_' (indented, inside class bodies)",
+        "The file-level grep ('def test_') already matches indented definitions \u2014 verify it is not anchored to column 0",
+        "A Python file containing only 'class TestFoo(unittest.TestCase):\\n    def test_bar(self): pass' produces a count of 1 (not 0) from the updated diff grep pattern",
+        "No regression: top-level 'def test_' functions still count correctly",
+        "Both the diff-context grep and the file-level grep are updated consistently"
+      ],
+      "red_note": "Write a test that creates a Python file with an indented test method inside a class, generates a diff in the format git diff outputs (with '+    def test_bar' lines), and runs the grep pattern against it. The current pattern '^+def test_' requires no leading whitespace, so indented class methods will produce count 0 \u2014 the test will fail.",
+      "introduces_stubs": false,
+      "estimated_loc": 35,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "task-6": {
+      "id": "task-6",
+      "title": "Rebuild generated JS from updated TypeScript sources",
+      "files": [
+        "skills/datum-go.js",
+        "skills/datum-tdd-act-lane.js"
+      ],
+      "acceptance_criteria": [
+        "bash scripts/build-workflows.sh exits 0",
+        "skills/datum-go.js contains the updated lane-plan logging and error messages from fix-act-phase-lane-plan-logging",
+        "skills/datum-tdd-act-lane.js contains the updated grep pattern from fix-test-count-grep-indented",
+        "Both generated JS files have the // @generated banner"
+      ],
+      "red_note": "Verify the generated JS files do NOT yet contain the fixes (they reflect the old TS source). After rebuilding, verify they DO contain the updated patterns. The RED state is that the current generated JS has the old grep pattern and old error messages.",
+      "introduces_stubs": false,
+      "estimated_loc": 5,
+      "depends_on": [
+        "task-4",
+        "task-5"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued"
+    }
+  }
+}

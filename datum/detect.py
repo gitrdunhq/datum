@@ -12,11 +12,14 @@ def detect_repo(root: str = ".") -> dict:
     framework = _detect_test_framework(root, lang)
     test_cmd = _detect_test_command(root, lang, framework)
 
+    skills_dir = str((Path(__file__).resolve().parent.parent / "skills").resolve())
+
     return {
         "language": lang,
         "test_framework": framework,
         "test_command": test_cmd,
         "epic_dir_pattern": "docs/epics/{branch}",
+        "skills_dir": skills_dir,
     }
 
 

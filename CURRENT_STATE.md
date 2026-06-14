@@ -6,6 +6,30 @@
 
 ## Shipped
 
+### Bug Squash Epic #167 — Planning Complete (2026-06-14, run 20260614-154341)
+
+Epic `bug-squash-167` reached full planning depth: ticket, spec, task decomposition, lane plan, properties, and review are all committed. The act phase has not yet run — 6 tasks remain queued. Implementation is the next step.
+
+**Bugs catalogued (7 total, 4 critical / 3 high):**
+
+| ID | Severity | Bug | Fix Target |
+|---|---|---|---|
+| #166 | critical | Act phase silently skips lanes when lane-plan.json not found | `skills/src/datum-go.ts` |
+| #161 | critical | `make_function_name()` emits hyphens in Python identifiers | `datum/skeleton_creator.py:337` |
+| #163 | critical | Lane plan assigns same impl file to multiple lanes | `datum/lane_plan.py:356` |
+| #160 | critical | `skeleton_creator.py` overwrites test files across lanes | `datum/skeleton_creator.py:467,556,579` |
+| #165 | high | `datum-go` uses relative scriptPath — breaks when CWD != repo root | `skills/src/datum-go.ts` |
+| #158/#162 | high | Test-count gate misses `class Test` methods | `skills/src/datum-tdd-act-lane.ts:174` |
+| #159 | high | `file_conflict_with` field populated but no dependency edges added | `datum/lane_plan.py:277` |
+
+**Review findings (10 total, 2 critical / 2 high / 4 medium / 1 low):**
+
+- CORR-001 (critical): 5 of 6 RED skeletons absent in `tests/test_ruff_precheck.py` — preflight falsely logged `skeleton_written=True`
+- CORR-002 (critical): Same — 5 of 6 RED skeletons absent in `tests/test_mypy_precheck.py`
+- ARCH-001/ARCH-002 (high): Traceability comments in both test files use hyphenated names that don't match actual functions
+- ARCH-003/ARCH-004/ARCH-005/CORR-003/CORR-004 (medium): `make_function_name()` sanitization gap; `write_text()` no existence check; coupling in plan→skeleton handoff
+- CORR-005 (low): Docstring truncated in `tests/test_ruff_precheck.py:9`
+
 ### Pipeline Infrastructure Session (2026-06-14, run 20260614-132742)
 
 Full end-to-end datum pipeline delivered as compiled TypeScript workflows.
@@ -15,11 +39,10 @@ Full end-to-end datum pipeline delivered as compiled TypeScript workflows.
 - **datum-go**: orchestrator that chains all 7 workflows end-to-end (route → awake → refine → plan → properties → act → closeout)
 - **Full TS pipeline**: refine, plan, properties, validate, review, closeout all ship as compiled JS with esbuild
 - **parseAgentJson resilient parsing**: handles code fences, partial JSON, and phantom phases gracefully
-- **Pipeline hardening**: verify gate, file ownership tracking, `gate --approve`, yolo mode, SKILL.md trimming
+- **Pipeline hardening**: verify gate enforces GREEN before merge; file ownership tracking in PreToolUse hook; `gate --approve` for manual overrides; yolo mode for CI; SKILL.md trimming
 - **wave_builder validation**: cycle detection and structural validation before act dispatch
 - **TICKET template**: headroom integration + append protocol for new ticket generation
-- **Closeout self-archiving**: root artifacts (TASKS.md, lane-plan.json, tasks.json) auto-archived to epic dir on closeout
-- **Review pass**: 23 findings documented in `docs/epics/main/REVIEW-REPORT.md` (7 high/critical)
+- **Closeout self-archiving**: root artifacts (TASKS.md, lane-plan.json, tasks.json, SPEC.md, TICKET.md, PROPERTIES.md) auto-archived to `docs/epics/<branch>/` on closeout
 
 ### Wave Builder Validation + TS Pipeline (merged 2026-06-13, PR #139)
 
@@ -44,19 +67,51 @@ TypeScript workflow pipeline, consolidated agents, prompt engineering, wave buil
 
 ## What's Next
 
-### Unimplemented: Fail-Fast Deterministic Validation
+### Priority 1: Run Act Phase for Bug Squash #167 (6 tasks, all queued)
 
-**Epic:** `fail-fast-validation` (run 20260614-141951) — planning complete, act phase did not run.
+**Epic:** `bug-squash-167` — all planning complete. Run `datum act` to execute.
 
-The full spec and task plan exist at `docs/epics/datum/fail-fast-validation/`. All 3 tasks are queued and ready for the act phase:
+Lane plan at `docs/epics/datum/bug-squash-167/lane-plan.json`. Topological order: task-1 → task-2 → task-3 → task-4 → task-5 → task-6 (task-6 depends on task-4 and task-5).
+
+**Critical fixes (pipeline produces wrong results):**
+- **task-1**: `make_function_name()` in `datum/skeleton_creator.py` — add `.replace('-', '_')` after `slugify()` call. Files: `datum/skeleton_creator.py`, `tests/test_make_function_name.py`
+- **task-2**: `build_lane_plan()` in `datum/lane_plan.py` — consume `conflicts` from `build_file_ownership()` and convert to dependency edges. Files: `datum/lane_plan.py`, `tests/test_lane_plan_conflicts.py`
+- **task-3**: `skeleton_creator.py` write sites — replace 3x `write_text()` with append-or-create logic. Files: `datum/skeleton_creator.py`, `tests/test_skeleton_append.py`
+- **task-4**: Act phase in `datum-go.ts` — add path logging and descriptive error on missing lane plan. Files: `skills/src/datum-go.ts`, `tests/test_act_phase_logging.py`
+
+**High fixes (blocks pipeline progress):**
+- **task-5**: Diff grep pattern in `datum-tdd-act-lane.ts` — change `'^+def test_'` to `'^+[[:space:]]*def test_'`. Files: `skills/src/datum-tdd-act-lane.ts`, `tests/test_grep_test_count.py`
+- **task-6**: Rebuild generated JS — run `bash scripts/build-workflows.sh`. Files: `skills/datum-go.js`, `skills/datum-tdd-act-lane.js` (depends on task-4 + task-5)
+
+### Priority 2: Implement Fail-Fast Deterministic Validation
+
+**Epic:** `fail-fast-validation` (run 20260614-141951) — planning complete, act phase not yet run.
 
 - **task-1**: `runRuffCheck` helper in `datum-tdd-act-lane.ts` — ~35 LOC
 - **task-2**: `runMypyCheck` helper in `datum-tdd-act-lane.ts` — ~30 LOC
 - **task-3**: Wire ruff → mypy → pytest fail-fast sequence into GREEN phase with retry passback — ~60 LOC
 
-Review identified CORR-010 (critical): the implementation is absent. Run `datum act` to execute the plan.
+### Open Review Findings (bug-squash-167)
 
-### Open Review Findings (from fail-fast-validation REVIEW-REPORT.md, 10 high/critical)
+**Critical:**
+- CORR-001: Only 1 of 6 RED skeletons present in `tests/test_ruff_precheck.py` — AC1-AC5 missing
+- CORR-002: Only 1 of 6 RED skeletons present in `tests/test_mypy_precheck.py` — AC1-AC5 missing
+
+**High:**
+- ARCH-001: Traceability comment in `tests/test_mypy_precheck.py:3` uses hyphenated name that doesn't match actual function
+- ARCH-002: Same traceability mismatch in `tests/test_ruff_precheck.py:3`
+
+**Medium:**
+- ARCH-003: `skeleton_creator.py:337` — `make_function_name()` no language-aware sanitization after slugify
+- ARCH-004: `skeleton_creator.py:467` — `dest.write_text()` no existence check (bug #160 root)
+- ARCH-005: `TICKET.md:14` — bug #163 exposes tight coupling between plan output and skeleton consumption
+- CORR-003: `tests/test_ruff_precheck.py:3` — traceability comment still contains hyphenated name
+- CORR-004: `tests/test_mypy_precheck.py:3` — same
+
+**Low:**
+- CORR-005: `tests/test_ruff_precheck.py:9` — docstring truncated, missing `, errors: [] }`
+
+### Open Review Findings (fail-fast-validation)
 
 **Security:**
 - SEC-001 (high): `DATUM_PROJECT_DIR` env var used unvalidated in `os.chdir()` — path traversal (`cli.py:40`)
@@ -94,7 +149,7 @@ Pipeline reliability — known TDD act workflow failure modes:
 
 ### Features
 
-- GitHub sub-issues: Replace local task IDs with real GH issues (planned, not yet implemented — see `docs/epics/datum/gh-issues-as-source-of-truth/`)
+- GitHub sub-issues: Replace local task IDs with real GH issues (planned — `docs/epics/datum/gh-issues-as-source-of-truth/`)
 - #134: 3-round adversarial review pipeline
 - Headless orchestrator for datum-local variant
 
@@ -102,7 +157,7 @@ Pipeline reliability — known TDD act workflow failure modes:
 
 ## In Flight
 
-No active feature branches. `main` is clean. `fail-fast-validation` epic is fully planned and ready to act.
+No active feature branches. `main` is clean. Two epics fully planned and ready to act: `bug-squash-167` (priority) and `fail-fast-validation`.
 
 ---
 

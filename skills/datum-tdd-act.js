@@ -25,9 +25,14 @@ function model(tier) {
 var DEFAULT_CONFIG = {
   language: "python",
   test_framework: "pytest",
-  test_command: "uv run pytest -x -q"
+  test_command: "uv run pytest -x -q",
+  skills_dir: ""
 };
 var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
+function skillPath(skillsDir, name) {
+  if (skillsDir) return `${skillsDir}/${name}.js`;
+  return `skills/${name}.js`;
+}
 
 // skills/src/shared/utils.ts
 function buildWaves(lanePlan2) {
@@ -94,6 +99,7 @@ var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: tr
 var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
 var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
 var test_framework = a.test_framework || repoCfg.test_framework;
@@ -146,12 +152,12 @@ ${"=".repeat(60)}
 ${"=".repeat(60)}`);
   phase("Setup");
   const setup = await workflow(
-    { scriptPath: "skills/datum-tdd-act-setup.js" },
+    { scriptPath: sk("datum-tdd-act-setup") },
     { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
   );
   phase("Act");
   const act = await workflow(
-    { scriptPath: "skills/datum-tdd-act-lane.js" },
+    { scriptPath: sk("datum-tdd-act-lane") },
     {
       batchLaneIds,
       lanePlan,
@@ -173,7 +179,7 @@ ${"=".repeat(60)}`);
   log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
   phase("Merge");
   await workflow(
-    { scriptPath: "skills/datum-tdd-act-merge.js" },
+    { scriptPath: sk("datum-tdd-act-merge") },
     {
       epicBranch,
       completedIds: batchLaneIds.filter((id) => completedLanes.includes(id)),
@@ -185,7 +191,7 @@ ${"=".repeat(60)}`);
 }
 phase("Docs");
 await workflow(
-  { scriptPath: "skills/datum-tdd-act-docs.js" },
+  { scriptPath: sk("datum-tdd-act-docs") },
   { completedLanes, lanePlan, runId }
 );
 log(`
@@ -203,7 +209,7 @@ log(`${"\u2550".repeat(60)}`);
 if (failures.length > 0) {
   phase("Triage");
   await workflow(
-    { scriptPath: "skills/datum-tdd-act-triage.js" },
+    { scriptPath: sk("datum-tdd-act-triage") },
     { failures, results, lanePlan, runId, epicBranch }
   );
 }

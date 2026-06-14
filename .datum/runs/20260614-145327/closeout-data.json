@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "20260614-145327",
+  "epic_id": "bug-squash-167",
+  "epic_dir": "docs/epics/datum/bug-squash-167",
+  "epic_title": "Bug Squash — 7 Pipeline Friction Bugs (#167)",
+  "completed_at": "2026-06-14T14:53:27Z",
+  "pipeline_phases_completed": ["route", "awake", "refine", "plan", "properties", "review"],
+  "pipeline_phases_skipped": ["act"],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Fix #166: Act phase silently skipped (lane-plan not found, no error thrown)",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "critical"
+    },
+    {
+      "id": "task-2",
+      "title": "Fix #161: skeleton_creator.py generates function names with hyphens (invalid Python)",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "critical"
+    },
+    {
+      "id": "task-3",
+      "title": "Fix #163: Lane plan assigns same impl file to multiple lanes (RED/GREEN conflicts)",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "critical"
+    },
+    {
+      "id": "task-4",
+      "title": "Fix #160: skeleton_creator.py overwrites test file on each lane instead of appending",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "critical"
+    },
+    {
+      "id": "task-5",
+      "title": "Fix #165: datum-go uses relative scriptPath — breaks when CWD is not repo root",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "high"
+    },
+    {
+      "id": "task-6",
+      "title": "Fix #158/#162: test-count gate misses class-based tests (grep only matches def test_)",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "high"
+    },
+    {
+      "id": "task-7",
+      "title": "Fix #159: lane plan generates file_conflict_with but adds no dependency edges",
+      "stage": "queued",
+      "outcome": "not_started",
+      "severity": "high"
+    }
+  ],
+  "tasks_completed": 0,
+  "tasks_failed": 0,
+  "tasks_not_started": 7,
+  "review_findings": {
+    "total": 10,
+    "critical": 2,
+    "high": 2,
+    "medium": 4,
+    "low": 1
+  },
+  "review_report": "docs/epics/datum/bug-squash-167/REVIEW-REPORT.md",
+  "primary_defect": "CORR-001/CORR-002 (critical): RED test skeletons for AC1-AC5 are entirely absent from both test_ruff_precheck.py and test_mypy_precheck.py despite preflight recording skeleton_written=True for all 6 ACs. The act phase did not run.",
+  "artifacts": {
+    "TICKET.md": "docs/epics/datum/bug-squash-167/TICKET.md",
+    "REVIEW-REPORT.md": "docs/epics/datum/bug-squash-167/REVIEW-REPORT.md"
+  },
+  "total_tokens": 0,
+  "notes": "closeout-data.json synthesized from TICKET.md and REVIEW-REPORT.md. Act phase did not execute — all 7 tasks remain queued. Review identified 10 findings (2 critical) across skeleton generation and traceability comment hygiene."
+}

@@ -74,9 +74,14 @@ var PHASES = ["refine", "plan", "properties", "act", "validate", "review", "clos
 var DEFAULT_CONFIG = {
   language: "python",
   test_framework: "pytest",
-  test_command: "uv run pytest -x -q"
+  test_command: "uv run pytest -x -q",
+  skills_dir: ""
 };
 var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
+function skillPath(skillsDir, name) {
+  if (skillsDir) return `${skillsDir}/${name}.js`;
+  return `skills/${name}.js`;
+}
 
 // skills/src/prompts/util-detect-branch.md
 var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
@@ -85,10 +90,11 @@ var util_detect_branch_default = 'Run these two commands and return ONLY a JSON 
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 function parseArgs(raw) {
   if (!raw || raw.toLowerCase() === "yolo") return { yolo: true };
+  if (/^#?\d+$/.test(raw)) return { yolo: true, issueNumber: parseInt(raw.replace("#", ""), 10) };
   try {
     return JSON.parse(raw);
   } catch {
-    throw new Error(`Invalid args: expected "yolo" or JSON object, got: "${raw.slice(0, 80)}"`);
+    return { yolo: true, freeText: raw };
   }
 }
 var a = typeof args === "string" ? parseArgs(rawArgs) : args || {};
@@ -106,9 +112,12 @@ function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
 log(`datum go \u2014 route: ${route}, start: ${startFrom}${yolo ? " (yolo)" : ""}`);
+var cfgTextEarly = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
+var globalCfg = parseAgentJson(cfgTextEarly, { ...DEFAULT_CONFIG });
+var sk = (name) => skillPath(globalCfg.skills_dir || "", name);
 if (shouldRun("refine", 0)) {
   log("\u2500\u2500 Refine \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-refine.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-refine") }, yolo ? "yolo" : {});
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = "refine";
     log(`Refine gate held: ${lastResult.gateMessage || "needs review"}. Address QUESTIONS.md, then: datum go --start-from plan`);
@@ -118,7 +127,7 @@ if (shouldRun("refine", 0)) {
 }
 if (shouldRun("plan", 1)) {
   log("\u2500\u2500 Plan \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-plan.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-plan") }, yolo ? "yolo" : {});
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = "plan";
     log(`Plan gate held: ${lastResult.gateMessage || "needs approval"}. Review TASKS.md, then: datum go --start-from properties`);
@@ -128,15 +137,14 @@ if (shouldRun("plan", 1)) {
 }
 if (shouldRun("properties", 2)) {
   log("\u2500\u2500 Properties \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-properties.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-properties") }, yolo ? "yolo" : {});
   log("Properties complete");
 }
+log(`[debug] shouldRun act=${shouldRun("act", 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`);
 if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
-  const cfgText = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
-  const repoCfg = parseAgentJson(cfgText, { ...DEFAULT_CONFIG });
-  const testCommand = repoCfg.test_command;
-  const language = repoCfg.language;
+  const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
+  const language = globalCfg.language || DEFAULT_CONFIG.language;
   const branchInfo = await agent(util_detect_branch_default, { label: "act-detect", model: model("fast") });
   const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
   const epicBranch = info.branch;
@@ -173,11 +181,11 @@ if (shouldRun("act", 3)) {
     if (batches.length > 1) log(`
 === Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===`);
     const setup = await workflow(
-      { scriptPath: "skills/datum-tdd-act-setup.js" },
+      { scriptPath: sk("datum-tdd-act-setup") },
       { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
     );
     const act = await workflow(
-      { scriptPath: "skills/datum-tdd-act-lane.js" },
+      { scriptPath: sk("datum-tdd-act-lane") },
       {
         batchLaneIds,
         lanePlan,
@@ -198,7 +206,7 @@ if (shouldRun("act", 3)) {
     }
     log(`Act${batchTag} done: ${batchLaneIds.filter((id) => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`);
     await workflow(
-      { scriptPath: "skills/datum-tdd-act-merge.js" },
+      { scriptPath: sk("datum-tdd-act-merge") },
       {
         epicBranch,
         completedIds: batchLaneIds.filter((id) => actCompleted.includes(id)),
@@ -209,21 +217,23 @@ if (shouldRun("act", 3)) {
     );
   }
   await workflow(
-    { scriptPath: "skills/datum-tdd-act-docs.js" },
+    { scriptPath: sk("datum-tdd-act-docs") },
     { completedLanes: actCompleted, lanePlan, runId }
   );
   if (actFailures.length > 0) {
     await workflow(
-      { scriptPath: "skills/datum-tdd-act-triage.js" },
+      { scriptPath: sk("datum-tdd-act-triage") },
       { failures: actFailures, results: actResults, lanePlan, runId, epicBranch }
     );
   }
   log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed`);
   lastResult = { completed: actCompleted.length, failed: actFailures.length, failedLanes: actFailures };
+} else if (activePhases.includes("act")) {
+  log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);
 }
 if (shouldRun("validate", 4)) {
   log("\u2500\u2500 Validate \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-validate.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-validate") }, yolo ? "yolo" : {});
   if (!yolo && !lastResult.testsPassed) {
     haltedAt = "validate";
     log("Validate FAILED \u2014 tests are red. Pipeline halted.");
@@ -233,7 +243,7 @@ if (shouldRun("validate", 4)) {
 }
 if (shouldRun("review", 5)) {
   log("\u2500\u2500 Review \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-review.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-review") }, yolo ? "yolo" : {});
   if (!yolo && !lastResult.canMerge) {
     haltedAt = "review";
     log(`Review: ${lastResult.criticalFindings || "?"} critical issues. Fix, then: datum go --start-from validate`);
@@ -243,7 +253,7 @@ if (shouldRun("review", 5)) {
 }
 if (shouldRun("closeout", 6)) {
   log("\u2500\u2500 Closeout \u2500\u2500");
-  lastResult = await workflow({ scriptPath: "skills/datum-closeout.js" }, yolo ? "yolo" : {});
+  lastResult = await workflow({ scriptPath: sk("datum-closeout") }, yolo ? "yolo" : {});
   log("Closeout complete");
 }
 if (haltedAt) {

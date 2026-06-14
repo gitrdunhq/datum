@@ -1,7 +1,7 @@
 import { model } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
-import { READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
+import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
@@ -33,6 +33,7 @@ const cfgText = (!a.testCommand || !a.language)
   ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
   : null
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const sk = (name: string) => skillPath(repoCfg.skills_dir || '', name)
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 const language: string = a.language || repoCfg.language || DEFAULT_CONFIG.language
 const test_framework: string | undefined = a.test_framework || repoCfg.test_framework
@@ -107,14 +108,14 @@ for (let bi = 0; bi < batches.length; bi++) {
   // Setup
   phase('Setup')
   const setup = await workflow(
-    { scriptPath: 'skills/datum-tdd-act-setup.js' },
+    { scriptPath: sk('datum-tdd-act-setup') },
     { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
   ) as SetupResult
 
   // Act
   phase('Act')
   const act = await workflow(
-    { scriptPath: 'skills/datum-tdd-act-lane.js' },
+    { scriptPath: sk('datum-tdd-act-lane') },
     {
       batchLaneIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
       cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
@@ -137,7 +138,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   // Merge + Cleanup
   phase('Merge')
   await workflow(
-    { scriptPath: 'skills/datum-tdd-act-merge.js' },
+    { scriptPath: sk('datum-tdd-act-merge') },
     {
       epicBranch,
       completedIds: batchLaneIds.filter(id => completedLanes.includes(id)),
@@ -152,7 +153,7 @@ for (let bi = 0; bi < batches.length; bi++) {
 
 phase('Docs')
 await workflow(
-  { scriptPath: 'skills/datum-tdd-act-docs.js' },
+  { scriptPath: sk('datum-tdd-act-docs') },
   { completedLanes, lanePlan, runId }
 )
 
@@ -175,7 +176,7 @@ log(`${'═'.repeat(60)}`)
 if (failures.length > 0) {
   phase('Triage')
   await workflow(
-    { scriptPath: 'skills/datum-tdd-act-triage.js' },
+    { scriptPath: sk('datum-tdd-act-triage') },
     { failures, results, lanePlan, runId, epicBranch }
   )
 }

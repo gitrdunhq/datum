@@ -2,6 +2,57 @@
 
 All notable changes to DATUM are documented here.
 
+## [Bug Squash #167 — Closeout] — 2026-06-14 (run 20260614-154341)
+
+### Closed Out (planning complete, act phase queued)
+
+Epic `bug-squash-167` closed out with full planning artifacts committed. Act phase not executed — 6 tasks remain queued and ready to run with `datum act`.
+
+**Artifacts committed to `docs/epics/datum/bug-squash-167/`:**
+- `TICKET.md` — 7 bugs (4 critical, 3 high) structured for act dispatch
+- `SPEC.md` — requirements with per-bug acceptance criteria and symbol-level call sites
+- `TASKS.md` / `tasks.json` — 6-task plan (7 bugs collapsed into 6 tasks, task-6 is JS rebuild)
+- `lane-plan.json` — 6 lanes, topological order with dependency edges (task-6 depends on task-4 + task-5)
+- `PROPERTIES.md` — safety and liveness properties for each fix
+- `REVIEW-REPORT.md` — 10 findings (2 critical, 2 high, 4 medium, 1 low)
+- `RETRO.md` — metrics, observations, defect table, follow-ups
+- `routing.json` — pipeline route classification
+
+**Follow-ups filed:**
+- Run act phase: 6 tasks queued at `docs/epics/datum/bug-squash-167/lane-plan.json`
+- Post-skeleton write verification (trust-without-verify defect in preflight)
+- Fix traceability comments in `tests/test_ruff_precheck.py:3` and `tests/test_mypy_precheck.py:3`
+- Complete truncated docstring at `tests/test_ruff_precheck.py:9`
+- Fix CORR-001/CORR-002: restore 5 missing RED skeletons in ruff and mypy test files
+
+---
+
+## [Bug Squash #167] — 2026-06-14 (run 20260614-145327)
+
+### Planned (act phase not executed)
+
+**Epic:** `bug-squash-167` — ticket and review complete. 7 pipeline friction bugs catalogued and reviewed. Implementation not yet run.
+
+- **TICKET.md**: 7 bugs (4 critical, 3 high) filed as a structured fix epic. Root causes span skeleton generation, lane orchestration, test-count gate, and path resolution.
+- **REVIEW-REPORT.md**: 10 findings (2 critical, 2 high, 4 medium, 1 low). Key finding: `skeleton_written=True` logged for all 6 ACs in preflight packets but only 1 RED skeleton committed to each of `tests/test_ruff_precheck.py` and `tests/test_mypy_precheck.py`.
+
+### Review Findings (10 total)
+
+| ID | Severity | File | Description |
+|---|---|---|---|
+| ARCH-001 | high | tests/test_mypy_precheck.py:3 | Traceability comment uses hyphenated name; actual function uses underscores |
+| ARCH-002 | high | tests/test_ruff_precheck.py:3 | Same traceability mismatch as ARCH-001 |
+| ARCH-003 | medium | datum/skeleton_creator.py:337 | make_function_name() no language-aware sanitization after slugify() |
+| ARCH-004 | medium | datum/skeleton_creator.py:467 | write_text() with no existence check — overwrites on multi-lane (bug #160 root) |
+| ARCH-005 | medium | docs/epics/datum/bug-squash-167/TICKET.md:14 | bug #163 exposes tight coupling between plan output and skeleton consumption |
+| CORR-001 | critical | tests/test_ruff_precheck.py:6 | Only 1 of 6 RED skeletons present — AC1-AC5 absent despite preflight logging skeleton_written=True |
+| CORR-002 | critical | tests/test_mypy_precheck.py:6 | Same as CORR-001 — AC1-AC5 absent from mypy test file |
+| CORR-003 | medium | tests/test_ruff_precheck.py:3 | Traceability comment still references pre-fix hyphenated function name |
+| CORR-004 | medium | tests/test_mypy_precheck.py:3 | Same hyphenated traceability comment as CORR-003 |
+| CORR-005 | low | tests/test_ruff_precheck.py:9 | Docstring truncated — missing `, errors: [] }` from full AC text |
+
+---
+
 ## [Fail-Fast Validation Epic] — 2026-06-14 (run 20260614-141951)
 
 ### Planned (act phase not executed)

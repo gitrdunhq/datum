@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "20260614-145327",
+  "epic_id": "bug-squash-167",
+  "generated_at": "2026-06-14T14:53:27Z",
+  "follow_ups": [
+    {
+      "id": "fu-001",
+      "priority": "critical",
+      "type": "unimplemented_task",
+      "title": "Run act phase for bug-squash-167 — 7 tasks queued",
+      "description": "The act phase was not executed. All 7 pipeline friction bug fixes remain unimplemented. Run `datum act` to dispatch lanes.",
+      "source": "epic-closeout",
+      "file": null,
+      "task_ids": ["task-1", "task-2", "task-3", "task-4", "task-5", "task-6", "task-7"],
+      "blocked_by": []
+    },
+    {
+      "id": "fu-002",
+      "priority": "critical",
+      "type": "defect",
+      "title": "CORR-001: Add missing AC1-AC5 RED skeletons to tests/test_ruff_precheck.py",
+      "description": "Preflight packet recorded skeleton_written=True for all 6 ACs but only AC6 skeleton is present. AC1-AC5 test functions are absent. RED agent self-check will count 1 vs expected 6.",
+      "source": "review-report",
+      "finding_id": "CORR-001",
+      "file": "tests/test_ruff_precheck.py",
+      "line": 6,
+      "blocked_by": []
+    },
+    {
+      "id": "fu-003",
+      "priority": "critical",
+      "type": "defect",
+      "title": "CORR-002: Add missing AC1-AC5 RED skeletons to tests/test_mypy_precheck.py",
+      "description": "Same as CORR-001 for the mypy test file. 5 of 6 required RED skeletons are absent despite preflight logging skeleton_written=True.",
+      "source": "review-report",
+      "finding_id": "CORR-002",
+      "file": "tests/test_mypy_precheck.py",
+      "line": 6,
+      "blocked_by": []
+    },
+    {
+      "id": "fu-004",
+      "priority": "high",
+      "type": "defect",
+      "title": "ARCH-001: Fix traceability comment in tests/test_mypy_precheck.py:3 to use underscore name",
+      "description": "Traceability comment references hyphenated function name that doesn't match the actual function definition. Tooling that parses traceability comments will find no match.",
+      "source": "review-report",
+      "finding_id": "ARCH-001",
+      "file": "tests/test_mypy_precheck.py",
+      "line": 3,
+      "blocked_by": ["fu-001"]
+    },
+    {
+      "id": "fu-005",
+      "priority": "high",
+      "type": "defect",
+      "title": "ARCH-002: Fix traceability comment in tests/test_ruff_precheck.py:3 to use underscore name",
+      "description": "Same mismatch as ARCH-001 in the ruff test file.",
+      "source": "review-report",
+      "finding_id": "ARCH-002",
+      "file": "tests/test_ruff_precheck.py",
+      "line": 3,
+      "blocked_by": ["fu-001"]
+    },
+    {
+      "id": "fu-006",
+      "priority": "medium",
+      "type": "code_quality",
+      "title": "ARCH-003: Add language-aware identifier sanitization to skeleton_creator.py:make_function_name()",
+      "description": "make_function_name() at line 337 applies slugify() without post-processing for language-specific identifier rules. Python/Go/Swift/TS cannot have hyphens in function names. Add hyphen-to-underscore conversion for these languages.",
+      "source": "review-report",
+      "finding_id": "ARCH-003",
+      "file": "datum/skeleton_creator.py",
+      "line": 337,
+      "blocked_by": ["fu-001"]
+    },
+    {
+      "id": "fu-007",
+      "priority": "medium",
+      "type": "defect",
+      "title": "ARCH-004: Add existence check before write_text() in skeleton_creator.py:467 (root cause of bug #160)",
+      "description": "dest.write_text() at line 467 silently overwrites existing test files. When multiple lanes share a test file, each lane nukes the previous lane's tests. Must check if dest exists and append new test methods rather than overwrite.",
+      "source": "review-report",
+      "finding_id": "ARCH-004",
+      "file": "datum/skeleton_creator.py",
+      "line": 467,
+      "blocked_by": ["fu-001"]
+    },
+    {
+      "id": "fu-008",
+      "priority": "medium",
+      "type": "architecture",
+      "title": "ARCH-005: Enforce file-to-lane exclusivity at plan-decompose time, not skeleton layer",
+      "description": "Bug #163 (same impl file assigned to multiple lanes) must be fixed in lane-plan generation. The skeleton layer is too late — conflicts need exclusive assignment or sequential dependency edges added when lane-plan.json is written.",
+      "source": "review-report",
+      "finding_id": "ARCH-005",
+      "file": "datum/lane_plan.py",
+      "line": null,
+      "blocked_by": ["fu-001"]
+    },
+    {
+      "id": "fu-009",
+      "priority": "medium",
+      "type": "defect",
+      "title": "CORR-003: Fix legacy hyphenated traceability comment in tests/test_ruff_precheck.py:3",
+      "description": "Traceability comment still uses pre-fix hyphenated identifier (bug #161 residue). Update to match the actual underscore function name.",
+      "source": "review-report",
+      "finding_id": "CORR-003",
+      "file": "tests/test_ruff_precheck.py",
+      "line": 3,
+      "blocked_by": ["fu-005"]
+    },
+    {
+      "id": "fu-010",
+      "priority": "medium",
+      "type": "defect",
+      "title": "CORR-004: Fix legacy hyphenated traceability comment in tests/test_mypy_precheck.py:3",
+      "description": "Same residual bug #161 pattern as CORR-003 in the mypy test file.",
+      "source": "review-report",
+      "finding_id": "CORR-004",
+      "file": "tests/test_mypy_precheck.py",
+      "line": 3,
+      "blocked_by": ["fu-004"]
+    },
+    {
+      "id": "fu-011",
+      "priority": "low",
+      "type": "defect",
+      "title": "CORR-005: Complete truncated docstring in tests/test_ruff_precheck.py:9",
+      "description": "Docstring reads '...runRuffCheck returns { passed: true' but full AC text is '...runRuffCheck returns { passed: true, errors: [] }'. Missing ', errors: [] }' may cause RED agent to implement only the passed field.",
+      "source": "review-report",
+      "finding_id": "CORR-005",
+      "file": "tests/test_ruff_precheck.py",
+      "line": 9,
+      "blocked_by": []
+    },
+    {
+      "id": "fu-012",
+      "priority": "medium",
+      "type": "process",
+      "title": "Add post-skeleton write verification: count committed test functions vs AC count",
+      "description": "The preflight packet logged skeleton_written=True for all 6 ACs but only 1 skeleton was committed. The pipeline must verify actual test function count in the committed file matches the expected AC count before advancing past RED setup.",
+      "source": "retro-observation",
+      "file": null,
+      "line": null,
+      "blocked_by": []
+    }
+  ]
+}
