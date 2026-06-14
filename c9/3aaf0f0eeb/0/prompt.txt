@@ -1,0 +1,13 @@
+resintall and push
+
+---
+
+what else can we remove from agents to make them "single" function
+
+---
+
+all 8
+
+---
+
+yeah, but i think so, and we cant use typescript right?
