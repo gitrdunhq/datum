@@ -1,0 +1,79 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "8683db09fcd6",
+  "session_id": "23544e83-baf5-4017-b588-7b253963271e",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-14T17:44:28.764338Z",
+  "branch": "datum/gh-issues-as-source-of-truth",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "5919b778a06b",
+  "token_usage": {
+    "input_tokens": 1501,
+    "cache_creation_tokens": 558101,
+    "cache_read_tokens": 88898915,
+    "output_tokens": 137877,
+    "api_call_count": 458
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-datum-tdd-act-2026-06-14T05:29:21.333232Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "datum-tdd-act"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "9a5b70b52295",
+      "timestamp": "2026-06-14T05:29:21.333232Z",
+      "native": {
+        "command": "/datum-tdd-act"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/datum-tdd-act",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01Ls1oQjPXJXihie4iLLWkH4",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "current-state"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "5919b778a06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 207,
+        "end": 208,
+        "entry_ids": [
+          "4498e816-c698-4435-90cf-ed807898ff22"
+        ],
+        "tool_use_id": "toolu_01Ls1oQjPXJXihie4iLLWkH4"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Ls1oQjPXJXihie4iLLWkH4"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: current-state",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 46
+  }
+}
