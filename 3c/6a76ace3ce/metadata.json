@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "3c6a76ace3ce",
+  "strategy": "manual-commit",
+  "branch": "datum/beta-ga-readiness",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "Record-ML/Tests/Unit/Storage/DuckDBMigrationRunnerTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/6a76ace3ce/0/metadata.json",
+      "transcript": "/3c/6a76ace3ce/0/full.jsonl",
+      "content_hash": "/3c/6a76ace3ce/0/content_hash.txt",
+      "prompt": "/3c/6a76ace3ce/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 230,
+    "cache_creation_tokens": 246474,
+    "cache_read_tokens": 8899556,
+    "output_tokens": 38421,
+    "api_call_count": 102
+  }
+}
