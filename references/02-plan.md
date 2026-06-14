@@ -147,16 +147,20 @@ Before running the gate, the agent MUST complete the `## Assumption Audit` secti
 - For `guess` entries: add `Resolves: Q<N>` pointing to an answered question in QUESTIONS.md
 - If the Refine phase generated zero questions, note this — the gate will emit a warning
 
-Run `datum gate plan [--yolo]`
+Run `datum gate plan`
 
 Validates:
 1. Every task has `acceptance_criteria`, `files`, `red_note`
 2. DAG is acyclic and all dependency IDs resolve
 3. No task is missing a `depends_on` entry when its `files` overlap with another task
-4. If `plan_human_approval = required`: presents `tasks.json` and `TASKS.md` to user for approval
+4. If `plan_human_approval = required`: gate exits 1 with `needs_human: true` and instructs the human to re-run with `--approve` after reviewing
+
+After human review: `datum gate plan --approve`
 
 On pass: update state.
 On fail: surface the validation errors and rework.
+
+`--approve` bypasses the `needs_human` hold; `--yolo` is a pipeline-level flag that skips optional gates but does NOT bypass `plan_human_approval = required`.
 
 ## Outputs
 

@@ -56,7 +56,9 @@ For `discuss` verdicts: post the clarifying question and mark as pending.
 
 Confirm all threads are resolved or have a pending reply. Surface unresolved `discuss` threads to user.
 
-Run `datum gate pr-comments [--yolo]`
+Run `datum gate pr-comments`
+
+If `triage_human_approval = required` in config, the gate pauses with `needs_human: true`. After human review: `datum gate pr-comments --approve`
 
 On pass: archive `triage.json`, update state. Record `pr_author_login` in state from the PR metadata.
 

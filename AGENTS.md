@@ -72,6 +72,15 @@ When DATUM hits an **unexpected** error during execution — script crash, missi
 - A file referenced in SKILL.md or a reference doc doesn't exist
 - `datum doctor` or `datum status` returns an error
 
+**Gate CLI contract** (`datum/gate.py`): The parser is exported as `build_gate_parser()` so tests can verify flag behavior without shelling out. The `--approve` flag is the canonical way to pass a human-approval hold (`needs_human: true`); it is an alias for `--skip-human`. Example:
+
+```python
+from datum.gate import build_gate_parser
+parser = build_gate_parser()
+args = parser.parse_args(["plan", "--approve"])
+assert args.skip_human is True
+```
+
 **What is NOT a bug (don't file it):**
 - A gate fails because the user hasn't filled in an artifact yet (expected behavior)
 - Tests fail on user code (that's the pipeline working correctly)
