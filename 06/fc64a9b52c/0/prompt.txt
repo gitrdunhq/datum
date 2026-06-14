@@ -1,0 +1,13 @@
+<task-notification>
+<task-id>wjo2c82ax</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wjo2c82ax.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260613-232500","total":2,"completed":2,"failed":0,"failedLanes":[],"completedLanes":["task-001","task-002"]}</result>
+<usage><agent_count>23</agent_count><subagent_tokens>722055</subagent_tokens><tool_uses>265</tool_uses><duration_ms>1383652</duration_ms></usage>
+</task-notification>
+
+---
+
+oush

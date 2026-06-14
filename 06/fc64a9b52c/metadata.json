@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "06fc64a9b52c",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".worktrees/w1-allowlist",
+    ".worktrees/w1-budget",
+    ".worktrees/w1-compaction",
+    ".worktrees/w1-memory-repair",
+    ".worktrees/w1-scoring",
+    ".worktrees/w1-typed-events",
+    ".worktrees/w2-abort-dirty",
+    ".worktrees/w2-corpus-sql",
+    ".worktrees/w2-datum-gc",
+    ".worktrees/w2-failure-layer",
+    ".worktrees/w2-progress",
+    ".worktrees/w2-risk-classes",
+    ".worktrees/w3-retrieve",
+    ".worktrees/w3-retrospect",
+    ".worktrees/w3-skeletons",
+    ".worktrees/w3-structured-tools",
+    ".worktrees/w3-vector-store",
+    "CURRENT_STATE.md",
+    "datum/wave_builder.py",
+    "skills/datum-tdd-act.js",
+    "skills/src/datum-tdd-act.ts",
+    "tests/test_wave_builder.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/06/fc64a9b52c/0/metadata.json",
+      "transcript": "/06/fc64a9b52c/0/full.jsonl",
+      "content_hash": "/06/fc64a9b52c/0/content_hash.txt",
+      "prompt": "/06/fc64a9b52c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 141440,
+    "cache_read_tokens": 638480,
+    "output_tokens": 1781,
+    "api_call_count": 10
+  }
+}
