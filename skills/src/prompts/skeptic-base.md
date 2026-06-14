@@ -7,6 +7,11 @@ Test command: {{testCommand}}
 Acceptance criteria:
 {{acStr}}
 
+CONTEXT MANAGEMENT:
+After reading each file, compress it with headroom_compress. This frees context for
+deeper analysis. Use headroom_retrieve with a query (e.g. query="error handling" or
+query="return value") to pull back specific sections when investigating a potential bug.
+
 For each bug found, provide:
 - description: what is wrong
 - evidence: the specific input, file, or line that demonstrates the bug

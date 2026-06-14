@@ -4,9 +4,19 @@
 
 ## Inputs
 
-- `docs/epics/<branch>/TICKET.md`
+- `docs/epics/<branch>/TICKET.md` (may contain appended addenda — read the full document)
 - GitNexus `context` queries on referenced symbols (if available)
 - `CURRENT_STATE.md` (if present)
+
+## Addendum Triage
+
+TICKET.md supports appended scope changes (date-stamped addendum sections). On each Refine run, read the full document and classify each addendum:
+
+**Same scope** — the addendum touches the same files/modules as existing requirements, extends existing behavior, or adds edge cases. Action: incorporate into SPEC.md, re-number requirements.
+
+**Different feature** — zero file overlap with existing requirements, introduces new public API, targets a different module or subsystem. Action: extract to a new entry in `ROADMAP.md` with a one-line summary and the addendum text. Log: `"Triaged to roadmap: <title>"`. Continue Refine with the original scope only.
+
+The decision is structural: check file overlap via GitNexus or grep. If the addendum's implied file set has zero intersection with the existing TICKET requirements, it's a roadmap item.
 
 ## Ambiguity Classification
 
