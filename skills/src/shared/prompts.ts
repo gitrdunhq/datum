@@ -17,23 +17,38 @@ import type { SkepticLens } from './types'
 
 type PromptVars = { [key: string]: string }
 
-export function redPrompt(vars: { redCtxCmd: string; redPacketStr: string }): string {
+export function redPrompt(vars: {
+  wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
+  testCommand: string; testFilesList: string; commitPrefix: string
+}): string {
   return renderPrompt(redTemplate, vars as PromptVars)
 }
 
-export function redRetryPrompt(vars: { failureReason: string; redCtxCmd: string; redPacketStr: string }): string {
+export function redRetryPrompt(vars: {
+  wt: string; failureReason: string; redCtxCmd: string; redPacketStr: string
+  testCommand: string; testFilesList: string; commitPrefix: string
+}): string {
   return renderPrompt(redRetryTemplate, vars as PromptVars)
 }
 
-export function greenPrompt(vars: { greenCtxCmd: string; greenPacketStr: string }): string {
+export function greenPrompt(vars: {
+  greenCtxCmd: string; greenPacketStr: string
+  testCommand: string; implFilesList: string; commitPrefix: string; wt: string
+}): string {
   return renderPrompt(greenTemplate, vars as PromptVars)
 }
 
-export function greenRetryPrompt(vars: { failureReason: string; greenCtxCmd: string; greenRetryPacketStr: string }): string {
+export function greenRetryPrompt(vars: {
+  wt: string; failureReason: string; greenCtxCmd: string; greenRetryPacketStr: string
+  testCommand: string; implFilesList: string; commitPrefix: string
+}): string {
   return renderPrompt(greenRetryTemplate, vars as PromptVars)
 }
 
-export function refactorPrompt(vars: { refactorCtxCmd: string; refactorPacketStr: string }): string {
+export function refactorPrompt(vars: {
+  wt: string; refactorCtxCmd: string; refactorPacketStr: string
+  testCommand: string; allFilesList: string; commitPrefix: string
+}): string {
   return renderPrompt(refactorTemplate, vars as PromptVars)
 }
 

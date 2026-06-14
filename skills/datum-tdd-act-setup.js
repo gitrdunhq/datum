@@ -1,4 +1,10 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-setup.ts
+export const meta = {
+  name: "datum-tdd-act-setup",
+  description: "Create root + per-lane git worktrees and distribute lane plan",
+  phases: [{ title: "Setup" }]
+};
+
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
@@ -14,11 +20,6 @@ function parseAgentJson(text, fallback) {
 }
 
 // skills/src/datum-tdd-act-setup.ts
-export const meta = {
-  name: "datum-tdd-act-setup",
-  description: "Create root + per-lane git worktrees and distribute lane plan",
-  phases: [{ title: "Setup" }]
-};
 var a = args;
 phase("Setup");
 var rootWtText = await agent(

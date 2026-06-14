@@ -1,4 +1,10 @@
 // @generated — DO NOT EDIT. Source: skills/src/datum-tdd-act-triage.ts
+export const meta = {
+  name: "datum-tdd-act-triage",
+  description: "Categorize TDD failures and auto-file GitHub issues",
+  phases: [{ title: "Triage" }]
+};
+
 // skills/src/shared/schemas.ts
 var TRIAGE_SCHEMA = {
   type: "object",
@@ -20,11 +26,6 @@ var TRIAGE_SCHEMA = {
 };
 
 // skills/src/datum-tdd-act-triage.ts
-export const meta = {
-  name: "datum-tdd-act-triage",
-  description: "Categorize TDD failures and auto-file GitHub issues",
-  phases: [{ title: "Triage" }]
-};
 var a = args;
 phase("Triage");
 var filed = 0;
@@ -56,7 +57,7 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
 - Why it happened (root cause analysis)
 - Suggested fix
 - The lane, stage, and run ID for traceability`,
-    { label: "triage", phase: "Triage", model: "haiku", schema: TRIAGE_SCHEMA }
+    { label: "triage", phase: "Triage", model: "sonnet", schema: TRIAGE_SCHEMA }
   );
   if (triage?.issues?.length) {
     for (const issue of triage.issues) {

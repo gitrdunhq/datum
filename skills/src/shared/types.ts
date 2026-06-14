@@ -96,6 +96,17 @@ export interface WriteResult {
   failure_reason?: string
 }
 
+export interface StageResult {
+  files_written?: string[]
+  success: boolean
+  tests_pass: boolean
+  test_exit_code?: number
+  test_errors?: string[]
+  committed: boolean
+  commit_sha?: string
+  failure_reason?: string
+}
+
 export interface CommitResult {
   committed: boolean
   commit_sha?: string

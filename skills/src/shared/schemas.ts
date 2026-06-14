@@ -8,6 +8,21 @@ export const WRITE_RESULT_SCHEMA = {
   required: ['success'],
 } as const
 
+export const STAGE_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    files_written: { type: 'array', items: { type: 'string' } },
+    success: { type: 'boolean' },
+    tests_pass: { type: 'boolean' },
+    test_exit_code: { type: 'number' },
+    test_errors: { type: 'array', items: { type: 'string' } },
+    committed: { type: 'boolean' },
+    commit_sha: { type: 'string' },
+    failure_reason: { type: 'string' },
+  },
+  required: ['success', 'tests_pass', 'committed'],
+} as const
+
 export const COMMIT_RESULT_SCHEMA = {
   type: 'object',
   properties: {
@@ -65,6 +80,24 @@ export const TRIAGE_SCHEMA = {
     }},
   },
   required: ['issues'],
+} as const
+
+export const VERIFY_STAGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    verified: { type: 'boolean' },
+    exit_code: { type: 'number' },
+    error: { type: 'string' },
+    test_signal: {
+      type: 'object',
+      properties: {
+        exit_code: { type: 'number' },
+        errors: { type: 'array', items: { type: 'string' } },
+        assertion_messages: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+  required: ['verified'],
 } as const
 
 export const REFACTOR_CHECK_SCHEMA = {

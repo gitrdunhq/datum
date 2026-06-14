@@ -37,7 +37,7 @@ if (a.failures.length === 0) {
     `- Why it happened (root cause analysis)\n` +
     `- Suggested fix\n` +
     `- The lane, stage, and run ID for traceability`,
-    { label: 'triage', phase: 'Triage', model: 'haiku', schema: TRIAGE_SCHEMA }
+    { label: 'triage', phase: 'Triage', model: 'sonnet', schema: TRIAGE_SCHEMA }
   ) as TriageAnalysis | null
 
   if (triage?.issues?.length) {

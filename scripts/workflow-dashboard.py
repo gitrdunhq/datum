@@ -77,6 +77,37 @@ def find_workflow_runs() -> list[dict]:
     return runs[:30]
 
 
+def _parse_agent_tokens(transcript_dir: Path, agent_id: str) -> dict:
+    """Parse JSONL transcript to extract per-agent token breakdown."""
+    jsonl = transcript_dir / f"agent-{agent_id}.jsonl"
+    if not jsonl.exists():
+        return {}
+    input_t = output_t = cache_read = cache_create = 0
+    model = ""
+    try:
+        with open(jsonl) as fh:
+            for line in fh:
+                msg = json.loads(line).get("message", {})
+                if msg.get("role") != "assistant":
+                    continue
+                if not model and "model" in msg:
+                    model = msg["model"]
+                u = msg.get("usage", {})
+                input_t += u.get("input_tokens", 0)
+                output_t += u.get("output_tokens", 0)
+                cache_read += u.get("cache_read_input_tokens", 0)
+                cache_create += u.get("cache_creation_input_tokens", 0)
+    except Exception:
+        return {}
+    return {
+        "input_tokens": input_t,
+        "output_tokens": output_t,
+        "cache_read": cache_read,
+        "cache_create": cache_create,
+        "model_full": model,
+    }
+
+
 def get_workflow_detail(wf_path: str) -> dict:
     """Read full workflow state for detail view."""
     try:
@@ -88,32 +119,47 @@ def get_workflow_detail(wf_path: str) -> dict:
     phases_raw = [p for p in progress if p.get("type") == "workflow_phase"]
     agents_raw = [p for p in progress if p.get("type") == "workflow_agent"]
 
+    # Find transcript directory (sibling: workflows/wf_xxx.json → subagents/workflows/wf_xxx/)
+    wf_file = Path(wf_path)
+    run_id = wf_file.stem
+    transcript_dir = wf_file.parent.parent / "subagents" / "workflows" / run_id
+
     phases = []
     for ph in phases_raw:
         ph_agents = [a for a in agents_raw if a.get("phaseIndex") == ph.get("index")]
+        agents = []
+        for a in ph_agents:
+            agent_id = a.get("agentId", "")
+            tok_detail = (
+                _parse_agent_tokens(transcript_dir, agent_id) if agent_id else {}
+            )
+            agents.append(
+                {
+                    "label": a.get("label", ""),
+                    "state": a.get("state", "unknown"),
+                    "model": (a.get("model") or "")
+                    .replace("claude-", "")
+                    .replace("-4-6", "")
+                    .replace("-4-5-20251001", ""),
+                    "tokens": a.get("tokens", 0),
+                    "input_tokens": tok_detail.get("input_tokens", 0),
+                    "output_tokens": tok_detail.get("output_tokens", 0),
+                    "cache_read": tok_detail.get("cache_read", 0),
+                    "cache_create": tok_detail.get("cache_create", 0),
+                    "tool_calls": a.get("toolCalls", 0),
+                    "duration_s": round((a.get("durationMs") or 0) / 1000, 1),
+                    "last_tool": a.get("lastToolName", ""),
+                    "last_summary": (a.get("lastToolSummary") or "")[:80],
+                    "prompt_preview": (a.get("promptPreview") or "")[:200],
+                    "result_preview": (a.get("resultPreview") or "")[:200],
+                    "attempt": a.get("attempt", 1),
+                }
+            )
         phases.append(
             {
                 "title": ph.get("title", ""),
                 "index": ph.get("index", 0),
-                "agents": [
-                    {
-                        "label": a.get("label", ""),
-                        "state": a.get("state", "unknown"),
-                        "model": (a.get("model") or "")
-                        .replace("claude-", "")
-                        .replace("-4-6", "")
-                        .replace("-4-5-20251001", ""),
-                        "tokens": a.get("tokens", 0),
-                        "tool_calls": a.get("toolCalls", 0),
-                        "duration_s": round((a.get("durationMs") or 0) / 1000, 1),
-                        "last_tool": a.get("lastToolName", ""),
-                        "last_summary": (a.get("lastToolSummary") or "")[:80],
-                        "prompt_preview": (a.get("promptPreview") or "")[:200],
-                        "result_preview": (a.get("resultPreview") or "")[:200],
-                        "attempt": a.get("attempt", 1),
-                    }
-                    for a in ph_agents
-                ],
+                "agents": agents,
             }
         )
 
@@ -435,10 +481,10 @@ async function loadDetail(path){
       const bl=a.state==='running'?'border-l-ok':a.state==='queued'?'border-l-warn':'border-l-bdr';
       const act=a.state==='running'?(a.last_tool?a.last_tool+': '+a.last_summary:'working...'):a.state==='done'?(a.result_preview||'done').slice(0,80):a.prompt_preview.slice(0,80);
 
-      html+=`<div class="grid grid-cols-[2fr_80px_70px_60px_3fr] gap-2 items-center px-3 py-2 border-l-[3px] ${bl} ml-2 text-xs font-mono cursor-pointer transition-colors hover:border-l-accent hover:bg-bg-hover" onclick="toggleAgent(${id})">
+      html+=`<div class="grid grid-cols-[2fr_80px_110px_60px_3fr] gap-2 items-center px-3 py-2 border-l-[3px] ${bl} ml-2 text-xs font-mono cursor-pointer transition-colors hover:border-l-accent hover:bg-bg-hover" onclick="toggleAgent(${id})">
         <div class="text-bright font-medium">${a.state==='running'?'<span class="spinner"></span> ':''}${E(a.label)}${a.attempt>1?' <span class="text-dim">x'+a.attempt+'</span>':''}</div>
         <div class="text-dim text-[0.65rem]">${E(a.model)}</div>
-        <div class="text-dim text-right text-[0.7rem]">${tok(a.tokens)}</div>
+        <div class="text-dim text-right text-[0.7rem]">${a.input_tokens?tok(a.input_tokens)+'→'+tok(a.output_tokens):tok(a.tokens)}</div>
         <div class="text-dim text-right text-[0.7rem]">${a.duration_s?a.duration_s+'s':'-'}</div>
         <div class="text-dim text-[0.68rem] overflow-hidden text-ellipsis whitespace-nowrap" title="${E(act)}">${E(act)}</div>
       </div>
@@ -446,11 +492,13 @@ async function loadDetail(path){
         <div class="ad bg-bg-expand border-l-[3px] border-l-accent font-mono text-[0.7rem]">
           <div class="flex gap-4 flex-wrap mb-2">
             <span class="text-dim">Model: <strong class="text-bright font-medium">${E(a.model)}</strong></span>
-            <span class="text-dim">Tokens: <strong class="text-bright font-medium">${tok(a.tokens)}</strong></span>
+            <span class="text-dim">In: <strong class="text-bright font-medium">${tok(a.input_tokens)}</strong></span>
+            <span class="text-dim">Out: <strong class="text-bright font-medium">${tok(a.output_tokens)}</strong></span>
+            <span class="text-dim">Cache: <strong class="text-bright font-medium">${tok(a.cache_read)}</strong>r / <strong class="text-bright font-medium">${tok(a.cache_create)}</strong>w</span>
+            <span class="text-dim">Total: <strong class="text-bright font-medium">${tok(a.tokens)}</strong></span>
             <span class="text-dim">Tools: <strong class="text-bright font-medium">${a.tool_calls}</strong></span>
             <span class="text-dim">Duration: <strong class="text-bright font-medium">${a.duration_s}s</strong></span>
-            <span class="text-dim">Attempt: <strong class="text-bright font-medium">${a.attempt}</strong></span>
-            ${a.last_tool?'<span class="text-dim">Last: <strong class="text-bright font-medium">'+E(a.last_tool)+'</strong></span>':''}
+            ${a.attempt>1?'<span class="text-dim">Attempt: <strong class="text-bright font-medium">'+a.attempt+'</strong></span>':''}
           </div>
           ${a.prompt_preview?'<div class="mb-2"><div class="text-accent text-[0.6rem] uppercase tracking-wide mb-0.5">Prompt</div><div class="text-dim whitespace-pre-wrap break-words leading-relaxed max-h-[150px] overflow-y-auto">'+E(a.prompt_preview)+'</div></div>':''}
           ${a.last_summary?'<div class="mb-2"><div class="text-accent text-[0.6rem] uppercase tracking-wide mb-0.5">Activity</div><div class="text-dim">'+E(a.last_summary)+'</div></div>':''}
