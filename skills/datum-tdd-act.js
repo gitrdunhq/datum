@@ -28,6 +28,28 @@ export const meta = {
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
+const WRITE_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    files_written: { type: 'array', items: { type: 'string' } },
+    success: { type: 'boolean' },
+    failure_reason: { type: 'string' },
+  },
+  required: ['success'],
+}
+
+const COMMIT_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    committed: { type: 'boolean' },
+    commit_sha: { type: 'string' },
+    files_staged: { type: 'array', items: { type: 'string' } },
+    violations: { type: 'array', items: { type: 'string' } },
+    failure_reason: { type: 'string' },
+  },
+  required: ['committed'],
+}
+
 const STAGE_RESULT_SCHEMA = {
   type: 'object',
   properties: {
@@ -179,6 +201,47 @@ function laneCtxCmd(packet, wt) {
   return `mkdir -p "${wt}/.datum" && printf '%s' '${ctx.replace(/'/g, "'\\''")}' > "${wt}/.datum/lane-context.json"`
 }
 
+// ── Contract summary extraction (pure logic) ───────────────────────────
+
+const BUILTIN_SKIP = new Set(['print','len','str','int','dict','list','set','isinstance','type','exit','round','sorted','filter','map','any','all','range','enumerate','zip','open','input','format','repr','hash','id','dir','vars','super','property','staticmethod','classmethod'])
+
+function extractContractSummary(acceptanceCriteria) {
+  return (acceptanceCriteria || []).map(ac => {
+    const funcMatch = ac.match(/(?<!['"-])(\w+)\(([^)]*)\)/)
+    const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i)
+    const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/)
+    if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null
+    return {
+      function: funcMatch[1],
+      args: funcMatch[2] ? funcMatch[2].split(',').map(a => a.trim()).filter(Boolean) : [],
+      returns: retMatch ? retMatch[1] : null,
+      raises: raiseMatch ? raiseMatch[1] : null,
+      ac: ac.slice(0, 120),
+    }
+  }).filter(Boolean)
+}
+
+// ── Skeptic cross-validation (pure logic) ───────────────────────────────
+
+function crossValidateBugs(skepticResults, lenses) {
+  const allBugs = []
+  let brokenCount = 0
+  for (let i = 0; i < lenses.length; i++) {
+    const s = skepticResults[i]
+    if (!s) continue
+    if (s.verdict === 'BROKEN') brokenCount++
+    for (const bug of (s.bugs_found || [])) {
+      allBugs.push({ ...bug, lens: lenses[i].key })
+    }
+  }
+  const bugDescs = allBugs.map(b => b.description.toLowerCase().slice(0, 60))
+  const crossValidated = allBugs.filter((bug, idx) => {
+    const myDesc = bugDescs[idx]
+    return bugDescs.filter((d, j) => j !== idx && d === myDesc).length > 0
+  })
+  return { allBugs, brokenCount, crossValidated }
+}
+
 // ── JSON packet builder ─────────────────────────────────────────────────────
 
 function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, stage, extras) {
@@ -202,6 +265,54 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, stage, extras)
       : `refactor(${taskId})`,
     ...extras,
   }
+}
+
+// ── Git commit agent (single writer — haiku first, sonnet to detangle) ──────
+
+async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
+  const allowedList = allowedFiles.join(', ')
+  const basePrompt =
+    `You are a GIT COMMIT agent. You ONLY handle git operations — never edit source files.\n` +
+    `Working directory: "${wt}" — cd into it FIRST.\n\n` +
+    `TASK:\n` +
+    `1. Run: git -C "${wt}" status --porcelain\n` +
+    `2. Verify ONLY these files were modified: ${allowedList}\n` +
+    `3. If files outside that list were changed, report them as violations and do NOT commit\n` +
+    `4. Stage the allowed files: git -C "${wt}" add <files>\n` +
+    `5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"\n` +
+    `6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD\n\n` +
+    `RULES:\n` +
+    `- NEVER edit, create, or delete source files — only git operations\n` +
+    `- If there are no changes to commit, return committed=false\n` +
+    `- Use git -C "${wt}" for ALL git commands to enforce directory`
+
+  let result = await agent(basePrompt,
+    { label: `git-${stage.toLowerCase()}:${taskId}`, phase: 'Act', model: 'haiku', schema: COMMIT_RESULT_SCHEMA }
+  )
+
+  if (result && result.violations && result.violations.length > 0) {
+    log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(', ')}`)
+  }
+
+  if (!result || (!result.committed && result.failure_reason)) {
+    log(`[${taskId}] GIT ${stage}: haiku failed (${(result && result.failure_reason) || 'null'}), escalating to sonnet`)
+    result = await agent(
+      basePrompt + `\n\nRETRY CONTEXT: Previous commit attempt failed: ${(result && result.failure_reason) || 'null result'}.\n` +
+      `Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.\n` +
+      `Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.\n` +
+      `If the worktree is in a broken state, report failure_reason with details.`,
+      { label: `git-${stage.toLowerCase()}-fix:${taskId}`, phase: 'Act', model: 'sonnet', schema: COMMIT_RESULT_SCHEMA }
+    )
+  }
+
+  if (result && result.committed) {
+    log(`[${taskId}] GIT ${stage} committed: ${result.commit_sha || '(no sha)'}`)
+    log(`[${taskId}]   staged: ${(result.files_staged || []).join(', ') || '(none reported)'}`)
+  } else {
+    log(`[${taskId}] GIT ${stage} FAILED: ${(result && result.failure_reason) || 'no commit after escalation'}`)
+  }
+
+  return result
 }
 
 // ── Per-lane TDD saga ────────────────────────────────────────────────────────
@@ -242,10 +353,7 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
   const preflight = parseAgentJson(skeletonText, {})
 
   // Commit skeleton scaffolds so resets have a clean baseline to restore to
-  await agent(
-    `cd "${wt}" && git add -A && git diff --cached --quiet || git commit -m "skeleton(${taskId}): preflight scaffolds"`,
-    { label: `skeleton-commit:${taskId}`, phase: 'Act', model: 'haiku' }
-  )
+  await commitStage(taskId, wt, `skeleton(${taskId})`, [...testFiles, ...implFiles], 'SKELETON')
 
   // ── RED ───────────────────────────────────────────────────────────────
   log(`[${taskId}] RED: writing failing tests`)
@@ -264,40 +372,40 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     `- NEVER use raise NotImplementedError — conftest will xfail it and tests pass (green blindness)\n` +
     `- Instead, CALL the actual methods that don't exist yet (e.g., result.to_dict()) — AttributeError is the correct RED failure\n` +
     `- Run test_command — your new tests MUST FAIL with AttributeError or AssertionError\n` +
-    `- Commit with message: "${redPacket.commit_prefix}: <description>"`,
-    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA }
+    `- Do NOT run any git commands (no git add, no git commit) — a separate agent handles commits`,
+    { label: `red:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA }
   )
 
-  if (red && red.committed) {
-    log(`[${taskId}] RED committed: ${red.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   files: ${(red.files_written || []).join(', ') || '(none reported)'}`)
+  if (red && red.success) {
+    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ') || '(none reported)'}`)
   }
 
-  if (!red || !red.committed) {
-    log(`[${taskId}] RED attempt 1 failed: ${(red && red.failure_reason) || 'no commit'}, retrying with hint`)
+  if (!red || !red.success) {
+    log(`[${taskId}] RED attempt 1 failed: ${(red && red.failure_reason) || 'no files written'}, retrying with hint`)
     await agent(
-      `cd "${wt}" && git checkout -- . && git clean -fd --exclude=.datum/`,
+      `cd "${wt}" && git -C "${wt}" checkout -- . && git -C "${wt}" clean -fd --exclude=.datum/`,
       { label: `reset-red:${taskId}`, phase: 'Act', model: 'haiku' }
     )
     red = await agent(
       `SETUP (run first): ${redCtxCmd}\n` +
       `TASK PACKET: ${redPacketStr}\n\n` +
-      `RETRY HINT: Previous attempt failed (${(red && red.failure_reason) || 'no commit'}). ` +
+      `RETRY HINT: Previous attempt failed (${(red && red.failure_reason) || 'unknown'}). ` +
       `Focus on writing simple, concrete assertions that test the acceptance criteria directly. ` +
-      `Do not overthink — one test per AC, assert specific values.`,
-      { label: `red-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA }
+      `Do not overthink — one test per AC, assert specific values.\n` +
+      `Do NOT run any git commands — a separate agent handles commits.`,
+      { label: `red-retry:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA }
     )
   }
 
-  if (!red || !red.committed) {
-    const err = (red && red.failure_reason) || 'RED agent did not commit after 2 attempts'
+  if (!red || !red.success) {
+    const err = (red && red.failure_reason) || 'RED agent did not write files after 2 attempts'
     log(`[${taskId}] RED FAILED after 2 attempts: ${err}`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: err }
   }
 
-  if (red.committed) {
-    log(`[${taskId}] RED retry committed: ${red.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   files: ${(red.files_written || []).join(', ') || '(none reported)'}`)
+  const redCommit = await commitStage(taskId, wt, redPacket.commit_prefix, testFiles, 'RED')
+  if (!redCommit || !redCommit.committed) {
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `git commit failed: ${(redCommit && redCommit.failure_reason) || 'unknown'}` }
   }
 
   // ── Verify RED + Reflect (parallel — both read committed test files independently) ──
@@ -335,21 +443,7 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
   // ── Context for GREEN (E2+E8+E10+E11: signal from verify-red, preflight from skeleton, no extra agents) ──
   const signal = (redCheck && redCheck.test_signal) || { exit_code: 1, errors: [], assertion_messages: [] }
 
-  // E8: extract contract_summary from ACs deterministically
-  const BUILTIN_SKIP = new Set(['print','len','str','int','dict','list','set','isinstance','type','exit','round','sorted','filter','map','any','all','range','enumerate','zip','open','input','format','repr','hash','id','dir','vars','super','property','staticmethod','classmethod'])
-  const contractSummary = (lane.acceptance_criteria || []).map(ac => {
-    const funcMatch = ac.match(/(?<!['"-])(\w+)\(([^)]*)\)/)
-    const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i)
-    const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/)
-    if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null
-    return {
-      function: funcMatch[1],
-      args: funcMatch[2] ? funcMatch[2].split(',').map(a => a.trim()).filter(Boolean) : [],
-      returns: retMatch ? retMatch[1] : null,
-      raises: raiseMatch ? raiseMatch[1] : null,
-      ac: ac.slice(0, 120),
-    }
-  }).filter(Boolean)
+  const contractSummary = extractContractSummary(lane.acceptance_criteria)
 
   // ── GREEN (sonnet first, opus on retry) ───────────────────────────────
   const greenModel = lane.green_model || 'sonnet'
@@ -374,22 +468,21 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     `- existing_api: skeleton of existing module code — understand the API shape before extending\n` +
     `- red_note: what behaviors the tests check for\n` +
     `- test_signal: error messages from failing tests\n` +
-    `Write MINIMUM code to make tests pass — nothing more.`,
-    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA }
+    `Write MINIMUM code to make tests pass — nothing more.\n` +
+    `Do NOT run any git commands — a separate agent handles commits.`,
+    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: WRITE_RESULT_SCHEMA }
   )
 
-  if (green && green.committed) {
-    log(`[${taskId}] GREEN committed: ${green.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   files: ${(green.files_written || []).join(', ') || '(none reported)'}`)
+  if (green && green.success) {
+    log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(', ') || '(none reported)'}`)
   }
 
-  if (!green || !green.committed) {
+  if (!green || !green.success) {
     const escalatedModel = 'opus'
-    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${(green && green.failure_reason) || 'no commit'}, escalating to ${escalatedModel}`)
+    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${(green && green.failure_reason) || 'no files written'}, escalating to ${escalatedModel}`)
 
-    // Reset worktree to clean RED state — partial impl from failed attempt contaminates signal
     await agent(
-      `cd "${wt}" && git checkout -- . && git clean -fd --exclude=.datum/`,
+      `cd "${wt}" && git -C "${wt}" checkout -- . && git -C "${wt}" clean -fd --exclude=.datum/`,
       { label: `reset-green:${taskId}`, phase: 'Act', model: 'haiku' }
     )
 
@@ -405,7 +498,7 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
       contract_summary: contractSummary,
       impl_stubs: preflight.impl_stubs || [],
       existing_api: preflight.existing_api || {},
-      retry_hint: `Previous attempt failed: ${(green && green.failure_reason) || 'no commit'}. Read the FULL error output carefully. Fix the implementation.`,
+      retry_hint: `Previous attempt failed: ${(green && green.failure_reason) || 'unknown'}. Read the FULL error output carefully. Fix the implementation.`,
     })
     green = await agent(
       `SETUP (run first): ${greenCtxCmd}\n` +
@@ -413,20 +506,21 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
       `CONTEXT: RETRY — previous attempt failed. Read existing implementation files.\n` +
       `- contract_summary: function signatures to implement\n` +
       `- impl_stubs/existing_api: fill in bodies, don't start from scratch\n` +
-      `- test_signal: current errors to fix`,
-      { label: `green-retry:${taskId}`, phase: 'Act', model: escalatedModel, schema: STAGE_RESULT_SCHEMA }
+      `- test_signal: current errors to fix\n` +
+      `Do NOT run any git commands — a separate agent handles commits.`,
+      { label: `green-retry:${taskId}`, phase: 'Act', model: escalatedModel, schema: WRITE_RESULT_SCHEMA }
     )
   }
 
-  if (!green || !green.committed) {
-    const err = (green && green.failure_reason) || 'GREEN agent did not commit after 2 attempts'
+  if (!green || !green.success) {
+    const err = (green && green.failure_reason) || 'GREEN agent did not write files after 2 attempts'
     log(`[${taskId}] GREEN FAILED after 2 attempts: ${err}`)
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: err }
   }
 
-  if (green.committed) {
-    log(`[${taskId}] GREEN retry committed: ${green.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   files: ${(green.files_written || []).join(', ') || '(none reported)'}`)
+  const greenCommit = await commitStage(taskId, wt, greenPacket.commit_prefix, implFiles, 'GREEN')
+  if (!greenCommit || !greenCommit.committed) {
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `git commit failed: ${(greenCommit && greenCommit.failure_reason) || 'unknown'}` }
   }
 
   // ── Verify GREEN ──────────────────────────────────────────────────────
@@ -466,22 +560,7 @@ async function runLane(taskId, lanePlan, worktreePaths, cfg) {
     )
   )
 
-  const allBugs = []
-  let brokenCount = 0
-  for (let i = 0; i < SKEPTIC_LENSES.length; i++) {
-    const s = skepticResults[i]
-    if (!s) continue
-    if (s.verdict === 'BROKEN') brokenCount++
-    for (const bug of (s.bugs_found || [])) {
-      allBugs.push({ ...bug, lens: SKEPTIC_LENSES[i].key })
-    }
-  }
-
-  const bugDescs = allBugs.map(b => b.description.toLowerCase().slice(0, 60))
-  const crossValidated = allBugs.filter((bug, idx) => {
-    const myDesc = bugDescs[idx]
-    return bugDescs.filter((d, j) => j !== idx && d === myDesc).length > 0
-  })
+  const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, SKEPTIC_LENSES)
 
   for (let i = 0; i < SKEPTIC_LENSES.length; i++) {
     const s = skepticResults[i]
@@ -545,24 +624,33 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg) {
 
   const refactor = await agent(
     `SETUP (run first): ${refactorCtxCmd}\n` +
-    `TASK PACKET: ${JSON.stringify(refactorPacket)}`,
-    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: STAGE_RESULT_SCHEMA }
+    `TASK PACKET: ${JSON.stringify(refactorPacket)}\n` +
+    `Do NOT run any git commands — a separate agent handles commits.`,
+    { label: `refactor:${taskId}`, phase: 'Act', model: 'sonnet', schema: WRITE_RESULT_SCHEMA }
   )
 
   if (!refactor) {
     log(`[${taskId}] REFACTOR FAILED: agent returned null`)
     return null
   }
-  if (refactor.committed) {
-    log(`[${taskId}] REFACTOR committed: ${refactor.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   files: ${(refactor.files_written || []).join(', ') || '(none reported)'}`)
-  }
-  if (!refactor.committed && refactor.failure_reason && !refactor.failure_reason.toLowerCase().includes('nothing to')) {
+  if (!refactor.success && refactor.failure_reason && !refactor.failure_reason.toLowerCase().includes('nothing to')) {
     log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason}`)
     return null
   }
-  if (!refactor.committed) {
-    log(`[${taskId}] REFACTOR: nothing changed after all`)
+  if (!refactor.success) {
+    log(`[${taskId}] REFACTOR: nothing to change`)
+    return { verified: true }
+  }
+
+  log(`[${taskId}] REFACTOR wrote: ${(refactor.files_written || []).join(', ') || '(none reported)'}`)
+
+  const refCommit = await commitStage(taskId, wt, refactorPacket.commit_prefix, [...testFiles, ...implFiles], 'REFACTOR')
+  if (!refCommit || !refCommit.committed) {
+    log(`[${taskId}] REFACTOR commit failed — reverting`)
+    await agent(
+      `git -C "${wt}" checkout -- . && git -C "${wt}" clean -fd --exclude=.datum/`,
+      { label: `reset-refactor:${taskId}`, phase: 'Act', model: 'haiku' }
+    )
     return { verified: true }
   }
 
@@ -573,8 +661,12 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg) {
   const check = parseAgentJson(checkText, { verified: false })
 
   if (!check || !check.verified) {
-    log(`[${taskId}] REFACTOR verification FAILED: ${check && check.error}`)
-    return null
+    log(`[${taskId}] REFACTOR verification FAILED: ${(check && check.error) || 'tests broke'} — reverting`)
+    await agent(
+      `git -C "${wt}" revert --no-edit HEAD`,
+      { label: `revert-refactor:${taskId}`, phase: 'Act', model: 'haiku' }
+    )
+    return { verified: true }
   }
   return check
 }
@@ -722,6 +814,7 @@ for (let bi = 0; bi < batches.length; bi++) {
       log(`[${taskId}] deps satisfied — launching`)
       const result = await runLane(taskId, lanePlan, worktreePaths, cfg)
         .then(r => r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' })
+        .catch(e => ({ task_id: taskId, status: 'failed', stage: 'CRASH', error: String(e) }))
       depResolvers[taskId](result)
       return result
     })
