@@ -49,6 +49,8 @@ Break the feature into 2-5 tasks. Each task needs:
 - **red_note**: hint for the RED agent on what tests to write
 - **stage**: `behavioral` (needs RED→GREEN) or `structural` (refactor only)
 - **depends_on**: list of task IDs this depends on (for wave ordering)
+- **estimated_impl_lines**: estimated lines of implementation code GREEN will write (split task if >30)
+- **green_model**: optional model override for GREEN agent (e.g., "opus" for complex tasks)
 
 Guidelines for good decomposition:
 - Each task should be independently testable
@@ -85,7 +87,9 @@ Write `.datum/lane-plan.json` with this structure:
       "acceptance_criteria": ["AC1: ...", "AC2: ..."],
       "red_note": "...",
       "stage": "behavioral",
-      "depends_on": []
+      "depends_on": [],
+      "estimated_impl_lines": 20,
+      "green_model": null
     }
   }
 }
@@ -94,34 +98,33 @@ Write `.datum/lane-plan.json` with this structure:
 The `topological_order` must respect `depends_on` — a task's dependencies must
 appear before it in the list.
 
-## Step 5: Create epic branch and run ID
+## Step 5: Build structured workflow args
+
+Use `datum tdd-args` to generate the structured args object. This handles branch naming,
+run ID generation, test command detection, and language detection automatically.
 
 ```bash
-git branch <epic-branch-name> HEAD
+datum tdd-args --feature "<feature-description>" --lane-plan .datum/lane-plan.json
 ```
 
-Branch naming: `feat/<short-kebab-description>` or `fix/<short-kebab-description>`.
-Run ID: date-based, e.g., `20260613-feat-serialization`.
+This outputs JSON with `epicBranch`, `runId`, `lanePlanPath`, `testCommand`, and `language`.
 
-## Step 6: Detect test command
+NEVER forward raw freetext to the workflow — always use `datum tdd-args` to build the args object.
 
-Look at the project to determine the right test command:
-- Python with pytest: `uv run pytest tests/<test_file>.py -x -q`
-- Python with unittest: `uv run python -m unittest tests/<test_file>.py`
-- Check `pyproject.toml` for test configuration
+## Step 6: Create epic branch
+
+```bash
+git branch <epicBranch-from-step-5> HEAD
+```
 
 ## Step 7: Launch the workflow
 
+Parse the JSON output from step 5 and pass it as args:
+
 ```
 Workflow({
-  scriptPath: "<repo>/skills/datum-tdd-act.js",
-  args: {
-    lanePlanPath: ".datum/lane-plan.json",
-    epicBranch: "<branch-name>",
-    runId: "<run-id>",
-    testCommand: "<detected test command>",
-    language: "<python|typescript|swift|etc>"
-  }
+  name: "datum-tdd-act",
+  args: <JSON-from-step-5>
 })
 ```
 
@@ -134,7 +137,9 @@ Tell the user:
 
 ## Important constraints
 
-- NEVER create more than 5 tasks — split into multiple pipeline runs if needed
+- Plans with >5 tasks are auto-partitioned into sequential batches of ≤5 by the workflow — no manual splitting needed
+- NEVER let estimated_impl_lines exceed 30 for any task — split the task if the implementation would be larger
+- For large features (>10 tasks), group tasks into logical units with clear dependency boundaries between groups
 - NEVER guess file paths — verify they exist with `ls` or `find`
 - NEVER put two tasks in the same wave if they write to the same file
 - NEVER assign an EXISTING test file (one with passing tests) to a task — always create a NEW test file per feature so verify-red can detect failures cleanly

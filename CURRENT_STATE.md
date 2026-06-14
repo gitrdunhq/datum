@@ -1,59 +1,80 @@
-# Current State
+# datum — Current State
 
-**Last updated:** 2026-05-29
-**Epic:** 23 — Mega Fix Session
+**Branch:** `main` | **Last updated:** 2026-06-13 | **Tests:** 1260 passing, 9 expected failures (stale dogfood artifacts)
 
 ---
 
-## What shipped
+## Shipped
 
-Seventeen epics across two sessions:
+### TDD Workflow Pipeline (2026-06-08 — 2026-06-13)
 
-### Session 1 (Epics 1–7)
+Deterministic Act phase orchestration — a JS workflow script (`datum-tdd-act.js`) that reads `lane-plan.json` and runs RED->GREEN->REFACTOR per lane with enforced gates.
 
-1. **Epic 1** (PR #25) — AIDLC-inspired pipeline enhancements: overconfidence gate, adaptive depth classifier, units of work, LANDSCAPE.md, QUESTIONS.md. 45 new tests.
-2. **Epic 2** (PR #26) — Post-epic-1 hardening: SSOT path resolution (`resolve_artifact()`), Triage enforcement, GitNexus-first Deepen, branch auto-increment.
-3. **Epic 3** (PR #27) — Lint cleanup: 6 ruff violations across artifact.py, contracts.py, prompt_loader.py.
-4. **Epic 4** (PR #28) — Express pipeline reference doc (`0x-express.md`) for Patch-tier routing.
-5. **Epic 5** (PR #29) — Self-healing: `datum bugfile` CLI + `report_bug()` with sanitized output.
-6. **Epic 6** (PR #30) — Mermaid diagram skill ingested: 9 reference docs, 5 design templates, 3 scripts.
-7. **Epic 7** (PR #31) — Rock-solid installer: prerequisite checks, `~/.local/bin/datum` wrapper, symlink registration.
+- 7 custom agent types (datum-cli, datum-reader, datum-red, datum-green, datum-refactor, datum-skeptic, datum-reflect, datum-docs)
+- 4 enforcement hooks (protect-tests, lane-file-guard, commit-format, test-ratchet)
+- 3-lens adversarial skeptic panel with consensus filtering
+- Retry ladder: RED and GREEN get 2 attempts, GREEN escalates sonnet->opus on retry
+- Self-reflection scoring: haiku scores RED test quality 0-10, gates GREEN
+- Root worktree isolation for parallel workflow safety
+- Auto-triage: failures analyzed and filed as GitHub issues
+- Per-lane test commands derived from lane's own test files
+- `datum-tdd` skill: feature description -> lane plan -> branch -> workflow launch
+- Worktree manager with `--` branch separator (not `/`)
 
-### Session 2 (Epics 8–17)
+### Prior Sessions (Epics 1-23, PRs #25-#41)
 
-8. **Epic 8** (PR #32) — Documentation cleanup: all prose uses `datum <command>`, zero `uv run` exposure.
-9. **Epic 9** (PR #33) — `datum dream`: first-class memory consolidation with staleness audit + transcript extraction.
-10. **Epic 10** (PR #34) — Semantic memory extraction via MLX + Jina v5 on Apple Silicon.
-11. **Epic 11** (PR #35) — Local LLM beta: MLX Gemma 4 26B inference with retry ladder escalation + cost tracking.
-12. **Epic 12** (PR #36) — Fix: local-llm `chat()` import + SSOT max_tokens default.
-13. **Epic 13** (PR #37) — `datum --version` flag + fix seed_state_docs CLAUDE.md overwrite bug.
-14. **Epic 14** (PR #38) — Grammar-constrained generation via outlines + pydantic schemas for pipeline tasks.
-15. **Epic 15** (PR #39) — Enforce local LLM via subagent only: hook blocks shell, AGENTS.md mandates Agent tool.
-16. **Epic 16** (PR #40) — `datum init` seeds hooks, config, and lane-tools to every initted repo.
-17. **Epic 17** (PR #41) — datum-tui beta: Textual factory floor dashboard + OpenRouter TUI reference implementation.
-18. **Epic 18** (11333ba) — Multi-turn local LLM pipeline: DCCD two-pass, N=3 voting, few-shot, ACI tool execution, 5 lane tools, CLI pipeline flags, shell autocompletion.
-19. **Epic 19** (b7c099e) — `datum walkthrough` cmd + pipeline hardening: two-tier model routing (fast_model/fast_phases), KV cache quantization (kv_bits=8, max_kv_size), hf_cache_dir config, WalkthroughSummary schema, bug fixes from code review.
-20. **Epic 20** (0efdb62) — Budget check bug fix: DEFAULTS[max_tokens] 131072→8192. prompt_cache threading in multi_turn_phase. _cache_offset helper.
-21. **Epic 21** (0166399) — TriageDecision Pydantic schema: grammar-constrained triage output via run_phase("triage", schema=TriageDecision).
-22. **Epic 22** (712be36) — gate.py hardening: check_questions_answered peek-ahead for multi-line answers, _contracts() named unpacking.
-23. **Epic 23** (Mega Fix Session) — Closed all 16 outstanding issues: config.toml `max_tokens` vs `context_window` decoupling, legacy render refactor for lane_plan, memory frontmatter schema expansion (created, updated, epic, issues) with 28-day expiration, auto-memory sweeping during `datum closeout`, and AI-friendly sanitized crash tracebacks with self-healing GitHub issue hints.
+23 epics shipped. Local LLM pipeline (MLX Gemma/Qwen3), grammar-constrained output, multi-turn, self-healing (`datum bugfile`), semantic memory (`datum dream`), TUI dashboard, full installer with 5-tool registry.
 
-## Active work
+---
 
-oMLX backend development.
+## In Flight
 
-## Known issues
+- **Opus pipeline audit** (COMPLETE): 11 recommendations for decomposition quality and cost optimization. 4 must-do, 4 high-priority, 3 nice-to-have. Key finding: implementation stubs for GREEN reduce opus escalation from ~40% to ~10%.
+- **dogfood-v14** — successful TDD run (WaveResult.to_dict/from_dict/flatten), code on main
+- 2 commits ahead of origin/main (GREEN model escalation + skeleton preflight context)
 
-- *All outstanding hitlist issues resolved in Epic 23. Zero known issues!*
+---
 
-## Architecture notes
+## What's Next
 
-- All user-facing commands: `datum <command>` (CLI wrapper at `~/.local/bin/datum`)
-- Local LLM: two-tier routing — fast_model (Llama-3.1-8B) for triage/validate, model (Qwen3-30B-A3B-8bit) for act/sidecar phases
-- KV cache: kv_bits=8 quantization + max_kv_size rotating buffer, flows through both stream_generate and outlines gen()
-- hf_cache_dir: datum sets HF_HUB_CACHE from config at load time; all models on /Volumes/Extra/mlx-models
-- Grammar-constrained output: outlines for structured phases; TriageDecision schema now used for triage
-- Multi-turn: prompt_cache created before turn loop, threaded through structured/two_pass/vote calls
-- Gate: check_questions_answered now peeks ahead for multi-line answers
-- Memory: `datum dream` runs staleness audit + MLX semantic extraction (Jina v5)
-- Model tiers: config.toml is the authority; every subagent spawn must include explicit `model:` param
+### Audit Priority 1 (must-do)
+
+1. **E1**: Create implementation stubs in skeleton_creator.py so GREEN fills in bodies instead of writing from scratch
+2. **E2**: Eliminate read-preflight agent call (pure waste — haiku agent running `cat`)
+3. **E3**: Update datum-green.md to reference red_note in the packet
+4. **E4**: Fix skeleton template NotImplementedError -> assert False (contradicts pipeline rules)
+
+### Audit Priority 2 (high impact)
+
+5. **E5**: Demote skeptic edge+error lenses to haiku (keep contract at sonnet)
+6. **E6**: Demote triage agent to haiku
+7. **E7**: Add estimated_impl_lines to lane plan schema
+8. **E8**: Add contract_summary to GREEN packet
+
+### Features
+
+- **Issue #140**: datum-tdd skill structured args (`build_tdd_args()` module)
+- **Issue #134**: 3-round adversarial review pipeline
+- **Web dashboard**: Python server on port 10001 for inflight workflow progress
+- **Issue #139**: wave_builder cycle detection (code exists, issue open)
+
+---
+
+## Backlog
+
+- #132: act agent scope violations (blocking parallel lanes)
+- #131: SourceKit false positives on subpackage tests
+- #130: wrong test framework detection (Testing vs XCTest)
+- #128: Package.swift target membership context for imports
+- Headless orchestrator for datum-local variant
+- anthropics/claude-code#68288: agentType + schema StructuredOutput incompatibility
+
+---
+
+## Architecture
+
+- CLI wrapper at `~/.local/bin/datum`, all docs say `datum <command>`
+- Local LLM: Qwen3-30B-A3B-Instruct-2507-4bit-DWQ (think) + gemma-4-E4B-it-qat-4bit (decide) on /Volumes/Extra/mlx-models
+- TDD model tiers: haiku (mechanical), sonnet (reasoning), sonnet->opus escalation (GREEN retry)
+- Per-lane economics: 6 sonnet + 9 haiku = ~9 sonnet-equivalent per lane (happy path)
+- Each workflow-subagent carries ~76K system prompt overhead

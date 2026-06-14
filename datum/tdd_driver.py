@@ -88,7 +88,7 @@ def check_clean_working_tree(
 
 class DirtyBaselineError(RuntimeError):
     """Raised when the target repo has a failing test suite at episode start.
-    
+
     The agent should not build RED on top of a broken repo.
     """
 
@@ -133,26 +133,40 @@ def verify_green_baseline(
             f"Output:\n{result.stdout}\n{result.stderr}"
         )
 
+
 class GreenBlindnessError(RuntimeError):
     """Raised when tests pass at the end of RED stage.
-    
+
     The agent must write a genuinely failing test before proceeding to GREEN.
     """
 
-def verify_red_stage(
-    repo_path: Path, test_command: list[str] | None = None
-) -> None:
+
+def _extract_test_signal(result: subprocess.CompletedProcess) -> dict:
+    """Extract structured test signal from pytest output for GREEN consumption."""
+    import re as _re
+
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    errors = []
+    assertions = []
+    for line in output.splitlines():
+        line = line.strip()
+        if _re.search(r"(Error|Exception):", line):
+            errors.append(line[:200])
+        elif "assert" in line.lower() or "AssertionError" in line:
+            assertions.append(line[:200])
+
+    return {
+        "exit_code": result.returncode,
+        "errors": errors[:20],
+        "assertion_messages": assertions[:20],
+    }
+
+
+def verify_red_stage(repo_path: Path, test_command: list[str] | None = None) -> dict:
     """Assert that *repo_path*'s test suite currently fails.
 
-    If the tests pass, raises GreenBlindnessError. This ensures the agent does
-    not proceed to GREEN with a test that already passes (green blindness).
-
-    Parameters
-    ----------
-    repo_path:
-        Path to the repository root.
-    test_command:
-        Optional custom command to run tests. Defaults to ["pytest", "-q"].
+    If the tests pass, raises GreenBlindnessError. Returns a dict with
+    verification result and test signal for GREEN consumption.
     """
     if test_command is None:
         test_command = ["pytest", "-q"]
@@ -166,8 +180,7 @@ def verify_red_stage(
         )
     except FileNotFoundError:
         raise GreenBlindnessError(
-            f"Test command not found: {test_command[0]}. "
-            f"Cannot verify RED stage."
+            f"Test command not found: {test_command[0]}. " f"Cannot verify RED stage."
         )
 
     if result.returncode == 0:
@@ -176,6 +189,8 @@ def verify_red_stage(
             f"You must write a genuinely failing test before GREEN proceeds.\n\n"
             f"Output:\n{result.stdout}\n{result.stderr}"
         )
+
+    return _extract_test_signal(result)
 
 
 # ---------------------------------------------------------------------------

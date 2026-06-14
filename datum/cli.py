@@ -252,12 +252,17 @@ def classify(
     from datum.classify import classify as do_classify, parse_classification_metadata
 
     def _resolve_epic_dir():
+        root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
         branch = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
         ).stdout.strip()
-        return Path(f"docs/epics/{branch}")
+        return Path(root) / "docs" / "epics" / branch
 
     epic_dir = _resolve_epic_dir()
     epic_spec = epic_dir / spec_path
@@ -1390,8 +1395,10 @@ def verify_stage_cmd(
 
     try:
         if stage == "red":
-            verify_red_stage(path, test_command=cmd)
-            typer.echo(json.dumps({"verified": True, "stage": "red"}))
+            signal = verify_red_stage(path, test_command=cmd)
+            typer.echo(
+                json.dumps({"verified": True, "stage": "red", "test_signal": signal})
+            )
         elif stage in ("green", "baseline"):
             verify_green_baseline(path, test_command=cmd)
             typer.echo(json.dumps({"verified": True, "stage": stage}))

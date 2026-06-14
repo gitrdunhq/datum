@@ -16,16 +16,15 @@ Usage:
 import argparse
 import json
 import re
-import sys
 import subprocess
+import sys
 from pathlib import Path
+
 
 def _extract_swift_target_context(task_files: list[str]) -> str | None:
     try:
         out = subprocess.check_output(
-            ["swift", "package", "dump-package"],
-            text=True,
-            stderr=subprocess.DEVNULL
+            ["swift", "package", "dump-package"], text=True, stderr=subprocess.DEVNULL
         )
         data = json.loads(out)
     except Exception:
@@ -66,6 +65,7 @@ def _extract_swift_target_context(task_files: list[str]) -> str | None:
         return "Swift Package Context:\n" + "\n".join(context_lines)
     return None
 
+
 def _detect_swift_framework(test_file: str) -> str:
     path = Path(test_file)
     test_dir = path.parent
@@ -80,6 +80,7 @@ def _detect_swift_framework(test_file: str) -> str:
             if "import Testing" in content:
                 return "swift-testing"
     return "swift-testing"
+
 
 SUPPORTED = {"swift", "typescript", "javascript", "go", "python"}
 
@@ -180,7 +181,7 @@ class Test{struct_name}:
         # Act
 
         # Assert — prove {property_id}
-        raise NotImplementedError("RED agent: implement this assertion")
+        assert False, "RED agent: implement this assertion"
 """,
 }
 
@@ -191,6 +192,108 @@ KIND_MAP = {
     "go": "go-test",
     "python": "pytest",
 }
+
+
+def _extract_signatures_from_acs(acs: list[str]) -> list[dict]:
+    """Parse AC text to extract function/class signatures for implementation stubs."""
+    sigs = []
+    seen_names: set[str] = set()
+    skip = {
+        "print",
+        "len",
+        "str",
+        "int",
+        "dict",
+        "list",
+        "set",
+        "isinstance",
+        "type",
+        "exit",
+        "round",
+        "sorted",
+        "filter",
+        "map",
+        "any",
+        "all",
+    }
+
+    for i, ac in enumerate(acs):
+        for m in re.finditer(r"(?<!['\"\-])(\w+)\(([^)]*)\)", ac):
+            name = m.group(1)
+            if name in skip or name in seen_names:
+                continue
+            if name.startswith("test_") or name.startswith("Test"):
+                continue
+            seen_names.add(name)
+
+            args_raw = m.group(2).strip()
+            args = []
+            if args_raw:
+                for a in args_raw.split(","):
+                    a = a.strip().split(":")[0].strip().split("=")[0].strip()
+                    if a and a not in ("self", "cls"):
+                        args.append(a)
+
+            ret_match = re.search(r"returns?\s+(?:a\s+)?(\w+)", ac, re.IGNORECASE)
+            sigs.append(
+                {
+                    "name": name,
+                    "args": args,
+                    "returns": ret_match.group(1) if ret_match else None,
+                    "ac_index": i,
+                }
+            )
+
+    return sigs
+
+
+def build_impl_stubs(
+    task_id: str,
+    acs: list[str],
+    impl_files: list[str],
+    language: str,
+) -> list[dict]:
+    """Generate implementation stub files so GREEN fills in bodies instead of writing from scratch."""
+    if language != "python":
+        return []
+
+    sigs = _extract_signatures_from_acs(acs)
+    if not sigs:
+        return []
+
+    stubs = []
+    for impl_path in impl_files:
+        path = Path(impl_path)
+        if path.exists():
+            continue
+
+        lines = []
+        seen: set[str] = set()
+        for sig in sigs:
+            if sig["name"] in seen:
+                continue
+            seen.add(sig["name"])
+            args_str = ", ".join(sig["args"]) if sig["args"] else ""
+            lines.append(f"def {sig['name']}({args_str}):")
+            lines.append("    ...")
+            lines.append("")
+
+        if not lines:
+            continue
+
+        content = "\n".join(lines)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+        stubs.append(
+            {
+                "path": impl_path,
+                "functions": list(seen),
+                "stub_written": True,
+            }
+        )
+
+    return stubs
 
 
 def slugify(text: str) -> str:
@@ -265,7 +368,9 @@ def build_skeleton(
     tag = property_id.lower().replace("-", "")
 
     actual_framework = framework or language
-    template = SKELETON_TEMPLATES.get(actual_framework, SKELETON_TEMPLATES.get(language, SKELETON_TEMPLATES["python"]))
+    template = SKELETON_TEMPLATES.get(
+        actual_framework, SKELETON_TEMPLATES.get(language, SKELETON_TEMPLATES["python"])
+    )
     content = template.format(
         task_id=task_id,
         ac_id=ac_id,
@@ -313,7 +418,7 @@ def run_preflight(
             tasks_data = json.loads(tasks_path.read_text())
         except json.JSONDecodeError:
             return {"error": f"{tasks_path} is invalid JSON"}
-            
+
         if isinstance(tasks_data, dict) and "lanes" in tasks_data:
             # Handle lane-plan.json format
             task_data = tasks_data["lanes"].get(task_id)
@@ -322,7 +427,7 @@ def run_preflight(
         else:
             # Handle tasks.json array format
             task_data = next((t for t in tasks_data if t.get("id") == task_id), None)
-            
+
         if not task_data:
             return {
                 "task_id": task_id,
@@ -331,14 +436,17 @@ def run_preflight(
                 "outputs": [],
                 "no_skeletons_reason": f"Task {task_id} not found in {tasks_path.name}",
             }
-            
+
         acs_text = task_data.get("acceptance_criteria", [])
         files = task_data.get("files", [])
-        
+
         outputs = []
         for i, ac_text in enumerate(acs_text):
             ac_id = f"AC{i + 1}"
-            props = re.findall(r"\b(SAFE|LIVE|INV|BOUND|IDEM|ORD|ISOL|PERF|SEC|OBS|COMPAT)-\d+\b", ac_text)
+            props = re.findall(
+                r"\b(SAFE|LIVE|INV|BOUND|IDEM|ORD|ISOL|PERF|SEC|OBS|COMPAT)-\d+\b",
+                ac_text,
+            )
             prop_id = props[0] if props else f"PROP-{i + 1:03d}"
             skeleton = build_skeleton(
                 task_id=task_id,
@@ -348,22 +456,42 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
-                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
+                framework=(
+                    _detect_swift_framework(files[0])
+                    if language == "swift" and files
+                    else None
+                ),
             )
             dest = Path(skeleton["path"])
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(skeleton.pop("content"))
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
-            
-        target_context = _extract_swift_target_context(files) if language == "swift" else None
+
+        target_context = (
+            _extract_swift_target_context(files) if language == "swift" else None
+        )
+        impl_files = [f for f in files if "test" not in f.lower()]
+        impl_stubs = build_impl_stubs(task_id, acs_text, impl_files, language)
+        existing_api = {}
+        if language == "python":
+            from datum.skeleton import extract_skeleton_from_file
+
+            for f in impl_files:
+                p = Path(f)
+                if p.exists():
+                    existing_api[f] = extract_skeleton_from_file(p)
         result = {
             "task_id": task_id,
             "language": language,
             "framework": KIND_MAP.get(language, ""),
             "outputs": outputs,
+            "impl_stubs": impl_stubs,
+            "existing_api": existing_api,
             "target_context": target_context,
-            "no_skeletons_reason": None if outputs else "No acceptance criteria found in JSON",
+            "no_skeletons_reason": (
+                None if outputs else "No acceptance criteria found in JSON"
+            ),
         }
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -416,7 +544,11 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
-                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
+                framework=(
+                    _detect_swift_framework(files[0])
+                    if language == "swift" and files
+                    else None
+                ),
             )
             # Write the file
             dest = Path(skeleton["path"])
@@ -436,7 +568,11 @@ def run_preflight(
                 predicate_short=ac_text.strip(),
                 task_files=files,
                 language=language,
-                framework=_detect_swift_framework(files[0]) if language == "swift" and files else None,
+                framework=(
+                    _detect_swift_framework(files[0])
+                    if language == "swift" and files
+                    else None
+                ),
             )
             dest = Path(skeleton["path"])
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -444,7 +580,9 @@ def run_preflight(
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
     else:
-        target_context = _extract_swift_target_context(files) if language == "swift" else None
+        target_context = (
+            _extract_swift_target_context(files) if language == "swift" else None
+        )
         return {
             "task_id": task_id,
             "language": language,
@@ -454,7 +592,9 @@ def run_preflight(
             "no_skeletons_reason": "No acceptance criteria found in task block",
         }
 
-    target_context = _extract_swift_target_context(files) if language == "swift" else None
+    target_context = (
+        _extract_swift_target_context(files) if language == "swift" else None
+    )
 
     result = {
         "task_id": task_id,

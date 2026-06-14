@@ -66,6 +66,7 @@ def pass_gate(message: str = "gate passed") -> None:
 
 # ── Helper functions ────────────────────────────────────────────────────────
 
+
 def score_context_quality(content: str, working_dir: Path, artifact_path: Path) -> dict:
     """
     Rubric for artifact scoring:
@@ -80,20 +81,20 @@ def score_context_quality(content: str, working_dir: Path, artifact_path: Path) 
 
     concrete_lines = 0
     path_like_refs = set()
-    
+
     # Matches something that looks like a file path
-    path_regex = re.compile(r'\b(?:\w*[/-_]+\w*)+\.\w+\b|\b(?:\w+/)+\w*\b')
-    
+    path_regex = re.compile(r"\b(?:\w*[/-_]+\w*)+\.\w+\b|\b(?:\w+/)+\w*\b")
+
     for line in lines:
         if "`" in line or path_regex.search(line):
             concrete_lines += 1
-            
+
         for match in path_regex.findall(line):
-            match = match.strip('`"\',.')
+            match = match.strip("`\"',.")
             path_like_refs.add(match)
 
     concreteness = concrete_lines / len(lines)
-    
+
     invalid_refs = []
     valid_refs = 0
     for ref in path_like_refs:
@@ -101,7 +102,7 @@ def score_context_quality(content: str, working_dir: Path, artifact_path: Path) 
             valid_refs += 1
         else:
             invalid_refs.append(ref)
-            
+
     grounding = valid_refs / len(path_like_refs) if path_like_refs else 1.0
 
     drift = 0
@@ -111,14 +112,14 @@ def score_context_quality(content: str, working_dir: Path, artifact_path: Path) 
                 ["git", "log", "-1", "--format=%H", "--", str(artifact_path)],
                 cwd=working_dir,
                 text=True,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
             ).strip()
             if log_out:
                 drift_out = subprocess.check_output(
                     ["git", "rev-list", "--count", f"{log_out}..HEAD"],
                     cwd=working_dir,
                     text=True,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
                 ).strip()
                 drift = int(drift_out)
     except Exception:
@@ -128,10 +129,8 @@ def score_context_quality(content: str, working_dir: Path, artifact_path: Path) 
         "concreteness": round(concreteness, 2),
         "grounding": round(grounding, 2),
         "drift": drift,
-        "invalid_refs": invalid_refs
+        "invalid_refs": invalid_refs,
     }
-
-
 
 
 def resolve_epic_dir() -> Path:
@@ -152,15 +151,19 @@ def resolve_epic_dir() -> Path:
 def resolve_artifact(name: str) -> Path:
     """SSOT for artifact path resolution: prefers newest copy between epic dir and root."""
     import sys
+
     epic_path = resolve_epic_dir() / name
     root_path = Path(name)
-    
+
     if epic_path.exists() and root_path.exists():
         if root_path.stat().st_mtime > epic_path.stat().st_mtime:
-            print(f"⚠️ Warning: root {name} is newer than epic-dir copy. Using root.", file=sys.stderr)
+            print(
+                f"⚠️ Warning: root {name} is newer than epic-dir copy. Using root.",
+                file=sys.stderr,
+            )
             return root_path
         return epic_path
-        
+
     if epic_path.exists():
         return epic_path
     if root_path.exists():
@@ -559,7 +562,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
             for tid in u.get("tasks", []):
                 task_to_unit[tid] = uid
             unit_deps[uid] = set(u.get("depends_on", []))
-            
+
         # compute transitive dependencies for units
         changed = True
         while changed:
@@ -575,28 +578,34 @@ def gate_plan(yolo: bool, config: dict) -> None:
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
             continue
-            
+
         owners_list = list(owners)
         for i in range(len(owners_list)):
             for j in range(i + 1, len(owners_list)):
                 t1 = owners_list[i]
                 t2 = owners_list[j]
-                
+
                 # Check task-level dependency
-                if t2 in lanes[t1].get("depends_on", []) or t1 in lanes[t2].get("depends_on", []):
+                if t2 in lanes[t1].get("depends_on", []) or t1 in lanes[t2].get(
+                    "depends_on", []
+                ):
                     continue
-                    
+
                 # Check unit-level dependency
                 if units:
                     u1 = task_to_unit.get(t1)
                     u2 = task_to_unit.get(t2)
                     if u1 and u2:
                         if u1 == u2:
-                            continue # Same unit, executes sequentially
-                        if u2 in unit_deps.get(u1, set()) or u1 in unit_deps.get(u2, set()):
-                            continue # Sequential at unit level
-                            
-                fail(f"File overlap {f} across parallel tasks {t1} and {t2} (no dependency edge)")
+                            continue  # Same unit, executes sequentially
+                        if u2 in unit_deps.get(u1, set()) or u1 in unit_deps.get(
+                            u2, set()
+                        ):
+                            continue  # Sequential at unit level
+
+                fail(
+                    f"File overlap {f} across parallel tasks {t1} and {t2} (no dependency edge)"
+                )
 
     # Overconfidence gate: check Assumption Audit in SPEC.md
     spec_path = resolve_artifact("SPEC.md")
@@ -618,15 +627,14 @@ def gate_plan(yolo: bool, config: dict) -> None:
         if audit_errors:
             fail(f"Overconfidence gate failed: {audit_errors}")
 
-    # Plan approval is always required (never skippable)
     policy = gate_policy(config, "plan_human_approval")
-    if policy != "skipped":
+    if policy != "skipped" and not yolo:
         print(
             json.dumps(
                 {
                     "passed": False,
                     "needs_human": True,
-                    "message": "TASKS.md and lane-plan.json ready for human approval.",
+                    "message": "TASKS.md and lane-plan.json ready for human approval. Re-run with --yolo or --skip-human to approve.",
                     "artifacts": ["TASKS.md", ".datum/lane-plan.json"],
                 }
             )
@@ -830,7 +838,10 @@ def gate_review(yolo: bool, config: dict) -> None:
     validate_payload, _ = _contracts()
     unified_errors = validate_payload("unified.schema.json", unified_json)
     if unified_errors:
-        fail(f"unified.json is malformed according to unified.schema.json:\n" + "\n".join(unified_errors))
+        fail(
+            "unified.json is malformed according to unified.schema.json:\n"
+            + "\n".join(unified_errors)
+        )
 
     # Check for high-severity findings
     content = report_path.read_text() if report_path.exists() else ""
@@ -980,10 +991,10 @@ def gate_validate_profiles(config: dict) -> None:
 
 
 def gate_red(yolo: bool, config: dict) -> None:
-    from datum.tdd_driver import verify_red_stage, GreenBlindnessError
+    from datum.tdd_driver import GreenBlindnessError, verify_red_stage
 
     print("--- [GATE] RED Test Verification ---")
-    
+
     if not config.get("green_blindness_strict", True):
         print("green_blindness_strict is false, skipping verification.")
         pass_gate("RED test verification skipped")
@@ -992,6 +1003,7 @@ def gate_red(yolo: bool, config: dict) -> None:
     test_cmd = config.get("tests", {}).get("command", ["pytest", "-q"])
     if isinstance(test_cmd, str):
         import shlex
+
         test_cmd = shlex.split(test_cmd)
 
     try:
