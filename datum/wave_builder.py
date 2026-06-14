@@ -14,6 +14,10 @@ from dataclasses import dataclass
 class CyclicDependencyError(ValueError):
     """Raised when build_waves detects a cycle in the dependency graph."""
 
+    def __init__(self, message: str, cycle_nodes: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.cycle_nodes: list[str] = cycle_nodes or []
+
 
 class MissingDependencyError(ValueError):
     """Raised when a lane references a dependency that does not exist in lanes."""
@@ -71,8 +75,55 @@ class WaveResult:
             f" (max parallelism: {s.max_parallelism}, critical path: {s.critical_path_length})"
         )
 
+    @property
+    def cycle_path(self) -> list[str] | None:
+        """None for acyclic graphs; reserved for future cyclic result support."""
+        return None
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"WaveResult(waves={self.waves!r}, stats={self.stats!r})"
+
+
+def _find_cycle_path(
+    cycle_nodes: list[str],
+    adj: dict[str, list[str]],
+) -> list[str]:
+    """Return one cycle as an ordered path list ending back at the start node.
+
+    Uses DFS restricted to nodes known to be in a cycle (``cycle_nodes``).
+    Returns a list like ``['a', 'b', 'a']`` to show the full loop.
+    """
+    cycle_set = set(cycle_nodes)
+    visited: set[str] = set()
+    path: list[str] = []
+    path_set: set[str] = set()
+
+    def dfs(node: str) -> bool:
+        visited.add(node)
+        path.append(node)
+        path_set.add(node)
+        for neighbor in adj.get(node, []):
+            if neighbor not in cycle_set:
+                continue
+            if neighbor in path_set:
+                # Found the cycle — trim path to start at the repeated node.
+                cycle_start = path.index(neighbor)
+                path[:] = path[cycle_start:] + [neighbor]
+                return True
+            if neighbor not in visited:
+                if dfs(neighbor):
+                    return True
+        path.pop()
+        path_set.discard(node)
+        return False
+
+    for start in sorted(cycle_nodes):
+        if start not in visited:
+            if dfs(start):
+                return path
+
+    # Fallback: should not happen if cycle_nodes is accurate.
+    return cycle_nodes + [cycle_nodes[0]]
 
 
 def build_waves(
@@ -129,8 +180,12 @@ def build_waves(
 
     cycle_nodes = sorted(lid for lid in ids if in_deg[lid] > 0)
     if cycle_nodes:
+        # Find an actual cycle path using DFS on the original adjacency list.
+        cycle_path = _find_cycle_path(cycle_nodes, adj)
+        path_str = " -> ".join(cycle_path)
         raise CyclicDependencyError(
-            f"Cycle detected among tasks: {', '.join(cycle_nodes)}"
+            f"Cycle detected: {path_str}",
+            cycle_nodes=cycle_nodes,
         )
 
     return WaveResult(waves)
