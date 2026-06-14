@@ -1,5 +1,5 @@
 import { CommitResult, PipelineConfig } from './types'
-import { COMMIT_RESULT_SCHEMA } from './schemas'
+import { COMMIT_RESULT_SCHEMA, VERIFY_STAGE_SCHEMA } from './schemas'
 import { parseAgentJson } from './utils'
 
 // ── Git agents (single-writer pattern) ──────────────────────────────────────
@@ -104,12 +104,22 @@ export async function verifyStage(
   stage: string,
   testCommand: string,
 ): Promise<any> {
-  const checkText = await agent(
-    `Run: datum verify-stage ${stage} --repo "${wt}" --test-command "${testCommand}"\n` +
-      `Return ONLY the JSON output, nothing else.`,
-    { label: `verify-${stage}:${taskId}`, phase: 'Act', model: 'haiku' },
+  const verifyCmd = stage === 'red'
+    ? `cd "${wt}" && ${testCommand} 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "TESTS_FAILED"; fi; exit 0`
+    : `cd "${wt}" && ${testCommand} 2>&1; exit 0`
+
+  const expectedOutcome = stage === 'red'
+    ? 'For RED verification: tests MUST FAIL (exit code != 0). If they fail, set verified=true. If they pass, set verified=false.'
+    : 'For GREEN verification: tests MUST PASS (exit code 0). If they pass, set verified=true. If they fail, set verified=false.'
+
+  return await agent(
+    `Verification agent. Run the test command and report whether the stage passed.\n\n` +
+    `Run this command: ${verifyCmd}\n\n` +
+    `${expectedOutcome}\n\n` +
+    `Set error to the failure reason if verified=false.\n` +
+    `Set test_signal with exit_code, errors (list of error lines), and assertion_messages.`,
+    { label: `verify-${stage}:${taskId}`, phase: 'Act', model: 'haiku', schema: VERIFY_STAGE_SCHEMA },
   )
-  return parseAgentJson(checkText, { verified: false })
 }
 
 // ── Skeleton runner ─────────────────────────────────────────────────────────

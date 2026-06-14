@@ -67,6 +67,24 @@ export const TRIAGE_SCHEMA = {
   required: ['issues'],
 } as const
 
+export const VERIFY_STAGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    verified: { type: 'boolean' },
+    exit_code: { type: 'number' },
+    error: { type: 'string' },
+    test_signal: {
+      type: 'object',
+      properties: {
+        exit_code: { type: 'number' },
+        errors: { type: 'array', items: { type: 'string' } },
+        assertion_messages: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+  required: ['verified'],
+} as const
+
 export const REFACTOR_CHECK_SCHEMA = {
   type: 'object',
   properties: {

@@ -52,6 +52,23 @@ var SKEPTIC_SCHEMA = {
   },
   required: ["bugs_found", "confidence", "verdict"]
 };
+var VERIFY_STAGE_SCHEMA = {
+  type: "object",
+  properties: {
+    verified: { type: "boolean" },
+    exit_code: { type: "number" },
+    error: { type: "string" },
+    test_signal: {
+      type: "object",
+      properties: {
+        exit_code: { type: "number" },
+        errors: { type: "array", items: { type: "string" } },
+        assertion_messages: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+  required: ["verified"]
+};
 var REFACTOR_CHECK_SCHEMA = {
   type: "object",
   properties: {
@@ -253,12 +270,19 @@ Do NOT edit, create, or delete source files \u2014 only git operations.`,
   log(`[${taskId}] GIT REVERT ${stage}: last commit reverted`);
 }
 async function verifyStage(taskId, wt, stage, testCommand) {
-  const checkText = await agent(
-    `Run: datum verify-stage ${stage} --repo "${wt}" --test-command "${testCommand}"
-Return ONLY the JSON output, nothing else.`,
-    { label: `verify-${stage}:${taskId}`, phase: "Act", model: "haiku" }
+  const verifyCmd = stage === "red" ? `cd "${wt}" && ${testCommand} 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "TESTS_FAILED"; fi; exit 0` : `cd "${wt}" && ${testCommand} 2>&1; exit 0`;
+  const expectedOutcome = stage === "red" ? "For RED verification: tests MUST FAIL (exit code != 0). If they fail, set verified=true. If they pass, set verified=false." : "For GREEN verification: tests MUST PASS (exit code 0). If they pass, set verified=true. If they fail, set verified=false.";
+  return await agent(
+    `Verification agent. Run the test command and report whether the stage passed.
+
+Run this command: ${verifyCmd}
+
+${expectedOutcome}
+
+Set error to the failure reason if verified=false.
+Set test_signal with exit_code, errors (list of error lines), and assertion_messages.`,
+    { label: `verify-${stage}:${taskId}`, phase: "Act", model: "haiku", schema: VERIFY_STAGE_SCHEMA }
   );
-  return parseAgentJson(checkText, { verified: false });
 }
 async function runSkeleton(taskId, wt, cfg2) {
   const text = await agent(
