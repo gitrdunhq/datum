@@ -95,10 +95,10 @@ for (const task of tasks) {
 // Build (collapsed write-tasks-json + build-lane-plan into one agent)
 await agent(
   `Do these steps in order:
-1. Write this JSON to "tasks.json": ${tasksJson}
-2. Run: datum lane-plan --input tasks.json --output .datum/lane-plan.json --md-output TASKS.md
-3. Copy to epic dir: mkdir -p "${epicDir}" && cp TASKS.md "${epicDir}/TASKS.md" && cp tasks.json "${epicDir}/tasks.json"
-4. Commit: git add TASKS.md tasks.json .datum/lane-plan.json "${epicDir}/TASKS.md" "${epicDir}/tasks.json" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
+1. mkdir -p "${epicDir}"
+2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
+3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
+4. Commit: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
 If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
 Otherwise return: {"exit_code": 0}
 Output raw JSON only.`,
@@ -129,9 +129,8 @@ if (triage.decision === 'deepen') {
     planDeepenTemplate + `
 
 ADDITIONAL TASK after appending Research Findings:
-1. Run: datum lane-plan --input tasks.json --output .datum/lane-plan.json --md-output TASKS.md
-2. Copy: cp TASKS.md "${epicDir}/TASKS.md"
-3. Commit: git add TASKS.md .datum/lane-plan.json "${epicDir}/TASKS.md" && git commit -m "plan: deepen + rebuild"
+1. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
+2. Commit: git add "${epicDir}/TASKS.md" "${epicDir}/lane-plan.json" && git commit -m "plan: deepen + rebuild"
 Return JSON: {"tasks_researched": N, "findings_count": N}`,
     { label: 'deepen-research', model: model('balanced') },
   )

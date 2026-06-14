@@ -38,6 +38,12 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
+var DEFAULT_CONFIG = {
+  language: "python",
+  test_framework: "pytest",
+  test_command: "uv run pytest -x -q"
+};
+var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/prompts/refine-triage.md
 var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nRead: {{ticketPath}}\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n';
@@ -131,7 +137,8 @@ var readResult = await agent(
     extraFields: `3. "ticket_exists": whether docs/epics/<branch>/TICKET.md exists (true/false)
 4. "ticket_content": if ticket_exists, read the full file contents, else null
 5. "spec_exists": whether docs/epics/<branch>/SPEC.md exists (true/false)
-6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null`
+6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
+7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\``
   }),
   { label: "read-context", model: model("fast") }
 );
@@ -179,7 +186,7 @@ var scanRaw = await agent(
 );
 var scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
 phase("Write");
-var today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+var today = ctx.timestamp ? ctx.timestamp.slice(0, 10) : "(date unavailable)";
 await agent(
   `You have TWO tasks. Do them in order.
 

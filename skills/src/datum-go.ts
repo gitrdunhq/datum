@@ -1,6 +1,6 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
-import { model, PHASES, type Phase, type Route } from './shared/models'
+import { model, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
@@ -93,9 +93,11 @@ if (shouldRun('properties', 2)) {
 if (shouldRun('act', 3)) {
   log('── Act ──')
 
-  const lanePlanPath = '.datum/lane-plan.json'
-  const testCommand = 'uv run pytest -x -q'
-  const language = 'python'
+  // Read config (written by datum init) or fall back to defaults
+  const cfgText = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+  const repoCfg = parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as { language: string; test_framework: string; test_command: string }
+  const testCommand = repoCfg.test_command
+  const language = repoCfg.language
 
   // Detect branch + generate runId
   const branchInfo = await agent(detectBranchPrompt, { label: 'act-detect', model: model('fast') })
@@ -104,9 +106,10 @@ if (shouldRun('act', 3)) {
   const runId = info.timestamp
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`)
 
-  // Read lane plan
+  // Read lane plan from epic dir (never root)
+  const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`
   const planText = await agent(
-    `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
+    `Read ${lanePlanPath} and return its contents as raw JSON text. If not found, try .datum/lane-plan.json as fallback. Output ONLY the JSON, no markdown fences, no explanation.`,
     { label: 'read-plan', model: model('fast') },
   )
   const lanePlan = (typeof planText === 'string'

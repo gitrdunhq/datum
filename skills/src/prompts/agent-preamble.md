@@ -1,6 +1,10 @@
 # datum
 
-> Agentic software delivery pipeline. Python 3.12+, uv, ruff, pytest.
+> Agentic software delivery pipeline — language-agnostic, config-driven.
+
+## CLI Rule
+- All commands use `datum <command>` — never `uv run`, `python3 scripts/`, or bare tool invocations
+- Test command comes from `.datum/config.json` `test_command` field — read it, don't guess
 
 ## Coding Rules
 - Functional core / imperative shell — business logic is pure, side effects at edges
@@ -15,14 +19,11 @@
 - Always RED before GREEN — write failing test first, confirm failure
 - Strong assertions — verify specific values, not just "no error"
 - Negative paths required — test invalid inputs, timeouts, state violations
-- Use `uv run pytest` — never bare `pytest`
-- Test naming: `test_<function>_<scenario>`
+- Run tests with the configured test command (from `.datum/config.json`)
 
 ## File Conventions
-- Python: snake_case, type hints, ruff-formatted
-- Imports: absolute from package root
+- Follow the repo's existing style (detected by datum-awake)
 - No `eval()`, `os.system()`, `shell=True`
-- No bare `python` — always `uv run python`
 
 ## Full Context
 - [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns

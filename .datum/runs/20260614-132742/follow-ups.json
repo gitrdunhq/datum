@@ -1,0 +1,151 @@
+{
+  "run_id": "20260614-132742",
+  "generated_at": "2026-06-14",
+  "source": "review: docs/epics/main/REVIEW-REPORT.md + session observations",
+  "follow_ups": [
+    {
+      "id": "fu-001",
+      "severity": "critical",
+      "category": "security",
+      "title": "Shell injection via ctx.branch/rid in datum-closeout.ts",
+      "description": "LLM-controlled values ctx.branch and rid are interpolated directly into shell command strings in datum-closeout.ts line 57. An adversarial agent response could inject commands via branch name (e.g. 'x; rm -rf .'). Also affects git tag and EPIC_DIR variable.",
+      "file": "skills/src/datum-closeout.ts",
+      "line": 57,
+      "review_id": "SEC-001",
+      "suggested_fix": "Validate ctx.branch and rid against /^[a-zA-Z0-9._/-]+$/ before interpolation. Pass values as positional CLI args, not embedded shell strings.",
+      "status": "open"
+    },
+    {
+      "id": "fu-002",
+      "severity": "critical",
+      "category": "security",
+      "title": "Prompt injection via preamble content in datum-awake.ts",
+      "description": "LLM-generated preamble content is interpolated into agent instruction strings containing embedded shell commands. Adversarial repo content (CLAUDE.md, AGENTS.md) could inject shell commands via the distill agent output.",
+      "file": "skills/src/datum-awake.ts",
+      "line": 62,
+      "review_id": "SEC-002",
+      "suggested_fix": "Never interpolate raw LLM output into agent instruction strings containing shell commands. Write preamble via a dedicated file-write tool call, then issue git commit in a separate agent with no LLM-controlled content in the prompt.",
+      "status": "open"
+    },
+    {
+      "id": "fu-003",
+      "severity": "high",
+      "category": "correctness",
+      "title": "datum-go batch partitioning ignores DAG wave boundaries",
+      "description": "Batch partitioning uses sequential index slicing into topological_order (MAX_BATCH=5). A task depending on a task in the previous wave can be sliced into the same batch, then await a depPromise that never resolves (the dep is in a later batch), causing a hang.",
+      "file": "skills/src/datum-go.ts",
+      "line": 127,
+      "review_id": "CORR-004",
+      "suggested_fix": "Partition by buildWaves() output rather than sequential index. Each wave becomes one batch, or fill batches respecting wave boundaries so intra-batch deps are always resolvable.",
+      "status": "open"
+    },
+    {
+      "id": "fu-004",
+      "severity": "high",
+      "category": "architecture",
+      "title": "Act batch loop inlined in datum-go.ts — should be in shared/utils.ts",
+      "description": "The act phase batch coordination loop (lines 123-202) is inlined in datum-go.ts. Any change to batching strategy requires modifying datum-go rather than replacing a utility. Creates 1:1 coupling between orchestrator and act coordination logic.",
+      "file": "skills/src/datum-go.ts",
+      "line": 90,
+      "review_id": "ARCH-001",
+      "suggested_fix": "Extract entire batch loop to a pure function in shared/utils.ts. Call it from datum-go. Preserves no-nesting-limit intent while decoupling orchestration from batch coordination.",
+      "status": "open"
+    },
+    {
+      "id": "fu-005",
+      "severity": "high",
+      "category": "correctness",
+      "title": "gate_validate passes silently when test signal file is missing",
+      "description": "datum/gate.py line 740: the validate gate only checks last-test-signal.json if the file exists. When it doesn't exist, the gate passes silently — tests have never been run but the gate greens. Violates the gate's stated purpose.",
+      "file": "datum/gate.py",
+      "line": 740,
+      "review_id": "CORR-007",
+      "suggested_fix": "When signal_path does not exist and not yolo, call fail('No test signal found — run tests before validate gate'). Only skip this check in yolo mode.",
+      "status": "open"
+    },
+    {
+      "id": "fu-006",
+      "severity": "high",
+      "category": "correctness",
+      "title": "list_sub_issues unchecked non-array API response",
+      "description": "datum/github_issues.py line 218: json.loads(raw) is not guarded against a non-array response (e.g. pagination metadata object or error body). If the GH sub_issues REST endpoint returns an object, `for issue in issues` silently iterates over dict keys and crashes on issue['number'].",
+      "file": "datum/github_issues.py",
+      "line": 218,
+      "review_id": "CORR-001",
+      "suggested_fix": "After json.loads, assert isinstance(issues, list) and raise a descriptive RuntimeError if not.",
+      "status": "open"
+    },
+    {
+      "id": "fu-007",
+      "severity": "high",
+      "category": "correctness",
+      "title": "build_lane_plan_from_epic silently emits dangling depends_on IDs",
+      "description": "datum/github_issues.py line 247: depends_on_ids is built from raw int metadata without verifying that each referenced issue number corresponds to an actual lane in the plan. Dangling depends_on IDs are emitted silently, causing buildWaves() to throw at runtime.",
+      "file": "datum/github_issues.py",
+      "line": 247,
+      "review_id": "CORR-002",
+      "suggested_fix": "After building all lanes, second-pass validate every depends_on ID exists as a key in lanes. Raise ValueError listing unresolved references before returning.",
+      "status": "open"
+    },
+    {
+      "id": "fu-008",
+      "severity": "high",
+      "category": "correctness",
+      "title": "update_issue_stage has two separate if stage == 'done' blocks",
+      "description": "datum/github_issues.py line 306: two separate `if stage == 'done':` blocks handle comment (line 304) and close (line 306) separately. If the comment call raises, the issue is never closed. Two side-effects should be in one block.",
+      "file": "datum/github_issues.py",
+      "line": 306,
+      "review_id": "CORR-003",
+      "suggested_fix": "Merge both `if stage == 'done':` blocks into one. Put comment call and close call in the same block.",
+      "status": "open"
+    },
+    {
+      "id": "fu-009",
+      "severity": "medium",
+      "category": "architecture",
+      "title": "Lane type missing task_id field — identity only implicit in Record key",
+      "description": "skills/src/shared/types.ts line 62: LanePlan.lanes is Record<string, Lane> but Lane does not include task_id. Lane identity is implicit. Downstream code must reach into lanePlan to look up lane by task_id, creating an inverted dependency.",
+      "file": "skills/src/shared/types.ts",
+      "line": 62,
+      "review_id": "ARCH-004",
+      "suggested_fix": "Add task_id: string field to the Lane interface. Update buildPacket() and all Lane accessors.",
+      "status": "open"
+    },
+    {
+      "id": "fu-010",
+      "severity": "medium",
+      "category": "performance",
+      "title": "O(n*m) dependency filtering in datum-tdd-act-lane.ts",
+      "description": "skills/src/datum-tdd-act-lane.ts lines 447 and 457: crossBatchFailed and in-batch dep filtering use filter() with nested includes() calls on arrays. For large lane plans this is O(n*m).",
+      "file": "skills/src/datum-tdd-act-lane.ts",
+      "line": 447,
+      "review_id": "PERF-001",
+      "suggested_fix": "Convert batchLaneIds and priorFailures to Set for O(1) lookups. Use has() instead of includes().",
+      "status": "open"
+    },
+    {
+      "id": "fu-011",
+      "severity": "low",
+      "category": "observability",
+      "title": "Closeout-data.json was not written by pipeline for run 20260614-132742",
+      "description": "The run directory .datum/runs/20260614-132742/ was created but left empty — closeout-data.json was never written. This means pipeline telemetry is blind for this session. Likely caused by the pipeline not reaching the closeout phase.",
+      "file": ".datum/runs/20260614-132742/",
+      "line": null,
+      "review_id": null,
+      "suggested_fix": "Ensure datum-closeout.ts always writes closeout-data.json even on partial runs. Write a minimal skeleton at run start and update fields as phases complete.",
+      "status": "open"
+    },
+    {
+      "id": "fu-012",
+      "severity": "low",
+      "category": "correctness",
+      "title": "issue_to_number in build_lane_plan_from_epic is dead code",
+      "description": "datum/github_issues.py line 236: issue_to_number dict is populated but never read. Could mislead readers into thinking dependency validation is performed via this map.",
+      "file": "datum/github_issues.py",
+      "line": 236,
+      "review_id": "CORR-010",
+      "suggested_fix": "Remove issue_to_number or wire it into the depends_on validation proposed in fu-007 (CORR-002).",
+      "status": "open"
+    }
+  ]
+}

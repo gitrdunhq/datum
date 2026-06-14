@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "20260614-141951",
+  "epic": "fail-fast-validation",
+  "generated_at": "2026-06-14T14:19:51Z",
+  "follow_ups": [
+    {
+      "id": "fu-001",
+      "priority": "critical",
+      "category": "implementation",
+      "title": "Execute act phase: implement runRuffCheck, runMypyCheck, and GREEN phase wiring",
+      "description": "The primary deliverable of this epic was never implemented. All 3 tasks are queued. Run `datum act` to execute task-1 (runRuffCheck), task-2 (runMypyCheck), and task-3 (GREEN phase wiring) in dependency order. CORR-010 in the review report.",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "skills/datum-tdd-act-lane.js",
+        "tests/test_ruff_precheck.py",
+        "tests/test_mypy_precheck.py",
+        "tests/test_green_precheck_gate.py"
+      ],
+      "source_finding": "CORR-010",
+      "epic_task_ids": ["task-1", "task-2", "task-3"],
+      "action": "Run `datum act` against the existing lane-plan.json in docs/epics/datum/fail-fast-validation/"
+    },
+    {
+      "id": "fu-002",
+      "priority": "critical",
+      "category": "bug",
+      "title": "Fix Kotlin language detection broken by build.gradle.kts in java markers",
+      "description": "detect.py:37 — `build.gradle.kts` is listed under java markers and iteration hits java first, so Kotlin repos are always detected as Java. Add a post-java guard that checks for build.gradle.kts and returns kotlin, mirroring the typescript-over-javascript guard.",
+      "files": ["datum/detect.py"],
+      "source_finding": "CORR-001",
+      "line": 37,
+      "action": "Remove `build.gradle.kts` from java markers list, add Kotlin override guard after java match"
+    },
+    {
+      "id": "fu-003",
+      "priority": "high",
+      "category": "security",
+      "title": "Validate DATUM_PROJECT_DIR before os.chdir() to prevent path traversal",
+      "description": "cli.py:40 — DATUM_PROJECT_DIR is used unvalidated in os.chdir(). Any process that sets this env var can redirect datum's working directory to an arbitrary path. Validate realpath starts within allowed workspace root.",
+      "files": ["datum/cli.py"],
+      "source_finding": "SEC-001",
+      "line": 40,
+      "action": "Add os.path.realpath validation against allowed base prefix before os.chdir()"
+    },
+    {
+      "id": "fu-004",
+      "priority": "high",
+      "category": "performance",
+      "title": "Convert priorFailures and batchLaneIds to Set to eliminate O(n×m) dependency filtering",
+      "description": "datum-tdd-act-lane.ts:447,457 — Array.includes() used for membership tests in the dependency filtering loop. Convert both to Set for O(1) lookups. Two-line fix per site.",
+      "files": ["skills/src/datum-tdd-act-lane.ts", "skills/datum-tdd-act-lane.js"],
+      "source_finding": "PERF-001 / PERF-002",
+      "lines": [447, 457],
+      "action": "const priorFailuresSet = new Set(priorFailures); use priorFailuresSet.has(d). Same for batchLaneIds."
+    },
+    {
+      "id": "fu-005",
+      "priority": "high",
+      "category": "bug",
+      "title": "Wrap json.loads in datum init with try/except to handle malformed config.json",
+      "description": "cli.py:185 — json.loads(config_path.read_text()) is unguarded. If .datum/config.json is malformed (e.g. partial write), datum init crashes with an unhandled JSONDecodeError instead of a user-friendly message.",
+      "files": ["datum/cli.py"],
+      "source_finding": "CORR-004",
+      "line": 185,
+      "action": "Wrap in try/except json.JSONDecodeError: warn and overwrite with freshly detected config"
+    },
+    {
+      "id": "fu-006",
+      "priority": "high",
+      "category": "bug",
+      "title": "Fix uv-vs-pip fallback condition in _detect_test_command",
+      "description": "detect.py:153 — The condition falls back to `python -m pytest` when both uv.lock AND pyproject.toml are absent, but a project with pyproject.toml and no uv.lock (pip-based) incorrectly gets `uv run pytest`. Condition should key only on uv.lock presence.",
+      "files": ["datum/detect.py"],
+      "source_finding": "CORR-003",
+      "line": 153,
+      "action": "Change condition to: if not (root / 'uv.lock').exists(): return 'python -m pytest -x -q'"
+    },
+    {
+      "id": "fu-007",
+      "priority": "high",
+      "category": "bug",
+      "title": "Add null-guard on epicBranch before path interpolation in datum-go.ts",
+      "description": "datum-go.ts:106 — epicBranch is derived from an agent() call. If the call returns null or malformed output, epicBranch is undefined/empty, producing docs/epics//lane-plan.json or docs/epics/undefined/lane-plan.json with no error surfaced.",
+      "files": ["skills/src/datum-go.ts", "skills/datum-go.js"],
+      "source_finding": "CORR-006",
+      "line": 106,
+      "action": "After branch-detection agent call, guard: if (!epicBranch) fall back to .datum/lane-plan.json"
+    },
+    {
+      "id": "fu-008",
+      "priority": "high",
+      "category": "bug",
+      "title": "Fix link.unlink() IsADirectoryError in _install_workflows",
+      "description": "cli.py:140 — link.unlink() raises IsADirectoryError if a directory named like a workflow file exists in ~/.claude/workflows/. Add explicit is_dir() branch using shutil.rmtree() before unlink.",
+      "files": ["datum/cli.py"],
+      "source_finding": "CORR-005",
+      "line": 140,
+      "action": "if link.is_dir(): shutil.rmtree(str(link)) else: link.unlink()"
+    },
+    {
+      "id": "fu-009",
+      "priority": "high",
+      "category": "bug",
+      "title": "Fix lang variable shadowing in _detect_language os.walk fallback",
+      "description": "detect.py:72 — loop variable `lang` shadows the outer `lang` set by the marker-check pass. Rename to `ext_lang` inside the os.walk block.",
+      "files": ["datum/detect.py"],
+      "source_finding": "CORR-002",
+      "line": 72,
+      "action": "Rename loop variable from lang to ext_lang on lines 72+ in the os.walk fallback block"
+    },
+    {
+      "id": "fu-010",
+      "priority": "medium",
+      "category": "security",
+      "title": "Sanitize branch name before interpolation into filesystem path pattern",
+      "description": "cli.py:205 — branch name from ensure_feature_branch() is interpolated directly into config's epic_dir_pattern without sanitization. A branch containing '../..' could escape the repo root.",
+      "files": ["datum/cli.py"],
+      "source_finding": "SEC-002",
+      "line": 205,
+      "action": "After computing epic_dir, assert Path(epic_dir).resolve() is a subdirectory of the project root"
+    },
+    {
+      "id": "fu-011",
+      "priority": "medium",
+      "category": "security",
+      "title": "Fix TOCTOU race in _install_workflows() symlink replacement",
+      "description": "cli.py:144 — Between link.unlink() and link.symlink_to(js) a concurrent process could insert a symlink to a sensitive file. Use atomic rename pattern with os.replace() to eliminate the window.",
+      "files": ["datum/cli.py"],
+      "source_finding": "SEC-003",
+      "line": 144,
+      "action": "Write to a temp path, then os.replace() into the final destination atomically"
+    },
+    {
+      "id": "fu-012",
+      "priority": "medium",
+      "category": "bug",
+      "title": "Parse package.json as JSON in _detect_ts_test_framework instead of raw text match",
+      "description": "detect.py:108 — `'jest' in content` matches package names like jest-circus or babel-jest in any string value, including comments. Parse as JSON and inspect dependencies/devDependencies keys.",
+      "files": ["datum/detect.py"],
+      "source_finding": "CORR-007",
+      "line": 108,
+      "action": "json.loads(content), check 'jest' / 'vitest' as keys in merged deps+devDeps dict"
+    },
+    {
+      "id": "fu-013",
+      "priority": "medium",
+      "category": "bug",
+      "title": "Add unittest detection path to _detect_python_test_framework",
+      "description": "detect.py:96 — Function always returns 'pytest' unconditionally. Projects using unittest exclusively with no pytest markers will get incorrect detection.",
+      "files": ["datum/detect.py"],
+      "source_finding": "CORR-008",
+      "line": 96,
+      "action": "Check for import unittest / unittest.TestCase in test files; return 'unittest' if no pytest markers found"
+    },
+    {
+      "id": "fu-014",
+      "priority": "medium",
+      "category": "performance",
+      "title": "Guard config-reading agent call in datum-go.ts with !a.testCommand check",
+      "description": "datum-go.ts:93 — READ_CONFIG_PROMPT called unconditionally on every datum go invocation. Mirror guard from datum-tdd-act.ts: skip if testCommand and language are already in args.",
+      "files": ["skills/src/datum-go.ts", "skills/datum-go.js"],
+      "source_finding": "CORR-009",
+      "line": 93,
+      "action": "Wrap READ_CONFIG_PROMPT agent call with: if (!a.testCommand || !a.language)"
+    }
+  ]
+}

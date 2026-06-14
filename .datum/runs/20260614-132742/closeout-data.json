@@ -1,0 +1,150 @@
+{
+  "run_id": "20260614-132742",
+  "epic_number": null,
+  "epic_name": "datum pipeline infrastructure — route, awake, go, review, full TS workflow",
+  "merge_sha": "5d04a074464a8861ec6e24b6e5a18338b94f8579",
+  "merge_timestamp": "2026-06-14T13:29:29-06:00",
+  "git": {
+    "commits": [
+      {"sha": "410c4eb", "message": "fix: closeout archives root pipeline artifacts (TASKS.md, lane-plan.json, etc.) to epic dir"},
+      {"sha": "ebfed95", "message": "feat: datum-route + model-agnostic tiers + enum types + pipeline fixes"},
+      {"sha": "a87260f", "message": "fix: parseAgentJson resilient parsing + remove phantom datum-go phases"},
+      {"sha": "d495853", "message": "feat: datum-go orchestrator — chains all 7 workflows end-to-end"},
+      {"sha": "5506b40", "message": "feat: full workflow pipeline — refine through closeout"},
+      {"sha": "2e1d5d8", "message": "feat: TICKET template + template extraction + headroom integration + append protocol"},
+      {"sha": "c8803cc", "message": "docs(20260614-093229): DOCS complete"},
+      {"sha": "f608162", "message": "fix: pipeline hardening — verify gate, file ownership, gate --approve, yolo mode, SKILL.md trim"},
+      {"sha": "513d88b", "message": "feat: wave_builder validation + yolo mode + checkpoint fix"},
+      {"sha": "880892f", "message": "review: REVIEW-REPORT.md (23 findings)"},
+      {"sha": "2f5add9", "message": "fix(lint): fix syntax error and ruff violations in test_github_issues.py skeleton"},
+      {"sha": "26c8834", "message": "ticket: fail-fast deterministic validation before tests"},
+      {"sha": "5d04a07", "message": "chore: archive stale gh-issues pipeline artifacts to epic dir"}
+    ],
+    "commit_count": 13,
+    "files_touched": [
+      "skills/src/datum-route.ts",
+      "skills/src/datum-awake.ts",
+      "skills/src/datum-go.ts",
+      "skills/src/datum-closeout.ts",
+      "skills/src/datum-plan.ts",
+      "skills/src/datum-refine.ts",
+      "skills/src/datum-review.ts",
+      "skills/src/datum-validate.ts",
+      "skills/src/datum-properties.ts",
+      "skills/src/datum-tdd-act.ts",
+      "skills/src/datum-tdd-act-lane.ts",
+      "skills/src/datum-tdd-act-docs.ts",
+      "skills/src/datum-tdd-act-merge.ts",
+      "skills/src/datum-tdd-act-setup.ts",
+      "skills/src/datum-tdd-act-triage.ts",
+      "skills/src/shared/models.ts",
+      "skills/src/shared/agents.ts",
+      "skills/src/shared/types.ts",
+      "skills/src/shared/utils.ts",
+      "skills/src/shared/prompts.ts",
+      "skills/src/prompts/route-classify.md",
+      "skills/src/prompts/awake-distill.md",
+      "skills/src/prompts/awake-scan.md",
+      "skills/src/prompts/agent-preamble.md",
+      "skills/src/prompts/agent-preamble-full.md",
+      "skills/src/prompts/util-detect-branch.md",
+      "skills/src/prompts/green.md",
+      "skills/src/prompts/red.md",
+      "skills/src/prompts/plan-decompose.md",
+      "skills/src/prompts/plan-deepen.md",
+      "skills/src/prompts/plan-impact.md",
+      "skills/src/prompts/refine-scan.md",
+      "skills/src/prompts/reflect.md",
+      "skills/src/prompts/review-domain.md",
+      "skills/src/prompts/skeptic-base.md",
+      "skills/datum-route.js",
+      "skills/datum-awake.js",
+      "skills/datum-go.js",
+      "skills/datum-closeout.js",
+      "skills/datum-plan.js",
+      "skills/datum-refine.js",
+      "skills/datum-review.js",
+      "skills/datum-validate.js",
+      "skills/datum-properties.js",
+      "skills/datum-tdd-act.js",
+      "skills/datum-tdd-act-lane.js",
+      "skills/datum-tdd-act-docs.js",
+      "skills/datum-tdd-act-merge.js",
+      "skills/datum-tdd-act-setup.js",
+      "skills/datum-tdd-act-triage.js",
+      "docs/epics/main/REVIEW-REPORT.md",
+      "docs/epics/datum/gh-issues-as-source-of-truth/lane-plan.json",
+      "datum/github_issues.py",
+      "tests/test_github_issues.py"
+    ],
+    "loc_added": 0,
+    "loc_removed": 0,
+    "loc_net": 0
+  },
+  "tasks": {
+    "total": 6,
+    "completed": 0,
+    "failed_terminal": 0,
+    "skipped": 6,
+    "say_do_ratio": null,
+    "notes": "TDD act did not run for this epic. Tasks were planned (task-001..task-006: gh-issues as source of truth) but pipeline work pivoted to infrastructure delivery. Tasks archived as stale.",
+    "per_stage_retries": {
+      "RED": 0,
+      "GREEN": 0,
+      "REFACTOR": 0
+    },
+    "lane_tools_added": []
+  },
+  "platform": "darwin",
+  "lane_tools": [],
+  "brief_defects": [
+    {
+      "task": "review",
+      "defect": "CORR-004: batch partitioning in datum-go ignores DAG wave boundaries; cross-batch sequential deps can produce hangs when MAX_BATCH cut splits intra-wave lanes",
+      "found_by": "review agent",
+      "resolution": "filed as follow-up — fix partition-by-waves in datum-go.ts"
+    },
+    {
+      "task": "review",
+      "defect": "SEC-001: ctx.branch and rid from agent JSON interpolated directly into shell commands in datum-closeout.ts — path traversal / command injection risk",
+      "found_by": "review agent",
+      "resolution": "filed as follow-up — add allowlist regex validation before interpolation"
+    },
+    {
+      "task": "review",
+      "defect": "CORR-007: gate_validate passes silently when .datum/last-test-signal.json missing — validate gate can green without any tests having run",
+      "found_by": "review agent",
+      "resolution": "filed as follow-up — fail when signal absent and not yolo"
+    }
+  ],
+  "token_metrics": {
+    "total_input": 0,
+    "total_output": 0,
+    "total": 0,
+    "per_phase": {},
+    "per_model": {}
+  },
+  "review_findings": {
+    "total": 23,
+    "high_critical": 7,
+    "categories": ["SEC", "PERF", "ARCH", "CORR"],
+    "report_path": "docs/epics/main/REVIEW-REPORT.md"
+  },
+  "next_ticket": {
+    "title": "Fail-Fast Deterministic Validation Before Tests",
+    "file": "TICKET.md",
+    "summary": "Add ruff + mypy pre-check in datum-tdd-act-lane before pytest to catch ~40% of errors sub-second"
+  },
+  "gitnexus_diff": null,
+  "solutions": [
+    "datum-route workflow: classifies spec into pipeline route (feature/hotfix/patch/epic) with model-agnostic tier selection",
+    "datum-awake workflow: codebase distillation → preamble injection into all agents",
+    "datum-go orchestrator: chains all 7 workflows end-to-end (route→awake→refine→plan→properties→act→closeout)",
+    "Full TS workflow pipeline: refine through closeout all ship as compiled JS",
+    "parseAgentJson resilient parsing: handles code fences, partial JSON, and phantom phases",
+    "Pipeline hardening: verify gate, file ownership, gate --approve, yolo mode, SKILL.md trim",
+    "wave_builder validation: cycle detection, structural validation before act dispatch",
+    "TICKET template extraction: headroom integration + append protocol for new tickets",
+    "Closeout self-archiving: root pipeline artifacts (TASKS.md, lane-plan.json) auto-archived to epic dir"
+  ]
+}

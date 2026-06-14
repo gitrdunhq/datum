@@ -36,7 +36,8 @@ const readResult = await agent(
     extraFields: `3. "ticket_exists": whether docs/epics/<branch>/TICKET.md exists (true/false)
 4. "ticket_content": if ticket_exists, read the full file contents, else null
 5. "spec_exists": whether docs/epics/<branch>/SPEC.md exists (true/false)
-6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null`,
+6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
+7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\``,
   }),
   { label: 'read-context', model: model('fast') },
 )
@@ -126,7 +127,7 @@ const scanResults: string = typeof scanRaw === 'string' ? scanRaw : JSON.stringi
 phase('Write')
 
 // Agent 1: write SPEC + QUESTIONS + commit both
-const today = new Date().toISOString().slice(0, 10)
+const today = ctx.timestamp ? ctx.timestamp.slice(0, 10) : '(date unavailable)'
 
 await agent(
   `You have TWO tasks. Do them in order.

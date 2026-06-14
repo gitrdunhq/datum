@@ -22,6 +22,12 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
+var DEFAULT_CONFIG = {
+  language: "python",
+  test_framework: "pytest",
+  test_command: "uv run pytest -x -q"
+};
+var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/shared/utils.ts
 function buildWaves(lanePlan2) {
@@ -86,9 +92,11 @@ var util_detect_branch_default = 'Run these two commands and return ONLY a JSON 
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
-var testCommand = a.testCommand || "uv run pytest -x -q";
-var language = a.language || "python";
-var test_framework = a.test_framework;
+var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
+var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
+var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
+var test_framework = a.test_framework || repoCfg.test_framework;
 var epicBranch = a.epicBranch;
 var runId = a.runId;
 var branchInfo = a.yolo ? await agent(util_detect_branch_default, { label: "yolo-detect", model: model("fast") }) : null;

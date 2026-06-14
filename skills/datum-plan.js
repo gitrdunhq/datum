@@ -38,6 +38,12 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
+var DEFAULT_CONFIG = {
+  language: "python",
+  test_framework: "pytest",
+  test_command: "uv run pytest -x -q"
+};
+var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/prompts/plan-approaches.md
 var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["file1.py", "file2.py"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
@@ -109,10 +115,10 @@ for (const task of tasks) {
 }
 await agent(
   `Do these steps in order:
-1. Write this JSON to "tasks.json": ${tasksJson}
-2. Run: datum lane-plan --input tasks.json --output .datum/lane-plan.json --md-output TASKS.md
-3. Copy to epic dir: mkdir -p "${epicDir}" && cp TASKS.md "${epicDir}/TASKS.md" && cp tasks.json "${epicDir}/tasks.json"
-4. Commit: git add TASKS.md tasks.json .datum/lane-plan.json "${epicDir}/TASKS.md" "${epicDir}/tasks.json" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
+1. mkdir -p "${epicDir}"
+2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
+3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
+4. Commit: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
 If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
 Otherwise return: {"exit_code": 0}
 Output raw JSON only.`,
@@ -134,9 +140,8 @@ if (triage.decision === "deepen") {
     plan_deepen_default + `
 
 ADDITIONAL TASK after appending Research Findings:
-1. Run: datum lane-plan --input tasks.json --output .datum/lane-plan.json --md-output TASKS.md
-2. Copy: cp TASKS.md "${epicDir}/TASKS.md"
-3. Commit: git add TASKS.md .datum/lane-plan.json "${epicDir}/TASKS.md" && git commit -m "plan: deepen + rebuild"
+1. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
+2. Commit: git add "${epicDir}/TASKS.md" "${epicDir}/lane-plan.json" && git commit -m "plan: deepen + rebuild"
 Return JSON: {"tasks_researched": N, "findings_count": N}`,
     { label: "deepen-research", model: model("balanced") }
   );

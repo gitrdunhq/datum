@@ -1,5 +1,5 @@
 import { renderPrompt, parseAgentJson } from './shared/utils'
-import { model } from './shared/models'
+import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
@@ -17,7 +17,12 @@ const a = (typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})
 const yolo: boolean = !!a.yolo
-const testCommand: string = a.testCommand || 'uv run pytest -x -q'
+
+const cfgText = !a.testCommand
+  ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+  : null
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──
 

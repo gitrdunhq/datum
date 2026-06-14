@@ -40,3 +40,11 @@ export type TriageCategory = 'workflow-bug' | 'lane-plan' | 'agent-behavior' | '
 export type Scope = 'narrow' | 'moderate' | 'broad'
 export type BranchType = 'main' | 'feature' | 'hotfix'
 export type InputType = 'ticket' | 'bug' | 'question' | 'audit' | 'continuation' | 'raw-idea'
+
+export const DEFAULT_CONFIG = {
+  language: 'python',
+  test_framework: 'pytest',
+  test_command: 'uv run pytest -x -q',
+} as const
+
+export const READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`

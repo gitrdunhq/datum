@@ -71,6 +71,12 @@ function model(tier) {
   return TIER_MAP[tier];
 }
 var PHASES = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
+var DEFAULT_CONFIG = {
+  language: "python",
+  test_framework: "pytest",
+  test_command: "uv run pytest -x -q"
+};
+var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/prompts/util-detect-branch.md
 var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
@@ -127,16 +133,18 @@ if (shouldRun("properties", 2)) {
 }
 if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
-  const lanePlanPath = ".datum/lane-plan.json";
-  const testCommand = "uv run pytest -x -q";
-  const language = "python";
+  const cfgText = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
+  const repoCfg = parseAgentJson(cfgText, { ...DEFAULT_CONFIG });
+  const testCommand = repoCfg.test_command;
+  const language = repoCfg.language;
   const branchInfo = await agent(util_detect_branch_default, { label: "act-detect", model: model("fast") });
   const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
   const epicBranch = info.branch;
   const runId = info.timestamp;
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`);
+  const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`;
   const planText = await agent(
-    `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
+    `Read ${lanePlanPath} and return its contents as raw JSON text. If not found, try .datum/lane-plan.json as fallback. Output ONLY the JSON, no markdown fences, no explanation.`,
     { label: "read-plan", model: model("fast") }
   );
   const lanePlan = typeof planText === "string" ? parseAgentJson(planText, null) : planText;

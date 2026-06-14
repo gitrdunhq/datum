@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "20260614-141951",
+  "epic_id": "fail-fast-validation",
+  "epic_dir": "docs/epics/datum/fail-fast-validation",
+  "epic_title": "Fail-Fast Deterministic Validation Before Tests",
+  "completed_at": "2026-06-14T14:19:51Z",
+  "pipeline_phases_completed": ["route", "awake", "refine", "plan", "properties", "review"],
+  "pipeline_phases_skipped": ["act"],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Add runRuffCheck helper to datum-tdd-act-lane.ts",
+      "stage": "queued",
+      "outcome": "not_started",
+      "estimated_loc": 35
+    },
+    {
+      "id": "task-2",
+      "title": "Add runMypyCheck helper to datum-tdd-act-lane.ts",
+      "stage": "queued",
+      "outcome": "not_started",
+      "estimated_loc": 30
+    },
+    {
+      "id": "task-3",
+      "title": "Wire ruff+mypy pre-checks into GREEN phase of runLane with retry passback",
+      "stage": "queued",
+      "outcome": "not_started",
+      "estimated_loc": 60
+    }
+  ],
+  "tasks_completed": 0,
+  "tasks_failed": 0,
+  "tasks_not_started": 3,
+  "review_findings": {
+    "total": 18,
+    "critical": 2,
+    "high": 8,
+    "medium": 5,
+    "low": 3
+  },
+  "review_report": "docs/epics/datum/fail-fast-validation/REVIEW-REPORT.md",
+  "primary_defect": "CORR-010 (critical): The primary deliverable — runRuffCheck, runMypyCheck, and the GREEN phase wiring — is entirely absent from the implementation. The act phase did not run.",
+  "artifacts": {
+    "SPEC.md": "docs/epics/datum/fail-fast-validation/SPEC.md",
+    "TASKS.md": "docs/epics/datum/fail-fast-validation/TASKS.md",
+    "TICKET.md": "docs/epics/datum/fail-fast-validation/TICKET.md",
+    "PROPERTIES.md": "docs/epics/datum/fail-fast-validation/PROPERTIES.md",
+    "QUESTIONS.md": "docs/epics/datum/fail-fast-validation/QUESTIONS.md",
+    "lane-plan.json": "docs/epics/datum/fail-fast-validation/lane-plan.json",
+    "tasks.json": "docs/epics/datum/fail-fast-validation/tasks.json",
+    "REVIEW-REPORT.md": "docs/epics/datum/fail-fast-validation/REVIEW-REPORT.md"
+  },
+  "total_tokens": 0,
+  "notes": "closeout-data.json synthesized from epic artifacts because the act phase did not execute and no token accounting data is available for this run."
+}

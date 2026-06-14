@@ -1,6 +1,7 @@
 import { model } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
+import { READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
@@ -26,9 +27,15 @@ const a = (typeof args === 'string')
   : (args || {})
 
 const lanePlanPath: string = a.lanePlanPath || '.datum/lane-plan.json'
-const testCommand: string = a.testCommand || 'uv run pytest -x -q'
-const language: string = a.language || 'python'
-const test_framework: string | undefined = a.test_framework
+
+// Read config from .datum/config.json if not passed as args
+const cfgText = (!a.testCommand || !a.language)
+  ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+  : null
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
+const language: string = a.language || repoCfg.language || DEFAULT_CONFIG.language
+const test_framework: string | undefined = a.test_framework || repoCfg.test_framework
 
 let epicBranch: string = a.epicBranch
 let runId: string = a.runId

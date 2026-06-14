@@ -34,7 +34,11 @@ def main_callback(
         help="Show version and exit",
     ),
 ):
-    pass
+    import os
+
+    project_dir = os.environ.get("DATUM_PROJECT_DIR")
+    if project_dir:
+        os.chdir(project_dir)
 
 
 console = Console()
@@ -114,6 +118,41 @@ def lane_plan_cmd(
         lane_plan_main()
 
 
+def _install_workflows():
+    """Symlink datum workflow JS files to ~/.claude/workflows/."""
+    import os
+
+    package_dir = Path(__file__).resolve().parent.parent
+    skills_dir = package_dir / "skills"
+    target_dir = Path.home() / ".claude" / "workflows"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    js_files = sorted(skills_dir.glob("datum-*.js"))
+    if not js_files:
+        console.print(
+            "[yellow]No workflow JS files found in package — skipping[/yellow]"
+        )
+        return
+
+    installed = 0
+    for js in js_files:
+        link = target_dir / js.name
+        if link.is_symlink() or link.exists():
+            if link.is_symlink() and os.readlink(str(link)) == str(js):
+                continue
+            link.unlink()
+        link.symlink_to(js)
+        installed += 1
+
+    total = len(js_files)
+    if installed > 0:
+        console.print(
+            f"[dim]Workflows: {installed} installed, {total - installed} already current → ~/.claude/workflows/[/dim]"
+        )
+    else:
+        console.print(f"[dim]Workflows: {total} already current[/dim]")
+
+
 @app.command()
 def init(
     name: str = typer.Option(
@@ -127,6 +166,7 @@ def init(
     import sys
 
     from datum.bootstrap import seed_state_docs
+    from datum.detect import detect_repo
     from datum.state import ensure_feature_branch
 
     res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
@@ -136,8 +176,45 @@ def init(
         )
         raise typer.Exit(1)
 
+    # Auto-detect repo configuration
+    config = detect_repo(".")
+    config_path = Path(".datum/config.json")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if config_path.exists():
+        existing = json.loads(config_path.read_text())
+        console.print(
+            "[dim]Existing config found — merging (existing values preserved)[/dim]"
+        )
+        for k, v in config.items():
+            existing.setdefault(k, v)
+        config = existing
+
+    config_path.write_text(json.dumps(config, indent=2) + "\n")
+    console.print(
+        f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
+    )
+    console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
+    console.print(f"[dim]Config written to {config_path}[/dim]")
+
     branch = ensure_feature_branch(name)
     console.print(f"[dim]Branch: {branch}[/dim]")
+
+    # Create epic dir and TICKET.md
+    epic_dir = Path(
+        config.get("epic_dir_pattern", "docs/epics/{branch}").format(branch=branch)
+    )
+    epic_dir.mkdir(parents=True, exist_ok=True)
+    ticket_path = epic_dir / "TICKET.md"
+    if not ticket_path.exists():
+        ticket_path.write_text(
+            "# [Epic Title]\n\n## What\n\n## Requirements\n\n## Not This\n\n"
+        )
+        console.print(f"[dim]TICKET.md created at {ticket_path} — fill it in[/dim]")
+
+    # Install workflows to ~/.claude/workflows/
+    _install_workflows()
+
     console.print("[bold green]Bootstrapping DATUM...[/bold green]")
     try:
         seed_state_docs.main()

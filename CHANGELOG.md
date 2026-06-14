@@ -2,6 +2,64 @@
 
 All notable changes to DATUM are documented here.
 
+## [Fail-Fast Validation Epic] — 2026-06-14 (run 20260614-141951)
+
+### Planned (act phase not executed)
+
+**Epic:** `fail-fast-validation` — full spec, task plan, properties, and review completed. Implementation not yet run.
+
+- **SPEC.md**: deterministic ruff + mypy pre-check gate inside `runLane`, inserted after GREEN writes and before pytest. Fail-fast ordering: ruff → mypy → pytest. Structured error passback into GREEN retry with model escalation to `deep`.
+- **TASKS.md / tasks.json / lane-plan.json**: 3-task plan with dependency graph (task-1 → task-3, task-2 → task-3). Estimated ~125 LOC across `skills/src/datum-tdd-act-lane.ts` and 3 new test files.
+- **PROPERTIES.md**: 12 safety properties, 6 liveness properties, 4 ordering properties, 2 observability properties.
+- **REVIEW-REPORT.md**: 18 findings (2 critical, 8 high). CORR-010 (critical): primary deliverable absent — implementation must be completed in next session.
+
+### Review Findings Filed (18 total)
+
+Key issues from `docs/epics/datum/fail-fast-validation/REVIEW-REPORT.md`:
+
+- CORR-010 (critical): ruff+mypy gate absent from `datum-tdd-act-lane.ts` — primary deliverable not implemented
+- CORR-001 (critical): Kotlin language detection broken — `build.gradle.kts` in java markers with no Kotlin guard
+- SEC-001 (high): `DATUM_PROJECT_DIR` path traversal via unvalidated `os.chdir()`
+- PERF-001/PERF-002 (high): O(n×m) dependency filtering via `Array.includes()` — convert to Set
+- CORR-003/CORR-004/CORR-005/CORR-006 (high): detect.py and cli.py correctness defects
+
+---
+
+## [Pipeline Infrastructure Session] — 2026-06-14 (run 20260614-132742)
+
+### Added
+
+- **`datum-route` workflow**: classifies specs into pipeline routes (feature/hotfix/patch/epic) using a model-agnostic tier system. Route drives model selection for every downstream phase.
+- **`datum-awake` workflow**: scans the codebase, distills key architecture context, and injects an agent preamble into all downstream agents. Keeps LLM context grounded in the actual repo.
+- **`datum-go` orchestrator**: chains all 7 datum workflows end-to-end (route → awake → refine → plan → properties → act → closeout). Single entry point for the full SDLC.
+- **Full TS workflow pipeline**: refine, plan, properties, validate, review, and closeout now all ship as esbuild-compiled self-contained JS. Zero Node.js module resolution at runtime.
+- **`shared/models.ts`**: centralized model tier definitions (fast/balanced/deep) and tier-selection logic. Replaces scattered hardcoded model strings across workflows.
+- **Prompt templates**: `route-classify.md`, `awake-scan.md`, `awake-distill.md`, `agent-preamble.md`, `agent-preamble-full.md`, `util-detect-branch.md` added to `skills/src/prompts/`.
+- **TICKET template extraction**: `datum-closeout` now generates a typed TICKET.md for the next epic using headroom integration and an append protocol.
+- **Closeout self-archiving**: root pipeline artifacts (TASKS.md, lane-plan.json, tasks.json, SPEC.md, TICKET.md, PROPERTIES.md) auto-archived to `docs/epics/<branch>/` on closeout.
+
+### Changed
+
+- **`parseAgentJson`**: now handles code fences, partial JSON, and phantom phases gracefully — no more parse panics on mildly malformed agent output.
+- **Pipeline hardening**: verify gate enforces GREEN before merge; file ownership tracking in PreToolUse hook; `gate --approve` for manual overrides; yolo mode for CI; SKILL.md trimming to reduce prompt token overhead.
+- **wave_builder**: cycle detection and structural validation run before act dispatch — catches malformed lane plans before committing to a TDD run.
+
+### Fixed
+
+- **Phantom `datum-go` phases**: removed ghost phases that appeared in the pipeline route and caused spurious agent invocations.
+- **lint violations**: ruff violations in `tests/test_github_issues.py` skeleton fixed.
+
+### Review (23 findings — 7 high/critical)
+
+See `docs/epics/main/REVIEW-REPORT.md` for full findings. Key issues to track:
+
+- SEC-001: shell injection risk via `ctx.branch` in `datum-closeout.ts`
+- SEC-002: prompt injection via preamble interpolation in `datum-awake.ts`
+- CORR-004: `datum-go` batch partitioning ignores DAG wave boundaries
+- ARCH-001: Act batch loop should be extracted from `datum-go.ts` to `shared/utils.ts`
+
+---
+
 ## [Epic 23] — 2026-05-29 (Mega Fix Session)
 
 ### Added

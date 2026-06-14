@@ -26,7 +26,7 @@ phase('Read')
 const context = await agent(
   renderPrompt(readContextTemplate, {
     extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
-4. "tasks_content": full contents of TASKS.md`,
+4. "tasks_content": full contents of docs/epics/<branch>/TASKS.md`,
   }),
   { label: 'read-context', model: model('fast') },
 )
@@ -49,8 +49,7 @@ await agent(
   renderPrompt(propertiesDeriveTemplate, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content })
   + `\n\nAFTER WRITING THE PROPERTIES CONTENT:
 1. Write the output to "${ctx.epic_dir}/PROPERTIES.md" (create dirs if needed)
-2. Also write the same content to "PROPERTIES.md" at repo root
-3. Commit: git add "${ctx.epic_dir}/PROPERTIES.md" PROPERTIES.md && git commit -m "properties: derive PROPERTIES.md"`,
+2. Commit: git add "${ctx.epic_dir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
   { label: 'derive-and-commit', model: model('balanced') },
 )
 
