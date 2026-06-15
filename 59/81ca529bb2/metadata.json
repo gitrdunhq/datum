@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "5981ca529bb2",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167-act",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CURRENT_STATE.md",
+    "datum/cli.py",
+    "datum/detect.py",
+    "datum/gate.py",
+    "datum/github_issues.py",
+    "datum/lane_plan.py",
+    "datum/skeleton_creator.py",
+    "datum/tdd_driver.py",
+    "scripts/cost-model.py",
+    "skills/datum-tdd-act.js",
+    "skills/src/datum-go.ts",
+    "skills/src/datum-plan.ts",
+    "skills/src/datum-tdd-act-lane.ts",
+    "skills/src/datum-tdd-act.ts",
+    "skills/src/prompts/awake-distill.md",
+    "skills/src/prompts/awake-scan.md",
+    "skills/src/prompts/plan-approaches.md",
+    "skills/src/prompts/plan-decompose.md",
+    "skills/src/prompts/plan-deepen.md",
+    "skills/src/prompts/plan-impact.md",
+    "skills/src/prompts/red.md",
+    "skills/src/prompts/refine-scan.md",
+    "skills/src/prompts/refine-spec.md",
+    "skills/src/prompts/skeptic-base.md",
+    "skills/src/shared/models.ts",
+    "skills/src/shared/pipeline-state.ts",
+    "skills/src/shared/prompts.ts",
+    "skills/src/shared/tracker.ts",
+    "skills/src/shared/types.ts",
+    "skills/src/shared/utils.ts",
+    "tests/test_gate_enhancements.py",
+    "tests/test_lane_plan_conflicts.py",
+    "tests/test_make_function_name.py",
+    "tests/test_skeleton_append.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/59/81ca529bb2/0/metadata.json",
+      "transcript": "/59/81ca529bb2/0/full.jsonl",
+      "content_hash": "/59/81ca529bb2/0/content_hash.txt",
+      "prompt": "/59/81ca529bb2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3198,
+    "cache_creation_tokens": 2365218,
+    "cache_read_tokens": 261352959,
+    "output_tokens": 381171,
+    "api_call_count": 1322
+  }
+}
