@@ -552,3 +552,7 @@ yeah
 ---
 
 you have our stats rigjt tokens in and out and what not, calculate the costs of esch agent type we have used with this new workflow
+
+---
+
+fix everythkng lets datum yolo
