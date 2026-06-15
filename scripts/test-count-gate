@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# test-count-gate — Count new test functions added in a commit.
+#
+# Deterministic pre-flight gate for the ACT phase RED stage.
+# Counts test functions added between the parent commit and HEAD,
+# falling back to diff-tree for the first commit (no parent).
+#
+# Usage:
+#   scripts/test-count-gate --repo <wt> --files <file1> <file2> ... \
+#     --pattern '<grep-pattern>' --required <min-count>
+#
+# Exit codes:
+#   0 — passed (new_test_count >= required)
+#   1 — failed (new_test_count < required)
+#
+# Outputs JSON to stdout:
+#   {"new_test_count":N,"required":N,"passed":true/false}
+
+set -euo pipefail
+
+REPO=""
+FILES=()
+PATTERN=""
+REQUIRED=0
+FIRST=1
+
+usage() {
+    echo "Usage: $0 --repo DIR --files F1 [F2 ...] --pattern 'PATTERN' --required N"
+    exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo) REPO="$2"; shift 2 ;;
+        --files) shift
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                FILES+=("$1"); shift
+            done
+            ;;
+        --pattern) PATTERN="$2"; shift 2 ;;
+        --regex) REGEX_TYPE="$2"; shift 2 ;;
+        --required) REQUIRED="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        *) echo "Unknown option: $1" >&2; usage ;;
+    esac
+done
+REGEX_TYPE="${REGEX_TYPE:-ERE}"
+
+if [[ -z "$REPO" || -z "$PATTERN" || ${#FILES[@]} -eq 0 || "$REQUIRED" -eq 0 ]]; then
+    echo "Error: --repo, --files, --pattern, and --required are all required" >&2
+    usage
+fi
+
+# Compute the diff: try reduce diff HEAD~1 HEAD first, fall back to diff-tree for first commit
+DIFF=""
+if git -C "$REPO" rev-parse HEAD~1 >/dev/null 2>&1; then
+    # Normal case: diff between parent and current commit
+    DIFF=$(git -C "$REPO" diff HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
+elif git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
+    # First commit — git diff HEAD~1 fails; use git log -p -1 to get the patch
+    DIFF=$(git -C "$REPO" log -p -1 -- "${FILES[@]}" 2>/dev/null || true)
+else
+    # No commits yet — staged changes in the index
+    DIFF=$(git -C "$REPO" diff --cached -- "${FILES[@]}" 2>/dev/null || true)
+fi
+
+# Count added lines matching the test function pattern.
+# grep -c returns 0 on no match (exit code 1); trap that with || true.
+GREP_F="-E"
+[[ "$REGEX_TYPE" == "BRE" ]] && GREP_F="-G"
+COUNT=$(echo "$DIFF" | grep -c "$GREP_F" "$PATTERN" || true)
+
+if [[ "$COUNT" -lt "$REQUIRED" ]]; then
+    PASS="false"
+    EXIT_CODE=1
+else
+    PASS="true"
+    EXIT_CODE=0
+fi
+
+echo "{\"new_test_count\":${COUNT},\"required\":${REQUIRED},\"passed\":${PASS}}"
+exit $EXIT_CODE

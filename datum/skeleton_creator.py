@@ -190,7 +190,7 @@ class Test{struct_name}:
         # Act
 
         # Assert — prove {property_id}
-        assert False, "RED agent: implement this assertion"
+        raise NotImplementedError("RED agent: implement this assertion")
 """,
 }
 
