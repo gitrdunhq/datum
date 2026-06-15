@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ecfd0767564b",
+  "strategy": "manual-commit",
+  "branch": "datum/bug-squash-167-act",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "datum/gate.py",
+    "datum/skeleton_creator.py",
+    "scripts/cost-model.py",
+    "skills/datum-tdd-act.js",
+    "skills/src/datum-go.ts",
+    "skills/src/datum-tdd-act.ts",
+    "skills/src/prompts/awake-distill.md",
+    "skills/src/prompts/awake-scan.md",
+    "skills/src/prompts/plan-approaches.md",
+    "skills/src/prompts/plan-decompose.md",
+    "skills/src/prompts/plan-deepen.md",
+    "skills/src/prompts/plan-impact.md",
+    "skills/src/prompts/red.md",
+    "skills/src/prompts/refine-scan.md",
+    "skills/src/prompts/skeptic-base.md",
+    "skills/src/shared/models.ts",
+    "skills/src/shared/utils.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ec/fd0767564b/0/metadata.json",
+      "transcript": "/ec/fd0767564b/0/full.jsonl",
+      "content_hash": "/ec/fd0767564b/0/content_hash.txt",
+      "prompt": "/ec/fd0767564b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3024,
+    "cache_creation_tokens": 1668038,
+    "cache_read_tokens": 230686616,
+    "output_tokens": 348171,
+    "api_call_count": 1188
+  }
+}
