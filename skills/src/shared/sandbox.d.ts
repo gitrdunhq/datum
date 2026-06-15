@@ -7,7 +7,7 @@ interface AgentOpts {
   label?: string
   phase?: string
   schema?: object
-  model?: 'haiku' | 'sonnet' | 'opus'
+  model?: string
   isolation?: 'worktree'
   agentType?: string
 }

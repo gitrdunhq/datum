@@ -1,6 +1,6 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
-import { model, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
+import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
@@ -61,8 +61,14 @@ Output raw JSON only.`,
   { label: 'read-config+state', model: model('fast') },
 )
 const boot = parseAgentJson(bootText as string, { config: {}, state: null }) as { config: Record<string, string>; state: unknown }
-const globalCfg: Record<string, string> = { ...DEFAULT_CONFIG, ...(boot.config || {}) }
+const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string, any>
 const sk = (name: string) => skillPath(globalCfg.skills_dir || '', name)
+
+// Apply model tier overrides from config.json { "models": { "fast": "...", "balanced": "...", "deep": "..." } }
+if (globalCfg.models && typeof globalCfg.models === 'object') {
+  setModelTiers(globalCfg.models)
+  log(`Model tiers: fast=${model('fast')}, balanced=${model('balanced')}, deep=${model('deep')}`)
+}
 
 // Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
 const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)

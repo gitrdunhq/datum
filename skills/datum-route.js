@@ -16,13 +16,14 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 var ROUTE_PHASES = {
   feature: ["refine", "plan", "properties", "act", "validate", "review", "closeout"],

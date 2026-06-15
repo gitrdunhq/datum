@@ -1,14 +1,24 @@
 export type ModelTier = 'fast' | 'balanced' | 'deep'
-export type ModelName = 'haiku' | 'sonnet' | 'opus'
+export type ModelName = string
 
-const TIER_MAP: Record<ModelTier, ModelName> = {
+const DEFAULT_TIERS: Record<ModelTier, string> = {
   fast: 'haiku',
   balanced: 'sonnet',
   deep: 'opus',
 }
 
-export function model(tier: ModelTier): ModelName {
-  return TIER_MAP[tier]
+let activeTiers: Record<ModelTier, string> = { ...DEFAULT_TIERS }
+
+export function setModelTiers(tiers: Partial<Record<ModelTier, string>>): void {
+  activeTiers = { ...DEFAULT_TIERS, ...tiers }
+}
+
+export function model(tier: ModelTier): string {
+  return activeTiers[tier]
+}
+
+export function getModelTiers(): Record<ModelTier, string> {
+  return { ...activeTiers }
 }
 
 export const ROUTE_PHASES = {
@@ -48,7 +58,11 @@ export const DEFAULT_CONFIG = {
   skills_dir: '',
 } as const
 
-export const READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json — run datum init first"}. Output raw JSON only.`
+export const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
+1. Global: ~/.datum/config.json (may not exist — skip if missing)
+2. Repo: .datum/config.json (required — if missing, return {"error": "missing .datum/config.json — run datum init first"})
+Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
+Return the merged JSON. Output raw JSON only.`
 
 export function skillPath(skillsDir: string, name: string): string {
   if (skillsDir) return `${skillsDir}/${name}.js`

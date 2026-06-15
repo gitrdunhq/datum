@@ -30,13 +30,14 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 var DEFAULT_CONFIG = {
   language: "",
@@ -44,7 +45,11 @@ var DEFAULT_CONFIG = {
   test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json \u2014 run datum init first"}. Output raw JSON only.`;
+var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
+1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
+2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
+Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
+Return the merged JSON. Output raw JSON only.`;
 
 // skills/src/shared/tracker.ts
 async function publishLanePlan(lanePlanPath, epicTitle) {

@@ -6,13 +6,17 @@ export const meta = {
 };
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
+function setModelTiers(tiers) {
+  activeTiers = { ...DEFAULT_TIERS, ...tiers };
+}
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 var DEFAULT_CONFIG = {
   language: "",
@@ -20,7 +24,11 @@ var DEFAULT_CONFIG = {
   test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json \u2014 run datum init first"}. Output raw JSON only.`;
+var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
+1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
+2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
+Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
+Return the merged JSON. Output raw JSON only.`;
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
@@ -90,6 +98,7 @@ var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim(
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.models);
 var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;

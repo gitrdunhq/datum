@@ -28,13 +28,14 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 var DEFAULT_CONFIG = {
   language: "",
@@ -42,7 +43,11 @@ var DEFAULT_CONFIG = {
   test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json \u2014 run datum init first"}. Output raw JSON only.`;
+var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
+1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
+2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
+Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
+Return the merged JSON. Output raw JSON only.`;
 
 // skills/src/prompts/validate-check.md
 var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite: {{testCommand}}\n   If any test fails \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';

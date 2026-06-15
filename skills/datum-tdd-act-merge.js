@@ -6,13 +6,14 @@ export const meta = {
 };
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 
 // skills/src/datum-tdd-act-merge.ts

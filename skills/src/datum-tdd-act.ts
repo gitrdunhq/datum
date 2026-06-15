@@ -1,4 +1,4 @@
-import { model } from './shared/models'
+import { model, setModelTiers } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
@@ -22,7 +22,8 @@ const a = (typeof args === 'string')
 const cfgText = (!a.testCommand || !a.language)
   ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
   : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, any> : {}
+if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.models)
 const sk = (name: string) => skillPath(repoCfg.skills_dir || '', name)
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 const language: string = a.language || repoCfg.language || DEFAULT_CONFIG.language

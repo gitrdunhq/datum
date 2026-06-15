@@ -62,13 +62,17 @@ function parseAgentJson(text, fallback) {
 }
 
 // skills/src/shared/models.ts
-var TIER_MAP = {
+var DEFAULT_TIERS = {
   fast: "haiku",
   balanced: "sonnet",
   deep: "opus"
 };
+var activeTiers = { ...DEFAULT_TIERS };
+function setModelTiers(tiers) {
+  activeTiers = { ...DEFAULT_TIERS, ...tiers };
+}
 function model(tier) {
-  return TIER_MAP[tier];
+  return activeTiers[tier];
 }
 var PHASES = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
 var DEFAULT_CONFIG = {
@@ -137,6 +141,10 @@ Output raw JSON only.`,
 var boot = parseAgentJson(bootText, { config: {}, state: null });
 var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
 var sk = (name) => skillPath(globalCfg.skills_dir || "", name);
+if (globalCfg.models && typeof globalCfg.models === "object") {
+  setModelTiers(globalCfg.models);
+  log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);
+}
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var lastResult = {};
 var haltedAt = "";
