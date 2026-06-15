@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "57b58bc40bfb",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-182",
+  "checkpoints_count": 22,
+  "files_touched": [
+    "Record-App/Tests/Unit/Business/Mocks/MockTranscriptionEngine.swift",
+    "Record-Foundation/Tests/Unit/Domain/TranscriptionEngineUnloadTests.swift",
+    "Record-ML/Tests/Unit/WhisperKitPluginUnloadTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/57/b58bc40bfb/0/metadata.json",
+      "transcript": "/57/b58bc40bfb/0/full.jsonl",
+      "content_hash": "/57/b58bc40bfb/0/content_hash.txt",
+      "prompt": "/57/b58bc40bfb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1322,
+    "cache_creation_tokens": 591688,
+    "cache_read_tokens": 23481622,
+    "output_tokens": 83903,
+    "api_call_count": 201
+  }
+}
