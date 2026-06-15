@@ -199,27 +199,29 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
-  // ── New-test-function count gate ──
+    // ── New-test-function count gate (de legentrministic script, not LLM) ──
   const acCount = (lane.acceptance_criteria || []).length
   if (acCount > 0) {
-    const countResult = await agent(
-      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(' ')} | grep -c ${testFuncDiffPattern} || echo 0
-Return ONLY a JSON object with the count. Example: {"new_test_count": 5}
-Output raw JSON only, no markdown fences, no explanation.`,
+    const countResult: string | null = await agent(
+      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern '${testFuncDiffPattern.replace(/^-E\s+/, '')}' --required ${acCount}
+Return the raw JSON output from the script. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
-        schema: { type: 'object', properties: { new_test_count: { type: 'integer', minimum: 0 } }, required: ['new_test_count'] },
+        schema: { type: 'object', properties: { new_test_count: { type: 'integer', minimum: 0 }, required: { type: 'integer' }, passed: { type: 'boolean' } }, required: ['new_test_count', 'required', 'passed'] },
       },
     )
-    // Robust extraction: try schema object first, then parse digits from raw text
+    // Robust extraction: use script output first, then parse digits from raw text as fallback
     let newTestCount = 0
-    if (countResult && typeof countResult === 'object' && 'new_test_count' in (countResult as Record<string, unknown>)) {
-      newTestCount = (countResult as { new_test_count: number }).new_test_count
+    let gatePassed = false
+    if (countResult && typeof countResult === 'object') {
+      newTestCount = ('new_test_count' in countResult) ? (countResult as { new_test_count: number }).new_test_count : 0
+      gatePassed = ('passed' in countResult) ? Boolean((countResult as { passed: boolean }).passed) : newTestCount >= acCount
     } else {
       const digits = String(countResult).replace(/[^0-9]/g, '')
       newTestCount = digits ? parseInt(digits, 10) : 0
+      gatePassed = newTestCount >= acCount
     }
-    if (newTestCount < acCount) {
+    if (!gatePassed) {
       log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`)
       return { task_id: taskId, status: 'failed', stage: 'RED', error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` }
     }
