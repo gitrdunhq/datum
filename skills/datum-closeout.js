@@ -88,6 +88,18 @@ AFTER writing artifacts, also:
 );
 var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
+await agent(
+  `Clean up after the epic:
+1. Delete pipeline state: rm -f .datum/pipeline-state.json
+2. Delete merged lane branches for this epic:
+   git branch | grep -E '${ctx.branch}--' | xargs -r git branch -d 2>/dev/null
+3. Delete worktree branches (hex-prefixed):
+   git branch | grep -E '^  [0-9a-f]{40}/' | xargs -r git branch -d 2>/dev/null
+4. Prune worktree refs: git worktree prune 2>/dev/null
+5. Report what was deleted.
+Output a short summary only.`,
+  { label: "housekeep", model: model("fast") }
+);
 return {
   branch: ctx.branch,
   runId: rid,
