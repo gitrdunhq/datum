@@ -54,6 +54,14 @@ def create_lane_worktree(
 
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Resume: if worktree already exists and is registered, reuse it.
+    if worktree_path.exists():
+        registered = _git(
+            ["worktree", "list", "--porcelain"], cwd=repo_root, check=False
+        )
+        if str(worktree_path) in registered.stdout:
+            return worktree_path
+
     result = _git(
         ["worktree", "add", str(worktree_path), "-b", lane_branch, base_sha],
         cwd=repo_root,

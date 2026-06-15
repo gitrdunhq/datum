@@ -34,7 +34,7 @@ function parseAgentJson(text, fallback) {
 var a = args;
 phase("Setup");
 var rootWtText = await agent(
-  `git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>&1 && echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
+  `(git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>/dev/null || [ -d .datum/worktrees/${a.batchRunId}-root ]) && echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
   { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var rootWtInfo = parseAgentJson(rootWtText, {});
