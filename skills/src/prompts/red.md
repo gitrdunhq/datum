@@ -25,15 +25,15 @@ APPROACH:
 1. Read the acceptance_criteria from the task packet
 2. For each AC, write a test that calls the method described in the AC
 3. Assert specific expected values — not just "doesn't crash"
-4. Call methods that don't exist yet (e.g., result.to_dict()) — AttributeError is the correct RED failure
+4. Call methods that don't exist yet — the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure
 
 VERIFY BEFORE RUNNING TESTS:
-4b. Grep your test file(s) for new test functions: grep -c 'def test_' {{testFilesList}}
+4b. Grep your test file(s) for new test functions: grep -c '{{testFuncPattern}}' {{testFilesList}}
     Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.
 
 SELF-CHECK (mandatory before running tests):
-- Count how many `def test_` functions exist in each test file BEFORE your edits
-- Count how many `def test_` functions exist AFTER your edits
+- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits
+- Count how many `{{testFuncPattern}}` functions exist AFTER your edits
 - The count MUST increase by at least len(acceptance_criteria) new functions
 - If count did not increase, you FAILED — do not proceed, report success=false with failure_reason="no_new_tests_written"
 - Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"
@@ -49,9 +49,9 @@ CONSTRAINTS:
 - Only write and commit test files: {{testFilesList}}
 
 BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
-- `assert True`, `assert 1`, `assert not False` — always passes
-- `pass` as the only statement in a test body
-- Empty test functions with no assertions
-- `raise NotImplementedError` — conftest xfail catches it and tests pass
-- `assert x is not None` as the ONLY assertion — smoke test, not a real check
+- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`
+- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`
+- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body
+- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body
+- `assert x is not None` / trivial nil-checks as the ONLY assertion
 Each test MUST assert a specific expected value or exception type.

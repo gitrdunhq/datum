@@ -19,7 +19,7 @@ Return JSON:
       "name": "approach name",
       "description": "one sentence",
       "tradeoffs": "what you gain / give up",
-      "modules_touched": ["file1.py", "file2.py"],
+      "modules_touched": ["src/module/file1", "src/module/file2"],
       "estimated_tasks": 3,
       "blast_radius": "low|medium|high"
     }

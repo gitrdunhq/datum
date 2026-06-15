@@ -82,7 +82,23 @@ export function classifyFiles(files: string[]): {
   testFiles: string[]
   implFiles: string[]
 } {
+  // Files in support directories are impl-adjacent even when under /Tests/
+  const isImplAdjacent = (f: string): boolean => {
+    return (
+      f.includes('/Mocks/') ||
+      f.includes('/mocks/') ||
+      f.includes('/Fakes/') ||
+      f.includes('/fakes/') ||
+      f.includes('/Stubs/') ||
+      f.includes('/stubs/') ||
+      f.includes('/Fixtures/') ||
+      f.includes('/fixtures/') ||
+      f.includes('/Helpers/') ||
+      f.includes('/helpers/')
+    )
+  }
   const isTest = (f: string): boolean => {
+    if (isImplAdjacent(f)) return false
     const base = f.split('/').pop() || ''
     return (
       base.startsWith('test_') ||
@@ -141,6 +157,7 @@ export function laneCtxCmd(packet: TaskPacket, wt: string): string {
 // ---------------------------------------------------------------------------
 
 const BUILTIN_SKIP = new Set([
+  // Python
   'print',
   'len',
   'str',
@@ -172,6 +189,37 @@ const BUILTIN_SKIP = new Set([
   'property',
   'staticmethod',
   'classmethod',
+  // Swift
+  'fatalError',
+  'precondition',
+  'debugPrint',
+  'String',
+  'Int',
+  'Array',
+  'Dictionary',
+  'Bool',
+  'Optional',
+  // Go
+  'fmt',
+  'Println',
+  'Printf',
+  'Sprintf',
+  'make',
+  'append',
+  'delete',
+  'panic',
+  'recover',
+  // TypeScript / JavaScript
+  'console',
+  'log',
+  'parseInt',
+  'parseFloat',
+  'Number',
+  'Object',
+  'Boolean',
+  'Promise',
+  'setTimeout',
+  'JSON',
 ])
 
 export function extractContractSummary(

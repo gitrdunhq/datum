@@ -6,29 +6,44 @@
 
 ## Shipped
 
+### Bug Squash Act Phase — Partial (2026-06-14, run 20260614-161954)
+
+Act phase ran against `bug-squash-167` plan. 2 of 6 tasks completed, 1 partial, 3 not started. Review returned 0 findings.
+
+| Task | Status | What Shipped |
+|---|---|---|
+| task-1: `make_function_name()` hyphens | COMPLETED | `datum/skeleton_creator.py` — added `.replace('-', '_')` after `slugify()` call (2 lines, commit `43be12e`) |
+| task-2: lane plan conflict edges | NOT COMPLETED | `datum/lane_plan.py:356` still discards conflicts with `_` |
+| task-3: skeleton append-or-create | NOT COMPLETED | `Path.write_text()` still overwrites at lines 467, 556, 579 |
+| task-4: Act phase path logging | COMPLETED | `datum-go.ts` — all scriptPath values converted to `skillPath()`-resolved absolutes; arg parsing resilient; debug log at Act entry; config read early (commit `43be12e`) |
+| task-5: grep indented test methods | NOT COMPLETED | `datum-tdd-act-lane.ts:174` still uses `'^+def test_'` (column-0 anchored) |
+| task-6: rebuild JS | PARTIAL | `skills/datum-go.js` rebuilt with task-4 fixes; `datum-tdd-act-lane.js` rebuilt but only includes `DEFAULT_CONFIG.skills_dir` (not task-5 grep fix) |
+
+**Bonus fix (a34f8af):** Removed phantom phases from `datum-tdd-act` — child workflows own their phase display.
+
+**Review:** 0 findings (ee458a7). Clean.
+
+**No new test files committed.** TDD RED→GREEN protocol was not followed for tasks 1 or 4. `tests/test_make_function_name.py` and `tests/test_act_phase_logging.py` are absent.
+
+---
+
 ### Bug Squash Epic #167 — Planning Complete (2026-06-14, run 20260614-154341)
 
-Epic `bug-squash-167` reached full planning depth: ticket, spec, task decomposition, lane plan, properties, and review are all committed. The act phase has not yet run — 6 tasks remain queued. Implementation is the next step.
+Full planning depth: ticket, spec, task decomposition, lane plan, properties, and review committed. Act phase partially executed (run 20260614-161954, above).
 
 **Bugs catalogued (7 total, 4 critical / 3 high):**
 
-| ID | Severity | Bug | Fix Target |
-|---|---|---|---|
-| #166 | critical | Act phase silently skips lanes when lane-plan.json not found | `skills/src/datum-go.ts` |
-| #161 | critical | `make_function_name()` emits hyphens in Python identifiers | `datum/skeleton_creator.py:337` |
-| #163 | critical | Lane plan assigns same impl file to multiple lanes | `datum/lane_plan.py:356` |
-| #160 | critical | `skeleton_creator.py` overwrites test files across lanes | `datum/skeleton_creator.py:467,556,579` |
-| #165 | high | `datum-go` uses relative scriptPath — breaks when CWD != repo root | `skills/src/datum-go.ts` |
-| #158/#162 | high | Test-count gate misses `class Test` methods | `skills/src/datum-tdd-act-lane.ts:174` |
-| #159 | high | `file_conflict_with` field populated but no dependency edges added | `datum/lane_plan.py:277` |
+| ID | Severity | Bug | Fix Target | Status |
+|---|---|---|---|---|
+| #161 | critical | `make_function_name()` emits hyphens in Python identifiers | `datum/skeleton_creator.py:337` | FIXED (run 20260614-161954) |
+| #166 | critical | Act phase silently skips lanes when lane-plan.json not found | `skills/src/datum-go.ts` | FIXED (run 20260614-161954) |
+| #163 | critical | Lane plan assigns same impl file to multiple lanes | `datum/lane_plan.py:356` | OPEN |
+| #160 | critical | `skeleton_creator.py` overwrites test files across lanes | `datum/skeleton_creator.py:467,556,579` | OPEN |
+| #165 | high | `datum-go` uses relative scriptPath — breaks when CWD != repo root | `skills/src/datum-go.ts` | FIXED (run 20260614-161954) |
+| #158/#162 | high | Test-count gate misses `class Test` methods | `skills/src/datum-tdd-act-lane.ts:174` | OPEN |
+| #159 | high | `file_conflict_with` field populated but no dependency edges added | `datum/lane_plan.py:277` | OPEN |
 
-**Review findings (10 total, 2 critical / 2 high / 4 medium / 1 low):**
-
-- CORR-001 (critical): 5 of 6 RED skeletons absent in `tests/test_ruff_precheck.py` — preflight falsely logged `skeleton_written=True`
-- CORR-002 (critical): Same — 5 of 6 RED skeletons absent in `tests/test_mypy_precheck.py`
-- ARCH-001/ARCH-002 (high): Traceability comments in both test files use hyphenated names that don't match actual functions
-- ARCH-003/ARCH-004/ARCH-005/CORR-003/CORR-004 (medium): `make_function_name()` sanitization gap; `write_text()` no existence check; coupling in plan→skeleton handoff
-- CORR-005 (low): Docstring truncated in `tests/test_ruff_precheck.py:9`
+---
 
 ### Pipeline Infrastructure Session (2026-06-14, run 20260614-132742)
 
@@ -67,21 +82,20 @@ TypeScript workflow pipeline, consolidated agents, prompt engineering, wave buil
 
 ## What's Next
 
-### Priority 1: Run Act Phase for Bug Squash #167 (6 tasks, all queued)
+### Priority 1: Complete Remaining Bug Squash Tasks (4 open)
 
-**Epic:** `bug-squash-167` — all planning complete. Run `datum act` to execute.
+Run these as targeted fixes — no new plan phase needed. Lane plan at `docs/epics/datum/bug-squash-167-act/lane-plan.json`.
 
-Lane plan at `docs/epics/datum/bug-squash-167/lane-plan.json`. Topological order: task-1 → task-2 → task-3 → task-4 → task-5 → task-6 (task-6 depends on task-4 and task-5).
+**Critical:**
+- **task-2**: `datum/lane_plan.py:356` — replace `_` with `conflicts`, add `conflicts` param to `build_lane_plan()`, wire conflict-based dependency edges. Write `tests/test_lane_plan_conflicts.py` first (RED).
+- **task-3**: `datum/skeleton_creator.py:467,556,579` — replace `write_text()` with append-or-create logic. Write `tests/test_skeleton_append.py` first (RED).
 
-**Critical fixes (pipeline produces wrong results):**
-- **task-1**: `make_function_name()` in `datum/skeleton_creator.py` — add `.replace('-', '_')` after `slugify()` call. Files: `datum/skeleton_creator.py`, `tests/test_make_function_name.py`
-- **task-2**: `build_lane_plan()` in `datum/lane_plan.py` — consume `conflicts` from `build_file_ownership()` and convert to dependency edges. Files: `datum/lane_plan.py`, `tests/test_lane_plan_conflicts.py`
-- **task-3**: `skeleton_creator.py` write sites — replace 3x `write_text()` with append-or-create logic. Files: `datum/skeleton_creator.py`, `tests/test_skeleton_append.py`
-- **task-4**: Act phase in `datum-go.ts` — add path logging and descriptive error on missing lane plan. Files: `skills/src/datum-go.ts`, `tests/test_act_phase_logging.py`
+**High:**
+- **task-5**: `datum-tdd-act-lane.ts:174` — change `'^+def test_'` to `'^+[[:space:]]*def test_'`. Write `tests/test_grep_test_count.py` first (RED). Then rebuild JS (task-6).
 
-**High fixes (blocks pipeline progress):**
-- **task-5**: Diff grep pattern in `datum-tdd-act-lane.ts` — change `'^+def test_'` to `'^+[[:space:]]*def test_'`. Files: `skills/src/datum-tdd-act-lane.ts`, `tests/test_grep_test_count.py`
-- **task-6**: Rebuild generated JS — run `bash scripts/build-workflows.sh`. Files: `skills/datum-go.js`, `skills/datum-tdd-act-lane.js` (depends on task-4 + task-5)
+**Missing test coverage (no TDD for shipped tasks):**
+- Write `tests/test_make_function_name.py` (task-1 regression coverage)
+- Write `tests/test_act_phase_logging.py` (task-4 regression coverage)
 
 ### Priority 2: Implement Fail-Fast Deterministic Validation
 
@@ -90,6 +104,8 @@ Lane plan at `docs/epics/datum/bug-squash-167/lane-plan.json`. Topological order
 - **task-1**: `runRuffCheck` helper in `datum-tdd-act-lane.ts` — ~35 LOC
 - **task-2**: `runMypyCheck` helper in `datum-tdd-act-lane.ts` — ~30 LOC
 - **task-3**: Wire ruff → mypy → pytest fail-fast sequence into GREEN phase with retry passback — ~60 LOC
+
+**Blocker:** CORR-001/CORR-002 (skeleton overwrite) must be fixed before fail-fast-validation setup re-runs, or the 5 missing RED skeletons in `tests/test_ruff_precheck.py` and `tests/test_mypy_precheck.py` will be lost again.
 
 ### Open Review Findings (bug-squash-167)
 
@@ -102,8 +118,8 @@ Lane plan at `docs/epics/datum/bug-squash-167/lane-plan.json`. Topological order
 - ARCH-002: Same traceability mismatch in `tests/test_ruff_precheck.py:3`
 
 **Medium:**
-- ARCH-003: `skeleton_creator.py:337` — `make_function_name()` no language-aware sanitization after slugify
-- ARCH-004: `skeleton_creator.py:467` — `dest.write_text()` no existence check (bug #160 root)
+- ARCH-003: `skeleton_creator.py:337` — `make_function_name()` no language-aware sanitization after slugify (now partially addressed by task-1 fix)
+- ARCH-004: `skeleton_creator.py:467` — `dest.write_text()` no existence check (bug #160 root, task-3 OPEN)
 - ARCH-005: `TICKET.md:14` — bug #163 exposes tight coupling between plan output and skeleton consumption
 - CORR-003: `tests/test_ruff_precheck.py:3` — traceability comment still contains hyphenated name
 - CORR-004: `tests/test_mypy_precheck.py:3` — same
@@ -157,7 +173,9 @@ Pipeline reliability — known TDD act workflow failure modes:
 
 ## In Flight
 
-No active feature branches. `main` is clean. Two epics fully planned and ready to act: `bug-squash-167` (priority) and `fail-fast-validation`.
+No active feature branches. `main` is clean. Two epics with open tasks:
+- `bug-squash-167-act`: 4 tasks open (task-2, task-3, task-5, task-6 partial)
+- `fail-fast-validation`: 3 tasks queued (planning complete, act not run)
 
 ---
 
@@ -186,4 +204,4 @@ No active feature branches. `main` is clean. Two epics fully planned and ready t
 - Model tiers: haiku (evaluators), sonnet (writers), sonnet → opus (GREEN retry) — configured in `shared/models.ts`
 - Dashboard: Python server on port 10001 with per-agent token breakdown
 - File ownership hook: PreToolUse, count mode (logs violations, doesn't block yet)
-- Closeout: auto-archives TASKS.md, lane-plan.json, tasks.json, SPEC.md, TICKET.md to `docs/epics/<branch>/`
+- Closeout: auto-archives TASKS.md, lane-plan.json, tasks.json, SPEC.md, TICKET.md to `docs/epics/<branch>/` on closeout

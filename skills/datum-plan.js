@@ -39,27 +39,49 @@ function model(tier) {
   return TIER_MAP[tier];
 }
 var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
+  language: "",
+  test_framework: "",
+  test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
+var READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json \u2014 run datum init first"}. Output raw JSON only.`;
+
+// skills/src/shared/tracker.ts
+async function publishLanePlan(lanePlanPath, epicTitle) {
+  const result = await agent(
+    `Run: datum plan-issues --lane-plan "${lanePlanPath}" --title "${epicTitle}"
+Return the JSON output. If the command fails, return {"error": "<message>"}.
+Output raw JSON only.`,
+    { label: "publish-issues", model: "haiku" }
+  );
+  if (!result) return null;
+  const parsed = typeof result === "string" ? JSON.parse(result.replace(/```[a-z]*\n?/g, "").trim()) : result;
+  if (parsed?.error) {
+    log(`[tracker] publish failed: ${parsed.error}`);
+    return null;
+  }
+  return {
+    epicId: String(parsed.epic_number || ""),
+    taskIds: Object.fromEntries(
+      Object.entries(parsed.task_issues || {}).map(([k, v]) => [k, String(v)])
+    )
+  };
+}
 
 // skills/src/prompts/plan-approaches.md
-var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["file1.py", "file2.py"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["src/module/file1", "src/module/file2"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/plan-decompose.md
-var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo.py`), split tests per lane: `tests/test_foo_create.py`, `tests/test_foo_validate.py`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: title, acceptance_criteria, files, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove\n- depends_on lists task IDs this task requires to be completed first\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "descriptive-task-id",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["module/file.py", "tests/test_file.py"],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
+var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nLanguage: {{language}}\nTest framework: {{testFramework}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: title, acceptance_criteria, files, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove \u2014 use the project\'s language and test framework, not Python/pytest unless that IS the project language\n- depends_on lists task IDs this task requires to be completed first\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "descriptive-task-id",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["src/module/file", "tests/test_file"],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/plan-impact.md
-var plan_impact_default = 'Impact analyzer. For each module/file the SPEC will change, assess blast radius.\n\nWorking directory: {{wt}}\nFiles to analyze:\n{{filesList}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<function_name>($$$)\' .` \u2014 find all callers structurally\n2. `scc --no-cocomo <file>` \u2014 LOC and complexity for a specific file\n3. GitNexus (gitnexus_impact) if available\n4. grep as fallback\n\nFor each file:\n1. Use ast-grep to find all callers/importers (structural, not string match)\n2. Run `scc --no-cocomo <file>` to get LOC and complexity\n3. Check if it\'s covered by existing tests (ast-grep for test functions referencing it)\n4. Assess risk from caller count + complexity\n\nReturn JSON:\n{\n  "files": [\n    {\n      "path": "module/file.py",\n      "loc": 150,\n      "callers": ["other/module.py", "cli.py"],\n      "caller_count": 2,\n      "has_tests": true,\n      "test_files": ["tests/test_file.py"],\n      "risk": "low|medium|high",\n      "notes": "why this risk level"\n    }\n  ],\n  "high_risk_files": ["files with risk=high that need isolated lanes"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var plan_impact_default = 'Impact analyzer. For each module/file the SPEC will change, assess blast radius.\n\nWorking directory: {{wt}}\nFiles to analyze:\n{{filesList}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<function_name>($$$)\' .` \u2014 find all callers structurally\n2. `scc --no-cocomo <file>` \u2014 LOC and complexity for a specific file\n3. GitNexus (gitnexus_impact) if available\n4. grep as fallback\n\nFor each file:\n1. Use ast-grep to find all callers/importers (structural, not string match)\n2. Run `scc --no-cocomo <file>` to get LOC and complexity\n3. Check if it\'s covered by existing tests (ast-grep for test functions referencing it)\n4. Assess risk from caller count + complexity\n\nReturn JSON:\n{\n  "files": [\n    {\n      "path": "src/module/file",\n      "loc": 150,\n      "callers": ["src/other/module", "src/cli"],\n      "caller_count": 2,\n      "has_tests": true,\n      "test_files": ["tests/test_file"],\n      "risk": "low|medium|high",\n      "notes": "why this risk level"\n    }\n  ],\n  "high_risk_files": ["files with risk=high that need isolated lanes"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/plan-triage.md
 var plan_triage_default = 'Triage agent. Read the plan and decide if deep codebase research is needed before Act.\n\nRead TASKS.md in the working directory.\n\nEVALUATE against this rubric:\n1. Does the plan modify security, authentication, or core data models?\n2. Does any task touch more than 3 files or span multiple domains?\n3. Does it introduce a new dependency?\n4. Does it require adhering to existing, complex architectural patterns?\n\nROUTING:\n- If ANY of these are true \u2192 "deepen" (gather codebase evidence first)\n- If ALL are false (trivial changes, simple additions, isolated modules) \u2192 "properties"\n\nReturn JSON:\n{\n  "decision": "deepen|properties",\n  "reason": "one sentence justification",\n  "triggers": ["which rubric items triggered deepen, if any"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/plan-deepen.md
-var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file.py:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nAfter appending, commit: git add TASKS.md && git commit -m "plan: deepen \u2014 research findings"\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
+var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nAfter appending, commit: git add TASKS.md && git commit -m "plan: deepen \u2014 research findings"\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/util-read-context.md
 var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
@@ -87,6 +109,10 @@ var specContent = ctx.spec_content || "";
 if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`);
 log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
 var priorFailures = [ctx.prior_defects || "", ctx.error_history || ""].filter(Boolean).join("\n") || "(no prior failure data)";
+var cfgText = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
+var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : { ...DEFAULT_CONFIG };
+var language = repoCfg.language || DEFAULT_CONFIG.language;
+var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
 phase("Decompose");
 var approachesRaw = await agent(
   renderPrompt(plan_approaches_default, { specContent, currentState: ctx.current_state || "(not available)" }),
@@ -104,7 +130,7 @@ var isComplex = chosen?.blast_radius === "high" || (chosen?.estimated_tasks || 0
 var decomposeModel = isComplex ? model("deep") : model("balanced");
 if (isComplex) log("Complex epic \u2014 using opus for decomposition");
 var tasksRaw = await agent(
-  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures }),
+  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework }),
   { label: "decompose-tasks", model: decomposeModel }
 );
 var tasks = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
@@ -158,6 +184,14 @@ var gateResult = await agent(
 var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
 if (gate?.passed) log("Plan gate PASSED");
 else log(`Plan gate: ${gate?.message || "needs approval"}`);
+var epicIssue;
+if (gate?.passed) {
+  const published = await publishLanePlan(`${epicDir}/lane-plan.json`, `[epic] ${ctx.branch}`);
+  if (published) {
+    epicIssue = published.epicId;
+    log(`Published ${Object.keys(published.taskIds).length} task issues \u2192 epic #${epicIssue}`);
+  }
+}
 return {
   branch: ctx.branch,
   epicDir,

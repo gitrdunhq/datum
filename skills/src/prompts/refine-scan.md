@@ -26,8 +26,8 @@ Return JSON:
     {
       "name": "symbol_name",
       "exists": true,
-      "file": "path/to/file.py",
-      "related_files": ["tests/test_file.py", "other/caller.py"],
+      "file": "path/to/file",
+      "related_files": ["tests/test_file", "src/other/caller"],
       "callers_count": 3,
       "blast_radius": "low|medium|high",
       "notes": "current behavior summary"

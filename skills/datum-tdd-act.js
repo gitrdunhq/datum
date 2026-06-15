@@ -2,15 +2,7 @@
 export const meta = {
   name: "datum-tdd-act",
   description: "Deterministic TDD Act: RED->GREEN->REFACTOR per lane with gate enforcement",
-  phases: [
-    { title: "Topology", detail: "parse lane-plan.json, BFS wave grouping, auto-partition into \u22645 task batches" },
-    { title: "Setup", detail: "create root + per-lane git worktrees (per batch)" },
-    { title: "Act", detail: "RED->verify->GREEN->verify->REFACTOR per lane, DAG-parallel (per batch)" },
-    { title: "Merge", detail: "squash-merge lanes in topological order (per batch)" },
-    { title: "Cleanup", detail: "remove worktrees (per batch)" },
-    { title: "Docs", detail: "haiku pre-check + conditional sonnet sync (once after all batches)" },
-    { title: "Triage", detail: "analyze failures, auto-file issues on the board" }
-  ]
+  phases: []
 };
 
 // skills/src/shared/models.ts
@@ -23,12 +15,12 @@ function model(tier) {
   return TIER_MAP[tier];
 }
 var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
+  language: "",
+  test_framework: "",
+  test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
+var READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json \u2014 run datum init first"}. Output raw JSON only.`;
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
@@ -96,7 +88,6 @@ var util_detect_branch_default = 'Run these two commands and return ONLY a JSON 
 // skills/src/datum-tdd-act.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
-var lanePlanPath = a.lanePlanPath || ".datum/lane-plan.json";
 var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
 var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
@@ -113,6 +104,7 @@ if (branchInfo) {
 }
 if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
 if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
+var lanePlanPath = a.lanePlanPath || `docs/epics/${epicBranch}/lane-plan.json`;
 phase("Topology");
 var planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
@@ -150,34 +142,50 @@ for (let bi = 0; bi < batches.length; bi++) {
 ${"=".repeat(60)}
 === Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===
 ${"=".repeat(60)}`);
-  phase("Setup");
+  for (const lid of batchLaneIds) {
+    const deps = lanePlan.lanes[lid]?.depends_on || [];
+    const missing = deps.filter((d) => !batchLaneIds.includes(d) && !completedLanes.includes(d) && !failures.includes(d));
+    if (missing.length > 0) {
+      results[lid] = { task_id: lid, status: "skipped", stage: "SKIPPED", error: `unmet cross-batch deps: [${missing.join(", ")}]` };
+      log(`  SKIPPED ${lid}: deps [${missing.join(", ")}] never ran`);
+    }
+  }
+  const runnableBatchIds = batchLaneIds.filter((id) => !results[id]);
+  if (runnableBatchIds.length === 0) {
+    log(`Batch ${bi} fully skipped \u2014 all lanes have unmet deps`);
+    continue;
+  }
+  log("\u2500\u2500 Setup \u2500\u2500");
   const setup = await workflow(
     { scriptPath: sk("datum-tdd-act-setup") },
-    { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
   );
-  phase("Act");
+  log("\u2500\u2500 Act \u2500\u2500");
   const act = await workflow(
     { scriptPath: sk("datum-tdd-act-lane") },
     {
-      batchLaneIds,
+      batchLaneIds: runnableBatchIds,
       lanePlan,
       worktreePaths: setup.worktreePaths,
       batchTag,
       cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
-      priorFailures: failures
+      priorFailures: failures,
+      priorCompleted: completedLanes
     }
   );
   for (const [id, r] of Object.entries(act.results || {})) {
     results[id] = r;
-    if (!r || r.status !== "completed") {
+    if (!r || r.status === "failed") {
       failures.push(id);
       log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
+    } else if (r.status === "skipped") {
+      log(`  SKIPPED ${id}: ${r.error || "dependency failed"}`);
     } else {
       completedLanes.push(id);
     }
   }
   log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
-  phase("Merge");
+  log("\u2500\u2500 Merge \u2500\u2500");
   await workflow(
     { scriptPath: sk("datum-tdd-act-merge") },
     {
@@ -189,14 +197,15 @@ ${"=".repeat(60)}`);
     }
   );
 }
-phase("Docs");
+log("\u2500\u2500 Docs \u2500\u2500");
 await workflow(
   { scriptPath: sk("datum-tdd-act-docs") },
   { completedLanes, lanePlan, runId }
 );
+var skippedLanes = Object.keys(results).filter((id) => results[id]?.status === "skipped");
 log(`
 ${"\u2550".repeat(60)}`);
-log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed`);
+log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed, ${skippedLanes.length} skipped`);
 if (completedLanes.length > 0) log(`  completed: [${completedLanes.join(", ")}]`);
 if (failures.length > 0) {
   log(`  failed:    [${failures.join(", ")}]`);
@@ -205,9 +214,10 @@ if (failures.length > 0) {
     if (r) log(`    ${fid}: ${r.stage} \u2014 ${r.error}`);
   }
 }
+if (skippedLanes.length > 0) log(`  skipped:   [${skippedLanes.join(", ")}]`);
 log(`${"\u2550".repeat(60)}`);
 if (failures.length > 0) {
-  phase("Triage");
+  log("\u2500\u2500 Triage \u2500\u2500");
   await workflow(
     { scriptPath: sk("datum-tdd-act-triage") },
     { failures, results, lanePlan, runId, epicBranch }
@@ -218,6 +228,8 @@ return {
   total: lanePlan.total_lanes,
   completed: completedLanes.length,
   failed: failures.length,
+  skipped: skippedLanes.length,
   failedLanes: failures,
+  skippedLanes,
   completedLanes
 };

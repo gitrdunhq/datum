@@ -123,6 +123,24 @@ def build_file_ownership(
     return ownership, conflicts
 
 
+def inject_conflict_edges(tasks: list[dict]) -> None:
+    """Add depends_on edges between lanes that share files.
+
+    For each file claimed by multiple lanes, all lanes after the first
+    claimant get a dependency on the first claimant. Mutates in place.
+    """
+    _, conflicts = build_file_ownership(tasks)
+    for _file, task_ids in conflicts.items():
+        first = task_ids[0]
+        for later in task_ids[1:]:
+            for t in tasks:
+                if t["id"] == later:
+                    deps = t.setdefault("depends_on", [])
+                    if first not in deps:
+                        deps.append(first)
+                    break
+
+
 def topological_sort(tasks: list[dict]) -> list[str]:
     """Return task IDs in topological order. Raises on cycle."""
     id_set = {t["id"] for t in tasks}
@@ -340,12 +358,15 @@ def main() -> None:
 
     if args.validate:
         try:
+            inject_conflict_edges(tasks)
             topological_sort(tasks)
             print(json.dumps({"valid": True, "task_count": len(tasks)}))
         except ValueError as e:
             print(json.dumps({"valid": False, "error": str(e)}))
             sys.exit(1)
         return
+
+    inject_conflict_edges(tasks)
 
     try:
         sorted_ids = topological_sort(tasks)

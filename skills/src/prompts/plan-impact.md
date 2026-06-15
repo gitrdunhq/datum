@@ -20,12 +20,12 @@ Return JSON:
 {
   "files": [
     {
-      "path": "module/file.py",
+      "path": "src/module/file",
       "loc": 150,
-      "callers": ["other/module.py", "cli.py"],
+      "callers": ["src/other/module", "src/cli"],
       "caller_count": 2,
       "has_tests": true,
-      "test_files": ["tests/test_file.py"],
+      "test_files": ["tests/test_file"],
       "risk": "low|medium|high",
       "notes": "why this risk level"
     }

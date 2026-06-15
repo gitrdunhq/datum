@@ -1,6 +1,7 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, parseAgentJson } from './shared/utils'
 import { model, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
+import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
@@ -22,13 +23,14 @@ function parseArgs(raw: string): Record<string, unknown> {
 const a = (typeof args === 'string') ? parseArgs(rawArgs) : (args || {})
 
 const yolo: boolean = !!a.yolo
-const startFrom = (a.startFrom || 'refine').toLowerCase() as Phase
+let startFrom = (a.startFrom || 'refine').toLowerCase() as Phase
+const explicitStart: boolean = !!a.startFrom
 const route = (a.route || 'feature').toLowerCase() as Route
 const activePhases: Phase[] = a.phases && a.phases.length > 0
   ? a.phases
   : [...PHASES]
 
-const startIdx = PHASES.indexOf(startFrom)
+let startIdx = PHASES.indexOf(startFrom)
 if (startIdx === -1) {
   throw new Error(`Unknown phase: ${startFrom}. Valid: ${PHASES.join(', ')}`)
 }
@@ -43,24 +45,64 @@ interface PhaseResult {
   canMerge?: boolean
   completed?: number
   failed?: number
+  skipped?: number
   failedLanes?: string[]
+  skippedLanes?: string[]
   taskCount?: number
   [key: string]: unknown
 }
 
+// Read config + pipeline state in one agent call (single haiku, no routing overhead)
+const bootText = await agent(
+  `Return a JSON object with two fields:
+1. "config": contents of .datum/config.json (or {} if missing)
+2. "state": contents of .datum/pipeline-state.json (or null if missing)
+Output raw JSON only.`,
+  { label: 'read-config+state', model: model('fast') },
+)
+const boot = parseAgentJson(bootText as string, { config: {}, state: null }) as { config: Record<string, string>; state: unknown }
+const globalCfg: Record<string, string> = { ...DEFAULT_CONFIG, ...(boot.config || {}) }
+const sk = (name: string) => skillPath(globalCfg.skills_dir || '', name)
+
+// Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
+const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
+
 let lastResult: PhaseResult = {}
 let haltedAt = ''
+const completedPhases: Phase[] = priorState?.completedPhases ? [...priorState.completedPhases] : []
 
 function shouldRun(p: Phase, idx: number): boolean {
   return !haltedAt && startIdx <= idx && activePhases.includes(p)
 }
 
-log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
+async function markPhaseComplete(p: Phase): Promise<void> {
+  if (!completedPhases.includes(p)) completedPhases.push(p)
+  const state: PipelineState = {
+    branch: globalCfg.branch || '',
+    runId: '',
+    route,
+    completedPhases,
+    currentPhase: null,
+    lastUpdated: '',
+  }
+  await agent(
+    `Write this exact content to .datum/pipeline-state.json:\n${serializeState(state)}\nOverwrite if exists. No other output.`,
+    { label: `save-state:${p}`, model: model('fast') },
+  )
+}
+if (priorState && !explicitStart) {
+  const resumeAt = detectStartFrom(priorState)
+  if (resumeAt) {
+    const resumeIdx = PHASES.indexOf(resumeAt)
+    if (resumeIdx > startIdx) {
+      log(`Resuming from ${resumeAt} (prior run completed: [${priorState.completedPhases.join(', ')}])`)
+      startFrom = resumeAt
+      startIdx = resumeIdx
+    }
+  }
+}
 
-// Read config early — needed for skillPath resolution across all phases
-const cfgTextEarly = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
-const globalCfg = parseAgentJson(cfgTextEarly, { ...DEFAULT_CONFIG }) as Record<string, string>
-const sk = (name: string) => skillPath(globalCfg.skills_dir || '', name)
+log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
 
 // Refine
 if (shouldRun('refine', 0)) {
@@ -71,6 +113,7 @@ if (shouldRun('refine', 0)) {
     log(`Refine gate held: ${lastResult.gateMessage || 'needs review'}. Address QUESTIONS.md, then: datum go --start-from plan`)
   } else {
     log('Refine complete')
+    await markPhaseComplete('refine')
   }
 }
 
@@ -83,6 +126,7 @@ if (shouldRun('plan', 1)) {
     log(`Plan gate held: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
   } else {
     log(`Plan complete — ${lastResult.taskCount || '?'} tasks`)
+    await markPhaseComplete('plan')
   }
 }
 
@@ -91,6 +135,7 @@ if (shouldRun('properties', 2)) {
   log('── Properties ──')
   lastResult = await workflow({ scriptPath: sk('datum-properties') }, yolo ? 'yolo' : {}) as PhaseResult
   log('Properties complete')
+  await markPhaseComplete('properties')
 }
 
 // Act — inlined from datum-tdd-act to avoid workflow() nesting limit
@@ -151,28 +196,46 @@ if (shouldRun('act', 3)) {
 
     if (batches.length > 1) log(`\n=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(', ')}] ===`)
 
+    // Cross-batch dependency check: skip lanes whose deps never ran
+    for (const lid of batchLaneIds) {
+      const deps: string[] = lanePlan.lanes[lid]?.depends_on || []
+      const missing = deps.filter((d: string) => !batchLaneIds.includes(d) && !actCompleted.includes(d) && !actFailures.includes(d))
+      if (missing.length > 0) {
+        actResults[lid] = { task_id: lid, status: 'skipped', stage: 'SKIPPED', error: `unmet cross-batch deps: [${missing.join(', ')}]` }
+        log(`  SKIPPED ${lid}: deps [${missing.join(', ')}] never ran`)
+      }
+    }
+    const runnableBatchIds = batchLaneIds.filter((id: string) => !actResults[id])
+    if (runnableBatchIds.length === 0) {
+      log(`Batch ${bi} fully skipped — all lanes have unmet deps`)
+      continue
+    }
+
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag },
     ) as SetupResult
 
     // Lane execution — direct child workflow
     const act = await workflow(
       { scriptPath: sk('datum-tdd-act-lane') },
       {
-        batchLaneIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
+        batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
         priorFailures: actFailures,
+        priorCompleted: actCompleted,
       },
     ) as LaneResult
 
     // Collect results
     for (const [id, r] of Object.entries(act.results || {})) {
       actResults[id] = r
-      if (!r || r.status !== 'completed') {
+      if (!r || r.status === 'failed') {
         actFailures.push(id)
         log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
+      } else if (r.status === 'skipped') {
+        log(`  SKIPPED ${id}: ${r.error || 'dependency failed'}`)
       } else {
         actCompleted.push(id)
       }
@@ -206,8 +269,10 @@ if (shouldRun('act', 3)) {
     )
   }
 
-  log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed`)
-  lastResult = { completed: actCompleted.length, failed: actFailures.length, failedLanes: actFailures }
+  const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
+  await markPhaseComplete('act')
+  log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped`)
+  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, failedLanes: actFailures, skippedLanes: actSkipped }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
 }
@@ -221,6 +286,7 @@ if (shouldRun('validate', 4)) {
     log('Validate FAILED — tests are red. Pipeline halted.')
   } else {
     log('Validate complete')
+    await markPhaseComplete('validate')
   }
 }
 
@@ -233,6 +299,7 @@ if (shouldRun('review', 5)) {
     log(`Review: ${lastResult.criticalFindings || '?'} critical issues. Fix, then: datum go --start-from validate`)
   } else {
     log('Review complete — clear to merge')
+    await markPhaseComplete('review')
   }
 }
 
@@ -241,6 +308,7 @@ if (shouldRun('closeout', 6)) {
   log('── Closeout ──')
   lastResult = await workflow({ scriptPath: sk('datum-closeout') }, yolo ? 'yolo' : {}) as PhaseResult
   log('Closeout complete')
+  await markPhaseComplete('closeout')
 }
 
 if (haltedAt) {

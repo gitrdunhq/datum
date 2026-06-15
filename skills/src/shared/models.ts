@@ -27,7 +27,7 @@ export const PHASES: readonly Phase[] = ['refine', 'plan', 'properties', 'act', 
 export type TddStage = 'RED' | 'GREEN' | 'REFACTOR'
 export type FailureStage = TddStage | 'SKIPPED' | 'UNKNOWN' | 'CRASH'
 
-export type LaneStatus = 'completed' | 'failed'
+export type LaneStatus = 'completed' | 'failed' | 'skipped'
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 export const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'] as const
 
@@ -42,13 +42,13 @@ export type BranchType = 'main' | 'feature' | 'hotfix'
 export type InputType = 'ticket' | 'bug' | 'question' | 'audit' | 'continuation' | 'raw-idea'
 
 export const DEFAULT_CONFIG = {
-  language: 'python',
-  test_framework: 'pytest',
-  test_command: 'uv run pytest -x -q',
+  language: '',
+  test_framework: '',
+  test_command: '',
   skills_dir: '',
 } as const
 
-export const READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`
+export const READ_CONFIG_PROMPT = `Read .datum/config.json and return the raw JSON. If the file does not exist, return an error: {"error": "missing .datum/config.json — run datum init first"}. Output raw JSON only.`
 
 export function skillPath(skillsDir: string, name: string): string {
   if (skillsDir) return `${skillsDir}/${name}.js`

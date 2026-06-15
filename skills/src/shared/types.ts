@@ -19,6 +19,7 @@ export interface LaneArgs {
   worktreePaths: Record<string, string>
   cfg: PipelineConfig
   priorFailures: string[]
+  priorCompleted: string[]
   batchTag: string
 }
 export interface LaneResult {

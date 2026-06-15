@@ -4,7 +4,7 @@ Working directory: {{wt}}
 
 TOOLS (run these first for hard data):
 1. `scc --no-cocomo -s lines .` — repo shape (LOC, languages, file counts)
-2. `ast-grep --pattern 'def test_$NAME($$$)' .` — sample test naming convention
+2. `ast-grep --pattern 'def test_$NAME($$$)' .` (Python) or `func test$NAME` (Swift/Go) or `it($$$)` (TS/JS) — sample test naming convention
 3. `ast-grep --pattern 'class $NAME:' .` — class naming convention
 4. `headroom memory list` — read any existing headroom memories for this repo
 5. `headroom learn show` — check for learned patterns from past failures
@@ -15,15 +15,18 @@ Then scan these sources IN ORDER. Read each file that exists, skip those that do
 - CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md (agent instructions)
 - .claude/rules/*.md (Claude Code rules)
 - .editorconfig, .prettierrc, .eslintrc*, biome.json (formatting)
-- pyproject.toml [tool.ruff], [tool.black], [tool.pytest] sections
-- tsconfig.json (strictness, paths, target)
-- Package.swift (targets, dependencies)
-- .swiftlint.yml, .swift-format
+- pyproject.toml [tool.ruff], [tool.black], [tool.pytest] sections (Python)
+- tsconfig.json, package.json, biome.json (TypeScript/JavaScript)
+- Package.swift, .swiftlint.yml, .swift-format (Swift)
+- go.mod, go.sum (Go)
+- Cargo.toml, rustfmt.toml (Rust)
+- build.gradle.kts, pom.xml (Kotlin/Java)
+- Gemfile (Ruby)
 
 ## Test Conventions
 - Read 2-3 existing test files to extract: naming pattern, import style, fixture approach, assertion style
 - Identify test framework: pytest, jest, vitest, XCTest, Swift Testing
-- Note any conftest.py, test helpers, shared fixtures
+- Note any test fixtures/helpers (conftest.py / TestHelper.swift / testutil_test.go / jest.setup.ts)
 
 ## Project Patterns
 - Read 2-3 implementation files to extract: module structure, error handling, logging, type patterns
@@ -39,13 +42,13 @@ Return JSON:
   "repo_shape": {"total_loc": 0, "languages": {}, "file_count": 0},
   "rules": [
     {"source": "CLAUDE.md", "rules": ["rule 1 summary", "rule 2 summary"]},
-    {"source": "pyproject.toml", "rules": ["ruff config summary"]}
+    {"source": "pyproject.toml | package.json | Package.swift", "rules": ["linter/formatter config summary"]}
   ],
   "test_conventions": {
     "naming": "test_<function>_<scenario> or describe/it",
-    "fixtures": "conftest.py shared fixtures | beforeEach | setUp",
-    "assertions": "assert x == y | expect(x).toBe(y)",
-    "example_imports": "from module import func"
+    "fixtures": "conftest.py | jest.setup.ts | TestHelper.swift | setUp",
+    "assertions": "assert x == y | expect(x).toBe(y) | XCTAssertEqual | #expect",
+    "example_imports": "from module import func | import { func } from './module'"
   },
   "code_patterns": {
     "error_handling": "how errors are handled",

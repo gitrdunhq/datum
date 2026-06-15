@@ -16,7 +16,23 @@ from dataclasses import dataclass, field
 
 METADATA_PATTERN = re.compile(r"<!-- datum:metadata\s+(.*?)\s*-->", re.DOTALL)
 
-REPO = "gitrdunhq/datum"
+
+def _detect_repo() -> str:
+    try:
+        r = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            capture_output=True,
+            text=True,
+            env={**__import__("os").environ, "GITHUB_TOKEN": ""},
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except FileNotFoundError:
+        pass
+    return "gitrdunhq/datum"
+
+
+REPO = _detect_repo()
 
 
 @dataclass
@@ -305,3 +321,56 @@ def update_issue_stage(
 
     if stage == "done":
         _gh("issue", "close", str(issue_number), "--repo", REPO)
+
+
+def publish_lane_plan(
+    lane_plan_path: str,
+    epic_title: str,
+    epic_description: str = "",
+) -> dict:
+    """Create GH issues for all lanes in a lane-plan, link as sub-issues.
+
+    Writes github_issue numbers back to lane-plan.json.
+    Never touches TASKS.md — issue numbers stay in lane-plan only.
+
+    Returns: {"epic_number": N, "task_issues": {"lane-id": issue_number}}
+    """
+    from pathlib import Path
+
+    lp_path = Path(lane_plan_path)
+    lane_plan = json.loads(lp_path.read_text())
+
+    create_labels()
+
+    tasks_summary = [
+        f"{lid}: {lane_plan['lanes'][lid]['title']}"
+        for lid in lane_plan["topological_order"]
+    ]
+    epic_num, epic_node_id = create_epic(epic_title, epic_description, tasks_summary)
+
+    task_issues: dict[str, int] = {}
+    task_node_ids: dict[str, str] = {}
+
+    for lid in lane_plan["topological_order"]:
+        lane = lane_plan["lanes"][lid]
+        deps_as_numbers = [
+            task_issues[d] for d in lane.get("depends_on", []) if d in task_issues
+        ]
+        task_num, task_node = create_task(
+            title=f"[{lid}] {lane['title']}",
+            description=lane.get("red_note", ""),
+            acceptance_criteria=lane.get("acceptance_criteria", []),
+            files=lane.get("files", []),
+            depends_on=deps_as_numbers,
+            red_note=lane.get("red_note", ""),
+        )
+        task_issues[lid] = task_num
+        task_node_ids[lid] = task_node
+        lane_plan["lanes"][lid]["github_issue"] = task_num
+
+        link_sub_issue(epic_node_id, task_node)
+
+    lane_plan["epic_issue"] = epic_num
+    lp_path.write_text(json.dumps(lane_plan, indent=2))
+
+    return {"epic_number": epic_num, "task_issues": task_issues}

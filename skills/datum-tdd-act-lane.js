@@ -14,13 +14,22 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
-var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
-  skills_dir: ""
-};
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
+
+// skills/src/shared/tracker.ts
+async function updateStage(issueId, stage, commitSha) {
+  if (!issueId) return;
+  const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
+  await agent(
+    `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
+If the command doesn't exist or fails, silently continue.
+Output nothing.`,
+    { label: `tracker:${issueId}:${stage}`, model: "haiku" }
+  );
+}
+function getIssueId(lanePlan2, taskId) {
+  const issue = lanePlan2.lanes[taskId]?.github_issue;
+  return issue ? String(issue) : "";
+}
 
 // skills/src/shared/schemas.ts
 var STAGE_RESULT_SCHEMA = {
@@ -75,7 +84,11 @@ var REFACTOR_CHECK_SCHEMA = {
 
 // skills/src/shared/utils.ts
 function classifyFiles(files) {
+  const isImplAdjacent = (f) => {
+    return f.includes("/Mocks/") || f.includes("/mocks/") || f.includes("/Fakes/") || f.includes("/fakes/") || f.includes("/Stubs/") || f.includes("/stubs/") || f.includes("/Fixtures/") || f.includes("/fixtures/") || f.includes("/Helpers/") || f.includes("/helpers/");
+  };
   const isTest = (f) => {
+    if (isImplAdjacent(f)) return false;
     const base = f.split("/").pop() || "";
     return base.startsWith("test_") || base.endsWith("_test.py") || base.endsWith(".test.ts") || base.endsWith(".test.js") || base.endsWith(".spec.ts") || base.endsWith(".spec.js") || base.endsWith("_test.go") || base.endsWith("Tests.swift") || f.includes("/tests/") || f.includes("/Tests/") || base === "conftest.py";
   };
@@ -107,6 +120,7 @@ function laneCtxCmd(packet, wt) {
   return `mkdir -p "${wt}/.datum" && printf '%s' '${ctx.replace(/'/g, "'\\''")}' > "${wt}/.datum/lane-context.json"`;
 }
 var BUILTIN_SKIP = /* @__PURE__ */ new Set([
+  // Python
   "print",
   "len",
   "str",
@@ -137,7 +151,38 @@ var BUILTIN_SKIP = /* @__PURE__ */ new Set([
   "super",
   "property",
   "staticmethod",
-  "classmethod"
+  "classmethod",
+  // Swift
+  "fatalError",
+  "precondition",
+  "debugPrint",
+  "String",
+  "Int",
+  "Array",
+  "Dictionary",
+  "Bool",
+  "Optional",
+  // Go
+  "fmt",
+  "Println",
+  "Printf",
+  "Sprintf",
+  "make",
+  "append",
+  "delete",
+  "panic",
+  "recover",
+  // TypeScript / JavaScript
+  "console",
+  "log",
+  "parseInt",
+  "parseFloat",
+  "Number",
+  "Object",
+  "Boolean",
+  "Promise",
+  "setTimeout",
+  "JSON"
 ]);
 function extractContractSummary(acceptanceCriteria) {
   return (acceptanceCriteria || []).map((ac) => {
@@ -200,10 +245,27 @@ function renderPrompt(template, vars) {
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/red.md
-var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet (e.g., result.to_dict()) \u2014 AttributeError is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'def test_\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `def test_` functions exist in each test file BEFORE your edits\n- Count how many `def test_` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- `assert True`, `assert 1`, `assert not False` \u2014 always passes\n- `pass` as the only statement in a test body\n- Empty test functions with no assertions\n- `raise NotImplementedError` \u2014 conftest xfail catches it and tests pass\n- `assert x is not None` as the ONLY assertion \u2014 smoke test, not a real check\nEach test MUST assert a specific expected value or exception type.\n';
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n';
 
 // skills/src/prompts/red-retry.md
-var red_retry_default = 'RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{redCtxCmd}}\nTASK PACKET: {{redPacketStr}}\n\nWrite simple, concrete tests. One test per acceptance criterion. Assert specific values.\nCall methods that don\'t exist yet \u2014 AttributeError is your RED signal.\nNEVER use `raise NotImplementedError` \u2014 conftest will xfail it.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 tests must fail. Report tests_pass=false.\n2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n3. Report commit_sha.\n\nOnly write and commit test files: {{testFilesList}}\n';
+var red_retry_default = `RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
+
+First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
+
+SETUP: {{redCtxCmd}}
+TASK PACKET: {{redPacketStr}}
+
+Write simple, concrete tests. One test per acceptance criterion. Assert specific values.
+Call methods that don't exist yet \u2014 the language's missing-method error (AttributeError, TypeError, compilation error, etc.) is your RED signal.
+NEVER use hardcoded failure stubs (raise NotImplementedError, fatalError, panic) \u2014 test fixtures may auto-skip them.
+
+AFTER WRITING:
+1. Run {{testCommand}} \u2014 tests must fail. Report tests_pass=false.
+2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"
+3. Report commit_sha.
+
+Only write and commit test files: {{testFilesList}}
+`;
 
 // skills/src/prompts/green.md
 var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nCONTEXT MANAGEMENT:\nBefore reading implementation files, use headroom_compress on any file longer than 100 lines.\nThis saves context for reasoning. Use headroom_retrieve with a targeted query when you need\nspecific sections back (e.g. query="function signature" or query="class definition").\n\nTARGET CONTEXT (import guard):\nIf target_context is present in the task packet, only use imports that are valid for the target.\nCheck the dependency list before adding any import statement. DO NOT import modules that are\nnot listed as dependencies of the target you are implementing in.\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 fill in function bodies, do not create new files\n3. Check existing_api \u2014 extend it, do not replace it\n4. Implement only what the errors require\n\nAFTER WRITING:\n5. Run {{testCommand}} \u2014 ALL tests must pass. Report tests_pass=true and the exit code.\n6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n7. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"\n8. Report commit_sha.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- contract_summary: function signatures extracted from acceptance criteria\n- impl_stubs: skeleton files \u2014 fill these in\n- existing_api: current module code shape\n\nCONSTRAINTS:\n- Only write and commit implementation files: {{implFilesList}}\n';
@@ -218,7 +280,7 @@ var refactor_default = 'REFACTOR agent. Clean up the implementation without chan
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover:\n{{acStr}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
 
 // skills/src/prompts/skeptic-base.md
-var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria:\n{{acStr}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Missing error handling: `ast-grep --pattern 'except: pass' <file>` or `except Exception: pass`\n   - Bare except: `ast-grep --pattern 'except:' <file>`\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n";
+var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria:\n{{acStr}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n";
 
 // skills/src/prompts/skeptic-edge.md
 var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\nFor each finding: describe the input, what happens, what should happen.\n";
@@ -291,15 +353,20 @@ No markdown fences, no explanation.`,
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];
+  const issueId = getIssueId(lanePlan2, taskId);
   const isStructural = lane.stage === "structural";
   const { testFiles, implFiles } = classifyFiles(lane.files);
   const acStr = (lane.acceptance_criteria || []).join("\n");
-  const laneTestCmd = testFiles.length > 0 ? `uv run pytest ${testFiles.join(" ")} -x -q` : cfg2.testCommand;
+  const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
+  const testFuncDiffPattern = cfg2.language === "swift" ? "-E '^\\+[[:space:]]*(@Test|func test)'" : cfg2.language === "go" ? "-E '^\\+[[:space:]]*func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E '^\\+[[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '^\\+[[:space:]]*def test_'";
+  const testFuncGrepPattern = cfg2.language === "swift" ? "-E '@Test|func test'" : cfg2.language === "go" ? "-E 'func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E 'it\\(|test\\(|describe\\('" : "-E 'def test_|async def test_'";
+  const testFuncBodyPattern = cfg2.language === "swift" ? "'func test'" : cfg2.language === "go" ? "'func Test'" : "'def test_'";
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+    await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed" };
   }
   log(`[${taskId}] RED: writing failing tests`);
@@ -322,6 +389,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   const redExtras = targetContext ? { target_context: targetContext } : {};
   const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", redExtras);
   const redCtxCmd = laneCtxCmd(redPacket, wt);
+  const testFuncLabel = cfg2.language === "swift" ? "@Test or func test" : cfg2.language === "go" ? "func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "it( or test( or describe(" : "def test_";
   const promptVars = {
     wt,
     skeletonCmd,
@@ -330,7 +398,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testCommand: laneTestCmd,
     testFilesList: testFiles.join(" "),
     commitPrefix: redPacket.commit_prefix,
-    taskId
+    taskId,
+    testFuncPattern: testFuncLabel
   };
   let red = await agent(
     redPrompt(promptVars),
@@ -353,18 +422,39 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   const acCount = (lane.acceptance_criteria || []).length;
   if (acCount > 0) {
     const countResult = await agent(
-      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(" ")} | grep -c '^+def test_' || echo 0
-Return ONLY the number. No explanation.`,
-      { label: `test-count-check:${taskId}`, phase: "Act", model: model("fast") }
+      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(" ")} | grep -c ${testFuncDiffPattern} || echo 0
+Return ONLY a JSON object with the count. Example: {"new_test_count": 5}
+Output raw JSON only, no markdown fences, no explanation.`,
+      {
+        label: `test-count-check:${taskId}`,
+        phase: "Act",
+        model: model("fast"),
+        schema: { type: "object", properties: { new_test_count: { type: "integer", minimum: 0 } }, required: ["new_test_count"] }
+      }
     );
-    const newTestCount = parseInt(String(countResult).trim(), 10) || 0;
+    let newTestCount = 0;
+    if (countResult && typeof countResult === "object" && "new_test_count" in countResult) {
+      newTestCount = countResult.new_test_count;
+    } else {
+      const digits = String(countResult).replace(/[^0-9]/g, "");
+      newTestCount = digits ? parseInt(digits, 10) : 0;
+    }
     if (newTestCount < acCount) {
       log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`);
       return { task_id: taskId, status: "failed", stage: "RED", error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` };
     }
     log(`[${taskId}] RED: ${newTestCount} new test functions confirmed (>= ${acCount} ACs)`);
   }
-  const sgPatterns = [
+  const sgPatterns = cfg2.language === "swift" ? [
+    { pattern: "XCTFail", name: "XCTFail" },
+    { pattern: "fatalError", name: "fatalError" }
+  ] : cfg2.language === "go" ? [
+    { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
+    { pattern: 'panic("not implemented")', name: "panic placeholder" }
+  ] : cfg2.language === "typescript" || cfg2.language === "javascript" ? [
+    { pattern: "throw new Error", name: "throw placeholder" },
+    { pattern: "expect(true).toBe(false)", name: "forced failure" }
+  ] : [
     { pattern: "assert True", name: "assert True" },
     { pattern: "assert 1", name: "assert 1" },
     { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
@@ -379,7 +469,7 @@ ${testFiles.map((f) => sgPatterns.map(
 
 Also check for pass-only test bodies:
 ${testFiles.map(
-      (f) => `grep -A1 'def test_' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n")}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -397,6 +487,7 @@ Output raw JSON only.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: `green_blindness_violation: tests passed after RED. Test output: ${diag}` };
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
+  await updateStage(issueId, "red", red.commit_sha);
   if (!red.committed) {
     log(`[${taskId}] RED: agent did not commit \u2014 failing`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
@@ -408,14 +499,19 @@ Output raw JSON only.`,
   }
   const testCountResult = await agent(
     `Count test functions in these files:
-${testFiles.map((f) => `grep -c "def test_\\\\|async def test_" "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
+${testFiles.map((f) => `grep -c ${testFuncGrepPattern} "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
 Also check the parent commit:
-${testFiles.map((f) => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c "def test_\\\\|async def test_" || echo 0`).join("\n")}
+${testFiles.map((f) => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join("\n")}
 Return JSON: {"before": <total_before>, "after": <total_after>, "new_count": <after - before>}
 Output raw JSON only.`,
-    { label: `test-count:${taskId}`, phase: "Act", model: model("fast") }
+    {
+      label: `test-count:${taskId}`,
+      phase: "Act",
+      model: model("fast"),
+      schema: { type: "object", properties: { before: { type: "integer" }, after: { type: "integer" }, new_count: { type: "integer" } }, required: ["before", "after", "new_count"] }
+    }
   );
-  const counts = parseAgentJson(testCountResult, {});
+  const counts = testCountResult && typeof testCountResult === "object" ? testCountResult : parseAgentJson(testCountResult, {});
   if ((counts.new_count || 0) === 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${counts.before}, after=${counts.after})`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_new_tests_written: RED agent did not append any test functions" };
@@ -484,6 +580,7 @@ Output raw JSON only.`,
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
+  await updateStage(issueId, "green", green.commit_sha);
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
@@ -519,6 +616,7 @@ Output raw JSON only.`,
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
   }
   log(`[${taskId}] === LANE COMPLETE ===`);
+  await updateStage(issueId, "done");
   return { task_id: taskId, status: "completed" };
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
@@ -568,7 +666,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
 }
 var a = args;
 phase("Act");
-var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, batchTag } = a;
+var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a;
 var lanes = lanePlan.lanes;
 var depResolvers = {};
 var depPromises = {};
@@ -581,11 +679,17 @@ log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks`);
 var dagResults = await parallel(
   batchLaneIds.map((taskId) => async () => {
     const allDeps = lanes[taskId].depends_on || [];
-    const crossBatchFailed = allDeps.filter((d) => !batchLaneIds.includes(d) && priorFailures.includes(d));
-    if (crossBatchFailed.length > 0) {
-      const err = `skipped: cross-batch dep(s) failed [${crossBatchFailed.join(", ")}]`;
+    const crossBatchDeps = allDeps.filter((d) => !batchLaneIds.includes(d));
+    const crossBatchFailed = crossBatchDeps.filter((d) => priorFailures.includes(d));
+    const crossBatchMissing = crossBatchDeps.filter(
+      (d) => !priorFailures.includes(d) && !(priorCompleted || []).includes(d)
+    );
+    if (crossBatchFailed.length > 0 || crossBatchMissing.length > 0) {
+      const failedPart = crossBatchFailed.length > 0 ? `failed [${crossBatchFailed.join(", ")}]` : "";
+      const missingPart = crossBatchMissing.length > 0 ? `never executed [${crossBatchMissing.join(", ")}]` : "";
+      const err = `skipped: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(", ")}`;
       log(`[${taskId}] ${err}`);
-      const skipResult = { task_id: taskId, status: "failed", stage: "SKIPPED", error: err };
+      const skipResult = { task_id: taskId, status: "skipped", stage: "SKIPPED", error: err };
       depResolvers[taskId](skipResult);
       return skipResult;
     }
@@ -597,7 +701,7 @@ var dagResults = await parallel(
       if (failedDeps.length > 0) {
         const err = `skipped: dep(s) failed [${failedDeps.map((r) => r.task_id).join(", ")}]`;
         log(`[${taskId}] ${err}`);
-        const skipResult = { task_id: taskId, status: "failed", stage: "SKIPPED", error: err };
+        const skipResult = { task_id: taskId, status: "skipped", stage: "SKIPPED", error: err };
         depResolvers[taskId](skipResult);
         return skipResult;
       }

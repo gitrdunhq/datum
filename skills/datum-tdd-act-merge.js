@@ -14,13 +14,6 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
-var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
-  skills_dir: ""
-};
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/datum-tdd-act-merge.ts
 var a = args;

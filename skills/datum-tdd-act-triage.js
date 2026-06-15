@@ -14,13 +14,6 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
-var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
-  skills_dir: ""
-};
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/shared/schemas.ts
 var TRIAGE_SCHEMA = {
@@ -66,7 +59,7 @@ For each failure, determine:
 - Is this a WORKFLOW BUG (datum-tdd-act.js logic error)?
 - Is this a LANE PLAN issue (bad ACs, wrong files, missing deps)?
 - Is this an AGENT BEHAVIOR issue (agent didn't follow instructions)?
-- Is this INFRASTRUCTURE (git, uv, pytest, CWD issues)?
+- Is this INFRASTRUCTURE (git, build tools, test runner, CWD issues)?
 - Is this TEST QUALITY (tests too weak, wrong assertions)?
 
 For each issue, write a GitHub issue title starting with [datum-bug] and a body with:

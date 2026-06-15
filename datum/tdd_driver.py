@@ -109,7 +109,7 @@ def verify_green_baseline(
         Optional custom command to run tests. Defaults to ["pytest", "-q"].
     """
     if test_command is None:
-        test_command = ["pytest", "-q"]
+        raise ValueError("test_command is required — read it from .datum/config.json")
 
     try:
         result = subprocess.run(
@@ -118,13 +118,11 @@ def verify_green_baseline(
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError:
-        # If the test runner isn't installed, we can't verify the baseline.
-        # But failing open here might be better, or we escalate.
+    except FileNotFoundError as err:
         raise DirtyBaselineError(
             f"Test command not found: {test_command[0]}. "
             f"Cannot verify green baseline."
-        )
+        ) from err
 
     if result.returncode != 0:
         raise DirtyBaselineError(
@@ -169,7 +167,7 @@ def verify_red_stage(repo_path: Path, test_command: list[str] | None = None) -> 
     verification result and test signal for GREEN consumption.
     """
     if test_command is None:
-        test_command = ["pytest", "-q"]
+        raise ValueError("test_command is required — read it from .datum/config.json")
 
     try:
         result = subprocess.run(
@@ -178,10 +176,10 @@ def verify_red_stage(repo_path: Path, test_command: list[str] | None = None) -> 
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         raise GreenBlindnessError(
             f"Test command not found: {test_command[0]}. " f"Cannot verify RED stage."
-        )
+        ) from err
 
     if result.returncode == 0:
         raise GreenBlindnessError(

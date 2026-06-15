@@ -31,7 +31,7 @@ if (a.failures.length === 0) {
     `- Is this a WORKFLOW BUG (datum-tdd-act.js logic error)?\n` +
     `- Is this a LANE PLAN issue (bad ACs, wrong files, missing deps)?\n` +
     `- Is this an AGENT BEHAVIOR issue (agent didn't follow instructions)?\n` +
-    `- Is this INFRASTRUCTURE (git, uv, pytest, CWD issues)?\n` +
+    `- Is this INFRASTRUCTURE (git, build tools, test runner, CWD issues)?\n` +
     `- Is this TEST QUALITY (tests too weak, wrong assertions)?\n\n` +
     `For each issue, write a GitHub issue title starting with [datum-bug] and a body with:\n` +
     `- What happened (the error)\n` +

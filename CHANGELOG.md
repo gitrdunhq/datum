@@ -2,6 +2,44 @@
 
 All notable changes to DATUM are documented here.
 
+## [Bug Squash #167 Act Phase — Partial] — 2026-06-14 (run 20260614-161954)
+
+### Fixed
+
+Act phase executed against `bug-squash-167` plan. 2 of 6 tasks completed, 1 partial. Review returned 0 findings.
+
+**task-1 — `make_function_name()` hyphens in identifiers (COMPLETED)**
+- `datum/skeleton_creator.py`: Added `.replace('-', '_')` after `slugify()` call in `make_function_name()`
+- Fixes: generated Python/Swift test function names are now valid identifiers for any AC text containing hyphens
+- Commit: `43be12e`
+
+**task-4 — Act phase path resolution and error logging (COMPLETED)**
+- `skills/src/datum-go.ts`: All `scriptPath` values converted from bare relative strings to `skillPath()`-resolved absolute paths
+- Config read early (before phase loop) so `skillPath()` is available across all phases
+- Arg parsing made resilient: freetext and issue-number strings now accepted (no longer throws on non-JSON input)
+- Debug log added at Act phase entry: `shouldRun act=`, `startIdx=`, `haltedAt=`, `activePhases=`
+- `skills/datum-go.js`: Rebuilt from updated TS source
+- Fixes: `datum go` no longer produces `ENOENT` errors when CWD != repo root (#165)
+- Commit: `43be12e`
+
+**task-6 — JS rebuild (PARTIAL)**
+- `skills/datum-go.js`: Updated with task-4 scriptPath fixes
+- `skills/datum-tdd-act-lane.js`: Rebuilt with `DEFAULT_CONFIG.skills_dir` addition only — task-5 grep fix not included
+- Commit: `43be12e`
+
+**Bonus: Remove phantom phases from datum-tdd-act**
+- `skills/src/datum-tdd-act.ts` / `skills/datum-tdd-act.js`: Removed duplicate phase-display entries
+- Child workflows (datum-tdd-act-setup, datum-tdd-act-lane, datum-tdd-act-merge, etc.) own their own phase display — orchestrator no longer echoes phantom phases
+- Commit: `a34f8af`
+
+### Not Completed
+
+- **task-2**: `datum/lane_plan.py:356` — file-conflict dependency edges not wired (`_` still discards conflicts)
+- **task-3**: `datum/skeleton_creator.py:467,556,579` — `Path.write_text()` still overwrites; append-or-create not implemented
+- **task-5**: `datum-tdd-act-lane.ts:174` — grep pattern `'^+def test_'` unchanged; class-based test methods undercounted
+
+---
+
 ## [Bug Squash #167 — Closeout] — 2026-06-14 (run 20260614-154341)
 
 ### Closed Out (planning complete, act phase queued)

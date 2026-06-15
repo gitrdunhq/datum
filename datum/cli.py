@@ -118,6 +118,50 @@ def lane_plan_cmd(
         lane_plan_main()
 
 
+@app.command(name="plan-issues")
+def plan_issues_cmd(
+    lane_plan: str = typer.Option(
+        ".datum/lane-plan.json", "--lane-plan", help="Path to lane-plan.json"
+    ),
+    title: str = typer.Option("", "--title", help="Epic title"),
+):
+    """Create GitHub issues for all lanes in lane-plan.json, linked as sub-issues."""
+    from datum.github_issues import publish_lane_plan
+
+    lp_path = Path(lane_plan)
+    if not lp_path.exists():
+        console.print(f"[red]Not found: {lane_plan}[/red]")
+        raise typer.Exit(1)
+
+    if not title:
+        import subprocess
+
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        title = f"[epic] {branch}"
+
+    result = publish_lane_plan(str(lp_path), title)
+    console.print(json.dumps(result, indent=2))
+
+
+@app.command(name="issue-stage")
+def issue_stage_cmd(
+    issue: int = typer.Option(..., "--issue", help="GitHub issue number"),
+    stage: str = typer.Option(
+        ..., "--stage", help="Stage: queued|red|green|done|failed|skipped"
+    ),
+    commit: str = typer.Option("", "--commit", help="Commit SHA"),
+):
+    """Update a GitHub issue's datum stage label."""
+    from datum.github_issues import update_issue_stage
+
+    update_issue_stage(issue, stage, commit or None)
+    console.print(json.dumps({"ok": True, "issue": issue, "stage": stage}))
+
+
 def _install_workflows():
     """Symlink datum workflow JS files to ~/.claude/workflows/."""
     import os

@@ -6,8 +6,8 @@ SETUP: {{redCtxCmd}}
 TASK PACKET: {{redPacketStr}}
 
 Write simple, concrete tests. One test per acceptance criterion. Assert specific values.
-Call methods that don't exist yet — AttributeError is your RED signal.
-NEVER use `raise NotImplementedError` — conftest will xfail it.
+Call methods that don't exist yet — the language's missing-method error (AttributeError, TypeError, compilation error, etc.) is your RED signal.
+NEVER use hardcoded failure stubs (raise NotImplementedError, fatalError, panic) — test fixtures may auto-skip them.
 
 AFTER WRITING:
 1. Run {{testCommand}} — tests must fail. Report tests_pass=false.

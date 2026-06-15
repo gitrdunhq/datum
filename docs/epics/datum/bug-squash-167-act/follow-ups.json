@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0",
+  "run_id": "20260614-161954",
+  "epic": "bug-squash-167-act",
+  "generated_at": "2026-06-14",
+  "follow_ups": [
+    {
+      "id": "fu-001",
+      "task_ref": "task-2",
+      "severity": "critical",
+      "category": "unfinished_task",
+      "title": "build_lane_plan() still discards file-conflict data — no dependency edges created",
+      "description": "datum/lane_plan.py:356 uses _ to discard the conflicts return value from build_file_ownership(). Lanes that share a file have no enforced ordering. file_conflict_with in lane-plan.json is purely observational.",
+      "suggested_fix": "Write tests/test_lane_plan_conflicts.py (RED) first. Then: replace _ with named variable 'conflicts', add 'conflicts: dict[str, list[str]] | None = None' param to build_lane_plan(), add edge logic — for each conflict, later claimant depends on first claimant. Exclude self-edges.",
+      "files": [
+        "datum/lane_plan.py",
+        "tests/test_lane_plan_conflicts.py"
+      ],
+      "estimated_loc": 50,
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "id": "fu-002",
+      "task_ref": "task-3",
+      "severity": "critical",
+      "category": "unfinished_task",
+      "title": "skeleton_creator.py write_text() still overwrites — skeleton content destroyed on multi-lane runs",
+      "description": "Path.write_text() at datum/skeleton_creator.py lines 467, 556, 579 overwrites unconditionally. Root cause of CORR-001 (5 of 6 RED skeletons absent from tests/test_ruff_precheck.py) and CORR-002 (same for tests/test_mypy_precheck.py). Multi-lane runs that share a test file lose prior skeleton content.",
+      "suggested_fix": "Write tests/test_skeleton_append.py (RED) first. At each of the three write_text() sites: capture content = skeleton.pop('content'), then if dest.exists(): dest.write_text(dest.read_text() + '\\n\\n' + content) else: dest.write_text(content). Do not modify line 286 (build_impl_stubs write).",
+      "files": [
+        "datum/skeleton_creator.py",
+        "tests/test_skeleton_append.py"
+      ],
+      "estimated_loc": 45,
+      "blocked_by": [],
+      "blocks": ["fu-006"]
+    },
+    {
+      "id": "fu-003",
+      "task_ref": "task-5",
+      "severity": "high",
+      "category": "unfinished_task",
+      "title": "Test-count grep misses class-based test methods — gate rejects valid GREEN commits",
+      "description": "skills/src/datum-tdd-act-lane.ts:174 uses grep -c '^+def test_' anchored to column 0. class TestFoo(unittest.TestCase) methods like '+    def test_bar' produce count 0. The TDD gate will reject GREEN commits that use class-based test structure.",
+      "suggested_fix": "Write tests/test_grep_test_count.py (RED) first. Replace '^+def test_' with '^+[[:space:]]*def test_' at line 174. Verify file-level grep at line 237 is not column-anchored (it is not — already correct). Then rebuild JS (fu-004).",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "tests/test_grep_test_count.py"
+      ],
+      "estimated_loc": 35,
+      "blocked_by": [],
+      "blocks": ["fu-004"]
+    },
+    {
+      "id": "fu-004",
+      "task_ref": "task-6",
+      "severity": "high",
+      "category": "build_step",
+      "title": "JS rebuild needed after task-5 fix — datum-tdd-act-lane.js stale",
+      "description": "skills/datum-tdd-act-lane.js was rebuilt in run 20260614-161954 but does not include the grep pattern fix (task-5 not completed). Once task-5 TS source is updated, bash scripts/build-workflows.sh must be re-run and the @generated JS verified to contain '^+[[:space:]]*def test_'.",
+      "suggested_fix": "After fu-003 is fixed: run bash scripts/build-workflows.sh, verify skills/datum-tdd-act-lane.js contains the updated pattern and @generated banner.",
+      "files": [
+        "skills/datum-go.js",
+        "skills/datum-tdd-act-lane.js"
+      ],
+      "estimated_loc": 5,
+      "blocked_by": ["fu-003"],
+      "blocks": []
+    },
+    {
+      "id": "fu-005",
+      "task_ref": null,
+      "severity": "high",
+      "category": "missing_tests",
+      "title": "No new test files committed — TDD RED-GREEN protocol not followed for tasks 1 and 4",
+      "description": "tasks 1 and 4 shipped fixes without prior failing tests. tests/test_make_function_name.py and tests/test_act_phase_logging.py are absent. Fixes are unverified by automated regression coverage.",
+      "suggested_fix": "Write tests/test_make_function_name.py: assert make_function_name('ac1', 'when mypy-output has error-lines', 'python') matches ^[a-zA-Z_][a-zA-Z0-9_]*$ and contains no hyphens. Write tests/test_act_phase_logging.py: grep-based snapshot assertions against skills/src/datum-go.ts source for path logging and error message format.",
+      "files": [
+        "tests/test_make_function_name.py",
+        "tests/test_act_phase_logging.py"
+      ],
+      "estimated_loc": 60,
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "id": "fu-006",
+      "task_ref": null,
+      "severity": "medium",
+      "category": "skeleton_deficit",
+      "title": "CORR-001/002 unresolved: 5 of 6 RED skeletons absent from ruff and mypy precheck test files",
+      "description": "tests/test_ruff_precheck.py has 1 of 6 AC skeletons (AC1 only; AC2-AC6 absent). tests/test_mypy_precheck.py same. Preflight falsely logged skeleton_written=True for all 6. Resolving requires: (1) fix task-3 overwrite bug, (2) re-run skeleton generation for fail-fast-validation AC2-AC6.",
+      "suggested_fix": "After fu-002 is fixed: re-run datum setup for fail-fast-validation epic to regenerate AC2-AC6 skeletons into both test files without overwriting AC1.",
+      "files": [
+        "tests/test_ruff_precheck.py",
+        "tests/test_mypy_precheck.py"
+      ],
+      "estimated_loc": 0,
+      "blocked_by": ["fu-002"],
+      "blocks": []
+    }
+  ]
+}

@@ -72,15 +72,35 @@ function model(tier) {
 }
 var PHASES = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
 var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
+  language: "",
+  test_framework: "",
+  test_command: "",
   skills_dir: ""
 };
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
+}
+
+// skills/src/shared/pipeline-state.ts
+function parseState(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw.replace(/```[a-z]*\n?/g, "").trim());
+  } catch {
+    return null;
+  }
+}
+function serializeState(state) {
+  return JSON.stringify(state, null, 2);
+}
+function detectStartFrom(state) {
+  if (!state || !state.completedPhases?.length) return null;
+  const ORDER = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
+  const lastCompleted = state.completedPhases[state.completedPhases.length - 1];
+  const idx = ORDER.indexOf(lastCompleted);
+  if (idx >= 0 && idx < ORDER.length - 1) return ORDER[idx + 1];
+  return null;
 }
 
 // skills/src/prompts/util-detect-branch.md
@@ -100,21 +120,59 @@ function parseArgs(raw) {
 var a = typeof args === "string" ? parseArgs(rawArgs) : args || {};
 var yolo = !!a.yolo;
 var startFrom = (a.startFrom || "refine").toLowerCase();
+var explicitStart = !!a.startFrom;
 var route = (a.route || "feature").toLowerCase();
 var activePhases = a.phases && a.phases.length > 0 ? a.phases : [...PHASES];
 var startIdx = PHASES.indexOf(startFrom);
 if (startIdx === -1) {
   throw new Error(`Unknown phase: ${startFrom}. Valid: ${PHASES.join(", ")}`);
 }
+var bootText = await agent(
+  `Return a JSON object with two fields:
+1. "config": contents of .datum/config.json (or {} if missing)
+2. "state": contents of .datum/pipeline-state.json (or null if missing)
+Output raw JSON only.`,
+  { label: "read-config+state", model: model("fast") }
+);
+var boot = parseAgentJson(bootText, { config: {}, state: null });
+var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
+var sk = (name) => skillPath(globalCfg.skills_dir || "", name);
+var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var lastResult = {};
 var haltedAt = "";
+var completedPhases = priorState?.completedPhases ? [...priorState.completedPhases] : [];
 function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
+async function markPhaseComplete(p) {
+  if (!completedPhases.includes(p)) completedPhases.push(p);
+  const state = {
+    branch: globalCfg.branch || "",
+    runId: "",
+    route,
+    completedPhases,
+    currentPhase: null,
+    lastUpdated: ""
+  };
+  await agent(
+    `Write this exact content to .datum/pipeline-state.json:
+${serializeState(state)}
+Overwrite if exists. No other output.`,
+    { label: `save-state:${p}`, model: model("fast") }
+  );
+}
+if (priorState && !explicitStart) {
+  const resumeAt = detectStartFrom(priorState);
+  if (resumeAt) {
+    const resumeIdx = PHASES.indexOf(resumeAt);
+    if (resumeIdx > startIdx) {
+      log(`Resuming from ${resumeAt} (prior run completed: [${priorState.completedPhases.join(", ")}])`);
+      startFrom = resumeAt;
+      startIdx = resumeIdx;
+    }
+  }
+}
 log(`datum go \u2014 route: ${route}, start: ${startFrom}${yolo ? " (yolo)" : ""}`);
-var cfgTextEarly = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
-var globalCfg = parseAgentJson(cfgTextEarly, { ...DEFAULT_CONFIG });
-var sk = (name) => skillPath(globalCfg.skills_dir || "", name);
 if (shouldRun("refine", 0)) {
   log("\u2500\u2500 Refine \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-refine") }, yolo ? "yolo" : {});
@@ -123,6 +181,7 @@ if (shouldRun("refine", 0)) {
     log(`Refine gate held: ${lastResult.gateMessage || "needs review"}. Address QUESTIONS.md, then: datum go --start-from plan`);
   } else {
     log("Refine complete");
+    await markPhaseComplete("refine");
   }
 }
 if (shouldRun("plan", 1)) {
@@ -133,12 +192,14 @@ if (shouldRun("plan", 1)) {
     log(`Plan gate held: ${lastResult.gateMessage || "needs approval"}. Review TASKS.md, then: datum go --start-from properties`);
   } else {
     log(`Plan complete \u2014 ${lastResult.taskCount || "?"} tasks`);
+    await markPhaseComplete("plan");
   }
 }
 if (shouldRun("properties", 2)) {
   log("\u2500\u2500 Properties \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-properties") }, yolo ? "yolo" : {});
   log("Properties complete");
+  await markPhaseComplete("properties");
 }
 log(`[debug] shouldRun act=${shouldRun("act", 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`);
 if (shouldRun("act", 3)) {
@@ -180,26 +241,42 @@ if (shouldRun("act", 3)) {
     const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId;
     if (batches.length > 1) log(`
 === Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===`);
+    for (const lid of batchLaneIds) {
+      const deps = lanePlan.lanes[lid]?.depends_on || [];
+      const missing = deps.filter((d) => !batchLaneIds.includes(d) && !actCompleted.includes(d) && !actFailures.includes(d));
+      if (missing.length > 0) {
+        actResults[lid] = { task_id: lid, status: "skipped", stage: "SKIPPED", error: `unmet cross-batch deps: [${missing.join(", ")}]` };
+        log(`  SKIPPED ${lid}: deps [${missing.join(", ")}] never ran`);
+      }
+    }
+    const runnableBatchIds = batchLaneIds.filter((id) => !actResults[id]);
+    if (runnableBatchIds.length === 0) {
+      log(`Batch ${bi} fully skipped \u2014 all lanes have unmet deps`);
+      continue;
+    }
     const setup = await workflow(
       { scriptPath: sk("datum-tdd-act-setup") },
-      { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
     );
     const act = await workflow(
       { scriptPath: sk("datum-tdd-act-lane") },
       {
-        batchLaneIds,
+        batchLaneIds: runnableBatchIds,
         lanePlan,
         worktreePaths: setup.worktreePaths,
         batchTag,
         cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
-        priorFailures: actFailures
+        priorFailures: actFailures,
+        priorCompleted: actCompleted
       }
     );
     for (const [id, r] of Object.entries(act.results || {})) {
       actResults[id] = r;
-      if (!r || r.status !== "completed") {
+      if (!r || r.status === "failed") {
         actFailures.push(id);
         log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
+      } else if (r.status === "skipped") {
+        log(`  SKIPPED ${id}: ${r.error || "dependency failed"}`);
       } else {
         actCompleted.push(id);
       }
@@ -226,8 +303,10 @@ if (shouldRun("act", 3)) {
       { failures: actFailures, results: actResults, lanePlan, runId, epicBranch }
     );
   }
-  log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed`);
-  lastResult = { completed: actCompleted.length, failed: actFailures.length, failedLanes: actFailures };
+  const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
+  await markPhaseComplete("act");
+  log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped`);
+  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, failedLanes: actFailures, skippedLanes: actSkipped };
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);
 }
@@ -239,6 +318,7 @@ if (shouldRun("validate", 4)) {
     log("Validate FAILED \u2014 tests are red. Pipeline halted.");
   } else {
     log("Validate complete");
+    await markPhaseComplete("validate");
   }
 }
 if (shouldRun("review", 5)) {
@@ -249,12 +329,14 @@ if (shouldRun("review", 5)) {
     log(`Review: ${lastResult.criticalFindings || "?"} critical issues. Fix, then: datum go --start-from validate`);
   } else {
     log("Review complete \u2014 clear to merge");
+    await markPhaseComplete("review");
   }
 }
 if (shouldRun("closeout", 6)) {
   log("\u2500\u2500 Closeout \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-closeout") }, yolo ? "yolo" : {});
   log("Closeout complete");
+  await markPhaseComplete("closeout");
 }
 if (haltedAt) {
   log(`

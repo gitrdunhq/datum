@@ -1,5 +1,6 @@
 import { renderPrompt, parseAgentJson } from './shared/utils'
-import { model } from './shared/models'
+import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
+import { publishLanePlan } from './shared/tracker'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planDecomposeTemplate from './prompts/plan-decompose.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -50,6 +51,11 @@ log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 
 const priorFailures: string = [ctx.prior_defects || '', ctx.error_history || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
+const cfgText = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : { ...DEFAULT_CONFIG }
+const language: string = repoCfg.language || DEFAULT_CONFIG.language
+const testFramework: string = repoCfg.test_framework || DEFAULT_CONFIG.test_framework
+
 // ── Decompose (approach → impact → decompose → build — all substantive, kept separate) ──
 
 phase('Decompose')
@@ -80,7 +86,7 @@ const decomposeModel = isComplex ? model('deep') : model('balanced')
 if (isComplex) log('Complex epic — using opus for decomposition')
 
 const tasksRaw = await agent(
-  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures }),
+  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework }),
   { label: 'decompose-tasks', model: decomposeModel },
 )
 
@@ -149,6 +155,16 @@ const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as strin
 
 if (gate?.passed) log('Plan gate PASSED')
 else log(`Plan gate: ${gate?.message || 'needs approval'}`)
+
+// Publish lane-plan tasks as tracker issues (after gate passes)
+let epicIssue: string | undefined
+if (gate?.passed) {
+  const published = await publishLanePlan(`${epicDir}/lane-plan.json`, `[epic] ${ctx.branch}`)
+  if (published) {
+    epicIssue = published.epicId
+    log(`Published ${Object.keys(published.taskIds).length} task issues → epic #${epicIssue}`)
+  }
+}
 
 export const __workflowResult = {
   branch: ctx.branch, epicDir, approach: chosen?.name,

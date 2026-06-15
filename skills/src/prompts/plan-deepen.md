@@ -24,7 +24,7 @@ Format:
 ## Research Findings
 
 ### task-id: Task Title
-- **Pattern**: See `module/file.py:45` for existing approach
+- **Pattern**: See `module/file:45` for existing approach
 - **Convention**: This codebase uses X pattern for Y
 - **Pitfall**: Known issue with Z — handle via W
 - **Past failure**: headroom learn flagged <issue> in this area

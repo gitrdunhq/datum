@@ -7,15 +7,7 @@ import detectBranchPrompt from './prompts/util-detect-branch.md'
 export const meta = {
   name: 'datum-tdd-act',
   description: 'Deterministic TDD Act: RED->GREEN->REFACTOR per lane with gate enforcement',
-  phases: [
-    { title: 'Topology', detail: 'parse lane-plan.json, BFS wave grouping, auto-partition into ≤5 task batches' },
-    { title: 'Setup', detail: 'create root + per-lane git worktrees (per batch)' },
-    { title: 'Act', detail: 'RED->verify->GREEN->verify->REFACTOR per lane, DAG-parallel (per batch)' },
-    { title: 'Merge', detail: 'squash-merge lanes in topological order (per batch)' },
-    { title: 'Cleanup', detail: 'remove worktrees (per batch)' },
-    { title: 'Docs', detail: 'haiku pre-check + conditional sonnet sync (once after all batches)' },
-    { title: 'Triage', detail: 'analyze failures, auto-file issues on the board' },
-  ],
+  phases: [],
 }
 
 // ── Parse args ──
@@ -25,8 +17,6 @@ const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g,
 const a = (typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})
-
-const lanePlanPath: string = a.lanePlanPath || '.datum/lane-plan.json'
 
 // Read config from .datum/config.json if not passed as args
 const cfgText = (!a.testCommand || !a.language)
@@ -54,6 +44,8 @@ if (branchInfo) {
 
 if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
 if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
+
+const lanePlanPath: string = a.lanePlanPath || `docs/epics/${epicBranch}/lane-plan.json`
 
 // ── Topology ──
 
@@ -105,30 +97,48 @@ for (let bi = 0; bi < batches.length; bi++) {
 
   if (batches.length > 1) log(`\n${'='.repeat(60)}\n=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(', ')}] ===\n${'='.repeat(60)}`)
 
+  // Cross-batch dependency check: skip lanes whose deps never ran
+  for (const lid of batchLaneIds) {
+    const deps: string[] = lanePlan.lanes[lid]?.depends_on || []
+    const missing = deps.filter((d: string) => !batchLaneIds.includes(d) && !completedLanes.includes(d) && !failures.includes(d))
+    if (missing.length > 0) {
+      results[lid] = { task_id: lid, status: 'skipped', stage: 'SKIPPED', error: `unmet cross-batch deps: [${missing.join(', ')}]` }
+      log(`  SKIPPED ${lid}: deps [${missing.join(', ')}] never ran`)
+    }
+  }
+  const runnableBatchIds = batchLaneIds.filter((id: string) => !results[id])
+  if (runnableBatchIds.length === 0) {
+    log(`Batch ${bi} fully skipped — all lanes have unmet deps`)
+    continue
+  }
+
   // Setup
-  phase('Setup')
+  log('── Setup ──')
   const setup = await workflow(
     { scriptPath: sk('datum-tdd-act-setup') },
-    { batchRunId, epicBranch, batchLaneIds, lanePlan, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
   ) as SetupResult
 
   // Act
-  phase('Act')
+  log('── Act ──')
   const act = await workflow(
     { scriptPath: sk('datum-tdd-act-lane') },
     {
-      batchLaneIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
+      batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
       cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
       priorFailures: failures,
+      priorCompleted: completedLanes,
     }
   ) as LaneResult
 
   // Collect results
   for (const [id, r] of Object.entries(act.results || {})) {
     results[id] = r
-    if (!r || r.status !== 'completed') {
+    if (!r || r.status === 'failed') {
       failures.push(id)
       log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
+    } else if (r.status === 'skipped') {
+      log(`  SKIPPED ${id}: ${r.error || 'dependency failed'}`)
     } else {
       completedLanes.push(id)
     }
@@ -136,7 +146,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   log(`Act${batchTag} done: ${batchLaneIds.filter(id => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`)
 
   // Merge + Cleanup
-  phase('Merge')
+  log('── Merge ──')
   await workflow(
     { scriptPath: sk('datum-tdd-act-merge') },
     {
@@ -151,7 +161,7 @@ for (let bi = 0; bi < batches.length; bi++) {
 
 // ── Docs ──
 
-phase('Docs')
+log('── Docs ──')
 await workflow(
   { scriptPath: sk('datum-tdd-act-docs') },
   { completedLanes, lanePlan, runId }
@@ -159,8 +169,10 @@ await workflow(
 
 // ── Summary ──
 
+const skippedLanes = Object.keys(results).filter(id => results[id]?.status === 'skipped')
+
 log(`\n${'═'.repeat(60)}`)
-log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed`)
+log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed, ${skippedLanes.length} skipped`)
 if (completedLanes.length > 0) log(`  completed: [${completedLanes.join(', ')}]`)
 if (failures.length > 0) {
   log(`  failed:    [${failures.join(', ')}]`)
@@ -169,12 +181,13 @@ if (failures.length > 0) {
     if (r) log(`    ${fid}: ${r.stage} — ${r.error}`)
   }
 }
+if (skippedLanes.length > 0) log(`  skipped:   [${skippedLanes.join(', ')}]`)
 log(`${'═'.repeat(60)}`)
 
 // ── Triage ──
 
 if (failures.length > 0) {
-  phase('Triage')
+  log('── Triage ──')
   await workflow(
     { scriptPath: sk('datum-tdd-act-triage') },
     { failures, results, lanePlan, runId, epicBranch }
@@ -186,6 +199,8 @@ export const __workflowResult = {
   total: lanePlan.total_lanes,
   completed: completedLanes.length,
   failed: failures.length,
+  skipped: skippedLanes.length,
   failedLanes: failures,
+  skippedLanes,
   completedLanes,
 }

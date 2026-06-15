@@ -19,7 +19,7 @@ Write a SPEC.md following this structure exactly:
 5. **Non-Functional Requirements** — table: requirement + target
 6. **Out of Scope** — from TICKET's "Not This" section + any additional exclusions
 7. **Open Questions** — gaps that need human answers (empty if trivial/low ambiguity)
-8. **Assumption Audit** — table: #, Assumption, Justification, Status (confirmed/guess), Resolves (Q# or n/a)
+8. **Assumption Audit** — table: #, Assumption, Justification, Status (confirmed/decided/guess), Resolves (Q# or n/a). Use `decided` for intentional product/design decisions, `confirmed` for code-verified facts, `guess` for technical unknowns that need a QUESTIONS.md entry
 9. **Classification Metadata** — YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions
 
 RULES:

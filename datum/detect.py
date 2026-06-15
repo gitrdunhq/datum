@@ -123,14 +123,21 @@ def _detect_ts_test_framework(root: Path) -> str:
 
 
 def _detect_swift_test_framework(root: Path) -> str:
-    for dirpath, _, filenames in os.walk(root / "Tests"):
-        for f in filenames:
-            if f.endswith(".swift"):
-                content = (Path(dirpath) / f).read_text(errors="ignore")
-                if "import Testing" in content:
-                    return "swift-testing"
-                if "import XCTest" in content:
-                    return "xctest"
+    search_dirs = [root / "Tests"]
+    for child in root.iterdir():
+        if child.is_dir() and (child / "Tests").is_dir():
+            search_dirs.append(child / "Tests")
+    for search_dir in search_dirs:
+        if not search_dir.is_dir():
+            continue
+        for dirpath, _, filenames in os.walk(search_dir):
+            for f in filenames:
+                if f.endswith(".swift"):
+                    content = (Path(dirpath) / f).read_text(errors="ignore")
+                    if "import Testing" in content:
+                        return "swift-testing"
+                    if "import XCTest" in content:
+                        return "xctest"
     return "xctest"
 
 

@@ -135,6 +135,47 @@ class TestCheckAssumptionAudit(unittest.TestCase):
         self.assertTrue(len(warnings) > 0)
 
 
+class TestDecidedStatus(unittest.TestCase):
+    def test_decided_status_passes_without_q_reference(self):
+        """decided status is a product decision — no Q reference needed."""
+        from datum.gate import check_assumption_audit
+
+        spec = (
+            "## Assumption Audit\n\n"
+            "| # | Assumption | Justification | Status | Resolves |\n"
+            "|---|---|---|---|---|\n"
+            "| A1 | default true is right | product decision | decided | n/a |\n"
+        )
+        errors, _ = check_assumption_audit(spec, None)
+        assert len(errors) == 0, f"decided should pass but got: {errors}"
+
+    def test_guess_without_q_still_fails(self):
+        """guess status without Q reference should still block."""
+        from datum.gate import check_assumption_audit
+
+        spec = (
+            "## Assumption Audit\n\n"
+            "| # | Assumption | Justification | Status | Resolves |\n"
+            "|---|---|---|---|---|\n"
+            "| A1 | might work | unknown | guess | n/a |\n"
+        )
+        errors, _ = check_assumption_audit(spec, None)
+        assert len(errors) == 1
+
+    def test_confirmed_passes(self):
+        """confirmed status should pass as before."""
+        from datum.gate import check_assumption_audit
+
+        spec = (
+            "## Assumption Audit\n\n"
+            "| # | Assumption | Justification | Status | Resolves |\n"
+            "|---|---|---|---|---|\n"
+            "| A1 | verified in code | checked source | confirmed | n/a |\n"
+        )
+        errors, _ = check_assumption_audit(spec, None)
+        assert len(errors) == 0
+
+
 class TestBackwardCompat(unittest.TestCase):
     def test_no_questions_file_passes_refine(self):
         """COMPAT-004: missing QUESTIONS.md passes gate"""

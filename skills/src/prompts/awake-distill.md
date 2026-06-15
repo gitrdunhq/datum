@@ -33,7 +33,7 @@ RULES FOR THE PREAMBLE:
 - Must be EXACTLY the same text every time for prompt cache hits
 - No dynamic content (no dates, no branch names, no file counts)
 - Under 60 lines / ~2000 tokens — this gets prepended to EVERY agent call
-- Actionable rules only — "use pytest" not "the project has tests"
+- Actionable rules only — "use the project's test runner" not "the project has tests"
 - Use imperative voice — "Always X" not "The project uses X"
 
 ## OUTPUT 2: agent-preamble-full.md (expanded — agents pull this when they need depth)

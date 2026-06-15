@@ -38,13 +38,6 @@ var TIER_MAP = {
 function model(tier) {
   return TIER_MAP[tier];
 }
-var DEFAULT_CONFIG = {
-  language: "python",
-  test_framework: "pytest",
-  test_command: "uv run pytest -x -q",
-  skills_dir: ""
-};
-var READ_CONFIG_PROMPT = `Read .datum/config.json if it exists and return the raw JSON. If not found, return: ${JSON.stringify(DEFAULT_CONFIG)}. Output raw JSON only.`;
 
 // skills/src/prompts/refine-triage.md
 var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nRead: {{ticketPath}}\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n';
@@ -53,42 +46,10 @@ var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and 
 var refine_classify_default = 'Ambiguity classifier. Read the TICKET and classify how much clarification Refine needs.\n\nTICKET content:\n{{ticketContent}}\n\nCLASSIFICATION LEVELS:\n- HIGH: vague or conceptual \u2014 intent unclear, architecture unspecified\n- MEDIUM: clear intent, detectable gaps in failure modes, NFRs, or scope\n- LOW: specific and concrete \u2014 intent, scope, failure modes all clear\n- TRIVIAL: rename, tooltip, wording fix, single-line config change\n\nIf you must assume a structural pattern to understand the ticket, classify as MEDIUM.\n\nReturn JSON:\n{\n  "level": "high|medium|low|trivial",\n  "reasoning": "why this classification",\n  "gaps": ["list of detected gaps that need clarification"],\n  "assumptions": ["list of assumptions the ticket relies on"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/refine-scan.md
-var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<symbol>\' .` \u2014 AST-aware structural search (finds defs, not just strings)\n2. `scc .` \u2014 repo shape: LOC per language, file counts, complexity (run once, report in classification)\n3. GitNexus (gitnexus_context, gitnexus_query) if available\n4. grep/find as fallback\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Use ast-grep to confirm it exists structurally (function def, class def, import)\n2. Read the relevant source file to understand current behavior\n3. Use ast-grep to find callers: `ast-grep --pattern \'<symbol>($$$)\' .`\n4. Assess blast radius from caller count\n\nRun `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.\n\nUse headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file.py",\n      "related_files": ["tests/test_file.py", "other/caller.py"],\n      "callers_count": 3,\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"],\n  "repo_shape": {\n    "total_loc": 0,\n    "languages": {"Python": 0, "TypeScript": 0},\n    "file_count": 0\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<symbol>\' .` \u2014 AST-aware structural search (finds defs, not just strings)\n2. `scc .` \u2014 repo shape: LOC per language, file counts, complexity (run once, report in classification)\n3. GitNexus (gitnexus_context, gitnexus_query) if available\n4. grep/find as fallback\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Use ast-grep to confirm it exists structurally (function def, class def, import)\n2. Read the relevant source file to understand current behavior\n3. Use ast-grep to find callers: `ast-grep --pattern \'<symbol>($$$)\' .`\n4. Assess blast radius from caller count\n\nRun `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.\n\nUse headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file",\n      "related_files": ["tests/test_file", "src/other/caller"],\n      "callers_count": 3,\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"],\n  "repo_shape": {\n    "total_loc": 0,\n    "languages": {"Python": 0, "TypeScript": 0},\n    "file_count": 0\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/refine-spec.md
-var refine_spec_default = `SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.
-
-TICKET content:
-{{ticketContent}}
-
-Codebase scan results:
-{{scanResults}}
-
-Ambiguity classification: {{ambiguityLevel}}
-Detected gaps: {{gaps}}
-Assumptions: {{assumptions}}
-
-Write a SPEC.md following this structure exactly:
-
-1. **Summary** \u2014 2-3 sentences: what changes and why
-2. **Context** \u2014 how this connects to the existing system (use scan results)
-3. **Requirements** \u2014 numbered, each with testable acceptance criteria. Base these on the TICKET requirements, refined with codebase knowledge.
-4. **Failure Modes** \u2014 table: what can go wrong + handling
-5. **Non-Functional Requirements** \u2014 table: requirement + target
-6. **Out of Scope** \u2014 from TICKET's "Not This" section + any additional exclusions
-7. **Open Questions** \u2014 gaps that need human answers (empty if trivial/low ambiguity)
-8. **Assumption Audit** \u2014 table: #, Assumption, Justification, Status (confirmed/guess), Resolves (Q# or n/a)
-9. **Classification Metadata** \u2014 YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions
-
-RULES:
-- Every AC must be testable \u2014 if it can't become a test assertion, rewrite it
-- Use the scan results to ground requirements in real file paths and function names
-- Flag any symbols from the TICKET that don't exist in the codebase
-- If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions
-- If ambiguity is LOW/TRIVIAL, Open Questions should be empty
-
-Output the full SPEC.md content as markdown. No JSON wrapping.
-`;
+var refine_spec_default = "SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.\n\nTICKET content:\n{{ticketContent}}\n\nCodebase scan results:\n{{scanResults}}\n\nAmbiguity classification: {{ambiguityLevel}}\nDetected gaps: {{gaps}}\nAssumptions: {{assumptions}}\n\nWrite a SPEC.md following this structure exactly:\n\n1. **Summary** \u2014 2-3 sentences: what changes and why\n2. **Context** \u2014 how this connects to the existing system (use scan results)\n3. **Requirements** \u2014 numbered, each with testable acceptance criteria. Base these on the TICKET requirements, refined with codebase knowledge.\n4. **Failure Modes** \u2014 table: what can go wrong + handling\n5. **Non-Functional Requirements** \u2014 table: requirement + target\n6. **Out of Scope** \u2014 from TICKET's \"Not This\" section + any additional exclusions\n7. **Open Questions** \u2014 gaps that need human answers (empty if trivial/low ambiguity)\n8. **Assumption Audit** \u2014 table: #, Assumption, Justification, Status (confirmed/decided/guess), Resolves (Q# or n/a). Use `decided` for intentional product/design decisions, `confirmed` for code-verified facts, `guess` for technical unknowns that need a QUESTIONS.md entry\n9. **Classification Metadata** \u2014 YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions\n\nRULES:\n- Every AC must be testable \u2014 if it can't become a test assertion, rewrite it\n- Use the scan results to ground requirements in real file paths and function names\n- Flag any symbols from the TICKET that don't exist in the codebase\n- If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions\n- If ambiguity is LOW/TRIVIAL, Open Questions should be empty\n\nOutput the full SPEC.md content as markdown. No JSON wrapping.\n";
 
 // skills/src/prompts/refine-questions.md
 var refine_questions_default = `QUESTIONS writer. Generate clarifying questions from detected gaps.

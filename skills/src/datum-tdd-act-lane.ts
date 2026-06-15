@@ -1,4 +1,5 @@
 import { model, type ModelName } from './shared/models'
+import { updateStage, getIssueId } from './shared/tracker'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -93,19 +94,41 @@ async function runLane(
 ): Promise<LaneOutcome> {
   const lane: Lane = lanePlan.lanes[taskId]
   const wt: string = worktreePaths[taskId]
+  const issueId: string = getIssueId(lanePlan as any, taskId)
   const isStructural: boolean = lane.stage === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
   const acStr: string = (lane.acceptance_criteria || []).join('\n')
-  const laneTestCmd: string = testFiles.length > 0
-    ? `uv run pytest ${testFiles.join(' ')} -x -q`
-    : cfg.testCommand
+  const laneTestCmd: string = cfg.testCommand
   const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
+
+  // Language-aware grep patterns for test function detection
+  // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
+  const testFuncDiffPattern: string = cfg.language === 'swift'
+    ? "-E '^\\+[[:space:]]*(@Test|func test)'"
+    : cfg.language === 'go'
+    ? "-E '^\\+[[:space:]]*func Test'"
+    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    ? "-E '^\\+[[:space:]]*(it\\(|test\\(|describe\\()'"
+    : "-E '^\\+[[:space:]]*def test_'"
+  const testFuncGrepPattern: string = cfg.language === 'swift'
+    ? "-E '@Test|func test'"
+    : cfg.language === 'go'
+    ? "-E 'func Test'"
+    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    ? "-E 'it\\(|test\\(|describe\\('"
+    : "-E 'def test_|async def test_'"
+  const testFuncBodyPattern: string = cfg.language === 'swift'
+    ? "'func test'"
+    : cfg.language === 'go'
+    ? "'func Test'"
+    : "'def test_'"
 
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+    await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed' }
   }
 
@@ -134,6 +157,14 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', redExtras)
   const redCtxCmd: string = laneCtxCmd(redPacket, wt)
 
+  const testFuncLabel: string = cfg.language === 'swift'
+    ? '@Test or func test'
+    : cfg.language === 'go'
+    ? 'func Test'
+    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    ? 'it( or test( or describe('
+    : 'def test_'
+
   const promptVars = {
     wt,
     skeletonCmd,
@@ -143,6 +174,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testFilesList: testFiles.join(' '),
     commitPrefix: redPacket.commit_prefix,
     taskId,
+    testFuncPattern: testFuncLabel,
   }
 
   let red: StageResult | null = await agent(
@@ -167,15 +199,26 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
-  // ── New-test-function count gate (deterministic, no LLM) ──
+  // ── New-test-function count gate ──
   const acCount = (lane.acceptance_criteria || []).length
   if (acCount > 0) {
-    const countResult: string | null = await agent(
-      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(' ')} | grep -c '^+def test_' || echo 0
-Return ONLY the number. No explanation.`,
-      { label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast') },
+    const countResult = await agent(
+      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(' ')} | grep -c ${testFuncDiffPattern} || echo 0
+Return ONLY a JSON object with the count. Example: {"new_test_count": 5}
+Output raw JSON only, no markdown fences, no explanation.`,
+      {
+        label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
+        schema: { type: 'object', properties: { new_test_count: { type: 'integer', minimum: 0 } }, required: ['new_test_count'] },
+      },
     )
-    const newTestCount = parseInt(String(countResult).trim(), 10) || 0
+    // Robust extraction: try schema object first, then parse digits from raw text
+    let newTestCount = 0
+    if (countResult && typeof countResult === 'object' && 'new_test_count' in (countResult as Record<string, unknown>)) {
+      newTestCount = (countResult as { new_test_count: number }).new_test_count
+    } else {
+      const digits = String(countResult).replace(/[^0-9]/g, '')
+      newTestCount = digits ? parseInt(digits, 10) : 0
+    }
     if (newTestCount < acCount) {
       log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`)
       return { task_id: taskId, status: 'failed', stage: 'RED', error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` }
@@ -184,11 +227,26 @@ Return ONLY the number. No explanation.`,
   }
 
   // Structural assertion check — deterministic ast-grep scan, no LLM needed
-  const sgPatterns = [
-    { pattern: 'assert True', name: 'assert True' },
-    { pattern: 'assert 1', name: 'assert 1' },
-    { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
-  ]
+  const sgPatterns: { pattern: string; name: string }[] = cfg.language === 'swift'
+    ? [
+        { pattern: 'XCTFail', name: 'XCTFail' },
+        { pattern: 'fatalError', name: 'fatalError' },
+      ]
+    : cfg.language === 'go'
+    ? [
+        { pattern: 't.Fatal("not implemented")', name: 't.Fatal placeholder' },
+        { pattern: 'panic("not implemented")', name: 'panic placeholder' },
+      ]
+    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    ? [
+        { pattern: 'throw new Error', name: 'throw placeholder' },
+        { pattern: 'expect(true).toBe(false)', name: 'forced failure' },
+      ]
+    : [
+        { pattern: 'assert True', name: 'assert True' },
+        { pattern: 'assert 1', name: 'assert 1' },
+        { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
+      ]
   const sgResult = await agent(
     `Run these ast-grep commands on the test files and report what was found.
 For each command, capture the output. If ast-grep is not available, fall back to grep.
@@ -199,7 +257,7 @@ ${testFiles.map((f) => sgPatterns.map((p) =>
 
 Also check for pass-only test bodies:
 ${testFiles.map((f) =>
-    `grep -A1 'def test_' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
   ).join('\n')}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -219,6 +277,7 @@ Output raw JSON only.`,
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `green_blindness_violation: tests passed after RED. Test output: ${diag}` }
   }
   log(`[${taskId}] RED verified — tests fail as expected (committed: ${red.commit_sha || 'n/a'})`)
+  await updateStage(issueId, 'red', red.commit_sha)
 
   if (!red.committed) {
     log(`[${taskId}] RED: agent did not commit — failing`)
@@ -234,15 +293,20 @@ Output raw JSON only.`,
   // ── Pre-reflect: verify new tests were actually written ──
   const testCountResult = await agent(
     `Count test functions in these files:
-${testFiles.map(f => `grep -c "def test_\\\\|async def test_" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
+${testFiles.map(f => `grep -c ${testFuncGrepPattern} "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
 Also check the parent commit:
-${testFiles.map(f => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c "def test_\\\\|async def test_" || echo 0`).join('\n')}
+${testFiles.map(f => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join('\n')}
 Return JSON: {"before": <total_before>, "after": <total_after>, "new_count": <after - before>}
 Output raw JSON only.`,
-    { label: `test-count:${taskId}`, phase: 'Act', model: model('fast') },
+    {
+      label: `test-count:${taskId}`, phase: 'Act', model: model('fast'),
+      schema: { type: 'object', properties: { before: { type: 'integer' }, after: { type: 'integer' }, new_count: { type: 'integer' } }, required: ['before', 'after', 'new_count'] },
+    },
   )
 
-  const counts = parseAgentJson<{before?: number; after?: number; new_count?: number}>(testCountResult as string, {})
+  const counts = (testCountResult && typeof testCountResult === 'object')
+    ? testCountResult as { before: number; after: number; new_count: number }
+    : parseAgentJson<{before?: number; after?: number; new_count?: number}>(testCountResult as string, {})
   if ((counts.new_count || 0) === 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${counts.before}, after=${counts.after})`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: 'no_new_tests_written: RED agent did not append any test functions' }
@@ -324,6 +388,7 @@ Output raw JSON only.`,
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `file_ownership_violation: ${greenOwnership.violations.join(', ')}` }
   }
   log(`[${taskId}] GREEN verified — all tests pass (committed: ${green.commit_sha || 'n/a'})`)
+  await updateStage(issueId, 'green', green.commit_sha)
 
   // ── Adversarial skeptic panel (independent evaluators — stay separate) ──
   const base: string = skepticBasePrompt({
@@ -359,6 +424,7 @@ Output raw JSON only.`,
   }
 
   log(`[${taskId}] === LANE COMPLETE ===`)
+  await updateStage(issueId, 'done')
   return { task_id: taskId, status: 'completed' }
 }
 
@@ -430,7 +496,7 @@ async function runRefactor(
 const a = args as LaneArgs
 phase('Act')
 
-const { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, batchTag } = a
+const { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a
 const lanes = lanePlan.lanes
 const depResolvers: Record<string, (value: LaneOutcome) => void> = {}
 const depPromises: Record<string, Promise<LaneOutcome>> = {}
@@ -444,12 +510,19 @@ log(`DAG scheduler${batchTag}: ${batchLaneIds.length} tasks`)
 const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
   batchLaneIds.map((taskId: string) => async (): Promise<LaneOutcome> => {
     const allDeps: string[] = lanes[taskId].depends_on || []
-    const crossBatchFailed: string[] = allDeps.filter((d) => !batchLaneIds.includes(d) && priorFailures.includes(d))
+    const crossBatchDeps: string[] = allDeps.filter((d) => !batchLaneIds.includes(d))
+    const crossBatchFailed: string[] = crossBatchDeps.filter((d) => priorFailures.includes(d))
+    // Deps that were never executed: not in current batch, not completed, not failed
+    const crossBatchMissing: string[] = crossBatchDeps.filter(
+      (d) => !priorFailures.includes(d) && !(priorCompleted || []).includes(d),
+    )
 
-    if (crossBatchFailed.length > 0) {
-      const err = `skipped: cross-batch dep(s) failed [${crossBatchFailed.join(', ')}]`
+    if (crossBatchFailed.length > 0 || crossBatchMissing.length > 0) {
+      const failedPart = crossBatchFailed.length > 0 ? `failed [${crossBatchFailed.join(', ')}]` : ''
+      const missingPart = crossBatchMissing.length > 0 ? `never executed [${crossBatchMissing.join(', ')}]` : ''
+      const err = `skipped: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(', ')}`
       log(`[${taskId}] ${err}`)
-      const skipResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'SKIPPED', error: err }
+      const skipResult: LaneOutcome = { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: err }
       depResolvers[taskId](skipResult)
       return skipResult
     }
@@ -462,7 +535,7 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
       if (failedDeps.length > 0) {
         const err = `skipped: dep(s) failed [${failedDeps.map((r) => r.task_id).join(', ')}]`
         log(`[${taskId}] ${err}`)
-        const skipResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'SKIPPED', error: err }
+        const skipResult: LaneOutcome = { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: err }
         depResolvers[taskId](skipResult)
         return skipResult
       }

@@ -262,6 +262,9 @@ def check_assumption_audit(
         status = cells[3].strip().lower()
         resolves = cells[4].strip() if len(cells) > 4 else "n/a"
 
+        if status in ("confirmed", "decided"):
+            continue
+
         if status == "guess":
             # Check if Resolves points to an answered question
             resolves_match = re.match(r"^(Q\d+)$", resolves.strip())
@@ -452,7 +455,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
     if not tasks_path.exists():
         fail("TASKS.md not found")
     if not lane_plan_path.exists():
-        fail("Missing .datum/lane-plan.json. Run lane_plan.py first.")
+        fail("Missing .datum/lane-plan.json. Run datum lane-plan first.")
 
     # Validate lane-plan.json structure
     with lane_plan_path.open() as f:

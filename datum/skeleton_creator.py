@@ -21,6 +21,15 @@ import sys
 from pathlib import Path
 
 
+def _write_skeleton(dest: Path, content: str) -> None:
+    """Append skeleton content to dest if it exists, otherwise create it."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.write_text(dest.read_text() + "\n\n" + content)
+    else:
+        dest.write_text(content)
+
+
 def _extract_swift_target_context(task_files: list[str]) -> str | None:
     try:
         out = subprocess.check_output(
@@ -305,7 +314,10 @@ def slugify(text: str) -> str:
 
 def infer_test_path(task_files: list[str], language: str, ac_id: str) -> str:
     """Derive a test file path from the task's source files."""
+    mock_markers = ["Mock", "mock", "Stub", "stub", "Fake", "fake", "Spy", "spy"]
     for f in task_files:
+        if any(m in Path(f).stem or m in Path(f).parent.name for m in mock_markers):
+            continue
         if any(t in f for t in ["Test", "test", "Spec", "spec", "_test.", "_spec."]):
             return f
     # Derive from source file
@@ -322,7 +334,18 @@ def infer_test_path(task_files: list[str], language: str, ac_id: str) -> str:
         if language == "python":
             name = Path(src).stem
             return f"tests/test_{name}.py"
-    return f"tests/test_{ac_id.lower()}.py"
+    ext_map = {
+        "swift": ".swift",
+        "go": "_test.go",
+        "typescript": ".test.ts",
+        "javascript": ".test.js",
+        "rust": ".rs",
+        "ruby": "_spec.rb",
+        "java": "Test.java",
+        "kotlin": "Test.kt",
+    }
+    ext = ext_map.get(language, ".py")
+    return f"tests/test_{ac_id.lower()}{ext}"
 
 
 def infer_module(task_files: list[str], language: str) -> str:
@@ -463,8 +486,7 @@ def run_preflight(
                 ),
             )
             dest = Path(skeleton["path"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(skeleton.pop("content"))
+            _write_skeleton(dest, skeleton.pop("content"))
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
 
@@ -552,8 +574,7 @@ def run_preflight(
             )
             # Write the file
             dest = Path(skeleton["path"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(skeleton.pop("content"))
+            _write_skeleton(dest, skeleton.pop("content"))
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
     elif acs:
@@ -575,8 +596,7 @@ def run_preflight(
                 ),
             )
             dest = Path(skeleton["path"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(skeleton.pop("content"))
+            _write_skeleton(dest, skeleton.pop("content"))
             skeleton["skeleton_written"] = True
             outputs.append(skeleton)
     else:
