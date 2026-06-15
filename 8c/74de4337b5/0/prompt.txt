@@ -1,0 +1,1105 @@
+whats next
+
+---
+
+yes
+
+---
+
+144,143,132
+
+---
+
+what are thise 3 for
+
+---
+
+reinstall then run the workflow
+
+---
+
+so since our workflow oattern changes theres a bunch if steps that are no linger used and they still show
+
+---
+
+did the new fh issue as source of truth land
+
+---
+
+lets do it now you can head off epic 18 and in thag work epics need desrvdiptve names same with the task desceiptions
+
+---
+
+<task-notification>
+<task-id>w4y1jfei0</task-id>
+<tool-use-id>toolu_01PLMMaW7Bb1xYxhBCQjcohd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w4y1jfei0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-093229","total":2,"completed":1,"failed":1,"failedLanes":["task-002"],"completedLanes":["task-001"]}</result>
+<usage><agent_count>30</agent_count><subagent_tokens>964232</subagent_tokens><tool_uses>396</tool_uses><duration_ms>1826146</duration_ms></usage>
+</task-notification>
+
+---
+
+we have haiku writing tasks but wbo decomposes the mega ask into yasks
+
+---
+
+ok but look at the datum skill flow we had before our workflow thats what datum is
+
+---
+
+give me the ascii workflow of how you envision the 2 things joined
+
+---
+
+ok lets work on 1 step a time. TICKET.md first. lets come up with the requirements to build one, we already have it but lets review
+
+---
+
+yeah lets nail it down and the structure. look up old Tickets and see how they look
+
+---
+
+<task-notification>
+<task-id>w32f5rqna</task-id>
+<tool-use-id>toolu_017XQc1qoYt9cfod5hafNEUL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w32f5rqna.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260614-095621","total":3,"completed":2,"failed":1,"failedLanes":["link-parent-child-sub-issues"],"completedLanes":["create-gh-issues-from-lane-plan","embed-metadata-in-issue-body"]}</result>
+<usage><agent_count>37</agent_count><subagent_tokens>961501</subagent_tokens><tool_uses>353</tool_uses><duration_ms>1634182</duration_ms></usage>
+</task-notification>
+
+---
+
+lets pause that gh issue work once we fix this pre-act work it will be better positioned
+
+---
+
+that looks good, but the references as option is questionable. the agents need to be handed best practises always etc? right?
+
+---
+
+ok yes
+
+---
+
+lets extract all markdown to files that are templates
+
+---
+
+can our agents CODE benefit from https://github.com/chopratejas/headroom i already wrap claude, but if its in our code thatd be cool
+
+---
+
+yes
+
+---
+
+TICKET-datetimeslug becuase there might be many tickets? what if we do 2 tickets in a branch
+
+---
+
+APPEND, but if its a new feature we write the ticket and enter the roadmap, the workflow is smartr enough to say "we will triage this o nteh roadmap"
+
+---
+
+ok push and lets start wiring Refine as a workflow
+
+---
+
+move to plan
+
+---
+
+wheres our deepend decision point
+
+---
+
+its part of the phase
+
+---
+
+look at how datum worked before compare to know draw both ascii workflows so we can compare
+
+---
+
+yeah lets work through Properties etc
+
+---
+
+fet fingers sorry
+
+---
+
+yes
+
+---
+
+reinstall
+
+---
+
+ok we gave my epic about tasks and gitnhun issues
+
+---
+
+<task-notification>
+<task-id>wsoahrb6g</task-id>
+<tool-use-id>toolu_015xZduVLtL91VVZsv6FmH5M</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wsoahrb6g.output</output-file>
+<status>failed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" failed: Error: JSON Parse error: Unexpected identifier "Based"
+    at parse (native)
+    at &lt;anonymous&gt; (workflow.js:146:60)
+    at processTicksAndRejections (native)</summary>
+<recovery>Agent transcripts: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-datum/23544e83-baf5-4017-b588-7b253963271e/subagents/workflows/wf_88676564-9f4</recovery>
+<failures>▸ datum-refine: SyntaxError: JSON Parse error: Unexpected identifier "Based"</failures>
+<usage><agent_count>3</agent_count><subagent_tokens>65979</subagent_tokens><tool_uses>20</tool_uses><duration_ms>66461</duration_ms></usage>
+</task-notification>
+
+---
+
+see those extra steps we dont use anytmore
+
+---
+
+reinstall always after a fix
+
+---
+
+please check .temp/phases.png the phases still saw 1 - 7, i highlighted the ones that arent used anymore
+
+---
+
+test the resume ability cancel this and see what happens if it resumes
+
+---
+
+it worked!
+
+---
+
+i have a question, do our agenmts know all the best practises and codebase rules?
+
+---
+
+yeah and that hits the context cache right?
+
+---
+
+we should build a repo agnostic workflow that builds these preambles for datum enabled repos. and can update it like dream except being woke?
+
+---
+
+yes and it should be thorough and allow for SOME agents to grab more context like llms.txt it s hould be like llms.txt https://llmstxt.org/
+
+---
+
+ok now, are we making any agents only run deterministic scripts ? we had that issue with our previous workflow that we ended up collapsing steps becuase all a step was was 1 CLI or api call
+
+---
+
+yeah we collapse
+
+---
+
+i would like to see where all 5 fit in
+
+---
+
+yes wire them in
+
+---
+
+what is a structureal diff
+
+---
+
+show me an example?
+
+---
+
+ok lets reinstall and relaunch the pipeline that gated, fix the human gate yolo mode, yolo is yolo
+
+---
+
+we should namer these workflows i beleive
+
+---
+
+<task-notification>
+<task-id>wrtw4e8ph</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wrtw4e8ph.output</output-file>
+<status>failed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" failed: Error: workflow() cannot be called from within a child workflow — nesting is limited to one level. Inline the inner script or call its agents directly.
+    at workflow (/$bunfs/root/src/entrypoints/cli.js:3648:5273)
+    at &lt;anonymous&gt; (/$bunfs/root/src/entrypoints/cli.js:3613:759)
+    at &lt;anonymous&gt; (file:///:1:34)
+    at &lt;anonymous&gt; (workflow.js:106:40)
+    at processTicksAndRejections (native:7:39)</summary>
+<recovery>Agent transcripts: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-datum/23544e83-baf5-4017-b588-7b253963271e/subagents/workflows/wf_a673b4fe-858</recovery>
+<failures>▸ datum-tdd-act: Error: workflow() cannot be called from within a child workflow — nesting is limited to one level. Inline the inner script or call its agents directly.</failures>
+<usage><agent_count>5</agent_count><subagent_tokens>125550</subagent_tokens><tool_uses>21</tool_uses><duration_ms>303288</duration_ms></usage>
+</task-notification>
+
+---
+
+we have all these broken out phases theg can be put together like lego
+
+---
+
+yes and a step where we route to the proper
+
+---
+
+is haiku smart enoghh it needs lots of coaching and help maybe we start with sonnet snd machine learn comolexity so we can lower model familes ovee time
+
+---
+
+/workflow-orchestration-patterns yes build it
+
+---
+
+/adversarial-reviewer
+
+---
+
+send a sonnet agent to look st the headeoom gothub repo snd figure out how we can get more compression
+
+---
+
+id like ancomprhensive audit of where enums make sense
+
+---
+
+id like to build a map for different tools small model medium large model
+
+---
+
+yepclers do
+
+---
+
+/skill-creator:skill-creator a languahe, repo agnostic, all code in the skill, to find enum ornsimilar concepts candidates
+
+---
+
+ast is the first class way
+
+---
+
+/enum-finder
+
+---
+
+bro it has to be gitignore aware
+
+---
+
+merge everything please
+
+---
+
+did our headroom research land
+
+---
+
+dropping structured data seems an odd choice is thatnsafe
+
+---
+
+yes and lets smart compressing
+
+---
+
+start compressing
+
+---
+
+start compressing, lets yse the yolo again from route to wnd
+
+---
+
+closeout needs to. leanup tasks and lane plan or archive it its not doing it
+
+---
+
+tasks were written by haiku
+
+---
+
+if they are good we are ok, as we get more deterministic and start feeding we should be able to fall back to haiku and local models
+
+---
+
+ok and hte compressing from headroom is that deterministic?
+
+---
+
+and is it wired in?
+
+---
+
+we look for all wiring oppurtunities
+
+---
+
+lets close the gaps too, 1 feature at a tim,e through datum workflow
+
+---
+
+<task-notification>
+<task-id>w8yujdr32</task-id>
+<tool-use-id>toolu_01GXE62AUbo76hpyxyvjvTii</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w8yujdr32.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Smart router: classify input → pick the right pipeline composition" completed</summary>
+<result>{"route":"resume","startFrom":"act","confidence":0.9,"reasoning":"All planning artifacts exist (TICKET, TASKS, lane-plan, PROPERTIES) and a run is already in progress (epic-30-20260612), so the pipeline resumes at act to implement the fail-fast ruff+mypy pre-checks in the GREEN phase.","signals":{"intent":"add ruff and mypy pre-checks before pytest in GREEN phase of datum-tdd-act-lane","scope":"narrow","has_spec":false,"has_tasks":true,"has_lane_plan":true,"has_properties":true,"branch_type":"main","input_type":"ticket"},"invoke":{"workflow":"datum-go","args":{"yolo":true,"startFrom":"act","route":"resume","phases":[]}}}</result>
+<usage><agent_count>4</agent_count><subagent_tokens>72506</subagent_tokens><tool_uses>5</tool_uses><duration_ms>19971</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>weuf2rnjb</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/weuf2rnjb.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Smart router: classify input → pick the right pipeline composition" completed</summary>
+<result>{"route":"feature","startFrom":"refine","confidence":0.82,"reasoning":"A TICKET exists on a feature branch with a clear enhancement request (add ruff + mypy pre-checks to the GREEN phase), but no SPEC, TASKS, or lane-plan have been created yet, so the pipeline starts from refine.","signals":{"intent":"add ruff and mypy pre-checks before pytest in datum-tdd-act-lane GREEN phase","scope":"narrow","has_spec":false,"has_tasks":false,"has_lane_plan":false,"has_properties":false,"branch_type":"feature","input_type":"ticket"},"invoke":{"workflow":"datum-go","args":{"yolo":true,"startFrom":"refine","route":"feature","phases":["refine","plan","properties","act","validate","review","closeout"]}}}</result>
+<usage><agent_count>4</agent_count><subagent_tokens>72691</subagent_tokens><tool_uses>5</tool_uses><duration_ms>19927</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>wp24wjydv</task-id>
+<tool-use-id>toolu_01QSjha1T28Niv3MZ1QuYmtt</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wp24wjydv.output</output-file>
+<status>failed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" failed: Error: TICKET.md not found at docs/epics/datum/fail-fast-validation/TICKET.md. Run `datum init` first.
+    at &lt;anonymous&gt; (workflow.js:133:9)
+    at processTicksAndRejections (native)</summary>
+<recovery>Agent transcripts: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-datum/23544e83-baf5-4017-b588-7b253963271e/subagents/workflows/wf_d4e200bd-b1a</recovery>
+<failures>▸ datum-refine: Error: TICKET.md not found at docs/epics/datum/fail-fast-validation/TICKET.md. Run `datum init` first.</failures>
+<usage><agent_count>1</agent_count><subagent_tokens>20049</subagent_tokens><tool_uses>11</tool_uses><duration_ms>25242</duration_ms></usage>
+</task-notification>
+
+---
+
+no more root tickrt and lane plan
+
+---
+
+how do i use this in a different repo
+
+---
+
+yes
+
+---
+
+can it be osrt of the datum skill init
+
+---
+
+ok indtall datum in the-record-suite (up 1 level) and see if theres any issues
+
+---
+
+datum should akways use the installrr
+
+---
+
+cli how do we enforce thag check all prose
+
+---
+
+<task-notification>
+<task-id>wahwltn26</task-id>
+<tool-use-id>toolu_01CGsTp1DtCjTduvwnP4ZrwB</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wahwltn26.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" completed</summary>
+<result>{"phase":"complete","halted":false,"branch":"datum/fail-fast-validation","runId":"20260614-141951","artifacts":["CURRENT_STATE.md","CHANGELOG.md","docs/epics/datum/fail-fast-validation/RETRO.md",".datum/runs/20260614-141951/follow-ups.json"],"followUps":14}</result>
+<usage><agent_count>41</agent_count><subagent_tokens>1228112</subagent_tokens><tool_uses>468</tool_uses><duration_ms>2870308</duration_ms></usage>
+</task-notification>
+
+---
+
+lotsmof friction and bugs we need to fix
+
+---
+
+yeah datim go
+
+---
+
+<task-notification>
+<task-id>wwjkfk183</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wwjkfk183.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Smart router: classify input → pick the right pipeline composition" completed</summary>
+<result>{"route":"feature","startFrom":"refine","confidence":0.82,"reasoning":"This is a multi-bug squash epic with 7 distinct pipeline bugs across various files — scope is moderate-to-broad, no SPEC or TASKS exist yet, and the ticket describes new fix work that needs to be specced and planned before acting.","signals":{"intent":"fix 7 pipeline bugs in the datum act pipeline","scope":"moderate","has_spec":false,"has_tasks":false,"has_lane_plan":false,"has_properties":false,"branch_type":"feature","input_type":"ticket"},"invoke":{"workflow":"datum-go","args":{"yolo":true,"startFrom":"refine","route":"feature","phases":["refine","plan","properties","act","validate","review","closeout"]}}}</result>
+<usage><agent_count>4</agent_count><subagent_tokens>72550</subagent_tokens><tool_uses>5</tool_uses><duration_ms>32265</duration_ms></usage>
+</task-notification>
+
+---
+
+164 and 165 can we fix knline
+
+---
+
+<task-notification>
+<task-id>wq1akq2g3</task-id>
+<tool-use-id>toolu_01MSSUPVYPmyyfG9BPqfNtp9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wq1akq2g3.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" completed</summary>
+<result>{"phase":"complete","halted":false,"branch":"datum/bug-squash-167","runId":"20260614-145327","artifacts":["CURRENT_STATE.md","CHANGELOG.md","docs/epics/datum/bug-squash-167/RETRO.md",".datum/runs/20260614-145327/follow-ups.json"],"followUps":12}</result>
+<usage><agent_count>29</agent_count><subagent_tokens>798372</subagent_tokens><tool_uses>311</tool_uses><duration_ms>2017866</duration_ms></usage>
+</task-notification>
+
+---
+
+bunch of new bugs files
+
+---
+
+im running it on the record suite also
+
+---
+
+i think this new 4 are from record suite
+
+---
+
+[Image #6]
+
+---
+
+fix
+
+---
+
+<task-notification>
+<task-id>wypsurv26</task-id>
+<tool-use-id>toolu_01Vq9znUXkni7zndpUEm6WAW</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/wypsurv26.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" completed</summary>
+<result>{"phase":"complete","halted":false,"branch":"datum/bug-squash-167","runId":"20260614-154341","artifacts":["CURRENT_STATE.md","CHANGELOG.md","docs/epics/datum/bug-squash-167/RETRO.md",".datum/runs/20260614-154341/follow-ups.json"],"followUps":8}</result>
+<usage><agent_count>59</agent_count><subagent_tokens>1711830</subagent_tokens><tool_uses>699</tool_uses><duration_ms>3568615</duration_ms></usage>
+</task-notification>
+
+---
+
+reinstall
+
+---
+
+also on the record suite
+
+---
+
+[Image #7]
+
+---
+
+[Image #8] how did thise come back
+
+---
+
+[Image #9] look closer its nit using thise named ohases
+
+---
+
+<task-notification>
+<task-id>w1ijz0eu3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/w1ijz0eu3.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Full pipeline: TICKET → SPEC → Plan → Properties → Act → Validate → Review → Closeout" completed</summary>
+<result>{"phase":"complete","halted":false,"branch":"datum/bug-squash-167-act","runId":"20260614-161954","artifacts":["CURRENT_STATE.md","CHANGELOG.md","docs/epics/datum/bug-squash-167-act/RETRO.md","docs/epics/datum/bug-squash-167-act/follow-ups.json"],"followUps":6}</result>
+<usage><agent_count>42</agent_count><subagent_tokens>1162775</subagent_tokens><tool_uses>465</tool_uses><duration_ms>2237765</duration_ms></usage>
+</task-notification>
+
+---
+
+yes
+
+---
+
+ges alwahs close resolved [Image #10]
+
+---
+
+fix 173
+
+---
+
+how can we find more bugs before i encounter them trace paths with gitnexus?
+
+---
+
+yeah
+
+---
+
+you have our stats rigjt tokens in and out and what not, calculate the costs of esch agent type we have used with this new workflow
+
+---
+
+fix everythkng lets datum yolo
+
+---
+
+<task-notification>
+<task-id>a81fa1eee269e0062</task-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a81fa1eee269e0062.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix TS workflow status bugs" completed</summary>
+<result>
+
+I'm ready. What are the new bugs?</result>
+<usage><subagent_tokens>43933</subagent_tokens><tool_uses>12</tool_uses><duration_ms>1097747</duration_ms></usage>
+</task-notification>
+
+---
+
+new bugs dropped on gh
+
+---
+
+whats the last bug we closed
+
+---
+
+and is the gh issues as source of truth live
+
+---
+
+whats #134
+
+---
+
+is gh issues being used like i wanted even in thenrrcord suite
+
+---
+
+i mean when a workflow starts does it crewte tasks
+
+---
+
+are yiu sure we didjt t code thst i could have sworn we did and it should be furing after the tasks reach the gate after deepen
+
+---
+
+yes doesnt link reweirte rhe tasks.md with the new numbers font want leakage and cinfusion
+
+---
+
+have to steer. it should be its own ts file with hard boundsries because what if we seitch to jira or linear, shoukd be a module swap
+
+---
+
+resume is very slow how can we speed it up tomdetect its been done
+
+---
+
+can you send out 3 agents out to research how people are using qwen3.6 locally. get my mac specs and the omlx settings to guide the decision making
+
+---
+
+<task-notification>
+<task-id>aa853ad363e7b34ab</task-id>
+<tool-use-id>toolu_013gvVT15qebby3uvFEVb4tv</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/aa853ad363e7b34ab.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Qwen3.6 performance and use cases" completed</summary>
+<result>Now I have enough data to synthesize a comprehensive report. Let me compile the findings.
+
+Here is the research report on Qwen 3.6 for your local agentic TDD pipeline.
+
+---
+
+## Qwen 3.6 Model Family Overview
+
+Released April 2026 under Apache 2.0. Two open-weight variants matter for your setup:
+
+| Model | Params | Active | Architecture | Context |
+|---|---|---|---|---|
+| **Qwen3.6-35B-A3B** | 35B | 3B | Gated DeltaNet + MoE (256 experts, 8 routed + 1 shared) | 262K native, 1M with YaRN |
+| **Qwen3.6-27B** | 27B | 27B | Dense | 256K |
+
+Your current model (Qwen3-30B-A3B-2507) is 30B total / 3B active. The 35B-A3B is its direct successor with the same MoE active-param footprint but a new hybrid attention architecture (Gated DeltaNet replaces standard attention in 3 of every 4 layers).
+
+---
+
+## 1. Benchmark Scores (Code Generation)
+
+**Qwen3.6-35B-A3B vs your current Qwen3-30B-A3B:**
+
+| Benchmark | Qwen3-30B-A3B (2507) | Qwen3.6-35B-A3B | Delta |
+|---|---|---|---|
+| SWE-bench Verified | ~70.0 | **73.4** | +3.4 |
+| Terminal-Bench 2.0 | ~40.5 | **51.5** | +11.0 |
+| LiveCodeBench v6 | N/A | **80.4** | -- |
+| SWE-bench Pro | N/A | **49.5** | -- |
+
+The 27B dense model scores even higher on agentic coding: **77.2 SWE-bench Verified** and **53.5 SWE-bench Pro**, but at the cost of running all 27B params per token.
+
+The headline: **Terminal-Bench jumped +27% (40.5 to 51.5)** -- this benchmark tests multi-step terminal/agentic tasks, directly relevant to your TDD pipeline.
+
+---
+
+## 2. Architecture: Still MoE, New Attention
+
+Yes, still MoE. Key changes from Qwen3-30B-A3B:
+
+- **Total params**: 30B --&gt; 35B (more experts, slightly larger)
+- **Active params**: 3B --&gt; 3B (unchanged -- same inference cost per token)
+- **Attention**: New "Gated DeltaNet" linear attention in 3/4 of layers, traditional attention in 1/4. This is a hybrid linear-attention design that should improve long-context efficiency.
+- **Expert count**: 256 total experts (up from Qwen3's configuration), 8 routed + 1 shared per token
+- **Context**: 262K native (matches your oMLX setup exactly), extensible to 1M via YaRN
+
+---
+
+## 3. Thinking/Reasoning Mode
+
+Thinking mode is on by default (`&lt;think&gt;...&lt;/think&gt;` blocks). Key improvements over Qwen3:
+
+- **"Preserve thinking" mode**: New option to retain reasoning context from prior messages in multi-turn conversations. This is relevant for your pipeline where you pass context between RED/GREEN/REFACTOR phases.
+- **More efficient reasoning**: Qwen 3.6 uses ~515 fewer reasoning tokens than 3.5 while producing more output -- the thinking-to-output ratio shifted from 91/9 to 83/17.
+- **Structured output after thinking**: Improved instruction-following fidelity coming out of think blocks. The model is trained to convert internal reasoning into well-structured output rather than dumping raw chain-of-thought.
+
+---
+
+## 4. Agentic Coding Use
+
+**Good news**: The model is explicitly designed for agentic coding. Qwen's blog describes it as handling "frontend workflows and repository-level reasoning" and it integrates with Claude Code, aider-style tools, and custom agent frameworks.
+
+**Concerning signal**: Multiple sources flag that **on long multi-step agent tasks, the MoE variant gets lost** -- it has been reported to "repeat failed tool calls without reading back context" in LocalLLaMA threads. The dense 27B is described as "steadier" for strict instruction-following under complex system constraints.
+
+For your section-response-contract format (REASONING/FILE/NEXT), this is the critical question. The MoE routes different tokens through different experts, and complex multi-section output formats can drift as the generation gets longer.
+
+---
+
+## 5. Context Window
+
+**262K native** -- matches your current oMLX setup exactly. Extensible to 1M with YaRN scaling. No regression here.
+
+---
+
+## 6. Known Issues
+
+### Repetition Loops (Partially Inherited)
+The Qwen3.5 repetition loop problem (infinite `!!!!!!!!` or circular reasoning in `&lt;think&gt;` blocks) has been documented in GitHub issues for the 3.6 series too (issues #88, #145 on QwenLM/Qwen3.6). The larger models (397B, 122B) are more affected. The 35B-A3B is **not specifically called out** in these issues, but the architectural family shares the risk.
+
+### Q4 Quantization Tax
+This is the biggest practical concern. From InsiderLLM's detailed analysis:
+
+- **Standard Q4_K_M breaks agentic reliability**: tool-call JSON formatting errors, diff formatting problems, instruction drift in long loops. Chat works fine; the failure mode is specifically in multi-turn structured output under agentic load.
+- **The fix**: Use **imatrix-calibrated Q4** (Unsloth's `UD-Q4_K_XL` or bartowski builds) instead of stock Q4_K_M. Same VRAM, meaningfully better weight protection for the critical layers.
+- **Fallback**: If calibrated Q4 still drifts, step to Q5_K_M or Q6_K. On your 64GB machine, Q6_K fits at ~30GB, leaving plenty of room for context.
+
+### Gated DeltaNet Runtime Support
+The new attention architecture is not yet fully optimized everywhere:
+- **MLX**: Works. MLX quants of both models run cleanly on Apple Silicon.
+- **llama.cpp**: Needs build b8954+ for proper Gated DeltaNet kernels. Metal kernels lag behind CUDA. Early builds showed **~35% slower than Qwen3-30B-A3B** on the same hardware, though this is an implementation gap, not fundamental.
+- **Ollama**: Since 0.19 (March 2026), Ollama uses MLX natively on Mac, so this path avoids the llama.cpp Metal issue entirely.
+
+---
+
+## Recommended Sampling Parameters (Official)
+
+Qwen published three parameter sets for the 35B-A3B:
+
+| Mode | temp | top_p | top_k | min_p | presence_penalty |
+|---|---|---|---|---|---|
+| **Coding (thinking)** | 0.6 | 0.95 | 20 | 0.0 | 0.0 |
+| **General thinking** | 1.0 | 0.95 | 20 | 0.0 | 1.5 |
+| **Non-thinking** | 0.7 | 0.80 | 20 | 0.0 | 1.5 |
+
+Notable difference from your current 2507 params: the coding mode uses **temp 0.6** (down from your 0.7), **top_p 0.95** (up from your 0.8), and **presence_penalty 0.0** (down from your 1.0). The repetition control is apparently less needed -- the model was trained to avoid loops at these settings. You may still want to keep some presence_penalty given the Q4 quant reality.
+
+---
+
+## Performance on Your Hardware (M4 Pro 64GB)
+
+No exact M4 Pro benchmarks found, but triangulating from available data:
+
+- **M4 Max (512GB/s bandwidth)**: ~35-45 tok/s with Q4 MoE via MLX
+- **M4 Pro (273GB/s bandwidth)**: Estimated **~20-30 tok/s** with Q4 MoE via MLX (bandwidth ratio scaling)
+- Your current Qwen3-30B-A3B likely runs at similar speeds since active params are the same (3B)
+
+Memory at Q4: **~23GB** (leaves 41GB for context and gemma-4). At Q6: **~30GB** (still leaves 34GB). At Q8: **~38GB** (still comfortable with gemma-4 at 4.9GB).
+
+---
+
+## Upgrade Decision Summary
+
+**Upgrade factors in favor:**
+- +3.4 SWE-bench Verified, +11 Terminal-Bench (significant for agentic work)
+- 262K native context (exact match to your setup)
+- Better thinking efficiency (fewer wasted reasoning tokens)
+- "Preserve thinking" mode for multi-turn reasoning
+- Same 3B active params -- no inference cost increase
+- Apache 2.0, MLX-ready, Unsloth quants available
+
+**Upgrade factors against:**
+- MoE variant reported to "get lost" on long multi-step agent chains (your pipeline is exactly this)
+- Q4 quantization has documented reliability tax on structured output -- you MUST use imatrix-calibrated quants, not stock Q4_K_M
+- Gated DeltaNet is newer architecture -- MLX support exists but is less battle-tested than standard attention
+- Your current 2507 model is working with known-good sampling params; the 3.6 recommended params are different
+- 27B dense scores higher on coding but activates 9x more params per token
+
+**Recommendation**: Worth testing, not a slam-dunk blind upgrade. The Terminal-Bench jump is real and directly relevant. But you should:
+
+1. Start with Unsloth's `UD-Q4_K_XL` (imatrix-calibrated), not stock Q4
+2. Test your section-response-contract format (REASONING/FILE/NEXT) extensively before swapping into the pipeline
+3. Try the official coding sampling params (temp 0.6, top_p 0.95, presence_penalty 0.0) first, then add presence_penalty back if you see drift
+4. Consider Q6_K if Q4 drifts on structured output -- you have the RAM budget for it
+5. The 27B dense is the "steadier" option for agentic work if the MoE disappoints, but it will be roughly 2-3x slower per token
+
+Sources:
+- [Qwen3.6-35B-A3B official blog](https://qwen.ai/blog?id=qwen3.6-35b-a3b)
+- [Qwen3.6-27B official blog](https://qwen.ai/blog?id=qwen3.6-27b)
+- [HuggingFace model card - Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+- [Q4 quant breaks coding agents (InsiderLLM)](https://insiderllm.com/guides/qwen-3-6-q4-quant-coding-agents/)
+- [Qwen 3.6 local guide (InsiderLLM)](https://insiderllm.com/guides/qwen-3-6-local-ai-guide/)
+- [Best local LLMs for Mac 2026 (InsiderLLM)](https://insiderllm.com/guides/best-local-llms-mac-2026/)
+- [Running Qwen 3.6 locally (DEV Community)](https://dev.to/purpledoubled/how-to-run-qwen-36-locally-27b-dense-35b-moe-and-coding-variants-setup-guide-4di)
+- [Qwen 3.6 deep-think locally (Medium)](https://medium.com/@ishan_13/the-35b-reasoning-beast-watching-qwen-3-6-deep-think-locally-a97133eaed18)
+- [Repetition loop issue #145](https://github.com/QwenLM/Qwen3.6/issues/145)
+- [Best way to run 35B MoE locally (InsiderLLM)](https://insiderllm.com/guides/best-way-run-qwen-3-6-35b-moe-locally/)
+- [Unsloth Qwen3.6 quants](https://unsloth.ai/docs/models/qwen3.6)
+- [Ollama MLX on Apple Silicon](https://ollama.com/blog/mlx)
+- [Apple Silicon LLM benchmarks](https://llmcheck.net/benchmarks)
+- [Qwen 3.6 beats Gemma 4 on coding](https://theplanettools.ai/blog/qwen-3-6-alibaba-beats-google-gemma-4-coding-benchmarks-2026)</result>
+<usage><subagent_tokens>49392</subagent_tokens><tool_uses>26</tool_uses><duration_ms>207094</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>af9d3a0f07aaae800</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/af9d3a0f07aaae800.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Qwen3.6 MLX availability" completed</summary>
+<result>I now have all the data needed. Let me compile the report.
+
+Here is the full research report on Qwen 3.6 models for local Apple Silicon deployment via MLX.
+
+---
+
+## 1. Qwen 3.6 Model Variants
+
+Qwen 3.6 shipped two open-weight models (both Apache 2.0, released April 2026):
+
+| Model | Type | Total Params | Active Params | Context | Release Date |
+|---|---|---|---|---|---|
+| **Qwen3.6-35B-A3B** | Sparse MoE | 35B | ~3B | 262K native, 1M via YaRN | Apr 15, 2026 |
+| **Qwen3.6-27B** | Dense | 27B | 27B | 262K native, 1M via YaRN | Apr 22, 2026 |
+
+Both are **natively multimodal** (text + image + video). There is no text-only variant -- the vision encoder is baked in.
+
+### 35B-A3B Architecture Details
+- **40 layers**: 10 cycles of (3x Gated DeltaNet -&gt; MoE) -&gt; (1x Gated Attention -&gt; MoE)
+- **Experts**: 256 total, 8 routed + 1 shared active per token
+- Expert intermediate dimension: 512
+- Hidden dimension: 2,048
+- Gated DeltaNet: 32 V-heads, 16 QK-heads, 128 head dim
+- Gated Attention: 16 Q-heads, 2 KV-heads, 256 head dim
+
+### What Changed from Qwen3-30B-A3B to Qwen3.6-35B-A3B
+- Parameters bumped from 30B to 35B total (expert count increased from previous gen)
+- **Gated DeltaNet** linear attention -- new hybrid architecture (previous gen was standard attention only)
+- Context doubled: 131K -&gt; 262K native
+- Native multimodal (text+image+video) -- previous was text-only
+- **Thinking preservation** across turns (retains reasoning context in agentic multi-step tasks)
+- Multi-Token Prediction (MTP) head for speculative decoding
+- Benchmark improvements: SWE-bench 69.2 -&gt; 73.4, Terminal-Bench 40.5 -&gt; 51.5
+
+---
+
+## 2. MLX-Community Quantized Versions on Hugging Face
+
+### 35B-A3B MoE Variants
+
+| HF Repo | Quant | Size (GB) | Notes |
+|---|---|---|---|
+| `mlx-community/Qwen3.6-35B-A3B-4bit` | Uniform 4-bit | 20.4 GB | Standard. Converted via mlx-vlm 0.4.4 |
+| `mlx-community/Qwen3.6-35B-A3B-4bit-DWQ` | 4-bit DWQ | 20.7 GB | Dynamic weight quantization |
+| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | Mixed 4/8-bit | 24.7 GB | 392 layers 8-bit, 118 layers 4-bit. +1.12 capability score vs uniform 4-bit. +8 pts on long-context (HashHop) |
+| `mlx-community/Qwen3.6-35B-A3B-6bit` | 6-bit | 29.1 GB | Higher quality |
+| `mlx-community/Qwen3.6-35B-A3B-8bit` | 8-bit | 37.7 GB | Near-lossless but won't fit your 48GB ceiling with KV cache |
+| `unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit` | Unsloth Dynamic 4-bit | 21.6 GB | Unsloth's dynamic quantization |
+
+### 27B Dense Variants
+
+| HF Repo | Quant | Size (GB) |
+|---|---|---|
+| `mlx-community/Qwen3.6-27B-4bit` | Uniform 4-bit | 16.1 GB |
+| `mlx-community/Qwen3.6-27B-OptiQ-4bit` | Mixed 4/8-bit | 17.5 GB |
+
+---
+
+## 3. Memory Fit Analysis for Your Setup (48GB ceiling)
+
+| Model | Weight Size | Estimated Runtime (weights + KV + overhead) | Fits? |
+|---|---|---|---|
+| 35B-A3B 4bit | 20.4 GB | ~25-28 GB (MoE only loads active experts) | YES, comfortably |
+| 35B-A3B 4bit-DWQ | 20.7 GB | ~26-29 GB | YES, comfortably |
+| 35B-A3B OptiQ-4bit | 24.7 GB | ~30-34 GB | YES, with room |
+| 35B-A3B 6bit | 29.1 GB | ~35-40 GB | TIGHT, may work |
+| 35B-A3B 8bit | 37.7 GB | ~43-48 GB | RISKY, will hit ceiling |
+| 27B 4bit | 16.1 GB | ~25-30 GB (dense = all params active) | YES |
+
+The 35B-A3B MoE has a significant advantage: despite larger weight files, runtime memory is lower because only ~3B params are active per token. The OS only pages in weights for active experts.
+
+---
+
+## 4. oMLX / mlx-lm Compatibility
+
+### oMLX Support Status
+- **Qwen3.6-35B-A3B is supported** starting from oMLX v0.4.0
+- v0.4.0 (June 2): Added MXFP4 handling and MTP preservation for Qwen3.6
+- v0.4.2 (June 8): Fixed throughput regression for Qwen models (VLM/MTP batching fix)
+- v0.4.3 (June 9): Throughput improved from 77.5 to 79.0 tok/s (+1.9%) on Qwen 3.6-35B-A3B
+- v0.4.4rc1 (June 11): Latest release
+
+### Critical Issue: You Are on v0.3.12
+Your oMLX version (v0.3.12) is **behind the Qwen 3.6 support window**. There is a [known crash issue (#1488)](https://github.com/jundot/omlx/issues/1488) with v0.3.12 running Qwen3.6-35B-A3B-4bit -- "Memory limit exceeded during prefill" errors. That issue is **unresolved** but the fix path is to upgrade to v0.4.x where Qwen 3.6 support was properly added.
+
+**You need to upgrade oMLX to at least v0.4.2** (ideally v0.4.4rc1) before running Qwen 3.6 models.
+
+### mlx-lm vs mlx-vlm
+Since Qwen3.6 is natively multimodal, the mlx-community conversions use **mlx-vlm** (v0.4.4), not mlx-lm. If you only need text inference, mlx-lm may still work but the official conversion path uses mlx-vlm due to the vision projector architecture. oMLX handles this transparently.
+
+---
+
+## 5. Benchmarks: tok/s on Apple Silicon
+
+### Qwen3.6-35B-A3B (4-bit) tok/s
+
+| Chip | RAM | Framework | Prompt (PP) | Decode (TG) | Source |
+|---|---|---|---|---|---|
+| M4 Pro 20-core | 64 GB | oMLX v0.3.6-0.3.8 | 756-762 tok/s | 73-75 tok/s | oMLX benchmarks |
+| M4 Pro 24-core | 24 GB | Q4_K_M (llama.cpp?) | -- | 32 tok/s | LLMCheck |
+| M4 Max 40-core | 48+ GB | MLX | -- | 42 tok/s | LLMCheck |
+| M5 Max | 128 GB | MLX | -- | 55 tok/s | LLMCheck |
+| M4 (base, 16 GB) | 16 GB | MLX/LM Studio | -- | 25-35 tok/s | Maloyan blog |
+| M4 (base, 16 GB) | 16 GB | llama.cpp mmap | -- | 17 tok/s | Maloyan blog |
+
+The oMLX benchmarks on your exact hardware class (M4 Pro 20-core, 64GB) show **73-75 tok/s decode** -- significantly better than the 32 tok/s from the LLMCheck benchmark (which was on 24GB M4 Pro, likely memory-constrained). Your 64GB setup should hit the higher numbers.
+
+### Comparison: Qwen3-30B-A3B (your current model) vs Qwen3.6-35B-A3B
+
+No direct head-to-head benchmark exists in the sources I found. However:
+- Your current Qwen3-30B-A3B-Instruct-2507-4bit-DWQ runs at what oMLX v0.4.3 showed as ~77.5-79.0 tok/s after fixes
+- The Qwen3.6-35B-A3B at 4-bit shows ~73-75 tok/s on oMLX on M4 Pro 64GB
+- **Expect roughly similar tok/s** -- the 3.6 model is slightly larger (35B vs 30B total) but the active param count is similar (~3B)
+- Quality-wise, Qwen 3.6 is a meaningful upgrade: SWE-bench 69.2 -&gt; 73.4, Terminal-Bench 40.5 -&gt; 51.5, plus native vision and thinking preservation
+
+### 27B Dense Performance on Apple Silicon
+- The 27B dense is **much slower**: ~11 tok/s on MLX (all 27B params active every token vs 3B for MoE)
+- It scores higher on coding benchmarks (SWE-bench 77.2 vs 73.4, SkillsBench 48.2 vs 28.7) but the 3-5x speed penalty is brutal for agentic workloads
+
+---
+
+## 6. Verification: "Qwen3.6-35B-A3B-4bit-DWQ (20.7GB, SWE-bench 73.4)"
+
+**CONFIRMED.** This model exists and the numbers check out:
+- HF repo: `mlx-community/Qwen3.6-35B-A3B-4bit-DWQ`
+- File size: **20.7 GB** (confirmed from HF page)
+- SWE-bench Verified: **73.4%** (confirmed from Qwen official benchmarks and multiple sources)
+- Architecture: 35B total, ~3B active, 256 experts, Gated DeltaNet hybrid
+
+---
+
+## Recommendation Summary
+
+For your M4 Pro 64GB setup with oMLX:
+
+1. **Upgrade oMLX to v0.4.4rc1** before attempting Qwen 3.6. Your v0.3.12 has a known crash bug with these models.
+2. **`mlx-community/Qwen3.6-35B-A3B-4bit-DWQ`** (20.7 GB) is the direct upgrade from your current Qwen3-30B-A3B-2507-4bit-DWQ (19 GB). Same quant method, 1.7 GB larger, meaningfully better benchmarks.
+3. Consider `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` (24.7 GB) if you want +1.12 capability points and much better long-context performance at the cost of 4 GB more RAM.
+4. The 6-bit variant (29.1 GB) is viable within your 48GB ceiling but leaves less headroom for KV cache on long contexts.
+5. The 27B dense is higher quality on coding but ~11 tok/s on Apple Silicon MLX makes it impractical for your agentic pipeline where tok/s matters.
+
+Sources:
+- [mlx-community/Qwen3.6-35B-A3B-4bit-DWQ](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit-DWQ)
+- [mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit)
+- [mlx-community/Qwen3.6-35B-A3B-4bit](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit)
+- [Qwen/Qwen3.6-35B-A3B (official)](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+- [unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit)
+- [oMLX releases](https://github.com/jundot/omlx/releases)
+- [oMLX crash issue #1488 (v0.3.12)](https://github.com/jundot/omlx/issues/1488)
+- [LLMCheck benchmarks](https://llmcheck.net/benchmarks)
+- [Qwen 3.6 vs Gemma 4 comparison (LLMCheck)](https://llmcheck.net/blog/qwen-36-vs-gemma-4-deep-technical-comparison/)
+- [Qwen 3.6 35B vs 27B benchmark comparison](https://zoliben.com/en/posts/2026-04-23-qwen-36-35b-vs-27b-benchmark-results/)
+- [Running Qwen 3.6 on Mac Mini M4](https://maloyan.xyz/blog/running-qwen-locally-mac-mini-m4)
+- [Qwen 3.6 local guide (codersera)](https://codersera.com/blog/how-to-run-qwen-3-6-locally-2026/)
+- [Qwen 3.6 complete guide (InsiderLLM)](https://insiderllm.com/guides/qwen-3-6-local-ai-guide/)</result>
+<usage><subagent_tokens>53929</subagent_tokens><tool_uses>37</tool_uses><duration_ms>262855</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a55cf684c790da689</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-datum/6d25fdb1-0f44-40ac-9f65-138f49a455f0/tasks/a55cf684c790da689.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Qwen3.6 setup guides" completed</summary>
+<result>I now have comprehensive data across all five research areas. Here's the complete migration checklist.
+
+---
+
+## Qwen3.6-35B-A3B on Apple Silicon: Migration Checklist
+
+### 1. What to Download
+
+**Four MLX-ready options exist on HuggingFace -- no `mlx_lm.convert` needed:**
+
+| Repo | Size on Disk | Quality Notes |
+|---|---|---|
+| `mlx-community/Qwen3.6-35B-A3B-4bit-DWQ` | 20.7 GB | Your current quant style. Direct successor to your Qwen3-30B-A3B-2507-4bit-DWQ (19 GB) |
+| `mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit` | 22.1 GB | Mixed-precision (392 layers at 8-bit, 118 at 4-bit). Wins on Capability Score (76.78 vs 75.67 uniform). +8 points on HashHop, +1.5 on BFCL-V3 (tool calling). Best quality-per-GB |
+| `mlx-community/Qwen3.6-35B-A3B-4bit` | 20.4 GB | Uniform 4-bit baseline. Converted via mlx-vlm 0.4.4 |
+| `mlx-community/Qwen3.6-35B-A3B-MTP-4bit` | -- | Multi-Token Prediction variant for speculative decoding (~1.4x faster decode, ~70% acceptance rate). Needs oMLX MTP support |
+| `unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit` | -- | Unsloth's dynamic quant. Claims SOTA KL divergence |
+
+**Recommendation:** Start with **OptiQ-4bit** (22.1 GB). The extra 1.4 GB over DWQ buys measurably better tool-calling accuracy and long-context hash-hop -- both matter for datum pipeline code generation. Fall back to DWQ if OptiQ triggers any oMLX issues.
+
+Download command:
+```bash
+huggingface-cli download mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit --local-dir /Volumes/Extra/mlx-models/mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit
+```
+
+### 2. Memory Budget: Can You Run Both Models Simultaneously?
+
+| Model | Weights | KV Cache (32K ctx, kv_bits=8) | Runtime |
+|---|---|---|---|
+| Qwen3.6-35B-A3B-OptiQ-4bit | ~22 GB | ~1-3 GB | ~24 GB |
+| gemma-4-E4B-it-qat-4bit | 4.9 GB | ~0.5 GB | ~5.5 GB |
+| **Total** | | | **~29.5 GB** |
+| 64 GB - 8 GB guard | | | **56 GB available** |
+
+**Yes, comfortably.** You have ~26 GB of headroom. Your current pair (Qwen3-30B 19 GB + gemma 4.9 GB = ~27 GB) is actually smaller, so the new Qwen3.6 adds only ~3 GB. Well under the ~48 GB danger ceiling that watchdog-rebooted you with the 42 GB Coder-Next.
+
+No 3-bit variant exists for 35B-A3B on MLX. You don't need one -- 4-bit fits easily.
+
+### 3. oMLX Configuration -- Critical Findings
+
+**You MUST upgrade oMLX.** Your v0.3.12 has multiple Qwen3.6-specific bugs:
+
+| Issue | v0.3.12 Status | Fixed In |
+|---|---|---|
+| Thinking-only responses, no `content` field ([#903](https://github.com/jundot/omlx/issues/903)) | Broken | v0.3.8 partial fix, v0.4.0+ |
+| Infinite loops after multi-turn ([#934](https://github.com/jundot/omlx/issues/934)) | Broken | v0.4.0+ |
+| DFlash abort/crash ([#902](https://github.com/jundot/omlx/issues/902)) | Broken | v0.4.0 (DFlash/MTP transition restores Qwen GQA hooks) |
+| Memory limit exceeded during prefill ([#1488](https://github.com/jundot/omlx/issues/1488)) | Broken on 32GB, likely OK on 64GB | v0.4.3 (Memory Guard overestimation fixed) |
+| Frequent crashes on v0.3.12 ([#1488](https://github.com/jundot/omlx/issues/1488)) | Broken | v0.4.3 |
+
+**Current latest stable: v0.4.3** (June 9, 2026). Key Qwen3.6 fixes across the v0.4.x line:
+- v0.4.0: MXFP4 norm conventions, MTP preservation, DFlash/MTP transition restored
+- v0.4.2: Recovered Qwen throughput after v0.4.0 regression
+- v0.4.3: TurboQuant KV accounting fix (was overestimating memory by several times), Memory Guard no longer stalls decode, throughput 77.5 -&gt; 79.0 tok/s for 35B-A3B
+
+**Known remaining issue:** The chat template emits empty `&lt;think&gt;&lt;/think&gt;` blocks in multi-turn history, causing prompt drift and cache invalidation ([QwenLM/Qwen3.6#131](https://github.com/QwenLM/Qwen3.6/issues/131)). The fix is a one-line Jinja template patch -- check if oMLX v0.4.3 applies it automatically or if you need to patch the tokenizer_config.json in your downloaded model directory.
+
+**Grammar/structured output:** oMLX uses xgrammar (replaced outlines). Guided grammar is exposed as a model setting, and Qwen3.6 is reportedly the strongest open model for JSON-heavy workflows as of May 2026. Your existing `response_format: {json_schema: ...}` path should work.
+
+**Tokenizer:** Same `&lt;|im_start|&gt;` / `&lt;|im_end|&gt;` chat-ml format. Same `&lt;think&gt;` / `&lt;/think&gt;` thinking tokens. The known hazard in your memory file (oMLX strips think spans) still applies.
+
+### 4. Sampling Parameters
+
+Qwen3.6 ships with official sampling guidance that differs from your current Qwen3-2507 anti-repetition hacks:
+
+| Mode | temp | top_p | top_k | min_p | presence_penalty | repetition_penalty |
+|---|---|---|---|---|---|---|
+| **Thinking - Precise Coding** | 0.6 | 0.95 | 20 | 0.0 | 0.0 | 1.0 |
+| **Thinking - General** | 1.0 | 0.95 | 20 | 0.0 | 1.5 | 1.0 |
+| **Non-Thinking / Instruct** | 0.7 | 0.80 | 20 | 0.0 | 1.5 | 1.0 |
+
+**Key difference from your current config:** Your 2507 needed `presence_penalty=1.0` on every request because server defaults caused repetition loops. Qwen3.6's thinking-coding mode uses `presence_penalty=0.0` -- the model handles repetition better natively. The official guidance says DO NOT use greedy decoding (temp=0), as it causes performance degradation and endless repetitions.
+
+**Migration action:** Update `agent_loop.py` sampling params. For datum code-generation phases (act lanes), use the "Thinking - Precise Coding" preset (temp=0.6, top_p=0.95, presence_penalty=0.0). For triage/decide phases on gemma, no change needed.
+
+### 5. Migration Gotchas: Qwen3 -&gt; Qwen3.6
+
+**Architecture change:** Qwen3.6 adds Gated DeltaNet layers to the MoE architecture. This is why oMLX needed architecture-specific fixes in v0.4.0+. The model is also 35B total (vs 30B for your current Qwen3) with the same 3B active.
+
+**Prompt format:** Identical ChatML format. Same `&lt;think&gt;` / `&lt;/think&gt;` tokens. No system prompt default (same as Qwen3). Your existing prompts work as-is.
+
+**New feature -- Thinking Preservation:** `preserve_thinking=True` retains reasoning across turns. oMLX v0.3.7+ auto-sets this. Useful for iterative coding flows in datum's ReAct loop. Consider enabling if your pipeline does multi-turn with the same model context.
+
+**Context window:** 262K native (vs 131K on Qwen3), extensible to 1M with YaRN. Your `max_kv_size=32768` is still a safe cap but you have room to increase.
+
+**Empty think blocks in history:** The chat template bug ([#131](https://github.com/QwenLM/Qwen3.6/issues/131)) inserts empty `&lt;think&gt;&lt;/think&gt;` in multi-turn assistant messages even when reasoning_content is empty. This wastes tokens and invalidates KV cache. Patch the template or verify oMLX v0.4.3 handles it.
+
+**SWE-bench jump:** 73.4% verified (vs Qwen3.5-35B-A3B at 60.3%). This is a genuine generational improvement for coding tasks, not incremental.
+
+---
+
+### Step-by-Step Migration Checklist
+
+```
+[ ] 1. Download oMLX v0.4.3 dmg from https://github.com/jundot/omlx/releases/tag/v0.4.3
+[ ] 2. Download model:
+      huggingface-cli download mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit \
+        --local-dir /Volumes/Extra/mlx-models/mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit
+[ ] 3. Restart oMLX so it scans the new model directory
+[ ] 4. Smoke test via curl:
+      curl http://localhost:12200/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -d '{"model":"mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit",
+             "messages":[{"role":"user","content":"Write a Python function that reverses a linked list"}],
+             "temperature":0.6,"top_p":0.95,"top_k":20,"presence_penalty":0.0}'
+[ ] 5. Verify response has BOTH reasoning_content AND content fields (not thinking-only)
+[ ] 6. Test structured output: add response_format with json_schema, confirm grammar works
+[ ] 7. Multi-turn test: send 3+ turns, check for infinite loops
+[ ] 8. Update datum config: model ID, sampling params in agent_loop.py
+[ ] 9. Update memory files (project-model-stack.md, reference-omlx.md)
+[ ] 10. Run one datum-local TDD lane as integration test
+[ ] 11. If stable, retire Qwen3-30B-A3B-2507-4bit-DWQ from pinned models
+```
+
+**Test first, then cut over.** The oMLX v0.3.12 -&gt; v0.4.3 jump is significant and the Qwen3.6 architecture needs those fixes. Do not attempt Qwen3.6 on your current v0.3.12 -- the thinking-only response bug alone will break your pipeline.
+
+Sources:
+- [Qwen3.6-35B-A3B Model Card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+- [mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit)
+- [mlx-community/Qwen3.6-35B-A3B-4bit-DWQ](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit-DWQ)
+- [oMLX v0.4.3 Release](https://github.com/jundot/omlx/releases/tag/v0.4.3)
+- [oMLX Issue #903 -- thinking-only responses](https://github.com/jundot/omlx/issues/903)
+- [oMLX Issue #934 -- infinite loops](https://github.com/jundot/omlx/issues/934)
+- [oMLX Issue #1488 -- v0.3.12 crashes](https://github.com/jundot/omlx/issues/1488)
+- [QwenLM/Qwen3.6 Issue #131 -- empty think blocks](https://github.com/QwenLM/Qwen3.6/issues/131)
+- [Qwen3.6 on M4 Max with pi-coding-agent](https://walterra.dev/blog/2026-04-18-qwen36-35b-a3b-m4-max-pi-coding-agent)
+- [How to Run Qwen 3.6 Locally (2026 Guide)](https://codersera.com/blog/how-to-run-qwen-3-6-locally-2026/)
+- [Run Qwen 3.6 Locally -- DEV Community](https://dev.to/purpledoubled/how-to-run-qwen-36-locally-27b-dense-35b-moe-and-coding-variants-setup-guide-4di)
+- [Qwen MLX-LM Official Docs](https://qwen.readthedocs.io/en/latest/run_locally/mlx-lm.html)
+- [Sampling Parameters Discussion](https://huggingface.co/Qwen/Qwen3.6-27B/discussions/10)</result>
+<usage><subagent_tokens>57368</subagent_tokens><tool_uses>35</tool_uses><duration_ms>487749</duration_ms></usage>
+</task-notification>
+
+---
+
+whats the nedt atep up in twrms of quality rhat fits our 48GB
+
+---
+
+lets try 6 bit and run it against our feature we have #134
+
+---
+
+lets try 6 bit and run it against our feature we have #134 get all tbis meeged and makn prostine first
