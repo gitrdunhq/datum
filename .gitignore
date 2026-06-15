@@ -37,6 +37,7 @@ venv/
 .antigravitycli/
 .temp/
 .claude/
+.aider*
 scripts/transcript-demo.html
 
 # Datum
