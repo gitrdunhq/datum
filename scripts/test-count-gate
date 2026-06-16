@@ -55,10 +55,23 @@ fi
 DIFF=""
 if git -C "$REPO" rev-parse HEAD~1 >/dev/null 2>&1; then
     # Normal case: diff between parent and current commit
-    DIFF=$(git -C "$REPO" diff HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
+    DIFF=$(git -C "$REPO" diff --no-stat HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
 elif git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
     # First commit — git diff HEAD~1 fails; use git log -p -1 to get the patch
     DIFF=$(git -C "$REPO" log -p -1 -- "${FILES[@]}" 2>/dev/null || true)
+    # If no commits yet but files exist in the working tree, also check staged/cached changes
+    if [ -z "$DIFF" ]; then
+        DIFF=$(git -C "$REPO" diff --cached -- "${FILES[@]}" 2>/dev/null || true)
+        # If still empty, check untracked working tree files against known paths
+        if [ -z "$DIFF" ]; then
+            for f in "${FILES[@]}"; do
+                if [ -f "$REPO/$f" ] || [ -f "$f" ]; then
+                    DIFF=$(cat "$REPO/$f" 2>/dev/null || cat "$f" 2>/dev/null || true)
+                    break
+                fi
+            done
+        fi
+    fi
 else
     # No commits yet — staged changes in the index
     DIFF=$(git -C "$REPO" diff --cached -- "${FILES[@]}" 2>/dev/null || true)

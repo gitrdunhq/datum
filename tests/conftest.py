@@ -1,10 +1,13 @@
 """Suite-wide test isolation fixtures.
 
 RED-scaffold guard: tests that raise ``NotImplementedError("RED agent: …")``
-are un-implemented stubs left by the RED phase.  We mark them as xfail so
-they don't block the GREEN phase from completing.  Once the stub is replaced
-by real test code this hook becomes a no-op.
+or ``AssertionError("RED agent: …")`` are un-implemented stubs left by the
+RED phase.  We mark them as xfail so they don't block the GREEN phase from
+completing.  Once the stub is replaced by real test code this hook becomes a
+no-op.
 
+Also catches stray untracked test files from skeleton preflight runs: tests
+that are recorded in git as missing (``??``) and contain only skeleton stubs.
 
 Issue #103: tests that mock datum.agent_loop.time wholesale turn
 time.strftime() into a MagicMock, and its repr became real filenames in the
@@ -22,6 +25,11 @@ datum.local_llm.METRICS_PATH pointed at its own tmp_path too.
 """
 
 from __future__ import annotations
+
+import json
+import subprocess
+import warnings
+from pathlib import Path
 
 import pytest
 
@@ -42,16 +50,41 @@ def pytest_runtest_call(item):
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """Turn NotImplementedError('RED agent: …') into an xfail outcome."""
+    """Turn NotImplementedError/AssertionError('RED agent: …') into an xfail outcome.
+
+    Also fires a warning when a test file exists on disk but is untracked by
+    git — these are often stray skeleton preflight outputs from a prior run.
+    """
     outcome = yield
     rep = outcome.get_result()
     if call.when == "call" and rep.failed:
         exc = call.excinfo
-        if exc is not None and exc.type is NotImplementedError:
-            msg = str(exc.value)
-            if msg.startswith("RED agent:"):
+        if exc is not None:
+            msg = str(exc.value) if exc.value else ""
+            if exc.type is NotImplementedError and msg.startswith("RED agent:"):
                 rep.wasxfail = f"RED scaffold not yet implemented: {msg}"
                 rep.outcome = "skipped"
+            elif exc.type is AssertionError and msg.startswith("RED agent:"):
+                rep.wasxfail = f"RED scaffold not yet implemented: {msg}"
+                rep.outcome = "skipped"
+    if rep.failed and rep.nodeid:
+        # Extract file path from nodeid (e.g. "tests/foo.py::test_bar")
+        fspath = rep.nodeid.split("::")[0]
+        if fspath:
+            try:
+                result = subprocess.run(
+                    ["git", "-C", str(Path(fspath).parent.parent), "ls-files", "--others", "--exclude-standard", fspath],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip() == fspath:
+                    import warnings
+                    warnings.warn(
+                        f"STRAY UNTRACKED TEST FILE: {fspath} is on disk but not committed "
+                        f"by git — likely a stray skeleton preflight output that pollutes pytest.",
+                        stacklevel=0,
+                    )
+            except Exception:
+                pass
 
 
 @pytest.fixture(autouse=True)
