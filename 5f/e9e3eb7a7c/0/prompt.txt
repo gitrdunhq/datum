@@ -1,0 +1,86 @@
+it failed again, 3 of them, did
+
+---
+
+sorry we crashed
+
+---
+
+<task-notification>
+<task-id>wz7wly4qg</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/wz7wly4qg.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Decompose SPEC.md into tasks.json + lane-plan.json — approach, impact, decompose, triage, deepen" completed</summary>
+<result>{"branch":"datum/epic-182","epicDir":"docs/epics/datum/epic-182","approach":"Minimal Gap-Fill (Additive-Only)","taskCount":7,"tasks":[{"id":"config-archive-pass-enabled","title":"Add archivePassEnabled to TranscriptionConfig and AppConfig"},{"id":"duckdb-transcript-draft-migration","title":"Add transcript_draft column migration and SQL to DuckDB"},{"id":"transcript-write-repo-draft","title":"Add saveDraftTranscript to TranscriptWriteRepository protocol"},{"id":"cleanup-usecase-draft-save","title":"Insert draft-save step in CleanupTranscriptionUseCase before overwrite"},{"id":"pipeline-memory-gate","title":"Add memory-aware unload gate to PipelineCoordinator.startCleanupPass"},{"id":"pipeline-archive-pass-gate","title":"Add archivePassEnabled gate to PipelineCoordinator.startCleanupPass"},{"id":"settings-archive-pass-toggle","title":"Add archivePassEnabled toggle to SettingsViewModel and SettingsViewTranscriptionTab"}],"gatePassed":false,"gateMessage":"TASKS.md and lane-plan.json ready for human approval. Re-run with --approve to approve."}</result>
+<usage><agent_count>10</agent_count><subagent_tokens>400235</subagent_tokens><tool_uses>176</tool_uses><duration_ms>1120548</duration_ms></usage>
+</task-notification>
+
+---
+
+yes, please fix any datum issues as they come up
+
+---
+
+<task-notification>
+<task-id>wdg24k7el</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/wdg24k7el.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260615-183824","total":7,"completed":0,"failed":4,"skipped":3,"failedLanes":["config-archive-pass-enabled","duckdb-transcript-draft-migration","transcript-write-repo-draft","pipeline-memory-gate"],"skippedLanes":["cleanup-usecase-draft-save","pipeline-archive-pass-gate","settings-archive-pass-toggle"],"completedLanes":[]}</result>
+<usage><agent_count>31</agent_count><subagent_tokens>944936</subagent_tokens><tool_uses>457</tool_uses><duration_ms>2947871</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>wbmka3h8s</task-id>
+<tool-use-id>toolu_01QkHEnuPtRtnd3Sfq84Vn8N</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/wbmka3h8s.output</output-file>
+<status>failed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" failed: Error: Failed to create root worktree for 20260615-194020-b0-b0
+    at &lt;anonymous&gt; (workflow.js:36:20)
+    at processTicksAndRejections (native)</summary>
+<recovery>Agent transcripts: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-the-record-suite/a35fe7dc-e012-4982-b372-a09df189ca9c/subagents/workflows/wf_8f3e9126-ed0</recovery>
+<failures>▸ datum-tdd-act-setup: Error: Failed to create root worktree for 20260615-194020-b0-b0</failures>
+<usage><agent_count>4</agent_count><subagent_tokens>84187</subagent_tokens><tool_uses>5</tool_uses><duration_ms>53384</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>w2ogntuuz</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/w2ogntuuz.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260615-194020","total":7,"completed":5,"failed":2,"skipped":0,"failedLanes":["cleanup-usecase-draft-save","settings-archive-pass-toggle"],"skippedLanes":[],"completedLanes":["config-archive-pass-enabled","duckdb-transcript-draft-migration","transcript-write-repo-draft","pipeline-memory-gate","pipeline-archive-pass-gate"]}</result>
+<failures>[skeptic-edge:pipeline-memory-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.4s"}
+[skeptic-error:config-archive-pass-enabled] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.2s"}
+[skeptic-contract:config-archive-pass-enabled] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[skeptic-error:transcript-write-repo-draft] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.3s"}
+[skeptic-contract:transcript-write-repo-draft] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[skeptic-error:pipeline-memory-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}</failures>
+<usage><agent_count>116</agent_count><subagent_tokens>3630215</subagent_tokens><tool_uses>1425</tool_uses><duration_ms>5349825</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>wl9eb6zsc</task-id>
+<tool-use-id>toolu_013yVVwo7BYMFNBvxR94r57r</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/wl9eb6zsc.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Deterministic TDD Act: RED-&gt;GREEN-&gt;REFACTOR per lane with gate enforcement" completed</summary>
+<result>{"runId":"20260615-194420","total":2,"completed":2,"failed":0,"skipped":0,"failedLanes":[],"skippedLanes":[],"completedLanes":["cleanup-usecase-draft-save","settings-archive-pass-toggle"]}</result>
+<usage><agent_count>42</agent_count><subagent_tokens>1289168</subagent_tokens><tool_uses>574</tool_uses><duration_ms>2460854</duration_ms></usage>
+</task-notification>
+
+---
+
+omg did we finally get through it all
+
+---
+
+/code-review

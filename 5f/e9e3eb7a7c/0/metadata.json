@@ -1,0 +1,220 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "5fe9e3eb7a7c",
+  "session_id": "a35fe7dc-e012-4982-b372-a09df189ca9c",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-16T10:21:20.421374Z",
+  "branch": "datum/epic-182",
+  "checkpoints_count": 12,
+  "files_touched": [
+    "Record-App/Tests/Unit/Business/PipelineCoordinatorArchivePassGateTests.swift",
+    "Record-App/Tests/Unit/Business/PipelineCoordinatorMemoryGateTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "9e4a14747cba",
+  "token_usage": {
+    "input_tokens": 1596,
+    "cache_creation_tokens": 2244388,
+    "cache_read_tokens": 18697751,
+    "output_tokens": 119233,
+    "api_call_count": 192
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01LX5cwL7P4TFenvywkNRRhW",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9e4a14747cba",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 97,
+        "end": 98,
+        "entry_ids": [
+          "09b4be81-1a1a-4cb7-a0cd-f4a5911b88f6"
+        ],
+        "tool_use_id": "toolu_01LX5cwL7P4TFenvywkNRRhW"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LX5cwL7P4TFenvywkNRRhW"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01L9xdbRYgTvkVgiZxg3B3p7",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9e4a14747cba",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 673,
+        "end": 674,
+        "entry_ids": [
+          "1c7a3180-c58e-4e2e-b29f-8d82fa974190"
+        ],
+        "tool_use_id": "toolu_01L9xdbRYgTvkVgiZxg3B3p7"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01L9xdbRYgTvkVgiZxg3B3p7"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_0118z7e6xHrHkF12GMhAXD2b",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum-plan"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9e4a14747cba",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 679,
+        "end": 680,
+        "entry_ids": [
+          "a9840f61-68e9-4aba-b9fc-d1ec9c663565"
+        ],
+        "tool_use_id": "toolu_0118z7e6xHrHkF12GMhAXD2b"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_0118z7e6xHrHkF12GMhAXD2b"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum-plan",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-16T10:21:20.387957Z",
+    "agent_lines": 78,
+    "agent_removed": 0,
+    "human_added": 33,
+    "human_modified": 302,
+    "human_removed": 0,
+    "total_committed": 413,
+    "total_lines_changed": 413,
+    "agent_percentage": 18.886198547215496,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
