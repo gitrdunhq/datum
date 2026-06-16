@@ -7,7 +7,12 @@ from rich.console import Console
 from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 
-__version__ = "2.0.0"
+try:
+    from importlib.metadata import version as _pkg_version
+
+    __version__ = _pkg_version("datum")
+except Exception:
+    __version__ = "dev"
 
 
 def _version_callback(value: bool):

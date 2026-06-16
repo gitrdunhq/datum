@@ -120,6 +120,25 @@ export function classifyFiles(files: string[]): {
 }
 
 // ---------------------------------------------------------------------------
+// resolveLanePlanPath — prefer lane-plan-final.json over lane-plan.json
+// ---------------------------------------------------------------------------
+
+export function resolveLanePlanPrompt(epicDir: string): string {
+  return (
+    `[${epicDir}]\n` +
+    `ls "${epicDir}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"` +
+    `\nReturn ONLY: "final" if lane-plan-final.json exists, "default" if only lane-plan.json exists, or "none" if neither exists.`
+  )
+}
+
+export function resolveLanePlanPath(epicDir: string, agentResult: string): string {
+  const resolved = agentResult.trim()
+  if (resolved === 'final') return `${epicDir}/lane-plan-final.json`
+  if (resolved === 'default') return `${epicDir}/lane-plan.json`
+  throw new Error(`No lane-plan.json found — tried: ${epicDir}/lane-plan-final.json, ${epicDir}/lane-plan.json`)
+}
+
+// ---------------------------------------------------------------------------
 // parseAgentJson — extracts JSON from agent text output
 // ---------------------------------------------------------------------------
 

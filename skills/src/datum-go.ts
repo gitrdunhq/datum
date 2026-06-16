@@ -1,5 +1,5 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, parseAgentJson } from './shared/utils'
+import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath } from './shared/utils'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
@@ -162,10 +162,18 @@ if (shouldRun('act', 3)) {
   const runId = info.timestamp
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`)
 
-  // Read lane plan from epic dir (never root)
-  const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`
+  // Skeleton dir from Plan phase (pre-generated test contracts)
+  const skeletonDir = `docs/epics/${epicBranch}/skeletons`
+
+  // Read lane plan — prefer lane-plan-final.json over stale lane-plan.json
+  const epicDir = `docs/epics/${epicBranch}`
+  const resolveText = await agent(
+    resolveLanePlanPrompt(epicDir),
+    { label: 'resolve-lane-plan', phase: 'Act', model: model('fast') }
+  )
+  const lanePlanPath = resolveLanePlanPath(epicDir, resolveText)
   const planText = await agent(
-    `Read ${lanePlanPath} and return its contents as raw JSON text. If not found, try .datum/lane-plan.json as fallback. Output ONLY the JSON, no markdown fences, no explanation.`,
+    `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
     { label: 'read-plan', model: model('fast') },
   )
   const lanePlan = (typeof planText === 'string'
@@ -228,7 +236,7 @@ if (shouldRun('act', 3)) {
       { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },

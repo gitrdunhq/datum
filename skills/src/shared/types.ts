@@ -83,6 +83,7 @@ export interface PipelineConfig {
   testCommand: string
   language: string
   test_framework?: string  // e.g. 'xctest', 'swift-testing', 'pytest', 'jest'
+  skeletonDir?: string
 }
 
 export interface LaneOutcome {

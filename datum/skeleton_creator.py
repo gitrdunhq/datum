@@ -262,18 +262,41 @@ def build_impl_stubs(
     impl_files: list[str],
     language: str,
 ) -> list[dict]:
-    """Generate implementation stub files so GREEN fills in bodies instead of writing from scratch."""
-    if language != "python":
-        return []
+    """Generate implementation stub files so GREEN fills in bodies instead of writing from scratch.
 
+    Fixed: respect file extensions — only generate stubs for files whose
+    extension matches the target language (#235, #231).  When the repo-level
+    language is 'python' but a lane handles TypeScript, the old code would
+    write Python `def` stubs into `.ts` files.
+    """
     sigs = _extract_signatures_from_acs(acs)
     if not sigs:
         return []
 
     stubs = []
+    # Extension -> language map for stub generation (#235, #231)
+    ext_lang_map = {
+        ".py": "python",
+        ".pyx": "python",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".swift": "swift",
+        ".go": "go",
+    }
+
     for impl_path in impl_files:
         path = Path(impl_path)
         if path.exists():
+            continue
+        ext = path.suffix.lower()
+        lang = ext_lang_map.get(ext)
+        if lang is None:
+            # Unknown extension — skip (don't write stubs)
+            continue
+        # Skip files whose extension-language doesn't match the task language
+        if lang != language:
             continue
 
         lines = []
@@ -283,9 +306,27 @@ def build_impl_stubs(
                 continue
             seen.add(sig["name"])
             args_str = ", ".join(sig["args"]) if sig["args"] else ""
-            lines.append(f"def {sig['name']}({args_str}):")
-            lines.append("    ...")
-            lines.append("")
+
+            if lang == "python":
+                lines.append(f"def {sig['name']}({args_str}):")
+                lines.append("    ...")
+                lines.append("")
+            elif lang in ("typescript", "javascript"):
+                lines.append(f"function {sig['name']}({args_str}): {{")
+                lines.append("")
+                lines.append("    // TODO: GREEN fills this in")
+                lines.append("}")
+                lines.append("")
+            elif lang == "swift":
+                lines.append(f"func {sig['name']}({args_str}) {{")
+                lines.append('    fatalError("RED agent: implement")')
+                lines.append("}")
+                lines.append("")
+            elif lang == "go":
+                lines.append(f"func {sig['name']}({args_str}) {{")
+                lines.append('    t.Fatal("RED agent: implement")')
+                lines.append("}")
+                lines.append("")
 
         if not lines:
             continue
@@ -422,8 +463,20 @@ def build_skeleton(
 
 
 def run_preflight(
-    task_id: str, language: str, tasks_path: Path, output_path: Path | None
+    task_id: str,
+    language: str,
+    tasks_path: Path,
+    output_path: Path | None,
+    skip_file_writes: bool = False,
 ) -> dict:
+    """Run skeleton preflight for a lane.
+
+    When ``skip_file_writes`` is True (the default for preflight-only runs),
+    skeleton content is emitted in the output JSON but **never written to
+    disk**.  This prevents stray test files from polluting test collectors.
+
+    Write-to-disk is only done during ``datum skeleton --apply``.
+    """
     if language not in SUPPORTED:
         return {
             "task_id": task_id,
@@ -486,8 +539,14 @@ def run_preflight(
                 ),
             )
             dest = Path(skeleton["path"])
-            _write_skeleton(dest, skeleton.pop("content"))
-            skeleton["skeleton_written"] = True
+            if not skip_file_writes:
+                _write_skeleton(dest, skeleton.pop("content"))
+                skeleton["skeleton_written"] = True
+            else:
+                skeleton["skeleton_written"] = False
+                skeleton["skeleton_note"] = (
+                    "preflight-only: content emitted in JSON, not written to disk"
+                )
             outputs.append(skeleton)
 
         target_context = (
@@ -572,10 +631,16 @@ def run_preflight(
                     else None
                 ),
             )
-            # Write the file
+            # Write the file only when --apply is used; preflight only emits content in JSON
             dest = Path(skeleton["path"])
-            _write_skeleton(dest, skeleton.pop("content"))
-            skeleton["skeleton_written"] = True
+            if not skip_file_writes:
+                _write_skeleton(dest, skeleton.pop("content"))
+                skeleton["skeleton_written"] = True
+            else:
+                skeleton["skeleton_written"] = False
+                skeleton["skeleton_note"] = (
+                    "preflight-only: content emitted in JSON, not written to disk"
+                )
             outputs.append(skeleton)
     elif acs:
         for i, ac_text in enumerate(acs):
@@ -596,8 +661,14 @@ def run_preflight(
                 ),
             )
             dest = Path(skeleton["path"])
-            _write_skeleton(dest, skeleton.pop("content"))
-            skeleton["skeleton_written"] = True
+            if not skip_file_writes:
+                _write_skeleton(dest, skeleton.pop("content"))
+                skeleton["skeleton_written"] = True
+            else:
+                skeleton["skeleton_written"] = False
+                skeleton["skeleton_note"] = (
+                    "preflight-only: content emitted in JSON, not written to disk"
+                )
             outputs.append(skeleton)
     else:
         target_context = (
@@ -632,15 +703,98 @@ def run_preflight(
     return result
 
 
+def run_batch(
+    language: str,
+    tasks_path: Path,
+    output_dir: Path,
+    skip_file_writes: bool = True,
+) -> dict:
+    """Run skeleton preflight for ALL tasks in a lane plan at once.
+
+    Returns a summary with per-task results written to output_dir.
+    """
+    if not tasks_path.exists():
+        return {"error": f"{tasks_path} not found"}
+
+    try:
+        tasks_data = json.loads(tasks_path.read_text())
+    except json.JSONDecodeError:
+        return {"error": f"{tasks_path} is invalid JSON"}
+
+    lanes = tasks_data.get("lanes", {})
+    if not lanes:
+        return {"error": "No lanes found in lane plan"}
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results = {}
+    for task_id in tasks_data.get("topological_order", list(lanes.keys())):
+        out = output_dir / f"preflight-{task_id}.json"
+        result = run_preflight(
+            task_id=task_id,
+            language=language,
+            tasks_path=tasks_path,
+            output_path=out,
+            skip_file_writes=skip_file_writes,
+        )
+        results[task_id] = {
+            "path": str(out),
+            "skeleton_count": len(result.get("outputs", [])),
+            "framework": result.get("framework", ""),
+        }
+
+    summary = {
+        "batch": True,
+        "language": language,
+        "tasks_processed": len(results),
+        "output_dir": str(output_dir),
+        "tasks": results,
+    }
+    summary_path = output_dir / "batch-summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2))
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Acceptance skeleton preflight for ACT lanes"
     )
-    parser.add_argument("--task-id", required=True)
+    parser.add_argument("--task-id")
     parser.add_argument("--language", required=True)
     parser.add_argument("--tasks", default="TASKS.md")
     parser.add_argument("--output", help="Path for preflight-result.json")
+    parser.add_argument(
+        "--output-dir", help="Directory for batch output (one JSON per task)"
+    )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        default=False,
+        help="Process all tasks in the lane plan at once",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="Write skeleton files to disk (default: preflight-only, emit content as JSON strings)",
+    )
     args = parser.parse_args()
+
+    if args.batch:
+        if not args.output_dir:
+            print("--output-dir required with --batch", file=sys.stderr)
+            sys.exit(1)
+        result = run_batch(
+            language=args.language,
+            tasks_path=Path(args.tasks),
+            output_dir=Path(args.output_dir),
+            skip_file_writes=not args.apply,
+        )
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result.get("tasks_processed") else 1)
+
+    if not args.task_id:
+        print("--task-id required (or use --batch)", file=sys.stderr)
+        sys.exit(1)
 
     output_path = Path(args.output) if args.output else None
     result = run_preflight(
@@ -648,6 +802,7 @@ def main() -> None:
         language=args.language,
         tasks_path=Path(args.tasks),
         output_path=output_path,
+        skip_file_writes=not args.apply,
     )
     print(json.dumps(result, indent=2))
     sys.exit(0 if result.get("outputs") or result.get("no_skeletons_reason") else 1)

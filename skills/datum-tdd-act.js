@@ -77,6 +77,17 @@ function buildWaves(lanePlan2) {
   }
   return waves2;
 }
+function resolveLanePlanPrompt(epicDir2) {
+  return `[${epicDir2}]
+ls "${epicDir2}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"
+Return ONLY: "final" if lane-plan-final.json exists, "default" if only lane-plan.json exists, or "none" if neither exists.`;
+}
+function resolveLanePlanPath(epicDir2, agentResult) {
+  const resolved = agentResult.trim();
+  if (resolved === "final") return `${epicDir2}/lane-plan-final.json`;
+  if (resolved === "default") return `${epicDir2}/lane-plan.json`;
+  throw new Error(`No lane-plan.json found \u2014 tried: ${epicDir2}/lane-plan-final.json, ${epicDir2}/lane-plan.json`);
+}
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
   const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
@@ -113,7 +124,15 @@ if (branchInfo) {
 }
 if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
 if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
-var lanePlanPath = a.lanePlanPath || `docs/epics/${epicBranch}/lane-plan.json`;
+var epicDir = `docs/epics/${epicBranch}`;
+var lanePlanPath = a.lanePlanPath || "";
+if (!lanePlanPath) {
+  const resolveText = await agent(
+    resolveLanePlanPrompt(epicDir),
+    { label: "resolve-lane-plan", phase: "Topology", model: model("fast") }
+  );
+  lanePlanPath = resolveLanePlanPath(epicDir, resolveText);
+}
 phase("Topology");
 var planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,

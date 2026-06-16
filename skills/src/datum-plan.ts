@@ -112,6 +112,20 @@ Output raw JSON only.`,
 )
 log('Lane plan built and committed')
 
+// ── Skeleton batch — generate test contracts while Claude still has full spec context ──
+const skeletonDir = `${epicDir}/skeletons`
+await agent(
+  `Run these commands in order:
+1. mkdir -p "${skeletonDir}"
+2. datum skeleton --batch --language ${language} --tasks "${epicDir}/lane-plan.json" --output-dir "${skeletonDir}"
+3. git add "${skeletonDir}" && git commit -m "plan: pre-generate RED skeletons"
+If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
+Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
+Output raw JSON only.`,
+  { label: 'skeleton-batch', model: model('fast') },
+)
+log(`Skeletons pre-generated in ${skeletonDir}`)
+
 // ── Triage + Deepen + Gate (collapsed: triage writes routing.json, deepen appends + rebuilds, gate runs) ──
 
 phase('Triage')

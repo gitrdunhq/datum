@@ -3,6 +3,53 @@ import type { TddStage } from './models'
 import { CommitResult } from './types'
 import { COMMIT_RESULT_SCHEMA } from './schemas'
 
+// ── Rate-limit resilient agent wrapper ──────────────────────────────────────
+
+const RATE_LIMIT_MAX_RETRIES = 4
+const RATE_LIMIT_BASE_DELAY_MS = 5_000
+const RATE_LIMIT_JITTER_MS = 2_000
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export async function resilientAgent(
+  prompt: string,
+  opts?: AgentOpts & { maxRetries?: number; worktree?: string },
+): Promise<any> {
+  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES
+  let lastResult: any = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    lastResult = await agent(prompt, opts)
+
+    if (lastResult !== null) return lastResult
+
+    // If a worktree was provided, check for dirty state before retrying —
+    // a null result after file writes means the agent partially completed
+    // and a blind replay would duplicate work or create extra commits.
+    if (attempt < maxRetries && opts?.worktree) {
+      const dirty = await agent(
+        `Run: git -C "${opts.worktree}" status --porcelain\nReturn ONLY the raw output, no explanation.`,
+        { label: 'retry-guard', model: 'haiku' },
+      )
+      if (dirty && dirty.trim().length > 0) {
+        log(`[resilientAgent] attempt ${attempt + 1} returned null but worktree is dirty — aborting retry to prevent duplicate writes`)
+        return lastResult
+      }
+    }
+
+    if (attempt < maxRetries) {
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt)
+        + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS)
+      log(`[resilientAgent] attempt ${attempt + 1} returned null, backing off ${Math.round(delay / 1000)}s before retry ${attempt + 2}/${maxRetries + 1}`)
+      await sleepMs(delay)
+    }
+  }
+
+  return lastResult
+}
+
 // ── Git agents (single-writer pattern) ──────────────────────────────────────
 
 export async function commitStage(

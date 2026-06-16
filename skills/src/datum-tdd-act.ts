@@ -1,6 +1,6 @@
 import { model, setModelTiers } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, parseAgentJson } from './shared/utils'
+import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath } from './shared/utils'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
 
@@ -46,7 +46,16 @@ if (branchInfo) {
 if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
 if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
 
-const lanePlanPath: string = a.lanePlanPath || `docs/epics/${epicBranch}/lane-plan.json`
+const epicDir: string = `docs/epics/${epicBranch}`
+// ── Lane-plan resolution: check lane-plan-final.json first (version drift #232/#237) ──
+let lanePlanPath: string = a.lanePlanPath || ''
+if (!lanePlanPath) {
+  const resolveText = await agent(
+    resolveLanePlanPrompt(epicDir),
+    { label: 'resolve-lane-plan', phase: 'Topology', model: model('fast') }
+  )
+  lanePlanPath = resolveLanePlanPath(epicDir, resolveText)
+}
 
 // ── Topology ──
 
