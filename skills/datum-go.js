@@ -48,6 +48,17 @@ function buildWaves(lanePlan) {
   }
   return waves;
 }
+function resolveLanePlanPrompt(epicDir) {
+  return `[${epicDir}]
+ls "${epicDir}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"
+Return ONLY: "final" if lane-plan-final.json exists, "default" if only lane-plan.json exists, or "none" if neither exists.`;
+}
+function resolveLanePlanPath(epicDir, agentResult) {
+  const resolved = agentResult.trim();
+  if (resolved === "final") return `${epicDir}/lane-plan-final.json`;
+  if (resolved === "default") return `${epicDir}/lane-plan.json`;
+  throw new Error(`No lane-plan.json found \u2014 tried: ${epicDir}/lane-plan-final.json, ${epicDir}/lane-plan.json`);
+}
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
   const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
@@ -220,9 +231,14 @@ if (shouldRun("act", 3)) {
   const runId = info.timestamp;
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`);
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
-  const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`;
+  const epicDir = `docs/epics/${epicBranch}`;
+  const resolveText = await agent(
+    resolveLanePlanPrompt(epicDir),
+    { label: "resolve-lane-plan", phase: "Act", model: model("fast") }
+  );
+  const lanePlanPath = resolveLanePlanPath(epicDir, resolveText);
   const planText = await agent(
-    `Read ${lanePlanPath} and return its contents as raw JSON text. If not found, try .datum/lane-plan.json as fallback. Output ONLY the JSON, no markdown fences, no explanation.`,
+    `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
     { label: "read-plan", model: model("fast") }
   );
   const lanePlan = typeof planText === "string" ? parseAgentJson(planText, null) : planText;
