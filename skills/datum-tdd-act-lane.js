@@ -269,7 +269,45 @@ Only write and commit test files: {{testFilesList}}
 `;
 
 // skills/src/prompts/green.md
-var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nCONTEXT MANAGEMENT:\nBefore reading implementation files, use headroom_compress on any file longer than 100 lines.\nThis saves context for reasoning. Use headroom_retrieve with a targeted query when you need\nspecific sections back (e.g. query="function signature" or query="class definition").\n\nTARGET CONTEXT (import guard):\nIf target_context is present in the task packet, only use imports that are valid for the target.\nCheck the dependency list before adding any import statement. DO NOT import modules that are\nnot listed as dependencies of the target you are implementing in.\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 fill in function bodies, do not create new files\n3. Check existing_api \u2014 extend it, do not replace it\n4. Implement only what the errors require\n\nAFTER WRITING:\n5. Run {{testCommand}} \u2014 ALL tests must pass. Report tests_pass=true and the exit code.\n6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n7. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"\n8. Report commit_sha.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- contract_summary: function signatures extracted from acceptance criteria\n- impl_stubs: skeleton files \u2014 fill these in\n- existing_api: current module code shape\n\nCONSTRAINTS:\n- Only write and commit implementation files: {{implFilesList}}\n';
+var green_default = `GREEN TDD agent. Make the failing tests pass with minimum implementation code.
+
+SETUP (run first): {{greenCtxCmd}}
+TASK PACKET: {{greenPacketStr}}
+
+CONTEXT MANAGEMENT:
+Before reading implementation files, use headroom_compress on any file longer than 100 lines.
+This saves context for reasoning. Use headroom_retrieve with a targeted query when you need
+specific sections back (e.g. query="function signature" or query="class definition").
+
+TARGET CONTEXT (import guard):
+If target_context is present in the task packet, only use imports that are valid for the target.
+Check the dependency list before adding any import statement. DO NOT import modules that are
+not listed as dependencies of the target you are implementing in.
+
+APPROACH:
+1. Read test_signal carefully \u2014 each error tells you exactly what to implement
+2. Read impl_stubs \u2014 fill in function bodies, do not create new files
+3. Check existing_api \u2014 extend it, do not replace it
+4. Implement only what the errors require
+
+AFTER WRITING:
+5. Run {{testCommand}} \u2014 ALL tests must pass. Report tests_pass=true and the exit code.
+6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
+7. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"
+8. Report commit_sha.
+
+PACKET FIELDS:
+- test_signal: error messages from failing tests \u2014 your implementation spec
+- contract_summary: function signatures extracted from acceptance criteria
+- impl_stubs: skeleton files \u2014 fill these in
+- existing_api: current module code shape
+
+CONSTRAINTS:
+- Only write and commit implementation files: {{implFilesList}}
+- If making tests pass requires modifying files outside {{implFilesList}}, report success=false with failure_reason='scope_exceeded: <list-of-files>'. Do NOT write files outside allowed scope.
+- Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
+- For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
+`;
 
 // skills/src/prompts/green-retry.md
 var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 all tests must pass. Report tests_pass=true.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n';
@@ -360,32 +398,96 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const acStr = (lane.acceptance_criteria || []).join("\n");
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
-  const testFuncDiffPattern = cfg2.language === "swift" ? "-E '^\\+[[:space:]]*(@Test|func test)'" : cfg2.language === "go" ? "-E '^\\+[[:space:]]*func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E '^\\+[[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '^\\+[[:space:]]*def test_'";
+  const swiftTargetFilter = cfg2.language === "swift" ? (() => {
+    const swft = implFiles[0];
+    if (swft) {
+      const parts = swft.split("/");
+      const sourcesIdx = parts.indexOf("Sources");
+      if (sourcesIdx >= 0 && parts[sourcesIdx + 1]) {
+        return `--filter ${parts[sourcesIdx + 1]}`;
+      }
+    }
+    return null;
+  })() : null;
+  const scopedTestCmd = swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
+  const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
+  const testFuncDiffPattern = cfg2.language === "swift" ? "-E '[+][[:space:]]*(@Test|func test)'" : cfg2.language === "go" ? "-E '[+][[:space:]]*func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '[+][[:space:]]*def test_'";
   const testFuncGrepPattern = cfg2.language === "swift" ? "-E '@Test|func test'" : cfg2.language === "go" ? "-E 'func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E 'it\\(|test\\(|describe\\('" : "-E 'def test_|async def test_'";
   const testFuncBodyPattern = cfg2.language === "swift" ? "'func test'" : cfg2.language === "go" ? "'func Test'" : "'def test_'";
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg);
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed" };
   }
+  const allowedTestPaths = new Set(testFiles);
+  for (const f of testFiles) {
+    allowedTestPaths.add(f.replace("./", "").replace("test/", "").replace("tests/", ""));
+  }
+  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '.(test|spec).(ts|js|tsx|jsx)$|test_.*.py$' | grep -vxFf <(echo ${testFiles.map((f) => f.replace(/'/g, "'\\''")).join("\n")} 2>/dev/null) || true`;
+  await agent(
+    `Run: ${cleanupCmd}
+For each file found, run: rm -v "<file>"
+Return the list of removed files, or "none" if nothing to remove.`,
+    { label: `pre-red-cleanup:${taskId}`, phase: "Act", model: model("fast") }
+  );
+  log(`[${taskId}] Pre-RED cleanup completed`);
   log(`[${taskId}] RED: writing failing tests`);
   const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   let targetContext;
-  const preflightRaw = await agent(
-    `Run: ${skeletonCmd}
+  let preflightRaw = null;
+  if (planSkeletonPath) {
+    preflightRaw = await agent(
+      `Read the file: cat "${planSkeletonPath}" 2>/dev/null || echo ""
+If the file exists, return ONLY its raw JSON contents.
+If the file does not exist or is empty, return exactly: MISSING
+No markdown fences, no explanation.`,
+      { label: `skeleton-read:${taskId}`, phase: "Act", model: model("fast") }
+    );
+    if (preflightRaw && preflightRaw.trim() !== "MISSING") {
+      log(`[${taskId}] using pre-generated skeleton from Plan phase`);
+    } else {
+      preflightRaw = null;
+    }
+  }
+  if (!preflightRaw) {
+    preflightRaw = await agent(
+      `Run: ${skeletonCmd}
 Then read the output file: cat "${wt}/${preflightPath}" 2>/dev/null || echo "{}"
 Return ONLY the raw JSON contents of the file. No markdown fences, no explanation.`,
-    { label: `preflight:${taskId}`, phase: "Act", model: model("fast") }
-  );
+      { label: `preflight:${taskId}`, phase: "Act", model: model("fast") }
+    );
+  }
+  let preflightFramework;
+  let preflightTestPaths = [];
   if (preflightRaw) {
     const preflightData = parseAgentJson(preflightRaw, {});
     if (preflightData.target_context) {
       targetContext = preflightData.target_context;
       log(`[${taskId}] target_context extracted: ${Object.keys(targetContext).join(", ")}`);
     }
+    preflightFramework = preflightData.framework;
+    if (preflightData.outputs && preflightData.outputs.length > 0) {
+      for (const output of preflightData.outputs) {
+        if (output.path && !testFiles.includes(output.path)) {
+          testFiles.push(output.path);
+          preflightTestPaths.push(output.path);
+        }
+      }
+      if (preflightTestPaths.length > 0) {
+        log(`[${taskId}] preflight registered ${preflightTestPaths.length} test file(s): ${preflightTestPaths.join(", ")}`);
+      }
+      if (testFiles.length === 0) {
+        return { task_id: taskId, status: "failed", stage: "RED", error: "no_test_files: classifyFiles produced empty testFiles and preflight has no registered test paths" };
+      }
+    }
+  }
+  if (testFiles.length === 0) {
+    log(`[${taskId}] ERROR: classifyFiles produced empty testFiles \u2014 lane cannot proceed without a test file to write tests against`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: "no_test_files: classifyFiles returned empty testFiles for lane" };
   }
   const redExtras = targetContext ? { target_context: targetContext } : {};
   const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", redExtras);
@@ -396,7 +498,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     skeletonCmd,
     redCtxCmd,
     redPacketStr: JSON.stringify(redPacket),
-    testCommand: laneTestCmd,
+    testCommand: scopedTestCmd,
     testFilesList: testFiles.join(" "),
     commitPrefix: redPacket.commit_prefix,
     taskId,
@@ -408,6 +510,10 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   );
   if (red?.success) {
     log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
+  }
+  if (!red || !red.committed) {
+    log(`[${taskId}] RED: agent did not commit \u2014 failing`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
   }
   if (!red || !red.success) {
     log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
@@ -422,29 +528,39 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   }
   const acCount = (lane.acceptance_criteria || []).length;
   if (acCount > 0) {
-    const countResult = await agent(
-      `Run: git -C "${wt}" diff HEAD~1 HEAD -- ${testFiles.join(" ")} | grep -c ${testFuncDiffPattern} || echo 0
-Return ONLY a JSON object with the count. Example: {"new_test_count": 5}
-Output raw JSON only, no markdown fences, no explanation.`,
+    let newTestCount2 = 0;
+    let gatePassed = false;
+    const countRaw = await agent(
+      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern '${testFuncDiffPattern.replace(/^-E\s+/, "")}' --required ${acCount}
+Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,
         phase: "Act",
-        model: model("fast"),
-        schema: { type: "object", properties: { new_test_count: { type: "integer", minimum: 0 } }, required: ["new_test_count"] }
+        model: model("fast")
       }
     );
-    let newTestCount = 0;
-    if (countResult && typeof countResult === "object" && "new_test_count" in countResult) {
-      newTestCount = countResult.new_test_count;
+    if (countRaw && typeof countRaw === "object") {
+      const obj = countRaw;
+      newTestCount2 = obj.new_test_count || 0;
+      gatePassed = obj.passed !== void 0 ? Boolean(obj.passed) : newTestCount2 >= acCount;
     } else {
-      const digits = String(countResult).replace(/[^0-9]/g, "");
-      newTestCount = digits ? parseInt(digits, 10) : 0;
+      const text = countRaw.trim();
+      const match = text.match(/\{"new_test_count":\s*(\d+)/);
+      if (match) {
+        newTestCount2 = parseInt(match[1], 10);
+        const passedMatch = text.match(/"passed":\s*(true|false)/);
+        gatePassed = passedMatch ? passedMatch[1] === "true" : newTestCount2 >= acCount;
+      } else {
+        const digits = text.replace(/[^0-9]/g, "");
+        newTestCount2 = digits ? parseInt(digits, 10) : 0;
+        gatePassed = newTestCount2 >= acCount;
+      }
     }
-    if (newTestCount < acCount) {
-      log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`);
-      return { task_id: taskId, status: "failed", stage: "RED", error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` };
+    if (!gatePassed) {
+      log(`[${taskId}] RED FAILED: only ${newTestCount2} new test functions found, need >= ${acCount} (one per AC)`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `no_new_test_functions_committed: found ${newTestCount2}, need >= ${acCount}` };
     }
-    log(`[${taskId}] RED: ${newTestCount} new test functions confirmed (>= ${acCount} ACs)`);
+    log(`[${taskId}] RED: ${newTestCount2} new test functions confirmed (>= ${acCount} ACs)`);
   }
   const sgPatterns = cfg2.language === "swift" ? [
     { pattern: "XCTFail", name: "XCTFail" },
@@ -489,35 +605,37 @@ Output raw JSON only.`,
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   await updateStage(issueId, "red", red.commit_sha);
-  if (!red.committed) {
-    log(`[${taskId}] RED: agent did not commit \u2014 failing`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
-  }
   const redOwnership = await verifyFileOwnership(taskId, wt, "RED", testFiles, implFiles);
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
   }
-  const testCountResult = await agent(
+  const rawCounts = await agent(
     `Count test functions in these files:
+After-counts (current worktree):
 ${testFiles.map((f) => `grep -c ${testFuncGrepPattern} "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
-Also check the parent commit:
-${testFiles.map((f) => `git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join("\n")}
-Return JSON: {"before": <total_before>, "after": <total_after>, "new_count": <after - before>}
-Output raw JSON only.`,
+Before-counts (parent commit \u2014 0 for first commit):
+${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join("\n")}
+Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`,
       phase: "Act",
-      model: model("fast"),
-      schema: { type: "object", properties: { before: { type: "integer" }, after: { type: "integer" }, new_count: { type: "integer" } }, required: ["before", "after", "new_count"] }
+      model: model("fast")
     }
   );
-  const counts = testCountResult && typeof testCountResult === "object" ? testCountResult : parseAgentJson(testCountResult, {});
-  if ((counts.new_count || 0) === 0) {
-    log(`[${taskId}] RED FAILED: no new test functions written (before=${counts.before}, after=${counts.after})`);
+  let afterCount = 0;
+  let beforeCount = 0;
+  const numbers = String(rawCounts).replace(/[^0-9\n]/g, "").trim().split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+  if (numbers.length >= 2) {
+    afterCount = numbers.slice(0, numbers.length / 2).reduce((a2, b) => a2 + b, 0);
+    beforeCount = numbers.slice(numbers.length / 2).reduce((a2, b) => a2 + b, 0);
+  }
+  const newTestCount = afterCount - beforeCount;
+  if (newTestCount <= 0) {
+    log(`[${taskId}] RED FAILED: no new test functions written (before=${beforeCount}, after=${afterCount})`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_new_tests_written: RED agent did not append any test functions" };
   }
-  log(`[${taskId}] RED: ${counts.new_count} new test functions verified (${counts.before} \u2192 ${counts.after})`);
+  log(`[${taskId}] RED: ${newTestCount} new test functions verified (${beforeCount} \u2192 ${afterCount})`);
   const reflectResult = await agent(
     reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
     { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA }
@@ -539,13 +657,13 @@ Output raw JSON only.`,
     contract_summary: contractSummary,
     ...targetContext ? { target_context: targetContext } : {}
   };
-  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "GREEN", greenExtras);
+  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
   const greenCtxCmd = laneCtxCmd(greenPacket, wt);
   const greenVars = {
     wt,
     greenCtxCmd,
     greenPacketStr: JSON.stringify(greenPacket),
-    testCommand: laneTestCmd,
+    testCommand: scopedTestCmd,
     implFilesList: implFiles.join(" "),
     commitPrefix: greenPacket.commit_prefix
   };
@@ -586,7 +704,7 @@ Output raw JSON only.`,
     wt,
     implFiles: implFiles.join(", "),
     testFiles: testFiles.join(", "),
-    testCommand: laneTestCmd,
+    testCommand: scopedTestCmd,
     acStr
   });
   const lenses = skepticLenses();
@@ -612,7 +730,7 @@ Output raw JSON only.`,
   } else {
     log(`[${taskId}] SKEPTIC VERDICT: PASS (${crossValidated.length} cross-validated)`);
   }
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, laneCfg);
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
   if (!refResult) {
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
   }

@@ -219,6 +219,7 @@ if (shouldRun("act", 3)) {
   const epicBranch = info.branch;
   const runId = info.timestamp;
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`);
+  const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
   const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`;
   const planText = await agent(
     `Read ${lanePlanPath} and return its contents as raw JSON text. If not found, try .datum/lane-plan.json as fallback. Output ONLY the JSON, no markdown fences, no explanation.`,
@@ -273,7 +274,7 @@ if (shouldRun("act", 3)) {
         lanePlan,
         worktreePaths: setup.worktreePaths,
         batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir },
         priorFailures: actFailures,
         priorCompleted: actCompleted
       }

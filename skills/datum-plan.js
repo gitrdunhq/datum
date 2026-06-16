@@ -157,6 +157,18 @@ Output raw JSON only.`,
   { label: "build-lane-plan", model: model("fast") }
 );
 log("Lane plan built and committed");
+var skeletonDir = `${epicDir}/skeletons`;
+await agent(
+  `Run these commands in order:
+1. mkdir -p "${skeletonDir}"
+2. datum skeleton --batch --language ${language} --tasks "${epicDir}/lane-plan.json" --output-dir "${skeletonDir}"
+3. git add "${skeletonDir}" && git commit -m "plan: pre-generate RED skeletons"
+If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
+Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
+Output raw JSON only.`,
+  { label: "skeleton-batch", model: model("fast") }
+);
+log(`Skeletons pre-generated in ${skeletonDir}`);
 phase("Triage");
 var triageRaw = await agent(
   plan_triage_default + `

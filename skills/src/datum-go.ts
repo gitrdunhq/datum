@@ -162,6 +162,9 @@ if (shouldRun('act', 3)) {
   const runId = info.timestamp
   if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`)
 
+  // Skeleton dir from Plan phase (pre-generated test contracts)
+  const skeletonDir = `docs/epics/${epicBranch}/skeletons`
+
   // Read lane plan from epic dir (never root)
   const lanePlanPath = `docs/epics/${epicBranch}/lane-plan.json`
   const planText = await agent(
@@ -228,7 +231,7 @@ if (shouldRun('act', 3)) {
       { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
