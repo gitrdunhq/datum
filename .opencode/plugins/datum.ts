@@ -3,7 +3,7 @@
 
 import { tool, type Plugin, type PluginModule, type ToolContext } from "@opencode-ai/plugin";
 import { z } from "zod";
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -57,6 +57,132 @@ function readDatumState(dir: string): {
 
 function dir(args: { cwd?: string }, ctx: ToolContext): string {
   return args.cwd ?? ctx.directory;
+}
+
+// ---------------------------------------------------------------------------
+// Headroom MCP client — persistent subprocess for context compression
+// ---------------------------------------------------------------------------
+
+const HEADROOM_BIN = "/Users/samfakhreddine/.local/bin/headroom";
+const COMPRESS_THRESHOLD = 8000;
+const HEADROOM_TIMEOUT = 10_000;
+const SKIP_TOOLS = new Set(["mcp__headroom__headroom_compress", "mcp__headroom__headroom_retrieve", "mcp__headroom__headroom_stats"]);
+
+type RpcCallback = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+
+class HeadroomMCP {
+  private proc: ChildProcess | null = null;
+  private ready: Promise<void> | null = null;
+  private rpcId = 0;
+  private pending = new Map<number, RpcCallback>();
+  private buf = "";
+
+  async init(): Promise<void> {
+    if (this.ready) return this.ready;
+    this.ready = this.spawn();
+    return this.ready;
+  }
+
+  private spawn(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.proc = spawn(HEADROOM_BIN, ["mcp", "serve"], {
+        stdio: ["pipe", "pipe", "ignore"],
+      });
+
+      this.proc.stdout!.on("data", (chunk: Buffer) => {
+        this.buf += chunk.toString();
+        this.drain();
+      });
+
+      this.proc.on("error", (err) => {
+        this.ready = null;
+        this.proc = null;
+        reject(err);
+      });
+
+      this.proc.on("exit", () => {
+        this.ready = null;
+        this.proc = null;
+        for (const cb of this.pending.values()) cb.reject(new Error("headroom exited"));
+        this.pending.clear();
+      });
+
+      const id = ++this.rpcId;
+      this.pending.set(id, {
+        resolve: () => {
+          this.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+          resolve();
+        },
+        reject,
+      });
+      this.send({
+        jsonrpc: "2.0", id, method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "datum-plugin", version: "1.0.0" },
+        },
+      });
+    });
+  }
+
+  private send(msg: unknown): void {
+    this.proc?.stdin?.write(JSON.stringify(msg) + "\n");
+  }
+
+  private drain(): void {
+    let nl: number;
+    while ((nl = this.buf.indexOf("\n")) !== -1) {
+      const line = this.buf.slice(0, nl).trim();
+      this.buf = this.buf.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line) as { id?: number; result?: unknown; error?: { message: string } };
+        if (msg.id !== undefined && this.pending.has(msg.id)) {
+          const cb = this.pending.get(msg.id)!;
+          this.pending.delete(msg.id);
+          if (msg.error) cb.reject(new Error(msg.error.message));
+          else cb.resolve(msg.result);
+        }
+      } catch { /* ignore malformed lines */ }
+    }
+  }
+
+  async compress(content: string): Promise<string> {
+    await this.init();
+    const id = ++this.rpcId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("headroom compress timeout"));
+      }, HEADROOM_TIMEOUT);
+
+      this.pending.set(id, {
+        resolve: (result: unknown) => {
+          clearTimeout(timer);
+          const r = result as { content?: Array<{ text?: string }> } | undefined;
+          resolve(r?.content?.[0]?.text ?? content);
+        },
+        reject: (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+
+      this.send({
+        jsonrpc: "2.0", id, method: "tools/call",
+        params: { name: "headroom_compress", arguments: { content } },
+      });
+    });
+  }
+
+  kill(): void {
+    if (this.proc) {
+      this.proc.kill();
+      this.proc = null;
+      this.ready = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -360,8 +486,11 @@ const datum_tdd_args = tool({
 // Plugin
 // ---------------------------------------------------------------------------
 
-const server: Plugin = async (input) => ({
-  dispose: async () => {},
+const server: Plugin = async (input) => {
+  const headroom = new HeadroomMCP();
+
+  return {
+  dispose: async () => { headroom.kill(); },
 
   tool: {
     datum_status,
@@ -403,6 +532,17 @@ const server: Plugin = async (input) => ({
       );
     }
   },
-});
+
+  "tool.execute.after": async (inp, output) => {
+    if (output.output.length < COMPRESS_THRESHOLD) return;
+    if (SKIP_TOOLS.has(inp.tool)) return;
+    try {
+      output.output = await headroom.compress(output.output);
+    } catch {
+      // headroom unavailable — leave output as-is
+    }
+  },
+};
+};
 
 export default { server } satisfies PluginModule;
