@@ -1,4 +1,5 @@
 import { model, type ModelName } from './shared/models'
+import { resilientAgent } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -95,6 +96,7 @@ async function runLane(
   const lane: Lane = lanePlan.lanes[taskId]
   const wt: string = worktreePaths[taskId]
   const issueId: string = getIssueId(lanePlan as any, taskId)
+  const runId: string = (cfg as any).runId
   const isStructural: boolean = lane.stage === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
   const acStr: string = (lane.acceptance_criteria || []).join('\n')
@@ -144,12 +146,48 @@ async function runLane(
     ? "'func Test'"
     : "'def test_'"
 
+  // ── Cross-run completion check: skip if a previous run already completed this lane ──
+  const completionPath = runId
+    ? `.datum/runs/${runId}/lane-state/${taskId}.json`
+    : null
+  if (completionPath) {
+    const completionExist: string | null = await agent(
+      `Read the file: cat "${completionPath}" 2>/dev/null || echo ""
+If the file exists, return ONLY its raw contents (valid JSON).
+If the file does not exist or is empty, return exactly: MISSING
+No markdown fences, no explanation.`,
+      { label: `completion-check:${taskId}`, phase: 'Act', model: model('fast') },
+    )
+    if (completionExist && completionExist.trim() !== 'MISSING') {
+      const compData = parseAgentJson<{ task_id?: string }>(completionExist, {})
+      if (compData.task_id === taskId) {
+        log(`[${taskId}] lane already completed in a prior run — skipping`)
+        return { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: 'cross-run completion: lane was completed in a previous run' }
+      }
+    }
+  }
+
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
+
+  // ── File-based completion write helper ──
+  async function writeCompletion(): Promise<void> {
+    if (!runId) return
+    const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`
+    const dir = cp.split('/').slice(0, -1).join('/')
+    await agent(
+      `Run: mkdir -p ./${dir}
+Write to file: ./${cp}
+Write: {"task_id": "${taskId}", "status": "completed"}
+List the files changed.`,
+      { label: `completion-write:${taskId}`, phase: 'Act', model: model('fast') },
+    )
+  }
 
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
+    await writeCompletion()
     return { task_id: taskId, status: 'completed' }
   }
 
@@ -264,9 +302,9 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testFuncPattern: testFuncLabel,
   }
 
-  let red: StageResult | null = await agent(
+  let red: StageResult | null = await resilientAgent(
     redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
+    { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
   )
 
   if (red?.success) {
@@ -281,9 +319,9 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
 
   if (!red || !red.success) {
     log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
-    red = await agent(
+    red = await resilientAgent(
       redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
-      { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
+      { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
     )
   }
 
@@ -459,9 +497,9 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     commitPrefix: greenPacket.commit_prefix,
   }
 
-  let green: StageResult | null = await agent(
+  let green: StageResult | null = await resilientAgent(
     greenPrompt(greenVars),
-    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA },
+    { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt },
   )
 
   if (green?.success) {
@@ -470,13 +508,13 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
 
   if (!green || !green.success || !green.tests_pass) {
     log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || 'unknown'}, escalating to opus`)
-    green = await agent(
+    green = await resilientAgent(
       greenRetryPrompt({
         ...greenVars,
         failureReason: green?.failure_reason || 'unknown',
         greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
       }),
-      { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA },
+      { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
     )
   }
 
@@ -533,6 +571,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
 
   log(`[${taskId}] === LANE COMPLETE ===`)
   await updateStage(issueId, 'done')
+  await writeCompletion()
   return { task_id: taskId, status: 'completed' }
 }
 
@@ -563,7 +602,7 @@ async function runRefactor(
   const refactorPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', {})
   const refactorCtxCmd: string = laneCtxCmd(refactorPacket, wt)
 
-  const refactor: StageResult | null = await agent(
+  const refactor: StageResult | null = await resilientAgent(
     refactorPrompt({
       wt,
       refactorCtxCmd,
@@ -572,7 +611,7 @@ async function runRefactor(
       allFilesList: [...testFiles, ...implFiles].join(' '),
       commitPrefix: refactorPacket.commit_prefix,
     }),
-    { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA },
+    { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
   )
 
   if (!refactor?.success) {
