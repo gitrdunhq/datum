@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "873713948c9b",
+  "session_id": "968ba307-1d67-486c-948c-1bbb96ebacdc",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-17T23:43:24.021313Z",
+  "branch": "fix/release-script-and-package-cleanup",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "docs/epics/fix/release-script-and-package-cleanup/RETRO.md"
+  ],
+  "agent": "Gemini CLI",
+  "model": "gemini-3.1-pro-preview",
+  "turn_id": "9b7b1f49e737",
+  "initial_attribution": {
+    "calculated_at": "2026-06-17T23:43:24.016754Z",
+    "agent_lines": 41,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 41,
+    "total_lines_changed": 41,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
