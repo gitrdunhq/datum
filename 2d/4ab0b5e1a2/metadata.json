@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "2d4ab0b5e1a2",
+  "strategy": "manual-commit",
+  "branch": "fix/release-script-and-package-cleanup",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBMigrationRunner.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBReaderActor.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2d/4ab0b5e1a2/0/metadata.json",
+      "transcript": "/2d/4ab0b5e1a2/0/full.jsonl",
+      "content_hash": "/2d/4ab0b5e1a2/0/content_hash.txt",
+      "prompt": "/2d/4ab0b5e1a2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3239,
+    "cache_creation_tokens": 2580833,
+    "cache_read_tokens": 17867372,
+    "output_tokens": 83867,
+    "api_call_count": 199
+  }
+}

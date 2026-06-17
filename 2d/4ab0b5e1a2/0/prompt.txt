@@ -1,0 +1,1107 @@
+theres a gh parent issue i beleive 221?
+
+---
+
+lets  rll those fixes up please
+
+---
+
+yes
+
+---
+
+/codex:adversarial-review --scope branch
+
+---
+
+<task-notification>
+<task-id>bwy8cu3ag</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/06a7e89f-82e3-4f80-b34d-b2018549371f/tasks/bwy8cu3ag.output</output-file>
+<status>completed</status>
+<summary>Background command "Codex adversarial review" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+lets fix all the findings
+
+---
+
+how do I run a ts file scirpt in my cli (nmot realted to this repo)_
+
+---
+
+give me a new build lets test this out
+
+---
+
+to signb the dmg
+
+---
+
+to signb the dmg
+
+---
+
+-------------------------------------
+Translated Report (Full Report Below)
+-------------------------------------
+Process:             TheRecord [32284]
+Path:                /Applications/TheRecord.app/Contents/MacOS/TheRecord
+Identifier:          app.the-record
+Version:             0.9.0 (1)
+Code Type:           ARM-64 (Native)
+Role:                Background
+Parent Process:      launchd [1]
+Coalition:           app.the-record [29522]
+User ID:             501
+
+Date/Time:           2026-06-17 16:39:13.3512 -0600
+Launch Time:         2026-06-17 16:39:12.3962 -0600
+Hardware Model:      Mac16,11
+OS Version:          macOS 26.5.1 (25F80)
+Release Type:        User
+
+Crash Reporter Key:  REDACTED
+Incident Identifier: 6BB7236B-CCC4-4907-B322-031D7C30C814
+
+Time Awake Since Boot: 180000 seconds
+
+System Integrity Protection: enabled
+
+Triggered by Thread: 0
+
+Exception Type:    EXC_CRASH (SIGABRT)
+Exception Codes:   0x0000000000000000, 0x0000000000000000
+
+Termination Reason:  Namespace DYLD, Code 1, Library missing
+Library not loaded: @rpath/Cmlx.framework/Versions/A/Cmlx
+Referenced from: <AB653E7C-2BA9-376D-BC2D-920BDEF02263> /Applications/TheRecord.app/Contents/MacOS/TheRecord
+Reason: tried: '/usr/lib/swift/Cmlx.framework/Versions/A/Cmlx' (no such file, not in dyld cache), '/System/Volumes/Preboot/Cryptexes/OS/usr/lib/swift/Cmlx.framework/Versions/A/Cmlx' (no such file), '/Applications/TheRecord.app/Contents/MacOS/Cmlx.framework/Versions/A/Cmlx' (no such file), '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx/Cmlx.framework/Versions/A/Cmlx' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx/Cmlx.framework/Versions/A/Cmlx' (no such file), '/usr/lib/swift/Cmlx.framework/Versions/A/Cmlx' (no such file, not in dyld cache), '/System/Volumes/Preboot/Cryptexes/OS/usr/lib/swift/Cmlx.framework/Versions/A/Cmlx' (no such file), '/Applications/TheRecord.app/Contents
+(terminated at launch; ignore backtrace)
+
+Dyld Error Message:
+  1
+
+
+Thread 0 Crashed:
+0   dyld                                     0x18efa1b84 __abort_with_payload + 8
+1   dyld                                     0x18f02f1fc abort_with_payload_wrapper_internal + 104
+2   dyld                                     0x18f02f230 abort_with_payload + 16
+3   dyld                                     0x18efc1504 dyld4::halt(char const*, dyld4::StructuredError const*) + 312
+4   dyld                                     0x18efbd718 dyld4::prepare(dyld4::APIs&, mach_o::UnsafeHeader const*) + 4784
+5   dyld                                     0x18efbc44c dyld4::start(dyld4::KernelArgs*, void*, void*, unsigned long long)::$_1::operator()() const + 320
+6   dyld                                     0x18efbbda8 start + 6904
+
+
+Thread 0 crashed with ARM Thread State (64-bit):
+    x0: 0x0000000000000006   x1: 0x0000000000000001   x2: 0x000000016ee863c0   x3: 0x000000000000006f
+    x4: 0x000000016ee85fc0   x5: 0x0000000000000000   x6: 0x0000000000000000   x7: 0x0000000000000000
+    x8: 0x0000000000000020   x9: 0x2549a585bd9500f9  x10: 0x00000001fb248018  x11: 0x00000001fb264140
+   x12: 0x0000000000020000  x13: 0x000000018efa09c0  x14: 0x0000000000000001  x15: 0x0000000000000000
+   x16: 0x0000000000000209  x17: 0x000000016ee85df0  x18: 0x0000000000000000  x19: 0x0000000000000000
+   x20: 0x000000016ee85fc0  x21: 0x000000000000006f  x22: 0x000000016ee863c0  x23: 0x0000000000000001
+   x24: 0x0000000000000006  x25: 0x0000000000000000  x26: 0x000000001f070004  x27: 0x0000000000000002
+   x28: 0x000000018ef9c000   fp: 0x000000016ee85f90   lr: 0x000000018f02f1fc
+    sp: 0x000000016ee85f50   pc: 0x000000018efa1b84 cpsr: 0x80000000
+   far: 0x0000000000000000  esr: 0x56000080 (Syscall)
+
+Binary Images:
+       0x100f78000 -        0x104393fff app.the-record (0.9.0) <ab653e7c-2ba9-376d-bc2d-920bdef02263> /Applications/TheRecord.app/Contents/MacOS/TheRecord
+       0x18ef9c000 -        0x18f042217 dyld (*) <a237ef81-b68b-37ba-a165-92c965529534> /usr/lib/dyld
+               0x0 - 0xffffffffffffffff ??? (*) <00000000-0000-0000-0000-000000000000> ???
+
+External Modification Summary:
+  Calls made by other processes targeting this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by all processes on this machine:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+
+VM Region Summary:
+ReadOnly portion of Libraries: Total=662.6M resident=0K(0%) swapped_out_or_unallocated=662.6M(100%)
+Writable regions: Total=8944K written=128K(1%) resident=128K(1%) swapped_out=0K(0%) unallocated=8816K(99%)
+
+                                VIRTUAL   REGION 
+REGION TYPE                        SIZE    COUNT (non-coalesced) 
+===========                     =======  ======= 
+STACK GUARD                       56.0M        1 
+Stack                             8176K        1 
+__AUTH_CONST                        22K        1 
+__DATA                            1524K        3 
+__DATA_CONST                      1065K        2 
+__DATA_DIRTY                        14K        1 
+__LINKEDIT                       609.8M        2 
+__TEXT                            52.8M        2 
+__TPRO_CONST                       128K        1 
+dyld private memory                 16K        1 
+page table in kernel               128K        1 
+===========                     =======  ======= 
+TOTAL                            729.4M       16 
+
+
+-----------
+Full Report
+-----------
+
+{"app_name":"TheRecord","timestamp":"2026-06-17 16:39:14.00 -0600","app_version":"0.9.0","slice_uuid":"ab653e7c-2ba9-376d-bc2d-920bdef02263","build_version":"1","platform":1,"bundleID":"app.the-record","share_with_app_devs":0,"is_first_party":0,"bug_type":"309","os_version":"macOS 26.5.1 (25F80)","roots_installed":0,"name":"TheRecord","incident_id":"6BB7236B-CCC4-4907-B322-031D7C30C814"}
+{
+  "uptime" : 180000,
+  "procRole" : "Background",
+  "version" : 2,
+  "userID" : 501,
+  "deployVersion" : 210,
+  "modelCode" : "Mac16,11",
+  "coalitionID" : 29522,
+  "osVersion" : {
+    "train" : "macOS 26.5.1",
+    "build" : "25F80",
+    "releaseType" : "User"
+  },
+  "captureTime" : "2026-06-17 16:39:13.3512 -0600",
+  "codeSigningMonitor" : 2,
+  "incident" : "6BB7236B-CCC4-4907-B322-031D7C30C814",
+  "pid" : 32284,
+  "translated" : false,
+  "cpuType" : "ARM-64",
+  "procLaunch" : "2026-06-17 16:39:12.3962 -0600",
+  "procStartAbsTime" : 4447069687927,
+  "procExitAbsTime" : 4447091617457,
+  "procName" : "TheRecord",
+  "procPath" : "\/Applications\/TheRecord.app\/Contents\/MacOS\/TheRecord",
+  "bundleInfo" : {"CFBundleShortVersionString":"0.9.0","CFBundleVersion":"1","CFBundleIdentifier":"app.the-record"},
+  "storeInfo" : {"deviceIdentifierForVendor":"EF776E2F-8D4E-5B1E-9C2B-87F86852AB66","thirdParty":true},
+  "parentProc" : "launchd",
+  "parentPid" : 1,
+  "coalitionName" : "app.the-record",
+  "crashReporterKey" : "REDACTED",
+  "appleIntelligenceStatus" : {"state":"available"},
+  "developerMode" : 1,
+  "codeSigningID" : "app.the-record",
+  "codeSigningTeamID" : "",
+  "codeSigningFlags" : 570425857,
+  "codeSigningValidationCategory" : 10,
+  "codeSigningTrustLevel" : 4294967295,
+  "codeSigningAuxiliaryInfo" : 0,
+  "instructionByteStream" : {"beforePC":"vAAAADgBAABwAAAAAAEAAGgAAAAYAQAASAEAAGwBAAAwQYDSARAA1A==","atPC":"AwEAVH8jA9X9e7+p\/QMAkYX0\/5e\/AwCR\/XvBqP8PX9bAA1\/WEC2A0g=="},
+  "bootSessionUUID" : "2A272A0F-4CFC-463F-9818-C032D2599A27",
+  "fatalDyldError" : 1,
+  "sip" : "enabled",
+  "exception" : {"codes":"0x0000000000000000, 0x0000000000000000","rawCodes":[0,0],"type":"EXC_CRASH","signal":"SIGABRT"},
+  "termination" : {"code":1,"flags":518,"namespace":"DYLD","indicator":"Library missing","details":["(terminated at launch; ignore backtrace)"],"reasons":["Library not loaded: @rpath\/Cmlx.framework\/Versions\/A\/Cmlx","Referenced from: <AB653E7C-2BA9-376D-BC2D-920BDEF02263> \/Applications\/TheRecord.app\/Contents\/MacOS\/TheRecord","Reason: tried: '\/usr\/lib\/swift\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file, not in dyld cache), '\/System\/Volumes\/Preboot\/Cryptexes\/OS\/usr\/lib\/swift\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file), '\/Applications\/TheRecord.app\/Contents\/MacOS\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file), '\/Applications\/Xcode.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/lib\/swift-6.2\/macosx\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file), '\/System\/Volumes\/Preboot\/Cryptexes\/OS\/Applications\/Xcode.app\/Contents\/Developer\/Toolchains\/XcodeDefault.xctoolchain\/usr\/lib\/swift-6.2\/macosx\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file), '\/usr\/lib\/swift\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file, not in dyld cache), '\/System\/Volumes\/Preboot\/Cryptexes\/OS\/usr\/lib\/swift\/Cmlx.framework\/Versions\/A\/Cmlx' (no such file), '\/Applications\/TheRecord.app\/Contents"]},
+  "extMods" : {"caller":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"system":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"targeted":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"warnings":0},
+  "faultingThread" : 0,
+  "threads" : [{"triggered":true,"id":27430200,"threadState":{"x":[{"value":6},{"value":1},{"value":6155690944},{"value":111},{"value":6155689920},{"value":0},{"value":0},{"value":0},{"value":32},{"value":2686860646533103865},{"value":8508440600,"symbolLocation":16088,"symbol":"lsl::sPoolBytes"},{"value":8508555584},{"value":131072},{"value":6693718464,"symbolLocation":0,"symbol":"_dyld_start"},{"value":1},{"value":0},{"value":521},{"value":6155689456},{"value":0},{"value":0},{"value":6155689920},{"value":111},{"value":6155690944},{"value":1},{"value":6},{"value":0},{"value":520552452},{"value":2},{"value":6693699584}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6694302204},"cpsr":{"value":2147483648},"fp":{"value":6155689872},"sp":{"value":6155689808},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6693723012,"matchesCrashFrame":1},"far":{"value":0}},"frames":[{"imageOffset":23428,"symbol":"__abort_with_payload","symbolLocation":8,"imageIndex":1},{"imageOffset":602620,"symbol":"abort_with_payload_wrapper_internal","symbolLocation":104,"imageIndex":1},{"imageOffset":602672,"symbol":"abort_with_payload","symbolLocation":16,"imageIndex":1},{"imageOffset":152836,"symbol":"dyld4::halt(char const*, dyld4::StructuredError const*)","symbolLocation":312,"imageIndex":1},{"imageOffset":136984,"symbol":"dyld4::prepare(dyld4::APIs&, mach_o::UnsafeHeader const*)","symbolLocation":4784,"imageIndex":1},{"imageOffset":132172,"symbol":"dyld4::start(dyld4::KernelArgs*, void*, void*, unsigned long long)::$_1::operator()() const","symbolLocation":320,"imageIndex":1},{"imageOffset":130472,"symbol":"start","symbolLocation":6904,"imageIndex":1}]}],
+  "usedImages" : [
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4311187456,
+    "CFBundleShortVersionString" : "0.9.0",
+    "CFBundleIdentifier" : "app.the-record",
+    "size" : 54640640,
+    "uuid" : "ab653e7c-2ba9-376d-bc2d-920bdef02263",
+    "path" : "\/Applications\/TheRecord.app\/Contents\/MacOS\/TheRecord",
+    "name" : "TheRecord",
+    "CFBundleVersion" : "1"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6693699584,
+    "size" : 680472,
+    "uuid" : "a237ef81-b68b-37ba-a165-92c965529534",
+    "path" : "\/usr\/lib\/dyld",
+    "name" : "dyld"
+  },
+  {
+    "size" : 0,
+    "source" : "A",
+    "base" : 0,
+    "uuid" : "00000000-0000-0000-0000-000000000000"
+  }
+],
+  "sharedCache" : {
+  "base" : 6692569088,
+  "size" : 5990596608,
+  "uuid" : "ff7119a7-f64d-305d-8135-7e6eb1c207d1"
+},
+  "vmSummary" : "ReadOnly portion of Libraries: Total=662.6M resident=0K(0%) swapped_out_or_unallocated=662.6M(100%)\nWritable regions: Total=8944K written=128K(1%) resident=128K(1%) swapped_out=0K(0%) unallocated=8816K(99%)\n\n                                VIRTUAL   REGION \nREGION TYPE                        SIZE    COUNT (non-coalesced) \n===========                     =======  ======= \nSTACK GUARD                       56.0M        1 \nStack                             8176K        1 \n__AUTH_CONST                        22K        1 \n__DATA                            1524K        3 \n__DATA_CONST                      1065K        2 \n__DATA_DIRTY                        14K        1 \n__LINKEDIT                       609.8M        2 \n__TEXT                            52.8M        2 \n__TPRO_CONST                       128K        1 \ndyld private memory                 16K        1 \npage table in kernel               128K        1 \n===========                     =======  ======= \nTOTAL                            729.4M       16 \n",
+  "legacyInfo" : {
+  "threadTriggered" : {
+
+  }
+},
+  "logWritingSignature" : "3c95ffb66292c443591a3d3baeca77d956d084e8",
+  "roots_installed" : 0,
+  "bug_type" : "309",
+  "trmStatus" : 40960,
+  "trialInfo" : {
+  "rollouts" : [
+    {
+      "rolloutId" : "648cada15dbc71671bb3aa1b",
+      "factorPackIds" : [
+        "65a81173096f6a1f1ba46525"
+      ],
+      "deploymentId" : 240000116
+    },
+    {
+      "rolloutId" : "644114de41e7236e6177f9bd",
+      "factorPackIds" : [
+
+      ],
+      "deploymentId" : 240000013
+    }
+  ],
+  "experiments" : [
+
+  ]
+}
+}
+
+---
+
+[Image #2]
+
+---
+
+duckdb is gonna be a problem. i dont have an other instance running ...
+
+---
+
+default    16:47:05.843658-0600    loginwindow    -[PersistentAppsSupport applicationQuit:] | App: TheRecord, quit, updating active tracking timer
+default    16:47:05.843651-0600    loginwindow    -[PersistentAppsSupport applicationQuit:] | for app:TheRecord, _appTrackingState = 2
+default    16:47:05.843638-0600    loginwindow    -[Application setState:] | enter: <Application: 0x7d9407520: TheRecord> state 4
+default    16:47:05.823100-0600    loginwindow    -[PersistentAppsSupport applicationQuit:] | App: TheRecord, quit, updating active tracking timer
+default    16:47:05.823093-0600    loginwindow    -[PersistentAppsSupport applicationQuit:] | for app:TheRecord, _appTrackingState = 2
+default    16:47:05.823081-0600    loginwindow    -[Application setState:] | enter: <Application: 0x7d9407520: TheRecord> state 3
+default    16:47:05.823059-0600    loginwindow    -[ApplicationManager handleCASEvent:withData:] | CAS notification for appDeath for app.the-record with asn: LSASN:{hi=0x0;lo=0x1ee9ee8} for bundle path: /Applications/TheRecord.app with URL: file:///Applications/TheRecord.app/
+default    16:47:05.649610-0600    WindowServer    0[outside of RPC]: [FocusManager:257] update to deferring policy requested for reason: updated frontmost process - but we are suppressing evaluation for reasons: {(
+    "process death - 0x0-0x1ee9ee8 (TheRecord)"
+)}
+default    16:47:05.647300-0600    WindowServer    0[outside of RPC]: [FocusManager:257] update to deferring policy requested for reason: permitted list updated - 0x1-0x15b1a removed - but we are suppressing evaluation for reasons: {(
+    "process death - 0x0-0x1ee9ee8 (TheRecord)"
+)}
+default    16:47:05.646579-0600    WindowServer    0[outside of RPC]: [FocusManager:257] update to deferring policy requested for reason: permitted list updated - 0x0-0x1ee9ee8 removed - but we are suppressing evaluation for reasons: {(
+    "process death - 0x0-0x1ee9ee8 (TheRecord)"
+)}
+default    16:47:05.644673-0600    WindowServer    <BSCompoundAssertion:0x8e6c15580> ([FocusManager:257]-deferringPolicyEvaluationSuppression) acquire for reason:process death - 0x0-0x1ee9ee8 (TheRecord) acq:0x8e9ad4a00 count:1
+default    16:47:05.644658-0600    WindowServer    0[outside of RPC]: Process death: 0x0-0x1ee9ee8 (TheRecord) connectionID: 19C573 pid: 88858 in session 0x101
+default    16:47:05.643271-0600    WindowManager    Connection invalidated | (88858) TheRecord
+default    16:47:05.642515-0600    TheRecord    XPC connection invalidated (daemon unloaded/disabled)
+default    16:47:05.642492-0600    TheRecord    Exiting exit handler.
+default    16:47:05.642452-0600    TheRecord    [0xbc0c80000] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+default    16:47:05.642411-0600    TheRecord    Cancelling XPC connection. Any further reply handler invocations will not retry messages
+default    16:47:05.642302-0600    TheRecord    Queueing exit procedure onto XPC queue. Any further messages sent will be discarded. activeSendTransactions=0
+default    16:47:05.642276-0600    TheRecord    Entering exit handler.
+default    16:47:05.642163-0600    TheRecord    [0xbc0c82bc0] activating connection: mach=true listener=false peer=false name=com.apple.powerlog.plxpclogger.xpc
+default    16:47:05.641974-0600    TheRecord    Termination complete. Exiting without sudden termination.
+default    16:47:05.641832-0600    TheRecord    [0xbc1cdce10] Disposing of session
+default    16:47:05.641810-0600    TheRecord    agent connection cancelled (details: Session manually canceled)
+default    16:47:05.641747-0600    TheRecord    [0xbc1cdce10] Session canceled.
+default    16:47:05.641741-0600    TheRecord    [0xbc0c82bc0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+default    16:47:05.634300-0600    TheRecord    Attempting sudden termination (2nd attempt)
+default    16:47:05.634295-0600    TheRecord    Termination commencing
+default    16:47:05.634284-0600    TheRecord    App termination approved
+default    16:47:05.634263-0600    TheRecord    replyToApplicationShouldTerminate:YES
+default    16:47:05.634252-0600    TheRecord    Asking app delegate whether applicationShouldTerminate:
+default    16:47:05.634234-0600    TheRecord    Checking whether app should terminate
+default    16:47:05.634229-0600    TheRecord    Attempting sudden termination (1st attempt)
+default    16:47:05.634203-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] finished flushing
+default    16:47:05.634037-0600    TheRecord    -[NSPersistentUIManager _flushPendingPostEncodingChangesSynchronously]_block_invoke _store=0xbc16055c0
+default    16:47:05.634033-0600    TheRecord    -[NSPersistentUIWindowSnapshotter flushPendingSnapshotsSynchronously] _workQueue=0xbc1779980
+default    16:47:05.634031-0600    TheRecord    -[NSPersistentUIManager _flushPendingPostEncodingChangesSynchronously]_block_invoke REDACTED
+default    16:47:05.634027-0600    TheRecord    -[NSPersistentUIManager _flushPendingPostEncodingChangesSynchronously] workQueue=0xbc1779900
+default    16:47:05.634017-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] finished waiting
+default    16:47:05.634016-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] completed spinning the runloop
+default    16:47:05.634011-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish]_block_invoke observer=0xbbfcd85a0 activity=128 depth=1 finished=1
+default    16:47:05.633996-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish]_block_invoke finished=YES
+default    16:47:05.633907-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish]_block_invoke observer=0xbbfcd85a0 activity=1 depth=0 finished=0
+default    16:47:05.631170-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] spinning the runloop
+default    16:47:05.631127-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish]_block_invoke asyncing to main runloop
+default    16:47:05.631119-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] observer=0xbbfcd85a0
+default    16:47:05.631109-0600    TheRecord    -[NSPersistentUIManager _finishEncodingImmediatelyWithCompletionHandler:] _encodingQueue=0xbc1588ad0
+default    16:47:05.631107-0600    TheRecord    -[NSPersistentUIManager _waitForPendingChangesToFinish] finishing pending changes
+default    16:47:05.631094-0600    TheRecord    -[NSPersistentUIManager discardAllPersistentStateAndClose]
+default    16:47:05.631079-0600    TheRecord    -[NSApplication _pushPersistentStateTerminationGeneration] sPersistentStateTerminateStackHeight -> 1
+default    16:47:05.631074-0600    TheRecord    void _NSDisableAutomaticTerminationAndLog(NSString *) Terminating
+default    16:47:05.631069-0600    TheRecord    terminate:
+default    16:47:05.539942-0600    TheRecord    [0xbc0c82a80] invalidated after the last release of the connection object
+default    16:47:05.520143-0600    tccd    AUTHREQ_ATTRIBUTION: msgID=88858.3, attribution={accessing={TCCDProcess: identifier=com.hegenberg.BetterTouchTool, pid=2561, auid=501, euid=501, binary_path=/Applications/BetterTouchTool.app/Contents/MacOS/BetterTouchTool}, requesting={TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord}, },
+error    16:47:05.520035-0600    tccd    TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord attempted to call TCCAccessRequest for kTCCServiceAccessibility without the recommended com.apple.private.tcc.manager.check-by-audit-token entitlement
+default    16:47:05.519628-0600    TheRecord    [0xbc0c82a80] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+default    16:47:04.462507-0600    kernel    1 duplicate report for Sandbox: ContextStoreAgent(24750) allow file-read-data /Applications/TheRecord.app/Contents/MacOS/TheRecord
+default    16:47:04.462301-0600    kernel    Sandbox: ContextStoreAgent(24750) allow file-read-data /Applications/TheRecord.app/Contents/MacOS/TheRecord
+default    16:47:04.459537-0600    kernel    Sandbox: ContextStoreAgent(24750) allow file-read-data /Applications/TheRecord.app/Contents/Info.plist
+default    16:47:04.459455-0600    kernel    Sandbox: ContextStoreAgent(24750) allow file-read-data /Applications/TheRecord.app/Contents
+default    16:47:04.459363-0600    kernel    Sandbox: ContextStoreAgent(24750) allow file-read-data /Applications/TheRecord.app
+error    16:47:04.453835-0600    diagnostics_agent    Failed to parse receipt at /Applications/TheRecord.app/Contents/_MASReceipt/receipt: Error Domain=NSCocoaErrorDomain Code=260 "The file “receipt” couldn’t be opened because there is no such file." UserInfo={NSFilePath=/Applications/TheRecord.app/Contents/_MASReceipt/receipt, NSURL=file:///Applications/TheRecord.app/Contents/_MASReceipt/receipt, NSUnderlyingError=0x76f037270 {Error Domain=NSPOSIXErrorDomain Code=2 "No such file or directory"}}
+default    16:47:04.413459-0600    tccd    -[TCCDAccessIdentity staticCode]: static code for: identifier app.the-record, type: 0: 0xabf2eea00 at /Applications/TheRecord.app
+default    16:47:04.273097-0600    TheRecord    CSInlineDonation:<private>: Skipping donation (feature flag disabled)
+default    16:47:04.213299-0600    TheRecord    [0xbc0c83980] activating connection: mach=false listener=false peer=false name=(anonymous)
+default    16:47:04.211132-0600    TheRecord    [0xbc0c83ac0] activating connection: mach=true listener=false peer=false name=com.apple.inputmethodkit.getxpcendpoint
+default    16:47:04.203011-0600    TheRecord    +[IMKInputSession subclass]: chose IMKInputSession_Modern
+default    16:47:04.202970-0600    TheRecord    +[IMKClient subclass]: chose IMKClient_Modern
+default    16:47:04.198417-0600    TheRecord    [0xbc0c83840] activating connection: mach=false listener=false peer=false name=com.apple.hiservices-xpcservice
+default    16:47:04.041471-0600    TheRecord    [0xbc0c82e40] activating connection: mach=true listener=false peer=false name=com.apple.iconservices.store
+default    16:47:04.040987-0600    TheRecord    [0xbc0c82d00] activating connection: mach=true listener=false peer=false name=com.apple.iconservices
+fault    16:47:04.038520-0600    TheRecord    DuckDB fallback also failed: Domain.StorageError.readFailed(underlying: Optional(DuckDB.DatabaseError.connectionQueryError(reason: Optional("Catalog Error: Pragma Function with name user_version does not exist!\nDid you mean \"user_agent\"?")))) — terminating via NSApp.terminate
+fault    16:47:04.032766-0600    TheRecord    DuckDB initialization failed: Domain.StorageError.readFailed(underlying: Optional(DuckDB.DatabaseError.connectionQueryError(reason: Optional("Catalog Error: Pragma Function with name user_version does not exist!\nDid you mean \"user_agent\"?")))) — falling back to in-memory storage
+default    16:47:04.024988-0600    tccd    -[TCCDAccessIdentity staticCode]: static code for: identifier app.the-record, type: 0: 0xabf2ee400 at /Applications/TheRecord.app
+default    16:47:04.018559-0600    tccd    requestor: TCCDProcess: identifier=com.apple.WindowServer, pid=645, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer is checking access for accessor TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord
+default    16:47:04.018448-0600    tccd    AUTHREQ_ATTRIBUTION: msgID=645.6246, attribution={accessing={TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=645, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+default    16:47:04.000555-0600    TheRecord    void _NSDisableAutomaticTerminationAndLog(NSString *) NSAccessibility Request Received
+default    16:47:04.000459-0600    TheRecord    [0xbc0c82940] invalidated after the last release of the connection object
+default    16:47:03.960022-0600    tccd    AUTHREQ_ATTRIBUTION: msgID=88858.2, attribution={accessing={TCCDProcess: identifier=ca.brawer.uBar, pid=2571, auid=501, euid=501, binary_path=/Applications/uBar.app/Contents/MacOS/uBar}, requesting={TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord}, },
+error    16:47:03.959925-0600    tccd    TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord attempted to call TCCAccessRequest for kTCCServiceAccessibility without the recommended com.apple.private.tcc.manager.check-by-audit-token entitlement
+default    16:47:03.959470-0600    TheRecord    [0xbc0c82940] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+default    16:47:03.931915-0600    TheRecord    void _NSEnableAutomaticTerminationAndLog(NSString *) Restoring windows
+default    16:47:03.930772-0600    TheRecord    Connection established with agent PID: 18458
+default    16:47:03.930373-0600    TheRecord    [0xbc1cdce10] Session activated
+default    16:47:03.930214-0600    TheRecord    [0xbc0c82bc0] activating connection: mach=true listener=false peer=false name=com.apple.uiintelligencesupport.agent
+default    16:47:03.930156-0600    TheRecord    [0xbc1cdce10] Session created from connection [0xbc0c82bc0]
+default    16:47:03.930128-0600    TheRecord    [0xbc1cdce10] Session created.
+default    16:47:03.930072-0600    TheRecord    establishing connection to agent
+default    16:47:03.929913-0600    TheRecord    void _NSEnableAutomaticTerminationAndLog(NSString *) No windows open yet
+default    16:47:03.924979-0600    TheRecord    [0xbc0c82800] activating connection: mach=true listener=false peer=false name=com.apple.spotlight.IndexAgent
+default    16:47:03.924915-0600    TheRecord    Start service name com.apple.spotlight.IndexAgent
+default    16:47:03.924879-0600    TheRecord    sConnectionName: com.apple.spotlight.IndexAgent
+default    16:47:03.924823-0600    TheRecord    CSInlineDonation:<private>: Skipping donation (feature flag disabled)
+default    16:47:03.924489-0600    TheRecord    (<private>) deleteSearchableItemsWithDomainIdentifiers, protectionClass:(null), domainIdentifiers number:1
+default    16:47:03.917385-0600    WindowManager    Connection activated | (88858) TheRecord
+default    16:47:03.912053-0600    TheRecord    [0xbc0c82580] activating connection: mach=false listener=false peer=false name=(anonymous)
+default    16:47:03.911988-0600    TheRecord    [C:1] Alloc <private>
+default    16:47:03.885659-0600    TheRecord    [0xbc0c81f40] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+default    16:47:03.885571-0600    TheRecord    [0xbc0c81f40] activating connection: mach=true listener=false peer=false name=com.apple.window_proxies
+default    16:47:03.885442-0600    TheRecord    -[NSApplication _reopenWindowsAsNecessaryIncludingRestorableState:withFullFidelity:completionHandler:] shouldRestoreState=1 hasPersistentStateToRestore=0 shouldStillRestoreStateAfterPrompting=0
+default    16:47:03.880454-0600    TheRecord    void _NSDisableAutomaticTerminationAndLog(NSString *) Restoring windows
+default    16:47:03.846501-0600    TheRecord    [0xbc0c81f40] invalidated after the last release of the connection object
+default    16:47:03.846190-0600    TheRecord    [0xbc0c81e00] Connection returned listener port: 0xea03
+default    16:47:03.846148-0600    TheRecord    [0xbc0c81e00] activating connection: mach=false listener=true peer=false name=(anonymous)
+default    16:47:03.845745-0600    TheRecord    [0xbc0c82080] activating connection: mach=false listener=false peer=false name=(anonymous)
+default    16:47:03.841089-0600    loginwindow    -[PersistentAppsSupport applicationReady:] | App: TheRecord, ready, updating active tracking timer
+default    16:47:03.839607-0600    TheRecord    [0xbc0c81f40] activating connection: mach=false listener=false peer=false name=com.apple.ViewBridgeAuxiliary
+default    16:47:03.820171-0600    TheRecord    SIGNAL: pid=88858 asn=0x0x-0x1ee9ee8
+default    16:47:03.818629-0600    TheRecord    SignalReady: pid=88858 asn=0x0-0x1ee9ee8
+default    16:47:03.807131-0600    TheRecord    [0xbc0c803c0] Connection returned listener port: 0x4d03
+default    16:47:03.802624-0600    TheRecord    [0xbc0c81cc0] activating connection: mach=true listener=false peer=false name=com.apple.coreservices.appleevents
+default    16:47:03.801872-0600    TheRecord    [0xbc0c81b80] activating connection: mach=true listener=false peer=false name=com.apple.appkit.restoration_storage
+default    16:47:03.795705-0600    TheRecord    [0xbc0c81a40] activating connection: mach=true listener=false peer=false name=com.apple.fonts
+default    16:47:03.790985-0600    TheRecord    [0xbc0c81900] activating connection: mach=true listener=false peer=false name=com.apple.dock.fullscreen
+default    16:47:03.765670-0600    TheRecord    NSApp cache appearance:
+-NSRequiresAquaSystemAppearance: 0
+-appearance: (null)
+-effectiveAppearance: <NSCompositeAppearance: 0xbc147c780
+ (
+    "<NSDarkAquaAppearance: 0xbc147c6e0>",
+    "<NSSystemAppearance: 0xbc147c820>"
+)>
+default    16:47:03.753366-0600    TheRecord    isAvailable value changed: isMDMAllowed = true, gmAvailable (current) = true
+default    16:47:03.753304-0600    TheRecord    registering darwin observer for name: com.apple.language.changed
+default    16:47:03.753261-0600    TheRecord    registering darwin observer for name: com.apple.os-eligibility-domain.change.greymatter
+default    16:47:03.753192-0600    TheRecord    registering darwin observer for name: com.apple.gms.availability.notification
+default    16:47:03.752310-0600    TheRecord    called dummy function!
+default    16:47:03.752278-0600    TheRecord    couldn't load support library
+default    16:47:03.726038-0600    TheRecord    notify_get_state check indicated test daemon not ready.
+default    16:47:03.725925-0600    TheRecord    notify_get_state check indicated test daemon not ready.
+default    16:47:03.725833-0600    TheRecord    notify_get_state check indicated test daemon not ready.
+default    16:47:03.725763-0600    TheRecord    Registering for test daemon availability notify post.
+default    16:47:03.721642-0600    TheRecord    Identity resolved as app<application.app.the-record.176612417.176612426(501)>
+error    16:47:03.699310-0600    TheRecord    Unable to re-register with Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+error    16:47:03.699270-0600    TheRecord    Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+default    16:47:03.697545-0600    TheRecord    [0xbc0c81400] Re-initialization successful; calling out to event handler with XPC_ERROR_CONNECTION_INTERRUPTED
+default    16:47:03.696419-0600    TheRecord    [0xbc0c80b40] Connection returned listener port: 0x6703
+default    16:47:03.696413-0600    TheRecord    Activated connection to linkd (ApplicationService)
+default    16:47:03.696314-0600    TheRecord    [0xbc0c81400] activating connection: mach=true listener=false peer=false name=com.apple.linkd.autoShortcut
+default    16:47:03.696305-0600    TheRecord    Created a new Process Instance Registry XPC connection (inactive)
+default    16:47:03.695225-0600    TheRecord    [updateDataBases]: Databases already exist; Nothing to Update
+default    16:47:03.694495-0600    TheRecord    [0xbc0c80b40] Connection returned listener port: 0x6703
+default    16:47:03.694487-0600    TheRecord    Activated connection to linkd (ApplicationService)
+default    16:47:03.694355-0600    TheRecord    [0xbc0c81180] activating connection: mach=true listener=false peer=false name=com.apple.linkd.autoShortcut
+default    16:47:03.694330-0600    TheRecord    Created a new Process Instance Registry XPC connection (inactive)
+error    16:47:03.693455-0600    TheRecord    Unable to re-register with Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+default    16:47:03.693388-0600    TheRecord    Created a new Process Instance Registry XPC connection (inactive)
+error    16:47:03.693329-0600    TheRecord    Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+default    16:47:03.693279-0600    TheRecord    Process Instance Registry XPC connection has been interrupted
+default    16:47:03.693269-0600    TheRecord    [0xbc0c80f00] Re-initialization successful; calling out to event handler with XPC_ERROR_CONNECTION_INTERRUPTED
+default    16:47:03.692347-0600    TheRecord    [0xbc0c80b40] Connection returned listener port: 0x6703
+default    16:47:03.692338-0600    TheRecord    Activated connection to linkd (ApplicationService)
+error    16:47:03.691519-0600    TheRecord    Error registering app with intents framework: Error Domain=NSCocoaErrorDomain Code=4097 UserInfo={NSDebugDescription=<private>}
+default    16:47:03.690566-0600    TheRecord    Created a new Process Instance Registry XPC connection (inactive)
+error    16:47:03.690521-0600    TheRecord    Unable to get synchronousRemoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+default    16:47:03.689145-0600    TheRecord    Process Instance Registry XPC connection has been interrupted
+default    16:47:03.687263-0600    TheRecord    [0xbc0c808c0] Re-initialization successful; calling out to event handler with XPC_ERROR_CONNECTION_INTERRUPTED
+default    16:47:03.668888-0600    TheRecord    [0xbc0c80b40] Connection returned listener port: 0x6703
+default    16:47:03.667181-0600    TheRecord    [0xbc0c80c80] activating connection: mach=true listener=false peer=false name=com.apple.securityd.xpc
+default    16:47:03.667172-0600    TheRecord    [0xbc0c80b40] activating connection: mach=false listener=true peer=false name=(anonymous)
+default    16:47:03.667162-0600    TheRecord    Enabling System Keychain Always due to platform
+default    16:47:03.667088-0600    TheRecord    SecSecurityClientGet new thread!
+default    16:47:03.667007-0600    TheRecord    Not internal release, disabling SIRL
+default    16:47:03.664874-0600    TheRecord    Activated connection to linkd (ApplicationService)
+default    16:47:03.664323-0600    TheRecord    [0xbc0c808c0] activating connection: mach=true listener=false peer=false name=com.apple.linkd.autoShortcut
+default    16:47:03.664258-0600    TheRecord    <<<< AVReadWriteDispatchQueue >>>> usesSerialQueue_block_invoke: Using read/write queue
+default    16:47:03.658533-0600    TheRecord    Created a new Process Instance Registry XPC connection (inactive)
+default    16:47:03.655190-0600    TheRecord    [0xbc0c803c0] Connection returned listener port: 0x4d03
+default    16:47:03.651179-0600    TheRecord    [0xbc0c803c0] Connection returned listener port: 0x4d03
+default    16:47:03.650401-0600    TheRecord    [0xbc0c80640] activating connection: mach=true listener=false peer=false name=com.apple.runningboard
+default    16:47:03.650084-0600    TheRecord    Creating connection to com.apple.runningboard
+default    16:47:03.649965-0600    TheRecord    Sending handshake request attempt #1 to server
+default    16:47:03.649951-0600    TheRecord    Removing all cached process handles
+default    16:47:03.649924-0600    TheRecord    Initializing connection
+default    16:47:03.649888-0600    TheRecord    FBSWorkspace: default shell endpoint is disabled.
+default    16:47:03.649883-0600    TheRecord    FBSWorkspace: endpoint monitoring is disabled.
+default    16:47:03.646939-0600    TheRecord    Post-registration system appearance: (HLTB: 2)
+default    16:47:03.646179-0600    TheRecord    Current system appearance, (HLTB: 2), (SLS: 1)
+default    16:47:03.641863-0600    TheRecord    Failed to find key <private>
+default    16:47:03.641855-0600    TheRecord    CFDictionaryRef copySyscfgDictionary(void) enumeration of <private> failed.
+default    16:47:03.641845-0600    TheRecord    syscfg is not initialized!
+default    16:47:03.641691-0600    TheRecord    Creating default MGSysConfigPolicy
+default    16:47:03.641580-0600    TheRecord    Failed to copy APTicket properties. Falling back to default policy.
+default    16:47:03.641494-0600    TheRecord    Failed to copy 'aptk' from EAN
+default    16:47:03.641434-0600    TheRecord    Could not get size of EAN data (IOConnectCallScalarMethod kAppleNVMeEANGetSize returned 0xE00002E2)
+default    16:47:03.639899-0600    TheRecord    No persisted cache on this platform.
+default    16:47:03.638045-0600    TheRecord    Current system appearance, (HLTB: 2), (SLS: 1)
+default    16:47:03.633944-0600    WindowServer    chain did update (setDeferringRules) <keyboardFocus; display: null> containsEndOfChain: YES; [
+    <token: <frontmost>; pid: 645>,
+    <token: TheRecord:0x0-0x1ee9ee8; pid: 645>,
+    <pid: 88858>
+]
+default    16:47:03.632004-0600    WindowServer    [keyboardFocus 0x8e7086530] setRules:forPID(645): [
+    [645-2973]; <keyboardFocus; TheRecord:0x0-0x1ee9ee8>; () -> <pid: 88858>; reason: frontmost PSN --> outbound target,
+    [645-2972]; <keyboardFocus; <frontmost>>; () -> <token: TheRecord:0x0-0x1ee9ee8; pid: 645>; reason: frontmost PSN,
+    [645-2971]; <keyboardFocus>; () -> <token: <frontmost>; pid: 645>; reason: Deferring to <frontmost>
+]
+default    16:47:03.631938-0600    WindowServer    new deferring rules for pid:645: [
+    [645-2973]; <keyboardFocus; TheRecord:0x0-0x1ee9ee8>; () -> <pid: 88858>; reason: frontmost PSN --> outbound target,
+    [645-2972]; <keyboardFocus; <frontmost>>; () -> <token: TheRecord:0x0-0x1ee9ee8; pid: 645>; reason: frontmost PSN,
+    [645-2971]; <keyboardFocus>; () -> <token: <frontmost>; pid: 645>; reason: Deferring to <frontmost>
+]
+default    16:47:03.631881-0600    WindowServer    19c573[SetFrontProcess]: [DeferringManager] Deferring events from frontmost process PSN 0x0-0x1ee9ee8 (TheRecord) -> <pid: 88858>
+default    16:47:03.631834-0600    WindowServer    19c573[SetFrontProcess]: [DeferringManager] Updating policy {
+    advicePolicy: .frontmost;
+    frontmostProcess: 0x0-0x1ee9ee8 (TheRecord) mainConnectionID: 19C573;
+} for reason: updated frontmost process
+default    16:47:03.625907-0600    TheRecord    SetFrontProcess: asn=0x0-0x1ee9ee8 options=0
+default    16:47:03.625885-0600    TheRecord    BringForward: pid=88858 asn=0x0-0x1ee9ee8
+default    16:47:03.625814-0600    TheRecord    BringFrontModifier: pid=88858 asn=0x0-0x1ee9ee8 Modifier 0 hideAfter=0 hideOthers=0 dontMakeFrontmost=0 mouseDown=0/0 seed=0/0
+default    16:47:03.625555-0600    TheRecord    BringForward: pid=88858 asn=0x0-0x1ee9ee8 bringForward=1 foreground=1 uiElement=0 launchedByLS=1 modifiersCount=1 allDisabled=0
+default    16:47:03.624525-0600    TheRecord    [0xbc0c803c0] Connection returned listener port: 0x4d03
+default    16:47:03.621928-0600    loginwindow    -[ApplicationManager checkInAppContext:eventData:] | ApplicationManager: Checked in app : TheRecord
+default    16:47:03.621906-0600    loginwindow    -[Application _updateInformationInternal] | Got App URL: file:///Applications/TheRecord.app/
+default    16:47:03.619497-0600    TheRecord    [0xbc0c80500] activating connection: mach=true listener=false peer=false name=com.apple.lsd.mapdb
+default    16:47:03.616154-0600    WindowServer    19c573[CreateApplication]: Process creation: 0x0-0x1ee9ee8 (TheRecord) connectionID: 19C573 pid: 88858 in session 0x101
+default    16:47:03.615848-0600    TheRecord    Registered, pid=88858 ASN=0x0,0x1ee9ee8
+default    16:47:03.615787-0600    TheRecord    FRONTLOGGING: version 1
+default    16:47:03.608494-0600    TheRecord    [0xbc0cd0780] activating connection: mach=false listener=false peer=true name=com.apple.xpc.anonymous.0xbc0c803c0.peer[614].0xbc0cd0780
+default    16:47:03.608189-0600    TheRecord    [0xbc0c803c0] Connection returned listener port: 0x4d03
+default    16:47:03.608114-0600    TheRecord    [0xbc0c803c0] activating connection: mach=false listener=true peer=false name=(anonymous)
+default    16:47:03.607834-0600    TheRecord    CHECKEDIN: pid=88858 asn=0x0-0x1ee9ee8 foreground=1
+default    16:47:03.602848-0600    TheRecord    CHECKIN: pid=88858
+default    16:47:03.600313-0600    TheRecord    New connection 0x19c573 main
+default    16:47:03.598069-0600    tccd    -[TCCDAccessIdentity staticCode]: static code for: identifier app.the-record, type: 0: 0xabf2ec300 at /Applications/TheRecord.app
+default    16:47:03.596560-0600    tccd    requestor: TCCDProcess: identifier=com.apple.WindowServer, pid=645, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer is checking access for accessor TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord
+default    16:47:03.596541-0600    tccd    AUTHREQ_ATTRIBUTION: msgID=645.6245, attribution={accessing={TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord}, requesting={TCCDProcess: identifier=com.apple.WindowServer, pid=645, auid=88, euid=88, binary_path=/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/Resources/WindowServer}, },
+default    16:47:03.595947-0600    TheRecord    server port 0x00003513, session port 0x00003513
+default    16:47:03.592578-0600    TheRecord    [0xbc0c803c0] invalidated after the last release of the connection object
+default    16:47:03.591804-0600    tccd    -[TCCDAccessIdentity staticCode]: static code for: identifier app.the-record, type: 0: 0xabf2ec300 at /Applications/TheRecord.app
+default    16:47:03.589797-0600    tccd    AUTHREQ_ATTRIBUTION: msgID=88858.1, attribution={requesting={TCCDProcess: identifier=app.the-record, pid=88858, auid=501, euid=501, binary_path=/Applications/TheRecord.app/Contents/MacOS/TheRecord}, },
+default    16:47:03.588656-0600    TheRecord    [0xbc0c803c0] activating connection: mach=true listener=false peer=false name=com.apple.tccd.system
+default    16:47:03.588423-0600    TheRecord    void _NSDisableAutomaticTerminationAndLog(NSString *) No windows open yet
+default    16:47:03.588076-0600    TheRecord    Received configuration update from daemon (initial)
+default    16:47:03.586966-0600    TheRecord    [0xbc0c80280] activating connection: mach=true listener=false peer=false name=com.apple.distributed_notifications@Uv3
+default    16:47:03.586678-0600    TheRecord    [0xbc0c80140] activating connection: mach=true listener=false peer=false name=com.apple.pasteboard.1
+default    16:47:03.586486-0600    TheRecord    [0xbc0c80000] activating connection: mach=true listener=false peer=false name=com.apple.analyticsd
+default    16:47:03.585997-0600    TheRecord    [0x1062d59c0] activating connection: mach=true listener=false peer=false name=com.apple.coreservices.launchservicesd
+default    16:47:03.584479-0600    TheRecord    [0x1062d3da0] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.agent
+default    16:47:03.584413-0600    TheRecord    [0x1062d3860] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.daemon
+default    16:47:03.546431-0600    loginwindow    -[ApplicationManager checkInAppContext:eventData:] | ApplicationManager: Checked in app : TheRecord
+default    16:47:03.546354-0600    loginwindow    -[PersistentAppsSupport applicationReady:] | App: TheRecord, ready, updating active tracking timer
+default    16:47:03.545948-0600    loginwindow    -[Application setState:] | enter: <Application: 0x7d9407520: TheRecord> state 2
+default    16:47:03.542335-0600    loginwindow    -[Application _updateInformationInternal] | Got App URL: file:///Applications/TheRecord.app/
+default    16:47:03.535633-0600    amfid    /Applications/TheRecord.app/Contents/Frameworks/Cmlx.framework/Versions/A/Cmlx not valid: Error Domain=AppleMobileFileIntegrityError Code=-423 "The file is adhoc signed or signed by an unknown certificate chain" UserInfo={NSURL=file:///Applications/TheRecord.app/Contents/Frameworks/Cmlx.framework/Versions/A/Cmlx, NSLocalizedDescription=The file is adhoc signed or signed by an unknown certificate chain}
+default    16:47:03.532816-0600    kernel    AMFI: '/Applications/TheRecord.app/Contents/Frameworks/Cmlx.framework/Versions/A/Cmlx' is adhoc signed.
+default    16:47:03.510785-0600    amfid    /Applications/TheRecord.app/Contents/MacOS/TheRecord not valid: Error Domain=AppleMobileFileIntegrityError Code=-423 "The file is adhoc signed or signed by an unknown certificate chain" UserInfo={NSURL=file:///Applications/TheRecord.app/Contents/MacOS/TheRecord, NSLocalizedDescription=The file is adhoc signed or signed by an unknown certificate chain}
+default    16:47:03.506819-0600    kernel    AMFI: '/Applications/TheRecord.app/Contents/MacOS/TheRecord' is adhoc signed.
+default    16:47:03.495749-0600    runningboardd    Checking PreventLaunch: global:0 exPath:/Applications/TheRecord.app/Contents/MacOS/TheRecord predicates:(null) allow:(null)
+
+---
+
+-------------------------------------
+Translated Report (Full Report Below)
+-------------------------------------
+Process:             TheRecord [39403]
+Path:                /Applications/TheRecord.app/Contents/MacOS/TheRecord
+Identifier:          app.the-record
+Version:             0.9.0 (1)
+Code Type:           ARM-64 (Native)
+Role:                Foreground
+Parent Process:      launchd [1]
+Coalition:           app.the-record [29801]
+User ID:             501
+
+Date/Time:           2026-06-17 16:58:01.0379 -0600
+Launch Time:         2026-06-17 16:57:59.7533 -0600
+Hardware Model:      Mac16,11
+OS Version:          macOS 26.5.1 (25F80)
+Release Type:        User
+
+Crash Reporter Key:  REDACTED
+Incident Identifier: 205F7495-8479-456B-8AA9-3788326D0880
+
+Time Awake Since Boot: 180000 seconds
+
+System Integrity Protection: enabled
+
+Triggered by Thread: 2, Dispatch Queue: com.apple.root.default-qos.cooperative
+
+Exception Type:    EXC_BREAKPOINT (SIGTRAP)
+Exception Codes:   0x0000000000000001, 0x000000010308a730
+
+Termination Reason:  Namespace SIGNAL, Code 5, Trace/BPT trap: 5
+Terminating Process: exc handler [39403]
+
+
+Thread 0::  Dispatch queue: com.apple.main-thread
+0   libsystem_kernel.dylib                   0x18f335c34 mach_msg2_trap + 8
+1   libsystem_kernel.dylib                   0x18f348574 mach_msg2_internal + 76
+2   libsystem_kernel.dylib                   0x18f33e9c0 mach_msg_overwrite + 480
+3   libsystem_kernel.dylib                   0x18f335fc0 mach_msg + 24
+4   CoreFoundation                           0x18f4370d8 __CFRunLoopServiceMachPort + 160
+5   CoreFoundation                           0x18f4359c4 __CFRunLoopRun + 1188
+6   CoreFoundation                           0x18f5081c4 _CFRunLoopRunSpecificWithOptions + 532
+7   HIToolbox                                0x19c21b560 RunCurrentEventLoopInMode + 320
+8   HIToolbox                                0x19c21e8bc ReceiveNextEventCommon + 488
+9   HIToolbox                                0x19c3a814c _BlockUntilNextEventMatchingListInMode + 48
+10  AppKit                                   0x193f1035c _DPSBlockUntilNextEventMatchingListInMode + 228
+11  AppKit                                   0x193864084 _DPSNextEvent + 576
+12  AppKit                                   0x1943f98b0 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:] + 688
+13  AppKit                                   0x1943f95bc -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:] + 72
+14  AppKit                                   0x19385713c -[NSApplication run] + 368
+15  AppKit                                   0x19382f7b0 NSApplicationMain + 880
+16  SwiftUI                                  0x1c41a247c specialized runApp(_:) + 140
+17  SwiftUI                                  0x1c45584a4 runApp<A>(_:) + 104
+18  SwiftUI                                  0x1c4824344 static App.main() + 224
+19  TheRecord                                0x103a4dd64 static TheRecordApp.$main() + 52 [inlined]
+20  TheRecord                                0x103a4dd64 TheRecord_main + 64
+21  dyld                                     0x18efbbe00 start + 6992
+
+Thread 1:
+
+Thread 2 Crashed::  Dispatch queue: com.apple.root.default-qos.cooperative
+0   TheRecord                                0x10308a730 Swift runtime failure: precondition failure + 0 [inlined]
+1   TheRecord                                0x10308a730 specialized ResultSet.element(forColumn:at:) + 380 (ResultSet.swift:131)
+2   TheRecord                                0x103077674 ResultSet.element(forColumn:at:) + 8 [inlined]
+3   TheRecord                                0x103077674 Column.subscript.getter + 52 (Column.swift:444)
+4   TheRecord                                0x10354d600 specialized static DuckDBReaderActor.setupSchema(connection:) + 820 (DuckDBReaderActor.swift:59)
+5   TheRecord                                0x10354ca58 static DuckDBReaderActor.setupSchema(connection:) + 8 [inlined]
+6   TheRecord                                0x10354ca58 DuckDBReaderActor.init(databasePath:) + 904 (DuckDBReaderActor.swift:29)
+7   TheRecord                                0x10354cdb8 DuckDBReaderActor.__allocating_init(databasePath:) + 36 [inlined]
+8   TheRecord                                0x10354cdb8 DuckDBReaderActor.__allocating_init() + 360 (DuckDBReaderActor.swift:102)
+9   TheRecord                                0x103a545ec closure #1 in AppAssembler.buildStorage() + 168 (AppAssemblerBuilders.swift:29)
+10  TheRecord                                0x103a5744d partial apply for closure #1 in AppAssembler.buildStorage() + 1
+11  libswift_Concurrency.dylib               0x293d07ec5 completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*) + 1
+
+Thread 3::  Dispatch queue: com.apple.root.user-interactive-qos
+0   libsystem_kernel.dylib                   0x18f335c34 mach_msg2_trap + 8
+1   libsystem_kernel.dylib                   0x18f348574 mach_msg2_internal + 76
+2   libsystem_kernel.dylib                   0x18f33e9c0 mach_msg_overwrite + 480
+3   libsystem_kernel.dylib                   0x18f335fc0 mach_msg + 24
+4   CoreFoundation                           0x18f4370d8 __CFRunLoopServiceMachPort + 160
+5   CoreFoundation                           0x18f4359c4 __CFRunLoopRun + 1188
+6   CoreFoundation                           0x18f5081c4 _CFRunLoopRunSpecificWithOptions + 532
+7   Foundation                               0x190c7fb44 -[NSRunLoop(NSRunLoop) runMode:beforeDate:] + 212
+8   AppKit                                   0x1940360cc -[NSAnimation _runBlocking] + 412
+9   libdispatch.dylib                        0x18f1bea28 _dispatch_call_block_and_release + 32
+10  libdispatch.dylib                        0x18f1d84b0 _dispatch_client_callout + 16
+11  libdispatch.dylib                        0x18f1f5d6c <deduplicated_symbol> + 28
+12  libdispatch.dylib                        0x18f1d0adc _dispatch_root_queue_drain + 708
+13  libdispatch.dylib                        0x18f1d1120 _dispatch_worker_thread2 + 184
+14  libsystem_pthread.dylib                  0x18f375e84 _pthread_wqthread + 232
+15  libsystem_pthread.dylib                  0x18f374c10 start_wqthread + 8
+
+Thread 4:
+
+Thread 5:: com.apple.NSEventThread
+0   libsystem_kernel.dylib                   0x18f335c34 mach_msg2_trap + 8
+1   libsystem_kernel.dylib                   0x18f348574 mach_msg2_internal + 76
+2   libsystem_kernel.dylib                   0x18f33e9c0 mach_msg_overwrite + 480
+3   libsystem_kernel.dylib                   0x18f335fc0 mach_msg + 24
+4   CoreFoundation                           0x18f4370d8 __CFRunLoopServiceMachPort + 160
+5   CoreFoundation                           0x18f4359c4 __CFRunLoopRun + 1188
+6   CoreFoundation                           0x18f5081c4 _CFRunLoopRunSpecificWithOptions + 532
+7   AppKit                                   0x193985c7c _NSEventThread + 184
+8   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+9   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 6:
+
+Thread 7:: CVDisplayLink
+0   libsystem_kernel.dylib                   0x18f33950c __psynch_cvwait + 8
+1   libsystem_pthread.dylib                  0x18f37a154 _pthread_cond_wait + 1024
+2   CoreVideo                                0x199d38b44 CVDisplayLink::waitUntil(unsigned long long) + 336
+3   CoreVideo                                0x199d37c2c CVDisplayLink::runIOThread() + 452
+4   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+5   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 8:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 9:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 10:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 11:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 12:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 13:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 14:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 15:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 16:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 17:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 18:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 19:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+Thread 20:
+0   libsystem_kernel.dylib                   0x18f335bb0 semaphore_wait_trap + 8
+1   TheRecord                                0x1051594d8 duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*) + 432
+2   TheRecord                                0x105161ba0 void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*) + 56
+3   libsystem_pthread.dylib                  0x18f379c58 _pthread_start + 136
+4   libsystem_pthread.dylib                  0x18f374c1c thread_start + 8
+
+
+Thread 2 crashed with ARM Thread State (64-bit):
+    x0: 0x0000000000000000   x1: 0x0000000000000000   x2: 0x00000007bde4de00   x3: 0x0000000000000000
+    x4: 0x00000001fe308438   x5: 0x00000001fe308438   x6: 0x00000001fe308438   x7: 0xfffff0003ffff800
+    x8: 0x000000016d192ae8   x9: 0x549dc1c4366a00d0  x10: 0x0000000000000003  x11: 0xfffffffffffffff0
+   x12: 0xffffffffffffffff  x13: 0x0000000000000001  x14: 0x00000001fe308438  x15: 0x000000000000000f
+   x16: 0xe0810001fe2fc7a8  x17: 0x7a5c00016d1928c8  x18: 0x0000000000000000  x19: 0x000000016d192b60
+   x20: 0x000000016d192bb8  x21: 0x0000000000000000  x22: 0x00000007bfa1ca40  x23: 0x0000000103076730
+   x24: 0x00000007bfbd5120  x25: 0x0000000000000000  x26: 0x00000007bf99fae0  x27: 0x000000016d192d80
+   x28: 0x000000016d192c60   fp: 0x000000016d192ad0   lr: 0x0000000103077674
+    sp: 0x000000016d192a80   pc: 0x000000010308a730 cpsr: 0x60000000
+   far: 0x0000000000000000  esr: 0xf2000001 (Breakpoint) brk 1
+
+Binary Images:
+       0x102d80000 -        0x10619bfff app.the-record (0.9.0) <358b1164-ce61-3e3e-b985-1ace368905d4> /Applications/TheRecord.app/Contents/MacOS/TheRecord
+       0x10b0bc000 -        0x10ba03fff com.apple.mlx.Cmlx (1.0) <20b00a84-ce35-3367-8414-ac408564d0e7> /Applications/TheRecord.app/Contents/Frameworks/Cmlx.framework/Versions/A/Cmlx
+       0x10ae24000 -        0x10ae2ffff libobjc-trampolines.dylib (*) <ca58aa96-b997-3a6d-9132-19d49be4b3e9> /usr/lib/libobjc-trampolines.dylib
+       0x11e334000 -        0x11ebabfff com.apple.AGXMetalG16X (351.2) <7499d423-c36d-31c5-9c15-3f5b0ad94779> /System/Library/Extensions/AGXMetalG16X.bundle/Contents/MacOS/AGXMetalG16X
+       0x18f335000 -        0x18f3722af libsystem_kernel.dylib (*) <cc1cf985-bc65-3725-809f-4c1e36b8f4ba> /usr/lib/system/libsystem_kernel.dylib
+       0x18f3b9000 -        0x18f91731f com.apple.CoreFoundation (6.9) <04e3598b-f226-3250-b3b2-ce938dd4db7e> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+       0x19c15e000 -        0x19c45911f com.apple.HIToolbox (2.1.1) <8716490e-acc2-3688-8c2f-5ca42b4c9da9> /System/Library/Frameworks/Carbon.framework/Versions/A/Frameworks/HIToolbox.framework/Versions/A/HIToolbox
+       0x19382b000 -        0x194f4df9f com.apple.AppKit (6.9) <cf57a4fc-4be3-3d95-b543-d744e8718b26> /System/Library/Frameworks/AppKit.framework/Versions/C/AppKit
+       0x1c4097000 -        0x1c57e077f com.apple.SwiftUI (7.5.3) <90f7fa24-a280-3e8a-a62d-148b11bfc28d> /System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI
+       0x18ef9c000 -        0x18f042217 dyld (*) <a237ef81-b68b-37ba-a165-92c965529534> /usr/lib/dyld
+               0x0 - 0xffffffffffffffff ??? (*) <00000000-0000-0000-0000-000000000000> ???
+       0x293cfb000 -        0x293d86095 libswift_Concurrency.dylib (*) <e3545aa1-ff13-3698-8657-91bb23002df9> /usr/lib/swift/libswift_Concurrency.dylib
+       0x190c26000 -        0x191c0841f com.apple.Foundation (6.9) <49dd529f-1708-3767-997b-1a4639a07536> /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation
+       0x18f1bd000 -        0x18f20423f libdispatch.dylib (*) <f071efe4-299f-3089-acc4-0025b8ffb52a> /usr/lib/system/libdispatch.dylib
+       0x18f373000 -        0x18f37fb3b libsystem_pthread.dylib (*) <4f33683c-18c8-39a1-800b-2e3bd43bcc13> /usr/lib/system/libsystem_pthread.dylib
+       0x199d35000 -        0x199db585f com.apple.CoreVideo (1.8) <8a36cb95-d65e-3838-8837-22fd9a7e3d9c> /System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo
+
+External Modification Summary:
+  Calls made by other processes targeting this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by all processes on this machine:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+
+VM Region Summary:
+ReadOnly portion of Libraries: Total=2.0G resident=0K(0%) swapped_out_or_unallocated=2.0G(100%)
+Writable regions: Total=147.4M written=625K(0%) resident=625K(0%) swapped_out=0K(0%) unallocated=146.8M(100%)
+
+                                VIRTUAL   REGION 
+REGION TYPE                        SIZE    COUNT (non-coalesced) 
+===========                     =======  ======= 
+Accelerate framework               128K        1 
+Activity Tracing                   256K        1 
+AttributeGraph Data               1024K        1 
+ColorSync                           16K        1 
+CoreAnimation                      528K       33 
+CoreGraphics                        48K        3 
+CoreServices                       112K        1 
+CoreUI image data                  256K        2 
+Foundation                          16K        1 
+Kernel Alloc Once                   32K        1 
+MALLOC                            61.4M       23 
+MALLOC guard page                 4000K        4 
+Memory Tag 22                     64.0M        1 
+Memory Tag 241                      16K        1 
+STACK GUARD                       56.3M       21 
+Stack                             18.6M       21 
+VM_ALLOCATE                        128K        8 
+__AUTH                            6365K      661 
+__AUTH_CONST                      93.2M     1057 
+__CTF                               824        1 
+__DATA                            40.2M     1006 
+__DATA_CONST                      36.0M     1065 
+__DATA_DIRTY                      9113K      896 
+__FONT_DATA                        2352        1 
+__LINKEDIT                       620.8M        5 
+__OBJC_RO                         79.1M        1 
+__OBJC_RW                         2599K        1 
+__TEXT                             1.4G     1089 
+__TPRO_CONST                       128K        2 
+mapped file                      275.5M       31 
+page table in kernel               625K        1 
+shared memory                      896K       14 
+===========                     =======  ======= 
+TOTAL                              2.7G     5955 
+
+
+-----------
+Full Report
+-----------
+
+{"app_name":"TheRecord","timestamp":"2026-06-17 16:58:13.00 -0600","app_version":"0.9.0","slice_uuid":"358b1164-ce61-3e3e-b985-1ace368905d4","build_version":"1","platform":1,"bundleID":"app.the-record","share_with_app_devs":0,"is_first_party":0,"bug_type":"309","os_version":"macOS 26.5.1 (25F80)","roots_installed":0,"name":"TheRecord","incident_id":"205F7495-8479-456B-8AA9-3788326D0880"}
+{
+  "uptime" : 180000,
+  "procRole" : "Foreground",
+  "version" : 2,
+  "userID" : 501,
+  "deployVersion" : 210,
+  "modelCode" : "Mac16,11",
+  "coalitionID" : 29801,
+  "osVersion" : {
+    "train" : "macOS 26.5.1",
+    "build" : "25F80",
+    "releaseType" : "User"
+  },
+  "captureTime" : "2026-06-17 16:58:01.0379 -0600",
+  "codeSigningMonitor" : 2,
+  "incident" : "205F7495-8479-456B-8AA9-3788326D0880",
+  "pid" : 39403,
+  "translated" : false,
+  "cpuType" : "ARM-64",
+  "procLaunch" : "2026-06-17 16:57:59.7533 -0600",
+  "procStartAbsTime" : 4474126247803,
+  "procExitAbsTime" : 4474157068058,
+  "procName" : "TheRecord",
+  "procPath" : "\/Applications\/TheRecord.app\/Contents\/MacOS\/TheRecord",
+  "bundleInfo" : {"CFBundleShortVersionString":"0.9.0","CFBundleVersion":"1","CFBundleIdentifier":"app.the-record"},
+  "storeInfo" : {"deviceIdentifierForVendor":"EF776E2F-8D4E-5B1E-9C2B-87F86852AB66","thirdParty":true},
+  "parentProc" : "launchd",
+  "parentPid" : 1,
+  "coalitionName" : "app.the-record",
+  "crashReporterKey" : "REDACTED",
+  "appleIntelligenceStatus" : {"state":"available"},
+  "developerMode" : 1,
+  "codeSigningID" : "app.the-record",
+  "codeSigningTeamID" : "",
+  "codeSigningFlags" : 570425857,
+  "codeSigningValidationCategory" : 10,
+  "codeSigningTrustLevel" : 4294967295,
+  "codeSigningAuxiliaryInfo" : 0,
+  "instructionByteStream" : {"beforePC":"o\/j\/VOADF6r0OJqUnAcAkfUDGKo\/Axzrof3\/VCAAINQgACDUIAAg1A==","atPC":"IAAg1CAAINQgACDUIAAg1CAAINQgACDU\/wMD0fxvBqn6Zwep+F8IqQ=="},
+  "bootSessionUUID" : "2A272A0F-4CFC-463F-9818-C032D2599A27",
+  "sip" : "enabled",
+  "exception" : {"codes":"0x0000000000000001, 0x000000010308a730","rawCodes":[1,4345866032],"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},
+  "termination" : {"flags":0,"code":5,"namespace":"SIGNAL","indicator":"Trace\/BPT trap: 5","byProc":"exc handler","byPid":39403},
+  "os_fault" : {"process":"TheRecord"},
+  "extMods" : {"caller":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"system":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"targeted":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"warnings":0},
+  "faultingThread" : 2,
+  "threads" : [{"id":27688914,"threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":14306536062976},{"value":0},{"value":14306536062976},{"value":2},{"value":4294967295},{"value":0},{"value":17179869184},{"value":0},{"value":2},{"value":0},{"value":0},{"value":3331},{"value":1099511628032},{"value":18446744073709551569},{"value":8534587152},{"value":0},{"value":4294967295},{"value":2},{"value":14306536062976},{"value":0},{"value":14306536062976},{"value":21592279046},{"value":6124199288},{"value":8589934592},{"value":18446744073709550527},{"value":4412409862}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6697551220},"cpsr":{"value":0},"fp":{"value":6124199136},"sp":{"value":6124199056},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697475124},"far":{"value":0}},"queue":"com.apple.main-thread","frames":[{"imageOffset":3124,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":79220,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":4},{"imageOffset":39360,"symbol":"mach_msg_overwrite","symbolLocation":480,"imageIndex":4},{"imageOffset":4032,"symbol":"mach_msg","symbolLocation":24,"imageIndex":4},{"imageOffset":516312,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":160,"imageIndex":5},{"imageOffset":510404,"symbol":"__CFRunLoopRun","symbolLocation":1188,"imageIndex":5},{"imageOffset":1372612,"symbol":"_CFRunLoopRunSpecificWithOptions","symbolLocation":532,"imageIndex":5},{"imageOffset":775520,"symbol":"RunCurrentEventLoopInMode","symbolLocation":320,"imageIndex":6},{"imageOffset":788668,"symbol":"ReceiveNextEventCommon","symbolLocation":488,"imageIndex":6},{"imageOffset":2400588,"symbol":"_BlockUntilNextEventMatchingListInMode","symbolLocation":48,"imageIndex":6},{"imageOffset":7230300,"symbol":"_DPSBlockUntilNextEventMatchingListInMode","symbolLocation":228,"imageIndex":7},{"imageOffset":233604,"symbol":"_DPSNextEvent","symbolLocation":576,"imageIndex":7},{"imageOffset":12380336,"symbol":"-[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]","symbolLocation":688,"imageIndex":7},{"imageOffset":12379580,"symbol":"-[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]","symbolLocation":72,"imageIndex":7},{"imageOffset":180540,"symbol":"-[NSApplication run]","symbolLocation":368,"imageIndex":7},{"imageOffset":18352,"symbol":"NSApplicationMain","symbolLocation":880,"imageIndex":7},{"imageOffset":1094780,"symbol":"specialized runApp(_:)","symbolLocation":140,"imageIndex":8},{"imageOffset":4986020,"symbol":"runApp<A>(_:)","symbolLocation":104,"imageIndex":8},{"imageOffset":7918404,"symbol":"static App.main()","symbolLocation":224,"imageIndex":8},{"imageOffset":13426020,"sourceFile":"App.swift","symbol":"static TheRecordApp.$main()","imageIndex":0,"symbolLocation":52,"inline":true},{"imageOffset":13426020,"sourceFile":"App.swift","symbol":"TheRecord_main","symbolLocation":64,"imageIndex":0},{"imageOffset":130560,"symbol":"start","symbolLocation":6992,"imageIndex":9}]},{"id":27689021,"frames":[],"threadState":{"x":[{"value":6124761088},{"value":10243},{"value":6124224512},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":0},"fp":{"value":0},"sp":{"value":6124761088},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697733128},"far":{"value":0}}},{"triggered":true,"id":27689022,"threadState":{"x":[{"value":0},{"value":0},{"value":33250663936},{"value":0},{"value":8559559736,"symbolLocation":0,"symbol":"type metadata for Int32"},{"value":8559559736,"symbolLocation":0,"symbol":"type metadata for Int32"},{"value":8559559736,"symbolLocation":0,"symbol":"type metadata for Int32"},{"value":18446726482597246976},{"value":6125333224},{"value":6097242519000187088},{"value":3},{"value":18446744073709551600},{"value":18446744073709551615},{"value":1},{"value":8559559736,"symbolLocation":0,"symbol":"type metadata for Int32"},{"value":15},{"value":16177211345051043752},{"value":8816922176609921224},{"value":0},{"value":6125333344},{"value":6125333432},{"value":0},{"value":33279822400},{"value":4345784112,"symbolLocation":0,"symbol":"closure #1 in Column.cast(to:)"},{"value":33281626400},{"value":0},{"value":33279310560},{"value":6125333888},{"value":6125333600}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4345788020},"cpsr":{"value":1610612736},"fp":{"value":6125333200},"sp":{"value":6125333120},"esr":{"value":4060086273,"description":"(Breakpoint) brk 1"},"pc":{"value":4345866032,"matchesCrashFrame":1},"far":{"value":0}},"queue":"com.apple.root.default-qos.cooperative","frames":[{"imageOffset":3188528,"sourceFile":"\/<compiler-generated>","symbol":"Swift runtime failure: precondition failure","imageIndex":0,"symbolLocation":0,"inline":true},{"imageOffset":3188528,"sourceLine":131,"sourceFile":"ResultSet.swift","symbol":"specialized ResultSet.element(forColumn:at:)","imageIndex":0,"symbolLocation":380},{"imageOffset":3110516,"sourceFile":"\/<compiler-generated>","symbol":"ResultSet.element(forColumn:at:)","imageIndex":0,"symbolLocation":8,"inline":true},{"imageOffset":3110516,"sourceLine":444,"sourceFile":"Column.swift","symbol":"Column.subscript.getter","imageIndex":0,"symbolLocation":52},{"imageOffset":8181248,"sourceLine":59,"sourceFile":"DuckDBReaderActor.swift","symbol":"specialized static DuckDBReaderActor.setupSchema(connection:)","imageIndex":0,"symbolLocation":820},{"imageOffset":8178264,"sourceFile":"\/<compiler-generated>","symbol":"static DuckDBReaderActor.setupSchema(connection:)","imageIndex":0,"symbolLocation":8,"inline":true},{"imageOffset":8178264,"sourceLine":29,"sourceFile":"DuckDBReaderActor.swift","symbol":"DuckDBReaderActor.init(databasePath:)","imageIndex":0,"symbolLocation":904},{"imageOffset":8179128,"sourceFile":"DuckDBReaderActor.swift","symbol":"DuckDBReaderActor.__allocating_init(databasePath:)","imageIndex":0,"symbolLocation":36,"inline":true},{"imageOffset":8179128,"sourceLine":102,"sourceFile":"DuckDBReaderActor.swift","symbol":"DuckDBReaderActor.__allocating_init()","imageIndex":0,"symbolLocation":360},{"imageOffset":13452780,"sourceLine":29,"sourceFile":"AppAssemblerBuilders.swift","symbol":"closure #1 in AppAssembler.buildStorage()","imageIndex":0,"symbolLocation":168},{"imageOffset":13464653,"symbol":"partial apply for closure #1 in AppAssembler.buildStorage()","symbolLocation":1,"imageIndex":0},{"imageOffset":52933,"symbol":"completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)","symbolLocation":1,"imageIndex":11}]},{"id":27689025,"threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":367318488055808},{"value":0},{"value":367318488055808},{"value":2},{"value":4294967295},{"value":0},{"value":17179869184},{"value":0},{"value":2},{"value":0},{"value":0},{"value":85523},{"value":0},{"value":18446744073709551569},{"value":8534587152},{"value":0},{"value":4294967295},{"value":2},{"value":367318488055808},{"value":0},{"value":367318488055808},{"value":21592279046},{"value":6125903608},{"value":8589934592},{"value":18446744073709550527},{"value":4412409862}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6697551220},"cpsr":{"value":0},"fp":{"value":6125903456},"sp":{"value":6125903376},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697475124},"far":{"value":0}},"queue":"com.apple.root.user-interactive-qos","frames":[{"imageOffset":3124,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":79220,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":4},{"imageOffset":39360,"symbol":"mach_msg_overwrite","symbolLocation":480,"imageIndex":4},{"imageOffset":4032,"symbol":"mach_msg","symbolLocation":24,"imageIndex":4},{"imageOffset":516312,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":160,"imageIndex":5},{"imageOffset":510404,"symbol":"__CFRunLoopRun","symbolLocation":1188,"imageIndex":5},{"imageOffset":1372612,"symbol":"_CFRunLoopRunSpecificWithOptions","symbolLocation":532,"imageIndex":5},{"imageOffset":367428,"symbol":"-[NSRunLoop(NSRunLoop) runMode:beforeDate:]","symbolLocation":212,"imageIndex":12},{"imageOffset":8433868,"symbol":"-[NSAnimation _runBlocking]","symbolLocation":412,"imageIndex":7},{"imageOffset":6696,"symbol":"_dispatch_call_block_and_release","symbolLocation":32,"imageIndex":13},{"imageOffset":111792,"symbol":"_dispatch_client_callout","symbolLocation":16,"imageIndex":13},{"imageOffset":232812,"symbol":"<deduplicated_symbol>","symbolLocation":28,"imageIndex":13},{"imageOffset":80604,"symbol":"_dispatch_root_queue_drain","symbolLocation":708,"imageIndex":13},{"imageOffset":82208,"symbol":"_dispatch_worker_thread2","symbolLocation":184,"imageIndex":13},{"imageOffset":11908,"symbol":"_pthread_wqthread","symbolLocation":232,"imageIndex":14},{"imageOffset":7184,"symbol":"start_wqthread","symbolLocation":8,"imageIndex":14}]},{"id":27689034,"frames":[],"threadState":{"x":[{"value":6126481408},{"value":23055},{"value":6125944832},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":0},"fp":{"value":0},"sp":{"value":6126481408},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697733128},"far":{"value":0}}},{"id":27689035,"name":"com.apple.NSEventThread","threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":135252815118336},{"value":0},{"value":135252815118336},{"value":2},{"value":4294967295},{"value":0},{"value":17179869184},{"value":0},{"value":2},{"value":0},{"value":0},{"value":31491},{"value":0},{"value":18446744073709551569},{"value":8534587152},{"value":0},{"value":4294967295},{"value":2},{"value":135252815118336},{"value":0},{"value":135252815118336},{"value":21592279046},{"value":6127050888},{"value":8589934592},{"value":18446744073709550527},{"value":4412409862}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6697551220},"cpsr":{"value":0},"fp":{"value":6127050736},"sp":{"value":6127050656},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697475124},"far":{"value":0}},"frames":[{"imageOffset":3124,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":79220,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":4},{"imageOffset":39360,"symbol":"mach_msg_overwrite","symbolLocation":480,"imageIndex":4},{"imageOffset":4032,"symbol":"mach_msg","symbolLocation":24,"imageIndex":4},{"imageOffset":516312,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":160,"imageIndex":5},{"imageOffset":510404,"symbol":"__CFRunLoopRun","symbolLocation":1188,"imageIndex":5},{"imageOffset":1372612,"symbol":"_CFRunLoopRunSpecificWithOptions","symbolLocation":532,"imageIndex":5},{"imageOffset":1420412,"symbol":"_NSEventThread","symbolLocation":184,"imageIndex":7},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}]},{"id":27689056,"frames":[],"threadState":{"x":[{"value":6127628288},{"value":44039},{"value":6127091712},{"value":0},{"value":409602},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":0},"fp":{"value":0},"sp":{"value":6127628288},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697733128},"far":{"value":0}}},{"id":27689065,"name":"CVDisplayLink","threadState":{"x":[{"value":260},{"value":0},{"value":0},{"value":0},{"value":0},{"value":65704},{"value":0},{"value":15653792},{"value":257},{"value":0},{"value":0},{"value":2},{"value":2},{"value":0},{"value":0},{"value":0},{"value":305},{"value":8534585272},{"value":0},{"value":33248642616},{"value":33248642680},{"value":1},{"value":15653792},{"value":0},{"value":0},{"value":257},{"value":512},{"value":8468658520,"symbolLocation":0,"symbol":"kZeroVideoTime"},{"value":4474157196944}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6697754964},"cpsr":{"value":2684354560},"fp":{"value":6128201136},"sp":{"value":6128200992},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697489676},"far":{"value":0}},"frames":[{"imageOffset":17676,"symbol":"__psynch_cvwait","symbolLocation":8,"imageIndex":4},{"imageOffset":29012,"symbol":"_pthread_cond_wait","symbolLocation":1024,"imageIndex":14},{"imageOffset":15172,"symbol":"CVDisplayLink::waitUntil(unsigned long long)","symbolLocation":336,"imageIndex":15},{"imageOffset":11308,"symbol":"CVDisplayLink::runIOThread()","symbolLocation":452,"imageIndex":15},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}]},{"id":27689066,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":18446744072367374336},{"value":96},{"value":18446726483666796544},{"value":33281594816},{"value":0},{"value":18446744072631617535},{"value":18446726482597246976},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":0},{"value":6809004936870348},{"value":6791410603340238},{"value":604160},{"value":12},{"value":18446744073709551580},{"value":6476794318},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967232},{"value":33248645672},{"value":33281563840},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6128775056},"sp":{"value":6128774928},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689067,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":18446744072367374336},{"value":96},{"value":18446726483666796544},{"value":33281655360},{"value":0},{"value":4192256},{"value":18446744072631617535},{"value":18446744073709551604},{"value":18446744073709551604},{"value":18446744073709551603},{"value":0},{"value":14814426691603390},{"value":14796832358073272},{"value":67584},{"value":9},{"value":18446744073709551580},{"value":14111359928},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967008},{"value":33248645672},{"value":33279884256},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6129348496},"sp":{"value":6129348368},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689068,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":18446744072367374336},{"value":96},{"value":18446726483666796544},{"value":33281594944},{"value":0},{"value":18446744072631617535},{"value":18446726482597246976},{"value":18446744073709551606},{"value":18446744073709551606},{"value":18446744073709551605},{"value":0},{"value":14796832358073272},{"value":14779229434608578},{"value":65536},{"value":9},{"value":18446744073709551580},{"value":14094572482},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966944},{"value":33248645672},{"value":33279884160},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6129921936},"sp":{"value":6129921808},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689069,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6130495280},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279701696},{"value":6130495488},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967024},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6130495376},"sp":{"value":6130495248},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689070,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6131068720},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279701984},{"value":6131068928},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966976},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6131068816},"sp":{"value":6131068688},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689071,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6131642160},{"value":96},{"value":18446726483666796544},{"value":33272653888},{"value":0},{"value":18446744072631617535},{"value":18446726482597246976},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":9},{"value":18446744073709551580},{"value":2986697108},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967056},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6131642256},"sp":{"value":6131642128},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689072,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6132215600},{"value":96},{"value":18446726483666796544},{"value":33274168064},{"value":0},{"value":4192256},{"value":18446744072631617535},{"value":18446744073709551604},{"value":18446744073709551604},{"value":18446744073709551603},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":9},{"value":18446744073709551580},{"value":3003486606},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966912},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6132215696},"sp":{"value":6132215568},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689073,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6132789040},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279702400},{"value":6132789248},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551604},{"value":18446744073709551604},{"value":18446744073709551603},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966848},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6132789136},"sp":{"value":6132789008},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689074,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6133362480},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279701760},{"value":6133362688},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966928},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6133362576},"sp":{"value":6133362448},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689075,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":18446744072367374336},{"value":96},{"value":18446726483666796544},{"value":33272654080},{"value":0},{"value":18446744072631617535},{"value":18446726482597246976},{"value":18446744073709551606},{"value":18446744073709551606},{"value":18446744073709551605},{"value":0},{"value":7407212281022882},{"value":7389609357558214},{"value":608256},{"value":9},{"value":18446744073709551580},{"value":7047281094},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966880},{"value":33248645672},{"value":33273633312},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6133936016},"sp":{"value":6133935888},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689076,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6134509360},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279701920},{"value":6134509568},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551604},{"value":18446744073709551604},{"value":18446744073709551603},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967072},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6134509456},"sp":{"value":6134509328},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689077,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":6135082800},{"value":4380302184,"symbolLocation":0,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)"},{"value":33279702432},{"value":6135083008},{"value":419432703},{"value":0},{"value":0},{"value":18446744073709551605},{"value":18446744073709551605},{"value":18446744073709551604},{"value":9223372036854775808},{"value":0},{"value":0},{"value":0},{"value":0},{"value":18446744073709551580},{"value":8534585488},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261967040},{"value":33248645672},{"value":33280475136},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6135082896},"sp":{"value":6135082768},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}},{"id":27689078,"frames":[{"imageOffset":2992,"symbol":"semaphore_wait_trap","symbolLocation":8,"imageIndex":4},{"imageOffset":37590232,"symbol":"duckdb::TaskScheduler::ExecuteForever(std::__1::atomic<bool>*)","symbolLocation":432,"imageIndex":0},{"imageOffset":37624736,"symbol":"void* std::__1::__thread_proxy[abi:ne190102]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (*)(duckdb::TaskScheduler*, std::__1::atomic<bool>*), duckdb::TaskScheduler*, std::__1::atomic<bool>*>>(void*)","symbolLocation":56,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":14},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":14}],"threadState":{"x":[{"value":14},{"value":18446744072367374336},{"value":96},{"value":18446726483666796544},{"value":33281655488},{"value":0},{"value":4192256},{"value":18446744072631617535},{"value":18446744073709551604},{"value":18446744073709551604},{"value":18446744073709551603},{"value":0},{"value":14040276016380850},{"value":14022627995759534},{"value":79872},{"value":9},{"value":18446744073709551580},{"value":13373021102},{"value":0},{"value":33270296448},{"value":33248519072},{"value":33261966992},{"value":33248645672},{"value":33279884064},{"value":18446744073709551615},{"value":1000000},{"value":18446744073709051616},{"value":1},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380267736},"cpsr":{"value":2684354560},"fp":{"value":6135656336},"sp":{"value":6135656208},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6697474992},"far":{"value":0}}}],
+  "usedImages" : [
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4342677504,
+    "CFBundleShortVersionString" : "0.9.0",
+    "CFBundleIdentifier" : "app.the-record",
+    "size" : 54640640,
+    "uuid" : "358b1164-ce61-3e3e-b985-1ace368905d4",
+    "path" : "\/Applications\/TheRecord.app\/Contents\/MacOS\/TheRecord",
+    "name" : "TheRecord",
+    "CFBundleVersion" : "1"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4480286720,
+    "CFBundleShortVersionString" : "1.0",
+    "CFBundleIdentifier" : "com.apple.mlx.Cmlx",
+    "size" : 9732096,
+    "uuid" : "20b00a84-ce35-3367-8414-ac408564d0e7",
+    "path" : "\/Applications\/TheRecord.app\/Contents\/Frameworks\/Cmlx.framework\/Versions\/A\/Cmlx",
+    "name" : "Cmlx",
+    "CFBundleVersion" : "1"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 4477566976,
+    "size" : 49152,
+    "uuid" : "ca58aa96-b997-3a6d-9132-19d49be4b3e9",
+    "path" : "\/usr\/lib\/libobjc-trampolines.dylib",
+    "name" : "libobjc-trampolines.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 4801642496,
+    "CFBundleShortVersionString" : "351.2",
+    "CFBundleIdentifier" : "com.apple.AGXMetalG16X",
+    "size" : 8880128,
+    "uuid" : "7499d423-c36d-31c5-9c15-3f5b0ad94779",
+    "path" : "\/System\/Library\/Extensions\/AGXMetalG16X.bundle\/Contents\/MacOS\/AGXMetalG16X",
+    "name" : "AGXMetalG16X",
+    "CFBundleVersion" : "351.2"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6697472000,
+    "size" : 250544,
+    "uuid" : "cc1cf985-bc65-3725-809f-4c1e36b8f4ba",
+    "path" : "\/usr\/lib\/system\/libsystem_kernel.dylib",
+    "name" : "libsystem_kernel.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6698012672,
+    "CFBundleShortVersionString" : "6.9",
+    "CFBundleIdentifier" : "com.apple.CoreFoundation",
+    "size" : 5628704,
+    "uuid" : "04e3598b-f226-3250-b3b2-ce938dd4db7e",
+    "path" : "\/System\/Library\/Frameworks\/CoreFoundation.framework\/Versions\/A\/CoreFoundation",
+    "name" : "CoreFoundation",
+    "CFBundleVersion" : "5026.5.4"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6913646592,
+    "CFBundleShortVersionString" : "2.1.1",
+    "CFBundleIdentifier" : "com.apple.HIToolbox",
+    "size" : 3125536,
+    "uuid" : "8716490e-acc2-3688-8c2f-5ca42b4c9da9",
+    "path" : "\/System\/Library\/Frameworks\/Carbon.framework\/Versions\/A\/Frameworks\/HIToolbox.framework\/Versions\/A\/HIToolbox",
+    "name" : "HIToolbox"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6769782784,
+    "CFBundleShortVersionString" : "6.9",
+    "CFBundleIdentifier" : "com.apple.AppKit",
+    "size" : 24260512,
+    "uuid" : "cf57a4fc-4be3-3d95-b543-d744e8718b26",
+    "path" : "\/System\/Library\/Frameworks\/AppKit.framework\/Versions\/C\/AppKit",
+    "name" : "AppKit",
+    "CFBundleVersion" : "2685.60.104"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 7583920128,
+    "CFBundleShortVersionString" : "7.5.3",
+    "CFBundleIdentifier" : "com.apple.SwiftUI",
+    "size" : 24418176,
+    "uuid" : "90f7fa24-a280-3e8a-a62d-148b11bfc28d",
+    "path" : "\/System\/Library\/Frameworks\/SwiftUI.framework\/Versions\/A\/SwiftUI",
+    "name" : "SwiftUI",
+    "CFBundleVersion" : "7.5.3"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6693699584,
+    "size" : 680472,
+    "uuid" : "a237ef81-b68b-37ba-a165-92c965529534",
+    "path" : "\/usr\/lib\/dyld",
+    "name" : "dyld"
+  },
+  {
+    "size" : 0,
+    "source" : "A",
+    "base" : 0,
+    "uuid" : "00000000-0000-0000-0000-000000000000"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 11069796352,
+    "size" : 569494,
+    "uuid" : "e3545aa1-ff13-3698-8657-91bb23002df9",
+    "path" : "\/usr\/lib\/swift\/libswift_Concurrency.dylib",
+    "name" : "libswift_Concurrency.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6723624960,
+    "CFBundleShortVersionString" : "6.9",
+    "CFBundleIdentifier" : "com.apple.Foundation",
+    "size" : 16655392,
+    "uuid" : "49dd529f-1708-3767-997b-1a4639a07536",
+    "path" : "\/System\/Library\/Frameworks\/Foundation.framework\/Versions\/C\/Foundation",
+    "name" : "Foundation",
+    "CFBundleVersion" : "5026.5.4"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6695931904,
+    "size" : 291392,
+    "uuid" : "f071efe4-299f-3089-acc4-0025b8ffb52a",
+    "path" : "\/usr\/lib\/system\/libdispatch.dylib",
+    "name" : "libdispatch.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6697725952,
+    "size" : 52028,
+    "uuid" : "4f33683c-18c8-39a1-800b-2e3bd43bcc13",
+    "path" : "\/usr\/lib\/system\/libsystem_pthread.dylib",
+    "name" : "libsystem_pthread.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6875729920,
+    "CFBundleShortVersionString" : "1.8",
+    "CFBundleIdentifier" : "com.apple.CoreVideo",
+    "size" : 526432,
+    "uuid" : "8a36cb95-d65e-3838-8837-22fd9a7e3d9c",
+    "path" : "\/System\/Library\/Frameworks\/CoreVideo.framework\/Versions\/A\/CoreVideo",
+    "name" : "CoreVideo",
+    "CFBundleVersion" : "734.4"
+  }
+],
+  "sharedCache" : {
+  "base" : 6692569088,
+  "size" : 5990596608,
+  "uuid" : "ff7119a7-f64d-305d-8135-7e6eb1c207d1"
+},
+  "vmSummary" : "ReadOnly portion of Libraries: Total=2.0G resident=0K(0%) swapped_out_or_unallocated=2.0G(100%)\nWritable regions: Total=147.4M written=625K(0%) resident=625K(0%) swapped_out=0K(0%) unallocated=146.8M(100%)\n\n                                VIRTUAL   REGION \nREGION TYPE                        SIZE    COUNT (non-coalesced) \n===========                     =======  ======= \nAccelerate framework               128K        1 \nActivity Tracing                   256K        1 \nAttributeGraph Data               1024K        1 \nColorSync                           16K        1 \nCoreAnimation                      528K       33 \nCoreGraphics                        48K        3 \nCoreServices                       112K        1 \nCoreUI image data                  256K        2 \nFoundation                          16K        1 \nKernel Alloc Once                   32K        1 \nMALLOC                            61.4M       23 \nMALLOC guard page                 4000K        4 \nMemory Tag 22                     64.0M        1 \nMemory Tag 241                      16K        1 \nSTACK GUARD                       56.3M       21 \nStack                             18.6M       21 \nVM_ALLOCATE                        128K        8 \n__AUTH                            6365K      661 \n__AUTH_CONST                      93.2M     1057 \n__CTF                               824        1 \n__DATA                            40.2M     1006 \n__DATA_CONST                      36.0M     1065 \n__DATA_DIRTY                      9113K      896 \n__FONT_DATA                        2352        1 \n__LINKEDIT                       620.8M        5 \n__OBJC_RO                         79.1M        1 \n__OBJC_RW                         2599K        1 \n__TEXT                             1.4G     1089 \n__TPRO_CONST                       128K        2 \nmapped file                      275.5M       31 \npage table in kernel               625K        1 \nshared memory                      896K       14 \n===========                     =======  ======= \nTOTAL                              2.7G     5955 \n",
+  "legacyInfo" : {
+  "threadTriggered" : {
+    "queue" : "com.apple.root.default-qos.cooperative"
+  }
+},
+  "logWritingSignature" : "348b290d7544250769bb56051a49ca0499344a26",
+  "roots_installed" : 0,
+  "bug_type" : "309",
+  "trmStatus" : 40960,
+  "trialInfo" : {
+  "rollouts" : [
+    {
+      "rolloutId" : "648cada15dbc71671bb3aa1b",
+      "factorPackIds" : [
+        "65a81173096f6a1f1ba46525"
+      ],
+      "deploymentId" : 240000116
+    },
+    {
+      "rolloutId" : "644114de41e7236e6177f9bd",
+      "factorPackIds" : [
+
+      ],
+      "deploymentId" : 240000013
+    }
+  ],
+  "experiments" : [
+
+  ]
+}
+}
+
+Model: Mac16,11, BootROM 18000.120.36, proc 14:10:4:0 processors, 64 GB, SMC 
+Graphics: Apple M4 Pro, Apple M4 Pro, Built-In
+Display: DELL U4320Q, 5120 x 2880 (5K/UHD+ - Ultra High Definition Plus), Main, MirrorOff, Online
+Memory Module: LPDDR5, Hynix
+AirPort: spairport_wireless_card_type_wifi (0x14E4, 0x4388), wl0: Feb  2 2026 19:39:59 version 23.50.20.0.41.51.208 FWID 01-010dcc74
+IO80211_driverkit-1561.3 "IO80211_driverkit-1561.3" Apr 18 2026 17:42:26
+AirPort: 
+Bluetooth: Version (null), 0 services, 0 devices, 0 incoming serial ports
+Network Service: Ethernet, Ethernet, en0
+Network Service: Wi-Fi, AirPort, en1
+PCI Card: pci8086,15f0, USB eXtensible Host Controller, Thunderbolt@3,0,0
+PCI Card: pci1d97,1602, NVM Express Controller, Thunderbolt@67,0,0
+Thunderbolt Bus: Mac mini, Apple Inc.
+Thunderbolt Bus: Mac mini, Apple Inc.
+Thunderbolt Device: Ugreen Storage Device, Ugreen, 1, 67.1
+Thunderbolt Bus: Mac mini, Apple Inc.
