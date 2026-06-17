@@ -1,0 +1,15 @@
+ok bro UI have a mega ask of you for the record suite.
+
+I want TO COME up with with a token burning detailed plan to review every single function, every single method, every single class. I want ot ensure that they all speak to each other as  they expect. even inside the classes the functions amongst each other. using deterministic tools that are widely availble. how can we help an LLM map out silent bugs
+
+---
+
+ok bro UI have a mega ask of you for the record suite.
+
+I want TO COME up with with a token burning detailed plan to review every single function, every single method, every single class. I want ot ensure that they all speak to each other as  they expect. even inside the classes the functions amongst each other. using deterministic tools that are widely availble. how can we help an LLM map out silent bugs
+
+---
+
+ok bro UI have a mega ask of you for the record suite.
+
+I want TO COME up with with a token burning detailed plan to review every single function, every single method, every single class. I want ot ensure that they all speak to each other as  they expect. even inside the classes the functions amongst each other. using deterministic tools that are widely availble. how can we help an LLM map out silent bugs
