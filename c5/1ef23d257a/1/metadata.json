@@ -1,9 +1,11 @@
 {
   "cli_version": "0.7.5",
   "checkpoint_id": "c51ef23d257a",
+  "session_id": "33b21235-f20b-47b2-bc41-2e4da0af312a",
   "strategy": "manual-commit",
+  "created_at": "2026-06-18T16:39:09.527791Z",
   "branch": "epic/239-grdb-sqlite-storage",
-  "checkpoints_count": 21,
+  "checkpoints_count": 1,
   "files_touched": [
     "Prebuilts/Cduckdb.xcframework/macos-arm64/Headers/module.modulemap",
     "Prebuilts/duckdb-swift/Package.swift",
@@ -35,29 +37,31 @@
     "Prebuilts/duckdb-swift/Sources/DuckDB/Types/IntHuge.swift",
     "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Interval.swift",
     "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Time.swift",
-    "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Timestamp.swift",
-    "Record-App/Sources/TheRecord/AppAssembler.swift",
-    "Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift"
+    "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Timestamp.swift"
   ],
-  "sessions": [
-    {
-      "metadata": "/c5/1ef23d257a/0/metadata.json",
-      "transcript": "/c5/1ef23d257a/0/full.jsonl",
-      "content_hash": "/c5/1ef23d257a/0/content_hash.txt",
-      "prompt": "/c5/1ef23d257a/0/prompt.txt"
-    },
-    {
-      "metadata": "/c5/1ef23d257a/1/metadata.json",
-      "transcript": "/c5/1ef23d257a/1/full.jsonl",
-      "content_hash": "/c5/1ef23d257a/1/content_hash.txt",
-      "prompt": "/c5/1ef23d257a/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "bc08b23364a1",
   "token_usage": {
-    "input_tokens": 9188,
-    "cache_creation_tokens": 4173482,
-    "cache_read_tokens": 33739033,
-    "output_tokens": 135979,
-    "api_call_count": 345
+    "input_tokens": 1533,
+    "cache_creation_tokens": 2033372,
+    "cache_read_tokens": 15865298,
+    "output_tokens": 78060,
+    "api_call_count": 172
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-18T16:39:09.50904Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1206,
+    "human_modified": 93,
+    "human_removed": 0,
+    "total_committed": 1206,
+    "total_lines_changed": 4816,
+    "agent_percentage": 0,
+    "metric_version": 2
   }
 }
