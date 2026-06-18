@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "aa5db1743110",
+  "session_id": "33b21235-f20b-47b2-bc41-2e4da0af312a",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-18T04:33:45.777756Z",
+  "branch": "app-delegate-fix",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-App/Sources/Business/UseCases/PipelineCoordinator.swift",
+    "Record-App/Sources/TheRecord/App.swift",
+    "Record-App/Sources/TheRecord/AppAssembler.swift",
+    "Record-App/Sources/TheRecord/AppAssemblerBuilders.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/BroadsheetAppState.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/BroadsheetAppStateLifecycle.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModel.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModelEngine.swift",
+    "Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift",
+    "Record-Presentation/Sources/Presentation/Views/MainWindowView.swift",
+    "Record-Presentation/Sources/Presentation/Views/SettingsViewDeleteAllSection.swift",
+    "Record-Presentation/Tests/Unit/Presentation/BroadsheetAppStateLiveTranscriptTests.swift",
+    "Record-Presentation/Tests/Unit/Presentation/BroadsheetAppStateToastTests.swift",
+    "test-failures.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "bc08b23364a1",
+  "token_usage": {
+    "input_tokens": 1533,
+    "cache_creation_tokens": 2033372,
+    "cache_read_tokens": 15865298,
+    "output_tokens": 78060,
+    "api_call_count": 172
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-18T04:33:45.761311Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 209,
+    "human_modified": 260,
+    "human_removed": 0,
+    "total_committed": 209,
+    "total_lines_changed": 469,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
