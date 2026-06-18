@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "aa5db1743110",
+  "session_id": "80052483-b1d8-4b14-ad04-ada92893f195",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-18T04:34:02.690137Z",
+  "branch": "app-delegate-fix",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/AppAssemblerBuilders.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "ad003c9fda31",
+  "checkpoint_transcript_start": 422,
+  "transcript_lines_at_start": 422,
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-18T04:34:02.689262Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 424,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 424,
+    "total_lines_changed": 659,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
