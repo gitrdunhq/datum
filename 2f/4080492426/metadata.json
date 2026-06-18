@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "2f4080492426",
+  "strategy": "manual-commit",
+  "branch": "fix/test-compilation-errors",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-ML/Tests/Unit/CredentialStoreTests.swift",
+    "Record-ML/Tests/Unit/MLXSummarizationPluginTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2f/4080492426/0/metadata.json",
+      "transcript": "/2f/4080492426/0/full.jsonl",
+      "content_hash": "/2f/4080492426/0/content_hash.txt",
+      "prompt": "/2f/4080492426/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 106779,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1148928,
+    "output_tokens": 15111,
+    "api_call_count": 15
+  }
+}
