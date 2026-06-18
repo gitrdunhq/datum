@@ -1,0 +1,18 @@
+Explore the codebase at /Volumes/Extra/repos/gitrdunhq/the-record-suite to find:
+
+1. All hardcoded `.font(.system(size: ...))` instances in Swift files under Presentation layer
+2. All hardcoded `.padding(...)` instances (focus on SwiftUI views, not edge insets)
+3. All hardcoded `.frame(...)` with specific size values
+4. Check if Typography.swift or Metrics.swift already exist
+5. Check if any Theme folder exists
+6. Look at the views mentioned: OnboardingViewSteps, EmptyStateView, TutorialOverlayView, MainWindowView, BroadsheetDockBar, WaveformView, ContextSuggestionsPanelView, OnboardingView
+
+Search thoroughly in:
+- Record-Presentation/Sources/
+- Any other Presentation-related directories
+
+Return:
+- File paths and line numbers for all hardcoded values found
+- Whether Typography.swift, Metrics.swift, or Theme folder exist
+- Current structure of the Presentation layer
+- The current state of each mentioned view (does it exist? what does it look like?)
