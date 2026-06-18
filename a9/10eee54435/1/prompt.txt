@@ -1,0 +1,15 @@
+merhe rhis brwnch
+
+---
+
+Failed to initialise the database: The operation couldn’t be completed. (Domain.StorageError error 2.). If THE RECORD is already running, quit it and try again. 
+
+so after it crashes it still holds hte lock.
+
+---
+
+rebuild?
+
+---
+
+create a detailed franular plan flr an agent to use determinsric tools along withnreasoning to trace every oissivke path a user may have when they use the app. make it llm sgnostic
