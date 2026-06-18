@@ -1,0 +1,1425 @@
+Continuing work from session ses_124aaa1eeffeeRnkOJBAisCth7. When you lack specific information you can use read_session to get it.
+
+@/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/UITheme.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/AppConfig.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-App/Sources/TheRecord/App.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Broadsheet/BroadsheetRootView.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/DesignTokens.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Typography.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Metrics.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/AppState.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/BroadsheetNavigation.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/DesignTokensTests.swift @/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/BroadsheetNavigationTests.swift
+
+## Goal: Audit Phase 2 & Phase 3 of Issue #236 (Design Token Centralization & Custom Skinning)
+
+Follow the same pattern used in Phase 1: map all existing code, identify what needs to change, and leave comprehensive comments on the GitHub issue.
+
+### Phase 2: Protocol-Based Architecture
+Tasks:
+- **2.1.1**: Create `Theme` folder in `Record-Presentation`
+- **2.2.1**: Define `AppTheme` protocol and implement `BroadsheetTheme`
+- **2.3.1**: Inject active theme via SwiftUI Environment
+
+**What to audit for Phase 2:**
+1. The existing `UITheme` enum (Domain/Config/UITheme.swift) — only has `.classic` and `.broadsheet` cases, no rich theming data
+2. The existing `AppConfig.uiTheme` field — stores theme selection, not theme data
+3. The existing theme switching mechanism via `NotificationCenter.themeChanged` in App.swift
+4. The existing SwiftUI Environment injection pattern (`textScale` in BroadsheetRootView) — this is the pattern to extend
+5. The existing `Color` extension system (DesignTokens.swift) — 15+ colors defined as static properties
+6. How the theme switch currently works: `AppContentView` does a `switch appState.settings.uiTheme` and renders either `BroadsheetRootView` or `MainWindowView`
+7. The `SettingsViewModel.uiTheme` property and how it proxies to `AppState.settings.uiTheme`
+8. The `BroadsheetAppState` class — check what theming-related state it holds
+9. Existing hardcoded colors across all views — count how many Color.xxx references exist vs what could be themeable
+10. What an `AppTheme` protocol should expose: colors, fonts, metrics, spacing, corner radii, etc.
+
+### Phase 3: JSON Skinning Engine
+Tasks:
+- **3.1.1**: Define `theme-schema.json`
+- **3.2.1**: Implement `JSONTheme` and `ThemeLoader`
+
+**What to audit for Phase 3:**
+1. Existing JSON parsing patterns in the codebase (e.g., JSONSpeakerProfileStore, AppConfig Codable)
+2. File I/O patterns for loading theme files from disk
+3. What the JSON schema should look like: colors (hex strings), fonts (size/weight/design), metrics (numbers), etc.
+4. Where theme JSON files should be stored (bundle? user documents? both?)
+5. How `ThemeLoader` should integrate with the `AppTheme` protocol
+6. How to handle fallback to built-in `BroadsheetTheme` when JSON fails to load
+
+### Output Format
+For each phase, create a GitHub issue comment on #236 with:
+- Current state analysis (what exists)
+- Map of existing code → proposed new structure
+- Files to create/modify
+- Protocol design recommendations
+- Schema design recommendations
+- Summary statistics
+
+### Key Files to Load Into Context
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/UITheme.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/AppConfig.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-App/Sources/TheRecord/App.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Broadsheet/BroadsheetRootView.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/DesignTokens.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Typography.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Metrics.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/AppState.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/BroadsheetNavigation.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/DesignTokensTests.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/TypographyTests.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/MetricsTests.swift`
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/BroadsheetNavigationTests.swift`
+
+### Notes from Phase 1
+- Phase 1 already maps all hardcoded fonts, padding, and frame values
+- The Typography enum has 3 sections: Display, Body, Chrome, Data
+- The Metrics enum has: base unit, column widths, corner radii, rule weights
+- DesignTokens.swift has 15+ color properties with hex values
+- The existing theme system is binary (classic vs broadsheet) via UITheme enum
+- Theme switching uses NotificationCenter + AppContentView switch statement
+- Environment injection pattern already exists via `EnvironmentValues.textScale`
+
+### User's Question
+The user asked: "should this be a skill?" — regarding making Phase 2/3 audit a reusable skill pattern. Consider whether to suggest creating a skill for "issue audit" that other agents could use for future phases. (generic not repo specific)
+
+---
+
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/UITheme.swift"}
+<file>
+00001| /// Which UI skin to render. Stored in AppConfig, toggled in Settings.
+00002| public enum UITheme: String, Codable, CaseIterable, Sendable {
+00003|     case classic
+00004|     case broadsheet
+00005| 
+00006|     public static let `default`: UITheme = .broadsheet
+00007| }
+00008| 
+
+(End of file - total 8 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/AppConfig.swift"}
+<file>
+00001| import Foundation
+00002| 
+00003| public struct MCPEndpointConfig: Sendable, Codable, Equatable {
+00004|     public let url: URL
+00005|     public let providerID: ProviderID
+00006| 
+00007|     public init(url: URL, providerID: ProviderID) {
+00008|         self.url = url
+00009|         self.providerID = providerID
+00010|     }
+00011| }
+00012| 
+00013| public struct AppConfig: Sendable, Codable, Equatable {
+00014|     public let summarization: SummaryConfig
+00015|     public let transcription: TranscriptionConfig
+00016|     public let storage: StorageConfig
+00017|     public let translation: TranslationConfig
+00018|     public let contextCache: ContextCacheConfig
+00019|     public let audioCapture: AudioCaptureConfig
+00020|     public let uiTheme: UITheme
+00021|     public let privacyMode: PrivacyMode
+00022|     /// Whether the user has consented to sending transcript data to MCP providers.
+00023|     /// Persisted across launches. Defaults to `false`.
+00024|     public let mcpConsentGranted: Bool
+00025|     /// MCP provider endpoints to wire at startup. Empty by default.
+00026|     public let mcpEndpoints: [MCPEndpointConfig]
+00027|     /// Whether the Notion context provider is enabled. Defaults to `false`.
+00028|     public let notionEnabled: Bool
+00029|     /// File-system path to the Obsidian vault. `nil` means Obsidian provider is disabled.
+00030|     public let obsidianVaultPath: String?
+00031| 
+00032|     public static let `default` = AppConfig(
+00033|         summarization: .default,
+00034|         transcription: .default,
+00035|         storage: .default,
+00036|         translation: .disabled,
+00037|         contextCache: .default,
+00038|         audioCapture: .default,
+00039|         uiTheme: .default,
+00040|         privacyMode: .default,
+00041|         mcpConsentGranted: false,
+00042|         mcpEndpoints: [],
+00043|         notionEnabled: false,
+00044|         obsidianVaultPath: nil
+00045|     )
+00046| 
+00047|     public init(
+00048|         summarization: SummaryConfig, transcription: TranscriptionConfig,
+00049|         storage: StorageConfig, translation: TranslationConfig = .disabled,
+00050|         contextCache: ContextCacheConfig = .default,
+00051|         audioCapture: AudioCaptureConfig = .default,
+00052|         uiTheme: UITheme = .default,
+00053|         privacyMode: PrivacyMode = .default,
+00054|         mcpConsentGranted: Bool = false,
+00055|         mcpEndpoints: [MCPEndpointConfig] = [],
+00056|         notionEnabled: Bool = false,
+00057|         obsidianVaultPath: String? = nil
+00058|     ) {
+00059|         self.summarization = summarization
+00060|         self.transcription = transcription
+00061|         self.storage = storage
+00062|         self.translation = translation
+00063|         self.contextCache = contextCache
+00064|         self.audioCapture = audioCapture
+00065|         self.uiTheme = uiTheme
+00066|         self.privacyMode = privacyMode
+00067|         self.mcpConsentGranted = mcpConsentGranted
+00068|         self.mcpEndpoints = mcpEndpoints
+00069|         self.notionEnabled = notionEnabled
+00070|         self.obsidianVaultPath = obsidianVaultPath
+00071|     }
+00072| 
+00073|     public init(from decoder: any Decoder) throws {
+00074|         let container = try decoder.container(keyedBy: CodingKeys.self)
+00075|         summarization = try container.decode(SummaryConfig.self, forKey: .summarization)
+00076|         transcription = try container.decode(TranscriptionConfig.self, forKey: .transcription)
+00077|         storage = try container.decode(StorageConfig.self, forKey: .storage)
+00078|         translation = try container.decodeIfPresent(TranslationConfig.self, forKey: .translation) ?? .disabled
+00079|         contextCache = try container.decodeIfPresent(ContextCacheConfig.self, forKey: .contextCache) ?? .default
+00080|         audioCapture = try container.decodeIfPresent(AudioCaptureConfig.self, forKey: .audioCapture) ?? .default
+00081|         uiTheme = try container.decodeIfPresent(UITheme.self, forKey: .uiTheme) ?? .default
+00082|         privacyMode = try container.decodeIfPresent(PrivacyMode.self, forKey: .privacyMode) ?? .default
+00083|         mcpConsentGranted = try container.decodeIfPresent(Bool.self, forKey: .mcpConsentGranted) ?? false
+00084|         mcpEndpoints = try container.decodeIfPresent([MCPEndpointConfig].self, forKey: .mcpEndpoints) ?? []
+00085|         notionEnabled = try container.decodeIfPresent(Bool.self, forKey: .notionEnabled) ?? false
+00086|         obsidianVaultPath = try container.decodeIfPresent(String.self, forKey: .obsidianVaultPath)
+00087|     }
+00088| }
+00089| 
+
+(End of file - total 89 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift"}
+<file>
+00001| import Domain
+00002| import Foundation
+00003| import Observation
+00004| 
+00005| public extension Notification.Name {
+00006|     static let themeChanged = Notification.Name("app.the-record.themeChanged")
+00007|     static let privacyModeChanged = Notification.Name("app.the-record.privacyModeChanged")
+00008|     static let recordingStarted = Notification.Name("app.the-record.recordingStarted")
+00009|     static let recordingStopped = Notification.Name("app.the-record.recordingStopped")
+00010|     static let showLogs = Notification.Name("app.the-record.showLogs")
+00011|     static let engineChanged = Notification.Name("app.the-record.engineChanged")
+00012|     static let archivePassEnabledChanged = Notification.Name("app.the-record.archivePassEnabledChanged")
+00013| }
+00014| 
+00015| @Observable
+00016| @MainActor
+00017| public final class SettingsViewModel {
+00018|     // SSOT: These properties now shadow or proxy the AppState.settings, 
+00019|     // with local fallbacks for standalone usage/testing.
+00020|     private var _uiTheme: UITheme = .default
+00021|     public var uiTheme: UITheme {
+00022|         get { appState?.settings.uiTheme ?? _uiTheme }
+00023|         set { 
+00024|             if let appState { appState.settings.uiTheme = newValue }
+00025|             _uiTheme = newValue
+00026|             saveTheme()
+00027|         }
+00028|     }
+00029|     
+00030|     private var _defaultEngine: TranscriptionEngineKey = TranscriptionConfig.default.defaultEngine
+00031|     public var defaultEngine: TranscriptionEngineKey {
+00032|         get { appState?.settings.defaultEngine ?? _defaultEngine }
+00033|         set { 
+00034|             if let appState { appState.settings.defaultEngine = newValue }
+00035|             _defaultEngine = newValue
+00036|             saveEngine()
+00037|         }
+00038|     }
+00039|     
+00040|     private var _privacyMode: PrivacyMode = AppConfig.default.privacyMode
+00041|     public var privacyMode: PrivacyMode {
+00042|         get { appState?.settings.privacyMode ?? _privacyMode }
+00043|         set { 
+00044|             if let appState { appState.settings.privacyMode = newValue }
+00045|             _privacyMode = newValue
+00046|             applyPrivacyMode()
+00047|         }
+00048|     }
+00049| 
+00050|     private var _archivePassEnabled: Bool = true
+00051|     public var archivePassEnabled: Bool {
+00052|         get { appState?.settings.archivePassEnabled ?? _archivePassEnabled }
+00053|         set { 
+00054|             if let appState { appState.settings.archivePassEnabled = newValue }
+00055|             _archivePassEnabled = newValue
+00056|             NotificationCenter.default.post(
+00057|                 name: .archivePassEnabledChanged,
+00058|                 object: nil,
+00059|                 userInfo: ["enabled": newValue]
+00060|             )
+00061|         }
+00062|     }
+00063| 
+00064|     // Remaining ephemeral UI state
+00065|     public var autoRecordEnabled = false
+00066|     public var startDebounce = 3.0
+00067|     public var stopDebounce = 10.0
+00068|     public var defaultMeetingType: MeetingType = SummaryConfig.default.meetingType
+00069|     public var translationEnabled = false
+00070|     public var sourceLanguage = "en"
+00071|     public var targetLanguage = "es"
+00072|     public var cacheTTLHours = 24
+00073|     public var semanticCacheDays = 7
+00074|     public var maxCacheEntries = 1000
+00075|     public var defaultExportFormat: ShareFormat = .markdown
+00076|     public var speakerProfiles: [SpeakerProfile] = []
+00077|     public var errorMessage: String?
+00078|     public var buildID = "unknown"
+00079|     public var recentLogs: [String] = []
+00080| 
+00081|     // Integrations
+00082|     public var isNotionEnabled = false
+00083|     public var obsidianVaultPath = ""
+00084| 
+00085|     // Storage
+00086|     public var totalRecordingsBytes: Int64?
+00087|     public var availableDiskBytes: Int64?
+00088|     public var autoDeleteEnabled = false
+00089|     public var autoDeleteOlderThanDays: Int = 30
+00090| 
+00091|     public var deleteAllConfirmationText: String = ""
+00092|     public var isDeletingAllData: Bool = false
+00093|     public var deleteAllDataLog: [String] = []
+00094|     public var isRecordingActive: Bool = false
+00095| 
+00096|     // Audio device selection
+00097|     public var tapAllAudio = true
+00098|     public var echoCancellationEnabled = true
+00099|     public var outputDevices: [AudioDevice] = []
+00100|     public var inputDevices: [AudioDevice] = []
+00101|     public var selectedOutputDeviceID = ""
+00102|     public var selectedInputDeviceID = ""
+00103| 
+00104|     // Dependencies
+00105|     private let appState: AppState?
+00106|     let profileStore: (any SpeakerProfileStore)?
+00107|     let audioDeviceConfigStore: (any AudioDeviceConfigStore)?
+00108|     let deviceEnumeration: (any AudioDeviceEnumeration)?
+00109|     let recordingReadRepository: (any RecordingReadRepository)?
+00110|     let diskSpaceMonitor: (any DiskSpaceMonitor)?
+00111| 
+00112|     public init(
+00113|         appState: AppState? = nil,
+00114|         profileStore: (any SpeakerProfileStore)? = nil,
+00115|         audioDeviceConfigStore: (any AudioDeviceConfigStore)? = nil,
+00116|         deviceEnumeration: (any AudioDeviceEnumeration)? = nil,
+00117|         recordingReadRepository: (any RecordingReadRepository)? = nil,
+00118|         diskSpaceMonitor: (any DiskSpaceMonitor)? = nil
+00119|     ) {
+00120|         self.appState = appState
+00121|         self.profileStore = profileStore
+00122|         self.audioDeviceConfigStore = audioDeviceConfigStore
+00123|         self.deviceEnumeration = deviceEnumeration
+00124|         self.recordingReadRepository = recordingReadRepository
+00125|         self.diskSpaceMonitor = diskSpaceMonitor
+00126|     }
+00127| 
+00128|     public func loadCurrentTheme() {
+00129|         // Now handled by SSOT proxy
+00130|     }
+00131| 
+00132|     public func loadCurrentEngine() {
+00133|         // Now handled by SSOT proxy
+00134|     }
+00135| 
+00136|     public func saveEngine() {
+00137|         NotificationCenter.default.post(
+00138|             name: .engineChanged,
+00139|             object: nil,
+00140|             userInfo: ["defaultEngine": defaultEngine.rawValue]
+00141|         )
+00142|     }
+00143| 
+00144|     public func loadCurrentArchivePassEnabled() {
+00145|         // Now handled by SSOT proxy
+00146|     }
+00147| 
+00148|     public func saveTheme() {
+00149|         NotificationCenter.default.post(
+00150|             name: .themeChanged,
+00151|             object: nil,
+00152|             userInfo: ["uiTheme": uiTheme]
+00153|         )
+00154|     }
+00155| 
+00156|     public func applyPrivacyMode() {
+00157|         NotificationCenter.default.post(
+00158|             name: .privacyModeChanged,
+00159|             object: nil,
+00160|             userInfo: ["privacyMode": privacyMode.rawValue]
+00161|         )
+00162|     }
+00163| 
+00164|     public func refreshDiagnostics() {
+00165|         buildID = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+00166|             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+00167|             ?? "unknown"
+00168|         recentLogs = ErrorLog.shared.recentEntries
+00169|     }
+00170| }
+00171| 
+
+(End of file - total 171 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-App/Sources/TheRecord/App.swift"}
+<file>
+00001| import SwiftUI
+00002| import AppKit
+00003| import Domain
+00004| import Logging
+00005| import Business
+00006| import AudioInfrastructure
+00007| import MLInfrastructure
+00008| import Presentation
+00009| 
+00010| /// The top-level SwiftUI application entry point for THE RECORD.
+00011| @main
+00012| public struct TheRecordApp: App {
+00013|     /// The application delegate managing the status bar, popover, and composition root.
+00014|     @NSApplicationDelegateAdaptor(AppDelegate.self) public var appDelegate
+00015| 
+00016|     private let speakerProfileStore = JSONSpeakerProfileStore()
+00017| 
+00018|     public init() {}
+00019| 
+00020|     public var body: some Scene {
+00021|         Window("THE RECORD", id: "main") {
+00022|             AppContentView(appDelegate: appDelegate)
+00023|                 .environment(appDelegate.appState)
+00024|         }
+00025|         .commands {
+00026|             CommandGroup(after: .appInfo) {
+00027|                 Button("Third-Party Licenses") {
+00028|                     if let url = Bundle.main.url(forResource: "ThirdPartyLicenses", withExtension: "txt") {
+00029|                         NSWorkspace.shared.open(url)
+00030|                     }
+00031|                 }
+00032|             }
+00033|             CommandGroup(after: .newItem) {
+00034|                 Button("New Meeting") {
+00035|                     Task { @MainActor in
+00036|                         await appDelegate.menuBarVM?.startRecordingTapped()
+00037|                     }
+00038|                 }
+00039|                 .keyboardShortcut("n", modifiers: .command)
+00040|                 .disabled(appDelegate.menuBarVM?.isRecording == true)
+00041|                 Divider()
+00042|                 Button("Stop Recording") {
+00043|                     Task { @MainActor in
+00044|                         await appDelegate.menuBarVM?.stopRecordingTapped()
+00045|                     }
+00046|                 }
+00047|                 .keyboardShortcut(".", modifiers: .command)
+00048|                 Divider()
+00049|                 Button("Re-transcribe from Audio") {
+00050|                     Task { @MainActor in
+00051|                         if let id = appDelegate.menuBarVM?.cleanupRecordingId {
+00052|                             _ = await appDelegate.menuBarVM?.runCleanupPass(recordingId: id)
+00053|                         }
+00054|                     }
+00055|                 }
+00056|                 .keyboardShortcut("r", modifiers: [.command, .shift])
+00057|                 .disabled(appDelegate.menuBarVM?.cleanupRecordingId == nil || appDelegate.menuBarVM?
+00058|                     .isRecording == true)
+00059|             }
+00060|         }
+00061|         Settings {
+00062|             if let appState = appDelegate.appState {
+00063|                 SettingsView(
+00064|                     viewModel: SettingsViewModel(
+00065|                         appState: appState,
+00066|                         profileStore: speakerProfileStore,
+00067|                         audioDeviceConfigStore: AudioDeviceConfigStoreImpl(configManager: appDelegate.sharedConfigManager),
+00068|                         deviceEnumeration: AudioDeviceEnumerator()
+00069|                     ),
+00070|                     modelDownloadViewModel: ModelDownloadViewModel(
+00071|                         downloadWhisper: { modelId, token in
+00072|                             let typedModelId = ModelID(modelId)
+00073|                             if let token { setenv("HF_TOKEN", token, 1) } // swiftlint:disable:this no_setenv
+00074|                             defer { if token != nil { unsetenv("HF_TOKEN") } }
+00075|                             try await WhisperKitPlugin().loadModel(typedModelId)
+00076|                         },
+00077|                         downloadParakeet: { modelId, token in
+00078|                             let typedModelId = ModelID(modelId)
+00079|                             if let token { setenv("HF_TOKEN", token, 1) } // swiftlint:disable:this no_setenv
+00080|                             defer { if token != nil { unsetenv("HF_TOKEN") } }
+00081|                             try await ParakeetPlugin().loadModel(typedModelId)
+00082|                         },
+00083|                         downloadMLX: { modelId, token in
+00084|                             let config = SummaryConfig(
+00085|                                 modelId: ModelID(modelId),
+00086|                                 maxTokens: SummaryConfig.default.maxTokens,
+00087|                                 temperature: SummaryConfig.default.temperature,
+00088|                                 enabled: true,
+00089|                                 meetingType: SummaryConfig.default.meetingType,
+00090|                             )
+00091|                             if let token { setenv("HF_TOKEN", token, 1) } // swiftlint:disable:this no_setenv
+00092|                             defer { if token != nil { unsetenv("HF_TOKEN") } }
+00093|                             try await MLXSummarizationPlugin().loadModel(config)
+00094|                         },
+00095|                         downloadDiarization: {
+00096|                             try await FluidDiarizationPlugin().prepare()
+00097|                         },
+00098|                         tokenStore: HFTokenKeychain(),
+00099|                     )
+00100|                 )
+00101|             } else {
+00102|                 ProgressView()
+00103|             }
+00104|         }
+00105|     }
+00106| }
+00107| 
+00108| // MARK: - Root Content View
+00109| 
+00110| struct AppContentView: View {
+00111|     var appDelegate: AppDelegate
+00112|     @Environment(AppState.self) private var appState: AppState?
+00113|     
+00114|     // AudioPlayerViewModel is owned here and passed into MainWindowView so
+00115|     // Presentation never needs to import AVFoundation or Infrastructure directly.
+00116|     @State private var audioPlayerVM = AudioPlayerViewModel(driver: AVPlayerDriver())
+00117| 
+00118|     var body: some View {
+00119|         if let appState,
+00120|            let menuBarVM = appDelegate.menuBarVM,
+00121|            let libraryVM = appDelegate.libraryVM,
+00122|            let searchVM = appDelegate.searchVM,
+00123|            let detailVM = appDelegate.detailVM,
+00124|            let commitmentsVM = appDelegate.commitmentsVM,
+00125|            let waveformVM = menuBarVM.waveformVM {
+00126|             
+00127|             switch appState.settings.uiTheme {
+00128|             case .broadsheet:
+00129|                 if let broadsheetAppState = appDelegate.broadsheetAppState {
+00130|                     BroadsheetRootView(
+00131|                         appState: broadsheetAppState,
+00132|                         permissionService: SystemPermissionService(),
+00133|                     )
+00134|                 }
+00135|             case .classic:
+00136|                 MainWindowView(
+00137|                     menuBarVM: menuBarVM,
+00138|                     libraryVM: libraryVM,
+00139|                     searchVM: searchVM,
+00140|                     detailVM: detailVM,
+00141|                     waveformVM: waveformVM,
+00142|                     commitmentsVM: commitmentsVM,
+00143|                     audioPlayerVM: audioPlayerVM,
+00144|                 )
+00145|             }
+00146|         } else {
+00147|             ProgressView("Starting THE RECORD...")
+00148|                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+00149|         }
+00150|     }
+00151| }
+00152| 
+00153| // MARK: - App Delegate
+00154| 
+00155| @Observable
+00156| @MainActor
+00157| public final class AppDelegate: NSObject, NSApplicationDelegate {
+00158| 
+00159|     public var statusItem: NSStatusItem?
+00160|     public var popover: NSPopover?
+00161| 
+00162|     private let assembler = AppAssembler()
+00163| 
+00164|     // SSOT Root
+00165|     public private(set) var appState: AppState?
+00166| 
+00167|     // Legacy Bridge Properties
+00168|     public private(set) var uiTheme: UITheme = .default
+00169|     public private(set) var defaultEngine: TranscriptionEngineKey = TranscriptionConfig.default.defaultEngine
+00170|     public private(set) var archivePassEnabled: Bool = TranscriptionConfig.default.archivePassEnabled
+00171|     public private(set) var libraryVM: MeetingLibraryViewModel?
+00172|     public private(set) var menuBarVM: MenuBarViewModel?
+00173|     public private(set) var searchVM: SearchViewModel?
+00174|     public private(set) var detailVM: MeetingDetailViewModel?
+00175|     public private(set) var commitmentsVM: CommitmentsViewModel?
+00176|     public private(set) var broadsheetAppState: BroadsheetAppState?
+00177|     public private(set) var contextSuggestionsVM: ContextSuggestionsViewModel?
+00178|     
+00179|     private let logger = AppLogger.for(category: "AppDelegate")
+00180|     public let sharedConfigManager = ConfigManager()
+00181|     
+00182|     private var themeObserver: NSObjectProtocol?
+00183|     private var privacyModeObserver: NSObjectProtocol?
+00184|     private var engineObserver: NSObjectProtocol?
+00185|     private var archivePassEnabledObserver: NSObjectProtocol?
+00186|     private var recordingStartObserver: NSObjectProtocol?
+00187|     private var recordingStopObserver: NSObjectProtocol?
+00188|     private var windowKeyObserver: NSObjectProtocol?
+00189|     private var currentPrivacyMode: PrivacyMode = .default
+00190| 
+00191|     public func applicationDidFinishLaunching(_ notification: Notification) {
+00192|         let launchConfig = AppConfig.default
+00193|         uiTheme = launchConfig.uiTheme
+00194|         defaultEngine = launchConfig.transcription.defaultEngine
+00195|         archivePassEnabled = launchConfig.transcription.archivePassEnabled
+00196|         currentPrivacyMode = launchConfig.privacyMode
+00197| 
+00198|         setupConfigObservers()
+00199| 
+00200|         Task { @MainActor in
+00201|             let assembled = await assembler.assemble(config: launchConfig)
+00202|             self.appState = assembled.appState
+00203|             
+00204|             // Sync legacy properties
+00205|             self.menuBarVM = assembled.menuBarVM
+00206|             self.libraryVM = assembled.libraryVM
+00207|             self.searchVM = assembled.searchVM
+00208|             self.detailVM = assembled.detailVM
+00209|             self.commitmentsVM = assembled.commitmentsVM
+00210|             self.contextSuggestionsVM = assembled.contextSuggestionsVM
+00211|             
+00212|             let appState = assembled.appState
+00213|             self.broadsheetAppState = BroadsheetAppState(
+00214|                 appState: appState,
+00215|                 menuBarVM: assembled.menuBarVM,
+00216|                 libraryVM: assembled.libraryVM,
+00217|                 detailVM: assembled.detailVM,
+00218|                 commitmentsVM: assembled.commitmentsVM
+00219|             )
+00220| 
+00221|             self.setupStatusBar(viewModel: assembled.menuBarVM)
+00222|         }
+00223| 
+00224|         windowKeyObserver = NotificationCenter.default.addObserver(
+00225|             forName: NSWindow.didBecomeKeyNotification,
+00226|             object: nil,
+00227|             queue: .main,
+00228|         ) { [weak self] _ in
+00229|             MainActor.assumeIsolated {
+00230|                 guard let self else { return }
+00231|                 self.applyPrivacyMode(self.currentPrivacyMode, isRecording: self.menuBarVM?.isRecording ?? false)
+00232|             }
+00233|         }
+00234| 
+00235|         logger.info("THE RECORD launched")
+00236|     }
+00237| 
+00238|     public func applicationWillTerminate(_ notification: Notification) {
+00239|         assembler.teardown()
+00240|     }
+00241| 
+00242|     private func setupConfigObservers() {
+00243|         themeObserver = NotificationCenter.default.addObserver(
+00244|             forName: .themeChanged, object: nil, queue: .main,
+00245|         ) { [weak self] note in
+00246|             guard let theme = note.userInfo?["uiTheme"] as? UITheme else { return }
+00247|             MainActor.assumeIsolated {
+00248|                 guard let self else { return }
+00249|                 self.uiTheme = theme
+00250|                 self.appState?.settings.uiTheme = theme
+00251|                 Task { [weak self] in
+00252|                     guard let self else { return }
+00253|                     do {
+00254|                         let current = try await self.sharedConfigManager.load()
+00255|                         let updated = AppConfig(
+00256|                             summarization: current.summarization, transcription: current.transcription,
+00257|                             storage: current.storage, translation: current.translation,
+00258|                             contextCache: current.contextCache, audioCapture: current.audioCapture,
+00259|                             uiTheme: theme, privacyMode: current.privacyMode,
+00260|                             mcpConsentGranted: current.mcpConsentGranted,
+00261|                             mcpEndpoints: current.mcpEndpoints,
+00262|                             notionEnabled: current.notionEnabled,
+00263|                             obsidianVaultPath: current.obsidianVaultPath,
+00264|                         )
+00265|                         try await self.sharedConfigManager.save(updated)
+00266|                     } catch {
+00267|                         self.logger.error("Failed to persist theme: \(error, privacy: .public)")
+00268|                     }
+00269|                 }
+00270|             }
+00271|         }
+00272|         
+00273|         privacyModeObserver = NotificationCenter.default.addObserver(
+00274|             forName: .privacyModeChanged, object: nil, queue: .main,
+00275|         ) { [weak self] note in
+00276|             guard let raw = note.userInfo?["privacyMode"] as? String,
+00277|                   let mode = PrivacyMode(rawValue: raw)
+00278|             else { return }
+00279|             MainActor.assumeIsolated {
+00280|                 guard let self else { return }
+00281|                 self.currentPrivacyMode = mode
+00282|                 self.appState?.settings.privacyMode = mode
+00283|                 self.applyPrivacyMode(mode, isRecording: self.menuBarVM?.isRecording ?? false)
+00284|                 Task { [weak self] in
+00285|                     guard let self else { return }
+00286|                     do {
+00287|                         let current = try await self.sharedConfigManager.load()
+00288|                         let updated = AppConfig(
+00289|                             summarization: current.summarization, transcription: current.transcription,
+00290|                             storage: current.storage, translation: current.translation,
+00291|                             contextCache: current.contextCache, audioCapture: current.audioCapture,
+00292|                             uiTheme: current.uiTheme, privacyMode: mode,
+00293|                             mcpConsentGranted: current.mcpConsentGranted,
+00294|                             mcpEndpoints: current.mcpEndpoints,
+00295|                             notionEnabled: current.notionEnabled,
+00296|                             obsidianVaultPath: current.obsidianVaultPath,
+00297|                         )
+00298|                         try await self.sharedConfigManager.save(updated)
+00299|                     } catch {
+00300|                         self.logger.error("Failed to persist privacy mode: \(error, privacy: .public)")
+00301|                     }
+00302|                 }
+00303|             }
+00304|         }
+00305|         
+00306|         engineObserver = NotificationCenter.default.addObserver(
+00307|             forName: .engineChanged, object: nil, queue: .main,
+00308|         ) { [weak self] note in
+00309|             guard let raw = note.userInfo?["defaultEngine"] as? String,
+00310|                   let engine = TranscriptionEngineKey(rawValue: raw)
+00311|             else { return }
+00312|             MainActor.assumeIsolated {
+00313|                 guard let self else { return }
+00314|                 self.defaultEngine = engine
+00315|                 self.appState?.settings.defaultEngine = engine
+00316|                 Task { [weak self] in
+00317|                     guard let self else { return }
+00318|                     do {
+00319|                         let current = try await self.sharedConfigManager.load()
+00320|                         let newTranscription = TranscriptionConfig(
+00321|                             defaultEngine: engine,
+00322|                             fallbackEngine: current.transcription.fallbackEngine,
+00323|                             cleanupModelId: current.transcription.cleanupModelId,
+00324|                             archivePassEnabled: current.transcription.archivePassEnabled,
+00325|                         )
+00326|                         let updated = AppConfig(
+00327|                             summarization: current.summarization, transcription: newTranscription,
+00328|                             storage: current.storage, translation: current.translation,
+00329|                             contextCache: current.contextCache, audioCapture: current.audioCapture,
+00330|                             uiTheme: current.uiTheme, privacyMode: current.privacyMode,
+00331|                             mcpConsentGranted: current.mcpConsentGranted,
+00332|                             mcpEndpoints: current.mcpEndpoints,
+00333|                             notionEnabled: current.notionEnabled,
+00334|                             obsidianVaultPath: current.obsidianVaultPath,
+00335|                         )
+00336|                         try await self.sharedConfigManager.save(updated)
+00337|                     } catch {
+00338|                         self.logger.error("Failed to persist engine selection: \(error, privacy: .public)")
+00339|                     }
+00340|                 }
+00341|             }
+00342|         }
+00343|         
+00344|         archivePassEnabledObserver = NotificationCenter.default.addObserver(
+00345|             forName: .archivePassEnabledChanged, object: nil, queue: .main,
+00346|         ) { [weak self] note in
+00347|             guard let enabled = note.userInfo?["enabled"] as? Bool else { return }
+00348|             MainActor.assumeIsolated {
+00349|                 guard let self else { return }
+00350|                 self.archivePassEnabled = enabled
+00351|                 self.appState?.settings.archivePassEnabled = enabled
+00352|                 Task { [weak self] in
+00353|                     guard let self else { return }
+00354|                     do {
+00355|                         let current = try await self.sharedConfigManager.load()
+00356|                         let newTranscription = TranscriptionConfig(
+00357|                             defaultEngine: current.transcription.defaultEngine,
+00358|                             fallbackEngine: current.transcription.fallbackEngine,
+00359|                             cleanupModelId: current.transcription.cleanupModelId,
+00360|                             archivePassEnabled: enabled,
+00361|                         )
+00362|                         let updated = AppConfig(
+00363|                             summarization: current.summarization, transcription: newTranscription,
+00364|                             storage: current.storage, translation: current.translation,
+00365|                             contextCache: current.contextCache, audioCapture: current.audioCapture,
+00366|                             uiTheme: current.uiTheme, privacyMode: current.privacyMode,
+00367|                             mcpConsentGranted: current.mcpConsentGranted,
+00368|                             mcpEndpoints: current.mcpEndpoints,
+00369|                             notionEnabled: current.notionEnabled,
+00370|                             obsidianVaultPath: current.obsidianVaultPath,
+00371|                         )
+00372|                         try await self.sharedConfigManager.save(updated)
+00373|                     } catch {
+00374|                         self.logger.error("Failed to persist archive pass setting: \(error, privacy: .public)")
+00375|                     }
+00376|                 }
+00377|             }
+00378|         }
+00379|         
+00380|         recordingStartObserver = NotificationCenter.default.addObserver(
+00381|             forName: .recordingStarted, object: nil, queue: .main,
+00382|         ) { [weak self] _ in
+00383|             MainActor.assumeIsolated {
+00384|                 guard let self else { return }
+00385|                 self.applyPrivacyMode(self.currentPrivacyMode, isRecording: true)
+00386|             }
+00387|         }
+00388|         
+00389|         recordingStopObserver = NotificationCenter.default.addObserver(
+00390|             forName: .recordingStopped, object: nil, queue: .main,
+00391|         ) { [weak self] _ in
+00392|             MainActor.assumeIsolated {
+00393|                 guard let self else { return }
+00394|                 self.applyPrivacyMode(self.currentPrivacyMode, isRecording: false)
+00395|             }
+00396|         }
+00397|     }
+00398| 
+00399|     private func setupStatusBar(viewModel: MenuBarViewModel) {
+00400|         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+00401|         item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "THE RECORD")
+00402|         item.button?.action = #selector(togglePopover)
+00403|         item.button?.target = self
+00404|         statusItem = item
+00405| 
+00406|         let pop = NSPopover()
+00407|         pop.contentSize = NSSize(width: 320, height: 400)
+00408|         pop.behavior = .transient
+00409|         pop.contentViewController = NSHostingController(rootView: MenuBarPopover(viewModel: viewModel))
+00410|         popover = pop
+00411|     }
+00412| 
+00413|     private func applyPrivacyMode(_ mode: PrivacyMode, isRecording: Bool) {
+00414|         guard let window = NSApp.windows.first else { return }
+00415|         let protect: Bool = switch mode {
+00416|         case .off: false
+00417|         case .always: true
+00418|         case .meetings: isRecording
+00419|         }
+00420|         window.sharingType = protect ? .none : .readOnly
+00421|     }
+00422| 
+00423|     @objc private func togglePopover() {
+00424|         guard let button = statusItem?.button, let pop = popover else { return }
+00425|         if pop.isShown {
+00426|             pop.performClose(nil)
+00427|         } else {
+00428|             pop.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+00429|         }
+00430|     }
+00431| }
+00432| 
+
+(End of file - total 432 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Broadsheet/BroadsheetRootView.swift"}
+<file>
+00001| import Domain
+00002| import SwiftUI
+00003| 
+00004| public extension EnvironmentValues {
+00005|     @Entry var textScale: CGFloat = 1.0
+00006| }
+00007| 
+00008| // MARK: - Broadsheet Root View
+00009| 
+00010| @MainActor
+00011| public struct BroadsheetRootView: View {
+00012|     @State private var appState: BroadsheetAppState
+00013|     @State private var currentsVM = CurrentsViewModel()
+00014|     @AppStorage("textSizeStep") private var textSizeStep = 0
+00015|     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+00016| 
+00017|     private let permissionService: any PermissionService
+00018| 
+00019|     private var textScale: CGFloat {
+00020|         pow(1.12, CGFloat(textSizeStep))
+00021|     }
+00022| 
+00023|     public init(appState: BroadsheetAppState, permissionService: any PermissionService) {
+00024|         _appState = State(initialValue: appState)
+00025|         self.permissionService = permissionService
+00026|     }
+00027| 
+00028|     public var body: some View {
+00029|         VStack(spacing: 0) {
+00030|             MastheadView(
+00031|                 waveformVM: appState.waveformVM,
+00032|                 isRecording: appState.isRecording
+00033|             )
+00034| 
+00035|             NavigationSplitView(columnVisibility: .constant(.all)) {
+00036|                 BroadsheetSidebarView()
+00037|                     .navigationSplitViewColumnWidth(min: 180, ideal: Metrics.sidebar, max: 320)
+00038|                     .background(SquareCorners())
+00039|             } content: {
+00040|                 BroadsheetMeetingListView()
+00041|                     .navigationSplitViewColumnWidth(min: 260, ideal: Metrics.listColumn, max: 480)
+00042|                     .background(SquareCorners())
+00043|             } detail: {
+00044|                 VStack(spacing: 0) {
+00045|                     let selected = appState.selectedDisplayMeeting
+00046|                     BroadsheetDetailHeader(meeting: selected)
+00047|                     RecordingDeck()
+00048|                     BroadsheetDetailTabs()
+00049|                     BroadsheetDockBar()
+00050|                 }
+00051|                 .background(Color.bg)
+00052|             }
+00053| 
+00054|             // Full-width headline ticker — spans all three columns
+00055|             CurrentsView(headlines: currentsVM.headlines)
+00056|         }
+00057|         .background(Color.bg)
+00058|         .toolbarBackground(Color.bg, for: .windowToolbar)
+00059|         .overlay(alignment: .top) {
+00060|             if let toast = appState.toast {
+00061|                 ToastView(message: toast, onDismiss: { appState.dismissToast() })
+00062|                     .padding(.top, 8)
+00063|                     .transition(.move(edge: .top).combined(with: .opacity))
+00064|             }
+00065|         }
+00066|         .animation(.easeInOut(duration: 0.25), value: appState.toast)
+00067|         .sheet(isPresented: Binding(
+00068|             get: { !hasCompletedOnboarding },
+00069|             set: { if !$0 { hasCompletedOnboarding = true } }
+00070|         )) {
+00071|             OnboardingView(permissionService: permissionService) { hasCompletedOnboarding = true }
+00072|         }
+00073|         .environment(appState)
+00074|         .environment(\.textScale, textScale)
+00075|         .task {
+00076|             if let liveVM = appState.liveTranscriptionVM {
+00077|                 await currentsVM.observe(liveVM)
+00078|             }
+00079|         }
+00080|         .onReceive(NotificationCenter.default.publisher(for: .recordingStarted)) { _ in
+00081|             Task { await appState.handleRecordingStarted() }
+00082|         }
+00083|         .onReceive(NotificationCenter.default.publisher(for: .recordingStopped)) { _ in
+00084|             Task { await appState.handleRecordingStopped() }
+00085|         }
+00086|         // #181: keyboard shortcuts extracted to a named @ViewBuilder property so SwiftUI
+00087|         // assigns stable view identities across body passes instead of recreating 4 Buttons
+00088|         // inside an anonymous Group{} closure every render.
+00089|         .background(keyboardShortcuts)
+00090|     }
+00091| 
+00092|     // MARK: - Text Size Keyboard Shortcuts (#181)
+00093| 
+00094|     /// ⌘+ / ⌘= / ⌘- / ⌘0 keyboard shortcuts for text size.
+00095|     /// Extracted from the body's .background(Group{}) lambda so SwiftUI can assign
+00096|     /// a stable identity to these Buttons across body evaluations.
+00097|     @ViewBuilder
+00098|     private var keyboardShortcuts: some View {
+00099|         Button("") { textSizeStep = min(textSizeStep + 1, 6) }
+00100|             .keyboardShortcut("+", modifiers: .command).opacity(0)
+00101|             .accessibilityLabel("Increase text size")
+00102|             .accessibilityHidden(true)
+00103|         Button("") { textSizeStep = min(textSizeStep + 1, 6) }
+00104|             .keyboardShortcut("=", modifiers: .command).opacity(0)
+00105|             .accessibilityLabel("Increase text size")
+00106|             .accessibilityHidden(true)
+00107|         Button("") { textSizeStep = max(textSizeStep - 1, -3) }
+00108|             .keyboardShortcut("-", modifiers: .command).opacity(0)
+00109|             .accessibilityLabel("Decrease text size")
+00110|             .accessibilityHidden(true)
+00111|         Button("") { textSizeStep = 0 }
+00112|             .keyboardShortcut("0", modifiers: .command).opacity(0)
+00113|             .accessibilityLabel("Reset text size")
+00114|             .accessibilityHidden(true)
+00115|     }
+00116| }
+00117| 
+
+(End of file - total 117 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/DesignTokens.swift"}
+<file>
+00001| import SwiftUI
+00002| 
+00003| // MARK: - Broadsheet Palette
+00004| 
+00005| public extension Color {
+00006|     // MARK: Ink scale
+00007| 
+00008|     /// Primary body text — 0x0E0E0C, WCAG ≈ 21:1 on newsprint.
+00009|     static let ink = Color(hex: 0x0E0E0C)
+00010|     /// Secondary text — 0x2A2A28.
+00011|     static let ink2 = Color(hex: 0x2A2A28)
+00012|     /// Tertiary / meta text — 0x6A6A66.
+00013|     static let ink3 = Color(hex: 0x6A6A66)
+00014|     /// Placeholder / hint — 0xA8A89E.
+00015|     static let ink4 = Color(hex: 0xA8A89E)
+00016|     /// Deep ink surface — 0x1E1E1C.
+00017|     static let inkDeep = Color(hex: 0x1E1E1C)
+00018| 
+00019|     // MARK: Backgrounds
+00020| 
+00021|     /// Page fill — newsprint warm off-white 0xF1ECE0.
+00022|     static let newsprint = Color(hex: 0xF1ECE0)
+00023|     /// Content surface — 0xFBF7EC (use as bg for columns).
+00024|     static let bg = Color(hex: 0xFBF7EC)
+00025|     /// Warm tinted surface — 0xE8E2D2.
+00026|     static let tint = Color(hex: 0xE8E2D2)
+00027|     /// Paper — alias for bg (backward compat).
+00028|     static let paper = Color(hex: 0xFBF7EC)
+00029| 
+00030|     // MARK: Rules & borders
+00031| 
+00032|     /// Heavy rule — 0x141412.
+00033|     static let rule = Color(hex: 0x141412)
+00034|     /// Mid rule — 0xC8C2B0.
+00035|     static let midRule = Color(hex: 0xC8C2B0)
+00036|     /// Light rule — 0xDDD6C4.
+00037|     static let hairlineColor = Color(hex: 0xDDD6C4)
+00038| 
+00039|     // MARK: Accent
+00040| 
+00041|     /// Selection highlight — yellow 0xFFF1A8.
+00042|     static let highlight = Color(hex: 0xFFF1A8)
+00043|     /// Breaking / live / stop — red 0xB8281F.
+00044|     static let breaking = Color(hex: 0xB8281F)
+00045|     /// AI editor marginalia — forest green 0x2D5A3D.
+00046|     static let editor = Color(hex: 0x2D5A3D)
+00047| 
+00048|     // MARK: Hex initialiser
+00049| 
+00050|     /// Creates a `Color` from a 6-digit RGB hex literal, e.g. `Color(hex: 0x0E0E0C)`.
+00051|     init(hex: UInt32) {
+00052|         let r = Double((hex >> 16) & 0xFF) / 255
+00053|         let g = Double((hex >> 8) & 0xFF) / 255
+00054|         let b = Double(hex & 0xFF) / 255
+00055|         self.init(red: r, green: g, blue: b)
+00056|     }
+00057| }
+00058| 
+00059| // MARK: - Classic skin bridge (zero callsite changes)
+00060| 
+00061| /// Typealias bridge so any Classic-skin code that still uses `DesignTokens.ink`
+00062| /// continues to compile unchanged.
+00063| public enum DesignTokens {
+00064|     public static let ink = Color.ink
+00065|     public static let ink2 = Color.ink2
+00066|     public static let ink3 = Color.ink3
+00067|     public static let ink4 = Color.ink4
+00068|     public static let bg = Color.bg
+00069|     public static let paper = Color.paper
+00070|     public static let tint = Color.tint
+00071| }
+00072| 
+
+(End of file - total 72 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Typography.swift"}
+<file>
+00001| import SwiftUI
+00002| 
+00003| // MARK: - Editorial Type Scale
+00004| 
+00005| public enum Typography {
+00006|     // MARK: Display
+00007| 
+00008|     /// Masthead — 44pt serif bold. App name / section front.
+00009|     public static let masthead = Font.system(size: 44, weight: .bold, design: .serif)
+00010|     /// Headline — 28pt serif semibold. Meeting title in list.
+00011|     public static let headline = Font.system(size: 28, weight: .semibold, design: .serif)
+00012|     /// Subhead — 20pt serif medium. Column headers.
+00013|     public static let subhead = Font.system(size: 20, weight: .medium, design: .serif)
+00014|     /// Deck — 16pt serif italic. Summary lead-in below headline.
+00015|     public static let deck = Font.system(size: 16, weight: .regular, design: .serif).italic()
+00016| 
+00017|     // MARK: Body
+00018| 
+00019|     /// Body — 15pt serif. Transcript and summary prose.
+00020|     public static let body = Font.system(size: 15, weight: .regular, design: .serif)
+00021|     /// Body emphasis — 15pt serif semibold. Speaker label in transcript turn.
+00022|     public static let bodyEm = Font.system(size: 15, weight: .semibold, design: .serif)
+00023|     /// Body italic — 15pt serif italic. Pullquote source attribution.
+00024|     public static let bodyItalic = Font.system(size: 15, weight: .regular, design: .serif).italic()
+00025|     /// Pull quote — 18pt serif medium italic. Summary drop-in callouts.
+00026|     public static let pullQuote = Font.system(size: 18, weight: .medium, design: .serif).italic()
+00027| 
+00028|     // MARK: Chrome
+00029| 
+00030|     /// UI label — 13pt sans medium. Button labels, nav items.
+00031|     public static let uiLabel = Font.system(size: 13, weight: .medium, design: .default)
+00032|     /// UI small — 11pt sans. Secondary meta, badges.
+00033|     public static let uiSmall = Font.system(size: 11, weight: .regular, design: .default)
+00034|     /// Byline — 11pt sans italic. Author / speaker attribution.
+00035|     public static let bylineFont = Font.system(size: 11, weight: .regular, design: .default).italic()
+00036| 
+00037|     // MARK: Data / editorial marks
+00038| 
+00039|     /// Kicker — 10pt mono semibold. Section label (uppercased, tracked).
+00040|     public static let kicker = Font.system(size: 10, weight: .semibold, design: .monospaced)
+00041|     /// Folio — 9pt mono medium. Edition / page footer.
+00042|     public static let folio = Font.system(size: 9, weight: .medium, design: .monospaced)
+00043|     /// Timer — 22pt mono medium. Recording elapsed time.
+00044|     public static let timer = Font.system(size: 22, weight: .medium, design: .monospaced)
+00045|     /// Timestamp — 10pt mono. Transcript turn timestamps.
+00046|     public static let timestamp = Font.system(size: 10, weight: .regular, design: .monospaced)
+00047| }
+00048| 
+00049| // MARK: - View Modifier Extensions
+00050| 
+00051| public extension View {
+00052|     /// Applies kicker style: mono semibold 10pt, 1.8pt tracking, uppercased,
+00053|     /// ink3 foreground — used for section labels throughout Broadsheet.
+00054|     func kicker() -> some View {
+00055|         font(Typography.kicker)
+00056|             .tracking(1.8)
+00057|             .textCase(.uppercase)
+00058|             .foregroundStyle(Color.ink3)
+00059|     }
+00060| 
+00061|     /// Applies folio style: mono medium 9pt, 1.4pt tracking, uppercased,
+00062|     /// ink3 foreground — used for edition / page footers.
+00063|     func folio() -> some View {
+00064|         font(Typography.folio)
+00065|             .tracking(1.4)
+00066|             .textCase(.uppercase)
+00067|             .foregroundStyle(Color.ink3)
+00068|     }
+00069| 
+00070|     /// Applies byline style: sans italic 11pt, ink2 foreground —
+00071|     /// used for speaker attribution and metadata lines.
+00072|     func byline() -> some View {
+00073|         font(Typography.bylineFont)
+00074|             .foregroundStyle(Color.ink2)
+00075|     }
+00076| }
+00077| 
+
+(End of file - total 77 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/Views/Components/Metrics.swift"}
+<file>
+00001| import CoreGraphics // swiftlint:disable:this no_avfoundation_in_views
+00002| 
+00003| // MARK: - Layout Metrics
+00004| 
+00005| /// Editorial layout constants. No SwiftUI imports — usable from pure logic.
+00006| public enum Metrics {
+00007|     // MARK: Base unit
+00008| 
+00009|     /// Grid unit — 8pt.
+00010|     public static let unit: CGFloat = 8
+00011| 
+00012|     // MARK: Column widths
+00013| 
+00014|     /// Sections rail (sidebar) — 240pt.
+00015|     public static let sidebar: CGFloat = 240
+00016|     /// Meeting list column — 320pt.
+00017|     public static let listColumn: CGFloat = 320
+00018| 
+00019|     // MARK: Corner radii
+00020| 
+00021|     /// Card corner radius — 0pt (newspaper: sharp corners everywhere).
+00022|     public static let radiusCard: CGFloat = 0
+00023|     /// Window corner radius — 0pt.
+00024|     public static let radiusWindow: CGFloat = 0
+00025|     /// Pill / badge corner radius — 2pt (minimal softening for legibility).
+00026|     public static let radiusPill: CGFloat = 2
+00027| 
+00028|     // MARK: Rule weights
+00029| 
+00030|     /// Hairline rule — 0.5pt. Column separators.
+00031|     public static let hairline: CGFloat = 0.5
+00032|     /// Standard rule — 1pt. Section dividers.
+00033|     public static let rule: CGFloat = 1
+00034|     /// Heavy rule — 2pt. Folio strip top, section fronts.
+00035|     public static let heavyRule: CGFloat = 2
+00036| }
+00037| 
+
+(End of file - total 37 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/AppState.swift"}
+<file>
+00001| import Business
+00002| import Domain
+00003| import Foundation
+00004| import Observation
+00005| import Logging
+00006| 
+00007| /// The Single Source of Truth for THE RECORD.
+00008| /// Consolidates navigation, settings, and pipeline state into a unified, predictable container.
+00009| @Observable @MainActor
+00010| public final class AppState {
+00011|     // MARK: - State Slices
+00012|     
+00013|     /// Global navigation and selection state.
+00014|     public let navigation = NavigationState()
+00015|     
+00016|     /// Authoritative application settings and configuration.
+00017|     public let settings: SettingsState
+00018|     
+00019|     /// Global pipeline and processing status.
+00020|     public let pipeline = PipelineStateContainer()
+00021|     
+00022|     // MARK: - Injected ViewModels (Hoisted State)
+00023|     
+00024|     /// The authoritative owner of the active recording session.
+00025|     public let recording: RecordingStateViewModel
+00026|     
+00027|     /// The primary registry of all meetings and recordings.
+00028|     public let library: MeetingLibraryViewModel
+00029| 
+00030|     // MARK: - Internal Logic
+00031|     
+00032|     private var detailVM: MeetingDetailViewModel?
+00033|     private var loadTask: Task<Void, Never>?
+00034|     private let logger = AppLogger.for(category: "AppState")
+00035| 
+00036|     // MARK: - Init
+00037|     
+00038|     public init(
+00039|         recording: RecordingStateViewModel,
+00040|         library: MeetingLibraryViewModel,
+00041|         initialConfig: AppConfig
+00042|     ) {
+00043|         self.recording = recording
+00044|         self.library = library
+00045|         self.settings = SettingsState(initialConfig: initialConfig)
+00046|         
+00047|         // Unify Selection Logic: trigger detail load when selectedMeetingID changes
+00048|         _ = withObservationTracking {
+00049|             navigation.selectedMeetingID
+00050|         } onChange: { [weak self] in
+00051|             Task { @MainActor in
+00052|                 self?.handleSelectionChange()
+00053|             }
+00054|         }
+00055|     }
+00056|     
+00057|     /// Binds a detail view model to the state for automatic hydration when selection changes.
+00058|     public func bind(detailVM: MeetingDetailViewModel) {
+00059|         self.detailVM = detailVM
+00060|         handleSelectionChange() // Load current selection immediately
+00061|     }
+00062|     
+00063|     private func handleSelectionChange() {
+00064|         // Re-establish tracking for the next change
+00065|         _ = withObservationTracking {
+00066|             navigation.selectedMeetingID
+00067|         } onChange: { [weak self] in
+00068|             Task { @MainActor in
+00069|                 self?.handleSelectionChange()
+00070|             }
+00071|         }
+00072|         
+00073|         guard let id = navigation.selectedMeetingID,
+00074|               let detailVM = detailVM,
+00075|               let meta = library.meetings.first(where: { $0.id == id }) else { return }
+00076|         
+00077|         loadTask?.cancel()
+00078|         loadTask = Task {
+00079|             do {
+00080|                 try await detailVM.loadDetail(for: meta)
+00081|             } catch is CancellationError {
+00082|                 // Expected
+00083|             } catch {
+00084|                 logger.error("Global selection load failed: \(error.localizedDescription, privacy: .public)")
+00085|             }
+00086|         }
+00087|     }
+00088| }
+00089| 
+00090| // MARK: - NavigationState
+00091| 
+00092| @Observable @MainActor
+00093| public final class NavigationState {
+00094|     /// The single authoritative selected meeting ID for the entire application.
+00095|     /// Unifies BroadsheetAppState.selectedMeetingID and MainWindowView.selection.
+00096|     public var selectedMeetingID: RecordingID?
+00097| 
+00098|     /// Selection state for Detail Tabs (Classic).
+00099|     public var selectedDetailTab: DetailTab = .transcript
+00100|     
+00101|     /// Selection state for Detail Tabs (Broadsheet).
+00102|     public var selectedBroadsheetTab: BroadsheetTab = .notes
+00103| 
+00104|     /// Selection state for the Broadsheet Sidebar.
+00105|     public var selectedSidebarItem: BroadsheetSidebarItem = .inbox
+00106| 
+00107|     /// Global search and ask queries.
+00108|     public var searchQuery: String = ""
+00109|     public var askQuery: String = ""
+00110| }
+00111| 
+00112| // MARK: - SettingsState
+00113| 
+00114| @Observable @MainActor
+00115| public final class SettingsState {
+00116|     public var uiTheme: UITheme
+00117|     public var defaultEngine: TranscriptionEngineKey
+00118|     public var archivePassEnabled: Bool
+00119|     public var privacyMode: PrivacyMode
+00120| 
+00121|     public init(initialConfig: AppConfig) {
+00122|         self.uiTheme = initialConfig.uiTheme
+00123|         self.defaultEngine = initialConfig.transcription.defaultEngine
+00124|         self.archivePassEnabled = initialConfig.transcription.archivePassEnabled
+00125|         self.privacyMode = initialConfig.privacyMode
+00126|     }
+00127| }
+00128| 
+00129| // MARK: - PipelineStateContainer
+00130| 
+00131| @Observable @MainActor
+00132| public final class PipelineStateContainer {
+00133|     public var cleanupState: CleanupState = .idle
+00134|     public var pipelineState: PipelineState = .idle
+00135|     public var errorMessage: String?
+00136| }
+00137| 
+
+(End of file - total 137 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/BroadsheetNavigation.swift"}
+<file>
+00001| import Domain
+00002| 
+00003| /// UITheme is defined in Domain/Config/UITheme.swift — re-exported here for convenience
+00004| public typealias UITheme = Domain.UITheme
+00005| 
+00006| public enum BroadsheetTab: String, CaseIterable, Hashable, Sendable {
+00007|     case notes, transcript, summary, suggestions, actions, templates
+00008| 
+00009|     public var displayName: String {
+00010|         switch self {
+00011|         case .suggestions: "SIGNALS"
+00012|         default: rawValue.capitalized
+00013|         }
+00014|     }
+00015| }
+00016| 
+00017| public enum BroadsheetSidebarItem: Hashable, Sendable {
+00018|     case inbox, pinned, recurring, allMeetings
+00019|     case folder(String)
+00020|     case person(String)
+00021| }
+00022| 
+
+(End of file - total 22 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/DesignTokensTests.swift"}
+<file>
+00001| @testable import Presentation
+00002| import SwiftUI
+00003| import Testing
+00004| 
+00005| // MARK: - Phase 1 RED: Design Tokens
+00006| 
+00007| @Suite("DesignTokens — Color extensions")
+00008| struct DesignTokensTests {
+00009|     /// Broadsheet ink scale
+00010|     @Test func inkColorsExist() {
+00011|         _ = Color.ink
+00012|         _ = Color.ink2
+00013|         _ = Color.ink3
+00014|         _ = Color.ink4
+00015|     }
+00016| 
+00017|     @Test func backgroundColorsExist() {
+00018|         _ = Color.bg
+00019|         _ = Color.paper
+00020|         _ = Color.tint
+00021|     }
+00022| 
+00023|     @Test func broadsheetPaletteExists() {
+00024|         _ = Color.newsprint
+00025|         _ = Color.rule
+00026|         _ = Color.hairlineColor
+00027|         _ = Color.highlight
+00028|         _ = Color.breaking
+00029|         _ = Color.editor
+00030|     }
+00031| 
+00032|     @Test func hexInitializerProducesDistinctColors() {
+00033|         // Verifies the Color(hex:) initializer is public and produces
+00034|         // distinct values for distinct hex inputs.
+00035|         let black = Color(hex: 0x000000)
+00036|         let white = Color(hex: 0xFFFFFF)
+00037|         // Colors created from different hex values must not be identical.
+00038|         // We use a round-trip through UIColor to get comparable RGBA values.
+00039|         let blackNS = NSColor(black).usingColorSpace(.sRGB)
+00040|         let whiteNS = NSColor(white).usingColorSpace(.sRGB)
+00041|         #expect(blackNS?.redComponent != whiteNS?.redComponent)
+00042|     }
+00043| }
+00044| 
+
+(End of file - total 44 lines)
+</file>
+Called the Read tool with the following input: {"filePath":"/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Tests/Unit/Presentation/BroadsheetNavigationTests.swift"}
+<file>
+00001| @testable import Domain
+00002| import Foundation
+00003| @testable import Presentation
+00004| import Testing
+00005| 
+00006| // MARK: - Phase 3 RED: Navigation State + Skin Toggle
+00007| 
+00008| @Suite("UITheme — skin toggle")
+00009| struct UIThemeTests {
+00010|     @Test func defaultIsBroadsheet() {
+00011|         #expect(AppConfig.default.uiTheme == .broadsheet)
+00012|     }
+00013| 
+00014|     @Test func isCodable() throws {
+00015|         let encoded = try JSONEncoder().encode(UITheme.broadsheet)
+00016|         let decoded = try JSONDecoder().decode(UITheme.self, from: encoded)
+00017|         #expect(decoded == .broadsheet)
+00018|     }
+00019| 
+00020|     @Test func hasTwoCases() {
+00021|         #expect(UITheme.allCases.count == 2)
+00022|     }
+00023| 
+00024|     @Test func rawValues() {
+00025|         #expect(UITheme.classic.rawValue == "classic")
+00026|         #expect(UITheme.broadsheet.rawValue == "broadsheet")
+00027|     }
+00028| }
+00029| 
+00030| @Suite("BroadsheetTab — tab model")
+00031| struct BroadsheetTabTests {
+00032|     @Test func displayNameCapitalized() {
+00033|         #expect(BroadsheetTab.notes.displayName == "Notes")
+00034|         #expect(BroadsheetTab.transcript.displayName == "Transcript")
+00035|         #expect(BroadsheetTab.summary.displayName == "Summary")
+00036|         #expect(BroadsheetTab.actions.displayName == "Actions")
+00037|         #expect(BroadsheetTab.templates.displayName == "Templates")
+00038|     }
+00039| 
+00040|     @Test func suggestionsDisplayNameIsSignals() {
+00041|         // Broadsheet aesthetic requires uppercase "SIGNALS" for the suggestions tab
+00042|         #expect(BroadsheetTab.suggestions.displayName == "SIGNALS")
+00043|     }
+00044| 
+00045|     @Test func hasSixCases() {
+00046|         #expect(BroadsheetTab.allCases.count == 6)
+00047|     }
+00048| 
+00049|     @Test func suggestionsInsertedAfterSummaryBeforeActions() throws {
+00050|         let cases = BroadsheetTab.allCases
+00051|         let summaryIdx = try #require(cases.firstIndex(of: .summary))
+00052|         let suggestionsIdx = try #require(cases.firstIndex(of: .suggestions))
+00053|         let actionsIdx = try #require(cases.firstIndex(of: .actions))
+00054|         #expect(summaryIdx < suggestionsIdx)
+00055|         #expect(suggestionsIdx < actionsIdx)
+00056|     }
+00057| }
+00058| 
+00059| @Suite("BroadsheetSidebarItem — sidebar model")
+00060| struct BroadsheetSidebarItemTests {
+00061|     @Test func hashable() {
+00062|         var set = Set<BroadsheetSidebarItem>()
+00063|         set.insert(.inbox)
+00064|         set.insert(.inbox)
+00065|         set.insert(.folder("Customers"))
+00066|         #expect(set.count == 2)
+00067|     }
+00068| 
+00069|     @Test func folderDistinctByName() {
+00070|         let a = BroadsheetSidebarItem.folder("A")
+00071|         let b = BroadsheetSidebarItem.folder("B")
+00072|         #expect(a != b)
+00073|     }
+00074| 
+00075|     @Test func personDistinctByName() {
+00076|         let a = BroadsheetSidebarItem.person("Sam")
+00077|         let b = BroadsheetSidebarItem.person("Maya")
+00078|         #expect(a != b)
+00079|     }
+00080| }
+00081| 
+
+(End of file - total 81 lines)
+</file>
