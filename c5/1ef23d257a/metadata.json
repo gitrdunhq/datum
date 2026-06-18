@@ -37,7 +37,8 @@
     "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Time.swift",
     "Prebuilts/duckdb-swift/Sources/DuckDB/Types/Timestamp.swift",
     "Record-App/Sources/TheRecord/AppAssembler.swift",
-    "Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift"
+    "Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/DuckDBInit.swift"
   ],
   "sessions": [
     {
@@ -51,6 +52,10 @@
       "transcript": "/c5/1ef23d257a/1/full.jsonl",
       "content_hash": "/c5/1ef23d257a/1/content_hash.txt",
       "prompt": "/c5/1ef23d257a/1/prompt.txt"
+    },
+    {
+      "metadata": "/c5/1ef23d257a/2/metadata.json",
+      "prompt": ""
     }
   ],
   "token_usage": {
