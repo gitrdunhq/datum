@@ -1,0 +1,1 @@
+using hte gh cli pull the details for https://github.com/gitrdunhq/Record-Suite/issues/236
