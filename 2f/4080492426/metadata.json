@@ -3,7 +3,7 @@
   "checkpoint_id": "2f4080492426",
   "strategy": "manual-commit",
   "branch": "fix/test-compilation-errors",
-  "checkpoints_count": 7,
+  "checkpoints_count": 9,
   "files_touched": [
     "Record-ML/Tests/Unit/CredentialStoreTests.swift",
     "Record-ML/Tests/Unit/MLXSummarizationPluginTests.swift"
@@ -26,6 +26,12 @@
       "transcript": "/2f/4080492426/2/full.jsonl",
       "content_hash": "/2f/4080492426/2/content_hash.txt",
       "prompt": "/2f/4080492426/2/prompt.txt"
+    },
+    {
+      "metadata": "/2f/4080492426/3/metadata.json",
+      "transcript": "/2f/4080492426/3/full.jsonl",
+      "content_hash": "/2f/4080492426/3/content_hash.txt",
+      "prompt": "/2f/4080492426/3/prompt.txt"
     }
   ],
   "token_usage": {
