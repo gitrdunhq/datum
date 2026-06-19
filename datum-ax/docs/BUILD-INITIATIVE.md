@@ -94,6 +94,30 @@ as `ARCHITECTURE.md`): contracts → producers → orchestration → loop → cr
 Wave 0: **E1**. Wave 1: E2, E3, E5, E9 (parallel). Wave 2: E4, E6. Wave 3: E7. Wave 4: E8, E10.
 Wave 5: E11. (E10's `nl-to-ticket` half already exists.)
 
+## Acceptance demo per epic (the testable deliverable)
+
+Every epic ends with an **acceptance gate**, not just code:
+1. a **runnable command** (a CLI subcommand or script),
+2. **green tests** (Hypothesis property + integration), and
+3. a **dual artifact** out — JSON that validates against an E1 contract + human-readable output.
+
+Because of contract-first + dual artifacts, each epic is demoable against mocks well before the end —
+you're never flying blind. **E8 is the first epic where the pipeline actually writes working code.**
+
+| Epic | Testable deliverable (demo) | How you test it |
+|------|------------------------------|-----------------|
+| E1 Contracts | the typed package | ✅ `uv run pytest` green (~133) + tier-boundary guard; schemas emit JSON Schema |
+| E2 Inference | `InferenceClient` vs a **mock oMLX** | send an `AssembledPrompt` → typed `Completion`; N parallel calls ≤ `max_connections`; over-budget prompt rejected |
+| E3 Exec hosts | `X86DockerHost` runs a diff | apply known-good + known-failing patch to a sample repo → assert `TestResult`; assert teardown (no leftover containers) |
+| E4 Firewall + DCP | the prompt assembler | build a Task Packet under window budget; inject oversized output → DCP prunes to placeholders, occupancy drops; prefix byte-stable across two lanes |
+| E5 Data + observability | ledger + checkpoint + `LiveStatus` | write a run, kill, **resume from checkpoint** (idempotent replay); `GET /status` → valid `LiveStatus` JSON |
+| E6 Orchestration | the graph runs **with stub nodes** | fake ticket → full ROUTE→PhaseA→PhaseB→CLOSEOUT trace; interrupt/resume works |
+| E7 Planner | `TICKET → lane DAG` | sample ticket → DAG with disjoint-file waves + PROPERTIES; oversized lane splits; validate DAG JSON; assert same-wave file-disjointness |
+| E8 Verify loop | **one real lane goes green** | toy task runs RED→GREEN→SKEPTIC→gates in sandbox → committed passing diff; 3-attempt cap + prune; replan-on-blowup fires |
+| E9 eedom gate | containerized review | clean diff → approve, secret-leaking diff → reject; assert `is_blocking`; eedom error → needs_review (fail-open) |
+| E10 GitHub + intake | `datum-ax intake "tic tac toe"` | emits `TICKET.md/.json`; mirrors a test epic + sub-issues with `wave:` labels; re-run idempotent (no dupes) |
+| E11 Compounding | run 2 is smarter than run 1 | recurring reject → harvest writes an Opengrep rule → next run catches the pattern at zero extra prompt tokens; entry versioned + revertible |
+
 ## Non-Goals
 - Running inside a generic Linux container (the pipeline targets Apple Silicon + x86 host).
 - Re-implementing eedom or GitNexus (consumed as external tools).
