@@ -30,6 +30,17 @@ from datum_ax.contracts.review import (
     ReviewDecision,
     Severity,
 )
+from datum_ax.contracts.status import (
+    BudgetStatus,
+    GateState,
+    GateStatus,
+    InferenceStatus,
+    LaneStage,
+    LaneStatus,
+    LiveStatus,
+    Phase,
+    WindowStatus,
+)
 from datum_ax.schemas.properties import Property, PropertyDomain, PropertyType
 from datum_ax.schemas.rules import RuleKind, RuleRegistryEntry, RuleTier
 from datum_ax.schemas.ticket import (
@@ -219,6 +230,67 @@ ast_map_st = st.builds(AstMap, symbols=st.lists(symbol_slice_st, max_size=3).map
 nl_doc_st = st.builds(NlDoc, source=text1, text=text0, token_estimate=nonneg_int)
 
 
+# --- live status contract -------------------------------------------------------------------------
+lane_status_st = st.builds(
+    LaneStatus,
+    lane_id=text1,
+    stage=_enum(LaneStage),
+    wave=st.integers(min_value=0, max_value=20),
+    attempt=st.integers(min_value=0, max_value=3),
+    target=_enum(ExecutionTarget),
+)
+
+
+@st.composite
+def _inference_status(draw: st.DrawFn) -> InferenceStatus:
+    max_conn = draw(st.integers(min_value=1, max_value=8))
+    return InferenceStatus(
+        max_connections=max_conn,
+        active_calls=draw(st.integers(min_value=0, max_value=max_conn)),
+        active_roles=draw(st.lists(_enum(ModelRole), max_size=3).map(tuple)),
+    )
+
+
+inference_status_st = _inference_status()
+
+
+@st.composite
+def _window_status(draw: st.DrawFn) -> WindowStatus:
+    window = draw(st.integers(min_value=1, max_value=200_000))
+    return WindowStatus(
+        window_target=window, tokens_in_window=draw(st.integers(min_value=0, max_value=window))
+    )
+
+
+window_status_st = _window_status()
+budget_status_st = st.builds(
+    BudgetStatus,
+    tokens_spent=nonneg_int,
+    token_ceiling=st.integers(min_value=1, max_value=10**7),
+    wall_clock_s=nonneg_float,
+    wall_clock_ceiling_s=st.floats(
+        min_value=1, max_value=1e6, allow_nan=False, allow_infinity=False
+    ).map(lambda x: round(x, 6)),
+)
+gate_status_st = st.builds(GateStatus, name=text1, state=_enum(GateState))
+live_status_st = st.builds(
+    LiveStatus,
+    captured_at=dt,
+    phase=_enum(Phase),
+    inference=inference_status_st,
+    window=window_status_st,
+    budget=budget_status_st,
+    run_id=opt_text,
+    route=st.none() | _enum(Route),
+    scale=st.none() | _enum(WorkScale),
+    epic=opt_text,
+    current_wave=st.none() | st.integers(min_value=0, max_value=20),
+    waves_total=st.integers(min_value=0, max_value=20),
+    lanes=st.lists(lane_status_st, max_size=4).map(tuple),
+    gates=st.lists(gate_status_st, max_size=4).map(tuple),
+    pending_interrupts=st.integers(min_value=0, max_value=10),
+)
+
 # Every pure boundary model + a valid strategy (drives the generic property tests).
 MODEL_STRATEGIES = {
     Property: property_st,
@@ -244,4 +316,10 @@ MODEL_STRATEGIES = {
     SymbolSlice: symbol_slice_st,
     AstMap: ast_map_st,
     NlDoc: nl_doc_st,
+    LaneStatus: lane_status_st,
+    InferenceStatus: inference_status_st,
+    WindowStatus: window_status_st,
+    BudgetStatus: budget_status_st,
+    GateStatus: gate_status_st,
+    LiveStatus: live_status_st,
 }

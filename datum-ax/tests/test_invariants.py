@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from datum_ax.contracts.execution import ApplyResult, Outcome, TestResult
 from datum_ax.contracts.inference import TokenBudget
 from datum_ax.contracts.review import DecisionVerdict
+from datum_ax.contracts.status import InferenceStatus, WindowStatus
 from datum_ax.schemas.rules import RuleKind, RuleRegistryEntry, RuleTier
 from datum_ax.schemas.ticket import (
     Ambiguity,
@@ -22,7 +23,7 @@ from datum_ax.schemas.ticket import (
     Ticket,
     WorkScale,
 )
-from strategies import artifact_bundle_st, assembled_prompt_st, review_decision_st
+from strategies import artifact_bundle_st, assembled_prompt_st, review_decision_st, window_status_st
 
 
 class TestInvariants:
@@ -86,3 +87,14 @@ class TestInvariants:
         # Determinism (ADR-0003): the cache-stable prefix is reproducible.
         assert prompt.stable_prefix() == prompt.stable_prefix()
         assert prompt.system in prompt.stable_prefix()
+
+    @given(active=st.integers(min_value=2, max_value=20), max_conn=st.integers(min_value=1, max_value=1))
+    def test_live_inference_within_capacity(self, active, max_conn):
+        # Boundedness (ADR-0029): live in-flight calls never exceed the semaphore capacity.
+        with pytest.raises(ValidationError):
+            InferenceStatus(active_calls=active, max_connections=max_conn)
+
+    @given(window_status_st)
+    def test_live_window_occupancy(self, ws):
+        # Determinism: occupancy is a faithful function of tokens vs target.
+        assert ws.occupancy_pct == round(100.0 * ws.tokens_in_window / ws.window_target, 2)

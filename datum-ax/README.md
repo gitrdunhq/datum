@@ -80,6 +80,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0026](docs/adr/0026-three-tier-enforced-boundaries.md) — three-tier architecture with **enforced** boundaries (presentation → core → data; contract at every handoff)
 - [0027](docs/adr/0027-dual-artifacts-md-and-json.md) — dual artifacts: Markdown for humans, JSON for machines (handoff = schema validation)
 - [0028](docs/adr/0028-cli-and-api-surface.md) — CLI + API surface to kick off any stage (presentation tier)
+- [0029](docs/adr/0029-live-status-snapshot.md) — live status snapshot: a single JSON of what the pipeline is doing now (`GET /status`)
 
 **Build roadmap (dogfooded):** [`docs/BUILD-INITIATIVE.md`](docs/BUILD-INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics. The bridge from blueprint to code.
 
