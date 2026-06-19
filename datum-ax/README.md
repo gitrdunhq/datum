@@ -71,6 +71,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0019](docs/adr/0019-gitnexus-code-graph-intelligence.md) — GitNexus as complementary code-graph intelligence
 - [0020](docs/adr/0020-compound-engineering.md) — compound engineering (the learning loop: harvest + rule delivery)
 - [0021](docs/adr/0021-active-context-management-dcp.md) — active context management (Dynamic Context Pruning)
+- [0022](docs/adr/0022-context-budget-aware-lane-granularity.md) — context-budget-aware lane granularity (a single-turn blowup is a planning defect)
 
 ## Status of the locked-in stack
 

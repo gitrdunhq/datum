@@ -37,7 +37,9 @@ internal interface (so we do not hard-depend on any one plugin):
      (~60–65% of the window budget) down to a **low-water mark** (~35–40%). Tied to the real driver,
      gives OOM margin, and **batches** prunes so the prompt cache isn't churned every turn.
   2. **Hard pre-dispatch guard:** never dispatch a call whose assembled window would exceed the cap —
-     prune/summarize first. This — not any timer — is the actual OOM guarantee.
+     prune/summarize first. This — not any timer — is the actual OOM guarantee. **If the un-prunable
+     essentials alone exceed the cap, that is a planning defect, not a pruning problem: escalate to
+     RE-PLAN / lane-split (ADR-0022), don't prune essentials.**
   3. **Event-driven (immediate):** prune a failed attempt and a completed lane's context the moment
      they occur; don't wait for a threshold or a timer.
   4. **Periodic sweep (backstop):** a cheap janitorial pass **every N turns (default ~10)** to clear

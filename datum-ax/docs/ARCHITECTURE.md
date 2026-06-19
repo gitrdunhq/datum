@@ -180,7 +180,9 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
    → sets the execution target. **Zero tokens.**
 4. **Plan DAG** — the Executor model decomposes into an atomic DAG of lanes with **git-worktree file
    ownership** and **contract-first ordering** (ADR-0010); **GitNexus** supplies risk-scored impact
-   and call-graph dependencies (ADR-0019, not used inside the loop).
+   and call-graph dependencies (ADR-0019, not used inside the loop). Each lane is sized so its
+   **essential working set fits the window budget** — estimated here via Serena/TokenSave/GitNexus and
+   split if oversized (ADR-0022), so a single turn can't blow the window at runtime.
 5. **Properties** — derive the PROPERTIES invariant set in eedom's DPS-12 taxonomy, traced to lanes
    (ADR-0016). ROUTE-gated.
 6. **Yield** a static array of steps to the parent graph.

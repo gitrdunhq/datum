@@ -29,6 +29,8 @@ artifacts, bound under two tiers:
   - a **regression test** for a bug just fixed (RED that now stays green);
   - **tightening an existing rule's** parameters (incl. an existing **Opengrep** rule);
   - **routing/threshold tuning** data (ADR-0009);
+  - **lane-sizing heuristics** learned from `lane-plan` blowups (ADR-0022) — the planner gets better
+    at granularity over time;
   - **solution-memory** entries — retrieval-only, never binding.
 - **Propose-and-gate** (new/risky — surfaced for a yes/no):
   - new **discipline rules** (ADR-0010), including new **local Opengrep rules**;
