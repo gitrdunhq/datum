@@ -38,6 +38,20 @@ answer**, not an interrogation. Faithful, never inventive.
 - **One batch at a time.** End each turn with the question batch or a locked summary — never both open
   and vague.
 
+## Frameworks it dispatches (don't improvise — pick by the fog)
+
+- **Real problem & hidden assumptions** → `problem-framing-canvas` (Look Inward / Outward / Reframe +
+  "How Might We"), `problem-statement` (empathy-driven, one sentence).
+- **What the user is actually trying to do** → `jobs-to-be-done` (functional/social/emotional + pains
+  + gains).
+- **Who it's for (early)** → `proto-persona` (tag `[ASSUMPTION—VALIDATE]`).
+- **Outcome → opportunities → solutions** → `opportunity-solution-tree` (anti feature-factory).
+- **Prep real conversations** → `discovery-interview-prep` (Mom Test: past behavior, no hypotheticals).
+- **Experience friction** → `customer-journey-map` / `-mapping-workshop`.
+- **Assumption-first frame** → `lean-ux-canvas` (business problem, not solution).
+
+Run them workshop-style (one question per turn, numbered options). See `../FRAMEWORK-MAP.md`.
+
 ## Output
 
 Return the BRIEF enriched with: problem, users, intent, success_metrics, scope (in/out/non_goals),

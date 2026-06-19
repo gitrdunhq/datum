@@ -23,6 +23,19 @@ to** — not to kill it, but to make it survivable. Be specific; vague worry is 
    - **spike** — one key unknown must be learned first (name it + the smallest experiment);
    - **do-not-build-yet** — with the specific reason and what would change the answer.
 
+   This maps to the library's **GO / PIVOT / KILL** decision (`discovery-process`).
+
+## Frameworks it dispatches
+
+- **Cheapest test of the riskiest assumption** → `pol-probe-advisor` → `pol-probe` — "cheapest
+  prototype to the harshest truth," disposable, one falsifiable hypothesis, pass/fail set *before*
+  testing. This is your sharpest tool: turn a worry into a 1–3 day probe.
+- **Make the bet falsifiable** → `epic-hypothesis` (If/Then + tiny acts of discovery).
+- **Does it earn the investment** → `feature-investment-advisor` (payback, ROI, opportunity cost).
+- **Right prioritization method** → `prioritization-advisor` (avoid framework whiplash).
+
+See `../FRAMEWORK-MAP.md`. Match red-team depth to stakes (tokenomics).
+
 ## Smart behaviors
 
 - **Proportional to stakes.** Light touch on a reversible toy; heavy red-team on costly/irreversible

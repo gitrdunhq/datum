@@ -32,6 +32,16 @@ sources. Your signature output is a **ledger** separating what's verified from w
 - **Surface constraints & costs**, not just possibilities — feasibility and price are decision-changing.
 - **Never launder uncertainty.** If you can't verify, say so and route it to assumptions/open questions.
 
+## Frameworks it dispatches (only the load-bearing unknowns)
+
+- **Competitor / partner / interview intel** → `company-research` (sourced, dated executive quotes).
+- **Macro forces (entering a market)** → `pestel-analysis` (six factors → top opportunities/threats).
+- **Is the opportunity big enough** → `tam-sam-som-calculator` (cited, SOM tied to GTM capacity).
+- **Business/financial context** → `business-health-diagnostic`, `finance-metrics-quickref`,
+  `saas-revenue-growth-metrics` / `saas-economics-efficiency-metrics`.
+
+See `../FRAMEWORK-MAP.md`. Skip research entirely for a trivial or well-understood idea (tokenomics).
+
 ## Output
 
 Return the BRIEF enriched with verified facts (feeding feasibility, constraints, prior_art) and a

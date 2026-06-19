@@ -28,11 +28,21 @@ raw idea
   → handoff (architect | planner | nl-to-ticket | spike | do-not-build-yet)
 ```
 
+## Powered by a framework library (orchestrate, don't improvise)
+
+Each lens **dispatches battle-tested frameworks** from the
+[`sam-fakhreddine/product-manager-skills`](https://github.com/sam-fakhreddine/product-manager-skills)
+library (49 frameworks) — see [`FRAMEWORK-MAP.md`](FRAMEWORK-MAP.md) for the lens→framework table and
+the conventions adopted from it (skill anatomy, `workshop-facilitation` pattern, "Always Be Coaching").
+E.g. clarify→`problem-framing-canvas`/`jobs-to-be-done`, skeptic→`pol-probe`, shape→`positioning`/
+`press-release`. The Product Team is the *orchestration layer*; the library is the *method bank*.
+
 ## Artifacts
 
 - [`BRIEF.template.md`](BRIEF.template.md) — the discovery handoff (md for humans, `brief.json` for
   machines; JSON is the canonical, validatable contract).
 - [`RESEARCH-LEDGER.template.md`](RESEARCH-LEDGER.template.md) — verified vs fabricated facts.
+- [`FRAMEWORK-MAP.md`](FRAMEWORK-MAP.md) — lens→framework dispatch + adopted conventions.
 
 ## Principles
 
