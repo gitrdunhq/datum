@@ -12,6 +12,7 @@ Opt-in via config.toml:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -1065,6 +1066,11 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
         json.dumps(tool_args),
     ]
 
+    # Ensure the datum package is importable regardless of cwd (#137)
+    _env = dict(os.environ)
+    _datum_root = str(Path(__file__).resolve().parent.parent)
+    _env["PYTHONPATH"] = _datum_root + os.pathsep + _env.get("PYTHONPATH", "")
+
     try:
         proc = subprocess.run(
             cmd,
@@ -1072,6 +1078,7 @@ def _execute_tool(tool_call: dict, mt_config: dict) -> tuple[str, bool]:
             text=True,
             timeout=60,
             cwd=exec_cwd,
+            env=_env,
         )
         out = proc.stdout
         if proc.stderr:

@@ -1,8 +1,15 @@
 """Tests for get_model_for_phase two-tier model routing and KV cache config."""
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from datum.local_llm import DEFAULTS, get_model_for_phase
+
+_mlx_lm_available = True
+try:
+    import mlx_lm  # noqa: F401
+except ImportError:
+    _mlx_lm_available = False
 
 _TWO_TIER_CONFIG = {
     "enabled": True,
@@ -81,6 +88,7 @@ def test_kv_defaults_are_set():
     assert DEFAULTS["max_kv_size"] == 32768
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_kv_bits_none_disables_quantization():
     # When kv_bits is None no kv_bits/kv_group_size kwargs should reach stream_generate.
     config = {**_TWO_TIER_CONFIG, "kv_bits": None, "max_kv_size": None}
@@ -104,6 +112,7 @@ def test_kv_bits_none_disables_quantization():
     assert "max_kv_size" not in kwargs
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_kv_kwargs_passed_to_stream_generate():
     # When kv_bits and max_kv_size are set they must reach stream_generate.
     mock_stream = MagicMock(return_value=iter([]))

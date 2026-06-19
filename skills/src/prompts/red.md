@@ -35,8 +35,9 @@ SELF-CHECK (mandatory before running tests):
 - Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits
 - Count how many `{{testFuncPattern}}` functions exist AFTER your edits
 - The count MUST increase by at least len(acceptance_criteria) new functions
+- For EACH acceptance criterion, verify there is a corresponding test function. If any AC lacks a test, go back and write it before proceeding.
 - If count did not increase, you FAILED — do not proceed, report success=false with failure_reason="no_new_tests_written"
-- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"
+- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N (>= {{acceptanceCriteriaCount}} ACs required)"
 
 AFTER WRITING:
 5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).
@@ -47,6 +48,8 @@ AFTER WRITING:
 CONSTRAINTS:
 - Append new test functions to existing test files — keep all existing tests intact
 - Only write and commit test files: {{testFilesList}}
+- NEVER write to or modify any production source file (Sources/, lib/, src/, etc.) — even if the test fails to compile due to missing symbols. Use @testable import assumptions and write TODO markers instead.
+- NEVER write to files outside {{testFilesList}} — the ownership gate will reject your commit. If you need to create a new test file, use the path from the skeleton preflight output.
 
 BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
 - Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`
@@ -54,4 +57,5 @@ BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
 - Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body
 - TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body
 - `assert x is not None` / trivial nil-checks as the ONLY assertion
+- Python: Mixed f-string/plain-string tuples. When building a multi-line string tuple by concatenation, ALL literals must share the same format prefix. If any literal has `f` prefix, every literal in the tuple must also have `f` prefix. Brace escapes (`{{`/`}}`) only work inside f-strings — in plain strings they produce literal `{{`.
 Each test MUST assert a specific expected value or exception type.

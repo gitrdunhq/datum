@@ -8,6 +8,7 @@ export interface SetupArgs {
   batchLaneIds: string[]
   lanePlan: LanePlan
   batchTag: string
+  resume?: boolean
 }
 export interface SetupResult {
   worktreePaths: Record<string, string>
@@ -74,6 +75,7 @@ export interface Lane {
   red_note?: string
   stage?: 'structural' | 'behavioral'
   green_model?: ModelName
+  cycle_risk?: boolean
 }
 
 export interface PipelineConfig {

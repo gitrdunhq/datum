@@ -33,6 +33,21 @@ function parseAgentJson(text, fallback) {
 // skills/src/datum-tdd-act-setup.ts
 var a = args;
 phase("Setup");
+var existingWorktrees = {};
+if (a.resume) {
+  log("Resume mode: checking for existing worktrees");
+  for (const lid of a.batchLaneIds) {
+    const checkWt = await agent(
+      `git worktree list --porcelain 2>/dev/null | grep -A1 "datum/${a.epicBranch}--${lid}" | grep "worktree" | awk '{print $2}' || echo ""
+If a worktree exists for lane ${lid}, return its path. Otherwise return "MISSING".`,
+      { label: `check-wt:${lid}`, phase: "Setup", model: model("fast") }
+    );
+    if (checkWt && checkWt.trim() !== "MISSING" && checkWt.trim()) {
+      existingWorktrees[lid] = checkWt.trim();
+      log(`  Found existing worktree for ${lid}: ${existingWorktrees[lid]}`);
+    }
+  }
+}
 var rootWtText = await agent(
   `git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>&1 && echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
   { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
@@ -42,11 +57,13 @@ var rootWt = rootWtInfo.root;
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId}`);
 log(`Root worktree${a.batchTag}: ${rootWt}`);
 var setupText = await agent(
-  `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.join(",")}
+  `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.filter((lid) => !existingWorktrees[lid]).join(",") || "NONE"}
+If no lanes need setup (all exist), return {"skipped_all": true}.
 Return ONLY the JSON output, no explanation.`,
   { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
-var worktreePaths = typeof setupText === "string" ? JSON.parse(setupText.replace(/```[a-z]*\n?/g, "").trim()) : setupText;
+var newWorktreePaths = typeof setupText === "string" ? JSON.parse(setupText.replace(/```[a-z]*\n?/g, "").trim()) : setupText;
+var worktreePaths = { ...existingWorktrees, ...newWorktreePaths };
 var validPaths = Object.values(worktreePaths || {}).filter(Boolean);
 if (validPaths.length === 0) throw new Error(`Setup failed: no worktree paths for ${a.batchRunId}`);
 for (const [lid, wtp] of Object.entries(worktreePaths || {})) {

@@ -94,6 +94,41 @@ if (batches.length > 1) {
   }
 }
 
+// ── Resume support (#194): detect existing worktrees and completed lanes ──
+const resume: boolean = !!a.resume
+
+// Detect completed lanes from existing worktree branches (#194)
+let resumedCompleted: string[] = []
+if (resume) {
+  log('Resume mode: detecting completed lanes from existing branches')
+  const branchCheck = await agent(
+    `For each lane task in topological order, check if its branch is already completed.
+Run these commands for each lane ID in: ${allLaneIds.join(', ')}
+  git branch --list "datum/${epicBranch}--${"TASK_ID"}" 2>/dev/null | head -1
+  If the branch exists, check: git log --oneline "datum/${epicBranch}--TASK_ID" 2>/dev/null | head -3
+  A lane is "completed" if its branch has a commit matching "refactor(TASK_ID):" or "done" in the message.
+  Return JSON: {"completed": ["lane-id-1", "lane-id-2"], "existing_branches": ["lane-id-1", ...]}
+No markdown fences, no explanation.`,
+    { label: 'resume-detect', model: model('fast') }
+  )
+  if (branchCheck) {
+    const detected = typeof branchCheck === 'string'
+      ? parseAgentJson(branchCheck, { completed: [], existing_branches: [] })
+      : branchCheck
+    resumedCompleted = detected.completed || []
+    log(`  Resumed: ${resumedCompleted.length} lanes already completed`)
+  }
+}
+
+// Write resolved lane plan to .datum/ for setup phase (#237 version drift fix)
+const datumLanePlanPath = '.datum/lane-plan.json'
+const datumLanePlanDir = datumLanePlanPath.split('/').slice(0, -1).join('/')
+await agent(
+  `mkdir -p ./${datumLanePlanDir} && printf '%s' '${JSON.stringify(lanePlan).replace(/'/g, "'\\''")}' > "${datumLanePlanPath}"`,
+  { label: 'write-lane-plan', phase: 'Topology', model: model('fast') }
+)
+
+
 // ── Batch loop ──
 
 const results: Record<string, LaneOutcome> = {}
@@ -116,6 +151,13 @@ for (let bi = 0; bi < batches.length; bi++) {
       log(`  SKIPPED ${lid}: deps [${missing.join(', ')}] never ran`)
     }
   }
+  // Skip lanes already completed in a prior run (#194 resume)
+  const resumedBatchIds = batchLaneIds.filter((id: string) => resumedCompleted.includes(id))
+  for (const lid of resumedBatchIds) {
+    results[lid] = { task_id: lid, status: 'completed' }
+    if (!completedLanes.includes(lid)) completedLanes.push(lid)
+    log(`  RESUMED ${lid}: lane already completed in prior run`)
+  }
   const runnableBatchIds = batchLaneIds.filter((id: string) => !results[id])
   if (runnableBatchIds.length === 0) {
     log(`Batch ${bi} fully skipped — all lanes have unmet deps`)
@@ -126,7 +168,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   log('── Setup ──')
   const setup = await workflow(
     { scriptPath: sk('datum-tdd-act-setup') },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag, resume }
   ) as SetupResult
 
   // Act

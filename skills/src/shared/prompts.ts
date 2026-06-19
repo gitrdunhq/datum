@@ -24,7 +24,7 @@ type PromptVars = { [key: string]: string }
 export function redPrompt(vars: {
   wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testFilesList: string; commitPrefix: string
-  testFuncPattern?: string
+  testFuncPattern?: string; acceptanceCriteriaCount?: string
 }): string {
   return PREAMBLE + renderPrompt(redTemplate, vars as PromptVars)
 }

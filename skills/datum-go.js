@@ -94,6 +94,16 @@ var DEFAULT_CONFIG = {
 };
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
+  try {
+    const _fileUrl = import.meta.url;
+    const _idx = _fileUrl.indexOf("shared");
+    if (_idx > 0) {
+      const _base = _fileUrl.substring(0, _idx).replace(/\/$/, "");
+      const _path = _base.replace("file://", "");
+      return `${_path}skills/${name}.js`;
+    }
+  } catch {
+  }
   return `skills/${name}.js`;
 }
 

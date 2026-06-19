@@ -50,6 +50,94 @@ export const meta = {
 
 // ── File ownership verification ─────────────────────────────────────────────
 
+/** Infer language from implementation file extensions. Fixes #235: when the
+ * repo-level language (e.g. "python") doesn't match the lane's impl files
+ * (e.g. .ts), use the extension-derived language instead. */
+function inferLanguageFromFiles(implFiles: string[], fallback: string): string {
+  for (const f of implFiles) {
+    const ext = f.split('.').pop()?.toLowerCase() ?? ''
+    if (ext === 'ts' || ext === 'tsx') return 'typescript'
+    if (ext === 'js' || ext === 'jsx') return 'javascript'
+    if (ext === 'swift') return 'swift'
+    if (ext === 'go') return 'go'
+    if (ext === 'py' || ext === 'pyx') return 'python'
+  }
+  return fallback
+}
+
+async function extractAndWriteStub(
+  taskId: string,
+  implFiles: string[],
+  wt: string,
+): Promise<string | null> {
+  /** Generate a signature-only stub from implementation files.
+   * Extracts function signatures, export surface, JSDoc types — no bodies.
+   * Downstream lane agents receive the stub, not the full implementation. */
+  const stubPath = `.datum/runs/${cfg.runId}/${taskId}.stub.js`
+  const stubCmd = `cd "${wt}" && cat > "${stubPath}" << 'STUBEOF'
+// Auto-generated stub for downstream lane consumption
+// DO NOT EDIT — regenerated at end of each lane
+'use strict';
+STUBEOF
+# Append extracted signatures from impl files
+for f in "${implFiles[@]}"; do
+  if [[ -f "$f" ]]; then
+    # Extract function declarations, class methods, exports
+    grep -E '^(export (default )?(async )?function |^export (const|let|var) |^module\.exports|class |^function )' "$f" 2>/dev/null || true
+    # Extract JSDoc @param/@returns tags
+    grep -E '^/\*\*|@param|@returns|@typedef' "$f" 2>/dev/null || true
+    # Extract import/export statements
+    grep -E '^(import |export )' "$f" 2>/dev/null || true
+  fi
+done >> "${stubPath}"
+
+# Append module.exports line
+echo "module.exports = { /* auto-generated */ };" >> "${stubPath}"
+git -C "${wt}" add "${stubPath}" 2>/dev/null || true
+echo "Stub written to ${stubPath}"`
+
+  const result = await agent(
+    stubCmd,
+    { label: `stub-write:${taskId}`, phase: 'Act', model: model('fast') },
+  )
+  return result
+}
+
+async function readUpstreamStubs(
+  taskId: string,
+  lane: Lane,
+  lanePlan: LanePlan,
+  wt: string,
+): Promise<string> {
+  /** Read stub files of upstream dependencies and format them as context.
+   * Returns formatted upstream context string for injection into downstream lanes. */
+  const upstreamDeps = lane.depends_on || []
+  if (upstreamDeps.length === 0) return ''
+
+  const runId = (cfg as any).runId
+  let ctx = '# Upstream interfaces you are writing against:\n'
+
+  for (const depId of upstreamDeps) {
+    const depLane = lanePlan.lanes[depId]
+    if (!depLane) continue
+
+    const stubPath = `.datum/runs/${runId}/${depId}.stub.js`
+    const stubContent = await agent(
+      `Read the file: cat "${wt}/${stubPath}" 2>/dev/null || echo ""
+If the file does not exist or is empty, return exactly: MISSING
+No markdown fences, no explanation.`,
+      { label: `stub-read:${depId}`, phase: 'Act', model: model('fast') },
+    )
+
+    if (stubContent && stubContent.trim() !== 'MISSING') {
+      ctx += `\n## ${depId}: ${depLane.title}\n`
+      ctx += `\`\`\`javascript\n${stubContent}\n\`\`\`\n`
+    }
+  }
+
+  return ctx
+}
+
 async function verifyFileOwnership(
   taskId: string,
   wt: string,
@@ -58,7 +146,7 @@ async function verifyFileOwnership(
   forbiddenFiles: string[],
 ): Promise<{ ok: boolean; violations: string[] }> {
   const result: string | null = await agent(
-    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
+    `Run: git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" diff --name-only HEAD~1 HEAD || git -C "${wt}" diff --name-only HEAD || git -C "${wt}" diff --cached --name-only
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
 No markdown fences, no explanation.`,
     { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') },
@@ -98,61 +186,68 @@ async function runLane(
   const issueId: string = getIssueId(lanePlan as any, taskId)
   const runId: string = (cfg as any).runId
   const isStructural: boolean = lane.stage === 'structural'
-  const { testFiles, implFiles } = classifyFiles(lane.files)
-  const acStr: string = (lane.acceptance_criteria || []).join('\n')
-   const laneTestCmd: string = cfg.testCommand
-   const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
+    const { testFiles, implFiles } = classifyFiles(lane.files)
+    const acStr: string = (lane.acceptance_criteria || []).join('\n')
+    // Infer language from impl file extensions (#235: repo-level language may not match lane)
+    const laneLanguage = inferLanguageFromFiles(implFiles, cfg.language)
+    const laneTestCmd: string = cfg.testCommand
+    const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
 
-   // ── Swift target-scoped test command (prevents cross-target contamination, #228, #229) ──
-   const swiftTargetFilter: string | null = cfg.language === 'swift'
+    // ── Swift target-scoped test command (prevents cross-target contamination, #228, #229, #196) ──
+    // Use --target (not --filter) to prevent compilation of unrelated targets
+    const swiftTargetFilter: string | null = laneLanguage === 'swift'
      ? (() => {
-         // Derive target name from impl files: use the first non-"Tests" path segment
-         const swft = implFiles[0]
-         if (swft) {
-           const parts = swft.split('/')
-           const sourcesIdx = parts.indexOf('Sources')
-           if (sourcesIdx >= 0 && parts[sourcesIdx + 1]) {
-             return `--filter ${parts[sourcesIdx + 1]}`
-           }
-         }
-         return null
-       })()
-     : null
+          // Derive target name from impl files: use the first non-"Tests" path segment
+          const swft = implFiles[0]
+          if (swft) {
+            const parts = swft.split('/')
+            const sourcesIdx = parts.indexOf('Sources')
+            if (sourcesIdx >= 0 && parts[sourcesIdx + 1]) {
+              return `--target ${parts[sourcesIdx + 1]}`
+            }
+          }
+          return null
+        })()
+      : null
    const scopedTestCmd = swiftTargetFilter
      ? `${cfg.testCommand} ${swiftTargetFilter}`
      : cfg.testCommand
    const scopedLaneCfg: PipelineConfig = { ...cfg, testCommand: scopedTestCmd }
 
-   // Language-aware grep patterns for test function detection
-  // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
-  // NB: no '^' anchor on '+' — macOS git 2.54.0 with core.pager may emit 2-space indented patch lines
-  const testFuncDiffPattern: string = cfg.language === 'swift'
-    ? "-E '[+][[:space:]]*(@Test|func test)'"
-    : cfg.language === 'go'
-    ? "-E '[+][[:space:]]*func Test'"
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
-    ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'"
-    : "-E '[+][[:space:]]*def test_'"
-  const testFuncGrepPattern: string = cfg.language === 'swift'
-    ? "-E '@Test|func test'"
-    : cfg.language === 'go'
-    ? "-E 'func Test'"
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
-    ? "-E 'it\\(|test\\(|describe\\('"
-    : "-E 'def test_|async def test_'"
-  const testFuncBodyPattern: string = cfg.language === 'swift'
-    ? "'func test'"
-    : cfg.language === 'go'
-    ? "'func Test'"
-    : "'def test_'"
+    // Language-aware grep patterns for test function detection
+   // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
+   // NB: no '^' anchor on '+' — macOS git 2.54.0 with core.pager may emit 2-space indented patch lines
+   // Use laneLanguage (inferred from impl file extensions) instead of cfg.language (#235, #247)
+   const testFuncDiffPattern: string = laneLanguage === 'swift'
+     ? "-E '[+][[:space:]]*(@Test|func test)'"
+     : laneLanguage === 'go'
+     ? "-E '[+][[:space:]]*func Test'"
+     : laneLanguage === 'typescript' || laneLanguage === 'javascript'
+     ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'"
+     : "-E '[+][[:space:]]*def test_'"
+   const testFuncGrepPattern: string = laneLanguage === 'swift'
+     ? "-E '@Test|func test'"
+     : laneLanguage === 'go'
+      ? "-E 'func Test'"
+     : laneLanguage === 'typescript' || laneLanguage === 'javascript'
+     ? "-E 'it\\(|test\\(|describe\\('"
+     : "-E 'def test_|async def test_'"
+   const testFuncBodyPattern: string = laneLanguage === 'swift'
+     ? "'func test'"
+     : laneLanguage === 'go'
+     ? "'func Test'"
+     : "'def test_'"
 
   // ── Cross-run completion check: skip if a previous run already completed this lane ──
+  // Check both run-specific and persistent lane-state files for completion
   const completionPath = runId
     ? `.datum/runs/${runId}/lane-state/${taskId}.json`
     : null
-  if (completionPath) {
+  const persistentStatePath = `.datum/lane-state/${taskId}.json`
+  let completed = false
+  for (const checkPath of [completionPath, persistentStatePath].filter(Boolean)) {
     const completionExist: string | null = await agent(
-      `Read the file: cat "${completionPath}" 2>/dev/null || echo ""
+      `Read the file: cat "${checkPath}" 2>/dev/null || echo ""
 If the file exists, return ONLY its raw contents (valid JSON).
 If the file does not exist or is empty, return exactly: MISSING
 No markdown fences, no explanation.`,
@@ -161,22 +256,34 @@ No markdown fences, no explanation.`,
     if (completionExist && completionExist.trim() !== 'MISSING') {
       const compData = parseAgentJson<{ task_id?: string }>(completionExist, {})
       if (compData.task_id === taskId) {
-        log(`[${taskId}] lane already completed in a prior run — skipping`)
-        return { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: 'cross-run completion: lane was completed in a previous run' }
+        completed = true
+        break
       }
     }
   }
+  if (completed) {
+    log(`[${taskId}] lane already completed in a prior run — skipping`)
+    return { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: 'cross-run completion: lane was completed in a previous run' }
+  }
+
+  // ── Upstream stub injection: read stubs of dependency lanes ──
+  const upstreamStubCtx = await readUpstreamStubs(taskId, lane, lanePlan, wt)
+  if (upstreamStubCtx) log(`[${taskId}] upstream stub context: ${upstreamStubCtx.split('\n').length} lines`)
 
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
   // ── File-based completion write helper ──
   async function writeCompletion(): Promise<void> {
     if (!runId) return
-    const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`
-    const dir = cp.split('/').slice(0, -1).join('/')
+    const runPath = `.datum/runs/${runId}/lane-state/${taskId}.json`
+    const runDir = runPath.split('/').slice(0, -1).join('/')
+    const persistPath = `.datum/lane-state/${taskId}.json`
+    const persistDir = persistPath.split('/').slice(0, -1).join('/')
     await agent(
-      `Run: mkdir -p ./${dir}
-Write to file: ./${cp}
+      `Run: mkdir -p ./${runDir} ./${persistDir}
+Write to file: ./${runPath}
+Write: {"task_id": "${taskId}", "status": "completed"}
+Write to file: ./${persistPath}
 Write: {"task_id": "${taskId}", "status": "completed"}
 List the files changed.`,
       { label: `completion-write:${taskId}`, phase: 'Act', model: model('fast') },
@@ -195,12 +302,8 @@ List the files changed.`,
   // Stray files from pre-preflight skeleton writes or abandoned tasks pollute
   // test collectors (pytest/vitest).  Remove any test file that is untracked
   // but not listed in the lane plan's files[].
-  const allowedTestPaths = new Set(testFiles)
-  for (const f of testFiles) {
-    // Also allow variants (e.g. "tests/foo.test.ts" and "test/foo.test.ts")
-    allowedTestPaths.add(f.replace('./', '').replace('test/', '').replace('tests/', ''))
-  }
-  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '\.(test|spec)\.(ts|js|tsx|jsx)$|test_.*\.py$' | grep -vxFf <(echo ${testFiles.map(f => f.replace(/'/g, "'\\''")).join('\n')} 2>/dev/null) || true`
+  const allowedBasenameSet = testFiles.map(f => f.split('/').pop()!).join('|')
+  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '\\.(test|spec)\\.(ts|js|tsx|jsx)$|test_.*\\.py$' | grep -vE "(${allowedBasenameSet})" || true`
   await agent(
     `Run: ${cleanupCmd}
 For each file found, run: rm -v "<file>"
@@ -211,7 +314,7 @@ Return the list of removed files, or "none" if nothing to remove.`,
 
   // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg.language} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
   const preflightPath = `.datum/runs/${cfg.runId}/preflight-${taskId}.json`
 
   // Check for pre-generated skeletons from Plan phase first
@@ -300,6 +403,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     commitPrefix: redPacket.commit_prefix,
     taskId,
     testFuncPattern: testFuncLabel,
+    acceptanceCriteriaCount: String((lane.acceptance_criteria || []).length),
   }
 
   let red: StageResult | null = await resilientAgent(
@@ -360,10 +464,10 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
         const passedMatch = text.match(/"passed":\s*(true|false)/)
         gatePassed = passedMatch ? passedMatch[1] === 'true' : newTestCount >= acCount
       } else {
-        // Hard fallback — try to extract any number of grep matches from the text
-        const digits = text.replace(/[^0-9]/g, '')
-        newTestCount = digits ? parseInt(digits, 10) : 0
-        gatePassed = newTestCount >= acCount
+        // Hard fallback — if the script did not produce valid JSON, treat it as a script error
+        // rather than silently defaulting to 0 (which masks failures as false-negative gate errors)
+        log(`[${taskId}] WARNING: test-count-gate returned unexpected output: ${text.substring(0, 200)}`)
+        return { task_id: taskId, status: 'failed', stage: 'RED', error: `test-count-gate returned unexpected output: ${text.substring(0, 100)}` }
       }
     }
     if (!gatePassed) {
@@ -374,6 +478,7 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
   }
 
   // Structural assertion check — deterministic ast-grep scan, no LLM needed
+  // Only flag placeholders in the diff (new code), not pre-existing skeleton content (#199)
   const sgPatterns: { pattern: string; name: string }[] = cfg.language === 'swift'
     ? [
         { pattern: 'XCTFail', name: 'XCTFail' },
@@ -394,17 +499,22 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
         { pattern: 'assert 1', name: 'assert 1' },
         { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
       ]
+
+  // Build diff-aware placeholder check: only scan lines added in this commit
+  const diffCheckCommands = testFiles.map((f) => {
+    const checks = sgPatterns.map((p) =>
+      `git -C "${wt}" diff HEAD~1 HEAD -- "${f}" 2>/dev/null | grep -c '${p.pattern}' || echo 0`
+    ).join('\n')
+    return `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && (${checks}) || echo "0"`
+  }).join('\n')
+
   const sgResult = await agent(
-    `Run these ast-grep commands on the test files and report what was found.
-For each command, capture the output. If ast-grep is not available, fall back to grep.
+    `Run these commands and report the counts.
+${diffCheckCommands}
 
-${testFiles.map((f) => sgPatterns.map((p) =>
-    `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
-  ).join('\n')).join('\n')}
-
-Also check for pass-only test bodies:
+Also check for pass-only test bodies in the diff:
 ${testFiles.map((f) =>
-    `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    `git -C "${wt}" diff HEAD~1 HEAD -- "${f}" 2>/dev/null | grep -A1 ${testFuncBodyPattern} | grep -B1 '^\\s*pass$' 2>/dev/null || echo "none"`
   ).join('\n')}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -484,6 +594,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
     contract_summary: contractSummary,
     ...(targetContext ? { target_context: targetContext } : {}),
+    ...(upstreamStubCtx ? { upstream_stubs: upstreamStubCtx } : {}),
   }
   const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
   const greenCtxCmd: string = laneCtxCmd(greenPacket, wt)
@@ -535,6 +646,12 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   }
   log(`[${taskId}] GREEN verified — all tests pass (committed: ${green.commit_sha || 'n/a'})`)
   await updateStage(issueId, 'green', green.commit_sha)
+
+  // ── Write signature-only stub for downstream lane consumption ──
+  if (implFiles.length > 0) {
+    const stubResult = await extractAndWriteStub(taskId, implFiles, wt)
+    log(`[${taskId}] stub written: ${stubResult}`)
+  }
 
   // ── Adversarial skeptic panel (independent evaluators — stay separate) ──
   const base: string = skepticBasePrompt({

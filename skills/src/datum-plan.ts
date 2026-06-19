@@ -98,13 +98,80 @@ for (const task of tasks) {
   log(`  ${task.id}: ${task.title}${deps}`)
 }
 
-// Build (collapsed write-tasks-json + build-lane-plan into one agent)
+// ── DDI step: produce dependencies.json manifest ──
+const ddiRaw = await agent(
+  `Given this file list from the decomposition above, produce a dependency manifest.
+Rules:
+- Map each output file to the files it imports/requires from the same list
+- Only local project imports (not node_modules, not stdlib)
+- Be exhaustive — if file A might import file B, include it
+- Output constrained JSON only, no explanation
+
+Return this exact JSON schema:
+{"schema_version": "1.0", "dependencies": {"<output_file>": ["<input_file>", ...], ...}}
+
+File list:
+${tasks.map((t: {id: string; files: string[]}) => `  ${t.id}: ${t.files.join(', ')}`).join('\n')}
+
+Apply the consumer-first rule: if B imports A, then lane:A must complete before lane:B starts.`,
+  { label: 'ddi-dependencies', model: model('balanced') },
+)
+
+const ddiData = typeof ddiRaw === 'string' ? parseAgentJson(ddiRaw as string, { schema_version: '1.0', dependencies: {} }) : ddiRaw
+const ddiJson: string = JSON.stringify(ddiData)
+log(`DDI manifest: ${Object.keys(ddiData.dependencies || {}).length} file dependencies`)
+
+// ── Static correction pass: patch DDI with real imports from existing files ──
+const staticRaw = await agent(
+  `Run: grep -rE "^(import |require\()" --include="*.ts" --include="*.js" --include="*.tsx" --include="*.jsx" . 2>/dev/null | grep -v node_modules | grep -v ".datum/" || true
+Then match each import against this file list and return JSON:
+{"schema_version": "1.0", "dependencies": {"<output_file>": ["<input_file>", ...], ...}}
+
+Only include imports that match files in the list below.
+File list:
+${tasks.map((t: {id: string; files: string[]}) => `  ${t.files.join('\n')}`).join('\n')}
+
+If no existing files match, return empty dependencies: {"schema_version": "1.0", "dependencies": {}}`,
+  { label: 'ddi-static-correction', model: model('fast') },
+)
+
+const staticData = typeof staticRaw === 'string' ? parseAgentJson(staticRaw as string, { schema_version: '1.0', dependencies: {} }) : staticRaw
+const staticDeps = staticData.dependencies || {}
+
+// Merge: DDI manifest + static correction (static patches/extends DDI)
+const mergedDeps: Record<string, string[]> = { ...ddiData.dependencies }
+for (const [file, deps] of Object.entries(staticDeps)) {
+  if (!mergedDeps[file]) {
+    mergedDeps[file] = deps
+  } else {
+    // Union: add any static deps not already in DDI
+    for (const dep of deps) {
+      if (!mergedDeps[file].includes(dep)) {
+        mergedDeps[file].push(dep)
+      }
+    }
+  }
+}
+const finalDdi = { schema_version: '1.0', dependencies: mergedDeps }
+const finalDdiJson: string = JSON.stringify(finalDdi)
+log(`Merged DDI: ${Object.keys(finalDdi.dependencies).length} file dependencies (DDI + static)`)
+
+// Write DDI manifest
+await agent(
+  `Do these steps:
+1. mkdir -p "${epicDir}"
+2. Write this JSON to "${epicDir}/dependencies.json": ${finalDdiJson}
+Output raw JSON only: {"written": true}`,
+  { label: 'write-ddi', model: model('fast') },
+)
+
+// Build (collapsed write-tasks-json + build-lane-plan with DDI into one agent)
 await agent(
   `Do these steps in order:
 1. mkdir -p "${epicDir}"
 2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
-3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-4. Commit: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
+3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md" --dependencies "${epicDir}/dependencies.json"
+4. Commit: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" "${epicDir}/dependencies.json" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md + dependencies.json"
 If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
 Otherwise return: {"exit_code": 0}
 Output raw JSON only.`,

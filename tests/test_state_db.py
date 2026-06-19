@@ -2,9 +2,11 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -164,12 +166,15 @@ def test_state_init_title_sets_descriptive_work_branch(tmp_path):
     """`datum state init --title` records the descriptive branch in state."""
     _init_main_repo(tmp_path)
 
+    _env = dict(os.environ)
+    _env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent.parent) + os.pathsep + _env.get("PYTHONPATH", "")
     proc = subprocess.run(
         [sys.executable, "-m", "datum.state", "init", "--title", "Contact Form API"],
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
         timeout=30,
+        env=_env,
     )
     assert proc.returncode == 0, proc.stderr
 

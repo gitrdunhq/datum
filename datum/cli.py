@@ -105,6 +105,7 @@ def lane_plan_cmd(
         ".datum/lane-plan.json", "--output", help="Output lane plan JSON"
     ),
     md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD"),
+    dependencies: str = typer.Option(None, "--dependencies", help="Path to DDI dependencies.json manifest"),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
@@ -118,9 +119,96 @@ def lane_plan_cmd(
     args.extend(
         ["--input", input_file, "--output", output_file, "--md-output", md_output]
     )
+    if dependencies:
+        args.extend(["--dependencies", dependencies])
 
     with patch.object(sys, "argv", args):
         lane_plan_main()
+
+
+@app.command(name="depcruise")
+def depcruise_cmd(
+    lane_plan: str = typer.Option(".datum/lane-plan.json", "--lane-plan", help="Path to lane-plan.json"),
+    dependencies: str = typer.Option(None, "--dependencies", help="Path to dependencies.json manifest"),
+    src_dir: str = typer.Option("src", "--src", help="Source directory to scan"),
+) -> None:
+    """Post-hoc dependency graph validation using dependency-cruiser."""
+    import subprocess
+    import json as json_mod
+    
+    # Read planned dependencies
+    planned_deps: dict[str, list[str]] = {}
+    if dependencies:
+        try:
+            dep_data = json_mod.loads(open(dependencies).read())
+            planned_deps = dep_data.get("dependencies", {})
+        except (FileNotFoundError, json_mod.JSONDecodeError):
+            planned_deps = {}
+    
+    # Read lane-plan for file ownership
+    try:
+        plan_data = json_mod.loads(open(lane_plan).read())
+        file_ownership = plan_data.get("file_ownership", {})
+    except (FileNotFoundError, json_mod.JSONDecodeError):
+        file_ownership = {}
+    
+    # Run dependency-cruiser
+    result = subprocess.run(
+        ["npx", "depcruise", src_dir, "--output-within", "--output-to", "json"],
+        capture_output=True, text=True, timeout=60
+    )
+    
+    if result.returncode != 0:
+        print(json_mod.dumps({
+            "ok": False,
+            "error": "depcruise failed",
+            "stderr": result.stderr[:500],
+        }))
+        return
+    
+    try:
+        actual_deps = json_mod.loads(result.stdout)
+    except json_mod.JSONDecodeError:
+        print(json_mod.dumps({
+            "ok": False,
+            "error": "depcruise returned invalid JSON",
+        }))
+        return
+    
+    within = actual_deps.get("dependencies", [])
+    
+    # Compare planned vs actual
+    planned_edges = sum(len(v) for v in planned_deps.values())
+    actual_edges = len(within)
+    
+    # Find unexpected imports (in actual but not in planned)
+    planned_set = set()
+    for src, targets in planned_deps.items():
+        for t in targets:
+            planned_set.add((src, t))
+    
+    unexpected = []
+    for dep in within:
+        src = dep.get("src", "")
+        dst = dep.get("dst", "")
+        if (src, dst) not in planned_set:
+            unexpected.append({"src": src, "dst": dst})
+    
+    # Check for circular dependencies
+    circular = []
+    if "circularDependencyFunctions" in actual_deps:
+        circular = actual_deps["circularDependencyFunctions"]
+    
+    graph_matches = len(unexpected) == 0 and len(circular) == 0
+    
+    print(json_mod.dumps({
+        "ok": True,
+        "graph_matches": graph_matches,
+        "planned_edges": planned_edges,
+        "actual_edges": actual_edges,
+        "unexpected_imports": unexpected[:20],
+        "new_circular": circular[:20],
+    }))
 
 
 @app.command(name="plan-issues")

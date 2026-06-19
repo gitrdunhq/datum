@@ -1,7 +1,14 @@
 """Tests for oMLX inference backend integration in local_llm.py."""
 
 import json
+import pytest
 from unittest.mock import MagicMock, patch
+
+_mlx_lm_available = True
+try:
+    import mlx_lm  # noqa: F401
+except ImportError:
+    _mlx_lm_available = False
 
 
 def test_omlx_url_none_by_default():
@@ -141,6 +148,7 @@ def test_generate_routes_to_omlx_when_available():
     assert result["text"] == "result"
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_generate_falls_back_when_omlx_down():
     """generate() falls back to direct mlx_lm when oMLX is unavailable."""
     from datum.local_llm import generate

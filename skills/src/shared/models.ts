@@ -66,5 +66,17 @@ Return the merged JSON. Output raw JSON only.`
 
 export function skillPath(skillsDir: string, name: string): string {
   if (skillsDir) return `${skillsDir}/${name}.js`
+  // Resolve skills/ relative to this module (skills/src/shared/models.ts → skills/)
+  // so it works regardless of cwd (worktrees, temp dirs, etc.)
+  try {
+    const _fileUrl = import.meta.url
+    const _idx = _fileUrl.indexOf('shared')
+    if (_idx > 0) {
+      const _base = _fileUrl.substring(0, _idx).replace(/\/$/, '')
+      // Convert file:// URL to path
+      const _path = _base.replace('file://', '')
+      return `${_path}skills/${name}.js`
+    }
+  } catch { /* fallback below */ }
   return `skills/${name}.js`
 }

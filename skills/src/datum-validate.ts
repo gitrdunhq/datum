@@ -24,9 +24,67 @@ const cfgText = !a.testCommand
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
-// ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──
-
+// ── Dependency-cruiser validation: compare planned graph vs actual imports ──
 phase('Validate')
+
+// Read dependencies.json if it exists
+const epicBranch = await agent(
+  `Run: git rev-parse --abbrev-ref HEAD
+Return ONLY the branch name. No other text.`,
+  { label: 'validate-branch', model: model('fast') },
+)
+const branchName = String(epicBranch).trim()
+const epicDir = `docs/epics/${branchName}`
+const depsPath = `${epicDir}/dependencies.json`
+
+let plannedDeps: Record<string, string[]> = {}
+let depValidation: { graph_matches: boolean; new_circular: string[]; unexpected_imports: string[]; planned_edges: number; actual_edges: number } | null = null
+
+try {
+  const depsContent = await agent(
+    `Read the file: cat "${depsPath}" 2>/dev/null || echo ""
+If the file does not exist or is empty, return exactly: MISSING
+No markdown fences, no explanation.`,
+    { label: 'validate-deps-read', model: model('fast') },
+  )
+
+  if (depsContent && depsContent.trim() !== 'MISSING') {
+    const depsParsed = parseAgentJson(depsContent as string, { schema_version: '1.0', dependencies: {} })
+    plannedDeps = depsParsed.dependencies || {}
+
+    // Run dependency-cruiser to extract actual imports
+    const depCruiseResult = await agent(
+      `Run: npx depcruise "${wt}/src" --output-within --output-to json 2>/dev/null || echo '{"dependencies":[]}'
+Then read the output and match each dependency against the planned edges.
+Return JSON: {"graph_matches": true/false, "new_circular": [], "unexpected_imports": [], "planned_edges": N, "actual_edges": N}
+
+If depcruise is not available, return: {"graph_matches": true, "new_circular": [], "unexpected_imports": [], "planned_edges": 0, "actual_edges": 0, "note": "depcruise not available"}
+
+Planned edges:
+${Object.entries(plannedDeps).map(([file, deps]) => `  ${file} -> ${deps.join(', ')}`).join('\n') || '  (none)'}
+
+Current actual dependencies from depcruise output:
+{{DEPCRUNSE_OUTPUT}}`,
+      { label: 'validate-depcruise', model: model('fast') },
+    )
+
+    depValidation = parseAgentJson(depCruiseResult as string, {
+      graph_matches: true,
+      new_circular: [],
+      unexpected_imports: [],
+      planned_edges: 0,
+      actual_edges: 0,
+    })
+
+    if (!depValidation?.graph_matches) {
+      log(`DEPENDENCY GRAPH MISMATCH: ${depValidation.unexpected_imports.length} unexpected imports, ${depValidation.new_circular.length} new circular deps`)
+    } else {
+      log(`Dependency graph: matches plan (${depValidation.actual_edges} edges)`)
+    }
+  }
+} catch (e) {
+  log(`Dependency validation skipped: ${String(e)}`)
+}
 
 // Validate agent reads context itself (collapsed read-context)
 const checkResult = await agent(
@@ -68,4 +126,6 @@ if (!check?.tests_pass) {
 export const __workflowResult = {
   testsPassed: !!check?.tests_pass, lintClean: !!check?.lint_clean,
   acGaps: check?.ac_gaps || [], gatePassed,
+  dependencyGraphValid: depValidation?.graph_matches ?? true,
+  depValidation,
 }

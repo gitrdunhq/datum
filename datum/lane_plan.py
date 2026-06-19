@@ -81,27 +81,41 @@ def validate_units(units: dict, task_ids: set[str]) -> list[str]:
 
 
 def topological_sort_units(units: dict) -> list[str]:
-    """Return unit IDs in topological order. Raises on cycle."""
-    deps = {uid: u.get("depends_on", []) for uid, u in units.items()}
-    visited: set[str] = set()
-    temp: set[str] = set()
+    """Kahn's algorithm for unit topological sort with cycle detection.
+
+    Returns unit IDs in topological order. Raises on unrecoverable cycle.
+    Uses lexicographic tie-breaking for deterministic ordering.
+    """
+    unit_ids = set(units.keys())
+
+    # Build adjacency list and in-degree count
+    in_degree: dict[str, int] = {uid: 0 for uid in units}
+    adj: dict[str, list[str]] = {uid: [] for uid in units}
+
+    for uid, unit in units.items():
+        for dep in unit.get("depends_on", []):
+            if dep in unit_ids:
+                adj[dep].append(uid)
+                in_degree[uid] += 1
+
+    # Start with zero-in-degree units, lexicographically sorted
+    queue = sorted([n for n, d in in_degree.items() if d == 0])
     order: list[str] = []
 
-    def visit(node: str) -> None:
-        if node in temp:
-            raise ValueError(f"Circular unit dependency detected involving: {node}")
-        if node in visited:
-            return
-        temp.add(node)
-        for dep in deps.get(node, []):
-            visit(dep)
-        temp.discard(node)
-        visited.add(node)
-        order.append(node)
+    while queue:
+        n = queue.pop(0)
+        order.append(n)
+        neighbors = sorted(adj.get(n, []))
+        for m in neighbors:
+            in_degree[m] -= 1
+            if in_degree[m] == 0:
+                queue.append(m)
+                queue.sort()
 
-    for uid in units:
-        if uid not in visited:
-            visit(uid)
+    # Detect cycle
+    cyclic = [n for n in unit_ids if n not in order]
+    if cyclic:
+        raise ValueError(f"Circular unit dependency detected involving: {', '.join(sorted(cyclic))}")
 
     return order
 
@@ -141,32 +155,105 @@ def inject_conflict_edges(tasks: list[dict]) -> None:
                     break
 
 
-def topological_sort(tasks: list[dict]) -> list[str]:
-    """Return task IDs in topological order. Raises on cycle."""
-    id_set = {t["id"] for t in tasks}
-    deps = {t["id"]: [d for d in t.get("depends_on", []) if d in id_set] for t in tasks}
+def kahn_sort(tasks: list[dict]) -> dict:
+    """Kahn's algorithm for topological sort with cycle detection.
 
-    visited: set[str] = set()
-    temp: set[str] = set()
+    Returns {"order": [...], "cyclic": [...], "has_cycles": bool}.
+    Uses lexicographic tie-breaking for deterministic ordering.
+    Cyclic nodes get min-in-degree fallback (DeepSeek pattern).
+    """
+    id_set = {t["id"] for t in tasks}
+    task_map = {t["id"]: t for t in tasks}
+
+    # Build adjacency list and in-degree count
+    in_degree: dict[str, int] = {t["id"]: 0 for t in tasks}
+    adj: dict[str, list[str]] = {t["id"]: [] for t in tasks}
+
+    for t in tasks:
+        for dep in t.get("depends_on", []):
+            if dep in id_set:
+                adj[dep].append(t["id"])
+                in_degree[t["id"]] += 1
+
+    # Start with zero-in-degree nodes, lexicographically sorted
+    queue = sorted([n for n, d in in_degree.items() if d == 0])
     order: list[str] = []
 
-    def visit(node: str) -> None:
-        if node in temp:
-            raise ValueError(f"Circular dependency detected involving: {node}")
-        if node in visited:
-            return
-        temp.add(node)
-        for dep in deps.get(node, []):
-            visit(dep)
-        temp.discard(node)
-        visited.add(node)
-        order.append(node)
+    while queue:
+        n = queue.pop(0)
+        order.append(n)
+        neighbors = sorted(adj.get(n, []))
+        for m in neighbors:
+            in_degree[m] -= 1
+            if in_degree[m] == 0:
+                # Insert in sorted position for deterministic ordering
+                queue.append(m)
+                queue.sort()
 
-    for task in tasks:
-        if task["id"] not in visited:
-            visit(task["id"])
+    # Nodes not in order form cycles
+    cyclic = sorted([n for n in id_set if n not in order])
 
-    return order
+    if cyclic:
+        # Min-in-degree fallback: repeatedly emit node with fewest remaining deps
+        remaining = set(cyclic)
+        while remaining:
+            # Count remaining in-degree for each cyclic node
+            min_deg = float("inf")
+            next_node = None
+            for n in sorted(remaining):
+                deg = sum(1 for d in task_map[n].get("depends_on", []) if d in remaining)
+                if deg < min_deg:
+                    min_deg = deg
+                    next_node = n
+            order.append(next_node)
+            remaining.discard(next_node)
+
+    return {
+        "order": order,
+        "cyclic": cyclic,
+        "has_cycles": len(cyclic) > 0,
+    }
+
+
+# Keep topological_sort as alias for backward compatibility
+topological_sort = kahn_sort
+
+
+def inject_ddi_dependencies(
+    tasks: list[dict],
+    dependencies: dict[str, list[str]],
+) -> int:
+    """Merge DDI (Dependency Derivation Input) manifest into task depends_on.
+
+    The DDI manifest maps output files to their input file dependencies:
+    {"src/a.js": ["src/b.js", "src/c.js"]} means a.js imports b.js and c.js.
+
+    Matches files to tasks by ownership, then injects depends_on edges.
+    Returns the number of edges injected.
+    """
+    task_map = {t["id"]: t for t in tasks}
+
+    # Build file -> task_id mapping from existing ownership
+    file_to_task: dict[str, str] = {}
+    for t in tasks:
+        for f in t["files"]:
+            file_to_task[f] = t["id"]
+
+    edges_injected = 0
+    for output_file, input_files in dependencies.items():
+        output_task = file_to_task.get(output_file)
+        if not output_task:
+            continue
+        for input_file in input_files:
+            input_task = file_to_task.get(input_file)
+            if not input_task or input_task == output_task:
+                continue
+            deps = task_map[output_task].setdefault("depends_on", [])
+            if input_task not in deps:
+                deps.append(input_task)
+                edges_injected += 1
+
+    return edges_injected
 
 
 def _render_task_block(task: dict, heading_level: str = "###") -> list[str]:
@@ -270,9 +357,11 @@ def build_lane_plan(
     sorted_ids: list[str],
     ownership: dict,
     units: dict | None = None,
+    cyclic: list[str] | None = None,
 ) -> dict:
     """Build the full lane-plan.json structure."""
     task_map = {t["id"]: t for t in tasks}
+    cyclic_set = set(cyclic) if cyclic else set()
 
     lanes = {}
     for tid in sorted_ids:
@@ -295,6 +384,7 @@ def build_lane_plan(
             "depends_on": task.get("depends_on", []),
             "file_conflict_with": write_conflicts,
             "stage": "queued",
+            "cycle_risk": tid in cyclic_set,
         }
 
     result = {
@@ -317,6 +407,8 @@ def main() -> None:
     parser.add_argument("--input", default="tasks.json")
     parser.add_argument("--output", default=".datum/lane-plan.json")
     parser.add_argument("--md-output", default="TASKS.md")
+    parser.add_argument("--dependencies", default=None,
+                        help="Path to DDI dependencies.json manifest")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -359,23 +451,43 @@ def main() -> None:
     if args.validate:
         try:
             inject_conflict_edges(tasks)
-            topological_sort(tasks)
-            print(json.dumps({"valid": True, "task_count": len(tasks)}))
-        except ValueError as e:
+            sort_result = topological_sort(tasks)
+            if isinstance(sort_result, dict):
+                cyclic = sort_result.get("cyclic", [])
+            else:
+                cyclic = []
+            print(json.dumps({"valid": True, "task_count": len(tasks), "cyclic": cyclic}))
+        except (ValueError, TypeError) as e:
             print(json.dumps({"valid": False, "error": str(e)}))
             sys.exit(1)
         return
 
     inject_conflict_edges(tasks)
 
-    try:
-        sorted_ids = topological_sort(tasks)
-    except ValueError as e:
-        print(json.dumps({"error": str(e)}))
-        sys.exit(1)
+    # DDI: merge external dependency manifest if provided
+    if args.dependencies:
+        dep_path = Path(args.dependencies)
+        if dep_path.exists():
+            try:
+                dep_data = json.loads(dep_path.read_text())
+                deps = dep_data.get("dependencies", {})
+                injected = inject_ddi_dependencies(tasks, deps)
+                print(json.dumps({"ddi_injected": injected, "source": str(dep_path)}))
+            except (json.JSONDecodeError, TypeError) as e:
+                print(json.dumps({"ddi_error": str(e), "source": str(dep_path)}))
+        else:
+            print(json.dumps({"ddi_error": f"{args.dependencies} not found"}))
+
+    sort_result = topological_sort(tasks)
+    if isinstance(sort_result, dict):
+        sorted_ids = sort_result["order"]
+        cyclic = sort_result.get("cyclic", [])
+    else:
+        sorted_ids = sort_result
+        cyclic = []
 
     ownership, _ = build_file_ownership(tasks)
-    lane_plan = build_lane_plan(tasks, sorted_ids, ownership, units)
+    lane_plan = build_lane_plan(tasks, sorted_ids, ownership, units, cyclic)
 
     # Write lane-plan.json
     out_path = Path(args.output)

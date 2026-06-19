@@ -36,3 +36,4 @@ CONSTRAINTS:
 - If making tests pass requires modifying files outside {{implFilesList}}, report success=false with failure_reason='scope_exceeded: <list-of-files>'. Do NOT write files outside allowed scope.
 - Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
 - For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
+- If compilation fails due to missing symbols in production files outside your scope, do NOT try to fix them by writing to those files. Instead, use @testable import assumptions and stub out the missing symbols in your test file.

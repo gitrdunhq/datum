@@ -1,6 +1,13 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from datum.local_llm import DEFAULTS, check_context_budget
+
+_mlx_lm_available = True
+try:
+    import mlx_lm  # noqa: F401
+except ImportError:
+    _mlx_lm_available = False
 
 
 def test_defaults_max_tokens():
@@ -77,32 +84,45 @@ def test_sampling_params_none_is_empty():
 def test_multi_turn_uses_prompt_cache():
     from datum.local_llm import multi_turn_phase
 
-    with (
-        patch("datum.local_llm.should_use_local", return_value=True),
-        patch(
-            "datum.local_llm._load_multi_turn_config",
-            return_value={"enabled": True, "planning_turn": False, "max_turns": 2},
-        ),
-        patch("datum.local_llm.get_model_for_phase", return_value="test-model"),
-        patch("datum.local_llm.load_model", return_value=(MagicMock(), MagicMock())),
-        patch("datum.local_llm.count_tokens", return_value=10),
-        patch("datum.local_llm._is_final_turn", return_value=True),
-        patch("datum.local_llm._cache_offset", side_effect=[0, 5]),
-        patch("datum.local_llm.vote_structured") as mock_vote,
-    ):
-        mock_vote.return_value = {
-            "data": {"action": "proceed", "escalate": False},
-            "tokens": 10,
-            "time_s": 0.1,
-            "agreement_score": 1.0,
-        }
+    # Mock mlx_lm.prompt_cache so _mt_cache is non-None (test needs cache present)
+    _mock_cache = MagicMock()
+    import sys
+    _sys_modules_backup = sys.modules.copy()
+    sys.modules["mlx_lm"] = MagicMock()
+    sys.modules["mlx_lm.models"] = MagicMock()
+    sys.modules["mlx_lm.models.cache"] = MagicMock()
+    sys.modules["mlx_lm.models.cache"].make_prompt_cache = MagicMock(return_value=_mock_cache)
 
-        multi_turn_phase("act", "test prompt")
+    try:
+        with (
+            patch("datum.local_llm.should_use_local", return_value=True),
+            patch(
+                "datum.local_llm._load_multi_turn_config",
+                return_value={"enabled": True, "planning_turn": False, "max_turns": 2},
+            ),
+            patch("datum.local_llm.get_model_for_phase", return_value="test-model"),
+            patch("datum.local_llm.load_model", return_value=(MagicMock(), MagicMock())),
+            patch("datum.local_llm.count_tokens", return_value=10),
+            patch("datum.local_llm._is_final_turn", return_value=True),
+            patch("datum.local_llm._cache_offset", side_effect=[0, 5]),
+            patch("datum.local_llm.vote_structured") as mock_vote,
+        ):
+            mock_vote.return_value = {
+                "data": {"action": "proceed", "escalate": False},
+                "tokens": 10,
+                "time_s": 0.1,
+                "agreement_score": 1.0,
+            }
 
-        # prompt_cache should be in the kwargs passed to vote_structured
-        assert mock_vote.call_count > 0
-        kwargs = mock_vote.call_args[1]
-        assert "prompt_cache" in kwargs
+            multi_turn_phase("act", "test prompt")
+
+            # prompt_cache should be in the kwargs passed to vote_structured
+            assert mock_vote.call_count > 0
+            kwargs = mock_vote.call_args[1]
+            assert "prompt_cache" in kwargs
+    finally:
+        sys.modules.clear()
+        sys.modules.update(_sys_modules_backup)
 
 
 # ── oMLX retry / timeout / time_s tests ────────────────────────────────────
@@ -869,6 +889,7 @@ def _inprocess_patches(clock, stream_fn):
     )
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_inprocess_deadline_exceeded_midstream_truncates_and_stops():
     """Deadline blown mid-stream → stops promptly, returns partial text
     flagged as truncated via abort_reason, escalated=True."""
@@ -895,6 +916,7 @@ def test_inprocess_deadline_exceeded_midstream_truncates_and_stops():
     assert result["time_s"] == 6.0
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_inprocess_generous_budget_returns_full_output():
     """Budget never exceeded → full output, no abort, not escalated."""
     import contextlib
@@ -916,6 +938,7 @@ def test_inprocess_generous_budget_returns_full_output():
     assert len(yielded) == 5
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_inprocess_no_max_time_means_no_deadline():
     """max_time_s=None → no deadline enforcement, however slow the stream."""
     import contextlib
@@ -944,6 +967,7 @@ def test_inprocess_no_max_time_means_no_deadline():
 # conftest fixture redirects datum.local_llm.METRICS_PATH to tmp_path.
 
 
+@pytest.mark.skipif(not _mlx_lm_available, reason="mlx_lm not installed")
 def test_metrics_cannot_leak_into_real_repo(request, tmp_path, monkeypatch):
     """Issue #107 regression: a metric-writing path run from the repo root
     with no DATUM_PROJECT_DIR — i.e. a test that forgets per-module chdir

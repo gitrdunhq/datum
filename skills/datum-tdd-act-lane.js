@@ -276,10 +276,10 @@ function renderPrompt(template, vars) {
 }
 
 // skills/src/prompts/agent-preamble.md
-var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
+var agent_preamble_default = '# The Record Suite\n\n> Local-first macOS meeting recorder \u2014 Swift 6.2 strict concurrency, 4-layer Clean Architecture, TDD mandatory\n\n## Architecture\n- Layer order (import direction only): Domain \u2192 Business \u2192 Infrastructure \u2192 Presentation\n- Domain: Foundation only, 100 lines max\n- Business: Domain + Foundation + OSLog, 300 lines max \u2014 pure transformations, no side effects\n- Infrastructure: Domain + any framework, 300 lines max \u2014 all side effects live here\n- Presentation: Domain + Business + SwiftUI, ViewModels 200 lines, Views 150 lines\n- Presentation NEVER imports Infrastructure; Business NEVER imports Infrastructure\n- All shared mutable state in actors; @MainActor on all Presentation types\n- Protocol seams between every layer\n\n## Coding Rules\n- No invented APIs: confirm every symbol exists before calling it\n- Minimal diffs: only change what the current task requires\n- No @unchecked Sendable except Infrastructure/Audio/ and Domain/Audio/AudioBuffer.swift\n- No nonisolated(unsafe) static let for DateFormatter \u2014 use stateless FormatStyle\n- No inline non-Swift content: extract SQL \u2192 *SQL.swift, prompts \u2192 *Prompts.swift, regex \u2192 *Patterns.swift, etc.\n- Trivial single-value strings under 80 chars non-reusable may stay inline\n- Never setenv() \u2014 inject configuration instead\n- Never try? on Task.sleep in Task loop bodies \u2014 let CancellationError propagate\n- After fixing any try? that swallows errors, grep the file and fix all siblings in same commit\n- SpeakerID sentinel strings must be public static let on SpeakerID.swift, never inline\n- C library init must guard the optional and log error; never silently proceed with nil\n- Never hardcode canonical values \u2014 reference UITheme.default, PrivacyMode.default, etc.\n- DuckDB writes use INSERT OR IGNORE; buffers cleared only on success\n- No network egress \u2014 local-first only\n- OSLog with explicit privacy labels on every interpolation; never log user content at .public\n- Typed error enums per domain; never raw Error at domain boundaries; never swallowed silently\n- State represented as enums; transitions guarded and explicit\n- Every external call needs explicit timeout + capped-backoff retry\n- All mutations idempotent\n- Open a GitHub issue for any out-of-scope bug >= severity 4\n- Keep at least one task active in TaskList during a coding session\n\n## TDD Rules\n- Write failing test first (RED), confirm failure, then implement (GREEN) \u2014 no post-hoc tests\n- Tests must verify specific business outcomes; deleting the function body must break the test\n- No hardcoded return values to pass tests\n- Always test negative paths: invalid input, retry exhaustion, timeouts, state violations\n\n## Test Conventions\n- Framework: Swift Testing (import Testing)\n- Suite naming: @Suite("TypeName") struct TypeNameTests\n- Test naming: @Test("verb scenario in plain English") func verbScenario()\n- Assertions: #expect(value == expected); #require for non-optional unwrapping\n- Mock types live in TestMocks shared library (MockSpeakerProfileStore, MockVoiceEmbeddingEngine, etc.)\n- Inline helper funcs at top of test file for data fabrication\n- Test locations: Record-App/Tests/Unit/{Domain,Business,Infrastructure,Presentation}/\n- Sub-packages: cd into Record-Audio or Record-ML to run their tests (swift test --filter from root only reaches Record-App targets)\n\n## File Conventions\n- PascalCase types and files; camelCase properties/methods\n- Test files: TypeNameTests.swift\n- 500 lines absolute ceiling; layer-specific limits are stricter\n- Git commit format: Epic {N}: [{Layer}] {Description} \u2014 no AI attribution\n- Squash before first push; additive commits only after PR opens; never force-push main\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and anti-patterns\n';
 
 // skills/src/prompts/red.md
-var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n- OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift \u2014 this is a production implementation file, not a test file. If it is not a test file, do not write it.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n';
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- For EACH acceptance criterion, verify there is a corresponding test function. If any AC lacks a test, go back and write it before proceeding.\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N (>= {{acceptanceCriteriaCount}} ACs required)"\n\nAFTER WRITING:\n5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n- NEVER write to or modify any production source file (Sources/, lib/, src/, etc.) \u2014 even if the test fails to compile due to missing symbols. Use @testable import assumptions and write TODO markers instead.\n- NEVER write to files outside {{testFilesList}} \u2014 the ownership gate will reject your commit. If you need to create a new test file, use the path from the skeleton preflight output.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\n- Python: Mixed f-string/plain-string tuples. When building a multi-line string tuple by concatenation, ALL literals must share the same format prefix. If any literal has `f` prefix, every literal in the tuple must also have `f` prefix. Brace escapes (`{{`/`}}`) only work inside f-strings \u2014 in plain strings they produce literal `{{`.\nEach test MUST assert a specific expected value or exception type.\n';
 
 // skills/src/prompts/red-retry.md
 var red_retry_default = `RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
@@ -298,7 +298,7 @@ AFTER WRITING:
 2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"
 3. Report commit_sha.
 
-Only write and commit test files: {{testFilesList}}. OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are strictly prohibited (e.g., NoOpPermissionService.swift is a production impl file \u2014 do not write it).
+Only write and commit test files: {{testFilesList}}
 `;
 
 // skills/src/prompts/green.md
@@ -340,6 +340,7 @@ CONSTRAINTS:
 - If making tests pass requires modifying files outside {{implFilesList}}, report success=false with failure_reason='scope_exceeded: <list-of-files>'. Do NOT write files outside allowed scope.
 - Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
 - For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
+- If compilation fails due to missing symbols in production files outside your scope, do NOT try to fix them by writing to those files. Instead, use @testable import assumptions and stub out the missing symbols in your test file.
 `;
 
 // skills/src/prompts/green-retry.md
@@ -401,9 +402,20 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
+function inferLanguageFromFiles(implFiles, fallback) {
+  for (const f of implFiles) {
+    const ext = f.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "ts" || ext === "tsx") return "typescript";
+    if (ext === "js" || ext === "jsx") return "javascript";
+    if (ext === "swift") return "swift";
+    if (ext === "go") return "go";
+    if (ext === "py" || ext === "pyx") return "python";
+  }
+  return fallback;
+}
 async function verifyFileOwnership(taskId, wt, stage, allowedFiles, forbiddenFiles) {
   const result = await agent(
-    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
+    `Run: git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" diff --name-only HEAD~1 HEAD || git -C "${wt}" diff --name-only HEAD || git -C "${wt}" diff --cached --name-only
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
 No markdown fences, no explanation.`,
     { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }
@@ -430,28 +442,31 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const isStructural = lane.stage === "structural";
   const { testFiles, implFiles } = classifyFiles(lane.files);
   const acStr = (lane.acceptance_criteria || []).join("\n");
+  const laneLanguage = inferLanguageFromFiles(implFiles, cfg2.language);
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
-  const swiftTargetFilter = cfg2.language === "swift" ? (() => {
+  const swiftTargetFilter = laneLanguage === "swift" ? (() => {
     const swft = implFiles[0];
     if (swft) {
       const parts = swft.split("/");
       const sourcesIdx = parts.indexOf("Sources");
       if (sourcesIdx >= 0 && parts[sourcesIdx + 1]) {
-        return `--filter ${parts[sourcesIdx + 1]}`;
+        return `--target ${parts[sourcesIdx + 1]}`;
       }
     }
     return null;
   })() : null;
   const scopedTestCmd = swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
   const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
-  const testFuncDiffPattern = cfg2.language === "swift" ? "-E '[+][[:space:]]*(@Test|func test)'" : cfg2.language === "go" ? "-E '[+][[:space:]]*func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '[+][[:space:]]*def test_'";
-  const testFuncGrepPattern = cfg2.language === "swift" ? "-E '@Test|func test'" : cfg2.language === "go" ? "-E 'func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E 'it\\(|test\\(|describe\\('" : "-E 'def test_|async def test_'";
-  const testFuncBodyPattern = cfg2.language === "swift" ? "'func test'" : cfg2.language === "go" ? "'func Test'" : "'def test_'";
+  const testFuncDiffPattern = laneLanguage === "swift" ? "-E '[+][[:space:]]*(@Test|func test)'" : laneLanguage === "go" ? "-E '[+][[:space:]]*func Test'" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '[+][[:space:]]*def test_'";
+  const testFuncGrepPattern = laneLanguage === "swift" ? "-E '@Test|func test'" : laneLanguage === "go" ? "-E 'func Test'" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "-E 'it\\(|test\\(|describe\\('" : "-E 'def test_|async def test_'";
+  const testFuncBodyPattern = laneLanguage === "swift" ? "'func test'" : laneLanguage === "go" ? "'func Test'" : "'def test_'";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
-  if (completionPath) {
+  const persistentStatePath = `.datum/lane-state/${taskId}.json`;
+  let completed = false;
+  for (const checkPath of [completionPath, persistentStatePath].filter(Boolean)) {
     const completionExist = await agent(
-      `Read the file: cat "${completionPath}" 2>/dev/null || echo ""
+      `Read the file: cat "${checkPath}" 2>/dev/null || echo ""
 If the file exists, return ONLY its raw contents (valid JSON).
 If the file does not exist or is empty, return exactly: MISSING
 No markdown fences, no explanation.`,
@@ -460,19 +475,27 @@ No markdown fences, no explanation.`,
     if (completionExist && completionExist.trim() !== "MISSING") {
       const compData = parseAgentJson(completionExist, {});
       if (compData.task_id === taskId) {
-        log(`[${taskId}] lane already completed in a prior run \u2014 skipping`);
-        return { task_id: taskId, status: "skipped", stage: "SKIPPED", error: "cross-run completion: lane was completed in a previous run" };
+        completed = true;
+        break;
       }
     }
+  }
+  if (completed) {
+    log(`[${taskId}] lane already completed in a prior run \u2014 skipping`);
+    return { task_id: taskId, status: "skipped", stage: "SKIPPED", error: "cross-run completion: lane was completed in a previous run" };
   }
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
   async function writeCompletion() {
     if (!runId) return;
-    const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`;
-    const dir = cp.split("/").slice(0, -1).join("/");
+    const runPath = `.datum/runs/${runId}/lane-state/${taskId}.json`;
+    const runDir = runPath.split("/").slice(0, -1).join("/");
+    const persistPath = `.datum/lane-state/${taskId}.json`;
+    const persistDir = persistPath.split("/").slice(0, -1).join("/");
     await agent(
-      `Run: mkdir -p ./${dir}
-Write to file: ./${cp}
+      `Run: mkdir -p ./${runDir} ./${persistDir}
+Write to file: ./${runPath}
+Write: {"task_id": "${taskId}", "status": "completed"}
+Write to file: ./${persistPath}
 Write: {"task_id": "${taskId}", "status": "completed"}
 List the files changed.`,
       { label: `completion-write:${taskId}`, phase: "Act", model: model("fast") }
@@ -485,11 +508,8 @@ List the files changed.`,
     await writeCompletion();
     return { task_id: taskId, status: "completed" };
   }
-  const allowedTestPaths = new Set(testFiles);
-  for (const f of testFiles) {
-    allowedTestPaths.add(f.replace("./", "").replace("test/", "").replace("tests/", ""));
-  }
-  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '.(test|spec).(ts|js|tsx|jsx)$|test_.*.py$' | grep -vxFf <(echo ${testFiles.map((f) => f.replace(/'/g, "'\\''")).join("\n")} 2>/dev/null) || true`;
+  const allowedBasenameSet = testFiles.map((f) => f.split("/").pop()).join("|");
+  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '\\.(test|spec)\\.(ts|js|tsx|jsx)$|test_.*\\.py$' | grep -vE "(${allowedBasenameSet})" || true`;
   await agent(
     `Run: ${cleanupCmd}
 For each file found, run: rm -v "<file>"
@@ -498,7 +518,7 @@ Return the list of removed files, or "none" if nothing to remove.`,
   );
   log(`[${taskId}] Pre-RED cleanup completed`);
   log(`[${taskId}] RED: writing failing tests`);
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   let targetContext;
@@ -566,7 +586,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testFilesList: testFiles.join(" "),
     commitPrefix: redPacket.commit_prefix,
     taskId,
-    testFuncPattern: testFuncLabel
+    testFuncPattern: testFuncLabel,
+    acceptanceCriteriaCount: String((lane.acceptance_criteria || []).length)
   };
   let red = await resilientAgent(
     redPrompt(promptVars),
@@ -615,9 +636,8 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
         const passedMatch = text.match(/"passed":\s*(true|false)/);
         gatePassed = passedMatch ? passedMatch[1] === "true" : newTestCount2 >= acCount;
       } else {
-        const digits = text.replace(/[^0-9]/g, "");
-        newTestCount2 = digits ? parseInt(digits, 10) : 0;
-        gatePassed = newTestCount2 >= acCount;
+        log(`[${taskId}] WARNING: test-count-gate returned unexpected output: ${text.substring(0, 200)}`);
+        return { task_id: taskId, status: "failed", stage: "RED", error: `test-count-gate returned unexpected output: ${text.substring(0, 100)}` };
       }
     }
     if (!gatePassed) {
@@ -640,17 +660,19 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
     { pattern: "assert 1", name: "assert 1" },
     { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
   ];
+  const diffCheckCommands = testFiles.map((f) => {
+    const checks = sgPatterns.map(
+      (p) => `git -C "${wt}" diff HEAD~1 HEAD -- "${f}" 2>/dev/null | grep -c '${p.pattern}' || echo 0`
+    ).join("\n");
+    return `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && (${checks}) || echo "0"`;
+  }).join("\n");
   const sgResult = await agent(
-    `Run these ast-grep commands on the test files and report what was found.
-For each command, capture the output. If ast-grep is not available, fall back to grep.
+    `Run these commands and report the counts.
+${diffCheckCommands}
 
-${testFiles.map((f) => sgPatterns.map(
-      (p) => `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
-    ).join("\n")).join("\n")}
-
-Also check for pass-only test bodies:
+Also check for pass-only test bodies in the diff:
 ${testFiles.map(
-      (f) => `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `git -C "${wt}" diff HEAD~1 HEAD -- "${f}" 2>/dev/null | grep -A1 ${testFuncBodyPattern} | grep -B1 '^\\s*pass$' 2>/dev/null || echo "none"`
     ).join("\n")}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}

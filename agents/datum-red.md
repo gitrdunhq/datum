@@ -63,5 +63,6 @@ QUALITY GATES — your tests MUST:
 - Fail meaningfully — a test that passes with an empty function body is worthless
 - Be independent — each test must pass/fail on its own
 - Fail with AttributeError or AssertionError, NOT NotImplementedError
+- Use consistent string formatting in multi-line string tuples. When concatenating string literals across lines, ALL literals must share the same prefix (all f-strings or all plain strings). Brace escapes like `{{` only work inside f-strings; in plain strings they produce literal `{{` which breaks embedded code snippets.
 
 Return structured result with committed, commit_sha, files_written, failure_reason.
