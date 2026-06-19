@@ -31,6 +31,7 @@ primary source.
 | **Serena MCP** (`oraios/serena`) — LSP-backed symbol navigation | `find_symbol`, `find_referencing_symbols`, language-agnostic. |
 | **Context7 MCP** (Upstash) — version-specific library docs | `resolve-library-id`, `get-library-docs`. |
 | **Tart** (Cirrus Labs) — Apple `Virtualization.framework` VMs | Correct fit for the optional macOS sandbox. |
+| **Dynamic Context Pruning (DCP)** — prune stale/duplicate/oversized tool outputs to retrievable placeholders | Real coding-agent implementations: `PSU3D0/pi-dcp`, `p4r4d0xb0x/opencode-dcp`; SWE-Pruner as research middleware. Adopted as a pattern (ADR-0021). **Skeptic note:** "50–70% token reduction" blog stats are marketing, not independently verified — the mechanism is what we rely on, not the numbers. |
 | **Qwen3** (April 2025) — MoE variants with A3B (≈3B active) | Use the official Qwen HF org for specs. |
 | **DeepSeek-R1** — RL-trained reasoning model, `arXiv:2501.12948` | Real; the "adversarial reasoner" role's reference class. |
 

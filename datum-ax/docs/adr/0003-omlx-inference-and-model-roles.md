@@ -40,10 +40,13 @@ hard limits on a single Mac:
 - **OOM risk** — if memory is not reclaimed efficiently and quickly, unified memory is exhausted and
   the box OOMs.
 
-So datum-ax treats the **in-memory window as a budgeted resource** (ADR-0013): keep each call's working
-context well **below the ~80k cliff** (configurable target, e.g. ≤ ~48–64k), and reclaim memory
+**~80k is generous if every character is controlled** — the problem is noise, not size. So datum-ax
+treats the **in-memory window as a curated, budgeted resource** (ADR-0013): the context firewall
+(ADR-0004) controls what enters, **active Dynamic Context Pruning** (ADR-0021) controls what stays
+(stale/duplicate/oversized tool outputs → retrievable placeholders), and memory is reclaimed
 **eagerly** after every call (drop completed-lane contexts; prune failed attempts immediately,
-ADR-0007). Because each concurrent call holds its own window, the coupling
+ADR-0007). A configurable target keeps each call comfortably inside the window (e.g. ≤ ~48–64k as a
+default, with headroom to spare). Because each concurrent call holds its own window, the coupling
 **`max_connections × per-call window ≤ unified-memory budget`** is what actually prevents OOM — the
 semaphore and the window budget must be tuned together, not independently.
 

@@ -70,6 +70,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0018](docs/adr/0018-route-shapes.md) — ROUTE shapes as a tokenomics lever
 - [0019](docs/adr/0019-gitnexus-code-graph-intelligence.md) — GitNexus as complementary code-graph intelligence
 - [0020](docs/adr/0020-compound-engineering.md) — compound engineering (the learning loop: harvest + rule delivery)
+- [0021](docs/adr/0021-active-context-management-dcp.md) — active context management (Dynamic Context Pruning)
 
 ## Status of the locked-in stack
 

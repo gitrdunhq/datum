@@ -27,12 +27,14 @@ contains untrusted execution). The **physical** count is not — a single develo
 Nodes 0 and 1 onto two machines, or run the x86 sandbox as a VM. The abstraction that makes this
 safe is the `ExecutionHost` interface (ADR-0001).
 
-> **Apple-Silicon memory reality (governing design driver).** oMLX supplies KV + SSD cache, but the
-> hard limits are the **active context window**: tok/s falls off a cliff past **~80k tokens**, and the
-> Mac **OOMs** without fast memory reclamation. So the window is a budgeted resource — kept well under
-> the cliff, reclaimed eagerly, and bounded by `max_connections × per-call window ≤ memory`
-> (ADR-0003/0013). This is *why* the context firewall, eager pruning, and the `max_connections=2`
-> semaphore exist — they are memory-safety mechanisms first, cost optimizations second.
+> **Apple-Silicon memory reality (governing design driver).** oMLX supplies KV + SSD cache; the limit
+> that matters is the **active context window** — tok/s degrades past **~80k tokens** and the Mac
+> **OOMs** without fast memory reclamation. The reframe that matters: **~80k is generous *if every
+> character is controlled*.** It's a problem only when filled with noise. So the window is a curated,
+> budgeted resource — the **context firewall** (ADR-0004) controls what goes *in*, **active Dynamic
+> Context Pruning** (ADR-0021) controls what *stays*, and **`max_connections × per-call window ≤
+> memory`** (ADR-0003/0013) bounds concurrency. These are memory-safety mechanisms first, cost
+> optimizations second — and together they keep us comfortably inside 80k rather than fighting it.
 
 ```
                           ┌───────────────────────────────────────────────┐

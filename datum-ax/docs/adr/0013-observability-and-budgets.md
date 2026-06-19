@@ -24,8 +24,10 @@ pipeline=300s). Tokenomics (ADR-0009) is meaningless without measurement and a h
   the *cumulative* budget caps total spend over a run; the *window* budget caps the **instantaneous
   in-memory context of any single call**. On Apple Silicon + oMLX this is the limit that matters for
   (a) the **~80k-token throughput cliff** and (b) **OOM** (ADR-0003). Enforced as: a per-call window
-  **target well under ~80k** (config, e.g. ≤ ~48–64k); **eager reclamation** (drop completed-lane
-  contexts, prune failed attempts immediately — ADR-0007); and the coupling
+  **target comfortably inside ~80k** (config, e.g. ≤ ~48–64k — generous when every character is
+  curated); **active Dynamic Context Pruning** of stale/oversized tool outputs (ADR-0021) plus **eager
+  reclamation** (drop completed-lane contexts, prune failed attempts immediately — ADR-0007); and the
+  coupling
   **`max_connections × per-call window ≤ unified-memory budget`** (ADR-0003) so concurrency never
   oversubscribes memory. The ledger records per-call window size so the cliff/OOM margin is visible
   and tunable.
