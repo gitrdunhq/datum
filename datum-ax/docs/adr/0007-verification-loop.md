@@ -19,7 +19,10 @@ Phase B runs a per-step loop, **max 3 attempts**:
    the semaphore.
 2. **Sandbox apply** — `ExecutionHost.apply_diff()` → `run_tests()`/`run_lint()`.
 3. **Verify & prune** — on failure, capture exit code + stderr, then **prune the failed attempt from
-   the context array** with `RemoveMessage`. The array stays small and the prefix stays cache-stable.
+   the context array** with `RemoveMessage`, **eagerly** (immediately, not at a threshold). The array
+   stays small, the prefix stays cache-stable, and — critically on Apple Silicon — the **in-memory
+   window stays under the ~80k throughput cliff and away from OOM** (ADR-0003/0013). Pruning here is an
+   OOM-avoidance mechanism, not only a token optimization.
 4. **Adversarial reformat** — the `ADVERSARIAL` role rewrites the isolated stderr into the next
    `EXECUTOR` prompt (it sees the error, not the whole failed transcript).
 5. **Gates** — discipline gates (ADR-0010) then the eedom gate (ADR-0006), both deterministic.

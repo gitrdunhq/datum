@@ -42,7 +42,7 @@ primary source.
 | **Qwen3.5 / Qwen3.6 "2026 releases"** (397B-A17B, 122B-A10B, "thinking preservation", "OptiQ") | Unverifiable; naming inconsistent with Alibaba's pattern. Only **Qwen3 (Apr 2025)** is confirmed. **Do not pin model architecture to these names.** |
 | **Specific oMLX GitHub star counts / "TTFT 30–90s → 1–3s" numbers** | Suspiciously precise, single-source, content-farm flavor. |
 | **Context7 "benchmark 84.49 / Trust Score 9.5"** | Marketing-style scores, no independent eval. |
-| **Two-tier KV cache (RAM+SSD) as a shipping, relied-upon feature** | The *concept* (NVMe KV offload) is real research, but no confirmed production Apple-Silicon/MLX implementation. Treat as a **future optimization**, never a dependency. |
+| ~~Two-tier KV cache (RAM+SSD) as a relied-upon feature~~ — **superseded** | The *papers* cited (KVDrive/HiveMind) remain fabricated. But per the user, **oMLX provides KV + SSD cache natively**, so datum-ax relies on oMLX's built-in cache for TTFT/cold-start (ADR-0003). The fabricated citations do not make the oMLX feature unreal — they were just bogus support for it. |
 
 ## USER-MANDATED — treated as ground truth even where independent verification was weak
 
@@ -51,7 +51,14 @@ datum-ax does not hard-couple to any one tool's API, but they are **required**, 
 
 | Tool | Role in datum-ax | Verification note |
 |------|------------------|-------------------|
-| **oMLX** | Apple-Silicon inference runtime (OpenAI/Anthropic-compatible serving of the role models) | Independent web verification was inconclusive; accepted as the user's runtime. Adapter targets a generic OpenAI-compatible endpoint so the design survives if oMLX is swapped. |
+| **oMLX** | Apple-Silicon inference runtime (OpenAI/Anthropic-compatible serving of the role models); provides built-in KV + SSD cache | Independent web verification was inconclusive; accepted as the user's runtime. Adapter targets a generic OpenAI-compatible endpoint so the design survives if oMLX is swapped. |
+
+**Operational constraints (user-provided, treated as ground truth — drive ADR-0003/0013):**
+- oMLX has **built-in KV cache and SSD cache** → datum-ax builds no cache of its own (SSD cache helps
+  cold-start / TTFT).
+- **~80k-token throughput cliff:** past ≈80k tokens in the window, tokens/sec degrades sharply.
+- **OOM risk:** without efficient, *fast* memory reclamation, a single Mac exhausts unified memory and
+  OOMs. ⇒ the active window is a budgeted resource; `max_connections × per-call window ≤ memory`.
 | **Serena** | Lossless LSP/AST symbol retrieval (code channel) | Verified (`oraios/serena`). |
 | **TokenSave** | Token-efficient, standardized, language-agnostic repo metadata (code channel) | Accepted as user-mandated; adapter contract defined in ADR-0004. |
 | **Context7** | Version-specific external library/API docs (NL channel) | Verified (Upstash). |

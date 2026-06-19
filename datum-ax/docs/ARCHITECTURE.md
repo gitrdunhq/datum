@@ -27,6 +27,13 @@ contains untrusted execution). The **physical** count is not — a single develo
 Nodes 0 and 1 onto two machines, or run the x86 sandbox as a VM. The abstraction that makes this
 safe is the `ExecutionHost` interface (ADR-0001).
 
+> **Apple-Silicon memory reality (governing design driver).** oMLX supplies KV + SSD cache, but the
+> hard limits are the **active context window**: tok/s falls off a cliff past **~80k tokens**, and the
+> Mac **OOMs** without fast memory reclamation. So the window is a budgeted resource — kept well under
+> the cliff, reclaimed eagerly, and bounded by `max_connections × per-call window ≤ memory`
+> (ADR-0003/0013). This is *why* the context firewall, eager pruning, and the `max_connections=2`
+> semaphore exist — they are memory-safety mechanisms first, cost optimizations second.
+
 ```
                           ┌───────────────────────────────────────────────┐
                           │  NODE 0 — ORCHESTRATOR (Apple Silicon)          │
