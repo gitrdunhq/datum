@@ -175,6 +175,9 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
 ```
 1. **Route select** — deterministic choice of ROUTE (`feature`/`hotfix`/`spike`/`audit`/`resume`)
    from COMPLEXITY/SCOPE/AMBIGUITY; gates which later phases run (ADR-0018) — a tokenomics lever.
+0. **Intake (`nl-to-ticket` skill)** — turn free-form human text (one-liner → full spec) into a
+   faithful, deterministic-shape **`TICKET.md`** (no invented scope; gaps → Assumptions/Open
+   Questions; classify Complexity/Scope/Ambiguity). It becomes the GitHub epic issue body (ADR-0024).
 2. **Ingest & parse** — read the **GitHub epic issue + its sub-issues** as the primary context
    (ADR-0023); Serena/TokenSave build the Global AST/map (REFINE → SPEC).
 3. **Deterministic triage** — pure Python inspects markers (e.g. `import SwiftUI`, `#if os(macOS)`)

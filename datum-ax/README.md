@@ -74,6 +74,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0021](docs/adr/0021-active-context-management-dcp.md) — active context management (Dynamic Context Pruning)
 - [0022](docs/adr/0022-context-budget-aware-lane-granularity.md) — context-budget-aware lane granularity (a single-turn blowup is a planning defect)
 - [0023](docs/adr/0023-github-issues-human-view.md) — GitHub Issues as the human view of the DAG (epic + sub-issue checklist)
+- [0024](docs/adr/0024-nl-to-ticket-intake.md) — natural-language → TICKET.md intake skill (the front door) · **first built skill:** [`skills/nl-to-ticket/`](skills/nl-to-ticket/)
 
 ## Status of the locked-in stack
 

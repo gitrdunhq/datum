@@ -6,10 +6,18 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
 ## 1. The spine — TICKET → merged branch
 
 ```
+                         ┌───────────────────────────┐
+                         │ free-form human text       │  one-liner … full spec
+                         │  "make a tic tac toe game" │
+                         └─────────────┬──────────────┘
+                                       ▼
+                         nl-to-ticket SKILL  → TICKET.md  (faithful, no       [0024]
+                              invented scope; classify Complexity/Scope/Ambiguity)
+                                       ▼
                               ┌──────────────────┐
-                              │ GitHub EPIC issue │  context lives here;
-                              │  + sub-issues =   │  sub-issues = human       [0023]
-                              │  the checklist    │  view of the DAG
+                              │ GitHub EPIC issue │  TICKET = body; context    [0023]
+                              │  + sub-issues =   │  lives here; sub-issues =
+                              │  the checklist    │  human view of the DAG
                               └────────┬──────────┘
                                        ▼
                     ROUTE select  (deterministic, 0 tokens)              [0018]

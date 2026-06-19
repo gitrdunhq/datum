@@ -16,7 +16,7 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 
 | datum term | Meaning (datum) | datum-ax stance |
 |------------|-----------------|-----------------|
-| **TICKET** | Original request: scope, requirements, ACs; addenda for scope changes | **Adopt** — lives in the **GitHub epic issue** body; addenda = comments (ADR-0023). |
+| **TICKET** | Original request: scope, requirements, ACs; addenda for scope changes | **Adopt + elevate** — **produced from free-form text by the `nl-to-ticket` skill** (ADR-0024), then lives in the **GitHub epic issue** body; addenda = comments (ADR-0023). |
 | **SPEC** | Refined requirements produced by REFINE | **Adopt** — REFINE output; feeds the planner and the prompt assembler. |
 | **PROPERTIES** **(gap)** | Invariant set derived from SPEC + TASKS (categorized, task-traceable) | **Elevate** — formalize against eedom's DPS-12 property taxonomy (SAFETY/LIVENESS/INVARIANT/PERFORMANCE). Becomes the contract that discipline + eedom gates check. See "Open: PROPERTIES" below. |
 | **TASKS** | Implementation plan, decomposed into tasks with IDs/files/ACs/deps | **Adopt** — the lanes of the DAG (ADR-0010), mirrored to **GitHub sub-issues** as the human checklist (ADR-0023). |
