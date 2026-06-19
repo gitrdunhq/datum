@@ -18,7 +18,7 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
    ║                                                                             ║
    ║   REFINE      Serena + TokenSave → Global AST/map  ──────►  SPEC      [0004] ║
    ║   TRIAGE      deterministic platform route  →  x86 | macOS  (0 tok)  [0001] ║
-   ║   PLAN        DAG of lanes: contract-first order, git-worktree owner [0010] ║
+   ║   PLAN        DAG of lanes: contract-first order, disjoint-file owner [0010]║
    ║                 • sized so essentials fit the window budget → split  [0022] ║
    ║                 • GitNexus impact / deps (NOT used inside loop)      [0019] ║
    ║   PROPERTIES  invariants in eedom DPS-12 taxonomy, traced to lanes   [0016] ║
@@ -68,7 +68,7 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
  │   LangGraph state machine + Valkey checkpointer                 [0002]       │
  │   oMLX inference:  TRIAGE · EXECUTOR · ADVERSARIAL   (semaphore max=2) [0003] │
  │   Context firewall + prompt assembler → TASK PACKET             [0004]       │
- │   authoritative git worktree(s) · ALL secrets live here        [0011/0012]   │
+ │   authoritative git tree = epic branch · ALL secrets live here [0011/0012]   │
  └───────────────┬──────────────────────────────────────┬────────────────────┘
                  │  diff in ▼          ▲ exit code + stderr + artifacts out
                  │  (no credentials, no orchestrator env ever cross this line)

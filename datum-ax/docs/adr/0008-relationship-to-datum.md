@@ -16,7 +16,7 @@ future contributors know provenance.
 ### Lift directly (proven; evidenced in review)
 | Primitive | datum source |
 |-----------|--------------|
-| Lane DAG + git-worktree file ownership | lane plan + worktree setup |
+| Lane DAG + file ownership (datum: worktrees; datum-ax: disjoint-file waves + containers, ADR-0012) | lane plan + worktree setup |
 | Mandatory TDD RED→GREEN→REFACTOR gates | `datum-tdd-act-lane` |
 | Model escalation ladder | `local_llm.py` |
 | Command allowlist + metacharacter rejection | `command_guard.py` |

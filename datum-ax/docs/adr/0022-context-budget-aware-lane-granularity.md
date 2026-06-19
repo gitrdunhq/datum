@@ -39,7 +39,7 @@ pruning.)
 - Window safety becomes mostly a **planning property, enforced before tokens are spent**; runtime
   pruning (ADR-0021) then only handles accumulated *noise*, never structural oversize.
 - Smaller lanes compound benefits: more parallel **waves** (ADR-0015), smaller per-call windows
-  (cheaper, no cliff), sharper REFLECT/SKEPTIC focus (ADR-0017), finer git-worktree file ownership.
+  (cheaper, no cliff), sharper REFLECT/SKEPTIC focus (ADR-0017), finer disjoint file ownership (ADR-0012).
 - Requires a reasonably accurate plan-time footprint estimate; it can be **conservative** (slightly
   over-split) since splitting is cheap and the scheduler recombines independent lanes into waves.
 - Adds a replan edge to the loop: a `lane-plan` blowup returns control to Phase A for the affected

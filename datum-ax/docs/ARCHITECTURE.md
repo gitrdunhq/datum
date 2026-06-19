@@ -43,7 +43,7 @@ safe is the `ExecutionHost` interface (ADR-0001).
                           │  • oMLX inference (triage / executor / adv.)    │
                           │  • Context firewall (Serena, TokenSave,         │
                           │    Context7, Headroom.ai) + prompt assembler    │
-                          │  • Authoritative git worktree(s)                │
+                          │  • Authoritative git tree (epic branch)         │
                           │  • Secrets live HERE and only here              │
                           │  ✗ NEVER runs model-generated code              │
                           └───────────────┬───────────────────────────────┘
@@ -68,7 +68,7 @@ safe is the `ExecutionHost` interface (ADR-0001).
 
 | Node | Function | Runs generated code? |
 |------|----------|----------------------|
-| 0 — Orchestrator (Apple Silicon) | LangGraph + oMLX + context firewall + authoritative worktree | **No** |
+| 0 — Orchestrator (Apple Silicon) | LangGraph + oMLX + context firewall + authoritative git tree (epic branch) | **No** |
 | 1 — x86 Linux sandbox (primary) | ephemeral Docker/Podman; native x86 | Yes (disposable) |
 | 2 — macOS sandbox (optional) | Tart/SSH for Darwin/Swift targets | Yes (disposable) |
 
@@ -178,8 +178,9 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
 2. **Ingest & parse** — Serena/TokenSave build the Global AST/map (REFINE → SPEC).
 3. **Deterministic triage** — pure Python inspects markers (e.g. `import SwiftUI`, `#if os(macOS)`)
    → sets the execution target. **Zero tokens.**
-4. **Plan DAG** — the Executor model decomposes into an atomic DAG of lanes with **git-worktree file
-   ownership** and **contract-first ordering** (ADR-0010); **GitNexus** supplies risk-scored impact
+4. **Plan DAG** — the Executor model decomposes into an atomic DAG of lanes with **disjoint file
+   ownership** (same-wave lanes never share a file — ADR-0012) and **contract-first ordering**
+   (ADR-0010); **GitNexus** supplies risk-scored impact
    and call-graph dependencies (ADR-0019, not used inside the loop). Each lane is sized so its
    **essential working set fits the window budget** — estimated here via Serena/TokenSave/GitNexus and
    split if oversized (ADR-0022), so a single turn can't blow the window at runtime.
@@ -244,7 +245,8 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
 
 ## 7. Where datum-ax comes from (and how it differs)
 
-**Lifted from datum (proven, evidenced in review):** the lane DAG + git-worktree file ownership,
+**Lifted from datum (proven, evidenced in review):** the lane DAG + file ownership (datum used
+worktrees; datum-ax achieves the same isolation via containers + disjoint-file waves, ADR-0012),
 mandatory TDD gates, the model escalation ladder, the command allowlist (`command_guard.py`), the
 observation sanitizer (`strip_secrets` + invisible-unicode/special-token stripping), rules-salting
 with tamper detection, subprocess `setrlimit` caps, and loop/repetition detection.
