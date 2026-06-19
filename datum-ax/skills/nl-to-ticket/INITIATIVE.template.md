@@ -39,4 +39,3 @@ This is an **initiative** spanning **<N> epics**. It is NOT a single ticket.
 ## Classification
 - Overall complexity: System (multi-epic)
 - Suggested first epic(s): <E#, E# — the contract/foundation layer>
-</content>

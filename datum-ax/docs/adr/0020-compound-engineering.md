@@ -85,4 +85,3 @@ language), tier (auto/gated), version, and fire-count.
 - Property-test targets: Monotonicity (a reverted rule never silently re-binds), Non-repudiation
   (every learned rule traces to its evidence), Boundedness (the active rule set stays curated, not
   monotonically growing).
-</content>

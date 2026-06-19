@@ -141,4 +141,3 @@ invented scope** (no scoreboard, no AI, no accounts).
 Write the result to `TICKET.md` (it becomes the GitHub epic issue body, ADR-0023). Then stop — REFINE
 and ROUTE take it from here. A human reviews/edits the ticket (scope is human-owned, ADR-0023) before
 the deterministic pipeline proceeds.
-</content>

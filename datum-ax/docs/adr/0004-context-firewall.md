@@ -39,4 +39,3 @@ no tool-specific calls appear in graph nodes.
 - Untrusted text from any channel (issue/PR bodies, repo content, Context7 docs) is fenced as **data,
   not instructions** — the prompt-injection boundary is owned here and in ADR-0011.
 - TokenSave and Serena overlap; the assembler must dedupe so the same symbol isn't sent twice.
-</content>

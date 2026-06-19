@@ -39,4 +39,3 @@ without overwhelming the single-process oMLX server.
   the semaphore as the governing constraint, not an obstacle.
 - Per-language defaults will need maintenance as ecosystems shift; keeping them in config (not code)
   contains that churn.
-</content>

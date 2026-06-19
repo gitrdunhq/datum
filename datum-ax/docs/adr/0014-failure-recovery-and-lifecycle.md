@@ -35,4 +35,3 @@ resume after an orchestrator crash, and correct propagation of lane failure acro
   contract is the stable part.
 - Orphan-sweeping must be conservative (only reclaim resources tagged with this pipeline's run IDs) to
   avoid touching unrelated containers on a shared host.
-</content>

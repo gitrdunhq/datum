@@ -77,7 +77,13 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0024](docs/adr/0024-nl-to-ticket-intake.md) — natural-language → TICKET.md intake skill (the front door) · **first built skill:** [`skills/nl-to-ticket/`](skills/nl-to-ticket/)
 - [0025](docs/adr/0025-work-scale-hierarchy.md) — work-scale hierarchy: task / epic / initiative (decompose products, don't cram)
 
+- [0026](docs/adr/0026-three-tier-enforced-boundaries.md) — three-tier architecture with **enforced** boundaries (presentation → core → data; contract at every handoff)
+- [0027](docs/adr/0027-dual-artifacts-md-and-json.md) — dual artifacts: Markdown for humans, JSON for machines (handoff = schema validation)
+- [0028](docs/adr/0028-cli-and-api-surface.md) — CLI + API surface to kick off any stage (presentation tier)
+
 **Build roadmap (dogfooded):** [`docs/BUILD-INITIATIVE.md`](docs/BUILD-INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics. The bridge from blueprint to code.
+
+**First code (E1):** [`src/datum_ax/`](src/datum_ax/) — the typed boundary layer (contracts + schemas), strict Pydantic, three enforced tiers. `uv pip install -e ".[dev]" && uv run pytest` → green (Hypothesis property tests + boundary enforcement). See [`docs/epics/e1-contracts/`](docs/epics/e1-contracts/).
 
 ## Status of the locked-in stack
 
@@ -85,4 +91,3 @@ Required, user-mandated components (each wrapped in a thin adapter so the design
 **oMLX** (Apple-Silicon inference), **Serena** (LSP/AST code metadata), **TokenSave** (token-efficient
 repo metadata), **Context7** (version-specific docs), **Headroom.ai** (NL-channel semantic
 compression). See [`docs/RESEARCH-NOTES.md`](docs/RESEARCH-NOTES.md) for verification status.
-</content>

@@ -43,4 +43,3 @@ its remaining gaps.
 - Property-test targets (eedom's taxonomy): Confidentiality (secrets never leak to sandbox/output),
   Isolation (parallel sandboxes never interfere), Integrity (untrusted text never escalates to
   instruction).
-</content>

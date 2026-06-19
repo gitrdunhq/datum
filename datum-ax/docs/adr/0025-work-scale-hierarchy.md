@@ -48,4 +48,3 @@ Rules:
 - Property-test targets: Boundedness (no single TICKET exceeds one-epic scope), Monotonicity (epic
   decomposition never drops a stated capability), Determinism (same product description → same epic
   set).
-</content>

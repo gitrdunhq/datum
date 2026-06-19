@@ -43,4 +43,3 @@ pipeline=300s). Tokenomics (ADR-0009) is meaningless without measurement and a h
 - Optional later: emit OpenTelemetry spans / LangSmith traces from the same instrumentation points;
   the ledger schema is the source of truth regardless.
 - The metering schema must be stable early; downstream routing tuning depends on it.
-</content>

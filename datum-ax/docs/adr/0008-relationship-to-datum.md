@@ -45,4 +45,3 @@ model routing with metering.
 - datum and datum-ax stay independent; nothing here modifies datum.
 - The lifted primitives are Python and port cleanly into the orchestrator.
 - Migration target is a standalone repo (`gitrdunhq/datum-ax`); this directory is structured for that.
-</content>

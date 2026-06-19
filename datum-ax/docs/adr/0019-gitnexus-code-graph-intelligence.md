@@ -51,4 +51,3 @@ Constraints:
   tools alone.
 - Because it degrades gracefully and is ROUTE-gated, GitNexus is an **optional accelerator**, not a
   hard dependency — consistent with the adapter-isolation stance for every external tool.
-</content>

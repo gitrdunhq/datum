@@ -46,4 +46,3 @@ pruning.)
   subtree, not the whole run.
 - Property-test targets: **Boundedness** (a well-planned lane's essential window is always within
   budget), **Monotonicity** (a lane split never loses contract/PROPERTIES coverage).
-</content>

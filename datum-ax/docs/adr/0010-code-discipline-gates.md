@@ -42,4 +42,3 @@ Enforce discipline at two deterministic points in the graph; rules live in confi
   `TestResult`, not stdout scraping).
 - Overly strict contract ordering on trivial tasks adds planning overhead; the planner should apply
   it per-lane, not force a ceremony on single-file changes.
-</content>

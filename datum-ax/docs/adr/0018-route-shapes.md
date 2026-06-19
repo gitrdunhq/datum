@@ -39,4 +39,3 @@ ADR-0019), the router upgrades it toward `feature` rather than under-verifying.
   deterministic eedom gate always running before any push.
 - Requires the ingest classifiers (COMPLEXITY/SCOPE/AMBIGUITY) to be reliable; they are cheap-model or
   heuristic and themselves ROUTE-independent.
-</content>

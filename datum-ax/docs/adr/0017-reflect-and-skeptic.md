@@ -51,4 +51,3 @@ COMPLEXITY; trivial routes may skip it.
 - Risk: false-positive SKEPTIC findings burn attempts; bounded by the 3-attempt cap (ADR-0007) and the
   mandatory-EVIDENCE rule.
 - REFLECT must consume the PROPERTIES↔AC map (ADR-0016) — sequencing dependency.
-</content>

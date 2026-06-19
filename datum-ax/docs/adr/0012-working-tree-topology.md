@@ -61,4 +61,3 @@ Worktrees were datum's answer to in-place editing; that need evaporates here.
 - Requires robust diff apply with conflict reporting; an un-appliable diff is a failed attempt, not a
   crash. (Reverting to optional per-lane branches is the escape hatch if a project genuinely needs
   non-disjoint same-wave lanes.)
-</content>

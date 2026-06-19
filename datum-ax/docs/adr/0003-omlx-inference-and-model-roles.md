@@ -64,4 +64,3 @@ semaphore and the window budget must be tuned together, not independently.
 - The window budget makes pruning (ADR-0007) and the context firewall (ADR-0004) **OOM-critical**, not
   just cost optimizations — they are the mechanism that keeps the working set under the cliff.
 - Tokenomics routing (ADR-0009) chooses the role; this ADR only defines the roles and the transport.
-</content>

@@ -65,4 +65,3 @@ checklists, so this is a projection, not a custom UI.
   ROADMAP ↔ out-of-scope addenda, CHECKPOINT ↔ the checklist's marked state.
 - Property-test targets: Idempotency (re-projection never duplicates issues), Monotonicity (a checked/
   closed sub-issue isn't silently reopened by a re-run unless its lane actually regressed).
-</content>

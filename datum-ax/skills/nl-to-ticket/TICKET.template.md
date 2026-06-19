@@ -39,4 +39,3 @@ park inferences in Assumptions and unknowns in Open Questions. Do not invent sco
 - Scope: narrow | moderate | broad
 - Ambiguity: trivial | low | medium | high
 - Suggested route: feature | hotfix | spike | audit | refine-only
-</content>

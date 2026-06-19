@@ -40,4 +40,3 @@ Redis; ADR-0005). Checkpoints give resume, time-travel, and human-in-the-loop vi
   written by an LLM (fixes datum's agent-written `pipeline-state.json`).
 - Determinism boundary: graph wiring, routing predicates, and triage are deterministic Python; only
   node *bodies* that call `InferenceClient` are probabilistic.
-</content>

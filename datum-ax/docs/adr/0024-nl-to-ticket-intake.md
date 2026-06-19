@@ -56,4 +56,3 @@ phases proceed.
 - Property-test targets: Confidentiality/Integrity (no invented requirements appear as stated),
   Determinism (same input → same ticket schema), Availability (even a one-word input yields a valid,
   if sparse, ticket).
-</content>

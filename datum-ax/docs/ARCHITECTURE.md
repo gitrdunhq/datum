@@ -297,4 +297,3 @@ positions taken in this design:
 A single vertical slice proves the contracts: **triage → plan (one lane) → one x86 sandbox attempt →
 eedom gate**. It exercises `ExecutionHost`, `InferenceClient`, the prompt assembler, and the eedom
 decision contract end-to-end without building the whole system. Everything else layers onto that spine.
-</content>

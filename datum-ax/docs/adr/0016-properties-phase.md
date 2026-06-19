@@ -39,4 +39,3 @@ Derivation is a model step (EXECUTOR, or a cheaper tier for low-complexity epics
 - Risk: over-generating properties for trivial work; mitigated by ROUTE/COMPLEXITY gating and by
   capping property count per lane.
 - Requires the property schema to be defined early (it is a contract REFLECT/SKEPTIC/eedom consume).
-</content>

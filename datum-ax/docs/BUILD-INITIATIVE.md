@@ -109,4 +109,3 @@ Wave 5: E11. (E10's `nl-to-ticket` half already exists.)
 ## Classification
 - Overall complexity: System (multi-epic)
 - Suggested first epic(s): **E1 (Contracts & schemas)** — then E2/E3/E5/E9 in parallel.
-</content>

@@ -52,4 +52,3 @@ On a blocking verdict: route findings back to the executor (consumes a loop atte
 - eedom is **fail-open by design** (a scanner failure never blocks a build); datum-ax treats an eedom
   *execution* failure as `needs_review`, not silent pass, so the gate cannot be bypassed by crashing it.
 - eedom timeouts (scanner=60s … pipeline=300s) inform this node's timeout budget (ADR-0013).
-</content>

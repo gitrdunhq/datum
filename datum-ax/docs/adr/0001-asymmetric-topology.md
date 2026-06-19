@@ -39,4 +39,3 @@ the interface is unchanged.
   (ADR-0011).
 - v1 with x86-only is fully functional for general multi-language targets; Swift support is gated on
   implementing `MacOSTartHost`.
-</content>

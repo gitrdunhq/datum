@@ -44,4 +44,3 @@ before the cap. `recursion_limit` is the hard backstop.
 - Three is a default, not a law — it lives in config alongside the per-node timeouts (ADR-0013).
 - Terminal `interrupt()` requires the human-resume path (ADR-0014); side effects must sit after the
   interrupt.
-</content>

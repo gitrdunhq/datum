@@ -72,4 +72,3 @@ retrieval key.
   interface so a real plugin (pi-dcp/opencode-dcp style) or a bespoke implementation can back it.
 - Property-test targets: Availability (a pruned item is always retrievable), Integrity (active
   essentials are never pruned), Boundedness (live window stays under budget).
-</content>

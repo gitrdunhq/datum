@@ -37,4 +37,3 @@ by a model.
   over-justification; the real rationale is volatile-RAM-state + simple-file-DB fit.
 - Valkey is treated as **ephemeral**: losing it loses in-flight loop state but not the durable ledger;
   recovery is re-run from the last libSQL-recorded checkpoint reference.
-</content>

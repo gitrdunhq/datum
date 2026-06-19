@@ -137,4 +137,3 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
   [NNNN]                          = ADR reference (docs/adr/)
   ═ box                           = a LangGraph sub-graph
 ```
-</content>

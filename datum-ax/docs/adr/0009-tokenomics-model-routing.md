@@ -40,4 +40,3 @@ Rules:
   doesn't re-prefill.
 - The metering schema must be defined early (ADR-0013) or the routing can't be tuned.
 - Escalation must be bounded by the loop cap (ADR-0007) so it can't ladder forever.
-</content>

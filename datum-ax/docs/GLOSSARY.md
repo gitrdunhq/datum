@@ -93,4 +93,3 @@ the lifecycle (ARCHITECTURE §5):
 
 Related: **GitNexus** was assessed as *complementary* (transitive impact / execution-flow / change
 scoping) to Serena/TokenSave/Context7, adopted in a bounded pre/post-loop role. → **ADR-0019**.
-</content>

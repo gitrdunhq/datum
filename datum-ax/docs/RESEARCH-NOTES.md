@@ -73,4 +73,3 @@ datum-ax does not hard-couple to any one tool's API, but they are **required**, 
    to a speculative model name.
 3. The locked-in tools are required, but every reference goes **through its adapter contract** — no
    tool-specific API leaks into the orchestration logic.
-</content>
