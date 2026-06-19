@@ -29,11 +29,23 @@ internal interface (so we do not hard-depend on any one plugin):
   recording *what / why / when*, and the original is kept **out-of-band** (libSQL ledger / artifact
   store, ADR-0005/0013), **retrievable on demand**. Pruning is therefore lossless to the run record,
   lossy only to the live window.
-- **Two triggers:**
-  1. **Automatic** — age / size / duplication thresholds, and proactively on **window-budget
-     pressure** (ADR-0013).
-  2. **Agent-invokable** — a `prune` / `compress` tool the executor can call when it knows it is done
-     with an output.
+- **Trigger policy (layered — occupancy-driven, not turn-driven).** A fixed "prune every N turns"
+  cadence is the *wrong primary trigger*: the OOM/throughput driver is **tokens in the window**, and a
+  single fat turn (full test log, large file read, SARIF dump) can blow the window before any turn
+  counter fires. So:
+  1. **Watermark (primary):** prune when window occupancy crosses a **soft high-water mark**
+     (~60–65% of the window budget) down to a **low-water mark** (~35–40%). Tied to the real driver,
+     gives OOM margin, and **batches** prunes so the prompt cache isn't churned every turn.
+  2. **Hard pre-dispatch guard:** never dispatch a call whose assembled window would exceed the cap —
+     prune/summarize first. This — not any timer — is the actual OOM guarantee.
+  3. **Event-driven (immediate):** prune a failed attempt and a completed lane's context the moment
+     they occur; don't wait for a threshold or a timer.
+  4. **Periodic sweep (backstop):** a cheap janitorial pass **every N turns (default ~10)** to clear
+     duplicates/staleness the above missed. Reasonable as a backstop, never as the primary trigger.
+  - **Agent-invokable:** a `prune` / `compress` tool the executor can also call when it knows it is
+    done with an output.
+  - All thresholds (watermarks, N, cap) are **config**, tuned from observed window-size traces in the
+    ledger (ADR-0013) per ROUTE/model — evidence-driven, not guessed. "Turn" = one model+tool cycle.
 - **Cache-safe:** pruning operates only on the **variable suffix**, never the stable
   `[System] + [Global AST] + [Diff]` prefix (ADR-0003/0004), so oMLX's prompt cache stays warm.
 
