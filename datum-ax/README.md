@@ -32,6 +32,7 @@ docs are Markdown.
 
 | Doc | What it is |
 |-----|-----------|
+| [`docs/PIPELINE.md`](docs/PIPELINE.md) | One-page ASCII chart of the whole system end-to-end (spine, topology, context window, data plane + compounding). Start here for the big picture. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The master design — topology, interfaces, run lifecycle, failure handling, and a candid pressure-test of the source blueprint. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | datum's domain vocabulary (TICKET, SPEC, PROPERTIES, LANE, ROUTE, REFLECT, SKEPTIC, Task Packet, …) mapped to datum-ax's stance on each (adopt/rename/replace/elevate). |
 | [`docs/RESEARCH-NOTES.md`](docs/RESEARCH-NOTES.md) | The verified-vs-fabricated ledger. Which blueprint claims survived fact-checking, and which were discarded. |
