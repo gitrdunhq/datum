@@ -27,14 +27,22 @@ artifacts, bound under two tiers:
 
 - **Auto-bind** (safe, deterministic, evidence-backed):
   - a **regression test** for a bug just fixed (RED that now stays green);
-  - **tightening an existing rule's** parameters;
+  - **tightening an existing rule's** parameters (incl. an existing **Opengrep** rule);
   - **routing/threshold tuning** data (ADR-0009);
   - **solution-memory** entries — retrieval-only, never binding.
 - **Propose-and-gate** (new/risky — surfaced for a yes/no):
-  - new **discipline rules** (ADR-0010);
+  - new **discipline rules** (ADR-0010), including new **local Opengrep rules**;
   - new/edited **eedom policies** (ADR-0006);
   - new **blocking PROPERTIES** (ADR-0016);
   - any **prompt/steering guidance**.
+
+**Opengrep as the natural harvest target for code patterns.** Because eedom uses **Opengrep with
+local rules and no registry** (ADR-0006), a learned *code anti-pattern* (e.g. the pattern behind a
+recurring SKEPTIC finding or eedom reject) can be harvested directly as an **Opengrep rule file
+committed into the repo**, sitting beside eedom's existing custom rules. This is the cleanest concrete
+instance of "lesson → deterministic gate": the next run's diff is scanned for the pattern with **zero
+prompt tokens**, and no external rule registry or network is involved. A *new* such rule is
+propose-and-gate; *tightening* an existing one is auto-bind.
 
 Every learned artifact is **evidence-backed** (≥1 real reject/failure, not a single model opinion),
 **versioned, attributable** to the originating run, and **revertible**. The ledger records which rules

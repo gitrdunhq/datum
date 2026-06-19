@@ -26,7 +26,9 @@ Enforce discipline at two deterministic points in the graph; rules live in confi
   1. **TDD ordering** — a failing test must exist and run **RED** before a **GREEN** diff is accepted.
   2. **Contract tests** — gate the producer against its consumer's contract.
   3. **Lint/format** — blocking, not advisory (this is the explicit fix to datum's warn-and-write).
-  4. **eedom** — the deterministic review gate (ADR-0006).
+  4. **eedom** — the deterministic review gate (ADR-0006), whose **Opengrep** engine runs local rules
+     (no registry). Harvested code anti-patterns (ADR-0020) land here as committed Opengrep rules, so
+     a learned lesson becomes a blocking gate with zero prompt-token cost.
   A diff that skips RED or implements a producer ahead of its contract is **rejected and routed back**
   to the executor, consuming a loop attempt but **zero extra tokens on the rejection itself**.
 
