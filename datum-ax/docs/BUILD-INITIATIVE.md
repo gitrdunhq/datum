@@ -23,7 +23,7 @@ as `ARCHITECTURE.md`): contracts → producers → orchestration → loop → cr
   contract, the `TICKET`/`PROPERTIES`/rules-registry schemas. No behavior — just contracts + tests.
 - **Depends on:** none. **Shippable/testable:** yes (contract tests).  *(ADR-0006/0012/0003/0004/0016/0020)*
 
-### E2 — Inference layer
+### E2 — Inference layer  ✅ BUILT (`src/datum_ax/data/inference/`)
 - **Intent:** talk to oMLX, by role, safely.
 - **Scope:** `InferenceClient` adapter (OpenAI-compatible), model-role registry (TRIAGE/EXECUTOR/
   ADVERSARIAL), concurrency semaphore, prompt assembler + Task Packet, window budget.

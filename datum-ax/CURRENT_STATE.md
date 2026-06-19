@@ -24,10 +24,12 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 | Area | State |
 |------|-------|
 | Architecture & ADRs | ✅ Complete — 29 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, BUILD-INITIATIVE |
-| E1 — Contracts & schemas (code) | ✅ Built & green — strict Pydantic, 3 enforced tiers, ~133 Hypothesis tests pass |
+| E1 — Contracts & schemas (code) | ✅ Built & green — strict Pydantic, 3 enforced tiers |
+| E2 — Inference layer (code) | ✅ Built & green — oMLX `OmlxInferenceClient` (data tier): role registry, semaphore, budget enforcement, pluggable transport; tested vs a mock oMLX |
+| Test suite | ✅ 164 tests green (`uv run pytest`) — property + boundary + E2 integration |
 | nl-to-ticket intake skill | ✅ Built (skill, runnable) |
 | Product Team skill suite | ✅ Built — orchestrator + 4 lenses + framework dispatch map |
-| E2–E11 (inference, hosts, firewall, data, orchestration, loop, eedom, GitHub, compounding) | ⬜ Designed, not built |
+| E3–E11 (hosts, firewall, data, orchestration, loop, eedom, GitHub, compounding) | ⬜ Designed, not built |
 | CLI / API (ADR-0028) + live status (ADR-0029 contract done) | ⬜ Contract done; surfaces not built |
 | Migration to gitrdunhq/datum-ax | ⬜ Pending (proxy/scope) |
 
@@ -80,8 +82,9 @@ uv run pytest          # ~133 tests green (property tests + tier-boundary enforc
 
 ## Open threads / next steps (pick up here)
 
-1. **Build E2 (inference layer)** — oMLX `InferenceClient` adapter + role registry + semaphore +
-   prompt assembler + window budget. (Next epic per BUILD-INITIATIVE.)
+1. ~~Build E2 (inference layer)~~ ✅ done — `src/datum_ax/data/inference/`. Next: **E3 (execution
+   hosts)** — `X86DockerHost` (diff-in/results-out, teardown) — or **E5 (data plane)**; both depend
+   only on E1 and unblock E6/E8.
 2. **Thin E10 CLI** so `datum-ax intake "<text>"` / `status --json` actually run.
 3. **Product Team dry-run** — run a real idea end-to-end (FRAME → clarify → research → skeptic →
    BRIEF) to pressure-test and tune the magnificent version.

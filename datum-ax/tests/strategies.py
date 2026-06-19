@@ -41,6 +41,8 @@ from datum_ax.contracts.status import (
     Phase,
     WindowStatus,
 )
+from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
+from datum_ax.data.inference.wire import ChatMessage, ChatRequest, ChatResponse, Usage
 from datum_ax.schemas.properties import Property, PropertyDomain, PropertyType
 from datum_ax.schemas.rules import RuleKind, RuleRegistryEntry, RuleTier
 from datum_ax.schemas.ticket import (
@@ -291,6 +293,37 @@ live_status_st = st.builds(
     pending_interrupts=st.integers(min_value=0, max_value=10),
 )
 
+# --- E2 inference wire + roles --------------------------------------------------------------------
+_temp = st.floats(min_value=0, max_value=2, allow_nan=False, allow_infinity=False).map(
+    lambda x: round(x, 6)
+)
+chat_message_st = st.builds(
+    ChatMessage, role=st.sampled_from(["system", "user", "assistant"]), content=text0
+)
+usage_st = st.builds(Usage, input_tokens=nonneg_int, output_tokens=nonneg_int)
+chat_request_st = st.builds(
+    ChatRequest,
+    model=text1,
+    messages=st.lists(chat_message_st, min_size=1, max_size=3).map(tuple),
+    temperature=_temp,
+    max_tokens=st.integers(min_value=1, max_value=64_000),
+)
+chat_response_st = st.builds(ChatResponse, text=text0, usage=usage_st, finish_reason=opt_text)
+role_config_st = st.builds(RoleConfig, role=_enum(ModelRole), model_id=text1, temperature=_temp)
+
+
+@st.composite
+def _registry(draw: st.DrawFn) -> ModelRoleRegistry:
+    roles = draw(st.lists(_enum(ModelRole), min_size=1, max_size=3, unique=True))
+    return ModelRoleRegistry(
+        configs=tuple(
+            RoleConfig(role=r, model_id=f"m-{r.value}", temperature=0.0) for r in roles
+        )
+    )
+
+
+registry_st = _registry()
+
 # Every pure boundary model + a valid strategy (drives the generic property tests).
 MODEL_STRATEGIES = {
     Property: property_st,
@@ -322,4 +355,10 @@ MODEL_STRATEGIES = {
     BudgetStatus: budget_status_st,
     GateStatus: gate_status_st,
     LiveStatus: live_status_st,
+    ChatMessage: chat_message_st,
+    Usage: usage_st,
+    ChatRequest: chat_request_st,
+    ChatResponse: chat_response_st,
+    RoleConfig: role_config_st,
+    ModelRoleRegistry: registry_st,
 }
