@@ -33,6 +33,7 @@ docs are Markdown.
 | Doc | What it is |
 |-----|-----------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The master design — topology, interfaces, run lifecycle, failure handling, and a candid pressure-test of the source blueprint. |
+| [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | datum's domain vocabulary (TICKET, SPEC, PROPERTIES, LANE, ROUTE, REFLECT, SKEPTIC, Task Packet, …) mapped to datum-ax's stance on each (adopt/rename/replace/elevate). |
 | [`docs/RESEARCH-NOTES.md`](docs/RESEARCH-NOTES.md) | The verified-vs-fabricated ledger. Which blueprint claims survived fact-checking, and which were discarded. |
 | [`docs/adr/`](docs/adr/) | 15 Architecture Decision Records (see index below). |
 

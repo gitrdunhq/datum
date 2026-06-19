@@ -136,6 +136,7 @@ The single most differentiating idea. **Code is exact; only natural language is 
    └──────┬─────────────────────────────────────────────────┘                │
           ▼                                                                    ▼
    ┌──────────────────────── PROMPT ASSEMBLER ───────────────────────────────┐
+   │ Emits the TASK PACKET (datum's STEERING/TASK PACKET — see GLOSSARY).     │
    │ Rigid prefix for oMLX prompt-cache reuse:                                │
    │   [ System ] + [ Global AST/Map ] + [ Diff ]    ← stable, cache-friendly │
    │ Untrusted text (issue bodies, repo content, docs) is FENCED as data,     │
@@ -151,9 +152,13 @@ time-to-first-token across the rapid retry loop. (ADR-0003, ADR-0004.)
 
 ## 5. Orchestration lifecycle (LangGraph)
 
-Two isolated sub-graphs prevent message-array bloat. Checkpointer = Valkey (`RedisSaver`).
+Two isolated sub-graphs prevent message-array bloat. Checkpointer = Valkey (`RedisSaver`). datum-ax
+keeps datum's phase vocabulary (see [`GLOSSARY.md`](GLOSSARY.md)): Phase-A covers **REFINE / PLAN /
+PROPERTIES**, Phase-B covers **ACT / VALIDATE / REVIEW**, and the terminal push is **CLOSEOUT**. The
+entry **ROUTE** (`feature` / `hotfix` / `spike` / `audit` / `resume`) decides which phases run — a
+tokenomics lever, since skipped phases spend no tokens (ADR-0009).
 
-### Phase A — Triage & Planner sub-graph
+### Phase A — Triage & Planner sub-graph (REFINE / PLAN / PROPERTIES)
 ```
 ingest ──▶ serena_parse (Global AST) ──▶ deterministic_triage ──▶ [complex?] ──▶ plan_dag ──▶ yield
                                           (pure Python, no LLM)        │ no
@@ -167,7 +172,7 @@ ingest ──▶ serena_parse (Global AST) ──▶ deterministic_triage ──
    (consumers/contract-tests before producers — ADR-0010).
 4. **Yield** a static array of steps to the parent graph.
 
-### Phase B — Verification sub-graph (the loop), per step, max 3 attempts
+### Phase B — Verification sub-graph (ACT / VALIDATE / REVIEW), per step, max 3 attempts
 ```
         ┌──────────────────────────────────────────────────────────────────────┐
         ▼                                                                        │
