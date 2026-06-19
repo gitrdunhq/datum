@@ -51,7 +51,7 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 
 | datum term | Meaning | datum-ax stance |
 |------------|---------|-----------------|
-| **WAVE** | Parallel-executable lane group (Kahn-BFS on the DAG) | **Adopt** — the scheduler's unit of parallelism (ADR-0015), throttled by the oMLX semaphore. |
+| **WAVE** | Parallel-executable lane group (Kahn-BFS on the DAG) | **Adopt** — the scheduler's unit of parallelism (ADR-0015), throttled by the oMLX semaphore; projected to humans as a **`wave:N` label** on sub-issues (ADR-0023). |
 | **BATCH** | Partition of lanes (≤5) to bound orchestration cardinality | **Adopt** — bounds concurrent sandboxes (ADR-0015). |
 | **depends_on** / **topological_order** | DAG edges / ordering | **Adopt** — also the mechanism for contract-first ordering (ADR-0010). |
 

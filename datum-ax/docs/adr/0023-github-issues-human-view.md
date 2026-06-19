@@ -19,14 +19,26 @@ checklists, so this is a projection, not a custom UI.
   issue + its sub-issues as the primary context source** (ADR-0015).
 - **Lanes mirror to sub-issues.** After PLAN, each lane/task is mirrored as a **GitHub sub-issue**
   under the epic; the epic's sub-issue **progress bar + checklist is the human at-a-glance DAG view**
-  (nodes + status). Dependency edges (waves) stay machine-side; sub-issues may annotate `depends_on`
-  in body/labels, but the human view is *what's left* and *what's done*, not the full edge set.
+  (nodes + status).
+- **Ordering & dependencies via labels (machine-owned).** The DAG is projected to humans with
+  **low-cardinality labels** plus body references — deliberately *not* a label per edge:
+  - **`wave:N`** — the Kahn wave (ADR-0015). The primary human-visible ordering signal: everything in
+    `wave:0` runs first, then `wave:1`, etc. Humans filter/group the epic's sub-issues by `wave:` to
+    read execution order.
+  - **`status:planned|red|green|skeptic|review|blocked|done`** — lane lifecycle, complementing the
+    checkbox / open-closed state.
+  - **`route:<shape>`**, **`lane:<id>`** — metadata.
+  - **Exact dependency edges live in the sub-issue body** (`Depends on: #12, #15` — GitHub cross-links
+    them natively). A **`blocked`** label is auto-applied while any dependency is unmet and removed
+    when satisfied. Per-edge labels are avoided on purpose — `wave:N` + body refs carry ordering
+    without unbounded label sprawl.
 - **The pipeline keeps the projection live.** As a lane advances
   (RED → GREEN → SKEPTIC PASS → eedom approve → committed at wave close), the pipeline **checks the box
   / closes the sub-issue** and posts a concise progress comment. Closing the epic = run done.
 - **Sync direction (the load-bearing rule — prevents human/machine edit races):**
-  - **Machine-owned: status.** Checkboxes, sub-issue open/closed, progress comments, and the
-    human-handoff signal. Humans don't hand-edit these (they get overwritten).
+  - **Machine-owned: status.** Checkboxes, sub-issue open/closed, **`wave:`/`status:`/`route:`/`lane:`
+    and `blocked` labels**, progress comments, and the human-handoff signal. Humans don't hand-edit
+    these (they get overwritten).
   - **Human-owned: scope & context.** The epic body requirements, newly added sub-tasks, and
     comments/addenda. The pipeline **reads** these at REFINE/PLAN and reconciles — a human-added
     sub-task becomes a new lane on the next plan; out-of-scope items go to ROADMAP. The pipeline
@@ -46,8 +58,9 @@ checklists, so this is a projection, not a custom UI.
 - Requires GitHub API writes (`issues` / `sub-issues`); these run **orchestrator-side** with the
   GitHub token — **never inside sandboxes** (ADR-0011) — and need egress (ADR-0015).
 - The status-vs-scope ownership split is what keeps humans and the pipeline from clobbering each other.
-- A flat sub-issue list can't express full DAG edges; acceptable — humans see nodes + status, the
-  machine owns wave ordering (Projects/labels can add dependency hints if a team wants them).
+- Ordering is human-visible via **`wave:N` labels** (filter/group by wave); exact edges live in the
+  sub-issue body. Label cardinality stays **bounded** (a fixed set of wave/status/route labels), so no
+  label sprawl. GitHub Projects remains an optional richer view if a team wants a board.
 - Vocabulary alignment (GLOSSARY): EPIC ↔ epic issue, TICKET ↔ issue body, LANE/TASK ↔ sub-issue,
   ROADMAP ↔ out-of-scope addenda, CHECKPOINT ↔ the checklist's marked state.
 - Property-test targets: Idempotency (re-projection never duplicates issues), Monotonicity (a checked/
