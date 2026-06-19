@@ -64,6 +64,12 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0015](docs/adr/0015-onboarding-and-runtime-services.md) — onboarding, runtime services & scheduling
 - [0008](docs/adr/0008-relationship-to-datum.md) — relationship to `datum` (borrowed vs net-new)
 
+**Vocabulary & verification (iteration 2)**
+- [0016](docs/adr/0016-properties-phase.md) — PROPERTIES phase (invariants in eedom's DPS-12 taxonomy)
+- [0017](docs/adr/0017-reflect-and-skeptic.md) — REFLECT + SKEPTIC adversarial verification
+- [0018](docs/adr/0018-route-shapes.md) — ROUTE shapes as a tokenomics lever
+- [0019](docs/adr/0019-gitnexus-code-graph-intelligence.md) — GitNexus as complementary code-graph intelligence
+
 ## Status of the locked-in stack
 
 Required, user-mandated components (each wrapped in a thin adapter so the design stays decoupled):

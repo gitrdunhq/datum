@@ -78,15 +78,18 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 | **VERDICT** (`PASS`/`FRAGILE`/`BROKEN`) | SKEPTIC judgment | **Adopt** — distinct from eedom's `decision` enum; SKEPTIC verdict gates the loop, eedom decision gates the push. |
 | **ACCEPTANCE CRITERIA** / **red_note** | Per-lane test requirements / RED hint | **Adopt** — carried in the Task Packet. |
 
-## Open items raised by this mapping
+## Open items raised by this mapping — RESOLVED in iteration 2
 
-These datum concepts were genuine gaps in the first design pass; they likely warrant their own ADRs:
+These datum concepts were genuine gaps in the first design pass; each now has an ADR and is woven into
+the lifecycle (ARCHITECTURE §5):
 
-1. **PROPERTIES as a first-class phase** — a `PROPERTIES.md`-equivalent expressed in eedom's DPS-12
-   taxonomy, that both the discipline gate and SKEPTIC check against. (Candidate ADR-0016.)
-2. **REFLECT + SKEPTIC as adversarial verification stages** — separating the ADVERSARIAL role's two
-   jobs: (a) reformatting errors (already in ADR-0007), (b) adversarial bug-hunting with a VERDICT.
-   (Candidate ADR-0017.)
-3. **ROUTE shapes** — formalizing feature/hotfix/spike/audit/resume as graph entry points and a
-   tokenomics lever. (Candidate ADR-0018.)
+1. **PROPERTIES as a first-class phase** — invariants in eedom's DPS-12 taxonomy, checked by the
+   discipline gate and SKEPTIC. → **ADR-0016**.
+2. **REFLECT + SKEPTIC as adversarial verification stages** — separating the ADVERSARIAL role's jobs:
+   error-reformatting (ADR-0007) vs adversarial bug-hunting with a VERDICT. → **ADR-0017**.
+3. **ROUTE shapes** — feature/hotfix/spike/audit/resume as graph entry points and a tokenomics lever.
+   → **ADR-0018**.
+
+Related: **GitNexus** was assessed as *complementary* (transitive impact / execution-flow / change
+scoping) to Serena/TokenSave/Context7, adopted in a bounded pre/post-loop role. → **ADR-0019**.
 </content>

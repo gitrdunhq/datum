@@ -160,44 +160,52 @@ tokenomics lever, since skipped phases spend no tokens (ADR-0009).
 
 ### Phase A — Triage & Planner sub-graph (REFINE / PLAN / PROPERTIES)
 ```
-ingest ──▶ serena_parse (Global AST) ──▶ deterministic_triage ──▶ [complex?] ──▶ plan_dag ──▶ yield
-                                          (pure Python, no LLM)        │ no
-                                          target = x86 | macos         └────────▶ yield (single step)
+ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic_triage ─▶ [complex?] ─▶ plan_dag ─▶ properties ─▶ yield
+         (deterministic) (+ GitNexus impact, PLAN)   (pure Python, no LLM)       │ no       (GitNexus deps)  (DPS-12)
+         ROUTE shape                                  target = x86 | macos        └──────────▶ yield (single step)
 ```
-1. **Ingest & parse** — Serena/TokenSave build the Global AST/map.
-2. **Deterministic triage** — pure Python inspects markers (e.g. `import SwiftUI`, `#if os(macOS)`)
+1. **Route select** — deterministic choice of ROUTE (`feature`/`hotfix`/`spike`/`audit`/`resume`)
+   from COMPLEXITY/SCOPE/AMBIGUITY; gates which later phases run (ADR-0018) — a tokenomics lever.
+2. **Ingest & parse** — Serena/TokenSave build the Global AST/map (REFINE → SPEC).
+3. **Deterministic triage** — pure Python inspects markers (e.g. `import SwiftUI`, `#if os(macOS)`)
    → sets the execution target. **Zero tokens.**
-3. **Plan DAG** — if complex, the Executor model decomposes the issue into an atomic DAG of lanes
-   with **git-worktree file ownership** (borrowed from datum) and **contract-first ordering**
-   (consumers/contract-tests before producers — ADR-0010).
-4. **Yield** a static array of steps to the parent graph.
+4. **Plan DAG** — the Executor model decomposes into an atomic DAG of lanes with **git-worktree file
+   ownership** and **contract-first ordering** (ADR-0010); **GitNexus** supplies risk-scored impact
+   and call-graph dependencies (ADR-0019, not used inside the loop).
+5. **Properties** — derive the PROPERTIES invariant set in eedom's DPS-12 taxonomy, traced to lanes
+   (ADR-0016). ROUTE-gated.
+6. **Yield** a static array of steps to the parent graph.
 
 ### Phase B — Verification sub-graph (ACT / VALIDATE / REVIEW), per step, max 3 attempts
 ```
-        ┌──────────────────────────────────────────────────────────────────────┐
-        ▼                                                                        │
- execute (oMLX, via semaphore) ─▶ sandbox_apply (ExecutionHost) ─▶ run tests/lint │
-        │                                                                        │
-        ▼                                                                        │
- [pass?] ──no──▶ prune failed attempt (RemoveMessage) ─▶ adversarial_reformat ───┘
+        ┌──────────────────────────────────────────────────────────────────────────────┐
+        ▼                                                                                │
+ RED ─▶ REFLECT(gate) ─▶ GREEN (oMLX) ─▶ sandbox_apply (ExecutionHost) ─▶ run tests/lint │
+        │                                                                                │
+        ▼                                                                                │
+ [pass?] ──no──▶ prune failed attempt (RemoveMessage) ─▶ adversarial_reformat ───────────┘
         │ yes                                            (attempts < 3)
         ▼
- discipline gates (RED-before-GREEN, contract tests) ─▶ eedom gate (deterministic)
-        │                                                      │
-        │ clear                                  reject / unstable
-        ▼                                                      ▼
- terminal: push branch                         route findings back to executor,
-                                               or interrupt() for a human
+ SKEPTIC ─▶ VERDICT(gate) ─▶ discipline gates (RED-before-GREEN, contract) ─▶ eedom gate (deterministic)
+        │                                                                          │
+        │ PASS + clear                                              reject / unstable / FRAGILE / BROKEN
+        ▼                                                                          ▼
+ terminal: push branch (CLOSEOUT)                          route findings back to executor,
+                                                           or interrupt() for a human
 ```
-1. **Execute** — assemble `[System]+[AST]+[Diff]` + compressed NL docs; call oMLX through the
-   semaphore.
-2. **Sandbox apply** — `ExecutionHost.apply_diff()` then `run_tests()`/`run_lint()` on the triaged host.
-3. **Verify & prune** — on failure, capture exit code + stderr and **prune the failed attempt** from
-   the context array via `RemoveMessage` (keeps the array small and the prefix cache-stable).
-4. **Adversarial reformat** — the reasoning-model role rewrites the isolated stderr into the next
-   executor prompt.
-5. **Discipline + eedom gates** — deterministic; see ADR-0010 / ADR-0006.
-6. **Terminal** — at 3 attempts: push the branch, or `interrupt()` to suspend for a human.
+1. **RED → REFLECT** — write failing tests; REFLECT (cheap/independent) gates that they cover the
+   lane's PROPERTIES/ACs before GREEN is allowed (ADR-0016, ADR-0017).
+2. **GREEN / Execute** — assemble the Task Packet `[System]+[AST]+[Diff]` + compressed NL docs; call
+   the EXECUTOR role through the semaphore.
+3. **Sandbox apply** — `ExecutionHost.apply_diff()` then `run_tests()`/`run_lint()` on the triaged host.
+4. **Verify & prune** — on test failure, capture exit code + stderr and **prune the failed attempt**
+   via `RemoveMessage`; the **error-reformatter** (ADVERSARIAL role) rewrites the error into the next
+   prompt (ADR-0007).
+5. **SKEPTIC → VERDICT** — on passing code, the ADVERSARIAL role adversarially hunts missed bugs
+   (edge/error/contract, evidence-backed); `FRAGILE`/`BROKEN` routes back to the executor (ADR-0017).
+6. **Discipline + eedom gates** — deterministic; SKEPTIC (LLM adversary, behavioral) and eedom
+   (deterministic policy/vuln/license/secret) are complementary (ADR-0010 / ADR-0006).
+7. **Terminal** — at 3 attempts: push the branch (CLOSEOUT), or `interrupt()` for a human.
 
 > **Load-bearing invariant (ADR-0002, ADR-0007):** on resume, a LangGraph node **re-executes from
 > its start**. Every side effect (sandbox apply, git push, DB branch) must be **idempotent or placed
