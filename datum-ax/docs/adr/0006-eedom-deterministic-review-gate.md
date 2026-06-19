@@ -11,6 +11,14 @@ secrets, or violates license rules. Putting an LLM in that decision would defeat
 is purpose-built for exactly this: **fully deterministic dependency + code review, zero LLM in the
 decision path.** This ADR is authored first (it is the contract every consumer branches on).
 
+eedom's deterministic engines (for accuracy, since datum-ax depends on them):
+- **OPA / Rego** — the policy decision engine (the `deny`/`warn` rules that produce the verdict).
+- **Opengrep** — static code scanning (Semgrep-compatible syntax, **local rules only, no registry
+  dependency**); eedom replaced Semgrep with Opengrep.
+- plus dependency / secret / license / SBOM scanners (e.g. trivy, osv-scanner, gitleaks, scancode,
+  syft). datum-ax treats all of these as eedom's internals and depends only on the decision contract
+  below — but the engine names matter for the container/version pinning in ADR-0013/0015.
+
 ## Decision
 
 Run eedom as a **deterministic node** in Phase B, before any terminal success. Invoke it in a
