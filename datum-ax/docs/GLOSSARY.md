@@ -16,10 +16,10 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 
 | datum term | Meaning (datum) | datum-ax stance |
 |------------|-----------------|-----------------|
-| **TICKET** | Original request: scope, requirements, ACs; addenda for scope changes | **Adopt** — pipeline input. |
+| **TICKET** | Original request: scope, requirements, ACs; addenda for scope changes | **Adopt** — lives in the **GitHub epic issue** body; addenda = comments (ADR-0023). |
 | **SPEC** | Refined requirements produced by REFINE | **Adopt** — REFINE output; feeds the planner and the prompt assembler. |
 | **PROPERTIES** **(gap)** | Invariant set derived from SPEC + TASKS (categorized, task-traceable) | **Elevate** — formalize against eedom's DPS-12 property taxonomy (SAFETY/LIVENESS/INVARIANT/PERFORMANCE). Becomes the contract that discipline + eedom gates check. See "Open: PROPERTIES" below. |
-| **TASKS** | Implementation plan, decomposed into tasks with IDs/files/ACs/deps | **Adopt** — the lanes of the DAG (ADR-0010). |
+| **TASKS** | Implementation plan, decomposed into tasks with IDs/files/ACs/deps | **Adopt** — the lanes of the DAG (ADR-0010), mirrored to **GitHub sub-issues** as the human checklist (ADR-0023). |
 | **LANE PLAN** | DAG of lanes: topological order, deps, file ownership | **Adopt** — the Phase-A plan artifact (ADR-0001, ADR-0010). |
 | **QUESTIONS** | Clarifications filed when REFINE detects ambiguity | **Adopt** — surfaced to a human via `interrupt()` (ADR-0014). |
 | **ROADMAP** | Out-of-scope addenda triaged out of the current ticket | **Adopt**. |
@@ -60,7 +60,7 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 | datum term | Meaning | datum-ax stance |
 |------------|---------|-----------------|
 | **STEERING PACKET / TASK PACKET** **(gap)** | Structured per-lane, per-stage context (spec excerpt, properties, ACs, red_note, allowed/forbidden files, language, framework, upstream stubs) | **Rename → "Task Packet"** and adopt as the concrete output of the **prompt assembler** (ADR-0004). The packet is what the firewall assembles; naming it makes the assembler's contract explicit. |
-| **EPIC / epicBranch** | Self-contained feature + its branch and `docs/epics/<branch>/` artifact dir | **Adopt** — the epic branch is the single authoritative tree; lane isolation via disjoint-file waves + containers, worktrees optional (ADR-0012). |
+| **EPIC / epicBranch** | Self-contained feature + its branch and `docs/epics/<branch>/` artifact dir | **Adopt** — backed by a **GitHub epic issue** (ADR-0023); the epic branch is the single authoritative tree; lane isolation via disjoint-file waves + containers, worktrees optional (ADR-0012). |
 | **RUN / RUN_ID** | One end-to-end execution + its id | **Adopt** — ledger + checkpoint key (ADR-0005/0013). |
 | **CHECKPOINT** | Saved lane/run state for skip/resume | **Adopt** — Valkey checkpoint (ADR-0002); skip-if-complete preserved. |
 | **EVIDENCE** | Test output/traces backing a bug claim | **Adopt** — required for SKEPTIC findings; recorded in the ledger. |

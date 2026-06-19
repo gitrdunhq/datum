@@ -73,6 +73,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0020](docs/adr/0020-compound-engineering.md) — compound engineering (the learning loop: harvest + rule delivery)
 - [0021](docs/adr/0021-active-context-management-dcp.md) — active context management (Dynamic Context Pruning)
 - [0022](docs/adr/0022-context-budget-aware-lane-granularity.md) — context-budget-aware lane granularity (a single-turn blowup is a planning defect)
+- [0023](docs/adr/0023-github-issues-human-view.md) — GitHub Issues as the human view of the DAG (epic + sub-issue checklist)
 
 ## Status of the locked-in stack
 

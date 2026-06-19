@@ -6,10 +6,12 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
 ## 1. The spine — TICKET → merged branch
 
 ```
-                                   ┌─────────┐
-                                   │ TICKET  │  issue / request
-                                   └────┬────┘
-                                        ▼
+                              ┌──────────────────┐
+                              │ GitHub EPIC issue │  context lives here;
+                              │  + sub-issues =   │  sub-issues = human       [0023]
+                              │  the checklist    │  view of the DAG
+                              └────────┬──────────┘
+                                       ▼
                     ROUTE select  (deterministic, 0 tokens)              [0018]
               COMPLEXITY / SCOPE / AMBIGUITY → feature|hotfix|spike|audit|resume
                                         │
@@ -19,6 +21,7 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
    ║   REFINE      Serena + TokenSave → Global AST/map  ──────►  SPEC      [0004] ║
    ║   TRIAGE      deterministic platform route  →  x86 | macOS  (0 tok)  [0001] ║
    ║   PLAN        DAG of lanes: contract-first order, disjoint-file owner [0010]║
+   ║                 • lanes mirrored to GitHub sub-issues (human checklist)[0023]║
    ║                 • sized so essentials fit the window budget → split  [0022] ║
    ║                 • GitNexus impact / deps (NOT used inside loop)      [0019] ║
    ║   PROPERTIES  invariants in eedom DPS-12 taxonomy, traced to lanes   [0016] ║
@@ -55,8 +58,8 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
                       ▼                               ▼
               ┌──────────────┐          findings → executor (consume attempt),
               │  CLOSEOUT     │          or interrupt() → human            [0014]
-              │  push branch  │
-              │  + HARVEST ───┼──► lessons → rules registry                [0020]
+              │  push branch  │  (lane done ⇒ check sub-issue; epic done ⇒  [0023]
+              │  + HARVEST ───┼──► close epic)   lessons → rules registry   [0020]
               └──────────────┘
 ```
 

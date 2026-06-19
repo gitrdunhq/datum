@@ -175,7 +175,8 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
 ```
 1. **Route select** — deterministic choice of ROUTE (`feature`/`hotfix`/`spike`/`audit`/`resume`)
    from COMPLEXITY/SCOPE/AMBIGUITY; gates which later phases run (ADR-0018) — a tokenomics lever.
-2. **Ingest & parse** — Serena/TokenSave build the Global AST/map (REFINE → SPEC).
+2. **Ingest & parse** — read the **GitHub epic issue + its sub-issues** as the primary context
+   (ADR-0023); Serena/TokenSave build the Global AST/map (REFINE → SPEC).
 3. **Deterministic triage** — pure Python inspects markers (e.g. `import SwiftUI`, `#if os(macOS)`)
    → sets the execution target. **Zero tokens.**
 4. **Plan DAG** — the Executor model decomposes into an atomic DAG of lanes with **disjoint file
@@ -186,7 +187,10 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
    split if oversized (ADR-0022), so a single turn can't blow the window at runtime.
 5. **Properties** — derive the PROPERTIES invariant set in eedom's DPS-12 taxonomy, traced to lanes
    (ADR-0016). ROUTE-gated.
-6. **Yield** a static array of steps to the parent graph.
+6. **Mirror to GitHub** — each lane is projected to a **GitHub sub-issue** under the epic; the epic's
+   checklist/progress bar is the human view of the DAG, kept live as lanes land (ADR-0023). Status is
+   machine-owned; scope/context is human-owned.
+7. **Yield** a static array of steps to the parent graph.
 
 ### Phase B — Verification sub-graph (ACT / VALIDATE / REVIEW), per step, max 3 attempts
 ```

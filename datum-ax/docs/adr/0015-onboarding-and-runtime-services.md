@@ -14,7 +14,8 @@ without overwhelming the single-process oMLX server.
 
 - **Repo onboarding.** On first run against a target repo, index it via **Serena + TokenSave**
   (ADR-0004) to build the Global AST/map, **load the versioned rules registry** (ADR-0020) so learned
-  gates/steering are in force from the first lane, and **discover test/lint commands**: config-first
+  gates/steering are in force from the first lane, **read the GitHub epic issue + sub-issues** as the
+  primary context (ADR-0023), and **discover test/lint commands**: config-first
   (an explicit `datum-ax` config block per repo) with sensible per-language defaults
   (e.g. `pytest`/`ruff`, `npm test`/`eslint`, `go test`, `cargo test`, `swift test`). Discovery never
   guesses silently — an undiscoverable command surfaces as a setup error, not a skipped gate.
