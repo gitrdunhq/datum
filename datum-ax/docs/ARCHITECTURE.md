@@ -223,6 +223,11 @@ ingest ─▶ route_select ─▶ serena_parse (Global AST) ─▶ deterministic
 - **Orchestrator crash:** resume from the Valkey checkpoint; idempotency invariant makes replay safe.
 - **Budgets:** per-node timeouts (inference / sandbox / eedom) and a global wall-clock + **token**
   ceiling (ADR-0013) — the hard backstop for tokenomics.
+- **Compounding (CLOSEOUT harvest):** every run turns its lessons (eedom rejects, SKEPTIC findings,
+  repeated failures) into durable guardrails in a versioned **rules registry** — auto-binding safe
+  deterministic ones, proposing the rest (ADR-0020). Rules reach future agents as **gates** (zero
+  prompt tokens until violated) or **relevance-scoped steering** in the Task Packet, so token cost per
+  task trends down as the pipeline learns.
 
 ---
 

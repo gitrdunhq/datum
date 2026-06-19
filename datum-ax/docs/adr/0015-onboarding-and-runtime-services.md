@@ -13,8 +13,9 @@ without overwhelming the single-process oMLX server.
 ## Decision
 
 - **Repo onboarding.** On first run against a target repo, index it via **Serena + TokenSave**
-  (ADR-0004) to build the Global AST/map, and **discover test/lint commands**: config-first (an
-  explicit `datum-ax` config block per repo) with sensible per-language defaults
+  (ADR-0004) to build the Global AST/map, **load the versioned rules registry** (ADR-0020) so learned
+  gates/steering are in force from the first lane, and **discover test/lint commands**: config-first
+  (an explicit `datum-ax` config block per repo) with sensible per-language defaults
   (e.g. `pytest`/`ruff`, `npm test`/`eslint`, `go test`, `cargo test`, `swift test`). Discovery never
   guesses silently — an undiscoverable command surfaces as a setup error, not a skipped gate.
 - **MCP server lifecycle.** Serena, Context7, and Headroom.ai run as MCP servers managed by the

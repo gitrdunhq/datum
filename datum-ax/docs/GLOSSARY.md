@@ -30,7 +30,7 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 
 | datum term | Meaning | datum-ax stance |
 |------------|---------|-----------------|
-| **REFINE → PLAN → PROPERTIES → ACT → VALIDATE → REVIEW → CLOSEOUT** | The phase chain | **Adopt the names**, re-homed into two LangGraph sub-graphs (ADR-0002): Phase-A = REFINE/PLAN/PROPERTIES; Phase-B = ACT/VALIDATE/REVIEW; CLOSEOUT = terminal push. |
+| **REFINE → PLAN → PROPERTIES → ACT → VALIDATE → REVIEW → CLOSEOUT** | The phase chain | **Adopt the names**, re-homed into two LangGraph sub-graphs (ADR-0002): Phase-A = REFINE/PLAN/PROPERTIES; Phase-B = ACT/VALIDATE/REVIEW; CLOSEOUT = terminal push **+ harvest** (compound-engineering learning loop, ADR-0020). |
 | **ROUTE** **(gap)** | Pipeline shape selector: `feature`, `hotfix`, `spike`, `audit`, `resume`, `refine-only` | **Adopt** — the route is chosen at ingest and is itself a tokenomics lever (skip phases you don't need = spend no tokens; ADR-0009). |
 | **PHASE** | Current execution position | **Adopt** — a state field on the LangGraph graph. |
 | **GATE** | Quality checkpoint (required halts; skippable allows `--approve`) | **Adopt** — datum-ax gates are deterministic (discipline ADR-0010, eedom ADR-0006). |
