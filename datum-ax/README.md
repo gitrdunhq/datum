@@ -75,6 +75,9 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0022](docs/adr/0022-context-budget-aware-lane-granularity.md) — context-budget-aware lane granularity (a single-turn blowup is a planning defect)
 - [0023](docs/adr/0023-github-issues-human-view.md) — GitHub Issues as the human view of the DAG (epic + sub-issue checklist)
 - [0024](docs/adr/0024-nl-to-ticket-intake.md) — natural-language → TICKET.md intake skill (the front door) · **first built skill:** [`skills/nl-to-ticket/`](skills/nl-to-ticket/)
+- [0025](docs/adr/0025-work-scale-hierarchy.md) — work-scale hierarchy: task / epic / initiative (decompose products, don't cram)
+
+**Build roadmap (dogfooded):** [`docs/BUILD-INITIATIVE.md`](docs/BUILD-INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics. The bridge from blueprint to code.
 
 ## Status of the locked-in stack
 

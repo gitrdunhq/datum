@@ -25,7 +25,30 @@ Capture **exactly** what the human asked — no more, no less.
 If you cannot honestly fill a section from the input, leave it minimal and push the gap to
 Assumptions/Open Questions. A short honest ticket beats a long hallucinated one.
 
-## Procedure
+## Step 0 — Scale detection (do this FIRST): task | epic | initiative
+
+Before writing anything, decide the **scale** of the request. Cramming a whole product into one
+`TICKET.md` is the cardinal failure — every downstream phase will choke.
+
+| Scale | Looks like | Emit |
+|-------|-----------|------|
+| **task** | one small change, single concern (`Patch`) | a single `TICKET.md` (lean) |
+| **epic** | one coherent deliverable with a unified set of acceptance criteria (`Feature`/`System`) | a single `TICKET.md` |
+| **initiative / product** | a product, platform, or program; **multiple independent deliverables**; no single coherent AC set; would need many epics to finish | an **`INITIATIVE.md`** that decomposes into epics — **NOT** one ticket |
+
+Signals it's an **initiative** (any of these → decompose, don't cram):
+- It names a *product/platform/system* ("build a CRM", "an autonomous coding pipeline").
+- It implies several distinct user-facing capabilities that could ship and be tested independently.
+- A single honest Acceptance-Criteria list would be unreasonably long or span unrelated concerns.
+- Different parts have different stacks, owners, or lifecycles.
+
+When it's an initiative, produce `INITIATIVE.md` (see `INITIATIVE.template.md`): the product intent,
+then a list of **epics**, each with a one-line intent, rough scope, and dependencies/sequencing. Each
+epic is later run back through this same skill to produce its own `TICKET.md`. **Say so explicitly** —
+e.g. "This is an initiative spanning N epics; here is the breakdown" — rather than silently emitting a
+giant ticket.
+
+## Procedure (for a task/epic — produces TICKET.md)
 
 1. **Read everything.** State the core intent in one sentence.
 2. **Detect input richness** (drives how much you infer vs. ask): is this a vague idea, a moderate
@@ -55,6 +78,7 @@ Assumptions/Open Questions. A short honest ticket beats a long hallucinated one.
 
 ## Anti-patterns (reject your own draft if it does these)
 
+- **Cramming an initiative/product into a single `TICKET.md`** instead of decomposing into epics.
 - Scope inflation / hallucinated requirements.
 - Vague, untestable acceptance criteria.
 - Dropping detail the human provided.

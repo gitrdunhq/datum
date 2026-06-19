@@ -60,6 +60,7 @@ datum-ax inherits datum's domain language so the two speak the same dialect. Thi
 | datum term | Meaning | datum-ax stance |
 |------------|---------|-----------------|
 | **STEERING PACKET / TASK PACKET** **(gap)** | Structured per-lane, per-stage context (spec excerpt, properties, ACs, red_note, allowed/forbidden files, language, framework, upstream stubs) | **Rename → "Task Packet"** and adopt as the concrete output of the **prompt assembler** (ADR-0004). The packet is what the firewall assembles; naming it makes the assembler's contract explicit. |
+| **INITIATIVE** *(new, above EPIC)* | A product/program spanning multiple independently-shippable epics | **New level** — `nl-to-ticket` emits an `INITIATIVE.md` decomposing into epics (each → its own TICKET); don't cram a product into one ticket (ADR-0025). |
 | **EPIC / epicBranch** | Self-contained feature + its branch and `docs/epics/<branch>/` artifact dir | **Adopt** — backed by a **GitHub epic issue** (ADR-0023); the epic branch is the single authoritative tree; lane isolation via disjoint-file waves + containers, worktrees optional (ADR-0012). |
 | **RUN / RUN_ID** | One end-to-end execution + its id | **Adopt** — ledger + checkpoint key (ADR-0005/0013). |
 | **CHECKPOINT** | Saved lane/run state for skip/resume | **Adopt** — Valkey checkpoint (ADR-0002); skip-if-complete preserved. |
