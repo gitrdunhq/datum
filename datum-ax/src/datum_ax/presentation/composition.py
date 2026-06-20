@@ -20,6 +20,7 @@ from datum_ax.contracts.projection import IssueProjector
 from datum_ax.contracts.review import ReviewGate
 from datum_ax.contracts.rules import RuleBinder, RuleRegistry
 from datum_ax.contracts.status import StatusSource
+from datum_ax.contracts.tokens import TokenCounter, default_token_count
 from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.data.projection import ISSUE_PROJECTORS
 from datum_ax.data.review import REVIEW_GATES
@@ -105,11 +106,24 @@ def build_local_host(workspace_dir: str = ".") -> ExecutionHost:
     return LocalHost(workspace_dir=workspace_dir)
 
 
+def build_token_counter() -> TokenCounter:
+    """Real tokenizer by default when `[tokenizer]` is installed, else the ~4-chars/token heuristic
+    (ADR-0030/0034). `DATUM_TOKENIZER=heuristic` forces the heuristic."""
+    if os.environ.get("DATUM_TOKENIZER") == "heuristic":
+        return default_token_count
+    try:
+        from datum_ax.data.tokenizers import build_tiktoken_counter
+
+        return build_tiktoken_counter()
+    except Exception:  # tiktoken absent / encoding unavailable (e.g. offline CI)
+        return default_token_count
+
+
 def build_context_crane(
     budget: TokenBudget | None = None, name: str | None = None
 ) -> ContextAssembler:
     """Resolve the (mandatory) context assembler by key from `CONTEXT_ASSEMBLERS` (ADR-0030/0032),
-    wired with the data adapters + DCP + persona registry. Default: the crane."""
+    wired with the data adapters + DCP + persona registry + token counter. Default: the crane."""
     name = name or os.environ.get("DATUM_CONTEXT_ASSEMBLER") or "crane"
     return CONTEXT_ASSEMBLERS.create(
         name,
@@ -120,6 +134,7 @@ def build_context_crane(
         budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
         persona=build_persona_registry(),
         rules=build_rule_registry(),
+        token_counter=build_token_counter(),
     )
 
 
