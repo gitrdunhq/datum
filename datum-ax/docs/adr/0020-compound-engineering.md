@@ -17,9 +17,14 @@ deterministic) turns evidence-backed `Lesson`s (`schemas/compound.py`) into tier
 and **propose-and-gate** the rest (new discipline/eedom-policy/property/steering). `FileRuleRegistry`
 gained `add_rule` (persist a learned rule so the next run's crane lifts it), `record_fire` (fire-count
 bump), and `prune_unfired` (surface never-fired rules — anti-bloat). The loop closes: a rule auto-bound
-this run is on disk and lifted next run, at zero prompt tokens until it fires. **Still gated on live
-runs:** deriving `Lesson`s from the real run ledger at CLOSEOUT, the propose-and-gate human UX, and
-binding new eedom policies (needs the eedom container).
+this run is on disk and lifted next run, at zero prompt tokens until it fires.
+
+**As-built (loop wired):** the CLOSEOUT node reads the run ledger trace → `lessons_from_trace` →
+`harvest` → auto-binds via a `RuleBinder` (write side of the registry) into a writable learned-rules
+dir, which `build_rule_registry` reads **alongside the packaged rules** (multi-root), so the crane
+lifts learned rules next run. **Still gated on live runs:** richer lesson derivation from a real
+multi-run ledger, the propose-and-gate human UX, SKEPTIC/REFLECT lessons (live model), and binding new
+eedom policies (container).
 
 ## Context
 

@@ -9,6 +9,7 @@ steering text). id = filename stem. Selection mirrors skills: deterministic tag 
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,25 +34,33 @@ def _split(text: str) -> tuple[dict[str, Any], str]:
 class FileRuleRegistry:
     """Implements the `RuleRegistry` port over a directory of markdown rule artifacts."""
 
-    def __init__(self, root: str | Path) -> None:
-        self.root = Path(root)
+    def __init__(self, root: str | Path | Sequence[str | Path]) -> None:
+        roots = [root] if isinstance(root, (str, Path)) else list(root)
+        self.roots = [Path(r) for r in roots]
+        self.root = self.roots[0]  # write target for add_rule (e.g. the learned-rules dir)
         self._rules: dict[str, RuleRegistryEntry] = {}
         self._load()
 
     def _load(self) -> None:
-        for path in sorted(self.root.rglob("*.md")):
-            meta, body = _split(path.read_text(encoding="utf-8"))
-            entry = RuleRegistryEntry(
-                id=path.stem,
-                kind=RuleKind(meta.get("kind", "steering")),
-                tier=RuleTier(meta.get("tier", "auto_bind")),
-                statement=body,
-                scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
-                evidence_refs=tuple(str(e) for e in (meta.get("evidence_refs") or ("authored",))),
-                version=int(meta.get("version", 1)),
-                fire_count=int(meta.get("fire_count", 0)),
-            )
-            self._rules[entry.id] = entry
+        # Read every root in order (e.g. packaged rules + a writable learned-rules dir); a learned
+        # rule with the same id overrides the packaged one.
+        for root in self.roots:
+            for path in sorted(root.rglob("*.md")):
+                meta, body = _split(path.read_text(encoding="utf-8"))
+                self._rules[path.stem] = self._entry(path.stem, meta, body)
+
+    @staticmethod
+    def _entry(stem: str, meta: dict[str, Any], body: str) -> RuleRegistryEntry:
+        return RuleRegistryEntry(
+            id=stem,
+            kind=RuleKind(meta.get("kind", "steering")),
+            tier=RuleTier(meta.get("tier", "auto_bind")),
+            statement=body,
+            scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
+            evidence_refs=tuple(str(e) for e in (meta.get("evidence_refs") or ("authored",))),
+            version=int(meta.get("version", 1)),
+            fire_count=int(meta.get("fire_count", 0)),
+        )
 
     # --- compound-engineering capture (ADR-0020) -----------------------------------------------
     def add_rule(self, entry: RuleRegistryEntry) -> None:
@@ -91,6 +100,9 @@ class FileRuleRegistry:
 
     def all_rules(self) -> tuple[RuleRegistryEntry, ...]:
         return tuple(sorted(self._rules.values(), key=lambda r: r.id))
+
+    def all_rule_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(self._rules))
 
     def select_rules(self, scope_tags: tuple[str, ...]) -> tuple[RuleRegistryEntry, ...]:
         wanted = set(scope_tags)

@@ -26,3 +26,13 @@ class RuleRegistry(Protocol):
     def match_rules(
         self, query: str, limit: int = ..., threshold: float = ...
     ) -> tuple[RuleRegistryEntry, ...]: ...
+
+
+@runtime_checkable
+class RuleBinder(Protocol):
+    """Write side of the rules registry (ADR-0020 capture) — persist learned rules. Kept separate
+    from `RuleRegistry` (read side) so a read-only registry need not be writable."""
+
+    def add_rule(self, entry: RuleRegistryEntry) -> None: ...
+
+    def all_rule_ids(self) -> tuple[str, ...]: ...

@@ -17,7 +17,7 @@ from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
 from datum_ax.contracts.persona import PersonaRegistry
 from datum_ax.contracts.review import ReviewGate
-from datum_ax.contracts.rules import RuleRegistry
+from datum_ax.contracts.rules import RuleBinder, RuleRegistry
 from datum_ax.contracts.status import StatusSource
 from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.data.review import REVIEW_GATES
@@ -39,6 +39,12 @@ from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
 # Packaged persona + rule artifacts ship with the library.
 _PACKAGED_PERSONA_ROOT = str(Path(__file__).resolve().parent.parent / "personas")
 _PACKAGED_RULES_ROOT = str(Path(__file__).resolve().parent.parent / "rules")
+
+
+def _learned_rules_root() -> str:
+    """Writable dir where compound-engineering auto-bound rules land (ADR-0020) — read alongside the
+    packaged rules so the loop compounds across runs."""
+    return os.environ.get("DATUM_LEARNED_RULES_ROOT", ".datum/rules")
 
 
 def build_inference_client_from_env() -> InferenceClient:
@@ -117,11 +123,19 @@ def build_context_crane(
 
 def build_rule_registry(name: str | None = None, **kwargs: Any) -> RuleRegistry:
     """Resolve a rule-registry plugin by name (ADR-0020/0032). Default: file-backed, reading the
-    packaged ``datum_ax/rules/`` (override with ``DATUM_RULES_ROOT`` or ``root=``)."""
+    packaged ``datum_ax/rules/`` **and** the writable learned-rules dir (so auto-bound rules from
+    past runs are lifted too)."""
     name = name or os.environ.get("DATUM_RULE_REGISTRY") or "file"
     if name == "file" and "root" not in kwargs:
-        kwargs["root"] = os.environ.get("DATUM_RULES_ROOT", _PACKAGED_RULES_ROOT)
+        kwargs["root"] = [_PACKAGED_RULES_ROOT, _learned_rules_root()]
     return RULE_REGISTRIES.create(name, **kwargs)
+
+
+def build_rule_binder(**kwargs: Any) -> RuleBinder:
+    """The write side of the rules registry (ADR-0020 capture) — persists learned rules into the
+    writable learned-rules dir. CLOSEOUT auto-binds through this."""
+    kwargs.setdefault("root", _learned_rules_root())
+    return RULE_REGISTRIES.create("file", **kwargs)
 
 
 _REMOTE_SCHEMES = ("postgresql", "postgres", "libsql", "mysql", "turso")
@@ -209,5 +223,7 @@ def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:
             "inference_client": build_inference_client_from_env(),
             "execution_host": build_local_host(workspace_dir),
             "context_crane": build_context_crane(),
+            "run_ledger": build_ledger(),
+            "rule_binder": build_rule_binder(),
         }
     }

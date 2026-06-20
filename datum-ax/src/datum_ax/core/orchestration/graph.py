@@ -9,6 +9,7 @@ from datum_ax.core.planner.dag import DAGBuilder
 from datum_ax.core.planner.lane_plan import plan_lanes
 from datum_ax.core.planner.triage import triage_ticket
 from datum_ax.core.verifier.synthesis import synthesize_impl, synthesize_test
+from datum_ax.core.compound.closeout import run_closeout_harvest
 from datum_ax.contracts.inference import InferenceClient
 from datum_ax.contracts.execution import ExecutionHost, UnifiedDiff, ExecutionTarget
 from datum_ax.observability import get_logger
@@ -123,9 +124,25 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
     return {**state, "visited_nodes": visited, "results": results}
 
 
-def closeout_node(state: OrchestratorState) -> OrchestratorState:
+def closeout_node(state: OrchestratorState, config: RunnableConfig) -> OrchestratorState:
     visited = state.get("visited_nodes", []) + ["CLOSEOUT"]
-    return {**state, "visited_nodes": visited}
+    results = state.get("results", {}).copy()
+    # Compound engineering (ADR-0020): harvest the run's ledger into durable rules. Only when both the
+    # ledger and a writable rule binder are injected (the composition root provides them).
+    cfg = config.get("configurable") or {}
+    ledger, binder = cfg.get("run_ledger"), cfg.get("rule_binder")
+    if ledger is not None and binder is not None:
+        harvested = run_closeout_harvest(ledger, binder, run_id=state.get("run_id", "run"))
+        results["closeout"] = {
+            "auto_bound": [r.id for r in harvested.auto_bound],
+            "proposed": [r.id for r in harvested.proposed],
+        }
+        logger.info(
+            "closeout_harvest",
+            auto_bound=len(harvested.auto_bound),
+            proposed=len(harvested.proposed),
+        )
+    return {**state, "visited_nodes": visited, "results": results}
 
 
 def build_graph() -> CompiledStateGraph[Any, Any]:
