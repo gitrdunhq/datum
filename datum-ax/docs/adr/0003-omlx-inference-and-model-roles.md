@@ -15,13 +15,18 @@ memory and can trigger swap. We need an inference layer that is decoupled from o
 ## Decision
 
 Wrap oMLX behind a thin **`InferenceClient`** adapter targeting a generic OpenAI/Anthropic-compatible
-endpoint (ARCHITECTURE §3.2). Define **three model roles** with **configurable model IDs**:
+endpoint (ARCHITECTURE §3.2). Define **four model roles** with **configurable model IDs**:
 
 | Role | Class (default family) | Used for |
 |------|------------------------|----------|
 | `TRIAGE` | small/fast (~4B; Qwen3 small) | cheap classification assisting deterministic routing |
-| `EXECUTOR` | MoE (~30–35B-A3B; Qwen3 MoE) | planning + code generation |
-| `ADVERSARIAL` | reasoning (DeepSeek-R1 class) | reformatting a failed attempt's stderr into the next prompt |
+| `PLANNER` | MoE (~30–35B-A3B) | TICKET → lane DAG decomposition (Phase A) |
+| `EXECUTOR` | MoE (~30–35B-A3B; Qwen3 MoE) | code generation (RED/GREEN synthesis) |
+| `ADVERSARIAL` | reasoning (DeepSeek-R1 class) | SKEPTIC verification + reformatting a failed attempt's stderr |
+
+> **Update (implementation):** the original design listed three roles with EXECUTOR covering both
+> planning and code-gen. The build split planning into a dedicated **`PLANNER`** role
+> (`src/datum_ax/contracts/inference.py`) — an extension of this decision, not a reversal.
 
 Controls:
 - **Concurrency semaphore** (`asyncio.Semaphore`, default `max_connections=2`) around every call —

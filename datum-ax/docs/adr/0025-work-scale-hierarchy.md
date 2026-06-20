@@ -43,7 +43,8 @@ Rules:
   granularity instead of choking.
 - Recursion keeps one skill responsible for all scales: `initiative → epics → (each) ticket → lanes`.
 - An initiative's epic list **is the implementation roadmap** — e.g., running the datum-ax plan itself
-  through intake yields the epic-by-epic plan to build datum-ax (see `docs/BUILD-INITIATIVE.md`).
+  through intake yields the epic-by-epic plan to build datum-ax (see
+  `docs/initiatives/datum-ax-build/INITIATIVE.md`).
 - Adds the term **INITIATIVE** above EPIC in the vocabulary (GLOSSARY).
 - Property-test targets: Boundedness (no single TICKET exceeds one-epic scope), Monotonicity (epic
   decomposition never drops a stated capability), Determinism (same product description → same epic

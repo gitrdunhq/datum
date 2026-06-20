@@ -83,9 +83,9 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0029](docs/adr/0029-live-status-snapshot.md) — live status snapshot: a single JSON of what the pipeline is doing now (`GET /status`)
 - [0030](docs/adr/0030-context-crane-single-source.md) — ContextCrane: single source of truth for context assembly (one assembler, one token counter, one pruner)
 
-**Build roadmap (dogfooded):** [`docs/BUILD-INITIATIVE.md`](docs/BUILD-INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics. The bridge from blueprint to code.
+**Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 
-**First code (E1):** [`src/datum_ax/`](src/datum_ax/) — the typed boundary layer (contracts + schemas), strict Pydantic, three enforced tiers. `uv pip install -e ".[dev]" && uv run pytest` → green (Hypothesis property tests + boundary enforcement). See [`docs/epics/e1-contracts/`](docs/epics/e1-contracts/).
+**Code (E1–E9 + CLI):** [`src/datum_ax/`](src/datum_ax/) — three enforced tiers (boundary test), strict Pydantic, Hypothesis property tests. Contracts/schemas, oMLX inference, execution hosts, ContextCrane firewall, data plane, LangGraph orchestration, planner, verifier, eedom gate, and the `datumax` CLI. `uv pip install -e . pytest pytest-asyncio hypothesis && uv run pytest` → **202 green**. Roadmap + epic tickets under [`docs/initiatives/datum-ax-build/`](docs/initiatives/datum-ax-build/).
 
 ## Status of the locked-in stack
 

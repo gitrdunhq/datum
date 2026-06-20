@@ -29,8 +29,9 @@ as `ARCHITECTURE.md`): contracts → producers → orchestration → loop → cr
 ### E2 — Inference layer  ✅ BUILT (`src/datum_ax/data/inference/`)
 
 - **Intent:** talk to oMLX, by role, safely.
-- **Scope:** `InferenceClient` adapter (OpenAI-compatible), model-role registry (TRIAGE/EXECUTOR/
-  ADVERSARIAL), concurrency semaphore, prompt assembler + Task Packet, window budget.
+- **Scope:** `InferenceClient` adapter (OpenAI-compatible), model-role registry (TRIAGE/PLANNER/
+  EXECUTOR/ADVERSARIAL), concurrency semaphore, token-budget enforcement, httpx + native MLX
+  transports. (Prompt assembly lives in the ContextCrane — E4/ADR-0030.)
 - **Depends on:** E1. **Shippable:** yes (mock endpoint).  *(ADR-0003/0004/0013)*
 
 ### E3 — Execution hosts  🟡 PARTIALLY BUILT
@@ -47,7 +48,7 @@ as `ARCHITECTURE.md`): contracts → producers → orchestration → loop → cr
   (watermark/guard/event/sweep); relevance-scoped steering.
 - **Depends on:** E1, E2. **Shippable:** yes.  *(ADR-0004/0021)*
 
-### E5 — Data plane & observability
+### E5 — Data plane & observability  ✅ BUILT
 
 - **Intent:** state that survives and is measurable.
 - **Scope:** Valkey checkpointer, libSQL ledger (run trace, token+window metering), per-run DB branch,
@@ -75,7 +76,7 @@ as `ARCHITECTURE.md`): contracts → producers → orchestration → loop → cr
   error-reformat, replan-on-blowup.
 - **Depends on:** E3, E7. **Shippable:** yes (a lane end-to-end).  *(ADR-0007/0010/0016/0017/0006)*
 
-### E9 — eedom gate integration
+### E9 — eedom gate integration  ✅ BUILT
 
 - **Intent:** the deterministic review node.
 - **Scope:** containerized `eedom evaluate`/`review` invocation, decision-contract branching, fail-open
@@ -122,7 +123,7 @@ you're never flying blind. **E8 is the first epic where the pipeline actually wr
 
 | Epic | Testable deliverable (demo) | How you test it |
 |------|------------------------------|-----------------|
-| E1 Contracts | the typed package | ✅ `uv run pytest` green (~133) + tier-boundary guard; schemas emit JSON Schema |
+| E1 Contracts | the typed package | ✅ `uv run pytest` green (**202** total) + tier-boundary guard; schemas emit JSON Schema |
 | E2 Inference | `InferenceClient` vs a **mock oMLX** | ✅ Real oMLX and Native MLX transports built; parallel budgets enforced |
 | E3 Exec hosts | `X86DockerHost` runs a diff | 🟡 `LocalHost` built; `X86DockerHost` pending |
 | E4 Firewall + DCP | the prompt assembler | 🟡 `ContextCrane` footprint validation stubbed |

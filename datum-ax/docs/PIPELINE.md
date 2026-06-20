@@ -77,7 +77,7 @@ lifecycle; the side panels are the cross-cutting planes that hold during the who
  ┌───────────────────────────────────────────────────────────────────────────┐
  │ NODE 0 — ORCHESTRATOR (Apple Silicon)     ✗ never runs generated code        │
  │   LangGraph state machine + Valkey checkpointer                 [0002]       │
- │   oMLX inference:  TRIAGE · EXECUTOR · ADVERSARIAL   (semaphore max=2) [0003] │
+ │   oMLX inference: TRIAGE · PLANNER · EXECUTOR · ADVERSARIAL (sem max=2) [0003] │
  │   Context firewall + prompt assembler → TASK PACKET             [0004]       │
  │   authoritative git tree = epic branch · ALL secrets live here [0011/0012]   │
  └───────────────┬──────────────────────────────────────┬────────────────────┘

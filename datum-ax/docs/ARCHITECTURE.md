@@ -96,7 +96,7 @@ Implementations: `X86DockerHost` (v1, concrete), `MacOSTartHost` (v1 stub). The 
 class InferenceClient(Protocol):
     async def complete(self, role: ModelRole, prompt: AssembledPrompt,
                        budget: TokenBudget) -> Completion: ...
-# ModelRole ∈ {TRIAGE, EXECUTOR, ADVERSARIAL}; concrete model IDs come from config, not code.
+# ModelRole ∈ {TRIAGE, PLANNER, EXECUTOR, ADVERSARIAL}; concrete model IDs come from config, not code.
 # All calls pass through an asyncio.Semaphore (default max_connections=2).
 ```
 
