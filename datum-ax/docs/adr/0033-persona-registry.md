@@ -46,8 +46,10 @@ Rationale (build vs adopt):
   `tool_refs: tuple[str, ...]` (optional command/tool names), `version: int`,
   `scope_tags: tuple[str, ...]`.
 
-Artifacts on disk are markdown with YAML frontmatter (Persona-compatible): frontmatter → the typed
-fields, body → `body`/`instructions`. `prompts/*.md` migrate into this format.
+Artifacts on disk are markdown with YAML frontmatter (Persona-compatible): the **filename stem is the
+canonical `id`** (filesystem-native, and immune to YAML scalar coercion — an unquoted `true`/`1` in
+frontmatter would otherwise become a bool/int key); frontmatter carries the remaining fields and the
+body becomes `body`/`instructions`. `prompts/*.md` migrate into this format.
 
 ### Port (`contracts/persona.py`, a `runtime_checkable` Protocol)
 

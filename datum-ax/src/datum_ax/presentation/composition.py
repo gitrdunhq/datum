@@ -13,8 +13,10 @@ from datum_ax.contracts.checkpoint import CheckpointStore
 from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
+from datum_ax.contracts.persona import PersonaRegistry
 from datum_ax.contracts.review import ReviewGate
 from datum_ax.contracts.status import StatusSource
+from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.data.review import REVIEW_GATES
 from datum_ax.data.state.checkpoint import InMemoryCheckpointer
 from datum_ax.data.state.ledger import LibSQLLedger
@@ -148,6 +150,17 @@ def build_review_gate(name: str | None = None, **kwargs: Any) -> ReviewGate:
     """Resolve a review-gate plugin by name (ADR-0006/0032). Default: eedom."""
     name = name or os.environ.get("DATUM_REVIEW_GATE") or "eedom"
     return REVIEW_GATES.create(name, **kwargs)
+
+
+def build_persona_registry(name: str | None = None, **kwargs: Any) -> PersonaRegistry:
+    """Resolve a persona-registry plugin by name (ADR-0033/0032). Default: file-backed.
+
+    The default root is ``<repo>/personas`` (override with ``DATUM_PERSONA_ROOT`` or ``root=``).
+    """
+    name = name or os.environ.get("DATUM_PERSONA_REGISTRY") or "file"
+    if name == "file" and "root" not in kwargs:
+        kwargs["root"] = os.environ.get("DATUM_PERSONA_ROOT", "personas")
+    return PERSONA_REGISTRIES.create(name, **kwargs)
 
 
 def build_status_source() -> StatusSource:
