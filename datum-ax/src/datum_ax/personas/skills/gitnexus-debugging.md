@@ -6,6 +6,7 @@ description: 'Use when the user is debugging a bug, tracing an error, or asking 
 version: 1
 scope_tags:
 - code-intelligence
+- troubleshooting
 - debug
 tool_refs:
 - gitnexus

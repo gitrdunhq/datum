@@ -4,7 +4,7 @@ datum into packaged `datum_ax/personas/skills/` and exposed deterministically vi
 from __future__ import annotations
 
 from datum_ax.contracts.persona import Skill
-from datum_ax.presentation.composition import build_persona_registry
+from datum_ax.presentation.composition import build_context_crane, build_persona_registry
 
 _EXPECTED = {
     "gitnexus-exploring",
@@ -33,9 +33,35 @@ def test_imported_skill_has_body_and_metadata():
     assert "code-intelligence" in skill.scope_tags
 
 
-def test_specific_tags_select_subset():
+def test_planning_tasks_lift_only_planning_skills():
     reg = build_persona_registry()
-    refactor = {s.id for s in reg.select_skills(("refactor",))}
-    assert "gitnexus-refactoring" in refactor
-    assert "gitnexus-impact-analysis" in refactor
-    assert "gitnexus-debugging" not in refactor  # not tagged 'refactor'
+    planning = {s.id for s in reg.select_skills(("planning",))}
+    assert "gitnexus-exploring" in planning
+    assert "gitnexus-impact-analysis" in planning
+    # Troubleshooting skills are NOT lifted for a planning task.
+    assert "gitnexus-debugging" not in planning
+    assert "gitnexus-bug-hunt" not in planning
+
+
+def test_troubleshooting_tasks_lift_only_troubleshooting_skills():
+    reg = build_persona_registry()
+    trouble = {s.id for s in reg.select_skills(("troubleshooting",))}
+    assert trouble == {"gitnexus-debugging", "gitnexus-bug-hunt"}
+
+
+def test_routine_lane_lifts_no_gitnexus():
+    # An untagged/implementation lane pulls nothing — the crane lifts only what's needed.
+    reg = build_persona_registry()
+    assert reg.select_skills(()) == ()
+    assert reg.select_skills(("implementation",)) == ()
+
+
+def test_planner_system_folds_in_planning_skills_only():
+    crane = build_context_crane()
+    planning = crane.compose_system("lane-plan", scope_tags=("planning",))
+    assert "Task decomposer" in planning  # the lane-plan role body
+    assert "GitNexus" in planning  # a planning skill was lifted in
+
+    # A routine implementation lift carries the role body but no gitnexus skill.
+    routine = crane.compose_system("green", scope_tags=())
+    assert "GitNexus" not in routine

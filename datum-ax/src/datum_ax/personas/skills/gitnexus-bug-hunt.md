@@ -13,9 +13,9 @@ description: Systematic architecture bug hunt using GitNexus execution flow anal
 version: 1
 scope_tags:
 - code-intelligence
+- troubleshooting
 - security
 - audit
-- bug
 tool_refs:
 - gitnexus
 source: datum gold mine (imported, ADR-0033)

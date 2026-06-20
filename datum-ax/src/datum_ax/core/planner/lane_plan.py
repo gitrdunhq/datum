@@ -32,8 +32,11 @@ def plan_lanes(
         if crane is None:
             raise ValueError("plan_lanes requires a ContextCrane (persona + assembly, ADR-0033)")
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
-        # Role prompt comes from the persona registry via the crane (ADR-0033).
-        system_text = crane.compose_system("lane-plan").replace("{{ticket}}", json.dumps(ticket))
+        # Planning is a planning task — the crane lifts in the planning skills (gitnexus
+        # exploring/impact-analysis), nothing else (ADR-0033). Routine lanes lift no gitnexus.
+        system_text = crane.compose_system("lane-plan", scope_tags=("planning",)).replace(
+            "{{ticket}}", json.dumps(ticket)
+        )
 
         def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
             return crane.assemble(system, global_ast, diff, suffix, budget=budget)

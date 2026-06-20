@@ -6,8 +6,8 @@ description: 'Use when the user wants to know what will break if they change som
 version: 1
 scope_tags:
 - code-intelligence
+- planning
 - impact
-- refactor
 tool_refs:
 - gitnexus
 source: datum gold mine (imported, ADR-0033)

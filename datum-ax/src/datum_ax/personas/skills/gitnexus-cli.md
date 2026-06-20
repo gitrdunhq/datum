@@ -6,6 +6,7 @@ description: 'Use when the user needs to run GitNexus CLI commands like analyze/
 version: 1
 scope_tags:
 - code-intelligence
+- reference
 - cli
 tool_refs:
 - gitnexus

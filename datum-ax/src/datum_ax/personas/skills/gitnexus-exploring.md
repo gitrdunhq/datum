@@ -6,7 +6,7 @@ description: 'Use when the user asks how code works, wants to understand archite
 version: 1
 scope_tags:
 - code-intelligence
-- explore
+- planning
 - architecture
 tool_refs:
 - gitnexus
