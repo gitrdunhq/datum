@@ -1,0 +1,16 @@
+name: datum-ax CI
+
+on:
+  pull_request:
+    paths: ["datum-ax/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v8
+      - run: bash datum-ax/scripts/ci.sh
