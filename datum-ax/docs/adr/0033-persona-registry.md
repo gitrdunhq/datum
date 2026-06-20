@@ -5,6 +5,11 @@
 Accepted (design). Supersedes the "adopt Persona" half of GAP-LEDGER **G12**; the spike's
 conclusion is recorded here.
 
+> **Refined by ADR-0034:** the "selection must be deterministic / semantic match is optional, kept
+> out of the core path" framing below is relaxed — semantic RAG is a **default-grade** selection tier
+> (deterministic given a pinned model), with LLM escalation allowed for ambiguous cases. Only the
+> review gate stays hard-deterministic.
+
 **As-built:** implemented end-to-end. `Role`/`Skill`/`PersonaRegistry` live in `contracts/persona.py`;
 `FilePersonaRegistry` (markdown + YAML frontmatter, registered in `PERSONA_REGISTRIES`) in
 `data/persona/`; `ContextCrane.compose_system(role_id, scope_tags)` composes the `[System]` prefix and
