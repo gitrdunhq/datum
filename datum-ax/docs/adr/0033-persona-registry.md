@@ -35,8 +35,16 @@ domain for selection. Skill artifacts are grouped in organizational subfolders
 cosmetic; the filename-stem id and `scope_tags` drive resolution. Their large source corpus and a
 prototype **semantic** matcher
 (`retriever.py`, sentence-transformers over name+description) live in non-packaged
-`persona-sources/`; the matcher is the seed for the optional, cognition-side semantic selection
-adapter — kept out of the deterministic core path by design.
+`persona-sources/`.
+
+**Semantic selection (built):** `SemanticPersonaRegistry` (`data/persona/semantic_registry.py`) wraps
+the file registry and adds embedding-based `match_skills` (MiniLM by default; the port gained
+`match_skills(query, limit, threshold)`). It is the **default** when the `[semantic]` extra is
+installed and **degrades** to the file registry's deterministic keyword `match_skills` otherwise —
+RAG-by-default with a deterministic fallback (ADR-0034), never a hard failure. `crane.compose_system`
+takes an optional `query` and folds the query-matched **domain** skill into the prefix, alongside the
+tag-selected purpose skills. Per-call wiring of `query` from the planner/executor lane text is the
+next small step.
 
 ## Context
 

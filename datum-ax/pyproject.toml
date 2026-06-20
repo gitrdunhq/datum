@@ -14,6 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 inference = ["httpx>=0.27"]  # real oMLX transport (HttpxTransport); optional
 mlx = ["mlx-lm>=0.14"]       # native Apple Silicon MLX transport
+semantic = ["sentence-transformers>=2.2", "numpy>=1.24"]  # RAG persona/skill selection (ADR-0034)
 
 [project.scripts]
 datumax = "datum_ax.cli.main:run_cli"

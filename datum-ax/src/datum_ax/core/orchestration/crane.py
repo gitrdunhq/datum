@@ -84,30 +84,43 @@ class ContextCrane:
         )
 
     # --- persona composition (ADR-0033) ----------------------------------------------------------
-    def compose_system(self, role_id: str, scope_tags: tuple[str, ...] = (), docs: str = "") -> str:
-        """Compose a lane's ``[System]`` text from a registry-resolved Role + tag-selected Skills.
+    def compose_system(
+        self,
+        role_id: str,
+        scope_tags: tuple[str, ...] = (),
+        docs: str = "",
+        query: str | None = None,
+    ) -> str:
+        """Compose a lane's ``[System]`` text: BASE_PERSONA + Role + selected Skills (+docs).
 
-        Stable ordering for prompt-cache reuse: Role body first, then Skills (registry-sorted),
-        then any hoisted docs. Requires an injected ``PersonaRegistry``.
+        Skills come from two tiers (ADR-0034): structural ``scope_tags`` (purpose: planning /
+        troubleshooting) and, when ``query`` is given, RAG domain-fit via ``persona.match_skills``
+        (deterministic tags + reasoning-grade embeddings behind one port). Stable ordering for
+        prompt-cache reuse: base → role → skills → docs. Requires an injected ``PersonaRegistry``.
         """
         if self.persona is None:
             raise PersonaNotFoundError(
                 "no PersonaRegistry injected into the crane (ADR-0033); cannot compose system prompt"
             )
         role = self.persona.get_role(role_id)
-        base = self.persona.base_persona()
-        parts = [p for p in (base, role.body, *self._format_skills(scope_tags)) if p]
+        skills = list(self.persona.select_skills(tuple(scope_tags)))
+        if query:
+            seen = {s.id for s in skills}
+            skills += [s for s in self.persona.match_skills(query) if s.id not in seen]
+        parts = [p for p in (self.persona.base_persona(), role.body) if p]
+        parts += self._render_skills(skills)
         if docs:
             parts.append(docs)
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _render_skills(skills: list) -> list[str]:
+        return [f"## Skill: {s.name}\n{s.instructions}" for s in skills]
+
     def _format_skills(self, scope_tags: tuple[str, ...]) -> list[str]:
         if self.persona is None:
             return []
-        return [
-            f"## Skill: {s.name}\n{s.instructions}"
-            for s in self.persona.select_skills(tuple(scope_tags))
-        ]
+        return self._render_skills(list(self.persona.select_skills(tuple(scope_tags))))
 
     def lift_skills(self, scope_tags: tuple[str, ...]) -> str:
         """Skills text for the VARIABLE slot — e.g. troubleshooting skills lifted into a retry suffix

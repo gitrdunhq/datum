@@ -163,14 +163,23 @@ def build_review_gate(name: str | None = None, **kwargs: Any) -> ReviewGate:
     return REVIEW_GATES.create(name, **kwargs)
 
 
-def build_persona_registry(name: str | None = None, **kwargs: Any) -> PersonaRegistry:
-    """Resolve a persona-registry plugin by name (ADR-0033/0032). Default: file-backed.
+def _default_persona_registry_name() -> str:
+    """RAG by default when the embedding backend is installed, else the deterministic file registry
+    (ADR-0034). The semantic adapter itself also degrades, so this is just to avoid wrapping when
+    there's no benefit."""
+    import importlib.util
 
-    The default root is the packaged ``datum_ax/personas/`` (override with ``DATUM_PERSONA_ROOT``
-    or ``root=``).
-    """
-    name = name or os.environ.get("DATUM_PERSONA_REGISTRY") or "file"
-    if name == "file" and "root" not in kwargs:
+    if importlib.util.find_spec("sentence_transformers") is not None:
+        return "semantic"
+    return "file"
+
+
+def build_persona_registry(name: str | None = None, **kwargs: Any) -> PersonaRegistry:
+    """Resolve a persona-registry plugin by name (ADR-0033/0032/0034). Default: semantic (RAG) when
+    available, else file (deterministic). Both read the packaged ``datum_ax/personas/`` (override
+    with ``DATUM_PERSONA_ROOT`` or ``root=``)."""
+    name = name or os.environ.get("DATUM_PERSONA_REGISTRY") or _default_persona_registry_name()
+    if name in ("file", "semantic") and "root" not in kwargs:
         kwargs["root"] = os.environ.get("DATUM_PERSONA_ROOT", _PACKAGED_PERSONA_ROOT)
     return PERSONA_REGISTRIES.create(name, **kwargs)
 

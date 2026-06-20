@@ -46,6 +46,9 @@ class _FakePersona:
         wanted = set(scope_tags)
         return tuple(s for s in self._skills if wanted.intersection(s.scope_tags))
 
+    def match_skills(self, query: str, limit: int = 1, threshold: float = 0.3) -> tuple[Skill, ...]:
+        return ()
+
 
 def _crane_with(persona) -> ContextCrane:
     return ContextCrane(

@@ -8,6 +8,7 @@ id. No embeddings: semantic matching, if ever added, is a separate cognition-sid
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,26 @@ class FilePersonaRegistry:
         wanted = set(scope_tags)
         matched = [s for s in self._skills.values() if wanted.intersection(s.scope_tags)]
         return tuple(sorted(matched, key=lambda s: s.id))
+
+    def all_skills(self) -> tuple[Skill, ...]:
+        """Every skill, id-sorted (the corpus a semantic adapter embeds over)."""
+        return tuple(sorted(self._skills.values(), key=lambda s: s.id))
+
+    def match_skills(self, query: str, limit: int = 1, threshold: float = 0.0) -> tuple[Skill, ...]:
+        """Deterministic keyword-overlap match against name+description+tags — the no-dependency
+        fallback tier under the semantic adapter (ADR-0034). Higher overlap wins; ties by id."""
+        q = set(re.findall(r"[a-z0-9]+", query.lower()))
+        if not q:
+            return ()
+        scored = []
+        for s in self.all_skills():
+            text = f"{s.name} {s.description} {' '.join(s.scope_tags)}".lower()
+            words = set(re.findall(r"[a-z0-9]+", text))
+            overlap = len(q & words) / len(q)
+            if overlap > threshold:
+                scored.append((overlap, s.id, s))
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return tuple(s for _, _, s in scored[:limit])
 
 
 @PERSONA_REGISTRIES.register("file")
