@@ -1,8 +1,20 @@
 ---
 name: aws-infrastructure-engineer
-description: Use this skill when writing AWS infrastructure as code (CDK) or building AWS utility scripts. It enforces TypeScript CDK best practices, delegated admin deployments, and strict Python package management using uv.
+description: Use this skill when writing AWS infrastructure as code (CDK) or building
+  AWS utility scripts. It enforces TypeScript CDK best practices, delegated admin
+  deployments, and strict Python package management using uv.
+version: 1
+scope_tags:
+- domain
+- aws
+- infrastructure
+- cloud
+- cdk
+tool_refs:
+- context7
+- gitnexus
+source: datum personas/distilled (imported, ADR-0033)
 ---
-
 # AWS Infrastructure & CDK Rules
 
 When acting as an AWS Infrastructure Engineer, you must follow these strict operational rules:

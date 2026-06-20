@@ -1,8 +1,16 @@
 ---
 name: agentic-research-workflow
-description: Use this skill when the user asks to research a topic, investigate a complex architectural decision, or generate an analysis report. It enforces a strict 3-layer orchestration model, scope gating, and JSON-based multi-agent handoffs.
+description: Use this skill when the user asks to research a topic, investigate a
+  complex architectural decision, or generate an analysis report. It enforces a strict
+  3-layer orchestration model, scope gating, and JSON-based multi-agent handoffs.
+version: 1
+scope_tags:
+- research
+- orchestration
+tool_refs:
+- context7
+source: datum personas/distilled (imported, ADR-0033)
 ---
-
 # Agentic Research Pipeline
 
 When asked to perform research or investigate a complex topic, you are operating as the Orchestrator in a 3-layer pipeline. Your job is NOT to do raw research—your job is to protect your context window and spawn workers.

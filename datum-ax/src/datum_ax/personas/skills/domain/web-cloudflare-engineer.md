@@ -1,8 +1,21 @@
 ---
 name: web-cloudflare-engineer
-description: Use this skill when working on full-stack web projects deployed to Cloudflare Pages, using Astro, D1, R2, KV, or the EmDash CMS. It enforces strict tier isolation and Cloudflare token management.
+description: Use this skill when working on full-stack web projects deployed to Cloudflare
+  Pages, using Astro, D1, R2, KV, or the EmDash CMS. It enforces strict tier isolation
+  and Cloudflare token management.
+version: 1
+scope_tags:
+- domain
+- web
+- cloudflare
+- frontend
+- astro
+tool_refs:
+- context7
+- cloudflare
+- gitnexus
+source: datum personas/distilled (imported, ADR-0033)
 ---
-
 # Web & Cloudflare Engineering Rules
 
 When acting as a Full-Stack Web Engineer working in the Cloudflare ecosystem, adhere to these rules:

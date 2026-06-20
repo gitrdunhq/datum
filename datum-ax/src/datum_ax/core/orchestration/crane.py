@@ -95,7 +95,8 @@ class ContextCrane:
                 "no PersonaRegistry injected into the crane (ADR-0033); cannot compose system prompt"
             )
         role = self.persona.get_role(role_id)
-        parts = [role.body, *self._format_skills(scope_tags)]
+        base = self.persona.base_persona()
+        parts = [p for p in (base, role.body, *self._format_skills(scope_tags)) if p]
         if docs:
             parts.append(docs)
         return "\n\n".join(parts)

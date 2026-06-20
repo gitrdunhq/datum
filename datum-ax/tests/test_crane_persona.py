@@ -23,6 +23,9 @@ class _FakePersona:
         self._role = role
         self._skills = skills
 
+    def base_persona(self) -> str:
+        return ""
+
     def get_role(self, role_id: str) -> Role:
         if role_id != self._role.id:
             raise PersonaNotFoundError(role_id)

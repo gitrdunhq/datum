@@ -21,6 +21,18 @@ troubleshooting task** — on retry the crane lifts `troubleshooting` skills (gi
 `crane.lift_skills(...)`. Lifting on a triage `hotfix` route from the first attempt is a possible
 later refinement.
 
+A **`BASE_PERSONA.md`** (the foundational "critical collaborator" voice + multi-agent/MCP protocols)
+ships in the packaged registry root; `registry.base_persona()` is prepended to every composed system
+prompt. Four **distilled domain Skills** (swift-clean-architecture, aws-infrastructure-engineer,
+web-cloudflare-engineer, agentic-research-workflow) were imported into `personas/skills/`, tagged by
+domain for selection. Skill artifacts are grouped in organizational subfolders
+(`skills/code-intelligence/`, `skills/domain/`) — the loader recurses (`rglob`), so the folder is
+cosmetic; the filename-stem id and `scope_tags` drive resolution. Their large source corpus and a
+prototype **semantic** matcher
+(`retriever.py`, sentence-transformers over name+description) live in non-packaged
+`persona-sources/`; the matcher is the seed for the optional, cognition-side semantic selection
+adapter — kept out of the deterministic core path by design.
+
 ## Context
 
 `ContextCrane.pack_payload` composes the cache-stable `[System]` prefix from a hardcoded stub:

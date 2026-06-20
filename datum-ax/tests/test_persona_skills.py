@@ -56,6 +56,24 @@ def test_routine_lane_lifts_no_gitnexus():
     assert reg.select_skills(("implementation",)) == ()
 
 
+def test_base_persona_is_loaded_and_prepended():
+    reg = build_persona_registry()
+    assert "Critical Collaborator" in reg.base_persona()  # the foundational voice
+    system = build_context_crane().compose_system("triage")
+    assert "Critical Collaborator" in system  # BASE_PERSONA prepended
+    assert system.index("Critical Collaborator") < system.index("datum router")  # base before role
+
+
+def test_distilled_domain_skills_are_registered():
+    reg = build_persona_registry()
+    domain = {s.id for s in reg.select_skills(("domain",))}
+    assert {
+        "swift-clean-architecture",
+        "aws-infrastructure-engineer",
+        "web-cloudflare-engineer",
+    } <= domain
+
+
 def test_planner_system_folds_in_planning_skills_only():
     crane = build_context_crane()
     planning = crane.compose_system("lane-plan", scope_tags=("planning",))

@@ -40,12 +40,22 @@ class FilePersonaRegistry:
         self.root = Path(root)
         self._roles: dict[str, Role] = {}
         self._skills: dict[str, Skill] = {}
+        self._base = ""
         self._load()
 
+    def base_persona(self) -> str:
+        """The foundational system prefix shared by every role (BASE_PERSONA.md); '' if absent."""
+        return self._base
+
     def _load(self) -> None:
+        base_file = self.root / "BASE_PERSONA.md"
+        if base_file.exists():
+            self._base = base_file.read_text(encoding="utf-8").strip()
         # id = filename stem (canonical, filesystem-native — avoids YAML scalar coercion of the key,
         # e.g. an unquoted `true`/`1` in frontmatter). Frontmatter carries the display + routing fields.
-        for path in sorted((self.root / "roles").glob("*.md")):
+        # rglob so artifacts can be grouped in subfolders (skills/code-intelligence, skills/domain, …)
+        # purely for organization — the stem id and tags drive resolution, not the path.
+        for path in sorted((self.root / "roles").rglob("*.md")):
             meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
             role = Role(
                 id=path.stem,
@@ -57,7 +67,7 @@ class FilePersonaRegistry:
                 scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
             )
             self._roles[role.id] = role
-        for path in sorted((self.root / "skills").glob("*.md")):
+        for path in sorted((self.root / "skills").rglob("*.md")):
             meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
             skill = Skill(
                 id=path.stem,

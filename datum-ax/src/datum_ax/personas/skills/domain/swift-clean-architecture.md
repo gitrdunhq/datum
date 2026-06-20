@@ -1,8 +1,21 @@
 ---
 name: swift-clean-architecture
-description: Use this skill when generating Swift code or modifying the architecture of an iOS or macOS application. It enforces the 4-layer clean architecture rules, strict dependency graphs, and macOS 26+ specific requirements like @Observable.
+description: Use this skill when generating Swift code or modifying the architecture
+  of an iOS or macOS application. It enforces the 4-layer clean architecture rules,
+  strict dependency graphs, and macOS 26+ specific requirements like @Observable.
+version: 1
+scope_tags:
+- domain
+- swift
+- ios
+- macos
+- architecture
+tool_refs:
+- context7
+- tokensave
+- gitnexus
+source: datum personas/distilled (imported, ADR-0033)
 ---
-
 # Swift 4-Layer Clean Architecture Rules
 
 You must strictly adhere to the following 4-layer architecture when building Swift applications.
