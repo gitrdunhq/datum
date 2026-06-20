@@ -25,12 +25,17 @@ Run eedom as a **deterministic node** in Phase B, before any terminal success. I
 container against the candidate diff and consume its machine-readable decision:
 
 ```
-eedom evaluate --repo-path /workspace --diff - --operating-mode advise --output-json /out/decision.json
+# eedom's real required flags (verified against src/eedom/cli/main.py): repo-path, diff (a file),
+# pr-url, team, operating-mode; --output-json writes his published ReviewDecision JSON to a file.
+eedom evaluate --repo-path /workspace --diff change.diff --pr-url <url> --team <team> \
+               --operating-mode advise --output-json /out/decision.json
 # (or `eedom review --format sarif` for the code-scan surface)
 ```
 
-Branch on the verified `ReviewDecision` contract (confirmed against eedom
-`core/models.py`):
+`EedomReviewGate` (datum-ax `data/review/eedom.py`) invokes exactly this and reads the decision back
+from the `--output-json` file. Branch on the verified `ReviewDecision` contract (confirmed against
+eedom `core/models.py`; his verdict + severity enums match ours 1:1, his category set is broader and
+is mapped):
 
 | Field | Values | Gate behavior |
 |-------|--------|---------------|
