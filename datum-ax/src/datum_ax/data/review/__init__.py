@@ -7,17 +7,11 @@ edit (open/closed).
 
 from __future__ import annotations
 
-import importlib
-import pkgutil
-
 from datum_ax.contracts.review import ReviewGate
-from datum_ax.registry import Registry
+from datum_ax.registry import Registry, autodiscover
 
 REVIEW_GATES: Registry[ReviewGate] = Registry("review-gate")
 
-# Auto-discover adapter modules so they self-register (plugin drop-in).
-for _module in pkgutil.iter_modules(__path__):
-    if not _module.name.startswith("_"):
-        importlib.import_module(f"{__name__}.{_module.name}")
+autodiscover(__name__, __path__)
 
 __all__ = ["REVIEW_GATES"]

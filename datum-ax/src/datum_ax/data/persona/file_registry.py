@@ -12,26 +12,48 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from datum_ax.contracts.inference import ModelRole
 from datum_ax.contracts.persona import PersonaNotFoundError, Role, Skill, SkillDelivery
+from datum_ax.data._artifacts import load_artifacts
 from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.observability import get_logger
 
 logger = get_logger(__name__)
 
 
-def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """Split ``---\\n<yaml>\\n---\\n<body>`` into (metadata, body). No frontmatter → ({}, text)."""
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) == 3:
-            meta = yaml.safe_load(parts[1]) or {}
-            if not isinstance(meta, dict):
-                raise ValueError("frontmatter must be a mapping")
-            return meta, parts[2].lstrip("\n")
-    return {}, text
+def _tags(value: Any) -> tuple[str, ...]:
+    return tuple(str(t) for t in (value or ()))
+
+
+def _delivery(value: Any) -> SkillDelivery:
+    # Lenient: only the exact "subagent" marker promotes a skill to a playbook; anything else
+    # (including a YAML-coerced bool/int) safely defaults to inline rather than crashing the load.
+    return SkillDelivery.SUBAGENT if str(value).strip().lower() == "subagent" else SkillDelivery.INLINE
+
+
+def _role(stem: str, meta: dict[str, Any], body: str) -> Role:
+    return Role(
+        id=stem,
+        name=str(meta.get("name") or stem),
+        description=str(meta.get("description") or ""),
+        model_role=ModelRole(meta["model_role"]),  # required — a role without it is skipped+logged
+        body=body,
+        version=int(meta.get("version", 1)),
+        scope_tags=_tags(meta.get("scope_tags")),
+    )
+
+
+def _skill(stem: str, meta: dict[str, Any], body: str) -> Skill:
+    return Skill(
+        id=stem,
+        name=str(meta.get("name") or stem),
+        description=str(meta.get("description") or ""),
+        instructions=body,
+        tool_refs=_tags(meta.get("tool_refs")),
+        version=int(meta.get("version", 1)),
+        scope_tags=_tags(meta.get("scope_tags")),
+        delivery=_delivery(meta.get("delivery")),
+    )
 
 
 class FilePersonaRegistry:
@@ -39,9 +61,9 @@ class FilePersonaRegistry:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
+        self._base = ""
         self._roles: dict[str, Role] = {}
         self._skills: dict[str, Skill] = {}
-        self._base = ""
         self._load()
 
     def base_persona(self) -> str:
@@ -52,35 +74,10 @@ class FilePersonaRegistry:
         base_file = self.root / "BASE_PERSONA.md"
         if base_file.exists():
             self._base = base_file.read_text(encoding="utf-8").strip()
-        # id = filename stem (canonical, filesystem-native — avoids YAML scalar coercion of the key,
-        # e.g. an unquoted `true`/`1` in frontmatter). Frontmatter carries the display + routing fields.
-        # rglob so artifacts can be grouped in subfolders (skills/code-intelligence, skills/domain, …)
-        # purely for organization — the stem id and tags drive resolution, not the path.
-        for path in sorted((self.root / "roles").rglob("*.md")):
-            meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
-            role = Role(
-                id=path.stem,
-                name=str(meta.get("name") or path.stem),
-                description=str(meta.get("description") or ""),
-                model_role=ModelRole(meta["model_role"]),
-                body=body,
-                version=int(meta.get("version", 1)),
-                scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
-            )
-            self._roles[role.id] = role
-        for path in sorted((self.root / "skills").rglob("*.md")):
-            meta, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
-            skill = Skill(
-                id=path.stem,
-                name=str(meta.get("name") or path.stem),
-                description=str(meta.get("description") or ""),
-                instructions=body,
-                tool_refs=tuple(str(t) for t in (meta.get("tool_refs") or ())),
-                version=int(meta.get("version", 1)),
-                scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
-                delivery=SkillDelivery(meta.get("delivery", "inline")),
-            )
-            self._skills[skill.id] = skill
+        # id = filename stem (canonical, filesystem-native). load_artifacts rglobs each dir and
+        # logs+skips any malformed file, so one bad artifact can't take down the registry.
+        self._roles = load_artifacts([self.root / "roles"], _role)
+        self._skills = load_artifacts([self.root / "skills"], _skill)
         logger.debug("persona_loaded", roles=len(self._roles), skills=len(self._skills))
 
     def get_role(self, role_id: str) -> Role:

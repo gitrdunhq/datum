@@ -16,19 +16,9 @@ from typing import Any
 import yaml
 
 from datum_ax.contracts.rules import RuleNotFoundError
+from datum_ax.data._artifacts import load_artifacts
 from datum_ax.data.rules import RULE_REGISTRIES
 from datum_ax.schemas.rules import RuleKind, RuleRegistryEntry, RuleTier
-
-
-def _split(text: str) -> tuple[dict[str, Any], str]:
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) == 3:
-            meta = yaml.safe_load(parts[1]) or {}
-            if not isinstance(meta, dict):
-                raise ValueError("rule frontmatter must be a mapping")
-            return meta, parts[2].strip()
-    return {}, text.strip()
 
 
 class FileRuleRegistry:
@@ -37,17 +27,16 @@ class FileRuleRegistry:
     def __init__(self, root: str | Path | Sequence[str | Path]) -> None:
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         self.roots = [Path(r) for r in roots]
-        self.root = self.roots[0]  # write target for add_rule (e.g. the learned-rules dir)
+        # Write target = the LAST root (the override/writable dir, e.g. learned-rules), which is also
+        # the read-winner on id collision — so add_rule never writes into a read-only packaged dir.
+        self.root = self.roots[-1]
         self._rules: dict[str, RuleRegistryEntry] = {}
         self._load()
 
     def _load(self) -> None:
-        # Read every root in order (e.g. packaged rules + a writable learned-rules dir); a learned
-        # rule with the same id overrides the packaged one.
-        for root in self.roots:
-            for path in sorted(root.rglob("*.md")):
-                meta, body = _split(path.read_text(encoding="utf-8"))
-                self._rules[path.stem] = self._entry(path.stem, meta, body)
+        # Read roots in order (packaged, then learned); later roots override on id collision.
+        # load_artifacts logs+skips any malformed file so one bad rule can't take down the registry.
+        self._rules = load_artifacts(self.roots, self._entry)
 
     @staticmethod
     def _entry(stem: str, meta: dict[str, Any], body: str) -> RuleRegistryEntry:

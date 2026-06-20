@@ -7,17 +7,11 @@ no central edit (open/closed). `FilePersonaRegistry` (markdown + frontmatter on 
 
 from __future__ import annotations
 
-import importlib
-import pkgutil
-
 from datum_ax.contracts.persona import PersonaRegistry
-from datum_ax.registry import Registry
+from datum_ax.registry import Registry, autodiscover
 
 PERSONA_REGISTRIES: Registry[PersonaRegistry] = Registry("persona-registry")
 
-# Auto-discover adapter modules so they self-register (plugin drop-in).
-for _module in pkgutil.iter_modules(__path__):
-    if not _module.name.startswith("_"):
-        importlib.import_module(f"{__name__}.{_module.name}")
+autodiscover(__name__, __path__)  # adapter modules self-register on import (plugin drop-in)
 
 __all__ = ["PERSONA_REGISTRIES"]

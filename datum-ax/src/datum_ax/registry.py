@@ -36,3 +36,15 @@ class Registry(Generic[T]):
 
     def keys(self) -> list[str]:
         return sorted(self._factories)
+
+
+def autodiscover(package_name: str, package_path: list[str]) -> None:
+    """Import every non-underscore submodule of a package so its adapters self-register on import.
+
+    The single home for the plugin auto-discovery loop (used by each ``data/*/__init__.py``)."""
+    import importlib
+    import pkgutil
+
+    for module in pkgutil.iter_modules(package_path):
+        if not module.name.startswith("_"):
+            importlib.import_module(f"{package_name}.{module.name}")
