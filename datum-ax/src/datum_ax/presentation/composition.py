@@ -11,6 +11,8 @@ from typing import Any
 
 from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
+from datum_ax.contracts.ledger import RunLedger
+from datum_ax.data.state.ledger import LibSQLLedger
 from datum_ax.core.orchestration.crane import ContextCrane
 from datum_ax.data.context.adapters import (
     Context7DocContext,
@@ -74,6 +76,32 @@ def build_context_crane(budget: TokenBudget | None = None) -> ContextCrane:
         pruner=DynamicContextPruner(),
         budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
     )
+
+
+_REMOTE_SCHEMES = ("postgresql", "postgres", "libsql", "mysql", "turso")
+
+
+def build_ledger(url: str | None = None) -> RunLedger:
+    """Select the ledger backend by URL — the single swap point (ADR-0031).
+
+    Local SQLite is the default (``:memory:``, a path, or ``sqlite:///path``). A centralized backend
+    (Postgres/Turso) is added as another ``RunLedger`` adapter and dispatched here — no core changes.
+    """
+    url = url or os.environ.get("DATUM_LEDGER_URL") or ":memory:"
+    scheme = url.split("://", 1)[0] if "://" in url else ""
+    if scheme in _REMOTE_SCHEMES:
+        raise NotImplementedError(
+            f"centralized ledger backend '{scheme}' is not wired yet — this is the swap point "
+            f"(ADR-0031): add a RunLedger adapter in data/state and dispatch it in build_ledger(). "
+            f"Local SQLite remains the default."
+        )
+    if url.startswith("sqlite:///"):
+        path = url[len("sqlite:///"):]
+    elif url.startswith("sqlite://"):
+        path = url[len("sqlite://"):] or ":memory:"
+    else:
+        path = url  # ":memory:" or a filesystem path
+    return LibSQLLedger(path)
 
 
 def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:

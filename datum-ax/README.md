@@ -82,6 +82,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0028](docs/adr/0028-cli-and-api-surface.md) — CLI + API surface to kick off any stage (presentation tier)
 - [0029](docs/adr/0029-live-status-snapshot.md) — live status snapshot: a single JSON of what the pipeline is doing now (`GET /status`)
 - [0030](docs/adr/0030-context-crane-single-source.md) — ContextCrane: single source of truth for context assembly (one assembler, one token counter, one pruner)
+- [0031](docs/adr/0031-pluggable-ledger-backend.md) — pluggable ledger backend (local SQLite → centralized DB behind one port)
 
 **Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 

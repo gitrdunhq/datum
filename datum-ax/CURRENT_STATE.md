@@ -1,7 +1,7 @@
 # CURRENT_STATE — datum-ax
 
 _Branch: `claude/agentic-lang-pipeline-8dqtgr` in `gitrdunhq/datum`. Working tree clean; everything
-below is committed and pushed. Test suite: **208 green** (`uv run pytest`)._
+below is committed and pushed. Test suite: **213 green** (`uv run pytest`)._
 
 ## What this is
 
@@ -10,7 +10,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 1. **datum-ax** — an asymmetric agentic coding pipeline (a datum-inspired variant). Cognition
    (Apple Silicon + oMLX + LangGraph) is decoupled from execution (ephemeral sandboxes); context is a
-   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (30
+   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (31
    ADRs); E1–E9 + CLI implemented and green.**
 2. **Product Team** (`skills/product-team/`) — a discovery-&-shaping skill suite that orchestrates the
    `sam-fakhreddine/product-manager-skills` library (49 frameworks). `skills/` is canonical.
@@ -22,12 +22,12 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 | Area | State |
 |------|-------|
-| Architecture & ADRs | ✅ 30 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
+| Architecture & ADRs | ✅ 31 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
 | E1 — Contracts & schemas | ✅ Built & green — strict Pydantic, 3 enforced tiers (boundary test) |
 | E2 — Inference layer | ✅ Built — `OmlxInferenceClient` (role registry, semaphore, budgets), httpx + native MLX transports; mock-tested |
 | E3 — Execution hosts | ✅ `LocalHost` (patch apply); 🟡 Docker + Tart present, x86 docker not hardened |
 | E4 — Context firewall + DCP | ✅ Built — **ContextCrane is the single source of truth** (ADR-0030): hoist→assemble→prune→budget; adapters + DCP |
-| E5 — Data plane & observability | ✅ Built — SQLite ledger (run-scoped trace + token metering + persistence), valkey checkpointer, status provider |
+| E5 — Data plane & observability | ✅ Built — SQLite ledger (run-scoped + metering + persistence) **behind a `RunLedger` port** (centralized DB = config swap, ADR-0031); valkey checkpointer; status provider |
 | E6 — Orchestration (LangGraph) | ✅ Built — graph (ROUTE→PhaseA→PhaseB→CLOSEOUT), scheduler, state; deps injected via config (DI) |
 | E7 — Planner (Phase A) | ✅ Built — triage, DAG/waves, lane_plan, properties |
 | E8 — Verifier (Phase B) | ✅ Built — loop, synthesis, discipline; adversarial reviewer |
@@ -43,7 +43,7 @@ CURRENT_STATE.md                  this file
 langgraph.json                    Studio entrypoint -> presentation.studio:make_graph
 docs/
   ARCHITECTURE.md  PIPELINE.md  GLOSSARY.md  RESEARCH-NOTES.md
-  adr/0001..0030-*.md             30 ADRs
+  adr/0001..0031-*.md             31 ADRs
   initiatives/datum-ax-build/      INITIATIVE.md + epics/e1..e11 tickets + lane-plans (the roadmap)
   initiatives/{tic-tac-toe,beta-wiring,integration-sweep}/  emulated runs
 src/datum_ax/                     three enforced tiers (boundary test guards imports)
@@ -53,7 +53,7 @@ src/datum_ax/                     three enforced tiers (boundary test guards imp
   data/        inference (oMLX adapter+transports), execution (local/docker/tart), context (adapters/dcp), state (ledger/valkey/status)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
-tests/                            208 tests: property + boundary guard + per-module integration
+tests/                            213 tests: property + boundary guard + per-module integration
 skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second copy)
 ```
 
@@ -62,7 +62,7 @@ skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second co
 ```bash
 cd datum-ax
 uv pip install -e . pytest pytest-asyncio hypothesis
-uv run pytest          # 208 green (property + tier-boundary + integration)
+uv run pytest          # 213 green (property + tier-boundary + integration)
 ```
 
 ## Load-bearing decisions (don't relitigate)
@@ -88,7 +88,6 @@ _Tracked in `docs/initiatives/integration-sweep/GAP-LEDGER.md` (MVP → aspirati
    DB branch remain.
 3. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
    smoke run.
-4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 
 ## Pointers
