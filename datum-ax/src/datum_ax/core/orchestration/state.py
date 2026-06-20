@@ -7,6 +7,7 @@ class OrchestratorState(TypedDict, total=False):
     """
 
     ticket: dict[str, Any]
+    run_id: str
     workspace_dir: str
     dag: Optional[dict[str, Any]]
     current_wave: int

@@ -6,6 +6,7 @@ depends on the ``contracts`` Protocols and receives concrete adapters via ``conf
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from pathlib import Path
 from typing import Any
@@ -44,10 +45,14 @@ _PACKAGED_PERSONA_ROOT = str(Path(__file__).resolve().parent.parent / "personas"
 _PACKAGED_RULES_ROOT = str(Path(__file__).resolve().parent.parent / "rules")
 
 
-def _learned_rules_root() -> str:
-    """Writable dir where compound-engineering auto-bound rules land (ADR-0020) — read alongside the
-    packaged rules so the loop compounds across runs."""
-    return os.environ.get("DATUM_LEARNED_RULES_ROOT", ".datum/rules")
+def _learned_rules_root(workspace_dir: str = ".") -> str:
+    """Writable dir where compound-engineering auto-bound rules land (ADR-0020), read alongside the
+    packaged rules so the loop compounds across runs. Anchored to the **workspace** (absolute), not
+    cwd-relative, so binding and reading agree no matter the process directory (review #5)."""
+    override = os.environ.get("DATUM_LEARNED_RULES_ROOT")
+    if override:
+        return str(Path(override).resolve())
+    return str((Path(workspace_dir).resolve() / ".datum" / "rules"))
 
 
 def build_inference_client_from_env() -> InferenceClient:
@@ -108,22 +113,38 @@ def build_local_host(workspace_dir: str = ".") -> ExecutionHost:
 
 def build_token_counter() -> TokenCounter:
     """Real tokenizer by default when `[tokenizer]` is installed, else the ~4-chars/token heuristic
-    (ADR-0030/0034). `DATUM_TOKENIZER=heuristic` forces the heuristic."""
+    (ADR-0030/0034). `DATUM_TOKENIZER=heuristic` forces the heuristic.
+
+    **Lazy:** tiktoken's *encoding* (the part that can hit the network on first use) is resolved on the
+    first count, not here — so building the crane / loading the graph never downloads anything
+    (offline-safe). When tiktoken isn't installed at all we return the heuristic directly (a cheap
+    ``find_spec`` check, no import side effects), so the counter is exactly the heuristic."""
     if os.environ.get("DATUM_TOKENIZER") == "heuristic":
         return default_token_count
-    try:
-        from datum_ax.data.tokenizers import build_tiktoken_counter
-
-        return build_tiktoken_counter()
-    except Exception:  # tiktoken absent / encoding unavailable (e.g. offline CI)
+    if importlib.util.find_spec("tiktoken") is None:
         return default_token_count
+
+    resolved: dict[str, TokenCounter] = {}
+
+    def counter(text: str) -> int:
+        if "fn" not in resolved:
+            try:
+                from datum_ax.data.tokenizers import build_tiktoken_counter
+
+                resolved["fn"] = build_tiktoken_counter()
+            except Exception:  # encoding unavailable (e.g. offline first run)
+                resolved["fn"] = default_token_count
+        return resolved["fn"](text)
+
+    return counter
 
 
 def build_context_crane(
-    budget: TokenBudget | None = None, name: str | None = None
+    budget: TokenBudget | None = None, name: str | None = None, workspace_dir: str = "."
 ) -> ContextAssembler:
     """Resolve the (mandatory) context assembler by key from `CONTEXT_ASSEMBLERS` (ADR-0030/0032),
-    wired with the data adapters + DCP + persona registry + token counter. Default: the crane."""
+    wired with the data adapters + DCP + persona registry + token counter. Default: the crane.
+    Construction is offline-safe — no network until a node actually infers/counts."""
     name = name or os.environ.get("DATUM_CONTEXT_ASSEMBLER") or "crane"
     return CONTEXT_ASSEMBLERS.create(
         name,
@@ -133,25 +154,28 @@ def build_context_crane(
         pruner=DynamicContextPruner(),
         budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
         persona=build_persona_registry(),
-        rules=build_rule_registry(),
+        rules=build_rule_registry(workspace_dir=workspace_dir),
         token_counter=build_token_counter(),
     )
 
 
-def build_rule_registry(name: str | None = None, **kwargs: Any) -> RuleRegistry:
+def build_rule_registry(
+    name: str | None = None, workspace_dir: str = ".", **kwargs: Any
+) -> RuleRegistry:
     """Resolve a rule-registry plugin by name (ADR-0020/0032). Default: file-backed, reading the
-    packaged ``datum_ax/rules/`` **and** the writable learned-rules dir (so auto-bound rules from
-    past runs are lifted too)."""
+    packaged ``datum_ax/rules/`` **and** the workspace's writable learned-rules dir (so auto-bound
+    rules from past runs are lifted too)."""
     name = name or os.environ.get("DATUM_RULE_REGISTRY") or "file"
     if name == "file" and "root" not in kwargs:
-        kwargs["root"] = [_PACKAGED_RULES_ROOT, _learned_rules_root()]
+        kwargs["root"] = [_PACKAGED_RULES_ROOT, _learned_rules_root(workspace_dir)]
     return RULE_REGISTRIES.create(name, **kwargs)
 
 
-def build_rule_binder(**kwargs: Any) -> RuleBinder:
+def build_rule_binder(workspace_dir: str = ".", **kwargs: Any) -> RuleBinder:
     """The write side of the rules registry (ADR-0020 capture) — persists learned rules into the
-    writable learned-rules dir. CLOSEOUT auto-binds through this."""
-    kwargs.setdefault("root", _learned_rules_root())
+    workspace's writable learned-rules dir (same path the crane's registry reads). CLOSEOUT auto-binds
+    through this."""
+    kwargs.setdefault("root", _learned_rules_root(workspace_dir))
     return RULE_REGISTRIES.create("file", **kwargs)
 
 
@@ -241,13 +265,19 @@ def build_status_source() -> StatusSource:
 
 
 def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:
-    """The injected dependencies the core graph expects under ``config['configurable']``."""
+    """The injected dependencies the core graph expects under ``config['configurable']``.
+
+    Construction is offline-safe: the HTTP transport connects only on a real `complete()`, the ledger
+    is in-memory, the tokenizer resolves lazily on first count, and registries read local files — so
+    building this (and `studio.make_graph`) never touches the network at graph-load time.
+    """
     return {
         "configurable": {
             "inference_client": build_inference_client_from_env(),
             "execution_host": build_local_host(workspace_dir),
-            "context_crane": build_context_crane(),
+            "context_crane": build_context_crane(workspace_dir=workspace_dir),
             "run_ledger": build_ledger(),
-            "rule_binder": build_rule_binder(),
+            "rule_binder": build_rule_binder(workspace_dir),
+            "review_gate": build_review_gate(),
         }
     }

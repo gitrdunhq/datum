@@ -28,7 +28,9 @@ def _tags(value: Any) -> tuple[str, ...]:
 def _delivery(value: Any) -> SkillDelivery:
     # Lenient: only the exact "subagent" marker promotes a skill to a playbook; anything else
     # (including a YAML-coerced bool/int) safely defaults to inline rather than crashing the load.
-    return SkillDelivery.SUBAGENT if str(value).strip().lower() == "subagent" else SkillDelivery.INLINE
+    return (
+        SkillDelivery.SUBAGENT if str(value).strip().lower() == "subagent" else SkillDelivery.INLINE
+    )
 
 
 def _role(stem: str, meta: dict[str, Any], body: str) -> Role:

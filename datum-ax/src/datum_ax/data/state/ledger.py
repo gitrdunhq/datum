@@ -21,7 +21,7 @@ class LibSQLLedger:
                 """
                 CREATE TABLE IF NOT EXISTS trace (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL DEFAULT 'default',
+                    run_id TEXT NOT NULL DEFAULT 'run',
                     node TEXT NOT NULL,
                     model_role TEXT,
                     model_id TEXT,
@@ -48,7 +48,7 @@ class LibSQLLedger:
         attempt: int | None = None,
         deterministic: bool | None = None,
         verdict: str | None = None,
-        run_id: str = "default",
+        run_id: str = "run",
     ) -> None:
         det = None if deterministic is None else int(bool(deterministic))
         with self.conn:
