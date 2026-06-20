@@ -86,6 +86,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0032](docs/adr/0032-ports-and-adapters-everywhere.md) — ports & adapters everywhere (every external dependency = port + shapes + factory)
 - [0033](docs/adr/0033-persona-registry.md) — Persona registry: Roles + Skills as versioned markdown artifacts behind a port (our own lean build; fills the crane's persona seam)
 - [0034](docs/adr/0034-determinism-by-default.md) — determinism by default, reasoning when warranted (gate stays zero-LLM; cognition may use embeddings/LLM, escalating on need)
+- [0035](docs/adr/0035-subagent-harness-for-playbooks.md) — subagent harness for playbook skills (procedures run on an isolated worker + JSON contract, not inlined; bug-hunt / research-workflow)
 
 **Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 
