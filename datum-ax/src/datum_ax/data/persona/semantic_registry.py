@@ -78,8 +78,8 @@ class SemanticPersonaRegistry:
         qv = self._model.encode([query], convert_to_numpy=True)[0]
         qn = self._np.linalg.norm(qv) or 1.0
         scored = []
-        for i, skill in enumerate(self._corpus):
-            v = self._emb[i]
+        # zip (not enumerate+index) so a corpus/embedding row-count mismatch can't IndexError.
+        for skill, v in zip(self._corpus, self._emb):
             cos = float(self._np.dot(qv, v) / (qn * (self._np.linalg.norm(v) or 1.0)))
             if cos >= threshold:
                 scored.append((cos, skill.id, skill))

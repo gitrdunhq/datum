@@ -30,12 +30,15 @@ def project_dag(
     for lane in sorted(lanes, key=lambda lane_dict: str(lane_dict.get("id"))):
         lane_id = str(lane.get("id"))
         files = lane.get("files") or []
+        # A lane present in `lanes` but absent from every wave is unscheduled — label it distinctly,
+        # not as a (genuine) first wave. (review #8)
+        wave_label = f"wave:{wave_of[lane_id]}" if lane_id in wave_of else "wave:unscheduled"
         issues.append(
             IssueSpec(
                 key=lane_id,
                 title=str(lane.get("description") or lane_id),
                 body="Files: " + ", ".join(str(f) for f in files),
-                labels=(f"wave:{wave_of.get(lane_id, 0)}", "status:pending"),
+                labels=(wave_label, "status:pending"),
                 parent="epic",
             )
         )

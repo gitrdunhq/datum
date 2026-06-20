@@ -17,6 +17,10 @@ from datum_ax.data.workers import WORKERS
 class FakeWorker:
     """Implements the `Worker` port deterministically."""
 
+    def __init__(self, **_config: Any) -> None:
+        # Accepts (and ignores) config kwargs for drop-in parity with the real adapter.
+        pass
+
     def run(
         self,
         playbook: str,
@@ -28,4 +32,4 @@ class FakeWorker:
 
 @WORKERS.register("fake")
 def _build(**kwargs: Any) -> FakeWorker:
-    return FakeWorker()
+    return FakeWorker(**kwargs)

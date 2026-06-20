@@ -16,7 +16,8 @@ from datum_ax.schemas.projection import ProjectionPlan
 class FakeIssueProjector:
     """Implements the `IssueProjector` port without a network."""
 
-    def __init__(self) -> None:
+    def __init__(self, **_config: Any) -> None:
+        # Accepts (and ignores) config kwargs for drop-in parity with the real adapter.
         self.published: list[ProjectionPlan] = []
 
     def publish(self, plan: ProjectionPlan) -> tuple[str, ...]:
@@ -26,4 +27,4 @@ class FakeIssueProjector:
 
 @ISSUE_PROJECTORS.register("fake")
 def _build(**kwargs: Any) -> FakeIssueProjector:
-    return FakeIssueProjector()
+    return FakeIssueProjector(**kwargs)

@@ -3,8 +3,10 @@ portable artifacts, resolved deterministically behind a port.
 
 The data tier loads artifacts (markdown + frontmatter) and implements ``PersonaRegistry``; the
 ContextCrane (core) composes a lane's ``[System]`` prefix from a resolved Role + selected Skills.
-Selection is deterministic (by id / model_role / scope_tags) so personas stay off the
-determinism/trust-sensitive path; any semantic matching is an opt-in cognition-side adapter.
+Selection is **tiered** (ADR-0034): deterministic by id / model_role / scope_tags, plus embedding
+RAG (``match_skills``) for open-ended domain fit — the semantic adapter is the default when available
+and degrades to the deterministic keyword tier. Skill *selection* is cognition (it shapes a prompt);
+the deterministic *review gate* (ADR-0006), not this, is the trust boundary.
 """
 
 from __future__ import annotations

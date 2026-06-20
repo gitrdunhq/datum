@@ -33,6 +33,13 @@ def test_sub_issues_carry_wave_and_status_labels():
     assert "wave:1" in by_key["b-lane"].labels
 
 
+def test_lane_absent_from_all_waves_is_labeled_unscheduled():
+    lanes = _LANES + [{"id": "orphan", "description": "Orphan", "files": []}]
+    by_key = {i.key: i for i in project_dag("E", lanes, _WAVES).issues}
+    assert "wave:unscheduled" in by_key["orphan"].labels  # not silently wave:0
+    assert "wave:0" in by_key["a-lane"].labels  # genuine first-wave still wave:0
+
+
 def test_projection_is_deterministic():
     assert project_dag("E", _LANES, _WAVES) == project_dag("E", list(reversed(_LANES)), _WAVES)
 
