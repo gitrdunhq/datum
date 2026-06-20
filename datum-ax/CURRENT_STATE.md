@@ -1,7 +1,7 @@
 # CURRENT_STATE — datum-ax
 
 _Branch: `claude/agentic-lang-pipeline-8dqtgr` in `gitrdunhq/datum`. Working tree clean; everything
-below is committed and pushed. Test suite: **202 green** (`uv run pytest`)._
+below is committed and pushed. Test suite: **208 green** (`uv run pytest`)._
 
 ## What this is
 
@@ -27,7 +27,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 | E2 — Inference layer | ✅ Built — `OmlxInferenceClient` (role registry, semaphore, budgets), httpx + native MLX transports; mock-tested |
 | E3 — Execution hosts | ✅ `LocalHost` (patch apply); 🟡 Docker + Tart present, x86 docker not hardened |
 | E4 — Context firewall + DCP | ✅ Built — **ContextCrane is the single source of truth** (ADR-0030): hoist→assemble→prune→budget; adapters + DCP |
-| E5 — Data plane & observability | ✅ Built — ledger, valkey checkpointer, status provider |
+| E5 — Data plane & observability | ✅ Built — SQLite ledger (run-scoped trace + token metering + persistence), valkey checkpointer, status provider |
 | E6 — Orchestration (LangGraph) | ✅ Built — graph (ROUTE→PhaseA→PhaseB→CLOSEOUT), scheduler, state; deps injected via config (DI) |
 | E7 — Planner (Phase A) | ✅ Built — triage, DAG/waves, lane_plan, properties |
 | E8 — Verifier (Phase B) | ✅ Built — loop, synthesis, discipline; adversarial reviewer |
@@ -53,7 +53,7 @@ src/datum_ax/                     three enforced tiers (boundary test guards imp
   data/        inference (oMLX adapter+transports), execution (local/docker/tart), context (adapters/dcp), state (ledger/valkey/status)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
-tests/                            202 tests: property + boundary guard + per-module integration
+tests/                            208 tests: property + boundary guard + per-module integration
 skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second copy)
 ```
 
@@ -62,7 +62,7 @@ skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second co
 ```bash
 cd datum-ax
 uv pip install -e . pytest pytest-asyncio hypothesis
-uv run pytest          # 202 green (property + tier-boundary + integration)
+uv run pytest          # 208 green (property + tier-boundary + integration)
 ```
 
 ## Load-bearing decisions (don't relitigate)
@@ -82,11 +82,13 @@ uv run pytest          # 202 green (property + tier-boundary + integration)
 
 ## Open threads / next steps
 
-1. **Route inline prompt builders through the crane** — `planner/triage`, `planner/lane_plan`,
-   `verifier/synthesis` still build `AssembledPrompt` directly (ADR-0030 follow-up) for true
-   single-source assembly.
-2. **Harden E3** — finish `X86DockerHost` (egress allowlist, rlimits, teardown).
-3. **Real wiring depth** — Valkey/libSQL persistence beyond the current modules; live oMLX smoke run.
+_Tracked in `docs/initiatives/integration-sweep/GAP-LEDGER.md` (MVP → aspirational)._
+1. **G1 (done, retries remain):** crane wired into the loop; retry-prompt rebuilds still inline.
+2. **G6 (in progress):** ledger deepened (run-scoping + metering + persistence); Valkey resume + per-run
+   DB branch remain.
+3. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
+   smoke run.
+4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 
 ## Pointers
