@@ -7,6 +7,7 @@ the generic property tests only ever see *valid* instances (invalids are tested 
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from hypothesis import strategies as st
 
@@ -72,7 +73,7 @@ nonneg_float = st.floats(min_value=0, max_value=1e6, allow_nan=False, allow_infi
 dt = st.datetimes(min_value=datetime(1970, 1, 1), max_value=datetime(2100, 1, 1))
 
 
-def _enum(e: type) -> st.SearchStrategy:
+def _enum(e: type[Enum]) -> st.SearchStrategy:
     return st.sampled_from(list(e))
 
 

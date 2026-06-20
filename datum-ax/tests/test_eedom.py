@@ -4,13 +4,14 @@ emitting his published ReviewDecision schema, which we map to our ReviewDecision
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from datum_ax.contracts.review import DecisionVerdict, ReviewDecision, ReviewGate
 from datum_ax.data.review.eedom import EedomReviewGate
 
 
-def _runner_writing(payload: dict) -> object:
+def _runner_writing(payload: dict) -> Callable[[list[str]], None]:
     """Fake eedom: finds --output-json in the command and writes his decision JSON there."""
 
     def run(cmd: list[str]) -> None:
