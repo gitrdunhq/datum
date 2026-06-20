@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TextIO
+from typing import Any, TextIO, cast
 
 import structlog
 
 # Applied to every event (structlog-native and stdlib-foreign) before the final renderer.
-_SHARED_PROCESSORS: list = [
+_SHARED_PROCESSORS: list[Any] = [
     structlog.contextvars.merge_contextvars,
     structlog.stdlib.add_log_level,
     structlog.stdlib.add_logger_name,
@@ -93,4 +93,4 @@ def configure_logging(
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return the bound structlog logger for *name* (use ``__name__``). Safe to call at import
     time — it binds lazily on first use, picking up whatever ``configure_logging`` installed."""
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))

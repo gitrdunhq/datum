@@ -8,6 +8,7 @@ harvest), Idempotency (re-binding the same rule doesn't duplicate it).
 
 from __future__ import annotations
 
+from typing import Any
 
 from datum_ax.core.compound.harvest import harvest
 from datum_ax.data.rules.file_registry import FileRuleRegistry
@@ -16,7 +17,7 @@ from datum_ax.schemas.rules import RuleKind, RuleTier
 
 
 def _lesson(**kw) -> Lesson:
-    base = dict(
+    base: dict[str, Any] = dict(
         id="l1",
         source=LessonSource.EEDOM_REJECT,
         statement="Some rule statement.",

@@ -10,11 +10,21 @@ from datum_ax.schemas.compound import LessonSource
 
 
 class _FakeLedger:
+    # Implements the RunLedger port; only get_trace carries behavior (the harvest reads the trace).
     def __init__(self, trace):
         self._trace = trace
 
     def get_trace(self, run_id=None):
         return self._trace
+
+    def record_node(self, *args, **kwargs):
+        pass
+
+    def totals(self, run_id=None):
+        return {"nodes": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+    def tokens_spent(self, run_id=None):
+        return 0
 
 
 def test_lessons_derived_from_trace():

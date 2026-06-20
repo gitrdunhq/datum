@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 
 from datum_ax.contracts.inference import TokenBudget
@@ -35,7 +36,7 @@ def test_graph_end_to_end():
     mock_client.complete.return_value.text = (
         '{"route": "feature", "target": "ui", "diff": "--- a\\n+++ b\\n+foo"}'
     )
-    config = {
+    config: RunnableConfig = {
         "configurable": {
             "inference_client": mock_client,
             "execution_host": FakeExecutionHost(),

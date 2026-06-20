@@ -1,5 +1,7 @@
 """Native MLX transport for running models in-process using mlx-lm."""
 
+from typing import Any
+
 from datum_ax.data.inference.transport import OmlxTransport
 from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
 
@@ -7,8 +9,8 @@ from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
 class NativeMlxTransport(OmlxTransport):
     """Real transport to a local MLX model running in-process."""
 
-    def __init__(self):
-        self.loaded_models = {}
+    def __init__(self) -> None:
+        self.loaded_models: dict[str, Any] = {}
 
     async def complete(self, request: ChatRequest) -> ChatResponse:
         import mlx_lm

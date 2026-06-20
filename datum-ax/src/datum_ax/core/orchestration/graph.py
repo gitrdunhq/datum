@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -30,7 +30,7 @@ def get_inference_client(config: RunnableConfig) -> InferenceClient:
             "inference_client not provided. Wire it via config['configurable']['inference_client'] "
             "(see datum_ax.presentation.composition)."
         )
-    return client
+    return cast(InferenceClient, client)
 
 
 def get_execution_host(config: RunnableConfig) -> ExecutionHost:
@@ -41,7 +41,7 @@ def get_execution_host(config: RunnableConfig) -> ExecutionHost:
             "execution_host not provided. Wire it via config['configurable']['execution_host'] "
             "(see datum_ax.presentation.composition)."
         )
-    return host
+    return cast(ExecutionHost, host)
 
 
 def get_context_crane(config: RunnableConfig) -> Any:

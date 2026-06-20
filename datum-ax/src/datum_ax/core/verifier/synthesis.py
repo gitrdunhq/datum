@@ -10,7 +10,7 @@ from datum_ax.observability import get_logger
 
 logger = get_logger(__name__)
 
-_FORMAT = {
+_FORMAT: dict[str, Any] = {
     "type": "json_schema",
     "json_schema": {
         "name": "SynthesisResult",

@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from datum_ax.contracts.checkpoint import CheckpointStore
 from datum_ax.contracts.context_assembler import ContextAssembler
@@ -176,7 +176,8 @@ def build_rule_binder(workspace_dir: str = ".", **kwargs: Any) -> RuleBinder:
     workspace's writable learned-rules dir (same path the crane's registry reads). CLOSEOUT auto-binds
     through this."""
     kwargs.setdefault("root", _learned_rules_root(workspace_dir))
-    return RULE_REGISTRIES.create("file", **kwargs)
+    # FileRuleRegistry implements both the read (RuleRegistry) and write (RuleBinder) ports.
+    return cast(RuleBinder, RULE_REGISTRIES.create("file", **kwargs))
 
 
 # Centralized schemes recognized but not yet wired (fail loudly rather than fall back to SQLite).

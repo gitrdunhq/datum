@@ -5,10 +5,12 @@ crane uses whatever counter is injected, so budgets/pruning can become exact wit
 from __future__ import annotations
 
 import importlib.util
+from typing import cast
 
 import pytest
 
 from datum_ax.contracts.tokens import default_token_count
+from datum_ax.core.orchestration.crane import ContextCrane
 from datum_ax.presentation.composition import build_context_crane, build_token_counter
 
 _HAS_TIKTOKEN = importlib.util.find_spec("tiktoken") is not None
@@ -37,7 +39,7 @@ def test_explicit_heuristic_override():
 
 
 def test_crane_uses_the_injected_counter():
-    crane = build_context_crane()
+    crane = cast(ContextCrane, build_context_crane())
     assert crane._count("abcd") >= 1  # crane counts via the injected tokenizer
 
 

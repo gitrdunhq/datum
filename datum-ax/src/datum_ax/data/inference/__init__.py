@@ -7,7 +7,8 @@ enforcement over a pluggable transport. `HttpxTransport` is intentionally NOT re
 
 from __future__ import annotations
 
-from datum_ax.data.inference.client import OmlxInferenceClient, default_token_count
+from datum_ax.contracts.tokens import default_token_count
+from datum_ax.data.inference.client import OmlxInferenceClient
 from datum_ax.data.inference.errors import (
     BudgetExceededError,
     InferenceError,

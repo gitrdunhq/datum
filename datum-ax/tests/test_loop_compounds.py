@@ -13,6 +13,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from langchain_core.runnables import RunnableConfig
+
 from datum_ax.contracts.inference import TokenBudget
 from datum_ax.contracts.review import (
     DecisionVerdict,
@@ -72,7 +74,7 @@ def _flaky_client() -> MagicMock:
 
 
 def _run(ledger, binder, gate):
-    config = {
+    config: RunnableConfig = {
         "configurable": {
             "inference_client": _flaky_client(),
             "execution_host": FakeExecutionHost(),
@@ -132,7 +134,7 @@ def test_blocking_verdict_is_proposed_not_autobound(tmp_path):
 
 def test_loop_is_inert_without_a_ledger():
     # Fail-open: no ledger injected → the loop still completes, it just records/harvests nothing.
-    config = {
+    config: RunnableConfig = {
         "configurable": {
             "inference_client": _flaky_client(),
             "execution_host": FakeExecutionHost(),

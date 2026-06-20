@@ -30,7 +30,7 @@ def triage_ticket(
         system_text = crane.compose_system("triage").replace("{{input}}", json.dumps(ticket))
 
         # ContextCrane is the single assembler (ADR-0030).
-        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> Any:
             return crane.assemble(system, global_ast, diff, suffix, budget=budget)
 
         prompt = _assemble(system_text, "", "", ())

@@ -116,6 +116,9 @@ def run_cli(args_list: list[str] | None = None) -> None:
                         sys.exit(1)
 
         use_native_mlx = os.environ.get("DATUM_NATIVE_MLX") == "1"
+        from datum_ax.data.inference.transport import OmlxTransport
+
+        transport: OmlxTransport
         if use_native_mlx:
             from datum_ax.data.inference.transport_mlx import NativeMlxTransport
 

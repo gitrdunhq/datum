@@ -37,10 +37,36 @@ python_version = "3.11"
 strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
+# Tests stay type-checked (real type errors still surface) but aren't held to the annotation-strictness
+# bar — pytest functions are conventionally left unannotated. src is re-pinned to full strict below.
+# (tests/ has no __init__.py, so module-name globs are unreliable; relax globally, re-strict datum_ax.*.)
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_untyped_calls = false
+disallow_any_generics = false
 
-# Optional centralized-backend drivers ([database] extra) — tolerate their absence at type-check time.
+# src is fully strict — the relaxations above are undone for the package itself.
 [[tool.mypy.overrides]]
-module = ["psycopg.*", "redis.*", "fakeredis.*"]
+module = ["datum_ax.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_untyped_calls = true
+disallow_any_generics = true
+
+# Optional / native third-party deps (extras + Apple-Silicon-only) — tolerate their absence (or missing
+# stubs) at type-check time so the base/dev install type-checks the same as a full one.
+[[tool.mypy.overrides]]
+module = [
+    "psycopg.*",
+    "redis.*",
+    "fakeredis.*",
+    "tiktoken.*",
+    "mlx_lm.*",
+    "numpy.*",
+    "sentence_transformers.*",
+]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -54,5 +80,6 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.9.0",
     "hypothesis>=6.0",
-    "fakeredis>=2.21"
+    "fakeredis>=2.21",
+    "types-PyYAML>=6.0"
 ]

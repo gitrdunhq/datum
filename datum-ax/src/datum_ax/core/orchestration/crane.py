@@ -128,7 +128,7 @@ class ContextCrane:
         return [f"## Rule: {r.id}\n{r.statement}" for r in entries]
 
     @staticmethod
-    def _render_skills(skills: list) -> list[str]:
+    def _render_skills(skills: list[Any]) -> list[str]:
         # Never inline a subagent playbook (ADR-0035) — it runs on a worker, not in the prompt.
         return [
             f"## Skill: {s.name}\n{s.instructions}"

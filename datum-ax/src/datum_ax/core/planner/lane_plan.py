@@ -38,7 +38,7 @@ def plan_lanes(
             "{{ticket}}", json.dumps(ticket)
         )
 
-        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> Any:
             return crane.assemble(system, global_ast, diff, suffix, budget=budget)
 
         prompt = _assemble(system_text, "", "", ())
