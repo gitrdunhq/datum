@@ -1,7 +1,8 @@
 # CURRENT_STATE — datum-ax
 
 _Branch: `claude/agentic-lang-pipeline-8dqtgr` in `gitrdunhq/datum`. Working tree clean; everything
-below is committed and pushed. Test suite: **236 green** (`uv run pytest`)._
+below is committed and pushed. Test suite: **335 passed, 3 skipped** (`uv run pytest`); `mypy --strict`
+clean._
 
 ## What this is
 
@@ -10,7 +11,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 1. **datum-ax** — an asymmetric agentic coding pipeline (a datum-inspired variant). Cognition
    (Apple Silicon + oMLX + LangGraph) is decoupled from execution (ephemeral sandboxes); context is a
-   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (32
+   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (35
    ADRs); E1–E9 + CLI implemented and green.**
 2. **Product Team** (`skills/product-team/`) — a discovery-&-shaping skill suite that orchestrates the
    `sam-fakhreddine/product-manager-skills` library (49 frameworks). `skills/` is canonical.
@@ -22,12 +23,13 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 | Area | State |
 |------|-------|
-| Architecture & ADRs | ✅ 32 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
+| Architecture & ADRs | ✅ 35 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
 | E1 — Contracts & schemas | ✅ Built & green — strict Pydantic, 3 enforced tiers (boundary test) |
 | E2 — Inference layer | ✅ Built — `OmlxInferenceClient` (role registry, semaphore, budgets), httpx + native MLX transports; mock-tested |
 | E3 — Execution hosts | ✅ `LocalHost` (patch apply); 🟡 Docker + Tart present, x86 docker not hardened |
 | E4 — Context firewall + DCP | ✅ Built — **ContextCrane is the single source of truth** (ADR-0030): hoist→assemble→prune→budget; adapters + DCP |
-| E5 — Data plane & observability | ✅ Built — SQLite ledger (run-scoped + metering + persistence) **behind a `RunLedger` port** (centralized DB = config swap, ADR-0031); `InMemoryCheckpointer` resume behind a `CheckpointStore` port; status provider |
+| E5 — Data plane & observability | ✅ Built — SQLite ledger (default) **+ `PostgresLedger`** behind the `RunLedger` port; `InMemoryCheckpointer` (default) **+ `RedisCheckpointer` (Redis/Valkey)** behind the `CheckpointStore` port; centralized = URL/config swap (ADR-0031/0032, `[database]` extra); status provider (G6 adapters built; per-run DB branch + live servers pending) |
+| Tooling / quality gates | ✅ `mypy --strict` clean; ruff format + lint; pre-commit hook (ruff + mypy, scoped to datum-ax); PR CI (`.github/workflows/datum-ax-ci.yml`, SHA-pinned) runs the full gate via `scripts/ci.sh` |
 | E6 — Orchestration (LangGraph) | ✅ Built — graph (ROUTE→PhaseA→PhaseB→CLOSEOUT), scheduler, state; deps injected via config (DI) |
 | E7 — Planner (Phase A) | ✅ Built — triage, DAG/waves, lane_plan, properties |
 | E8 — Verifier (Phase B) | ✅ Built — loop, synthesis, style + **deterministic RED-before-GREEN** discipline gates (G7); adversarial reviewer (SKEPTIC needs live model) |
@@ -42,19 +44,22 @@ README.md                         entry point + ADR index
 registry.py                       adapter/plugin registry (ADR-0032)
 CURRENT_STATE.md                  this file
 langgraph.json                    Studio entrypoint -> presentation.studio:make_graph
+scripts/                          ci.sh (full gate), install-hooks.sh (pre-commit), rebuild.sh (CLI)
+../.pre-commit-config.yaml        ruff+mypy hook (at the parent git root; datum-ax-scoped; moves on migration)
+../.github/workflows/datum-ax-ci.yml  PR CI (SHA-pinned) -> scripts/ci.sh
 docs/
   ARCHITECTURE.md  PIPELINE.md  GLOSSARY.md  RESEARCH-NOTES.md
-  adr/0001..0032-*.md             32 ADRs
+  adr/0001..0035-*.md             35 ADRs
   initiatives/datum-ax-build/      INITIATIVE.md + epics/e1..e11 tickets + lane-plans (the roadmap)
   initiatives/{tic-tac-toe,beta-wiring,integration-sweep}/  emulated runs
 src/datum_ax/                     three enforced tiers (boundary test guards imports)
   contracts/   ports + value objects: execution, inference, context, context_assembler (ContextAssembler), review (ReviewGate), persona (PersonaRegistry), rules (RuleRegistry), status (StatusSource), ledger, checkpoint, tokens
   schemas/     ticket, properties (DPS-12), rules
   core/        orchestration (graph/scheduler/crane+assemblers registry/state), planner, verifier, reviewer
-  data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), persona (file + semantic/RAG registry, skills/roles), rules (file rule registry), state (ledger/checkpoint/status)
+  data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), persona (file + semantic/RAG registry, skills/roles), rules (file rule registry), state (ledger/checkpoint/status + postgres_ledger + redis_checkpoint)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
-tests/                            236 tests: property + boundary guard + per-module integration
+tests/                            338 tests (335 passed, 3 skipped): property + boundary guard + per-module integration
 skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second copy)
 ```
 
@@ -62,8 +67,10 @@ skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second co
 
 ```bash
 cd datum-ax
-uv pip install -e . pytest pytest-asyncio hypothesis
-uv run pytest          # 236 green (property + tier-boundary + integration)
+uv sync --group dev
+uv run pytest                  # 335 passed, 3 skipped (property + tier-boundary + integration)
+bash scripts/ci.sh            # the full gate: ruff format-check + ruff check + mypy + pytest
+bash scripts/install-hooks.sh # enable the local pre-commit hook (ruff + mypy)
 ```
 
 ## Load-bearing decisions (don't relitigate)
@@ -74,6 +81,9 @@ uv run pytest          # 236 green (property + tier-boundary + integration)
 - **Strongly typed always** (strict/frozen Pydantic) + **Hypothesis property tests** (DPS-12 domains).
 - **Single source of truth:** dual artifacts md+json with JSON canonical (ADR-0027); **ContextCrane**
   is the one assembler + one token counter + one pruner (ADR-0030).
+- **Pluggable data plane:** local defaults (SQLite ledger, in-memory checkpoint) with centralized
+  adapters behind the same ports (`PostgresLedger`, `RedisCheckpointer`) via the `[database]` extra,
+  selected by URL — `core` never sees the backend (ADR-0031/0032).
 - **Tokenomics:** right model for the work; ~80k window generous *if curated* — crane firewall (in) +
   DCP (stays) + lane sizing (plan to fit); `max_connections × window ≤ memory`.
 - **eedom** review = deterministic (OPA + Opengrep, zero LLM). Worktrees not needed — containers +
@@ -85,10 +95,14 @@ uv run pytest          # 236 green (property + tier-boundary + integration)
 
 _Tracked in `docs/initiatives/integration-sweep/GAP-LEDGER.md` (MVP → aspirational)._
 1. **G1 (done):** all planner/verifier prompts — initial and retries — route through the crane.
-2. **G6 (in progress):** ledger + checkpointer pluggable behind `RunLedger`/`CheckpointStore` ports (resume ✔, metering ✔); real Postgres/Valkey adapters + per-run DB branch remain.
-3. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
+2. **G6 (adapters done):** `PostgresLedger` behind `RunLedger` + `RedisCheckpointer` (Redis/Valkey)
+   behind `CheckpointStore`, URL-dispatched in `build_ledger`/`build_checkpointer` (`[database]` extra);
+   resume ✔, metering ✔. Per-run DB branch + live-server conformance remain.
+3. **Enforcement (done):** `mypy --strict` clean, pre-commit hook, and PR CI (`scripts/ci.sh`) now gate
+   ruff + mypy (+ pytest in CI) so regressions can't land silently.
+4. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
    smoke run.
-4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
+5. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 
 ## Pointers
 

@@ -1,6 +1,6 @@
 # datum-ax — Asymmetric Agentic Language Pipeline
 
-> **Status:** architecture & design (no runtime code yet).
+> **Status:** design complete (35 ADRs); E1–E9 + CLI implemented and green (335 passed, 3 skipped; `mypy --strict` clean).
 > **Provenance:** a *variant inspired by* [`datum`](../). Staged inside the `datum` repo on branch
 > `claude/agentic-lang-pipeline-8dqtgr` for now; intended to migrate to a standalone repo
 > (`gitrdunhq/datum-ax`). This whole directory is self-contained so migration is "move the folder."
@@ -36,7 +36,7 @@ docs are Markdown.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The master design — topology, interfaces, run lifecycle, failure handling, and a candid pressure-test of the source blueprint. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | datum's domain vocabulary (TICKET, SPEC, PROPERTIES, LANE, ROUTE, REFLECT, SKEPTIC, Task Packet, …) mapped to datum-ax's stance on each (adopt/rename/replace/elevate). |
 | [`docs/RESEARCH-NOTES.md`](docs/RESEARCH-NOTES.md) | The verified-vs-fabricated ledger. Which blueprint claims survived fact-checking, and which were discarded. |
-| [`docs/adr/`](docs/adr/) | 15 Architecture Decision Records (see index below). |
+| [`docs/adr/`](docs/adr/) | 35 Architecture Decision Records (see index below). |
 
 ## ADR index
 
@@ -90,7 +90,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 
 **Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 
-**Code (E1–E9 + CLI):** [`src/datum_ax/`](src/datum_ax/) — three enforced tiers (boundary test), strict Pydantic, Hypothesis property tests. Contracts/schemas, oMLX inference, execution hosts, ContextCrane firewall, data plane, LangGraph orchestration, planner, verifier, eedom gate, and the `datumax` CLI. `uv pip install -e . pytest pytest-asyncio hypothesis && uv run pytest` → **202 green**. Roadmap + epic tickets under [`docs/initiatives/datum-ax-build/`](docs/initiatives/datum-ax-build/).
+**Code (E1–E9 + CLI):** [`src/datum_ax/`](src/datum_ax/) — three enforced tiers (boundary test), strict Pydantic, Hypothesis property tests. Contracts/schemas, oMLX inference, execution hosts, ContextCrane firewall, data plane, LangGraph orchestration, planner, verifier, eedom gate, and the `datumax` CLI. `uv sync --group dev && uv run pytest` → **335 passed, 3 skipped** (`mypy --strict` clean; ruff + mypy enforced by a pre-commit hook and PR CI via `scripts/ci.sh`). Roadmap + epic tickets under [`docs/initiatives/datum-ax-build/`](docs/initiatives/datum-ax-build/).
 
 ## Status of the locked-in stack
 

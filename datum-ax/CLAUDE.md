@@ -27,19 +27,24 @@ Tooling is `uv`. Lint/format is `ruff` (line-length 100); types are `mypy --stri
 
 ```bash
 uv sync --group dev                     # install all deps (pytest, mypy, ruff, ...)
-uv run pytest                           # full suite (-q is default; ~318 tests)
+uv run pytest                           # full suite (-q is default; ~335 tests)
 uv run pytest tests/test_graph.py -q    # a single file
 uv run pytest -k loop_compounds         # by keyword
 uv run ruff format src/ tests/          # format
 uv run ruff check src/ tests/           # lint
 uv run mypy                             # strict type-check (src + tests)
+bash scripts/ci.sh                      # the full gate (ruff format-check + ruff check + mypy + pytest)
 uv run datumax <args>                   # the CLI entry point (datum_ax.cli.main:run_cli)
 bash scripts/rebuild.sh                 # reinstall the datumax CLI globally (uv tool install)
 bash scripts/install-hooks.sh           # enable the pre-commit hook (ruff format+check + mypy)
 ```
 
+The same gates are enforced automatically: a **pre-commit hook** (ruff + mypy, scoped to datum-ax) and
+**PR CI** (`.github/workflows/datum-ax-ci.yml`, SHA-pinned) that runs `scripts/ci.sh`.
+
 Optional extras (off by default, hardware/LLM-gated): `semantic` (sentence-transformers — RAG persona
-selection), `tokenizer` (tiktoken — exact token counts), `inference`/`mlx` (real oMLX transport).
+selection), `tokenizer` (tiktoken — exact token counts), `inference`/`mlx` (real oMLX transport),
+`database` (psycopg + redis — centralized Postgres ledger / Redis·Valkey checkpoint, ADR-0031/0032).
 Without them the code degrades deterministically (keyword ranker, ~4-chars/token heuristic, fakes) so
 the suite runs fully offline.
 

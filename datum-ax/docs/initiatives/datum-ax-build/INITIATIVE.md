@@ -123,11 +123,11 @@ you're never flying blind. **E8 is the first epic where the pipeline actually wr
 
 | Epic | Testable deliverable (demo) | How you test it |
 |------|------------------------------|-----------------|
-| E1 Contracts | the typed package | ✅ `uv run pytest` green (**202** total) + tier-boundary guard; schemas emit JSON Schema |
+| E1 Contracts | the typed package | ✅ `uv run pytest` green (**335 passed, 3 skipped**) + tier-boundary guard; schemas emit JSON Schema |
 | E2 Inference | `InferenceClient` vs a **mock oMLX** | ✅ Real oMLX and Native MLX transports built; parallel budgets enforced |
 | E3 Exec hosts | `X86DockerHost` runs a diff | 🟡 `LocalHost` built; `X86DockerHost` pending |
 | E4 Firewall + DCP | the prompt assembler | 🟡 `ContextCrane` footprint validation stubbed |
-| E5 Data + observability | ledger + checkpoint + `LiveStatus` | ⬜ Write a run, kill, **resume from checkpoint** (idempotent replay) |
+| E5 Data + observability | ledger + checkpoint + `LiveStatus` | ✅ SQLite/`PostgresLedger` behind `RunLedger`; in-memory/`RedisCheckpointer` (Redis·Valkey) behind `CheckpointStore`; resume roundtrip + metering ✔ (centralized adapters via `[database]`, G6) |
 | E6 Orchestration | the graph runs **with stub nodes** | ✅ Full ROUTE→PhaseA→PhaseB→CLOSEOUT trace running successfully |
 | E7 Planner | `TICKET → lane DAG` | ✅ DAG chunks into disjoint-file waves perfectly |
 | E8 Verify loop | **one real lane goes green** | ✅ Real lanes execute; JSON failures successfully auto-heal |
