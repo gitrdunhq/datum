@@ -1,6 +1,23 @@
 import ast
 from typing import Any
 
+from datum_ax.schemas.verification import GateResult, LaneVerification
+
+
+def evaluate_tdd_gate(verification: LaneVerification) -> GateResult:
+    """RED-before-GREEN: GREEN (impl) is never accepted without an observed failing test (ADR-0010).
+
+    Deterministic, zero-token. Ordering invariant: a passing gate with an implementation present
+    implies a test existed and was observed RED first.
+    """
+    violations: list[str] = []
+    if verification.impl_present and not verification.test_present:
+        violations.append("GREEN accepted with no test present — RED-before-GREEN violated.")
+    if verification.impl_present and not verification.red_observed:
+        violations.append("GREEN accepted without an observed RED (failing test) first.")
+    return GateResult(passed=not violations, violations=tuple(violations))
+
+
 def evaluate_discipline_gate(code: str) -> dict[str, Any]:
     """AST-based zero-token deterministic verifier for code discipline."""
     violations = []

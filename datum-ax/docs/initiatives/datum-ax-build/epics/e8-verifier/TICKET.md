@@ -19,5 +19,21 @@ Execute the 3-attempt RED/GREEN verification loop (ADR-0007). Synthesize tests, 
 - `core` tier implementation (`src/datum_ax/core/verifier`).
 - Pydantic models for gate verdicts. Use `ast` standard library for discipline checking.
 
+## G7 increment — RED-before-GREEN gate (gap-ledger G7, ADR-0010)
+
+Make the TDD-ordering rule a real deterministic gate (zero-token), distinct from the style gate.
+
+- **Requirement:** `evaluate_tdd_gate(LaneVerification) -> GateResult` — GREEN (impl) is **never**
+  accepted without an observed **RED** (a failing test that existed and ran first).
+- **PROPERTIES (DPS-12):**
+  - **Ordering (SAFETY):** a passing gate with an implementation present *implies* a test existed and
+    was observed RED — GREEN can't precede RED.
+  - **Determinism (INVARIANT):** same `LaneVerification` → same `GateResult`.
+- **Typed shapes:** `LaneVerification` (test_present / red_observed / impl_present) and `GateResult`
+  (passed / violations) — strict Pydantic.
+- **Acceptance:** impl-without-test and impl-without-RED are violations; test→RED→impl passes;
+  Hypothesis property proves the Ordering invariant.
+- **Out of scope (needs live model):** REFLECT scoring + SKEPTIC adversarial bug-hunt (LLM) — tracked.
+
 ## Classification
 - Complexity: System · Scope: wide · Ambiguity: low · Suggested route: feature
