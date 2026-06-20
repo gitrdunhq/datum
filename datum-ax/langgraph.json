@@ -2,7 +2,7 @@
   "dependencies": ["."],
   "python_path": "src",
   "graphs": {
-    "datum_ax": "datum_ax.core.orchestration.graph:orchestrator_graph"
+    "datum_ax": "datum_ax.presentation.studio:make_graph"
   },
   "env": ".env"
 }

@@ -6,37 +6,34 @@ from langchain_core.runnables import RunnableConfig
 from datum_ax.core.orchestration.state import OrchestratorState
 from datum_ax.core.planner.triage import triage_ticket
 from datum_ax.core.verifier.synthesis import synthesize_test
+from datum_ax.contracts.inference import InferenceClient
+from datum_ax.contracts.execution import ExecutionHost, UnifiedDiff, ExecutionTarget
 
-def get_inference_client(config: RunnableConfig) -> Any:
-    client = config.get("configurable", {}).get("inference_client")
-    if client is not None:
-        return client
-    
-    # LangGraph Studio fallback lazy initialization
-    import os
-    base_url = os.environ.get("OMLX_BASE_URL") or os.environ.get("OPENAI_API_BASE", "http://localhost:12201/v1")
-    api_key = os.environ.get("OMLX_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-    model_id = os.environ.get("OMLX_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("DATUM_MODEL", "gpt-4")
-    
-    from datum_ax.data.inference.httpx_transport import HttpxOmlxTransport
-    from datum_ax.data.inference.client import OmlxInferenceClient
-    from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
-    from datum_ax.contracts.inference import ModelRole
-    
-    use_native_mlx = os.environ.get("DATUM_NATIVE_MLX") == "1"
-    if use_native_mlx:
-        from datum_ax.data.inference.transport_mlx import NativeMlxTransport
-        transport = NativeMlxTransport()
-    else:
-        from datum_ax.data.inference.httpx_transport import HttpxOmlxTransport
-        transport = HttpxOmlxTransport(base_url=base_url, api_key=api_key)
-    registry = ModelRoleRegistry(configs=(
-        RoleConfig(role=ModelRole.TRIAGE, model_id=model_id, temperature=0.0, response_format={"type": "json_object"}),
-        RoleConfig(role=ModelRole.PLANNER, model_id=model_id, temperature=0.1, response_format={"type": "json_object"}),
-        RoleConfig(role=ModelRole.EXECUTOR, model_id=model_id, temperature=0.2, response_format={"type": "json_object"}),
-        RoleConfig(role=ModelRole.ADVERSARIAL, model_id=model_id, temperature=0.5)
-    ))
-    return OmlxInferenceClient(transport=transport, registry=registry)
+
+def get_inference_client(config: RunnableConfig) -> InferenceClient:
+    """Return the injected InferenceClient (ADR-0026 dependency inversion).
+
+    The concrete adapter is wired by the composition root (cli / presentation) and passed via
+    ``config['configurable']`` — core never constructs ``data`` adapters itself.
+    """
+    client = (config.get("configurable") or {}).get("inference_client")
+    if client is None:
+        raise RuntimeError(
+            "inference_client not provided. Wire it via config['configurable']['inference_client'] "
+            "(see datum_ax.presentation.composition)."
+        )
+    return client
+
+
+def get_execution_host(config: RunnableConfig) -> ExecutionHost:
+    """Return the injected ExecutionHost (ADR-0026 dependency inversion)."""
+    host = (config.get("configurable") or {}).get("execution_host")
+    if host is None:
+        raise RuntimeError(
+            "execution_host not provided. Wire it via config['configurable']['execution_host'] "
+            "(see datum_ax.presentation.composition)."
+        )
+    return host
 
 
 def route_node(state: OrchestratorState) -> OrchestratorState:
@@ -71,12 +68,8 @@ def phase_a_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
 def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> OrchestratorState:
     visited = state.get("visited_nodes", []) + ["PhaseB"]
     client = get_inference_client(config)
-    workspace_dir = state.get("workspace_dir", ".")
-    
-    from datum_ax.data.execution.local import LocalHost
-    from datum_ax.contracts.execution import UnifiedDiff, ExecutionTarget
-    host = LocalHost(workspace_dir=workspace_dir)
-    
+    host = get_execution_host(config)
+
     from datum_ax.core.verifier.synthesis import synthesize_impl
     
     dag = state.get("dag", {}) or {}

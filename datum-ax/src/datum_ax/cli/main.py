@@ -124,7 +124,10 @@ def run_cli(args_list: list[str] | None = None) -> None:
             RoleConfig(role=ModelRole.ADVERSARIAL, model_id=model_id, temperature=0.5)
         ))
         client = OmlxInferenceClient(transport=transport, registry=registry)
-        
+
+        from datum_ax.data.execution.local import LocalHost
+        host = LocalHost(workspace_dir=workspace_dir)
+
         graph = build_graph()
         from typing import Any
         initial_state: dict[str, Any] = {
@@ -145,7 +148,7 @@ def run_cli(args_list: list[str] | None = None) -> None:
         import json
         from langchain_core.runnables.config import RunnableConfig
         from typing import cast
-        config = cast(RunnableConfig, {"configurable": {"inference_client": client}})
+        config = cast(RunnableConfig, {"configurable": {"inference_client": client, "execution_host": host}})
         for event in graph.stream(initial_state, config=config):
             for node_name, node_state in event.items():
                 msg = f"[✔] Finished: {node_name}"

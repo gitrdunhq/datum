@@ -4,7 +4,38 @@ from __future__ import annotations
 
 import asyncio
 
+from datum_ax.contracts.execution import (
+    ApplyResult,
+    ArtifactBundle,
+    LintResult,
+    Outcome,
+    TestResult,
+    UnifiedDiff,
+)
 from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
+
+
+class FakeExecutionHost:
+    """Implements ExecutionHost. Records applied diffs; always succeeds (hermetic, no subprocess)."""
+
+    def __init__(self) -> None:
+        self.applied: list[UnifiedDiff] = []
+
+    def apply_diff(self, diff: UnifiedDiff) -> ApplyResult:
+        self.applied.append(diff)
+        return ApplyResult(applied=True, conflicts=())
+
+    def run_tests(self, selector: str) -> TestResult:
+        return TestResult(outcome=Outcome.PASS, exit_code=0, duration_s=0.0)
+
+    def run_lint(self, paths: tuple[str, ...]) -> LintResult:
+        return LintResult(outcome=Outcome.PASS, duration_s=0.0)
+
+    def collect_artifacts(self, globs: tuple[str, ...]) -> ArtifactBundle:
+        return ArtifactBundle()
+
+    def reset(self) -> None:
+        pass
 
 
 class FakeOmlxTransport:

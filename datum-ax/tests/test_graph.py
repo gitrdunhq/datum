@@ -1,28 +1,35 @@
-import pytest
-from datum_ax.core.orchestration.graph import build_graph
+from unittest.mock import MagicMock
+
 from langgraph.graph.state import CompiledStateGraph
 
-from unittest.mock import MagicMock
+from datum_ax.core.orchestration.graph import build_graph
+from fakes import FakeExecutionHost
+
 
 def test_graph_end_to_end():
     graph = build_graph()
-    
     assert isinstance(graph, CompiledStateGraph)
-    
+
+    # Hermetic: inject a mock inference client + a fake host via config (ADR-0026 DI). No network.
     mock_client = MagicMock()
-    mock_client.complete.return_value.text = '{"route": "feature", "target": "ui", "diff": "--- a\\n+++ b\\n+foo"}'
-    
-    # Run the graph with a starting state
-    final_state = graph.invoke({
-        "ticket": {"text": "fake", "scale": "task"},
-        "inference_client": mock_client,
-        "results": {}
-    })
-    
-    # Verify the sequence of nodes was executed
-    assert "visited_nodes" in final_state
+    mock_client.complete.return_value.text = (
+        '{"route": "feature", "target": "ui", "diff": "--- a\\n+++ b\\n+foo"}'
+    )
+    config = {
+        "configurable": {
+            "inference_client": mock_client,
+            "execution_host": FakeExecutionHost(),
+        }
+    }
+
+    final_state = graph.invoke(
+        {"ticket": {"text": "fake", "scale": "task"}, "workspace_dir": ".", "results": {}},
+        config=config,
+    )
+
+    # The full node sequence ran end-to-end.
     assert final_state["visited_nodes"] == ["ROUTE", "PhaseA", "PhaseB", "CLOSEOUT"]
-    
-    # Verify integration with actual modules
+    # Real modules integrated and populated the results.
     assert "triage" in final_state["results"]
-    assert "synthesis_test" in final_state["results"]
+    assert "lanes" in final_state["results"]
+    assert "lane_execution" in final_state["results"]

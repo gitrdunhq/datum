@@ -35,6 +35,8 @@ def plan_lanes(ticket: dict[str, Any], inference_client: Optional[Any] = None) -
                 "strict": True
             }
         }
+        from datum_ax.core.orchestration.crane import ContextBudgetExceededError
+
         for attempt in range(3):
             call = inference_client.complete(role=ModelRole.PLANNER, prompt=prompt, budget=budget, response_format=format_dict)
             

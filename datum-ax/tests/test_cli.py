@@ -61,8 +61,10 @@ def test_run_cli_success_openai_vars(capsys):
             mock_build_graph.assert_called_once()
             mock_graph.stream.assert_called_once()
             
-            # Verify the initial state includes ticket
+            # Initial state carries the ticket + workspace; deps are injected via config (DI, ADR-0026)
             state = mock_graph.stream.call_args[0][0]
             assert state["ticket"]["text"] == "test-ticket"
             assert "workspace_dir" in state
-            assert state.get("inference_client") is not None
+            cfg = mock_graph.stream.call_args.kwargs["config"]
+            assert cfg["configurable"]["inference_client"] is not None
+            assert cfg["configurable"]["execution_host"] is not None
