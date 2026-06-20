@@ -1,7 +1,7 @@
 """datum-ax DATA tier — oMLX inference adapter (E2, ADR-0003).
 
 Implements the `contracts.InferenceClient` port: role registry + concurrency semaphore + budget
-enforcement over a pluggable transport. `HttpxOmlxTransport` is intentionally NOT re-exported here
+enforcement over a pluggable transport. `HttpxTransport` is intentionally NOT re-exported here
 (it needs the optional `httpx` extra); import it directly when wiring the real endpoint.
 """
 

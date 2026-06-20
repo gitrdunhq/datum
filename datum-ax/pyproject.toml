@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-inference = ["httpx>=0.27"]  # real oMLX transport (HttpxOmlxTransport); optional
+inference = ["httpx>=0.27"]  # real oMLX transport (HttpxTransport); optional
 mlx = ["mlx-lm>=0.14"]       # native Apple Silicon MLX transport
 
 [project.scripts]
