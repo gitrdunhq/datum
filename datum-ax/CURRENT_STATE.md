@@ -91,6 +91,7 @@ uv run pytest          # 202 green (property + tier-boundary + integration)
 
 ## Pointers
 
+- **How we build:** `WORKFLOW.md` (dogfood the pipeline — INTAKE→PLAN→PROPERTIES→RED→GREEN→GATES→CLOSEOUT).
 - Big picture: `docs/PIPELINE.md`. Why-decisions: `docs/adr/`. Vocabulary: `docs/GLOSSARY.md`.
 - Build roadmap: `docs/initiatives/datum-ax-build/INITIATIVE.md`. Verified vs fabricated:
   `docs/RESEARCH-NOTES.md`. Product Team: `skills/product-team/README.md` + `FRAMEWORK-MAP.md`.
