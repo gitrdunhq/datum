@@ -179,22 +179,28 @@ def build_rule_binder(workspace_dir: str = ".", **kwargs: Any) -> RuleBinder:
     return RULE_REGISTRIES.create("file", **kwargs)
 
 
-_REMOTE_SCHEMES = ("postgresql", "postgres", "libsql", "mysql", "turso")
+# Centralized schemes recognized but not yet wired (fail loudly rather than fall back to SQLite).
+_UNWIRED_LEDGER_SCHEMES = ("libsql", "mysql", "turso")
 
 
 def build_ledger(url: str | None = None) -> RunLedger:
     """Select the ledger backend by URL — the single swap point (ADR-0031).
 
-    Local SQLite is the default (``:memory:``, a path, or ``sqlite:///path``). A centralized backend
-    (Postgres/Turso) is added as another ``RunLedger`` adapter and dispatched here — no core changes.
+    Local SQLite is the default (``:memory:``, a path, or ``sqlite:///path``). Postgres
+    (``postgresql://…``) is wired as a centralized ``RunLedger`` adapter; other centralized schemes
+    (libsql/mysql/turso) fail loudly until their adapter lands — no core changes either way.
     """
     url = url or os.environ.get("DATUM_LEDGER_URL") or ":memory:"
     scheme = url.split("://", 1)[0] if "://" in url else ""
-    if scheme in _REMOTE_SCHEMES:
+    if scheme in ("postgresql", "postgres"):
+        from datum_ax.data.state.postgres_ledger import PostgresLedger
+
+        return PostgresLedger(url)
+    if scheme in _UNWIRED_LEDGER_SCHEMES:
         raise NotImplementedError(
             f"centralized ledger backend '{scheme}' is not wired yet — this is the swap point "
             f"(ADR-0031): add a RunLedger adapter in data/state and dispatch it in build_ledger(). "
-            f"Local SQLite remains the default."
+            f"Local SQLite (default) and Postgres are wired."
         )
     if url.startswith("sqlite:///"):
         path = url[len("sqlite:///") :]
@@ -209,19 +215,17 @@ def build_checkpointer(url: str | None = None) -> CheckpointStore:
     """Select the checkpoint backend by URL — the swap point (ADR-0032).
 
     In-memory by default (`memory://`, resume within a process). A centralized store
-    (`valkey://`/`redis://`) drops in as another `CheckpointStore` adapter, dispatched here — no core
-    changes. Unwired schemes fail loudly.
+    (`redis://`/`rediss://`/`valkey://`/`valkeys://`) drops in as the `RedisCheckpointer` adapter,
+    dispatched here — no core changes. Unrecognized schemes fail loudly.
     """
     url = url or os.environ.get("DATUM_CHECKPOINT_URL") or "memory://"
     scheme = url.split("://", 1)[0] if "://" in url else url
     if scheme in ("memory", ""):
         return InMemoryCheckpointer()
-    if scheme in ("valkey", "redis", "rediss"):
-        raise NotImplementedError(
-            f"centralized checkpoint backend '{scheme}' is not wired yet — this is the swap point "
-            f"(ADR-0032): add a CheckpointStore adapter in data/state and dispatch it in "
-            f"build_checkpointer(). In-memory remains the default."
-        )
+    if scheme in ("valkey", "valkeys", "redis", "rediss"):
+        from datum_ax.data.state.redis_checkpoint import RedisCheckpointer
+
+        return RedisCheckpointer(url)
     raise ValueError(f"unrecognized checkpoint URL: {url!r}")
 
 

@@ -16,6 +16,7 @@ inference = ["httpx>=0.27"]  # real oMLX transport (HttpxTransport); optional
 mlx = ["mlx-lm>=0.14"]       # native Apple Silicon MLX transport
 semantic = ["sentence-transformers>=2.2", "numpy>=1.24"]  # RAG persona/skill selection (ADR-0034)
 tokenizer = ["tiktoken>=0.5"]  # exact token counting behind the TokenCounter port (ADR-0030)
+database = ["psycopg[binary]>=3.1", "redis>=5.0"]  # centralized ledger (Postgres) + checkpoint (Redis/Valkey) (ADR-0031/0032)
 
 [project.scripts]
 datumax = "datum_ax.cli.main:run_cli"
@@ -37,6 +38,11 @@ strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 
+# Optional centralized-backend drivers ([database] extra) — tolerate their absence at type-check time.
+[[tool.mypy.overrides]]
+module = ["psycopg.*", "redis.*", "fakeredis.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 
@@ -46,5 +52,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "aegra-cli>=0.1.0",
     "mypy>=1.10",
-    "ruff>=0.9.0"
+    "ruff>=0.9.0",
+    "hypothesis>=6.0",
+    "fakeredis>=2.21"
 ]

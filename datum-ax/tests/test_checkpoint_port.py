@@ -15,7 +15,20 @@ def _mem_factory() -> CheckpointStore:
     return InMemoryCheckpointer()
 
 
-CHECKPOINTER_FACTORIES = [_mem_factory]  # add a real Valkey factory here when wired
+CHECKPOINTER_FACTORIES = [_mem_factory]
+
+# The Redis/Valkey adapter runs the same conformance suite offline, against fakeredis.
+try:
+    import fakeredis
+
+    from datum_ax.data.state.redis_checkpoint import RedisCheckpointer
+
+    def _redis_factory() -> CheckpointStore:
+        return RedisCheckpointer("redis://localhost:6379", client=fakeredis.FakeRedis())
+
+    CHECKPOINTER_FACTORIES.append(_redis_factory)
+except ImportError:  # pragma: no cover - fakeredis is a dev dep, always present in CI
+    pass
 
 
 class TestCheckpointPort:
@@ -26,9 +39,13 @@ class TestCheckpointPort:
         cp = build_checkpointer()
         assert isinstance(cp, CheckpointStore)
 
-    def test_centralized_backend_is_a_clear_seam(self):
-        with pytest.raises(NotImplementedError):
-            build_checkpointer("valkey://host:6379")
+    def test_centralized_backend_is_wired_and_unknown_fails(self):
+        # valkey:// / redis:// now resolve to a real adapter (lazy — no connection here);
+        # an unrecognized scheme still fails loudly rather than silently falling back to memory.
+        assert isinstance(build_checkpointer("valkey://host:6379"), CheckpointStore)
+        assert isinstance(build_checkpointer("redis://host:6379"), CheckpointStore)
+        with pytest.raises(ValueError):
+            build_checkpointer("weird://x")
 
     def test_resume_roundtrip_and_isolation(self):
         cp = build_checkpointer("memory://")

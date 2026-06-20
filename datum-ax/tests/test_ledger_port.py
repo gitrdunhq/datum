@@ -33,10 +33,18 @@ class TestLedgerPort:
         led.record_node("a", input_tokens=1, output_tokens=1, run_id="r")
         assert led.tokens_spent("r") == 2
 
-    def test_centralized_backend_is_a_clear_seam(self):
-        # Until a centralized adapter is wired, remote schemes fail loudly (not silently to sqlite).
+    def test_postgres_backend_is_wired(self):
+        # postgresql:// resolves to the centralized adapter — lazily, so no connection is made here.
+        from datum_ax.data.state.postgres_ledger import PostgresLedger
+
+        led = build_ledger("postgresql://user@host/db")
+        assert isinstance(led, PostgresLedger)
+        assert isinstance(led, RunLedger)
+
+    def test_unwired_centralized_backend_is_a_clear_seam(self):
+        # Schemes without an adapter yet fail loudly (not silently to sqlite).
         with pytest.raises(NotImplementedError):
-            build_ledger("postgresql://user@host/db")
+            build_ledger("turso://host/db")
 
     @pytest.mark.parametrize("factory", LEDGER_FACTORIES)
     def test_port_conformance(self, factory):
