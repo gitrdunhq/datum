@@ -1,7 +1,7 @@
 # CURRENT_STATE — datum-ax
 
 _Branch: `claude/agentic-lang-pipeline-8dqtgr` in `gitrdunhq/datum`. Working tree clean; everything
-below is committed and pushed. Test suite: **219 green** (`uv run pytest`)._
+below is committed and pushed. Test suite: **227 green** (`uv run pytest`)._
 
 ## What this is
 
@@ -31,7 +31,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 | E6 — Orchestration (LangGraph) | ✅ Built — graph (ROUTE→PhaseA→PhaseB→CLOSEOUT), scheduler, state; deps injected via config (DI) |
 | E7 — Planner (Phase A) | ✅ Built — triage, DAG/waves, lane_plan, properties |
 | E8 — Verifier (Phase B) | ✅ Built — loop, synthesis, discipline; adversarial reviewer |
-| E9 — eedom gate | ✅ Built — `core/eedom/adapter.py` |
+| E9 — eedom gate | ✅ Built — `EedomReviewGate` behind a `ReviewGate` **plugin** port (registry), `data/review/`; returns typed `ReviewDecision` (fail-open) |
 | E10/E11 — CLI / intake | ✅ `datumax run` / `status`; `nl-to-ticket` skill |
 | Migration to gitrdunhq/datum-ax | ⬜ Pending (proxy/scope) |
 
@@ -39,6 +39,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 ```
 README.md                         entry point + ADR index
+registry.py                       adapter/plugin registry (ADR-0032)
 CURRENT_STATE.md                  this file
 langgraph.json                    Studio entrypoint -> presentation.studio:make_graph
 docs/
@@ -47,13 +48,13 @@ docs/
   initiatives/datum-ax-build/      INITIATIVE.md + epics/e1..e11 tickets + lane-plans (the roadmap)
   initiatives/{tic-tac-toe,beta-wiring,integration-sweep}/  emulated runs
 src/datum_ax/                     three enforced tiers (boundary test guards imports)
-  contracts/   ports + value objects: execution, inference, context, review, status, tokens
+  contracts/   ports + value objects: execution, inference, context, review (ReviewGate), status (StatusSource), ledger, checkpoint, tokens
   schemas/     ticket, properties (DPS-12), rules
-  core/        orchestration (graph/scheduler/crane/state), planner, verifier, reviewer, eedom
-  data/        inference (oMLX adapter+transports), execution (local/docker/tart), context (adapters/dcp), state (ledger/checkpoint/status)
+  core/        orchestration (graph/scheduler/crane/state), planner, verifier, reviewer
+  data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), state (ledger/checkpoint/status)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
-tests/                            219 tests: property + boundary guard + per-module integration
+tests/                            227 tests: property + boundary guard + per-module integration
 skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second copy)
 ```
 
@@ -62,7 +63,7 @@ skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second co
 ```bash
 cd datum-ax
 uv pip install -e . pytest pytest-asyncio hypothesis
-uv run pytest          # 219 green (property + tier-boundary + integration)
+uv run pytest          # 227 green (property + tier-boundary + integration)
 ```
 
 ## Load-bearing decisions (don't relitigate)

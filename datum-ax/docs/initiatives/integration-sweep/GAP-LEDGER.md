@@ -19,7 +19,7 @@ current MVP state, the aspirational target, and the acceptance demo that proves 
 | G8 | Compounding | 0020 | not built | CLOSEOUT harvest → versioned rules registry → next-run gates | run 2 catches a pattern run 1 was rejected for, at zero extra tokens | P3 |
 | G9 | GitHub projection | 0023 | not built (CLI run/status only) | epic + sub-issue mirroring, `wave:`/`status:` labels, sync | `datumax run` mirrors a real epic issue + checklists | P3 |
 | G10 | Live oMLX | 0003 | mock-tested; transports exist | smoke run against the user's oMLX endpoint | `datumax run` completes a real tic-tac-toe lane on hardware | P1 |
-| G11 | Port the remaining seams | 0032 | eedom adapter, status source, GitHub projection are concrete | each behind a port (`ReviewGate`, etc.) + factory + conformance suite | swap a fake eedom/status via config; conformance passes | P2 |
+| G11 | Port the remaining seams | 0032 | 🟡 **eedom → `ReviewGate` (plugin registry) + status → `StatusSource` ported**; eedom I/O moved core→data; returns typed `ReviewDecision` (fail-open). GitHub projection still concrete/unbuilt. | each external dep behind a port + factory + conformance suite | ReviewGate/StatusSource conformance ✔; eedom enhancement (emit ReviewDecision JSON) + GitHub port remain | P2 |
 
 **Sequencing intuition:** G1 (crane wiring) is the unlock — it gives one seam to then drop real
 adapters (G2) and a real tokenizer (G3) behind. G4/G5/G10 make execution+review real. G6 makes state

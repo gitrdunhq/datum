@@ -36,7 +36,14 @@ never a core rewrite. It strengthens ADR-0026 (three tiers / dependency inversio
 | `CodeContext` / `DocContext` / `NlCompressor` / `ContextPruner` | Serena·TokenSave / Context7 / Headroom / DCP | crane DI |
 | `RunLedger` | SQLite (`LibSQLLedger`); Postgres/Turso = seam | `build_ledger(url)` (ADR-0031) |
 | `CheckpointStore` | `InMemoryCheckpointer`; Valkey/Redis = seam | `build_checkpointer(url)` |
-| **seams to port next** | eedom adapter → `ReviewGate` port · status source → port · GitHub projection → port | — |
+| `ReviewGate` | `EedomReviewGate` (**plugin** via `REVIEW_GATES` registry) | `build_review_gate(name)` |
+| `StatusSource` | `StatusProvider` | `build_status_source()` |
+| **seams to port next** | GitHub projection → port (when G9 builds it) | — |
+
+**Registry (the plugin mechanism)** lives in `datum_ax/registry.py`: an adapter self-registers a
+factory under a key, and the package auto-imports its modules so adding an adapter is a drop-in
+(open/closed). `ReviewGate` is the first registry-backed port; the URL-factories (`build_ledger`/
+`build_checkpointer`/transports/hosts) migrate to the registry as a consistency pass.
 
 ## Extensibility (open/closed) — adding a port is a recipe
 

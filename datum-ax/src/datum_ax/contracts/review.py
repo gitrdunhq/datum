@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Any, Mapping, Protocol, runtime_checkable
 
 from pydantic import Field
 
@@ -72,3 +73,14 @@ class ReviewDecision(Contract):
     def is_blocking(self) -> bool:
         """True iff the verdict prevents terminal success (ADR-0006)."""
         return self.decision in (DecisionVerdict.REJECT, DecisionVerdict.NEEDS_REVIEW)
+
+
+@runtime_checkable
+class ReviewGate(Protocol):
+    """Deterministic review-gate port (ADR-0006/0032). Returns a typed ReviewDecision for a diff.
+
+    eedom is the default adapter; others register as plugins. `core` depends on this port; the concrete
+    gate is injected/wired by the composition root.
+    """
+
+    def evaluate(self, diff: str, properties: Mapping[str, Any] | None = ...) -> ReviewDecision: ...

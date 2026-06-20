@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Protocol, runtime_checkable
 
 from pydantic import Field, model_validator
 
@@ -109,3 +110,10 @@ class LiveStatus(Contract):
     lanes: tuple[LaneStatus, ...] = ()
     gates: tuple[GateStatus, ...] = ()
     pending_interrupts: int = Field(default=0, ge=0)
+
+
+@runtime_checkable
+class StatusSource(Protocol):
+    """Port for the live-status snapshot producer (ADR-0029/0032)."""
+
+    def get_status(self) -> LiveStatus: ...

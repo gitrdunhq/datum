@@ -13,8 +13,12 @@ from datum_ax.contracts.checkpoint import CheckpointStore
 from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
+from datum_ax.contracts.review import ReviewGate
+from datum_ax.contracts.status import StatusSource
+from datum_ax.data.review import REVIEW_GATES
 from datum_ax.data.state.checkpoint import InMemoryCheckpointer
 from datum_ax.data.state.ledger import LibSQLLedger
+from datum_ax.data.state.status import StatusProvider
 from datum_ax.core.orchestration.crane import ContextCrane
 from datum_ax.data.context.adapters import (
     Context7DocContext,
@@ -124,6 +128,17 @@ def build_checkpointer(url: str | None = None) -> CheckpointStore:
             f"build_checkpointer(). In-memory remains the default."
         )
     raise ValueError(f"unrecognized checkpoint URL: {url!r}")
+
+
+def build_review_gate(name: str | None = None, **kwargs: Any) -> ReviewGate:
+    """Resolve a review-gate plugin by name (ADR-0006/0032). Default: eedom."""
+    name = name or os.environ.get("DATUM_REVIEW_GATE") or "eedom"
+    return REVIEW_GATES.create(name, **kwargs)
+
+
+def build_status_source() -> StatusSource:
+    """The live-status producer (ADR-0029)."""
+    return StatusProvider()
 
 
 def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:

@@ -1,6 +1,6 @@
 import argparse
 import sys
-from datum_ax.data.state.status import StatusProvider
+from datum_ax.presentation.composition import build_status_source
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="datum-ax CLI")
@@ -24,8 +24,7 @@ def run_cli(args_list: list[str] | None = None) -> None:
     args = parser.parse_args(args_list)
     
     if args.command == "status":
-        provider = StatusProvider()
-        status = provider.get_status()
+        status = build_status_source().get_status()
         print(status.model_dump_json())
     elif args.command == "run":
         import os
