@@ -1,6 +1,4 @@
-import pytest
 from datum_ax.core.verifier.synthesis import synthesize_test, synthesize_impl
-from datum_ax.data.inference.client import OmlxInferenceClient
 
 class MockInferenceClient:
     def complete(self, prompt, **kwargs):

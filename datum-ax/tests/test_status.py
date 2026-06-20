@@ -1,8 +1,5 @@
 from datetime import datetime
 
-import pytest
-from datum_ax.contracts.execution import ExecutionTarget
-from datum_ax.contracts.inference import ModelRole
 from datum_ax.contracts.status import Phase, LiveStatus
 from datum_ax.data.state.status import StatusProvider
 

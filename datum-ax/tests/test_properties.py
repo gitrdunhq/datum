@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.planner.properties import derive_properties
 
 def test_derive_properties():

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from datum_ax.contracts.execution import ApplyResult, Outcome, TestResult
 from datum_ax.contracts.inference import TokenBudget
 from datum_ax.contracts.review import DecisionVerdict
-from datum_ax.contracts.status import InferenceStatus, WindowStatus
+from datum_ax.contracts.status import InferenceStatus
 from datum_ax.schemas.rules import RuleKind, RuleRegistryEntry, RuleTier
 from datum_ax.schemas.ticket import (
     Ambiguity,

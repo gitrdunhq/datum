@@ -1,4 +1,7 @@
 import json
+import os
+from unittest.mock import patch, MagicMock
+
 import pytest
 from datum_ax.cli.main import build_parser, run_cli
 
@@ -26,9 +29,6 @@ def test_run_cli_status(capsys):
     status_json = json.loads(captured.out)
     assert "phase" in status_json
     assert "inference" in status_json
-
-import os
-from unittest.mock import patch, MagicMock
 
 def test_run_cli_missing_env(capsys):
     with patch.dict(os.environ, {}, clear=True):

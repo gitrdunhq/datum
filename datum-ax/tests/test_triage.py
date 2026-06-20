@@ -1,6 +1,4 @@
-import pytest
 from datum_ax.core.planner.triage import triage_ticket
-from datum_ax.data.inference.client import OmlxInferenceClient
 
 def test_triage_ticket_with_inference():
     class MockInferenceClient:

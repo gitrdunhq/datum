@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.verifier.loop import VerificationLoop
 
 def test_verification_loop_fail_fast():

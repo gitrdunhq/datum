@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.verifier.discipline import evaluate_discipline_gate
 
 def test_evaluate_discipline_gate_pass():

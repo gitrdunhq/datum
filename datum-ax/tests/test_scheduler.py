@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.orchestration.scheduler import get_next_wave
 
 def test_get_next_wave():

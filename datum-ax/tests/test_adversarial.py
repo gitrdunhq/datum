@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.reviewer.adversarial import AdversarialReviewer
 
 def test_adversarial_reviewer_low_risk():

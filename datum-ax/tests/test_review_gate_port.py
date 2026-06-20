@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from datum_ax.contracts.review import DecisionVerdict, ReviewGate
+from datum_ax.contracts.review import ReviewGate
 from datum_ax.data.review import REVIEW_GATES
 from datum_ax.presentation.composition import build_review_gate
 

@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.core.planner.dag import DAGBuilder
 
 def test_dag_builder_disjoint_waves():

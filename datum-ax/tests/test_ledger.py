@@ -1,4 +1,3 @@
-import pytest
 from datum_ax.data.state.ledger import LibSQLLedger
 
 def test_libsql_ledger():

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from datum_ax.data.inference.wire import ChatRequest, ChatMessage
 from datum_ax.data.inference.transport_httpx import HttpxTransport
