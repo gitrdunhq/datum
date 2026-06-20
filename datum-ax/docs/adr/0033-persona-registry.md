@@ -11,7 +11,10 @@ conclusion is recorded here.
 replaced the `BASE_PERSONA & SKILL_PERSONA_HERE` stub. `prompts/*.md` were migrated to packaged
 `datum_ax/personas/roles/{triage,lane-plan,red,green}.md`, and triage/lane_plan/synthesis now source
 their prompt from the registry via the injected crane (they require a crane when calling a model).
-Skill *artifacts* aren't authored yet (the `select_skills` path is wired and tested).
+The GitNexus code-intelligence suite + bug-hunt (7 skills) were imported from the datum skill library
+into packaged `datum_ax/personas/skills/*.md` (frontmatter augmented with `scope_tags`/`tool_refs`),
+so `select_skills`/`get_skill` resolve real capabilities. Per-lane skill *selection* into prompts
+(passing `scope_tags` from lane metadata) is the next increment.
 
 ## Context
 
