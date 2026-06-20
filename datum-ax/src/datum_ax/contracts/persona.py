@@ -13,12 +13,22 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import Field
 
+from enum import Enum
+
 from datum_ax._base import Contract
 from datum_ax.contracts.inference import ModelRole
 
 
 class PersonaNotFoundError(LookupError):
     """No artifact resolves for the requested id / model role."""
+
+
+class SkillDelivery(str, Enum):
+    """How a skill reaches an agent (ADR-0035): inlined into the prompt by the crane, or run as an
+    isolated subagent worker (playbooks — never inlined)."""
+
+    INLINE = "inline"
+    SUBAGENT = "subagent"
 
 
 class Role(Contract):
@@ -43,6 +53,7 @@ class Skill(Contract):
     tool_refs: tuple[str, ...] = ()
     version: int = Field(default=1, ge=1)
     scope_tags: tuple[str, ...] = ()
+    delivery: SkillDelivery = SkillDelivery.INLINE
 
 
 @runtime_checkable

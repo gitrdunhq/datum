@@ -4,6 +4,7 @@ description: Use this skill when the user asks to research a topic, investigate 
   complex architectural decision, or generate an analysis report. It enforces a strict
   3-layer orchestration model, scope gating, and JSON-based multi-agent handoffs.
 version: 1
+delivery: subagent
 scope_tags:
 - research
 - orchestration

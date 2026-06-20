@@ -11,6 +11,7 @@ description: Systematic architecture bug hunt using GitNexus execution flow anal
   changes or before a major release to catch issues that grep and static analysis
   miss. Works on any language and any repo indexed in GitNexus.
 version: 1
+delivery: subagent
 scope_tags:
 - code-intelligence
 - troubleshooting

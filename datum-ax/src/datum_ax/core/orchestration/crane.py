@@ -13,7 +13,7 @@ from typing import Any
 
 from datum_ax.contracts.context import CodeContext, ContextPruner, DocContext, NlCompressor
 from datum_ax.contracts.inference import AssembledPrompt, TokenBudget
-from datum_ax.contracts.persona import PersonaNotFoundError, PersonaRegistry
+from datum_ax.contracts.persona import PersonaNotFoundError, PersonaRegistry, SkillDelivery
 from datum_ax.contracts.rules import RuleRegistry
 from datum_ax.contracts.tokens import TokenCounter, default_token_count
 
@@ -129,7 +129,12 @@ class ContextCrane:
 
     @staticmethod
     def _render_skills(skills: list) -> list[str]:
-        return [f"## Skill: {s.name}\n{s.instructions}" for s in skills]
+        # Never inline a subagent playbook (ADR-0035) — it runs on a worker, not in the prompt.
+        return [
+            f"## Skill: {s.name}\n{s.instructions}"
+            for s in skills
+            if getattr(s, "delivery", SkillDelivery.INLINE) is SkillDelivery.INLINE
+        ]
 
     def _format_skills(self, scope_tags: tuple[str, ...]) -> list[str]:
         if self.persona is None:

@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted (design). Roadmapped as GAP-LEDGER **G13**.
+Accepted. **As-built (deterministic seam):** `Skill.delivery: inline|subagent` exists;
+`gitnexus-bug-hunt` + `agentic-research-workflow` are tagged `subagent`; the crane's `_render_skills`
+**filters out subagent skills**, so a playbook can never be inlined (in the prefix or the variable
+slot). A `Worker` port (`contracts/worker.py`) + `WORKERS` registry + `FakeWorker` adapter encode the
+run-a-playbook contract (`run(playbook, inputs, output_schema) -> WorkerResult`). The **live** worker
+(GitNexus MCP + oMLX tool loop, canary spawning) remains hardware-gated. GAP-LEDGER **G13**.
 
 ## Context
 

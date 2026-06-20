@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 
 from datum_ax.contracts.inference import ModelRole
-from datum_ax.contracts.persona import PersonaNotFoundError, Role, Skill
+from datum_ax.contracts.persona import PersonaNotFoundError, Role, Skill, SkillDelivery
 from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.observability import get_logger
 
@@ -78,6 +78,7 @@ class FilePersonaRegistry:
                 tool_refs=tuple(str(t) for t in (meta.get("tool_refs") or ())),
                 version=int(meta.get("version", 1)),
                 scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
+                delivery=SkillDelivery(meta.get("delivery", "inline")),
             )
             self._skills[skill.id] = skill
         logger.debug("persona_loaded", roles=len(self._roles), skills=len(self._skills))
