@@ -11,12 +11,13 @@ from __future__ import annotations
 from typing import Any
 
 from datum_ax.contracts.ledger import RunLedger
+from datum_ax.contracts.review import BLOCKING_VERDICTS
 from datum_ax.contracts.rules import RuleBinder
 from datum_ax.core.compound.harvest import harvest
 from datum_ax.schemas.compound import HarvestResult, Lesson, LessonSource
 from datum_ax.schemas.rules import RuleKind
 
-_BLOCKING = {"reject", "needs_review"}
+_BLOCKING = {v.value for v in BLOCKING_VERDICTS}  # single source (contracts/review.py)
 
 
 def lessons_from_trace(trace: list[dict[str, Any]], run_id: str = "run") -> tuple[Lesson, ...]:

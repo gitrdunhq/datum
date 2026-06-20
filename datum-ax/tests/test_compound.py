@@ -46,12 +46,35 @@ def test_new_discipline_rule_is_proposed_and_gated():
     assert res.auto_bound == ()
 
 
-def test_tightening_an_existing_rule_auto_binds():
+def test_cross_kind_tightening_is_proposed_not_autobound():
+    # A DISCIPLINE lesson "tightening" an existing rule must NOT silently clobber it auto-bound;
+    # only auto-kind (TEST/ROUTING) tightenings auto-bind. (review #11)
     res = harvest(
         (_lesson(id="x", proposed_kind=RuleKind.DISCIPLINE, tightens="clean-architecture"),),
         existing_rule_ids=frozenset({"clean-architecture"}),
     )
-    assert [r.id for r in res.auto_bound] == ["clean-architecture"]  # tightens the existing id
+    assert [r.id for r in res.proposed] == ["clean-architecture"]
+    assert res.auto_bound == ()
+
+
+def test_auto_kind_tightening_auto_binds():
+    res = harvest(
+        (_lesson(id="x", proposed_kind=RuleKind.ROUTING, tightens="route-cfg"),),
+        existing_rule_ids=frozenset({"route-cfg"}),
+    )
+    assert [r.id for r in res.auto_bound] == ["route-cfg"]
+
+
+def test_duplicate_tightening_ids_are_deduped():
+    # Two lessons tightening the same id must not emit two colliding auto-bound entries. (review #10)
+    res = harvest(
+        (
+            _lesson(id="l1", proposed_kind=RuleKind.ROUTING, tightens="route-cfg"),
+            _lesson(id="l2", proposed_kind=RuleKind.ROUTING, tightens="route-cfg"),
+        ),
+        existing_rule_ids=frozenset({"route-cfg"}),
+    )
+    assert [r.id for r in res.auto_bound] == ["route-cfg"]  # one entry, not two
 
 
 def test_every_harvested_rule_is_evidence_backed():

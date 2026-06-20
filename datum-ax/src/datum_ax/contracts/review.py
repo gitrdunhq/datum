@@ -28,6 +28,14 @@ class DecisionVerdict(str, Enum):
     APPROVE_WITH_CONSTRAINTS = "approve_with_constraints"
 
 
+# The single source of truth for "blocking" verdicts — `ReviewDecision.is_blocking`, the eedom
+# adapter, and the compound-harvest all derive from this (no duplicated string sets).
+BLOCKING_VERDICTS: tuple[DecisionVerdict, ...] = (
+    DecisionVerdict.REJECT,
+    DecisionVerdict.NEEDS_REVIEW,
+)
+
+
 class FindingCategory(str, Enum):
     VULNERABILITY = "vulnerability"
     LICENSE = "license"
@@ -72,7 +80,7 @@ class ReviewDecision(Contract):
     @property
     def is_blocking(self) -> bool:
         """True iff the verdict prevents terminal success (ADR-0006)."""
-        return self.decision in (DecisionVerdict.REJECT, DecisionVerdict.NEEDS_REVIEW)
+        return self.decision in BLOCKING_VERDICTS
 
 
 @runtime_checkable

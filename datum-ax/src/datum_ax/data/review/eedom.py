@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from datum_ax.contracts.review import (
+    BLOCKING_VERDICTS,
     DecisionVerdict,
     Finding,
     FindingCategory,
@@ -44,7 +45,7 @@ _CATEGORY_MAP = {
     "secret": FindingCategory.SECRET,
     "code": FindingCategory.CODE,
 }
-_BLOCKING = (DecisionVerdict.REJECT, DecisionVerdict.NEEDS_REVIEW)
+_BLOCKING = BLOCKING_VERDICTS  # single source (contracts/review.py)
 
 
 def default_runner(cmd: list[str]) -> None:
