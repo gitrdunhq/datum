@@ -30,6 +30,10 @@ stdlib `sqlite3` (libSQL is SQLite-compatible).
   - **Token metering:** `totals(run_id=None)` → `{nodes, input_tokens, output_tokens, total_tokens}`;
     `tokens_spent(run_id=None)` for the global token-budget backstop.
   - **Durability:** a file-backed ledger persists across reconnect (`close()` provided).
+  - **Checkpointer behind a port + resume (ADR-0032):** a `CheckpointStore` **port** in `contracts`
+    (`save`/`get`/`delete`, typed shapes); `InMemoryCheckpointer` is the local adapter (resume within a
+    process); `build_checkpointer(url)` selects backend (real Valkey/Redis = the seam). Resume =
+    save→get returns the same state (idempotent replay).
   - **Swappable backend (multi-user readiness, ADR-0031):** a `RunLedger` **port** in `contracts`;
     `LibSQLLedger` is the local SQLite impl; a `build_ledger(url)` factory in the composition root
     selects the backend by URL. A centralized DB (Postgres/Turso) drops in as another `RunLedger`

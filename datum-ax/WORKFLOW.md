@@ -27,6 +27,10 @@ runs through the same phases the pipeline runs. No ad-hoc edits to behavior.
 
 - **ADRs are the north star (aspirational); code is the MVP.** Iterate the code *up*; don't downgrade
   ADRs. Track the delta in `docs/initiatives/integration-sweep/GAP-LEDGER.md`.
+- **Ports & adapters everywhere (ADR-0032).** Every external/swappable dependency = a
+  `runtime_checkable` Protocol port in `contracts` + typed Pydantic shapes + a `build_*(url)` factory in
+  the composition root; `core` depends only on ports; each port has a conformance suite over its
+  adapters. Introducing an external dependency means defining its port + shapes + factory first.
 - **Dual artifacts**, JSON canonical for machines; a wrong handoff fails schema validation (ADR-0027).
 - **Tokenomics**: spend effort proportional to the work; keep the window curated (crane, ADR-0030).
 - **Commit prefixes** (release-please style): `feat:` user-facing capability · `fix:` correction ·

@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from datum_ax.contracts.checkpoint import CheckpointStore
 from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
+from datum_ax.data.state.checkpoint import InMemoryCheckpointer
 from datum_ax.data.state.ledger import LibSQLLedger
 from datum_ax.core.orchestration.crane import ContextCrane
 from datum_ax.data.context.adapters import (
@@ -102,6 +104,26 @@ def build_ledger(url: str | None = None) -> RunLedger:
     else:
         path = url  # ":memory:" or a filesystem path
     return LibSQLLedger(path)
+
+
+def build_checkpointer(url: str | None = None) -> CheckpointStore:
+    """Select the checkpoint backend by URL — the swap point (ADR-0032).
+
+    In-memory by default (`memory://`, resume within a process). A centralized store
+    (`valkey://`/`redis://`) drops in as another `CheckpointStore` adapter, dispatched here — no core
+    changes. Unwired schemes fail loudly.
+    """
+    url = url or os.environ.get("DATUM_CHECKPOINT_URL") or "memory://"
+    scheme = url.split("://", 1)[0] if "://" in url else url
+    if scheme in ("memory", ""):
+        return InMemoryCheckpointer()
+    if scheme in ("valkey", "redis", "rediss"):
+        raise NotImplementedError(
+            f"centralized checkpoint backend '{scheme}' is not wired yet — this is the swap point "
+            f"(ADR-0032): add a CheckpointStore adapter in data/state and dispatch it in "
+            f"build_checkpointer(). In-memory remains the default."
+        )
+    raise ValueError(f"unrecognized checkpoint URL: {url!r}")
 
 
 def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:
