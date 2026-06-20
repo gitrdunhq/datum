@@ -43,8 +43,9 @@ The crane depends only on contract Protocols (`CodeContext`, `DocContext`, `NlCo
   `crane.assemble(..., budget=...)`. The production loop therefore routes assembly through the single
   source and enforces the per-phase budget on every prompt. (A bare-prompt fallback remains for direct
   unit calls without a crane.)
-- **Remaining:** the retry/reformat prompt rebuilds inside those loops still append inline; route them
-  through the crane next. Real hoisting (symbols/docs via `pack_payload`) lands with G2 (real adapters).
+- **Retries routed (G1 done):** the retry/reformat prompt rebuilds in triage/lane_plan/synthesis now
+  also go through `crane.assemble` (a local `_assemble` helper) — *every* prompt is crane-assembled.
+- **Remaining:** real hoisting (symbols/docs via `pack_payload`) lands with G2 (real adapters).
 - Property/behaviour targets: Determinism (same inputs → same packet), Boundedness (assembled packet
   never exceeds `max_input`), Integrity (essential prefix over budget always raises, never silently
   truncates).

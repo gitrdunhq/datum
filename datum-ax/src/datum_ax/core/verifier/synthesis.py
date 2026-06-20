@@ -21,11 +21,12 @@ def synthesize_test(
 
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
         system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
-        prompt = (
-            crane.assemble(system_text, "", "", (), budget=budget)
-            if crane is not None
-            else AssembledPrompt(system=system_text, global_ast="", diff="")
-        )
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> AssembledPrompt:
+            if crane is not None:
+                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
+            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+
+        prompt = _assemble(system_text, "", "", ())
         
         format_dict = {
             "type": "json_schema",
@@ -57,11 +58,9 @@ def synthesize_test(
                     return {
                         "diff": f"--- /dev/null\n+++ b/tests/test_{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def test_{lane.get('id', 'new')}():\n+    pass\n"
                     }
-                prompt = AssembledPrompt(
-                    system=prompt.system,
-                    global_ast=prompt.global_ast,
-                    diff=prompt.diff,
-                    suffix=(*prompt.suffix, f"Your previous response failed validation: {e}\nOutput exactly {{\"diff\": \"<unified diff>\"}}.")
+                prompt = _assemble(
+                    prompt.system, prompt.global_ast, prompt.diff,
+                    (*prompt.suffix, f"Your previous response failed validation: {e}\nOutput exactly {{\"diff\": \"<unified diff>\"}}."),
                 )
 
     return {
@@ -83,11 +82,12 @@ def synthesize_impl(
 
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
         system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
-        prompt = (
-            crane.assemble(system_text, "", "", (), budget=budget)
-            if crane is not None
-            else AssembledPrompt(system=system_text, global_ast="", diff="")
-        )
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> AssembledPrompt:
+            if crane is not None:
+                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
+            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+
+        prompt = _assemble(system_text, "", "", ())
         
         format_dict = {
             "type": "json_schema",
@@ -119,11 +119,9 @@ def synthesize_impl(
                     return {
                         "diff": f"--- /dev/null\n+++ b/src/{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def {lane.get('id', 'new')}():\n+    pass\n"
                     }
-                prompt = AssembledPrompt(
-                    system=prompt.system,
-                    global_ast=prompt.global_ast,
-                    diff=prompt.diff,
-                    suffix=(*prompt.suffix, f"Your previous response failed validation: {e}\nOutput exactly {{\"diff\": \"<unified diff>\"}}.")
+                prompt = _assemble(
+                    prompt.system, prompt.global_ast, prompt.diff,
+                    (*prompt.suffix, f"Your previous response failed validation: {e}\nOutput exactly {{\"diff\": \"<unified diff>\"}}."),
                 )
 
     return {

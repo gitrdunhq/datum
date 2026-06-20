@@ -9,7 +9,7 @@ current MVP state, the aspirational target, and the acceptance demo that proves 
 
 | # | Area | ADR | MVP today | Aspirational target | Acceptance demo | Priority |
 |---|------|-----|-----------|---------------------|-----------------|----------|
-| G1 | ContextCrane wiring | 0030 | ✅ **landed** — graph injects the crane; triage/lane_plan/synthesis build initial prompts via `crane.assemble` (per-phase budget). Retry-prompt rebuilds still inline. | every model prompt (incl. retries, with real hoisting) via the crane | graph run routes prompts through `crane.assemble`; oversized → `ContextBudgetExceededError` ✔ | **P0 ✅ (retries remain)** |
+| G1 | ContextCrane wiring | 0030 | ✅ **done** — graph injects the crane; triage/lane_plan/synthesis build **all** prompts (initial **and** retries) via `crane.assemble` (per-phase budget). Real hoisting arrives with G2. | every model prompt via the crane; real hoisted context (G2) | retries route through `crane.assemble` ✔ (counting-crane test); oversized → `ContextBudgetExceededError` ✔ | **P0 ✅** |
 | G2 | Context adapters | 0004 | `adapters.py` return canned strings | real Serena/TokenSave (code) + Context7/Headroom (NL) | a lane's packet contains real hoisted symbols + compressed docs | P1 |
 | G3 | Token counter | 0030 | `len//4` heuristic | injected real tokenizer (e.g. tiktoken/MLX) | counter swap changes budget math; crane/DCP/client all use it | P2 |
 | G4 | Execution host | 0011/0012 | `LocalHost` (patch); Docker/Tart shells | hardened `X86DockerHost`: egress allowlist, rlimits, guaranteed teardown | apply+test a diff in a container; teardown leaves nothing; egress blocked | P1 |

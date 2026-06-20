@@ -26,11 +26,13 @@ def plan_lanes(
         
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
         system_text = prompt_text.replace("{{ticket}}", json.dumps(ticket))
-        prompt = (
-            crane.assemble(system_text, "", "", (), budget=budget)
-            if crane is not None
-            else AssembledPrompt(system=system_text, global_ast="", diff="")
-        )
+
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> AssembledPrompt:
+            if crane is not None:
+                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
+            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+
+        prompt = _assemble(system_text, "", "", ())
         
         format_dict = {
             "type": "json_schema",
@@ -78,22 +80,18 @@ def plan_lanes(
             except ContextBudgetExceededError as e:
                 import logging
                 logging.warning(f"Lane too large on attempt {attempt+1}: {e}")
-                prompt = AssembledPrompt(
-                    system=prompt.system,
-                    global_ast=prompt.global_ast,
-                    diff=prompt.diff,
-                    suffix=(*prompt.suffix, f"Validation Failed: {e}\nYou MUST decompose this lane into smaller, more granular lanes. It exceeds the 32k hard limit.")
+                prompt = _assemble(
+                    prompt.system, prompt.global_ast, prompt.diff,
+                    (*prompt.suffix, f"Validation Failed: {e}\nYou MUST decompose this lane into smaller, more granular lanes. It exceeds the 32k hard limit."),
                 )
             except Exception as e:
                 import logging
                 logging.warning(f"Failed to parse lanes on attempt {attempt+1}: {e}\nRaw output: {getattr(completion, 'text', '')}")
                 if attempt == 2:
                     return [{"id": "lane_1", "description": "Stub lane", "files": ["src/main.py"]}]
-                prompt = AssembledPrompt(
-                    system=prompt.system,
-                    global_ast=prompt.global_ast,
-                    diff=prompt.diff,
-                    suffix=(*prompt.suffix, f"Your previous response:\n{getattr(completion, 'text', '')}\nFailed validation: {e}\nOutput ONLY valid JSON matching the requested schema.")
+                prompt = _assemble(
+                    prompt.system, prompt.global_ast, prompt.diff,
+                    (*prompt.suffix, f"Your previous response:\n{getattr(completion, 'text', '')}\nFailed validation: {e}\nOutput ONLY valid JSON matching the requested schema."),
                 )
 
     return [{"id": "lane_1", "description": "Stub lane", "files": ["src/main.py"]}]

@@ -1,7 +1,7 @@
 # CURRENT_STATE — datum-ax
 
 _Branch: `claude/agentic-lang-pipeline-8dqtgr` in `gitrdunhq/datum`. Working tree clean; everything
-below is committed and pushed. Test suite: **227 green** (`uv run pytest`)._
+below is committed and pushed. Test suite: **230 green** (`uv run pytest`)._
 
 ## What this is
 
@@ -54,7 +54,7 @@ src/datum_ax/                     three enforced tiers (boundary test guards imp
   data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), state (ledger/checkpoint/status)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
-tests/                            227 tests: property + boundary guard + per-module integration
+tests/                            230 tests: property + boundary guard + per-module integration
 skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second copy)
 ```
 
@@ -63,7 +63,7 @@ skills/  nl-to-ticket/ , product-team/   (canonical; .agents/ is NOT a second co
 ```bash
 cd datum-ax
 uv pip install -e . pytest pytest-asyncio hypothesis
-uv run pytest          # 227 green (property + tier-boundary + integration)
+uv run pytest          # 230 green (property + tier-boundary + integration)
 ```
 
 ## Load-bearing decisions (don't relitigate)
@@ -84,7 +84,7 @@ uv run pytest          # 227 green (property + tier-boundary + integration)
 ## Open threads / next steps
 
 _Tracked in `docs/initiatives/integration-sweep/GAP-LEDGER.md` (MVP → aspirational)._
-1. **G1 (done, retries remain):** crane wired into the loop; retry-prompt rebuilds still inline.
+1. **G1 (done):** all planner/verifier prompts — initial and retries — route through the crane.
 2. **G6 (in progress):** ledger + checkpointer pluggable behind `RunLedger`/`CheckpointStore` ports (resume ✔, metering ✔); real Postgres/Valkey adapters + per-run DB branch remain.
 3. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
    smoke run.

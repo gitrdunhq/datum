@@ -26,11 +26,12 @@ def triage_ticket(
         system_text = prompt_text.replace("{{input}}", json.dumps(ticket))
         # ContextCrane is the single assembler (ADR-0030); fall back to a bare prompt only when
         # called without one (unit tests).
-        prompt = (
-            crane.assemble(system_text, "", "", (), budget=budget)
-            if crane is not None
-            else AssembledPrompt(system=system_text, global_ast="", diff="")
-        )
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]) -> AssembledPrompt:
+            if crane is not None:
+                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
+            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+
+        prompt = _assemble(system_text, "", "", ())
         
         format_dict = {
             "type": "json_schema",
@@ -61,11 +62,9 @@ def triage_ticket(
                 logging.warning(f"Failed to parse triage on attempt {attempt+1}: {e}\nRaw output: {getattr(completion, 'text', '')}")
                 if attempt == 2:
                     break
-                prompt = AssembledPrompt(
-                    system=prompt.system,
-                    global_ast=prompt.global_ast,
-                    diff=prompt.diff,
-                    suffix=(*prompt.suffix, f"Your previous response:\n{getattr(completion, 'text', '')}\nFailed validation: {e}\nOutput EXACTLY the requested JSON schema.")
+                prompt = _assemble(
+                    prompt.system, prompt.global_ast, prompt.diff,
+                    (*prompt.suffix, f"Your previous response:\n{getattr(completion, 'text', '')}\nFailed validation: {e}\nOutput EXACTLY the requested JSON schema."),
                 )
 
     scale = ticket.get("scale", "task").lower()
