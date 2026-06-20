@@ -15,8 +15,11 @@ The GitNexus code-intelligence suite + bug-hunt (7 skills) were imported from th
 into packaged `datum_ax/personas/skills/*.md`, tagged by **purpose** — `planning` (exploring,
 impact-analysis) vs `troubleshooting` (debugging, bug-hunt). The crane lifts skills **only when the
 task needs them**: the PLANNER (a planning task) lifts the `planning` skills into its prefix; a
-routine GREEN/implementation lane lifts **no** gitnexus at all. Troubleshooting lift (on a failed
-attempt / hotfix route) is the next increment.
+routine GREEN/implementation lane lifts **no** gitnexus at all. A **failed synthesis attempt is a
+troubleshooting task** — on retry the crane lifts `troubleshooting` skills (gitnexus-debugging /
+-bug-hunt) into the **variable suffix slot** (once), keeping the `[System]` prefix cache-stable via
+`crane.lift_skills(...)`. Lifting on a triage `hotfix` route from the first attempt is a possible
+later refinement.
 
 ## Context
 

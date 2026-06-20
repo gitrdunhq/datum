@@ -20,6 +20,9 @@ class CountingCrane:
         # Persona body carries the template token each caller substitutes (ADR-0033).
         return f"SYSTEM[{role_id}] {{{{input}}}} {{{{ticket}}}} {{{{lane_json}}}}"
 
+    def lift_skills(self, scope_tags):  # noqa: ANN001
+        return ""  # no skills in the counting fake
+
     def assemble(self, system, global_ast, diff, suffix, budget=None):  # noqa: ANN001
         self.calls += 1
         return AssembledPrompt(

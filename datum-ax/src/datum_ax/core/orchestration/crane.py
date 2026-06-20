@@ -95,12 +95,24 @@ class ContextCrane:
                 "no PersonaRegistry injected into the crane (ADR-0033); cannot compose system prompt"
             )
         role = self.persona.get_role(role_id)
-        parts = [role.body]
-        for skill in self.persona.select_skills(tuple(scope_tags)):
-            parts.append(f"## Skill: {skill.name}\n{skill.instructions}")
+        parts = [role.body, *self._format_skills(scope_tags)]
         if docs:
             parts.append(docs)
         return "\n\n".join(parts)
+
+    def _format_skills(self, scope_tags: tuple[str, ...]) -> list[str]:
+        if self.persona is None:
+            return []
+        return [
+            f"## Skill: {s.name}\n{s.instructions}"
+            for s in self.persona.select_skills(tuple(scope_tags))
+        ]
+
+    def lift_skills(self, scope_tags: tuple[str, ...]) -> str:
+        """Skills text for the VARIABLE slot — e.g. troubleshooting skills lifted into a retry suffix
+        on failure, keeping the ``[System]`` prefix cache-stable (ADR-0033/0020). Empty when nothing
+        matches or no registry is wired."""
+        return "\n\n".join(self._format_skills(scope_tags))
 
     # --- firewall hoisting (ADR-0004) ------------------------------------------------------------
     def hoist_docs(self, library_names: list[str]) -> str:

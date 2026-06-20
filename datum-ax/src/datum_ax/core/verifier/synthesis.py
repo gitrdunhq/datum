@@ -67,15 +67,16 @@ def synthesize_test(
                     return {
                         "diff": f"--- /dev/null\n+++ b/tests/test_{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def test_{lane.get('id', 'new')}():\n+    pass\n"
                     }
-                prompt = _assemble(
-                    prompt.system,
-                    prompt.global_ast,
-                    prompt.diff,
-                    (
-                        *prompt.suffix,
-                        f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
-                    ),
+                retry_suffix = (
+                    *prompt.suffix,
+                    f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
                 )
+                # A failed attempt is a troubleshooting task: lift gitnexus troubleshooting skills
+                # into the VARIABLE slot once, keeping the [System] prefix cache-stable (ADR-0033).
+                trouble = crane.lift_skills(("troubleshooting",))
+                if trouble and "## Skill:" not in " ".join(prompt.suffix):
+                    retry_suffix = (*retry_suffix, trouble)
+                prompt = _assemble(prompt.system, prompt.global_ast, prompt.diff, retry_suffix)
 
     return {
         "diff": f"--- /dev/null\n+++ b/tests/test_{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def test_{lane.get('id', 'new')}():\n+    pass\n"
@@ -134,15 +135,16 @@ def synthesize_impl(
                     return {
                         "diff": f"--- /dev/null\n+++ b/src/{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def {lane.get('id', 'new')}():\n+    pass\n"
                     }
-                prompt = _assemble(
-                    prompt.system,
-                    prompt.global_ast,
-                    prompt.diff,
-                    (
-                        *prompt.suffix,
-                        f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
-                    ),
+                retry_suffix = (
+                    *prompt.suffix,
+                    f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
                 )
+                # A failed attempt is a troubleshooting task: lift gitnexus troubleshooting skills
+                # into the VARIABLE slot once, keeping the [System] prefix cache-stable (ADR-0033).
+                trouble = crane.lift_skills(("troubleshooting",))
+                if trouble and "## Skill:" not in " ".join(prompt.suffix):
+                    retry_suffix = (*retry_suffix, trouble)
+                prompt = _assemble(prompt.system, prompt.global_ast, prompt.diff, retry_suffix)
 
     return {
         "diff": f"--- /dev/null\n+++ b/src/{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def {lane.get('id', 'new')}():\n+    pass\n"
