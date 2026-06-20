@@ -34,7 +34,8 @@ uv run ruff format src/ tests/          # format
 uv run ruff check src/ tests/           # lint
 uv run mypy                             # strict type-check (src + tests)
 uv run datumax <args>                   # the CLI entry point (datum_ax.cli.main:run_cli)
-./rebuild.sh                            # reinstall the datumax CLI globally (uv tool install)
+bash scripts/rebuild.sh                 # reinstall the datumax CLI globally (uv tool install)
+bash scripts/install-hooks.sh           # enable the pre-commit hook (ruff format+check + mypy)
 ```
 
 Optional extras (off by default, hardware/LLM-gated): `semantic` (sentence-transformers — RAG persona
