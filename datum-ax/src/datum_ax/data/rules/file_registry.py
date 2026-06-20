@@ -49,8 +49,39 @@ class FileRuleRegistry:
                 scope_tags=tuple(str(t) for t in (meta.get("scope_tags") or ())),
                 evidence_refs=tuple(str(e) for e in (meta.get("evidence_refs") or ("authored",))),
                 version=int(meta.get("version", 1)),
+                fire_count=int(meta.get("fire_count", 0)),
             )
             self._rules[entry.id] = entry
+
+    # --- compound-engineering capture (ADR-0020) -----------------------------------------------
+    def add_rule(self, entry: RuleRegistryEntry) -> None:
+        """Persist a (learned) rule artifact so the next run's crane lifts it. Idempotent by id —
+        re-binding the same id overwrites rather than duplicating."""
+        fm = {
+            "kind": entry.kind.value,
+            "tier": entry.tier.value,
+            "scope_tags": list(entry.scope_tags),
+            "evidence_refs": list(entry.evidence_refs),
+            "version": entry.version,
+            "fire_count": entry.fire_count,
+        }
+        front = yaml.safe_dump(
+            fm, sort_keys=False, default_flow_style=False, allow_unicode=True
+        ).strip()
+        self.root.mkdir(parents=True, exist_ok=True)
+        (self.root / f"{entry.id}.md").write_text(
+            f"---\n{front}\n---\n{entry.statement}\n", encoding="utf-8"
+        )
+        self._rules[entry.id] = entry
+
+    def record_fire(self, rule_id: str) -> None:
+        """Bump a rule's fire_count (it influenced a lane) — the signal that keeps it from pruning."""
+        entry = self.get_rule(rule_id)
+        self.add_rule(entry.model_copy(update={"fire_count": entry.fire_count + 1}))
+
+    def prune_unfired(self) -> tuple[str, ...]:
+        """Ids of rules that have never fired — surfaced as anti-bloat candidates (ADR-0020)."""
+        return tuple(r.id for r in self.all_rules() if r.fire_count == 0)
 
     def get_rule(self, rule_id: str) -> RuleRegistryEntry:
         try:

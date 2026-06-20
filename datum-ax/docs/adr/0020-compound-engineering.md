@@ -9,8 +9,17 @@ Accepted (design). **As-built (delivery half):** the rules registry + steering-l
 plus query/RAG, same as skills — so a code lane lifts the universal `clean-architecture` +
 `tdd-red-first` rules and a routing lane lifts none. The first rules were **extracted out of
 BASE_PERSONA** (universal engineering discipline) so they're reusable across domains; Swift-specific
-mechanics stay in the swift skill. The **capture/harvest** half (CLOSEOUT → candidate rules, tiered
-binding, fire-count pruning) remains design.
+mechanics stay in the swift skill.
+
+**As-built (capture half):** `harvest(lessons, existing_rule_ids)` (`core/compound/harvest.py`, pure +
+deterministic) turns evidence-backed `Lesson`s (`schemas/compound.py`) into tiered candidate rules —
+**auto-bind** the safe ones (regression test, tightening an existing rule, routing/lane-sizing tuning)
+and **propose-and-gate** the rest (new discipline/eedom-policy/property/steering). `FileRuleRegistry`
+gained `add_rule` (persist a learned rule so the next run's crane lifts it), `record_fire` (fire-count
+bump), and `prune_unfired` (surface never-fired rules — anti-bloat). The loop closes: a rule auto-bound
+this run is on disk and lifted next run, at zero prompt tokens until it fires. **Still gated on live
+runs:** deriving `Lesson`s from the real run ledger at CLOSEOUT, the propose-and-gate human UX, and
+binding new eedom policies (needs the eedom container).
 
 ## Context
 
