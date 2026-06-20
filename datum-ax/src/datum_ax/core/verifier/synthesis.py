@@ -1,7 +1,13 @@
+import asyncio
+import inspect
 import json
-from typing import Any, Optional
+import logging
+from pathlib import Path
+from typing import Any, Coroutine, Optional, cast
 
 from datum_ax._base import Contract
+from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
+from datum_ax.core.utils import extract_json
 
 
 class SynthesisResult(Contract):
@@ -15,10 +21,6 @@ def synthesize_test(
 ) -> dict[str, Any]:
     """Stub implementation to synthesize a failing test (RED state)."""
     if inference_client:
-        import asyncio
-        from datum_ax.contracts.inference import ModelRole, AssembledPrompt, TokenBudget
-        from pathlib import Path
-
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "red.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
 
@@ -46,24 +48,17 @@ def synthesize_test(
             call = inference_client.complete(
                 role=ModelRole.EXECUTOR, prompt=prompt, budget=budget, response_format=format_dict
             )
-            import inspect
-            from typing import Any, cast, Coroutine
-
             if inspect.isawaitable(call):
                 completion = asyncio.run(cast(Coroutine[Any, Any, Any], call))
             else:
                 completion = call
 
             try:
-                from datum_ax.core.utils import extract_json
-
                 parsed = extract_json(getattr(completion, "text", ""))
                 if isinstance(parsed, list):
                     parsed = parsed[0] if parsed else {}
                 return SynthesisResult.model_validate(parsed).model_dump()
             except Exception as e:
-                import logging
-
                 logging.warning(
                     f"Synthesis error on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
                 )
@@ -93,10 +88,6 @@ def synthesize_impl(
 ) -> dict[str, Any]:
     """Stub implementation to synthesize the implementation code (GREEN state)."""
     if inference_client:
-        import asyncio
-        from datum_ax.contracts.inference import ModelRole, AssembledPrompt, TokenBudget
-        from pathlib import Path
-
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "green.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
 
@@ -124,24 +115,17 @@ def synthesize_impl(
             call = inference_client.complete(
                 role=ModelRole.EXECUTOR, prompt=prompt, budget=budget, response_format=format_dict
             )
-            import inspect
-            from typing import Any, cast, Coroutine
-
             if inspect.isawaitable(call):
                 completion = asyncio.run(cast(Coroutine[Any, Any, Any], call))
             else:
                 completion = call
 
             try:
-                from datum_ax.core.utils import extract_json
-
                 parsed = extract_json(getattr(completion, "text", ""))
                 if isinstance(parsed, list):
                     parsed = parsed[0] if parsed else {}
                 return SynthesisResult.model_validate(parsed).model_dump()
             except Exception as e:
-                import logging
-
                 logging.warning(
                     f"Synthesis error on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
                 )

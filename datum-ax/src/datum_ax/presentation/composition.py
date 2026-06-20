@@ -46,6 +46,8 @@ def build_inference_client_from_env() -> InferenceClient:
         or os.environ.get("DATUM_MODEL", "gpt-4")
     )
 
+    # Lazy by design: transport_mlx pulls in mlx_lm (Apple-Silicon only), so only the
+    # selected backend is imported — never import the unused one at module load.
     if os.environ.get("DATUM_NATIVE_MLX") == "1":
         from datum_ax.data.inference.transport_mlx import NativeMlxTransport
 

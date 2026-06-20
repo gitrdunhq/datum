@@ -1,6 +1,10 @@
+import logging
+
 import httpx
 from datum_ax.data.inference.transport import OmlxTransport
 from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
+
+logger = logging.getLogger("datum_ax.httpx")
 
 
 class HttpxTransport(OmlxTransport):
@@ -18,9 +22,6 @@ class HttpxTransport(OmlxTransport):
             else f"{self.base_url}/v1/chat/completions"
         )
 
-        import logging
-
-        logger = logging.getLogger("datum_ax.httpx")
         logger.debug(f"POST {url} (model: {request.model})")
 
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}

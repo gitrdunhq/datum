@@ -1,5 +1,6 @@
-import subprocess
 import logging
+import re
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -41,8 +42,6 @@ class LocalHost(ExecutionHost):
         logger.debug(f"Applying diff to {self.workspace_dir}:\n{diff.text}")
 
         # Pre-create directories for new files
-        import re
-
         for match in re.finditer(r"^\+\+\+ b/(.+)$", diff.text, re.MULTILINE):
             target_path = self.workspace_dir / match.group(1)
             target_path.parent.mkdir(parents=True, exist_ok=True)

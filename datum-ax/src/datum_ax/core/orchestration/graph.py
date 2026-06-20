@@ -1,11 +1,15 @@
+import logging
 from typing import Any
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables import RunnableConfig
 
 from datum_ax.core.orchestration.state import OrchestratorState
+from datum_ax.core.planner.dag import DAGBuilder
+from datum_ax.core.planner.lane_plan import plan_lanes
 from datum_ax.core.planner.triage import triage_ticket
-from datum_ax.core.verifier.synthesis import synthesize_test
+from datum_ax.core.verifier.synthesis import synthesize_impl, synthesize_test
 from datum_ax.contracts.inference import InferenceClient
 from datum_ax.contracts.execution import ExecutionHost, UnifiedDiff, ExecutionTarget
 
@@ -56,9 +60,6 @@ def phase_a_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
     client = get_inference_client(config)
     crane = get_context_crane(config)
 
-    from datum_ax.core.planner.lane_plan import plan_lanes
-    from datum_ax.core.planner.dag import DAGBuilder
-
     triage_result = triage_ticket(ticket, inference_client=client, crane=crane)
     lanes = plan_lanes(ticket, inference_client=client, crane=crane)
 
@@ -83,15 +84,11 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
     host = get_execution_host(config)
     crane = get_context_crane(config)
 
-    from datum_ax.core.verifier.synthesis import synthesize_impl
-
     dag = state.get("dag", {}) or {}
     waves = dag.get("waves", [])
 
     results = state.get("results", {}).copy()
     lane_results: list[dict[str, Any]] = []
-
-    import logging
 
     for wave_idx, wave in enumerate(waves):
         for lane in wave:

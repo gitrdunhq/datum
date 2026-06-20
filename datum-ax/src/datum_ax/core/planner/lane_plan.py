@@ -1,7 +1,14 @@
+import asyncio
+import inspect
 import json
-from typing import Any, Optional
+import logging
+from pathlib import Path
+from typing import Any, Coroutine, Optional, cast
 
 from datum_ax._base import Contract
+from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
+from datum_ax.core.orchestration.crane import ContextBudgetExceededError
+from datum_ax.core.utils import extract_json
 
 
 class LaneDef(Contract):
@@ -21,10 +28,6 @@ def plan_lanes(
 ) -> list[dict[str, Any]]:
     """Generates execution lanes for a ticket."""
     if inference_client:
-        import asyncio
-        from datum_ax.contracts.inference import ModelRole, AssembledPrompt, TokenBudget
-        from pathlib import Path
-
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "lane-plan.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
 
@@ -48,15 +51,10 @@ def plan_lanes(
                 "strict": True,
             },
         }
-        from datum_ax.core.orchestration.crane import ContextBudgetExceededError
-
         for attempt in range(3):
             call = inference_client.complete(
                 role=ModelRole.PLANNER, prompt=prompt, budget=budget, response_format=format_dict
             )
-
-            import inspect
-            from typing import Any, cast, Coroutine
 
             if inspect.isawaitable(call):
                 completion = asyncio.run(cast(Coroutine[Any, Any, Any], call))
@@ -64,8 +62,6 @@ def plan_lanes(
                 completion = call
 
             try:
-                from datum_ax.core.utils import extract_json
-
                 parsed = extract_json(getattr(completion, "text", ""))
                 if isinstance(parsed, list):
                     parsed = {"lanes": parsed}
@@ -73,8 +69,6 @@ def plan_lanes(
                 lanes_dict = LanePlan.model_validate(parsed).model_dump()["lanes"]
 
                 # --- ADR-0022: Plan-Time Footprint Validation via ContextCrane ---
-                from datum_ax.core.orchestration.crane import ContextBudgetExceededError
-
                 # In a full DI setup, the crane is injected.
                 # If a lane is too broad (e.g. requires pulling the entire codebase),
                 # the crane estimation will throw ContextBudgetExceededError.
@@ -88,8 +82,6 @@ def plan_lanes(
                 return cast(list[dict[str, Any]], lanes_dict)
 
             except ContextBudgetExceededError as e:
-                import logging
-
                 logging.warning(f"Lane too large on attempt {attempt + 1}: {e}")
                 prompt = _assemble(
                     prompt.system,
@@ -101,8 +93,6 @@ def plan_lanes(
                     ),
                 )
             except Exception as e:
-                import logging
-
                 logging.warning(
                     f"Failed to parse lanes on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
                 )

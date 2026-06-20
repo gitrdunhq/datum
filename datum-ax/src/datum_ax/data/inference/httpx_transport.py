@@ -4,6 +4,8 @@ lazily so the package (and tests) don't require it. Not exported from the packag
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
 
 
@@ -27,8 +29,6 @@ class HttpxOmlxTransport:
         if request.response_format:
             payload["response_format"] = request.response_format
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
-        from typing import cast, Any
-
         client = cast(Any, self._client) or httpx.AsyncClient(timeout=None)
         try:
             resp = await client.post(

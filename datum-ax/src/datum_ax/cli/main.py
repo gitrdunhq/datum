@@ -1,5 +1,11 @@
 import argparse
+import json
+import logging
+import os
 import sys
+import urllib.request
+from typing import Any, cast
+
 from datum_ax.presentation.composition import build_status_source
 
 
@@ -29,10 +35,6 @@ def run_cli(args_list: list[str] | None = None) -> None:
         status = build_status_source().get_status()
         print(status.model_dump_json())
     elif args.command == "run":
-        import os
-        import sys
-        import logging
-
         os.makedirs(".datum", exist_ok=True)
         log_path = ".datum/datumax.log"
 
@@ -77,7 +79,7 @@ def run_cli(args_list: list[str] | None = None) -> None:
         workspace_dir = os.path.dirname(os.path.abspath(args.ticket)) or "."
         print(f"Starting run for ticket: {args.ticket} in workspace: {workspace_dir}")
 
-        from datum_ax.data.inference.transport_httpx import HttpxTransport
+        # Heavy deps imported lazily so `status`/`doctor` stay fast (no langgraph/transport load).
         from datum_ax.data.inference.client import OmlxInferenceClient
         from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
         from datum_ax.contracts.inference import ModelRole
@@ -85,9 +87,6 @@ def run_cli(args_list: list[str] | None = None) -> None:
 
         model_id = os.environ.get("OMLX_MODEL") or os.environ.get("OPENAI_MODEL")
         if not model_id:
-            import json
-            import urllib.request
-
             models_url = (
                 f"{base_url.rstrip('/')}/models"
                 if base_url.rstrip("/").endswith("/v1")
@@ -170,8 +169,6 @@ def run_cli(args_list: list[str] | None = None) -> None:
         crane = build_context_crane()
 
         graph = build_graph()
-        from typing import Any
-
         initial_state: dict[str, Any] = {
             "ticket": {"text": args.ticket, "scale": "task"},
             "workspace_dir": workspace_dir,
@@ -187,9 +184,7 @@ def run_cli(args_list: list[str] | None = None) -> None:
                 assert isinstance(ticket_info, dict)
                 ticket_info["text"] = f.read()
 
-        import json
         from langchain_core.runnables.config import RunnableConfig
-        from typing import cast
 
         config = cast(
             RunnableConfig,
