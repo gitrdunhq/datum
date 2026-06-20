@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted (design)
+Accepted (design). **As-built (logging):** the structured-logging half is implemented — a single
+`datum_ax/observability.py` (root tier, importable by every tier) exposes `get_logger(__name__)`
+and a one-call `configure_logging(level, json_logs, logfile, console, stream)`. structlog renders
+the same event stream as human console lines or one JSON object per line (ADR-0027). Every module
+emits structured events (`logger.info("lane_executing", lane_id=...)`); a `test_logging_is_centralized`
+guard fails the build if any module touches stdlib `logging` or `getLogger` directly. The ledger
+run-trace + budget ceilings remain design-level.
 
 ## Context
 

@@ -1,12 +1,14 @@
 import argparse
 import json
-import logging
 import os
 import sys
 import urllib.request
 from typing import Any, cast
 
+from datum_ax.observability import configure_logging, get_logger
 from datum_ax.presentation.composition import build_status_source
+
+logger = get_logger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,27 +38,14 @@ def run_cli(args_list: list[str] | None = None) -> None:
         print(status.model_dump_json())
     elif args.command == "run":
         os.makedirs(".datum", exist_ok=True)
-        log_path = ".datum/datumax.log"
-
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
-
-        # Always log everything to file
-        file_handler = logging.FileHandler(log_path, mode="a")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s:%(levelname)s:%(name)s:%(message)s")
+        # Always trace to the run logfile; stream to the console only with --debug (ADR-0013).
+        configure_logging(
+            level="DEBUG",
+            logfile=".datum/datumax.log",
+            console=getattr(args, "debug", False),
         )
-        root_logger.addHandler(file_handler)
 
-        # Only stream debug to console if --debug is passed
-        if getattr(args, "debug", False):
-            stream_handler = logging.StreamHandler(sys.stderr)
-            stream_handler.setLevel(logging.DEBUG)
-            stream_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
-            root_logger.addHandler(stream_handler)
-
-        logging.info(f"=== Starting datumax run for ticket: {args.ticket} ===")
+        logger.info("run_started", ticket=args.ticket)
 
         base_url = (
             os.environ.get("OMLX_BASE_URL")
@@ -198,14 +187,13 @@ def run_cli(args_list: list[str] | None = None) -> None:
         )
         for event in graph.stream(initial_state, config=config):
             for node_name, node_state in event.items():
-                msg = f"[✔] Finished: {node_name}"
-                print(f"\n{msg}")
-                logging.info(msg)
+                print(f"\n[✔] Finished: {node_name}")  # user-facing CLI progress
+                logger.info("node_finished", node=node_name)
                 if "results" in node_state and node_state["results"]:
                     out = json.dumps(node_state["results"], indent=2)
                     # print the last added result for visibility
                     print(out)
-                    logging.info(f"State update from {node_name}:\n{out}")
+                    logger.info("node_results", node=node_name, results=node_state["results"])
     elif args.command == "doctor":
         print("Doctor: Environment appears healthy.")
 

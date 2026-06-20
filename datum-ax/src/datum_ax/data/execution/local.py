@@ -1,4 +1,3 @@
-import logging
 import re
 import subprocess
 from pathlib import Path
@@ -13,8 +12,9 @@ from datum_ax.contracts.execution import (
     LintResult,
     ArtifactBundle,
 )
+from datum_ax.observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LocalHost(ExecutionHost):
@@ -39,7 +39,7 @@ class LocalHost(ExecutionHost):
         if not diff.text.strip():
             return ApplyResult(applied=True, conflicts=())
 
-        logger.debug(f"Applying diff to {self.workspace_dir}:\n{diff.text}")
+        logger.debug("diff_applying", workspace_dir=str(self.workspace_dir), diff=diff.text)
 
         # Pre-create directories for new files
         for match in re.finditer(r"^\+\+\+ b/(.+)$", diff.text, re.MULTILINE):
@@ -52,16 +52,16 @@ class LocalHost(ExecutionHost):
             conflicts = tuple(
                 line for line in result.stdout.decode().splitlines() if "FAILED" in line
             )
-            logger.warning(f"Patch apply failed (dry-run). Conflicts: {conflicts}")
+            logger.warning("patch_dry_run_failed", conflicts=conflicts)
             return ApplyResult(applied=False, conflicts=conflicts)
 
         # Actual apply
         result = self._exec(["patch", "-p1", "--force"], input_str=diff.text)
         if result.returncode != 0:
-            logger.error(f"Patch apply failed during actual application: {result.stderr.decode()}")
+            logger.error("patch_apply_failed", stderr=result.stderr.decode())
             return ApplyResult(applied=False, conflicts=("Failed during actual apply",))
 
-        logger.info("Diff successfully applied to local host.")
+        logger.info("diff_applied", workspace_dir=str(self.workspace_dir))
         return ApplyResult(applied=True, conflicts=())
 
     def run_tests(self, selector: str) -> TestResult:

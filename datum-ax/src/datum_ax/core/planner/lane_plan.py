@@ -1,7 +1,6 @@
 import asyncio
 import inspect
 import json
-import logging
 from pathlib import Path
 from typing import Any, Coroutine, Optional, cast
 
@@ -9,6 +8,9 @@ from datum_ax._base import Contract
 from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
 from datum_ax.core.orchestration.crane import ContextBudgetExceededError
 from datum_ax.core.utils import extract_json
+from datum_ax.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class LaneDef(Contract):
@@ -82,7 +84,7 @@ def plan_lanes(
                 return cast(list[dict[str, Any]], lanes_dict)
 
             except ContextBudgetExceededError as e:
-                logging.warning(f"Lane too large on attempt {attempt + 1}: {e}")
+                logger.warning("lane_too_large", attempt=attempt + 1, error=str(e))
                 prompt = _assemble(
                     prompt.system,
                     prompt.global_ast,
@@ -93,8 +95,11 @@ def plan_lanes(
                     ),
                 )
             except Exception as e:
-                logging.warning(
-                    f"Failed to parse lanes on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
+                logger.warning(
+                    "lane_parse_failed",
+                    attempt=attempt + 1,
+                    error=str(e),
+                    raw_output=getattr(completion, "text", ""),
                 )
                 if attempt == 2:
                     return [{"id": "lane_1", "description": "Stub lane", "files": ["src/main.py"]}]

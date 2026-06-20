@@ -1,13 +1,15 @@
 import asyncio
 import inspect
 import json
-import logging
 from pathlib import Path
 from typing import Any, Coroutine, Optional, cast
 
 from datum_ax._base import Contract
 from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
 from datum_ax.core.utils import extract_json
+from datum_ax.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class SynthesisResult(Contract):
@@ -59,8 +61,11 @@ def synthesize_test(
                     parsed = parsed[0] if parsed else {}
                 return SynthesisResult.model_validate(parsed).model_dump()
             except Exception as e:
-                logging.warning(
-                    f"Synthesis error on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
+                logger.warning(
+                    "synthesis_failed",
+                    attempt=attempt + 1,
+                    error=str(e),
+                    raw_output=getattr(completion, "text", ""),
                 )
                 if attempt == 2:
                     return {
@@ -126,8 +131,11 @@ def synthesize_impl(
                     parsed = parsed[0] if parsed else {}
                 return SynthesisResult.model_validate(parsed).model_dump()
             except Exception as e:
-                logging.warning(
-                    f"Synthesis error on attempt {attempt + 1}: {e}\nRaw output: {getattr(completion, 'text', '')}"
+                logger.warning(
+                    "synthesis_failed",
+                    attempt=attempt + 1,
+                    error=str(e),
+                    raw_output=getattr(completion, "text", ""),
                 )
                 if attempt == 2:
                     return {

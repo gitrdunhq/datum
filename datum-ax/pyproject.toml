@@ -7,6 +7,7 @@ dependencies = [
     "httpx>=0.28.1",
     "langgraph>=1.2.6",
     "pydantic>=2.6",
+    "structlog>=24.1",
 ]
 
 [project.optional-dependencies]

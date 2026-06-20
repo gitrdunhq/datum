@@ -11,13 +11,13 @@ added during E3/E6 wiring.
 
 from __future__ import annotations
 
-import logging
 from typing import Any, cast
 
 from datum_ax.data.inference.transport import OmlxTransport
 from datum_ax.data.inference.wire import ChatRequest, ChatResponse, Usage
+from datum_ax.observability import get_logger
 
-logger = logging.getLogger("datum_ax.httpx")
+logger = get_logger(__name__)
 
 
 class HttpxTransport(OmlxTransport):
@@ -38,7 +38,7 @@ class HttpxTransport(OmlxTransport):
             if self.base_url.endswith("/v1")
             else f"{self.base_url}/v1/chat/completions"
         )
-        logger.debug(f"POST {url} (model: {request.model})")
+        logger.debug("omlx_request", url=url, model=request.model)
 
         payload = request.model_dump()  # includes response_format when set
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}

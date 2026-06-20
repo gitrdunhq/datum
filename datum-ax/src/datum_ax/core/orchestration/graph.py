@@ -1,4 +1,3 @@
-import logging
 from typing import Any
 
 from langgraph.graph import StateGraph, START, END
@@ -12,6 +11,9 @@ from datum_ax.core.planner.triage import triage_ticket
 from datum_ax.core.verifier.synthesis import synthesize_impl, synthesize_test
 from datum_ax.contracts.inference import InferenceClient
 from datum_ax.contracts.execution import ExecutionHost, UnifiedDiff, ExecutionTarget
+from datum_ax.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_inference_client(config: RunnableConfig) -> InferenceClient:
@@ -92,7 +94,9 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
 
     for wave_idx, wave in enumerate(waves):
         for lane in wave:
-            logging.info(f"Executing Lane: {lane.get('id')} - {lane.get('description')}")
+            logger.info(
+                "lane_executing", lane_id=lane.get("id"), description=lane.get("description")
+            )
 
             # 1. Test Synthesis
             test_result = synthesize_test(lane, inference_client=client, crane=crane)
