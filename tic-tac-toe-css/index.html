@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pure CSS Tic-Tac-Toe</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  
+  <form class="game">
+    <div class="header">
+      <h1>Tic-Tac-Toe</h1>
+      <p class="subtitle">100% Pure HTML & CSS. No JavaScript.</p>
+    </div>
+
+    <!-- The 18 Checkboxes representing the exact state of the board. MUST BE EXACT NUMERICAL ORDER -->
+    <input type="checkbox" id="x1" class="x-input"><input type="checkbox" id="o1" class="o-input">
+    <input type="checkbox" id="x2" class="x-input"><input type="checkbox" id="o2" class="o-input">
+    <input type="checkbox" id="x3" class="x-input"><input type="checkbox" id="o3" class="o-input">
+    <input type="checkbox" id="x4" class="x-input"><input type="checkbox" id="o4" class="o-input">
+    <input type="checkbox" id="x5" class="x-input"><input type="checkbox" id="o5" class="o-input">
+    <input type="checkbox" id="x6" class="x-input"><input type="checkbox" id="o6" class="o-input">
+    <input type="checkbox" id="x7" class="x-input"><input type="checkbox" id="o7" class="o-input">
+    <input type="checkbox" id="x8" class="x-input"><input type="checkbox" id="o8" class="o-input">
+    <input type="checkbox" id="x9" class="x-input"><input type="checkbox" id="o9" class="o-input">
+
+    <div class="board">
+      <div class="cell" id="c1">
+        <label for="x1" class="label-x"></label><label for="o1" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c2">
+        <label for="x2" class="label-x"></label><label for="o2" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c3">
+        <label for="x3" class="label-x"></label><label for="o3" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c4">
+        <label for="x4" class="label-x"></label><label for="o4" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c5">
+        <label for="x5" class="label-x"></label><label for="o5" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c6">
+        <label for="x6" class="label-x"></label><label for="o6" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c7">
+        <label for="x7" class="label-x"></label><label for="o7" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c8">
+        <label for="x8" class="label-x"></label><label for="o8" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+      <div class="cell" id="c9">
+        <label for="x9" class="label-x"></label><label for="o9" class="label-o"></label>
+        <div class="mark x-mark"></div><div class="mark o-mark"></div>
+      </div>
+
+      <div class="winner-message x-wins">
+        <h2>Neon X Wins!</h2>
+        <button type="reset" class="reset-btn">Play Again</button>
+      </div>
+      <div class="winner-message o-wins">
+        <h2>Plasma O Wins!</h2>
+        <button type="reset" class="reset-btn">Play Again</button>
+      </div>
+      <div class="winner-message draw">
+        <h2>It's a Draw!</h2>
+        <button type="reset" class="reset-btn">Play Again</button>
+      </div>
+    </div>
+    
+    <div class="controls">
+      <div class="turn-indicator">
+        <span class="turn-text x-turn">Player X's Turn</span>
+        <span class="turn-text o-turn">Player O's Turn</span>
+      </div>
+      <button type="reset" class="reset-btn bottom-reset">Restart</button>
+    </div>
+  </form>
+</body>
+</html>

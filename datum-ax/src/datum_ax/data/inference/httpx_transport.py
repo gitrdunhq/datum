@@ -24,8 +24,11 @@ class HttpxOmlxTransport:
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
         }
+        if request.response_format:
+            payload["response_format"] = request.response_format
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
-        client = self._client or httpx.AsyncClient(timeout=None)
+        from typing import cast, Any
+        client = cast(Any, self._client) or httpx.AsyncClient(timeout=None)
         try:
             resp = await client.post(
                 f"{self._base_url}/v1/chat/completions", json=payload, headers=headers

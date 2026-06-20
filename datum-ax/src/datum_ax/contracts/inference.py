@@ -5,7 +5,7 @@ All calls pass a TokenBudget; the AssembledPrompt fixes the cache-stable prefix.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, Any
 
 from pydantic import Field, model_validator
 
@@ -14,6 +14,7 @@ from datum_ax._base import Contract
 
 class ModelRole(str, Enum):
     TRIAGE = "triage"
+    PLANNER = "planner"
     EXECUTOR = "executor"
     ADVERSARIAL = "adversarial"
 
@@ -61,5 +62,5 @@ class InferenceClient(Protocol):
     """Port for the oMLX-backed inference layer (data tier), throttled by a semaphore."""
 
     async def complete(
-        self, role: ModelRole, prompt: AssembledPrompt, budget: TokenBudget
+        self, role: ModelRole, prompt: AssembledPrompt, budget: TokenBudget, response_format: dict[str, Any] | None = None
     ) -> Completion: ...

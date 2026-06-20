@@ -6,6 +6,7 @@ These are the bytes that cross to oMLX; strict/frozen like every contract.
 from __future__ import annotations
 
 from pydantic import Field
+from typing import Any
 
 from datum_ax._base import Contract
 
@@ -25,6 +26,7 @@ class ChatRequest(Contract):
     messages: tuple[ChatMessage, ...] = Field(min_length=1)
     temperature: float = Field(ge=0, le=2)
     max_tokens: int = Field(gt=0)
+    response_format: dict[str, Any] | None = None
 
 
 class ChatResponse(Contract):

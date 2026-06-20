@@ -6,6 +6,7 @@ Config-driven: model ids and temperatures live here, never in code paths.
 from __future__ import annotations
 
 from pydantic import Field, model_validator
+from typing import Any
 
 from datum_ax._base import Contract
 from datum_ax.contracts.inference import ModelRole
@@ -16,6 +17,7 @@ class RoleConfig(Contract):
     role: ModelRole
     model_id: str = Field(min_length=1)
     temperature: float = Field(ge=0, le=2)
+    response_format: dict[str, Any] | None = None
 
 
 class ModelRoleRegistry(Contract):

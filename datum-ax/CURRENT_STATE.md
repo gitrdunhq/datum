@@ -25,12 +25,14 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 |------|-------|
 | Architecture & ADRs | ✅ Complete — 29 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, BUILD-INITIATIVE |
 | E1 — Contracts & schemas (code) | ✅ Built & green — strict Pydantic, 3 enforced tiers |
-| E2 — Inference layer (code) | ✅ Built & green — oMLX `OmlxInferenceClient` (data tier): role registry, semaphore, budget enforcement, pluggable transport; tested vs a mock oMLX |
+| E2 — Inference layer (code) | ✅ Built & green — oMLX `OmlxInferenceClient`, pluggable transports (HTTPX + Native MLX) |
 | Test suite | ✅ 164 tests green (`uv run pytest`) — property + boundary + E2 integration |
 | nl-to-ticket intake skill | ✅ Built (skill, runnable) |
 | Product Team skill suite | ✅ Built — orchestrator + 4 lenses + framework dispatch map |
-| E3–E11 (hosts, firewall, data, orchestration, loop, eedom, GitHub, compounding) | ⬜ Designed, not built |
-| CLI / API (ADR-0028) + live status (ADR-0029 contract done) | ⬜ Contract done; surfaces not built |
+| E6 — Orchestration (code) | ✅ Built — LangGraph state machine (Triage → Planner → Synthesis) with self-healing retries |
+| E3 — Execution Hosts (code) | 🟡 Partially Built — `LocalHost` implemented for patch execution; `X86DockerHost` pending |
+| E4, E5, E7–E11 | ⬜ Designed, not built |
+| CLI / API (ADR-0028) | ✅ Built — `datumax run` and `datumax status` surfaces operational |
 | Migration to gitrdunhq/datum-ax | ⬜ Pending (proxy/scope) |
 
 ## Repo map (under `datum-ax/`)
@@ -82,10 +84,11 @@ uv run pytest          # ~133 tests green (property tests + tier-boundary enforc
 
 ## Open threads / next steps (pick up here)
 
-1. ~~Build E2 (inference layer)~~ ✅ done — `src/datum_ax/data/inference/`. Next: **E3 (execution
-   hosts)** — `X86DockerHost` (diff-in/results-out, teardown) — or **E5 (data plane)**; both depend
-   only on E1 and unblock E6/E8.
-2. **Thin E10 CLI** so `datum-ax intake "<text>"` / `status --json` actually run.
+1. ~~Build E2 (inference layer)~~ ✅ done — `src/datum_ax/data/inference/`.
+2. ~~Build E3 (execution hosts)~~ ✅ partially done — `LocalHost` built. Next: **`X86DockerHost`**.
+3. ~~Build E6 (orchestration)~~ ✅ done — `src/datum_ax/core/orchestration/graph.py` running the DAG.
+4. ~~Thin E10 CLI~~ ✅ done — `datumax run` and `datumax status` operational.
+5. **E4 Context Firewall** — Next up: Wire `TokenSave` integration for footprint validation (currently stubbed in `lane_plan.py`).
 3. **Product Team dry-run** — run a real idea end-to-end (FRAME → clarify → research → skeptic →
    BRIEF) to pressure-test and tune the magnificent version.
 4. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` once repo creation is possible

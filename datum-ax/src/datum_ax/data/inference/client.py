@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from typing import Any
 
 from datum_ax.contracts.inference import (
     AssembledPrompt,
@@ -67,7 +68,7 @@ class OmlxInferenceClient:
         )
 
     async def complete(
-        self, role: ModelRole, prompt: AssembledPrompt, budget: TokenBudget
+        self, role: ModelRole, prompt: AssembledPrompt, budget: TokenBudget, response_format: dict[str, Any] | None = None
     ) -> Completion:
         cfg = self._registry.get(role)
         estimate = self._count(self._input_text(prompt))
@@ -79,6 +80,7 @@ class OmlxInferenceClient:
             messages=self._messages(prompt),
             temperature=cfg.temperature,
             max_tokens=budget.max_output,
+            response_format=response_format or cfg.response_format,
         )
 
         async with self._sem:
