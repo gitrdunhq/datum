@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from datum_ax.contracts.checkpoint import CheckpointStore
+from datum_ax.contracts.context_assembler import ContextAssembler
 from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
@@ -22,7 +23,7 @@ from datum_ax.data.review import REVIEW_GATES
 from datum_ax.data.state.checkpoint import InMemoryCheckpointer
 from datum_ax.data.state.ledger import LibSQLLedger
 from datum_ax.data.state.status import StatusProvider
-from datum_ax.core.orchestration.crane import ContextCrane
+from datum_ax.core.orchestration.assemblers import CONTEXT_ASSEMBLERS
 from datum_ax.data.context.adapters import (
     Context7DocContext,
     HeadroomNlCompressor,
@@ -93,9 +94,14 @@ def build_local_host(workspace_dir: str = ".") -> ExecutionHost:
     return LocalHost(workspace_dir=workspace_dir)
 
 
-def build_context_crane(budget: TokenBudget | None = None) -> ContextCrane:
-    """The single context-assembly authority (ADR-0030), wired with the data adapters + DCP."""
-    return ContextCrane(
+def build_context_crane(
+    budget: TokenBudget | None = None, name: str | None = None
+) -> ContextAssembler:
+    """Resolve the (mandatory) context assembler by key from `CONTEXT_ASSEMBLERS` (ADR-0030/0032),
+    wired with the data adapters + DCP + persona registry. Default: the crane."""
+    name = name or os.environ.get("DATUM_CONTEXT_ASSEMBLER") or "crane"
+    return CONTEXT_ASSEMBLERS.create(
+        name,
         code_context=SerenaTokenSaveContext(),
         doc_context=Context7DocContext(),
         nl_compressor=HeadroomNlCompressor(),

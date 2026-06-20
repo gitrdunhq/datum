@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted (built)
+Accepted (built). **As-built:** the crane is now a first-class **mandatory plugin** behind the
+`ContextAssembler` port (`contracts/context_assembler.py`), resolved from the `CONTEXT_ASSEMBLERS`
+registry by the composition root (ADR-0032) — same port+adapter+registry shape as ReviewGate /
+PersonaRegistry. "Single source of truth" is unchanged: there is always exactly **one** assembler
+(default `crane`); an unknown/absent key is a hard error, never a silent fallback. Consumers depend
+on the port, not the concrete class.
 
 ## Context
 
