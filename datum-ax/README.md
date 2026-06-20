@@ -84,6 +84,7 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0030](docs/adr/0030-context-crane-single-source.md) — ContextCrane: single source of truth for context assembly (one assembler, one token counter, one pruner)
 - [0031](docs/adr/0031-pluggable-ledger-backend.md) — pluggable ledger backend (local SQLite → centralized DB behind one port)
 - [0032](docs/adr/0032-ports-and-adapters-everywhere.md) — ports & adapters everywhere (every external dependency = port + shapes + factory)
+- [0033](docs/adr/0033-persona-registry.md) — Persona registry: Roles + Skills as versioned markdown artifacts behind a port (our own lean build; fills the crane's persona seam)
 
 **Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 
