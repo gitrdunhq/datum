@@ -15,14 +15,17 @@ from datum_ax.contracts.execution import (
 
 logger = logging.getLogger(__name__)
 
+
 class LocalHost(ExecutionHost):
     """Applies execution directly to the local workspace using patch."""
-    
+
     def __init__(self, workspace_dir: str = "."):
         self.workspace_dir = Path(workspace_dir).resolve()
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        
-    def _exec(self, cmd: list[str], input_str: Optional[str] = None) -> subprocess.CompletedProcess[bytes]:
+
+    def _exec(
+        self, cmd: list[str], input_str: Optional[str] = None
+    ) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
             cmd,
             input=input_str.encode() if input_str else None,
@@ -34,28 +37,31 @@ class LocalHost(ExecutionHost):
     def apply_diff(self, diff: UnifiedDiff) -> ApplyResult:
         if not diff.text.strip():
             return ApplyResult(applied=True, conflicts=())
-            
+
         logger.debug(f"Applying diff to {self.workspace_dir}:\n{diff.text}")
-        
+
         # Pre-create directories for new files
         import re
-        for match in re.finditer(r'^\+\+\+ b/(.+)$', diff.text, re.MULTILINE):
+
+        for match in re.finditer(r"^\+\+\+ b/(.+)$", diff.text, re.MULTILINE):
             target_path = self.workspace_dir / match.group(1)
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
         # Try dry run first
         result = self._exec(["patch", "-p1", "--force", "--dry-run"], input_str=diff.text)
         if result.returncode != 0:
-            conflicts = tuple(line for line in result.stdout.decode().splitlines() if "FAILED" in line)
+            conflicts = tuple(
+                line for line in result.stdout.decode().splitlines() if "FAILED" in line
+            )
             logger.warning(f"Patch apply failed (dry-run). Conflicts: {conflicts}")
             return ApplyResult(applied=False, conflicts=conflicts)
-            
+
         # Actual apply
         result = self._exec(["patch", "-p1", "--force"], input_str=diff.text)
         if result.returncode != 0:
             logger.error(f"Patch apply failed during actual application: {result.stderr.decode()}")
             return ApplyResult(applied=False, conflicts=("Failed during actual apply",))
-            
+
         logger.info("Diff successfully applied to local host.")
         return ApplyResult(applied=True, conflicts=())
 

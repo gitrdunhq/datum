@@ -28,6 +28,7 @@ class HttpxOmlxTransport:
             payload["response_format"] = request.response_format
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         from typing import cast, Any
+
         client = cast(Any, self._client) or httpx.AsyncClient(timeout=None)
         try:
             resp = await client.post(

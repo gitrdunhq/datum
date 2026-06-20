@@ -10,14 +10,18 @@ from datum_ax.schemas.verification import GateResult, LaneVerification
 
 
 def test_impl_without_test_fails():
-    r = evaluate_tdd_gate(LaneVerification(test_present=False, red_observed=False, impl_present=True))
+    r = evaluate_tdd_gate(
+        LaneVerification(test_present=False, red_observed=False, impl_present=True)
+    )
     assert isinstance(r, GateResult)
     assert not r.passed
     assert any("RED" in v for v in r.violations)
 
 
 def test_impl_without_observed_red_fails():
-    r = evaluate_tdd_gate(LaneVerification(test_present=True, red_observed=False, impl_present=True))
+    r = evaluate_tdd_gate(
+        LaneVerification(test_present=True, red_observed=False, impl_present=True)
+    )
     assert not r.passed
 
 
@@ -29,7 +33,9 @@ def test_red_then_green_passes():
 
 def test_red_done_green_pending_is_ok():
     # A failing test exists but no impl yet — not a violation (GREEN simply pending).
-    r = evaluate_tdd_gate(LaneVerification(test_present=True, red_observed=True, impl_present=False))
+    r = evaluate_tdd_gate(
+        LaneVerification(test_present=True, red_observed=True, impl_present=False)
+    )
     assert r.passed
 
 

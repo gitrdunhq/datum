@@ -18,7 +18,7 @@ class DAGBuilder:
                     chunk = files[i : i + self.max_files_per_lane]
                     new_lane = lane.copy()
                     new_lane["files"] = chunk
-                    new_lane["id"] = f"{lane['id']}_part{i//self.max_files_per_lane}"
+                    new_lane["id"] = f"{lane['id']}_part{i // self.max_files_per_lane}"
                     result.append(new_lane)
             else:
                 result.append(lane)
@@ -27,20 +27,20 @@ class DAGBuilder:
     def build_waves(self, lanes: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         """Groups lanes into waves, guaranteeing file disjointness within a wave."""
         waves: list[list[dict[str, Any]]] = []
-        
+
         for lane in lanes:
             placed = False
             for wave in waves:
                 # Check for overlap with files already in this wave
                 wave_files = set(f for w_lane in wave for f in w_lane.get("files", []))
                 lane_files = set(lane.get("files", []))
-                
+
                 if not wave_files.intersection(lane_files):
                     wave.append(lane)
                     placed = True
                     break
-            
+
             if not placed:
                 waves.append([lane])
-                
+
         return waves

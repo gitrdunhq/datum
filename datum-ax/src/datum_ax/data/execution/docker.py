@@ -44,12 +44,14 @@ class X86DockerHost:
         if result.returncode != 0:
             raise SandboxInitError(f"Failed to start container: {result.stderr}")
         self.container_id = result.stdout.strip()
-        
+
         # Ensure patch is installed if using a bare image (for demo/diff apply)
         # Note: In a real environment, the image should come with `patch` pre-installed.
         # But for safety, we try to ensure patch exists or rely on the image.
 
-    def _exec(self, cmd: list[str], timeout: float = 30.0, input_str: str | None = None) -> subprocess.CompletedProcess[str]:
+    def _exec(
+        self, cmd: list[str], timeout: float = 30.0, input_str: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         if not self.container_id:
             self._start_container()
         assert self.container_id is not None
@@ -74,7 +76,9 @@ class X86DockerHost:
         if result.returncode != 0:
             # Simple conflict detection from patch output
             conflicts = tuple(
-                line for line in result.stdout.splitlines() if "FAILED" in line or "reject" in line.lower()
+                line
+                for line in result.stdout.splitlines()
+                if "FAILED" in line or "reject" in line.lower()
             )
             return ApplyResult(applied=False, conflicts=conflicts or ("Unknown conflict",))
 

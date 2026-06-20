@@ -64,7 +64,11 @@ class OmlxInferenceClient:
         )
 
     async def complete(
-        self, role: ModelRole, prompt: AssembledPrompt, budget: TokenBudget, response_format: dict[str, Any] | None = None
+        self,
+        role: ModelRole,
+        prompt: AssembledPrompt,
+        budget: TokenBudget,
+        response_format: dict[str, Any] | None = None,
     ) -> Completion:
         cfg = self._registry.get(role)
         estimate = self._count(self._input_text(prompt))

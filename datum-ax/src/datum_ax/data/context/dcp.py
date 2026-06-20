@@ -15,7 +15,9 @@ class DynamicContextPruner:
         self.low_water = soft_low_water
         self.ledger: dict[str, str] = {}
 
-    def prune_suffix(self, suffix: tuple[str, ...], budget_max: int, current_total_tokens: int) -> tuple[str, ...]:
+    def prune_suffix(
+        self, suffix: tuple[str, ...], budget_max: int, current_total_tokens: int
+    ) -> tuple[str, ...]:
         """Prunes items in the suffix if the high watermark is exceeded."""
         high_water_limit = int(budget_max * self.high_water)
         low_water_limit = int(budget_max * self.low_water)
@@ -36,7 +38,7 @@ class DynamicContextPruner:
         for i, token_count, text in items_with_idx:
             if tokens <= low_water_limit:
                 break
-            
+
             # Don't prune small things
             if token_count < 20:
                 continue
@@ -45,7 +47,7 @@ class DynamicContextPruner:
             key = f"placeholder_{uuid.uuid4().hex[:8]}"
             self.ledger[key] = text
             placeholder = f"[{key}: Content pruned. {token_count} tokens omitted.]"
-            
+
             pruned[i] = placeholder
             tokens = tokens - token_count + _count(placeholder)
 

@@ -76,7 +76,9 @@ class ContextCrane:
                 f"Assembled payload ({new_total} tokens) exceeds budget "
                 f"({b.max_input}) even after pruning. Planner must decompose."
             )
-        return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=tuple(pruned))
+        return AssembledPrompt(
+            system=system, global_ast=global_ast, diff=diff, suffix=tuple(pruned)
+        )
 
     # --- firewall hoisting (ADR-0004) ------------------------------------------------------------
     def hoist_docs(self, library_names: list[str]) -> str:

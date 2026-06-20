@@ -15,7 +15,10 @@ class TestLedgerMetering:
         ledger.record_node("plan", input_tokens=100, output_tokens=50, run_id="r1")
         ledger.record_node("plan", input_tokens=10, output_tokens=5, run_id="r2")
         assert ledger.totals("r1") == {
-            "nodes": 1, "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
+            "nodes": 1,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
         }
         assert ledger.totals("r2")["total_tokens"] == 15
         assert ledger.totals()["total_tokens"] == 165  # global across runs
@@ -33,8 +36,14 @@ class TestLedgerMetering:
     def test_records_role_attempt_verdict(self):
         ledger = LibSQLLedger(":memory:")
         ledger.record_node(
-            "review", model_role="adversarial", attempt=2, deterministic=False,
-            verdict="reject", input_tokens=5, output_tokens=1, run_id="r1",
+            "review",
+            model_role="adversarial",
+            attempt=2,
+            deterministic=False,
+            verdict="reject",
+            input_tokens=5,
+            output_tokens=1,
+            run_id="r1",
         )
         row = ledger.get_trace("r1")[0]
         assert row["model_role"] == "adversarial"

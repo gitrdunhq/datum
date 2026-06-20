@@ -59,8 +59,18 @@ class LibSQLLedger:
                      duration_s, attempt, deterministic, verdict)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (run_id, node, model_role, model_id, input_tokens, output_tokens,
-                 duration_s, attempt, det, verdict),
+                (
+                    run_id,
+                    node,
+                    model_role,
+                    model_id,
+                    input_tokens,
+                    output_tokens,
+                    duration_s,
+                    attempt,
+                    det,
+                    verdict,
+                ),
             )
 
     def get_trace(self, run_id: str | None = None) -> list[dict[str, Any]]:
@@ -85,8 +95,12 @@ class LibSQLLedger:
             cur.execute(sql + " WHERE run_id = ?", (run_id,))
         row = cur.fetchone()
         inp, out = int(row["input_tokens"]), int(row["output_tokens"])
-        return {"nodes": int(row["nodes"]), "input_tokens": inp, "output_tokens": out,
-                "total_tokens": inp + out}
+        return {
+            "nodes": int(row["nodes"]),
+            "input_tokens": inp,
+            "output_tokens": out,
+            "total_tokens": inp + out,
+        }
 
     def tokens_spent(self, run_id: str | None = None) -> int:
         """Cumulative tokens — the figure the global token-budget backstop checks (ADR-0013)."""

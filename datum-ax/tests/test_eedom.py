@@ -26,7 +26,12 @@ def test_satisfies_review_gate_port():
 
 
 def test_approve_maps_through():
-    payload = {"decision": "approve", "findings": [], "memo_text": "clean", "should_mark_unstable": False}
+    payload = {
+        "decision": "approve",
+        "findings": [],
+        "memo_text": "clean",
+        "should_mark_unstable": False,
+    }
     decision = EedomReviewGate(runner=_runner_writing(payload)).evaluate("diff")
     assert isinstance(decision, ReviewDecision)
     assert decision.decision is DecisionVerdict.APPROVE

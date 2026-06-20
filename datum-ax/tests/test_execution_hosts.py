@@ -18,11 +18,11 @@ def test_docker_host_init_and_reset(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stdout="mock_container_id\n", stderr="")
     host = X86DockerHost()
     assert isinstance(host, ExecutionHost)
-    
+
     # Start on first command
     host._start_container()
     assert host.container_id == "mock_container_id"
-    
+
     # Reset tears down
     host.reset()
     assert host.container_id is None
@@ -43,8 +43,10 @@ def test_docker_host_apply_diff_success(mock_run):
 
     mock_run.side_effect = side_effect
     host = X86DockerHost()
-    diff = UnifiedDiff(text="--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n", target=ExecutionTarget.X86)
-    
+    diff = UnifiedDiff(
+        text="--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n", target=ExecutionTarget.X86
+    )
+
     result = host.apply_diff(diff)
     assert result.applied is True
     assert not result.conflicts
@@ -63,7 +65,7 @@ def test_docker_host_run_tests(mock_run):
 
     mock_run.side_effect = side_effect
     host = X86DockerHost()
-    
+
     result = host.run_tests("pytest")
     assert result.outcome == Outcome.PASS
     assert result.exit_code == 0

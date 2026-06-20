@@ -112,7 +112,12 @@ ticket_st = st.builds(
     open_questions=st.lists(open_question_st, max_size=3).map(tuple),
 )
 epic_st = st.builds(
-    Epic, id=text1, title=text1, intent=text1, scope=text1, depends_on=tup_text,
+    Epic,
+    id=text1,
+    title=text1,
+    intent=text1,
+    scope=text1,
+    depends_on=tup_text,
     shippable=st.booleans(),
 )
 initiative_st = st.builds(
@@ -200,6 +205,7 @@ artifact_bundle_st = st.builds(
     ArtifactBundle, artifacts=st.lists(artifact_ref_st, max_size=3).map(tuple)
 )
 
+
 # --- inference contract ---------------------------------------------------------------------------
 @st.composite
 def _token_budget(draw: st.DrawFn) -> TokenBudget:
@@ -226,9 +232,7 @@ completion_st = st.builds(
 )
 
 # --- context contract -----------------------------------------------------------------------------
-symbol_slice_st = st.builds(
-    SymbolSlice, name=text1, path=text1, content=text0, language=opt_text
-)
+symbol_slice_st = st.builds(SymbolSlice, name=text1, path=text1, content=text0, language=opt_text)
 ast_map_st = st.builds(AstMap, symbols=st.lists(symbol_slice_st, max_size=3).map(tuple))
 nl_doc_st = st.builds(NlDoc, source=text1, text=text0, token_estimate=nonneg_int)
 
@@ -317,9 +321,7 @@ role_config_st = st.builds(RoleConfig, role=_enum(ModelRole), model_id=text1, te
 def _registry(draw: st.DrawFn) -> ModelRoleRegistry:
     roles = draw(st.lists(_enum(ModelRole), min_size=1, max_size=3, unique=True))
     return ModelRoleRegistry(
-        configs=tuple(
-            RoleConfig(role=r, model_id=f"m-{r.value}", temperature=0.0) for r in roles
-        )
+        configs=tuple(RoleConfig(role=r, model_id=f"m-{r.value}", temperature=0.0) for r in roles)
     )
 
 

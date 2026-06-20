@@ -34,7 +34,10 @@ class TestInvariants:
             rd.decision in (DecisionVerdict.REJECT, DecisionVerdict.NEEDS_REVIEW)
         )
 
-    @given(window=st.integers(min_value=1, max_value=100_000), extra=st.integers(min_value=1, max_value=100_000))
+    @given(
+        window=st.integers(min_value=1, max_value=100_000),
+        extra=st.integers(min_value=1, max_value=100_000),
+    )
     def test_boundedness_input_must_fit_window(self, window, extra):
         # PERFORMANCE/Boundedness (ADR-0013): max_input > window_target is rejected.
         with pytest.raises(ValidationError):
@@ -43,12 +46,17 @@ class TestInvariants:
     def test_boundedness_input_within_window_ok(self):
         TokenBudget(window_target=100, max_input=100, max_output=10)
 
-    @given(run=st.integers(min_value=0, max_value=500), extra=st.integers(min_value=1, max_value=500))
+    @given(
+        run=st.integers(min_value=0, max_value=500), extra=st.integers(min_value=1, max_value=500)
+    )
     def test_boundedness_passed_within_run(self, run, extra):
         with pytest.raises(ValidationError):
             TestResult(
-                outcome=Outcome.PASS, exit_code=0, duration_s=0.0,
-                tests_run=run, tests_passed=run + extra,
+                outcome=Outcome.PASS,
+                exit_code=0,
+                duration_s=0.0,
+                tests_run=run,
+                tests_passed=run + extra,
             )
 
     @given(conflicts=st.lists(st.text(min_size=1), min_size=1, max_size=3).map(tuple))
@@ -61,8 +69,12 @@ class TestInvariants:
         # INVARIANT/Non-repudiation (ADR-0020): a learned rule must trace to evidence.
         with pytest.raises(ValidationError):
             RuleRegistryEntry(
-                id="r1", kind=RuleKind.OPENGREP, tier=RuleTier.AUTO_BIND,
-                statement="no innerHTML", evidence_refs=(), version=1,
+                id="r1",
+                kind=RuleKind.OPENGREP,
+                tier=RuleTier.AUTO_BIND,
+                statement="no innerHTML",
+                evidence_refs=(),
+                version=1,
             )
 
     def test_initiative_requires_multiple_epics(self):
@@ -72,8 +84,10 @@ class TestInvariants:
 
     def test_ticket_cannot_be_initiative_scale(self):
         c = Classification(
-            complexity=Complexity.FEATURE, scope=Scope.NARROW,
-            ambiguity=Ambiguity.LOW, suggested_route=Route.FEATURE,
+            complexity=Complexity.FEATURE,
+            scope=Scope.NARROW,
+            ambiguity=Ambiguity.LOW,
+            suggested_route=Route.FEATURE,
         )
         with pytest.raises(ValidationError):
             Ticket(title="t", intent="i", scale=WorkScale.INITIATIVE, classification=c)
@@ -88,7 +102,10 @@ class TestInvariants:
         assert prompt.stable_prefix() == prompt.stable_prefix()
         assert prompt.system in prompt.stable_prefix()
 
-    @given(active=st.integers(min_value=2, max_value=20), max_conn=st.integers(min_value=1, max_value=1))
+    @given(
+        active=st.integers(min_value=2, max_value=20),
+        max_conn=st.integers(min_value=1, max_value=1),
+    )
     def test_live_inference_within_capacity(self, active, max_conn):
         # Boundedness (ADR-0029): live in-flight calls never exceed the semaphore capacity.
         with pytest.raises(ValidationError):

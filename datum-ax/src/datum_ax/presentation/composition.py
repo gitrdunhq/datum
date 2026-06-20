@@ -57,12 +57,24 @@ def build_inference_client_from_env() -> InferenceClient:
 
     registry = ModelRoleRegistry(
         configs=(
-            RoleConfig(role=ModelRole.TRIAGE, model_id=model_id, temperature=0.0,
-                       response_format={"type": "json_object"}),
-            RoleConfig(role=ModelRole.PLANNER, model_id=model_id, temperature=0.1,
-                       response_format={"type": "json_object"}),
-            RoleConfig(role=ModelRole.EXECUTOR, model_id=model_id, temperature=0.2,
-                       response_format={"type": "json_object"}),
+            RoleConfig(
+                role=ModelRole.TRIAGE,
+                model_id=model_id,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            ),
+            RoleConfig(
+                role=ModelRole.PLANNER,
+                model_id=model_id,
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            ),
+            RoleConfig(
+                role=ModelRole.EXECUTOR,
+                model_id=model_id,
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            ),
             RoleConfig(role=ModelRole.ADVERSARIAL, model_id=model_id, temperature=0.5),
         )
     )
@@ -102,9 +114,9 @@ def build_ledger(url: str | None = None) -> RunLedger:
             f"Local SQLite remains the default."
         )
     if url.startswith("sqlite:///"):
-        path = url[len("sqlite:///"):]
+        path = url[len("sqlite:///") :]
     elif url.startswith("sqlite://"):
-        path = url[len("sqlite://"):] or ":memory:"
+        path = url[len("sqlite://") :] or ":memory:"
     else:
         path = url  # ":memory:" or a filesystem path
     return LibSQLLedger(path)

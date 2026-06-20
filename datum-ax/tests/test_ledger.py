@@ -1,9 +1,10 @@
 from datum_ax.data.state.ledger import LibSQLLedger
 
+
 def test_libsql_ledger():
     ledger = LibSQLLedger(":memory:")
     ledger.record_node("plan", "sonnet", 100, 50, 1.5)
-    
+
     records = ledger.get_trace()
     assert len(records) == 1
     assert records[0]["node"] == "plan"

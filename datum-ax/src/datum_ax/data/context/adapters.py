@@ -32,4 +32,6 @@ class HeadroomNlCompressor:
 
     def compress(self, doc: NlDoc, budget: TokenBudget) -> NlDoc:
         compressed_text = f"[COMPRESSED] {doc.text[:20]}..."
-        return NlDoc(source=doc.source, text=compressed_text, token_estimate=len(compressed_text) // 4)
+        return NlDoc(
+            source=doc.source, text=compressed_text, token_estimate=len(compressed_text) // 4
+        )

@@ -80,13 +80,20 @@ class EedomReviewGate:
                 diff_path.write_text(diff, encoding="utf-8")
                 self.runner(
                     [
-                        "eedom", "evaluate",
-                        "--repo-path", self.repo_path,
-                        "--diff", str(diff_path),
-                        "--pr-url", self.pr_url,
-                        "--team", self.team,
-                        "--operating-mode", self.operating_mode,
-                        "--output-json", str(out_path),
+                        "eedom",
+                        "evaluate",
+                        "--repo-path",
+                        self.repo_path,
+                        "--diff",
+                        str(diff_path),
+                        "--pr-url",
+                        self.pr_url,
+                        "--team",
+                        self.team,
+                        "--operating-mode",
+                        self.operating_mode,
+                        "--output-json",
+                        str(out_path),
                     ]
                 )
                 if not out_path.exists():
@@ -108,7 +115,9 @@ class EedomReviewGate:
                 decision=verdict,
                 triggered_rules=tuple(pe.get("triggered_rules") or ()),
                 constraints=tuple(pe.get("constraints") or ()),
-                policy_bundle_version=str(pe.get("policy_bundle_version") or self.policy_bundle_version),
+                policy_bundle_version=str(
+                    pe.get("policy_bundle_version") or self.policy_bundle_version
+                ),
             ),
             should_comment=bool(raw.get("should_comment", bool(findings) or blocking)),
             should_mark_unstable=bool(raw.get("should_mark_unstable", blocking)),
@@ -143,7 +152,8 @@ class EedomReviewGate:
             decision_id=uuid.uuid4().hex,
             decision=DecisionVerdict.NEEDS_REVIEW,
             policy_evaluation=PolicyEvaluation(
-                decision=DecisionVerdict.NEEDS_REVIEW, policy_bundle_version=self.policy_bundle_version
+                decision=DecisionVerdict.NEEDS_REVIEW,
+                policy_bundle_version=self.policy_bundle_version,
             ),
             should_comment=True,
             should_mark_unstable=True,
