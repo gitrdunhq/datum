@@ -7,7 +7,9 @@ Replace the architectural stubs in the pipeline with real LangGraph nodes and li
 - Add `langgraph` to `pyproject.toml` dependencies.
 - Replace the `StubGraph` in the orchestration core (E6) with a real `langgraph.graph.StateGraph`, wiring the proper conditional edges.
 - Inject the `OmlxInferenceClient` (built in E2) into the planner (E7) and verifier (E8) nodes to replace hardcoded mock outputs with real model completions.
-- Integrate the `PromptAssembler` (built in E4) into the nodes to assemble the `AssembledPrompt` packets before dispatching to the inference client.
+- Integrate the **`ContextCrane`** (E4, ADR-0030 — the single source of truth for assembly; replaced
+  the retired `PromptAssembler`) into the nodes to assemble the `AssembledPrompt` packets before
+  dispatching to the inference client. See `GAP-LEDGER.md` for the full MVP→aspirational backlog.
 
 ## Non-Goals
 - Adding new feature epics (E1-E11 scope is already complete).

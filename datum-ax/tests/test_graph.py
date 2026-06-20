@@ -2,15 +2,33 @@ from unittest.mock import MagicMock
 
 from langgraph.graph.state import CompiledStateGraph
 
+from datum_ax.contracts.inference import TokenBudget
+from datum_ax.core.orchestration.crane import ContextCrane
 from datum_ax.core.orchestration.graph import build_graph
+from datum_ax.data.context.adapters import (
+    Context7DocContext,
+    HeadroomNlCompressor,
+    SerenaTokenSaveContext,
+)
+from datum_ax.data.context.dcp import DynamicContextPruner
 from fakes import FakeExecutionHost
+
+
+def _crane() -> ContextCrane:
+    return ContextCrane(
+        code_context=SerenaTokenSaveContext(),
+        doc_context=Context7DocContext(),
+        nl_compressor=HeadroomNlCompressor(),
+        pruner=DynamicContextPruner(),
+        budget=TokenBudget(max_input=8000, max_output=2000, window_target=10000),
+    )
 
 
 def test_graph_end_to_end():
     graph = build_graph()
     assert isinstance(graph, CompiledStateGraph)
 
-    # Hermetic: inject a mock inference client + a fake host via config (ADR-0026 DI). No network.
+    # Hermetic: inject a mock inference client + fake host + real crane via config (DI). No network.
     mock_client = MagicMock()
     mock_client.complete.return_value.text = (
         '{"route": "feature", "target": "ui", "diff": "--- a\\n+++ b\\n+foo"}'
@@ -19,6 +37,7 @@ def test_graph_end_to_end():
         "configurable": {
             "inference_client": mock_client,
             "execution_host": FakeExecutionHost(),
+            "context_crane": _crane(),
         }
     }
 

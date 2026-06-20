@@ -11,7 +11,11 @@ class LaneDef(Contract):
 class LanePlan(Contract):
     lanes: list[LaneDef]
 
-def plan_lanes(ticket: dict[str, Any], inference_client: Optional[Any] = None) -> list[dict[str, Any]]:
+def plan_lanes(
+    ticket: dict[str, Any],
+    inference_client: Optional[Any] = None,
+    crane: Optional[Any] = None,
+) -> list[dict[str, Any]]:
     """Generates execution lanes for a ticket."""
     if inference_client:
         import asyncio
@@ -20,12 +24,13 @@ def plan_lanes(ticket: dict[str, Any], inference_client: Optional[Any] = None) -
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "lane-plan.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
         
-        prompt = AssembledPrompt(
-            system=prompt_text.replace("{{ticket}}", json.dumps(ticket)),
-            global_ast="",
-            diff=""
-        )
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
+        system_text = prompt_text.replace("{{ticket}}", json.dumps(ticket))
+        prompt = (
+            crane.assemble(system_text, "", "", (), budget=budget)
+            if crane is not None
+            else AssembledPrompt(system=system_text, global_ast="", diff="")
+        )
         
         format_dict = {
             "type": "json_schema",

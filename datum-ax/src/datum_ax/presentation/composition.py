@@ -10,7 +10,14 @@ import os
 from typing import Any
 
 from datum_ax.contracts.execution import ExecutionHost
-from datum_ax.contracts.inference import InferenceClient, ModelRole
+from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
+from datum_ax.core.orchestration.crane import ContextCrane
+from datum_ax.data.context.adapters import (
+    Context7DocContext,
+    HeadroomNlCompressor,
+    SerenaTokenSaveContext,
+)
+from datum_ax.data.context.dcp import DynamicContextPruner
 from datum_ax.data.execution.local import LocalHost
 from datum_ax.data.inference.client import OmlxInferenceClient
 from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
@@ -58,11 +65,23 @@ def build_local_host(workspace_dir: str = ".") -> ExecutionHost:
     return LocalHost(workspace_dir=workspace_dir)
 
 
+def build_context_crane(budget: TokenBudget | None = None) -> ContextCrane:
+    """The single context-assembly authority (ADR-0030), wired with the data adapters + DCP."""
+    return ContextCrane(
+        code_context=SerenaTokenSaveContext(),
+        doc_context=Context7DocContext(),
+        nl_compressor=HeadroomNlCompressor(),
+        pruner=DynamicContextPruner(),
+        budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
+    )
+
+
 def default_configurable(workspace_dir: str = ".") -> dict[str, Any]:
     """The injected dependencies the core graph expects under ``config['configurable']``."""
     return {
         "configurable": {
             "inference_client": build_inference_client_from_env(),
             "execution_host": build_local_host(workspace_dir),
+            "context_crane": build_context_crane(),
         }
     }

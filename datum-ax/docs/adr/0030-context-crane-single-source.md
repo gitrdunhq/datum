@@ -37,10 +37,14 @@ The crane depends only on contract Protocols (`CodeContext`, `DocContext`, `NlCo
 
 - A change to assembly, pruning, or budgeting happens in exactly one place.
 - The crane is now a real, tested component (firewall + DCP + budget + dedup), not shelfware.
-- **Follow-up (tracked):** the inline `AssembledPrompt(...)` construction in `planner/triage`,
-  `planner/lane_plan`, and `verifier/synthesis` should route through the crane so *all* packets flow
-  through the single source. Until then, those build the `AssembledPrompt` contract directly for
-  zero-context prompts; the crane is the sanctioned path for anything with hoisted context.
+- **Wired in (G1, integration-sweep):** the graph now injects a `ContextCrane` via
+  `config['configurable']['context_crane']` (built by the composition root), and `planner/triage`,
+  `planner/lane_plan`, and `verifier/synthesis` build their **initial** prompt via
+  `crane.assemble(..., budget=...)`. The production loop therefore routes assembly through the single
+  source and enforces the per-phase budget on every prompt. (A bare-prompt fallback remains for direct
+  unit calls without a crane.)
+- **Remaining:** the retry/reformat prompt rebuilds inside those loops still append inline; route them
+  through the crane next. Real hoisting (symbols/docs via `pack_payload`) lands with G2 (real adapters).
 - Property/behaviour targets: Determinism (same inputs → same packet), Boundedness (assembled packet
   never exceeds `max_input`), Integrity (essential prefix over budget always raises, never silently
   truncates).

@@ -6,7 +6,11 @@ from datum_ax._base import Contract
 class SynthesisResult(Contract):
     diff: str
 
-def synthesize_test(lane: dict[str, Any], inference_client: Optional[Any] = None) -> dict[str, Any]:
+def synthesize_test(
+    lane: dict[str, Any],
+    inference_client: Optional[Any] = None,
+    crane: Optional[Any] = None,
+) -> dict[str, Any]:
     """Stub implementation to synthesize a failing test (RED state)."""
     if inference_client:
         import asyncio
@@ -14,13 +18,14 @@ def synthesize_test(lane: dict[str, Any], inference_client: Optional[Any] = None
         from pathlib import Path
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "red.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
-        
-        prompt = AssembledPrompt(
-            system=prompt_text.replace("{{lane_json}}", json.dumps(lane)),
-            global_ast="",
-            diff=""
-        )
+
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
+        system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
+        prompt = (
+            crane.assemble(system_text, "", "", (), budget=budget)
+            if crane is not None
+            else AssembledPrompt(system=system_text, global_ast="", diff="")
+        )
         
         format_dict = {
             "type": "json_schema",
@@ -63,7 +68,11 @@ def synthesize_test(lane: dict[str, Any], inference_client: Optional[Any] = None
         "diff": f"--- /dev/null\n+++ b/tests/test_{lane.get('id', 'new')}.py\n@@ -0,0 +1,2 @@\n+def test_{lane.get('id', 'new')}():\n+    pass\n"
     }
 
-def synthesize_impl(lane: dict[str, Any], inference_client: Optional[Any] = None) -> dict[str, Any]:
+def synthesize_impl(
+    lane: dict[str, Any],
+    inference_client: Optional[Any] = None,
+    crane: Optional[Any] = None,
+) -> dict[str, Any]:
     """Stub implementation to synthesize the implementation code (GREEN state)."""
     if inference_client:
         import asyncio
@@ -71,13 +80,14 @@ def synthesize_impl(lane: dict[str, Any], inference_client: Optional[Any] = None
         from pathlib import Path
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "green.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
-        
-        prompt = AssembledPrompt(
-            system=prompt_text.replace("{{lane_json}}", json.dumps(lane)),
-            global_ast="",
-            diff=""
-        )
+
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
+        system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
+        prompt = (
+            crane.assemble(system_text, "", "", (), budget=budget)
+            if crane is not None
+            else AssembledPrompt(system=system_text, global_ast="", diff="")
+        )
         
         format_dict = {
             "type": "json_schema",

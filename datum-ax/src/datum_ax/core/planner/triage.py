@@ -8,7 +8,11 @@ class TriageDecision(Contract):
     route: str
     target: str
 
-def triage_ticket(ticket: dict[str, Any], inference_client: Optional[Any] = None) -> dict[str, Any]:
+def triage_ticket(
+    ticket: dict[str, Any],
+    inference_client: Optional[Any] = None,
+    crane: Optional[Any] = None,
+) -> dict[str, Any]:
     """Deterministically routes tickets to execution targets and pipeline routes."""
     if inference_client:
         import asyncio
@@ -18,12 +22,15 @@ def triage_ticket(ticket: dict[str, Any], inference_client: Optional[Any] = None
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "triage.md"
         prompt_text = prompt_path.read_text(encoding="utf-8")
         
-        prompt = AssembledPrompt(
-            system=prompt_text.replace("{{input}}", json.dumps(ticket)),
-            global_ast="",
-            diff=""
-        )
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
+        system_text = prompt_text.replace("{{input}}", json.dumps(ticket))
+        # ContextCrane is the single assembler (ADR-0030); fall back to a bare prompt only when
+        # called without one (unit tests).
+        prompt = (
+            crane.assemble(system_text, "", "", (), budget=budget)
+            if crane is not None
+            else AssembledPrompt(system=system_text, global_ast="", diff="")
+        )
         
         format_dict = {
             "type": "json_schema",

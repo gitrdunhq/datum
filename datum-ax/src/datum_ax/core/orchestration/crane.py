@@ -55,17 +55,26 @@ class ContextCrane:
 
     # --- assembly (ADR-0004/0021) — the single path ----------------------------------------------
     def assemble(
-        self, system: str, global_ast: str, diff: str, suffix: tuple[str, ...]
+        self,
+        system: str,
+        global_ast: str,
+        diff: str,
+        suffix: tuple[str, ...],
+        budget: TokenBudget | None = None,
     ) -> AssembledPrompt:
-        """Stable prefix + DCP-pruned suffix, budget-enforced. The one way a task packet is built."""
+        """Stable prefix + DCP-pruned suffix, budget-enforced. The one way a task packet is built.
+
+        Pass a per-call ``budget`` (e.g. a phase's own limit); defaults to the crane's budget.
+        """
+        b = budget or self.budget
         prefix_tokens = self._count(system) + self._count(global_ast) + self._count(diff)
         total = prefix_tokens + sum(self._count(t) for t in suffix)
-        pruned = self.pruner.prune_suffix(suffix, self.budget.max_input, total)
+        pruned = self.pruner.prune_suffix(suffix, b.max_input, total)
         new_total = prefix_tokens + sum(self._count(t) for t in pruned)
-        if new_total > self.budget.max_input:
+        if new_total > b.max_input:
             raise ContextBudgetExceededError(
                 f"Assembled payload ({new_total} tokens) exceeds budget "
-                f"({self.budget.max_input}) even after pruning. Planner must decompose."
+                f"({b.max_input}) even after pruning. Planner must decompose."
             )
         return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=tuple(pruned))
 

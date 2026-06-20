@@ -128,6 +128,9 @@ def run_cli(args_list: list[str] | None = None) -> None:
         from datum_ax.data.execution.local import LocalHost
         host = LocalHost(workspace_dir=workspace_dir)
 
+        from datum_ax.presentation.composition import build_context_crane
+        crane = build_context_crane()
+
         graph = build_graph()
         from typing import Any
         initial_state: dict[str, Any] = {
@@ -148,7 +151,7 @@ def run_cli(args_list: list[str] | None = None) -> None:
         import json
         from langchain_core.runnables.config import RunnableConfig
         from typing import cast
-        config = cast(RunnableConfig, {"configurable": {"inference_client": client, "execution_host": host}})
+        config = cast(RunnableConfig, {"configurable": {"inference_client": client, "execution_host": host, "context_crane": crane}})
         for event in graph.stream(initial_state, config=config):
             for node_name, node_state in event.items():
                 msg = f"[✔] Finished: {node_name}"

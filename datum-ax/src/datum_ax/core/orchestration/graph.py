@@ -36,6 +36,15 @@ def get_execution_host(config: RunnableConfig) -> ExecutionHost:
     return host
 
 
+def get_context_crane(config: RunnableConfig) -> Any:
+    """Return the injected ContextCrane — the single assembler (ADR-0030).
+
+    Optional: when absent, the planner/verifier fall back to building a bare prompt (test-only). The
+    composition root always injects one, so the production loop routes all assembly through the crane.
+    """
+    return (config.get("configurable") or {}).get("context_crane")
+
+
 def route_node(state: OrchestratorState) -> OrchestratorState:
     visited = state.get("visited_nodes", []) + ["ROUTE"]
     return {**state, "visited_nodes": visited}
@@ -44,12 +53,13 @@ def phase_a_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
     visited = state.get("visited_nodes", []) + ["PhaseA"]
     ticket = state.get("ticket", {})
     client = get_inference_client(config)
-    
+    crane = get_context_crane(config)
+
     from datum_ax.core.planner.lane_plan import plan_lanes
     from datum_ax.core.planner.dag import DAGBuilder
 
-    triage_result = triage_ticket(ticket, inference_client=client)
-    lanes = plan_lanes(ticket, inference_client=client)
+    triage_result = triage_ticket(ticket, inference_client=client, crane=crane)
+    lanes = plan_lanes(ticket, inference_client=client, crane=crane)
     
     waves = DAGBuilder().build_waves(lanes)
     
@@ -69,6 +79,7 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
     visited = state.get("visited_nodes", []) + ["PhaseB"]
     client = get_inference_client(config)
     host = get_execution_host(config)
+    crane = get_context_crane(config)
 
     from datum_ax.core.verifier.synthesis import synthesize_impl
     
@@ -85,7 +96,7 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
             logging.info(f"Executing Lane: {lane.get('id')} - {lane.get('description')}")
             
             # 1. Test Synthesis
-            test_result = synthesize_test(lane, inference_client=client)
+            test_result = synthesize_test(lane, inference_client=client, crane=crane)
             diff_text = test_result.get("diff", "")
             if diff_text:
                 diff_obj = UnifiedDiff(text=diff_text, target=ExecutionTarget.MACOS)
@@ -94,7 +105,7 @@ def phase_b_node(state: OrchestratorState, config: RunnableConfig) -> Orchestrat
                 test_result["conflicts"] = apply_result.conflicts
                 
             # 2. Impl Synthesis
-            impl_result = synthesize_impl(lane, inference_client=client)
+            impl_result = synthesize_impl(lane, inference_client=client, crane=crane)
             diff_text_impl = impl_result.get("diff", "")
             if diff_text_impl:
                 diff_obj = UnifiedDiff(text=diff_text_impl, target=ExecutionTarget.MACOS)
