@@ -16,10 +16,12 @@ from datum_ax.contracts.execution import ExecutionHost
 from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
 from datum_ax.contracts.persona import PersonaRegistry
+from datum_ax.contracts.projection import IssueProjector
 from datum_ax.contracts.review import ReviewGate
 from datum_ax.contracts.rules import RuleBinder, RuleRegistry
 from datum_ax.contracts.status import StatusSource
 from datum_ax.data.persona import PERSONA_REGISTRIES
+from datum_ax.data.projection import ISSUE_PROJECTORS
 from datum_ax.data.review import REVIEW_GATES
 from datum_ax.data.rules import RULE_REGISTRIES
 from datum_ax.data.state.checkpoint import InMemoryCheckpointer
@@ -209,6 +211,13 @@ def build_persona_registry(name: str | None = None, **kwargs: Any) -> PersonaReg
     if name in ("file", "semantic") and "root" not in kwargs:
         kwargs["root"] = os.environ.get("DATUM_PERSONA_ROOT", _PACKAGED_PERSONA_ROOT)
     return PERSONA_REGISTRIES.create(name, **kwargs)
+
+
+def build_issue_projector(name: str | None = None, **kwargs: Any) -> IssueProjector:
+    """Resolve an issue-projector plugin by name (ADR-0023/0032). Default: fake; a GitHub-MCP
+    adapter drops in behind the same port."""
+    name = name or os.environ.get("DATUM_ISSUE_PROJECTOR") or "fake"
+    return ISSUE_PROJECTORS.create(name, **kwargs)
 
 
 def build_status_source() -> StatusSource:

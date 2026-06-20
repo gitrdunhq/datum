@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (design)
+Accepted (design). **As-built (deterministic):** `project_dag(epic, lanes, waves)`
+(`core/projection/dag_projection.py`, pure) maps the lane DAG to a `ProjectionPlan` — an epic
+`IssueSpec` + one sub-issue per lane with `wave:N` / `status:pending` labels. An `IssueProjector` port
+(`contracts/projection.py`) publishes it; `FakeIssueProjector` (records + synthetic refs) is the
+default, with a GitHub-MCP adapter to drop in behind the same port. GAP-LEDGER **G9**.
 
 ## Context
 
