@@ -1,4 +1,5 @@
 from datum_ax.core.verifier.synthesis import synthesize_test, synthesize_impl
+from datum_ax.presentation.composition import build_context_crane
 
 
 class MockInferenceClient:
@@ -25,7 +26,7 @@ class MockInferenceClient:
 def test_synthesize_test():
     client = MockInferenceClient()
     lane = {"id": "l1"}
-    diff = synthesize_test(lane, inference_client=client)
+    diff = synthesize_test(lane, inference_client=client, crane=build_context_crane())
     assert "diff" in diff
     assert "+def test_" in diff["diff"]
 
@@ -33,6 +34,6 @@ def test_synthesize_test():
 def test_synthesize_impl():
     client = MockInferenceClient()
     lane = {"id": "l1"}
-    diff = synthesize_impl(lane, inference_client=client)
+    diff = synthesize_impl(lane, inference_client=client, crane=build_context_crane())
     assert "diff" in diff
     assert "+def " in diff["diff"]

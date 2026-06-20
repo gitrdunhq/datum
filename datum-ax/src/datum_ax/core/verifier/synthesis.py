@@ -1,11 +1,10 @@
 import asyncio
 import inspect
 import json
-from pathlib import Path
 from typing import Any, Coroutine, Optional, cast
 
 from datum_ax._base import Contract
-from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
+from datum_ax.contracts.inference import ModelRole, TokenBudget
 from datum_ax.core.utils import extract_json
 from datum_ax.observability import get_logger
 
@@ -23,18 +22,15 @@ def synthesize_test(
 ) -> dict[str, Any]:
     """Stub implementation to synthesize a failing test (RED state)."""
     if inference_client:
-        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "red.md"
-        prompt_text = prompt_path.read_text(encoding="utf-8")
-
+        if crane is None:
+            raise ValueError(
+                "synthesize_test requires a ContextCrane (persona + assembly, ADR-0033)"
+            )
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
-        system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
+        system_text = crane.compose_system("red").replace("{{lane_json}}", json.dumps(lane))
 
-        def _assemble(
-            system: str, global_ast: str, diff: str, suffix: tuple[str, ...]
-        ) -> AssembledPrompt:
-            if crane is not None:
-                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
-            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
+            return crane.assemble(system, global_ast, diff, suffix, budget=budget)
 
         prompt = _assemble(system_text, "", "", ())
 
@@ -93,18 +89,15 @@ def synthesize_impl(
 ) -> dict[str, Any]:
     """Stub implementation to synthesize the implementation code (GREEN state)."""
     if inference_client:
-        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "green.md"
-        prompt_text = prompt_path.read_text(encoding="utf-8")
-
+        if crane is None:
+            raise ValueError(
+                "synthesize_impl requires a ContextCrane (persona + assembly, ADR-0033)"
+            )
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
-        system_text = prompt_text.replace("{{lane_json}}", json.dumps(lane))
+        system_text = crane.compose_system("green").replace("{{lane_json}}", json.dumps(lane))
 
-        def _assemble(
-            system: str, global_ast: str, diff: str, suffix: tuple[str, ...]
-        ) -> AssembledPrompt:
-            if crane is not None:
-                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
-            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
+            return crane.assemble(system, global_ast, diff, suffix, budget=budget)
 
         prompt = _assemble(system_text, "", "", ())
 

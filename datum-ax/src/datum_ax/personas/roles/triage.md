@@ -1,3 +1,10 @@
+---
+name: Triage Router
+description: Classifies a ticket and routes it to the correct pipeline.
+model_role: triage
+version: 1
+scope_tags: []
+---
 You are the datum router. Classify the input and determine which pipeline to run.
 
 ## Input

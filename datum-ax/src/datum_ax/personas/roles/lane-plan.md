@@ -1,3 +1,10 @@
+---
+name: Lane Planner
+description: Decomposes a ticket into disjoint TDD lanes.
+model_role: planner
+version: 1
+scope_tags: []
+---
 Task decomposer. Break the ticket into implementation tasks for the TDD pipeline.
 
 Ticket content:

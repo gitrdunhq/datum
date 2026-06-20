@@ -13,6 +13,7 @@ from typing import Any
 
 from datum_ax.contracts.context import CodeContext, ContextPruner, DocContext, NlCompressor
 from datum_ax.contracts.inference import AssembledPrompt, TokenBudget
+from datum_ax.contracts.persona import PersonaNotFoundError, PersonaRegistry
 from datum_ax.contracts.tokens import TokenCounter, default_token_count
 
 
@@ -30,6 +31,7 @@ class ContextCrane:
         pruner: ContextPruner,
         budget: TokenBudget,
         token_counter: TokenCounter = default_token_count,
+        persona: PersonaRegistry | None = None,
     ) -> None:
         self.code_context = code_context
         self.doc_context = doc_context
@@ -37,6 +39,7 @@ class ContextCrane:
         self.pruner = pruner
         self.budget = budget
         self.token_counter = token_counter
+        self.persona = persona
         self._hoisted_symbols: set[str] = set()  # SymbolRegistry — never hoist the same slice twice
 
     def _count(self, text: str) -> int:
@@ -80,6 +83,25 @@ class ContextCrane:
             system=system, global_ast=global_ast, diff=diff, suffix=tuple(pruned)
         )
 
+    # --- persona composition (ADR-0033) ----------------------------------------------------------
+    def compose_system(self, role_id: str, scope_tags: tuple[str, ...] = (), docs: str = "") -> str:
+        """Compose a lane's ``[System]`` text from a registry-resolved Role + tag-selected Skills.
+
+        Stable ordering for prompt-cache reuse: Role body first, then Skills (registry-sorted),
+        then any hoisted docs. Requires an injected ``PersonaRegistry``.
+        """
+        if self.persona is None:
+            raise PersonaNotFoundError(
+                "no PersonaRegistry injected into the crane (ADR-0033); cannot compose system prompt"
+            )
+        role = self.persona.get_role(role_id)
+        parts = [role.body]
+        for skill in self.persona.select_skills(tuple(scope_tags)):
+            parts.append(f"## Skill: {skill.name}\n{skill.instructions}")
+        if docs:
+            parts.append(docs)
+        return "\n\n".join(parts)
+
     # --- firewall hoisting (ADR-0004) ------------------------------------------------------------
     def hoist_docs(self, library_names: list[str]) -> str:
         """Context7 docs, compressed via Headroom (NL channel — compressible)."""
@@ -104,9 +126,12 @@ class ContextCrane:
         history: list[dict[str, str]],
         libs: list[str],
         symbols: list[str],
+        role_id: str = "executor",
+        scope_tags: tuple[str, ...] = (),
     ) -> AssembledPrompt:
-        """Full firewall pass → a budget-safe, cache-stable AssembledPrompt."""
-        system = f"BASE_PERSONA & SKILL_PERSONA_HERE\n\n{self.hoist_docs(libs)}"
+        """Full firewall pass → a budget-safe, cache-stable AssembledPrompt. The ``[System]`` prefix
+        is the registry-resolved persona (Role + Skills) plus hoisted, compressed docs (ADR-0033)."""
+        system = self.compose_system(role_id, scope_tags, docs=self.hoist_docs(libs))
         global_ast = self.hoist_code(symbols)
         diff = ""
         self.estimate_lane_footprint(system, global_ast, diff)  # essential must fit (ADR-0022)

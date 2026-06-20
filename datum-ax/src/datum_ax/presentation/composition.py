@@ -7,6 +7,7 @@ depends on the ``contracts`` Protocols and receives concrete adapters via ``conf
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from datum_ax.contracts.checkpoint import CheckpointStore
@@ -31,6 +32,9 @@ from datum_ax.data.context.dcp import DynamicContextPruner
 from datum_ax.data.execution.local import LocalHost
 from datum_ax.data.inference.client import OmlxInferenceClient
 from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
+
+# Packaged persona artifacts ship with the library (datum_ax/personas/).
+_PACKAGED_PERSONA_ROOT = str(Path(__file__).resolve().parent.parent / "personas")
 
 
 def build_inference_client_from_env() -> InferenceClient:
@@ -97,6 +101,7 @@ def build_context_crane(budget: TokenBudget | None = None) -> ContextCrane:
         nl_compressor=HeadroomNlCompressor(),
         pruner=DynamicContextPruner(),
         budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
+        persona=build_persona_registry(),
     )
 
 
@@ -155,11 +160,12 @@ def build_review_gate(name: str | None = None, **kwargs: Any) -> ReviewGate:
 def build_persona_registry(name: str | None = None, **kwargs: Any) -> PersonaRegistry:
     """Resolve a persona-registry plugin by name (ADR-0033/0032). Default: file-backed.
 
-    The default root is ``<repo>/personas`` (override with ``DATUM_PERSONA_ROOT`` or ``root=``).
+    The default root is the packaged ``datum_ax/personas/`` (override with ``DATUM_PERSONA_ROOT``
+    or ``root=``).
     """
     name = name or os.environ.get("DATUM_PERSONA_REGISTRY") or "file"
     if name == "file" and "root" not in kwargs:
-        kwargs["root"] = os.environ.get("DATUM_PERSONA_ROOT", "personas")
+        kwargs["root"] = os.environ.get("DATUM_PERSONA_ROOT", _PACKAGED_PERSONA_ROOT)
     return PERSONA_REGISTRIES.create(name, **kwargs)
 
 

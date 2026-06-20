@@ -1,11 +1,10 @@
 import asyncio
 import inspect
 import json
-from pathlib import Path
 from typing import Any, Coroutine, Optional, cast
 
 from datum_ax._base import Contract
-from datum_ax.contracts.inference import AssembledPrompt, ModelRole, TokenBudget
+from datum_ax.contracts.inference import ModelRole, TokenBudget
 from datum_ax.core.utils import extract_json
 from datum_ax.observability import get_logger
 
@@ -24,20 +23,15 @@ def triage_ticket(
 ) -> dict[str, Any]:
     """Deterministically routes tickets to execution targets and pipeline routes."""
     if inference_client:
-        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "triage.md"
-        prompt_text = prompt_path.read_text(encoding="utf-8")
-
+        if crane is None:
+            raise ValueError("triage_ticket requires a ContextCrane (persona + assembly, ADR-0033)")
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
-        system_text = prompt_text.replace("{{input}}", json.dumps(ticket))
+        # Role prompt comes from the persona registry via the crane (ADR-0033), not a hardcoded file.
+        system_text = crane.compose_system("triage").replace("{{input}}", json.dumps(ticket))
 
-        # ContextCrane is the single assembler (ADR-0030); fall back to a bare prompt only when
-        # called without one (unit tests).
-        def _assemble(
-            system: str, global_ast: str, diff: str, suffix: tuple[str, ...]
-        ) -> AssembledPrompt:
-            if crane is not None:
-                return crane.assemble(system, global_ast, diff, suffix, budget=budget)
-            return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=suffix)
+        # ContextCrane is the single assembler (ADR-0030).
+        def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
+            return crane.assemble(system, global_ast, diff, suffix, budget=budget)
 
         prompt = _assemble(system_text, "", "", ())
 

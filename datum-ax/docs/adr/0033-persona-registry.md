@@ -5,6 +5,14 @@
 Accepted (design). Supersedes the "adopt Persona" half of GAP-LEDGER **G12**; the spike's
 conclusion is recorded here.
 
+**As-built:** implemented end-to-end. `Role`/`Skill`/`PersonaRegistry` live in `contracts/persona.py`;
+`FilePersonaRegistry` (markdown + YAML frontmatter, registered in `PERSONA_REGISTRIES`) in
+`data/persona/`; `ContextCrane.compose_system(role_id, scope_tags)` composes the `[System]` prefix and
+replaced the `BASE_PERSONA & SKILL_PERSONA_HERE` stub. `prompts/*.md` were migrated to packaged
+`datum_ax/personas/roles/{triage,lane-plan,red,green}.md`, and triage/lane_plan/synthesis now source
+their prompt from the registry via the injected crane (they require a crane when calling a model).
+Skill *artifacts* aren't authored yet (the `select_skills` path is wired and tested).
+
 ## Context
 
 `ContextCrane.pack_payload` composes the cache-stable `[System]` prefix from a hardcoded stub:

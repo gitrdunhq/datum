@@ -16,6 +16,10 @@ class CountingCrane:
     def __init__(self) -> None:
         self.calls = 0
 
+    def compose_system(self, role_id, scope_tags=(), docs=""):  # noqa: ANN001
+        # Persona body carries the template token each caller substitutes (ADR-0033).
+        return f"SYSTEM[{role_id}] {{{{input}}}} {{{{ticket}}}} {{{{lane_json}}}}"
+
     def assemble(self, system, global_ast, diff, suffix, budget=None):  # noqa: ANN001
         self.calls += 1
         return AssembledPrompt(

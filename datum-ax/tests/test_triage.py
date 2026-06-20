@@ -1,4 +1,5 @@
 from datum_ax.core.planner.triage import triage_ticket
+from datum_ax.presentation.composition import build_context_crane
 
 
 def test_triage_ticket_with_inference():
@@ -16,7 +17,7 @@ def test_triage_ticket_with_inference():
 
     client = MockInferenceClient()
     ticket = {"text": "fix a small bug in ui", "scale": "task"}
-    result = triage_ticket(ticket, inference_client=client)
+    result = triage_ticket(ticket, inference_client=client, crane=build_context_crane())
 
     assert result["target"] == "ui"
     assert result["route"] == "feature"

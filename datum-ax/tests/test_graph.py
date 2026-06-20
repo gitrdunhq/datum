@@ -11,6 +11,7 @@ from datum_ax.data.context.adapters import (
     SerenaTokenSaveContext,
 )
 from datum_ax.data.context.dcp import DynamicContextPruner
+from datum_ax.presentation.composition import build_persona_registry
 from fakes import FakeExecutionHost
 
 
@@ -21,6 +22,7 @@ def _crane() -> ContextCrane:
         nl_compressor=HeadroomNlCompressor(),
         pruner=DynamicContextPruner(),
         budget=TokenBudget(max_input=8000, max_output=2000, window_target=10000),
+        persona=build_persona_registry(),
     )
 
 
