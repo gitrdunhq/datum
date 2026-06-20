@@ -56,3 +56,16 @@ class NlCompressor(Protocol):
     """The single sanctioned compression point — NL only (Headroom.ai, data tier)."""
 
     def compress(self, doc: NlDoc, budget: TokenBudget) -> NlDoc: ...
+
+
+@runtime_checkable
+class ContextPruner(Protocol):
+    """Active context-management port — prune the suffix to fit the budget (DCP, ADR-0021).
+
+    Implemented in the data tier; injected into the ContextCrane (core) so the crane orchestrates
+    pruning without importing a concrete (ADR-0026/0030).
+    """
+
+    def prune_suffix(
+        self, suffix: tuple[str, ...], budget_max: int, current_total_tokens: int
+    ) -> tuple[str, ...]: ...

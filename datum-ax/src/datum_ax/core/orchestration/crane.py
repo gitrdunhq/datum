@@ -1,104 +1,109 @@
-from datum_ax.contracts.context import CodeContext, DocContext, NlCompressor, SymbolSlice
-from datum_ax.contracts.inference import TokenBudget, AssembledPrompt
+"""ContextCrane — the single source of truth for context assembly (ADR-0030).
+
+Owns the whole window: the Context Firewall (ADR-0004), Dynamic Context Pruning (ADR-0021), and
+Budget-Aware Lane Granularity (ADR-0022). One assembly path: hoist -> assemble -> prune ->
+budget-check, with cross-payload symbol dedup. Depends only on contract Protocols (ADR-0026); the
+data adapters (code/doc/compressor/pruner) and the token counter are injected.
+"""
+
+from __future__ import annotations
+
 import json
-from typing import List, Dict, Optional, Set, Any
+from typing import Any
+
+from datum_ax.contracts.context import CodeContext, ContextPruner, DocContext, NlCompressor
+from datum_ax.contracts.inference import AssembledPrompt, TokenBudget
+from datum_ax.contracts.tokens import TokenCounter, default_token_count
+
 
 class ContextBudgetExceededError(Exception):
-    """
-    Thrown when the essential, un-prunable payload exceeds the hard limit.
-    Forces the planner to decompose the task. (ADR-0022)
-    """
-    pass
+    """The essential, un-prunable payload exceeds the hard limit — the planner must decompose the
+    lane (ADR-0022)."""
+
 
 class ContextCrane:
-    """
-    The Intelligent Context Crane.
-    Orchestrates the Context Firewall (ADR-0004), Dynamic Context Pruning (ADR-0021),
-    and Budget-Aware Lane Granularity (ADR-0022).
-    """
-    
     def __init__(
         self,
         code_context: CodeContext,
         doc_context: DocContext,
         nl_compressor: NlCompressor,
+        pruner: ContextPruner,
         budget: TokenBudget,
-        token_counter: Any # e.g. a tiktoken encoder
-    ):
+        token_counter: TokenCounter = default_token_count,
+    ) -> None:
         self.code_context = code_context
         self.doc_context = doc_context
         self.compressor = nl_compressor
+        self.pruner = pruner
         self.budget = budget
         self.token_counter = token_counter
-        
-        # SymbolRegistry for Deduplication
-        self._hoisted_symbols: Set[str] = set()
+        self._hoisted_symbols: set[str] = set()  # SymbolRegistry — never hoist the same slice twice
 
+    def _count(self, text: str) -> int:
+        return self.token_counter(text)
+
+    # --- budget (ADR-0022) -----------------------------------------------------------------------
     def estimate_lane_footprint(self, system: str, global_ast: str, diff: str) -> int:
-        """
-        Pre-calculates the token footprint before execution (ADR-0022).
-        If the prefix alone exceeds the max_input limit, forces decomposition.
-        """
-        prefix = f"{system}\n{global_ast}\n{diff}"
-        estimated_tokens = len(self.token_counter.encode(prefix))
-        
-        if estimated_tokens > self.budget.max_input:
+        """The essential, un-prunable prefix must fit the hard limit, else decompose (ADR-0022)."""
+        estimated = self._count(f"{system}\n{global_ast}\n{diff}")
+        if estimated > self.budget.max_input:
             raise ContextBudgetExceededError(
-                f"Lane essential footprint ({estimated_tokens} tokens) exceeds hard limit ({self.budget.max_input}). "
-                "Planner must decompose."
+                f"Lane essential footprint ({estimated} tokens) exceeds hard limit "
+                f"({self.budget.max_input}). Planner must decompose."
             )
-            
-        return estimated_tokens
+        return estimated
 
-    def hoist_docs(self, library_names: List[str]) -> str:
-        """
-        Resolves library IDs, fetches docs via Context7, and compresses via Headroom.ai.
-        """
-        docs = []
-        for lib in library_names:
-            doc = self.doc_context.library_docs(lib)
-            compressed_doc = self.compressor.compress(doc, self.budget)
-            docs.append(compressed_doc.text)
-        return "\n".join(docs)
+    # --- assembly (ADR-0004/0021) — the single path ----------------------------------------------
+    def assemble(
+        self, system: str, global_ast: str, diff: str, suffix: tuple[str, ...]
+    ) -> AssembledPrompt:
+        """Stable prefix + DCP-pruned suffix, budget-enforced. The one way a task packet is built."""
+        prefix_tokens = self._count(system) + self._count(global_ast) + self._count(diff)
+        total = prefix_tokens + sum(self._count(t) for t in suffix)
+        pruned = self.pruner.prune_suffix(suffix, self.budget.max_input, total)
+        new_total = prefix_tokens + sum(self._count(t) for t in pruned)
+        if new_total > self.budget.max_input:
+            raise ContextBudgetExceededError(
+                f"Assembled payload ({new_total} tokens) exceeds budget "
+                f"({self.budget.max_input}) even after pruning. Planner must decompose."
+            )
+        return AssembledPrompt(system=system, global_ast=global_ast, diff=diff, suffix=tuple(pruned))
 
-    def hoist_code(self, symbols: List[str]) -> str:
-        """
-        Uses CodeContext to fetch EXACT AST slices (Lossless).
-        Applies deduplication using the SymbolRegistry.
-        """
-        slices = []
+    # --- firewall hoisting (ADR-0004) ------------------------------------------------------------
+    def hoist_docs(self, library_names: list[str]) -> str:
+        """Context7 docs, compressed via Headroom (NL channel — compressible)."""
+        return "\n".join(
+            self.compressor.compress(self.doc_context.library_docs(lib), self.budget).text
+            for lib in library_names
+        )
+
+    def hoist_code(self, symbols: list[str]) -> str:
+        """Exact AST slices via CodeContext (lossless), deduped across the payload."""
+        slices: list[str] = []
         for sym in symbols:
             if sym not in self._hoisted_symbols:
-                slice_data = self.code_context.symbol(sym)
-                slices.append(slice_data.content)
+                slices.append(self.code_context.symbol(sym).content)
                 self._hoisted_symbols.add(sym)
         return "\n".join(slices)
 
-    def pack_payload(self, ticket: str, dag_state: Dict[str, Any], history: List[Dict[str, str]], libs: List[str], symbols: List[str]) -> AssembledPrompt:
-        """
-        Builds the final AssembledPrompt guaranteeing prompt-cache safety (ADR-0021).
-        """
-        
-        # 1. Gather prefix parts
-        system_rules = "BASE_PERSONA & SKILL_PERSONA_HERE"
-        context7_docs = self.hoist_docs(libs)
-        
-        system = f"{system_rules}\n\n{context7_docs}"
+    def pack_payload(
+        self,
+        ticket: str,
+        dag_state: dict[str, Any],
+        history: list[dict[str, str]],
+        libs: list[str],
+        symbols: list[str],
+    ) -> AssembledPrompt:
+        """Full firewall pass → a budget-safe, cache-stable AssembledPrompt."""
+        system = f"BASE_PERSONA & SKILL_PERSONA_HERE\n\n{self.hoist_docs(libs)}"
         global_ast = self.hoist_code(symbols)
-        diff = "" # Unused on initialization, updated during execution
-        
-        # 2. Check Plan-Time Budget (ADR-0022)
-        self.estimate_lane_footprint(system, global_ast, diff)
-        
-        # 3. Assemble Suffix
-        dag_state_str = json.dumps(dag_state, separators=(',', ':'))
-        history_str = "\n".join([f"[{h['role'].upper()}]: {h['content']}" for h in history])
-        suffix = f"--- EXECUTION STATE ---\n{dag_state_str}\n\n--- RECENT HISTORY ---\n{history_str}\n\n--- CURRENT TICKET ---\n{ticket}"
-        
-        # 4. Return compliant AssembledPrompt Contract
-        return AssembledPrompt(
-            system=system,
-            global_ast=global_ast,
-            diff=diff,
-            suffix=(suffix,)
+        diff = ""
+        self.estimate_lane_footprint(system, global_ast, diff)  # essential must fit (ADR-0022)
+        dag_state_str = json.dumps(dag_state, separators=(",", ":"))
+        history_str = "\n".join(f"[{h['role'].upper()}]: {h['content']}" for h in history)
+        suffix = (
+            f"--- EXECUTION STATE ---\n{dag_state_str}\n\n"
+            f"--- RECENT HISTORY ---\n{history_str}\n\n"
+            f"--- CURRENT TICKET ---\n{ticket}"
         )
+        return self.assemble(system, global_ast, diff, (suffix,))

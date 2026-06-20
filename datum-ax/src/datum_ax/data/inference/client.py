@@ -24,12 +24,8 @@ from datum_ax.data.inference.errors import (
 )
 from datum_ax.data.inference.roles import ModelRoleRegistry
 from datum_ax.data.inference.transport import OmlxTransport
+from datum_ax.contracts.tokens import default_token_count
 from datum_ax.data.inference.wire import ChatMessage, ChatRequest
-
-
-def default_token_count(text: str) -> int:
-    """Cheap, deterministic estimate (~4 chars/token). Inject a real tokenizer in production."""
-    return max(1, len(text) // 4)
 
 
 class OmlxInferenceClient:
