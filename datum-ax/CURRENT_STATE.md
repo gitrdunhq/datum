@@ -48,10 +48,10 @@ docs/
   initiatives/datum-ax-build/      INITIATIVE.md + epics/e1..e11 tickets + lane-plans (the roadmap)
   initiatives/{tic-tac-toe,beta-wiring,integration-sweep}/  emulated runs
 src/datum_ax/                     three enforced tiers (boundary test guards imports)
-  contracts/   ports + value objects: execution, inference, context, context_assembler (ContextAssembler), review (ReviewGate), persona (PersonaRegistry), status (StatusSource), ledger, checkpoint, tokens
+  contracts/   ports + value objects: execution, inference, context, context_assembler (ContextAssembler), review (ReviewGate), persona (PersonaRegistry), rules (RuleRegistry), status (StatusSource), ledger, checkpoint, tokens
   schemas/     ticket, properties (DPS-12), rules
   core/        orchestration (graph/scheduler/crane+assemblers registry/state), planner, verifier, reviewer
-  data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), persona (file registry + skills/roles), state (ledger/checkpoint/status)
+  data/        inference (oMLX+transports), execution (local/docker/tart), context (adapters/dcp), review (eedom plugin), persona (file + semantic/RAG registry, skills/roles), rules (file rule registry), state (ledger/checkpoint/status)
   presentation/  composition (env wiring) + studio (LangGraph factory)
   cli/         datumax CLI (run / status)
 tests/                            236 tests: property + boundary guard + per-module integration

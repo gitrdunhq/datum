@@ -18,12 +18,10 @@ Assume proposed architectures have flaws and highlight edge cases before agreein
 - **Cloudflare Work:** Always invoke the `cloudflare` skill before doing ANY Cloudflare work (wrangler, KV, R2, etc.).
 
 # 4. ENGINEERING & ARCHITECTURE PHILOSOPHY
-- **4-Layer Clean Architecture:** Strictly enforce layer boundaries. Presentation NEVER imports Infrastructure. Business NEVER imports Infrastructure. Domain ONLY imports Foundation.
-- **File Size Limits:** Domain (<100 lines), Presentation ViewModels (<200 lines), Infrastructure/Business (<300 lines). Break files apart if they exceed this.
-- **Consumer-First Ordering:** A module is not ready to be written until the file that will import it exists and is verified. Write the consumer scaffold first.
-- **Vertical Slices:** Build one thin end-to-end slice first, then expand.
-- **TDD Strict:** Write test -> Verify it FAILS (RED) -> Implement -> Verify it PASSES (GREEN) -> Commit together. Never skip the RED step.
-- **TypeScript Only:** All source code must be TypeScript. Never write raw `.js` files as source.
+Core engineering discipline — layered/clean architecture, file-size limits, consumer-first ordering,
+vertical slices, and test-first development — is maintained as **lifted rules** (`datum_ax/rules/`,
+ADR-0020) and enforced by the discipline gates, so it is applied per-lane as needed rather than
+restated here. Stack default: prefer TypeScript for source; never ship raw `.js` as source.
 
 # 5. OPERATIONAL GUARDRAILS & ARTIFACTS
 - **Actionable Insights First:** Any generated markdown report MUST have the actionable insight at the very top (first scroll).

@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted (design)
+Accepted (design). **As-built (delivery half):** the rules registry + steering-lift exist — a
+`RuleRegistry` port (`contracts/rules.py`) + `FileRuleRegistry` adapter (markdown rules in
+`datum_ax/rules/`, behind `RULE_REGISTRIES`), reusing the `RuleRegistryEntry` schema (body → its
+`statement`). The crane lifts rules into the `[System]` prefix as scoped steering — by `scope_tags`
+plus query/RAG, same as skills — so a code lane lifts the universal `clean-architecture` +
+`tdd-red-first` rules and a routing lane lifts none. The first rules were **extracted out of
+BASE_PERSONA** (universal engineering discipline) so they're reusable across domains; Swift-specific
+mechanics stay in the swift skill. The **capture/harvest** half (CLOSEOUT → candidate rules, tiered
+binding, fire-count pruning) remains design.
 
 ## Context
 

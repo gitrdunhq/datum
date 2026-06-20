@@ -14,6 +14,7 @@ from typing import Any
 from datum_ax.contracts.context import CodeContext, ContextPruner, DocContext, NlCompressor
 from datum_ax.contracts.inference import AssembledPrompt, TokenBudget
 from datum_ax.contracts.persona import PersonaNotFoundError, PersonaRegistry
+from datum_ax.contracts.rules import RuleRegistry
 from datum_ax.contracts.tokens import TokenCounter, default_token_count
 
 
@@ -32,6 +33,7 @@ class ContextCrane:
         budget: TokenBudget,
         token_counter: TokenCounter = default_token_count,
         persona: PersonaRegistry | None = None,
+        rules: RuleRegistry | None = None,
     ) -> None:
         self.code_context = code_context
         self.doc_context = doc_context
@@ -40,6 +42,7 @@ class ContextCrane:
         self.budget = budget
         self.token_counter = token_counter
         self.persona = persona
+        self.rules = rules
         self._hoisted_symbols: set[str] = set()  # SymbolRegistry — never hoist the same slice twice
 
     def _count(self, text: str) -> int:
@@ -109,9 +112,20 @@ class ContextCrane:
             skills += [s for s in self.persona.match_skills(query) if s.id not in seen]
         parts = [p for p in (self.persona.base_persona(), role.body) if p]
         parts += self._render_skills(skills)
+        parts += self._render_rules(scope_tags, query)
         if docs:
             parts.append(docs)
         return "\n\n".join(parts)
+
+    def _render_rules(self, scope_tags: tuple[str, ...], query: str | None) -> list[str]:
+        """Lift generic engineering rules as scoped steering (ADR-0020): by tag, plus query-matched."""
+        if self.rules is None:
+            return []
+        entries = list(self.rules.select_rules(tuple(scope_tags)))
+        if query:
+            seen = {r.id for r in entries}
+            entries += [r for r in self.rules.match_rules(query) if r.id not in seen]
+        return [f"## Rule: {r.id}\n{r.statement}" for r in entries]
 
     @staticmethod
     def _render_skills(skills: list) -> list[str]:

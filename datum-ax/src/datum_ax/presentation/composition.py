@@ -17,9 +17,11 @@ from datum_ax.contracts.inference import InferenceClient, ModelRole, TokenBudget
 from datum_ax.contracts.ledger import RunLedger
 from datum_ax.contracts.persona import PersonaRegistry
 from datum_ax.contracts.review import ReviewGate
+from datum_ax.contracts.rules import RuleRegistry
 from datum_ax.contracts.status import StatusSource
 from datum_ax.data.persona import PERSONA_REGISTRIES
 from datum_ax.data.review import REVIEW_GATES
+from datum_ax.data.rules import RULE_REGISTRIES
 from datum_ax.data.state.checkpoint import InMemoryCheckpointer
 from datum_ax.data.state.ledger import LibSQLLedger
 from datum_ax.data.state.status import StatusProvider
@@ -34,8 +36,9 @@ from datum_ax.data.execution.local import LocalHost
 from datum_ax.data.inference.client import OmlxInferenceClient
 from datum_ax.data.inference.roles import ModelRoleRegistry, RoleConfig
 
-# Packaged persona artifacts ship with the library (datum_ax/personas/).
+# Packaged persona + rule artifacts ship with the library.
 _PACKAGED_PERSONA_ROOT = str(Path(__file__).resolve().parent.parent / "personas")
+_PACKAGED_RULES_ROOT = str(Path(__file__).resolve().parent.parent / "rules")
 
 
 def build_inference_client_from_env() -> InferenceClient:
@@ -108,7 +111,17 @@ def build_context_crane(
         pruner=DynamicContextPruner(),
         budget=budget or TokenBudget(max_input=8000, max_output=2000, window_target=10000),
         persona=build_persona_registry(),
+        rules=build_rule_registry(),
     )
+
+
+def build_rule_registry(name: str | None = None, **kwargs: Any) -> RuleRegistry:
+    """Resolve a rule-registry plugin by name (ADR-0020/0032). Default: file-backed, reading the
+    packaged ``datum_ax/rules/`` (override with ``DATUM_RULES_ROOT`` or ``root=``)."""
+    name = name or os.environ.get("DATUM_RULE_REGISTRY") or "file"
+    if name == "file" and "root" not in kwargs:
+        kwargs["root"] = os.environ.get("DATUM_RULES_ROOT", _PACKAGED_RULES_ROOT)
+    return RULE_REGISTRIES.create(name, **kwargs)
 
 
 _REMOTE_SCHEMES = ("postgresql", "postgres", "libsql", "mysql", "turso")

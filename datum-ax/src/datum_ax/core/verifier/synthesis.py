@@ -27,7 +27,9 @@ def synthesize_test(
                 "synthesize_test requires a ContextCrane (persona + assembly, ADR-0033)"
             )
         budget = TokenBudget(max_input=8000, max_output=1000, window_target=10000)
-        system_text = crane.compose_system("red").replace("{{lane_json}}", json.dumps(lane))
+        system_text = crane.compose_system("red", scope_tags=("code",)).replace(
+            "{{lane_json}}", json.dumps(lane)
+        )
 
         def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
             return crane.assemble(system, global_ast, diff, suffix, budget=budget)
@@ -71,9 +73,9 @@ def synthesize_test(
                     *prompt.suffix,
                     f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
                 )
-                # A failed attempt is a troubleshooting task: lift gitnexus troubleshooting skills
+                # A failed attempt is a troubleshooting task: lift the focused gitnexus debugging skill
                 # into the VARIABLE slot once, keeping the [System] prefix cache-stable (ADR-0033).
-                trouble = crane.lift_skills(("troubleshooting",))
+                trouble = crane.lift_skills(("debug",))
                 if trouble and "## Skill:" not in " ".join(prompt.suffix):
                     retry_suffix = (*retry_suffix, trouble)
                 prompt = _assemble(prompt.system, prompt.global_ast, prompt.diff, retry_suffix)
@@ -95,7 +97,9 @@ def synthesize_impl(
                 "synthesize_impl requires a ContextCrane (persona + assembly, ADR-0033)"
             )
         budget = TokenBudget(max_input=8000, max_output=2000, window_target=10000)
-        system_text = crane.compose_system("green").replace("{{lane_json}}", json.dumps(lane))
+        system_text = crane.compose_system("green", scope_tags=("code",)).replace(
+            "{{lane_json}}", json.dumps(lane)
+        )
 
         def _assemble(system: str, global_ast: str, diff: str, suffix: tuple[str, ...]):
             return crane.assemble(system, global_ast, diff, suffix, budget=budget)
@@ -139,9 +143,9 @@ def synthesize_impl(
                     *prompt.suffix,
                     f'Your previous response failed validation: {e}\nOutput exactly {{"diff": "<unified diff>"}}.',
                 )
-                # A failed attempt is a troubleshooting task: lift gitnexus troubleshooting skills
+                # A failed attempt is a troubleshooting task: lift the focused gitnexus debugging skill
                 # into the VARIABLE slot once, keeping the [System] prefix cache-stable (ADR-0033).
-                trouble = crane.lift_skills(("troubleshooting",))
+                trouble = crane.lift_skills(("debug",))
                 if trouble and "## Skill:" not in " ".join(prompt.suffix):
                     retry_suffix = (*retry_suffix, trouble)
                 prompt = _assemble(prompt.system, prompt.global_ast, prompt.diff, retry_suffix)
