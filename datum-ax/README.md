@@ -1,6 +1,6 @@
 # datum-ax — Asymmetric Agentic Language Pipeline
 
-> **Status:** design complete (35 ADRs); E1–E9 + CLI implemented and green (335 passed, 3 skipped; `mypy --strict` clean).
+> **Status:** design complete (37 ADRs); E1–E9 + CLI implemented and green (335 passed, 3 skipped; `mypy --strict` clean).
 > **Provenance:** a *variant inspired by* [`datum`](../). Staged inside the `datum` repo on branch
 > `claude/agentic-lang-pipeline-8dqtgr` for now; intended to migrate to a standalone repo
 > (`gitrdunhq/datum-ax`). This whole directory is self-contained so migration is "move the folder."
@@ -36,7 +36,7 @@ docs are Markdown.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The master design — topology, interfaces, run lifecycle, failure handling, and a candid pressure-test of the source blueprint. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | datum's domain vocabulary (TICKET, SPEC, PROPERTIES, LANE, ROUTE, REFLECT, SKEPTIC, Task Packet, …) mapped to datum-ax's stance on each (adopt/rename/replace/elevate). |
 | [`docs/RESEARCH-NOTES.md`](docs/RESEARCH-NOTES.md) | The verified-vs-fabricated ledger. Which blueprint claims survived fact-checking, and which were discarded. |
-| [`docs/adr/`](docs/adr/) | 35 Architecture Decision Records (see index below). |
+| [`docs/adr/`](docs/adr/) | 37 Architecture Decision Records (see index below). |
 
 ## ADR index
 
@@ -87,6 +87,10 @@ Authored contract-first (the order the pipeline itself would build code in):
 - [0033](docs/adr/0033-persona-registry.md) — Persona registry: Roles + Skills as versioned markdown artifacts behind a port (our own lean build; fills the crane's persona seam)
 - [0034](docs/adr/0034-determinism-by-default.md) — determinism by default, reasoning when warranted (gate stays zero-LLM; cognition may use embeddings/LLM, escalating on need)
 - [0035](docs/adr/0035-subagent-harness-for-playbooks.md) — subagent harness for playbook skills (procedures run on an isolated worker + JSON contract, not inlined; bug-hunt / research-workflow)
+
+**Compounding rigor (iteration 3)**
+- [0036](docs/adr/0036-held-out-rule-promotion.md) — held-out promotion gate for learned rules (a rule is kept on independent-run value, not the run that produced it; the signal you optimize ≠ the signal that keeps it)
+- [0037](docs/adr/0037-mechanistic-insight-narratives.md) — mechanistic insight narratives (an optional LLM "why" supplements the deterministic lesson, never gates; supplement, not replace)
 
 **Build roadmap (dogfooded):** [`docs/initiatives/datum-ax-build/INITIATIVE.md`](docs/initiatives/datum-ax-build/INITIATIVE.md) — the datum-ax plan run through `nl-to-ticket`, decomposed into ~11 epics (with per-epic tickets + lane-plans). The bridge from blueprint to code.
 

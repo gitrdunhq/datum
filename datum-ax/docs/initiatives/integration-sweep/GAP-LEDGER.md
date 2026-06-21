@@ -24,9 +24,16 @@ current MVP state, the aspirational target, and the acceptance demo that proves 
 
 | G13 | Subagent harness for playbook skills | 0035/0033/0017 | 🟡 **seam built** — `Skill.delivery: inline\|subagent`; `gitnexus-bug-hunt` + `agentic-research-workflow` tagged `subagent`; crane **never inlines** them (`_render_skills` filters); `Worker` port + `WORKERS` registry + `FakeWorker` encode `run(playbook, inputs, schema) -> WorkerResult`. | live worker: GitNexus-MCP + oMLX tool loop, canary-first spawning (BASE_PERSONA §2). | playbooks never inlined ✔; Worker port conformance ✔; live worker returns findings JSON that feed the gate — pending hardware | P3 |
 
+| G14 | Held-out rule promotion | 0036/0020/0013 | ⬜ **design (ADR-0036)** — today `harvest`/`closeout` auto-binds a rule on the *origin run's* evidence; `record_fire`/`prune_unfired` are a **usage** signal, not a **value** signal (a rule can fire and still overfit the run that birthed it). | two-signal promotion: a harvested rule sits in **probation** and is promoted only on **held-out** (independent-run) deterministic value margin — lowers REPEATED_FAILURE/EEDOM_REJECT for matching `scope_tags` across ≥N runs, never raises rejects; demote on regression (zero-LLM). | a rule that helps only its origin run is **not** promoted; one that cuts repeat-failure across held-out runs **is**; a reverted rule never silently re-binds. Needs the multi-run ledger (pairs with G6/G8). | P3 |
+| G15 | Mechanistic insight narratives | 0037/0020/0034 | ⬜ **design (ADR-0037)** — `lessons_from_trace` derives lessons deterministically (robust but shallow: *what*, not *why*). | optional, **non-authoritative** LLM "why" narrative attached to a `Lesson`/rule (cognition-tier, flagged model-made), **supplementing** the deterministic evidence — never gates, off in deterministic/offline mode. | narrative attaches to a deterministic lesson; harvest/promotion/binding **identical with and without it**; absent when no model. | P3 |
+
 **Sequencing intuition:** G1 (crane wiring) is the unlock — it gives one seam to then drop real
 adapters (G2) and a real tokenizer (G3) behind. G4/G5/G10 make execution+review real. G6 makes state
 durable. G7 deepens quality. G8/G9 are the compounding/human-surface layers.
+
+**Compounding rigor (G14/G15, design):** prior art from **Arbor** (RUC-NLPIR) — separate the signal a
+rule is *optimized* on from the signal that *keeps* it (held-out promotion, G14), and let an optional
+LLM narrate the *why* on top of the deterministic lesson without ever entering the trust path (G15).
 
 **Enforcement (landed):** the climbs are guarded — `mypy --strict` is clean, a pre-commit hook (ruff +
 mypy) runs locally, and PR CI (`.github/workflows/datum-ax-ci.yml`, SHA-pinned) runs the full gate via

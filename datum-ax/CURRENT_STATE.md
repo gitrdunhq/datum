@@ -11,7 +11,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 1. **datum-ax** — an asymmetric agentic coding pipeline (a datum-inspired variant). Cognition
    (Apple Silicon + oMLX + LangGraph) is decoupled from execution (ephemeral sandboxes); context is a
-   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (35
+   firewall owned by the ContextCrane; eedom is the deterministic review gate. **Design complete (37
    ADRs); E1–E9 + CLI implemented and green.**
 2. **Product Team** (`skills/product-team/`) — a discovery-&-shaping skill suite that orchestrates the
    `sam-fakhreddine/product-manager-skills` library (49 frameworks). `skills/` is canonical.
@@ -23,7 +23,7 @@ Two related things, both staged under `datum-ax/` for later migration to a stand
 
 | Area | State |
 |------|-------|
-| Architecture & ADRs | ✅ 35 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
+| Architecture & ADRs | ✅ 37 ADRs + ARCHITECTURE, PIPELINE (ASCII), GLOSSARY, RESEARCH-NOTES, INITIATIVE |
 | E1 — Contracts & schemas | ✅ Built & green — strict Pydantic, 3 enforced tiers (boundary test) |
 | E2 — Inference layer | ✅ Built — `OmlxInferenceClient` (role registry, semaphore, budgets), httpx + native MLX transports; mock-tested |
 | E3 — Execution hosts | ✅ `LocalHost` (patch apply); 🟡 Docker + Tart present, x86 docker not hardened |
@@ -49,7 +49,7 @@ scripts/                          ci.sh (full gate), install-hooks.sh (pre-commi
 ../.github/workflows/datum-ax-ci.yml  PR CI (SHA-pinned) -> scripts/ci.sh
 docs/
   ARCHITECTURE.md  PIPELINE.md  GLOSSARY.md  RESEARCH-NOTES.md
-  adr/0001..0035-*.md             35 ADRs
+  adr/0001..0037-*.md             37 ADRs
   initiatives/datum-ax-build/      INITIATIVE.md + epics/e1..e11 tickets + lane-plans (the roadmap)
   initiatives/{tic-tac-toe,beta-wiring,integration-sweep}/  emulated runs
 src/datum_ax/                     three enforced tiers (boundary test guards imports)
@@ -102,7 +102,10 @@ _Tracked in `docs/initiatives/integration-sweep/GAP-LEDGER.md` (MVP → aspirati
    ruff + mypy (+ pytest in CI) so regressions can't land silently.
 4. **G2/G4/G5/G10:** real context adapters, hardened `X86DockerHost`, real eedom container, live oMLX
    smoke run.
-5. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
+5. **G14/G15 (design, ADR-0036/0037):** held-out promotion gate for learned rules (keep on
+   independent-run value, not the origin run) + optional mechanistic "why" narratives that supplement
+   the deterministic lesson — both gated on the multi-run ledger / live model.
+6. **Migrate** datum-ax + Product Team to `gitrdunhq/datum-ax` when repo creation is possible.
 
 ## Pointers
 
