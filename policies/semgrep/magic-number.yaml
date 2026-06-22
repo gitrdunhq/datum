@@ -28,7 +28,7 @@ rules:
       category: code-quality
       subcategory: maintainability
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://luzkan.github.io/smells/magic-number

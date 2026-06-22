@@ -16,7 +16,7 @@ scoring logic is testable without touching disk. ``datum.gate`` supplies the
 real boundaries via ``score_context_quality()``.
 
 Output is structured (per-check sub-scores + reasons), not a bare number,
-so the #79 skeptical evaluator can consume it alongside eedom.
+so the #79 skeptical evaluator can consume it alongside caliper.
 """
 
 from __future__ import annotations

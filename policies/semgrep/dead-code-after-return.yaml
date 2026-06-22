@@ -37,7 +37,7 @@ rules:
       category: code-quality
       subcategory: dead-code
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://refactoring.guru/smells/dead-code

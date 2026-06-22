@@ -29,7 +29,7 @@ rules:
       category: security
       subcategory: credential-exposure
       property-domain: confidentiality
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings:
         - framework: cis-aws-v2.0
           controls: ["1.4"]
@@ -42,4 +42,4 @@ rules:
         - framework: iso-27001-2022
           controls: ["A.5.15"]
       references:
-        - https://github.com/sam-fakhreddine/eedom-community-rules
+        - https://github.com/sam-fakhreddine/caliper-community-rules

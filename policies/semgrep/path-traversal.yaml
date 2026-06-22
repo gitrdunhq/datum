@@ -44,7 +44,7 @@ rules:
       category: security
       subcategory: path-traversal
       property-domain: integrity
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings:
         - framework: owasp-top10-2021
           controls: ["A01:2021"]
@@ -57,4 +57,4 @@ rules:
         - framework: iso-27001-2022
           controls: ["A.8.26"]
       references:
-        - https://github.com/gitrdunhq/eedom-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules

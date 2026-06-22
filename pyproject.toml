@@ -31,8 +31,8 @@ rag = [
     "scikit-learn",
 ]
 
-# eedom integration: optional, install via editable path from ../eedom.
-# Not declared as a dependency since eedom is not on PyPI.
+# caliper integration: optional, install via editable path from ../caliper.
+# Not declared as a dependency since caliper is not on PyPI.
 # The import is wrapped in try/except ImportError (graceful degradation).
 
 [project.scripts]

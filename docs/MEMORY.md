@@ -126,7 +126,7 @@ metadata:
 
 Use Pipelined TDD for independent bug fixes and features. Two modes based on a complexity gate:
 
-**1-Agent (mechanical changes):** Single agent does RED + GREEN. Use for type changes, renames, parameter additions, wrapping calls, removing dead code. The implementation has no degrees of freedom — you can't fake a type rename.
+**1-Agent (mechanical changes):** Single agent does RED + GREEN. Use for type changes, renames, parameter additions, wrapping calls, removing dead code. The implementation has no degrees of frcaliper — you can't fake a type rename.
 
 **3-Agent with Sparse Contract (behavioral changes):** RED writes test + extracts a plain-English test contract. GREEN receives ONLY the contract and source files — cannot read test source. Can run `swift test` for pass/fail but never sees assertion code. Use for formulas, state machines, conditional logic, data transforms.
 

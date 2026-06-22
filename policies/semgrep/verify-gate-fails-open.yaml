@@ -29,7 +29,7 @@ rules:
       category: security
       subcategory: fail-open-gate
       property-domain: integrity
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings:
         - framework: nist-800-53-r5
           controls: ["CM-6", "SA-11"]
@@ -38,4 +38,4 @@ rules:
         - framework: soc2-tsc
           controls: ["CC8.1"]
       references:
-        - https://github.com/gitrdunhq/eedom-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules

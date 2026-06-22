@@ -46,11 +46,11 @@ rules:
       category: security
       subcategory: error-handling
       property-domain: availability
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings:
         - framework: nist-800-53-r5
           controls: ["SI-11"]
         - framework: iso-27001-2022
           controls: ["A.8.28"]
       references:
-        - https://github.com/sam-fakhreddine/eedom-community-rules
+        - https://github.com/sam-fakhreddine/caliper-community-rules
