@@ -20,4 +20,4 @@ rules:
       caliper-plugin: semgrep
       compliance_mappings: []
       references:
-        - https://github.com/sam-fakhreddine/caliper-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules
