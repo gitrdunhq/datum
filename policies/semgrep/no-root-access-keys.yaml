@@ -42,4 +42,4 @@ rules:
         - framework: iso-27001-2022
           controls: ["A.5.15"]
       references:
-        - https://github.com/sam-fakhreddine/caliper-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules
