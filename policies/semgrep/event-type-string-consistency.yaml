@@ -17,7 +17,7 @@ rules:
       category: standards
       subcategory: naming-consistency
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
-        - https://github.com/sam-fakhreddine/eedom-community-rules
+        - https://github.com/sam-fakhreddine/caliper-community-rules

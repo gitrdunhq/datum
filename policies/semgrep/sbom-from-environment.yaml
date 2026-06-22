@@ -14,7 +14,7 @@ rules:
       category: infrastructure
       subcategory: sbom-accuracy
       property-domain: integrity
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings:
         - framework: nist-800-53-r5
           controls: ["SA-12", "SR-4"]
@@ -23,4 +23,4 @@ rules:
         - framework: iso-27001-2022
           controls: ["A.8.8"]
       references:
-        - https://github.com/gitrdunhq/eedom-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules

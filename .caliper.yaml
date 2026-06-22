@@ -1,4 +1,4 @@
-# eedom repo config for datum — refs gitrdunhq/datum#96
+# caliper repo config for datum — refs gitrdunhq/datum#96
 plugins:
   enabled:
     - semgrep

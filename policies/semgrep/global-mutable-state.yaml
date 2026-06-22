@@ -28,7 +28,7 @@ rules:
       category: code-quality
       subcategory: correctness
       property-domain: isolation
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://luzkan.github.io/smells/global-data

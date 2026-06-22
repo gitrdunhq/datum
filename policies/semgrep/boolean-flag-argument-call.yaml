@@ -15,7 +15,7 @@ rules:
       category: code-quality
       subcategory: flag-argument
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://luzkan.github.io/smells/flag-argument

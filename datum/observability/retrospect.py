@@ -69,7 +69,7 @@ def run_retrospect(n_transcripts: int = 5):
     if "constraint" in failures_by_layer:
         console.print("- [blue]CONSTRAINT[/blue]: Update 'datum.command_guard' or sandbox enforcement.")
     if "verification" in failures_by_layer:
-        console.print("- [blue]VERIFICATION[/blue]: Enhance 'tdd_driver' or 'eedom_blast_radius' post-check logic.")
+        console.print("- [blue]VERIFICATION[/blue]: Enhance 'tdd_driver' or 'caliper_blast_radius' post-check logic.")
     if "planning" in failures_by_layer:
         console.print("- [blue]PLANNING[/blue]: Refine orchestration in 'agent_loop.py' (loop breakers, timeouts).")
     
