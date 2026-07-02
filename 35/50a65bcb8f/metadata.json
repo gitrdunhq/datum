@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "3550a65bcb8f",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTimeoutTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/35/50a65bcb8f/0/metadata.json",
+      "transcript": "/35/50a65bcb8f/0/full.jsonl",
+      "content_hash": "/35/50a65bcb8f/0/content_hash.txt",
+      "prompt": "/35/50a65bcb8f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 192565,
+    "cache_creation_tokens": 4851630,
+    "cache_read_tokens": 61592617,
+    "output_tokens": 344554,
+    "api_call_count": 529
+  }
+}
