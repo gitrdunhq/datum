@@ -391,3 +391,7 @@ can you time it?
 **Full suite:** `swift test` in `Record-ML` — 318 tests in 50 suites, all passed.</result>
 <usage><subagent_tokens>82184</subagent_tokens><tool_uses>32</tool_uses><duration_ms>350868</duration_ms></usage>
 </task-notification>
+
+---
+
+/goal the goal is to finish all the waves and tasks
