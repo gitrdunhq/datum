@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "23e8c41788eb",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/AudioSessionDetector.swift",
+    "Record-Audio/Tests/Unit/AVFoundationExportActorTests.swift",
+    "Record-Audio/Tests/Unit/AudioFileLoaderTests.swift",
+    "Record-Audio/Tests/Unit/AudioSessionDetectorCoreAudioTests.swift",
+    "Record-Audio/Tests/Unit/AudioSessionDetectorTests.swift",
+    "Record-Audio/Tests/Unit/CameraSessionDetectorTests.swift",
+    "Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift",
+    "Record-Audio/Tests/Unit/MeetingAppMonitorTests.swift",
+    "Record-Audio/Tests/Unit/MicCaptureActorTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterBatchConversionTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterRaceTests.swift",
+    "Record-Audio/Tests/Unit/WaveformProcessorTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/23/e8c41788eb/0/metadata.json",
+      "transcript": "/23/e8c41788eb/0/full.jsonl",
+      "content_hash": "/23/e8c41788eb/0/content_hash.txt",
+      "prompt": "/23/e8c41788eb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19158,
+    "cache_creation_tokens": 707249,
+    "cache_read_tokens": 5777037,
+    "output_tokens": 52167,
+    "api_call_count": 55
+  }
+}

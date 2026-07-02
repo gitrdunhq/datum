@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "23e8c41788eb",
+  "session_id": "7c35d465-d5ef-477e-a940-9baf3548f83d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T00:56:44.522119Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/AudioSessionDetector.swift",
+    "Record-Audio/Tests/Unit/AVFoundationExportActorTests.swift",
+    "Record-Audio/Tests/Unit/AudioFileLoaderTests.swift",
+    "Record-Audio/Tests/Unit/AudioSessionDetectorCoreAudioTests.swift",
+    "Record-Audio/Tests/Unit/AudioSessionDetectorTests.swift",
+    "Record-Audio/Tests/Unit/CameraSessionDetectorTests.swift",
+    "Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift",
+    "Record-Audio/Tests/Unit/MeetingAppMonitorTests.swift",
+    "Record-Audio/Tests/Unit/MicCaptureActorTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterBatchConversionTests.swift",
+    "Record-Audio/Tests/Unit/WAVWriterRaceTests.swift",
+    "Record-Audio/Tests/Unit/WaveformProcessorTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "5668ad25d511",
+  "token_usage": {
+    "input_tokens": 19158,
+    "cache_creation_tokens": 707249,
+    "cache_read_tokens": 5777037,
+    "output_tokens": 52167,
+    "api_call_count": 55
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T00:56:44.506926Z",
+    "agent_lines": 49,
+    "agent_removed": 47,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 49,
+    "total_lines_changed": 96,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
