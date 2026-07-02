@@ -3,7 +3,7 @@
   "checkpoint_id": "4739ba33165b",
   "strategy": "manual-commit",
   "branch": "fix/mega-remediation-20260701",
-  "checkpoints_count": 4,
+  "checkpoints_count": 7,
   "files_touched": [
     "Record-Foundation/Tests/Unit/Domain/RecordingMetadataTests.swift",
     "Record-Foundation/Tests/Unit/Domain/StorageEngineNotesConformanceTests.swift",
@@ -16,13 +16,19 @@
       "transcript": "/47/39ba33165b/0/full.jsonl",
       "content_hash": "/47/39ba33165b/0/content_hash.txt",
       "prompt": "/47/39ba33165b/0/prompt.txt"
+    },
+    {
+      "metadata": "/47/39ba33165b/1/metadata.json",
+      "transcript": "/47/39ba33165b/1/full.jsonl",
+      "content_hash": "/47/39ba33165b/1/content_hash.txt",
+      "prompt": "/47/39ba33165b/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 19158,
-    "cache_creation_tokens": 707249,
-    "cache_read_tokens": 5777037,
-    "output_tokens": 52167,
-    "api_call_count": 55
+    "input_tokens": 109642,
+    "cache_creation_tokens": 2473813,
+    "cache_read_tokens": 29572872,
+    "output_tokens": 208817,
+    "api_call_count": 286
   }
 }

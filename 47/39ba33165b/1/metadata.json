@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "4739ba33165b",
+  "session_id": "b5e246c8-3c5f-4c37-9c55-ef991b9ed095",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T00:56:28.267173Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-Foundation/Tests/Unit/Domain/RecordingMetadataTests.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineNotesConformanceTests.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineProtocolTests.swift",
+    "Record-Foundation/Tests/Unit/Domain/StorageEngineTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "8cd98e1d62bd",
+  "token_usage": {
+    "input_tokens": 90484,
+    "cache_creation_tokens": 1766564,
+    "cache_read_tokens": 23795835,
+    "output_tokens": 156650,
+    "api_call_count": 231
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T00:56:28.227812Z",
+    "agent_lines": 11,
+    "agent_removed": 6,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 11,
+    "total_lines_changed": 17,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
