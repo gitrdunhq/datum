@@ -3,7 +3,7 @@
   "checkpoint_id": "2732f4a86632",
   "strategy": "manual-commit",
   "branch": "fix/mega-remediation-20260701",
-  "checkpoints_count": 4,
+  "checkpoints_count": 7,
   "files_touched": [
     "Record-ML/Sources/MLInfrastructure/MCP/GRDBContextCache.swift"
   ],
@@ -13,13 +13,19 @@
       "transcript": "/27/32f4a86632/0/full.jsonl",
       "content_hash": "/27/32f4a86632/0/content_hash.txt",
       "prompt": "/27/32f4a86632/0/prompt.txt"
+    },
+    {
+      "metadata": "/27/32f4a86632/1/metadata.json",
+      "transcript": "/27/32f4a86632/1/full.jsonl",
+      "content_hash": "/27/32f4a86632/1/content_hash.txt",
+      "prompt": "/27/32f4a86632/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 19017,
-    "cache_creation_tokens": 702997,
-    "cache_read_tokens": 4896864,
-    "output_tokens": 50437,
-    "api_call_count": 49
+    "input_tokens": 109501,
+    "cache_creation_tokens": 2469561,
+    "cache_read_tokens": 28692699,
+    "output_tokens": 207087,
+    "api_call_count": 280
   }
 }
