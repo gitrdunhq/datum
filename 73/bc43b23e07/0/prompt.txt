@@ -7,3 +7,7 @@ yes merge it
 ---
 
 is all docjmentstion up to date
+
+---
+
+yes do the changelog and closeout
