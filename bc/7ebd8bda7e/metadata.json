@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "bc7ebd8bda7e",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bc/7ebd8bda7e/0/metadata.json",
+      "transcript": "/bc/7ebd8bda7e/0/full.jsonl",
+      "content_hash": "/bc/7ebd8bda7e/0/content_hash.txt",
+      "prompt": "/bc/7ebd8bda7e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 192013,
+    "cache_creation_tokens": 4707159,
+    "cache_read_tokens": 59013837,
+    "output_tokens": 331911,
+    "api_call_count": 510
+  }
+}
