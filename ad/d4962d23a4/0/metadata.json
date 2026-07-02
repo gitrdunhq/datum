@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "add4962d23a4",
+  "session_id": "a7689a1b-2b53-44ae-a4f2-3415985323fc",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T23:51:03.462229Z",
+  "branch": "fix/audit-unwired-macos-20260702",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/App.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "fad8c68ec20d",
+  "token_usage": {
+    "input_tokens": 19544,
+    "cache_creation_tokens": 256686,
+    "cache_read_tokens": 2701219,
+    "output_tokens": 31118,
+    "api_call_count": 30
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T23:51:03.453742Z",
+    "agent_lines": 3,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 17,
+    "human_removed": 24,
+    "total_committed": 20,
+    "total_lines_changed": 45,
+    "agent_percentage": 8.88888888888889,
+    "metric_version": 2
+  }
+}
