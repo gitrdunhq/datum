@@ -1,0 +1,1450 @@
+@docs/plans/mega-remediation-20260701.md deepen this plan preexecuttion with aflgenrs
+
+---
+
+why socmant failee. tou need to rate limit
+
+---
+
+they done
+
+---
+
+<task-notification>
+<task-id>w7m3qsre0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/w7m3qsre0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Adversarial pre-mortem fleet on docs/plans/mega-remediation-20260701.md, then edit plan in place" completed</summary>
+<result>{"totalCandidates":37,"confirmedCount":12,"confirmed":[{"packet":"P4 &amp; E4","issue":"P4 (Wave 4, 'parallel to Waves 2-3') and E4 (Wave 5) both edit Record-App/Sources/TheRecord/AppAssemblerBuilders.swift concurrently, but the plan's only cross-wave collision note ('Wave 6 ... after Wave 5 (E4 touches the same assembler)') accounts for Wave 5-&gt;6, not Wave 4-&gt;5.","severity":"high","evidence":"Read of the actual file confirms both citations: P4 targets 'unused meetingDetector AppAssemblerBuilders.swift:227' which is the `let meetingDetector = CalendarAwareMeetingDetector(...)` inside `buildMenuBarVM` (line 227, genuinely never used afterward, matching the packet). E4 targets `AppAssemblerBuilders.swift ~:141` inside `buildMCPProviders` (lines 128-179: KeychainCredentialStore/migrateAccessibilityIfNeeded already at 143-144, GRDBContextCache init at 133-140). Both packets edit the same source file. Wave 4's header says only 'parallel to Waves 2-3' -- nothing in the plan states Wave 5 waits for Wave 4 to finish, and P5/P6 explicitly running LAST in Wave 4's lane means P4 could still be mid-flight or just-landed when Wave 5/E4 starts (since Wave 5 has no stated gate on Wave 4). Two concurrent agents editing the same Swift file in different functions is exactly the 'hidden conflict between packets in different lanes' the lane model assumes away, and it is not the same collision the plan already flagged (E4 vs C1-C3).","suggested_edit":"Add an explicit ordering note under Wave 4 or Wave 5: 'P4 and E4 both touch AppAssemblerBuilders.swift -- P4 must land (commit) before E4 starts, OR run these two specific packets serially even though their lanes are otherwise parallel.' Alternatively, list AppAssemblerBuilders.swift in a cross-lane 'contended files' table at the top of the Orchestration mechanics section so the orchestrator sequences any packet touching it, not just the C-series.","lens":"dependency","verdict":{"real":true,"reasoning":"The defect claim is confirmed. Independent verification shows: (1) P4 genuinely targets AppAssemblerBuilders.swift:227 (the meetingDetector variable), (2) E4 genuinely targets AppAssemblerBuilders.swift ~:141 (MCP provider wiring), both in the same file but different functions. (3) Wave 4 is explicitly labeled \"parallel to Waves 2-3\" with no statement that Wave 5 must wait for it. (4) Wave 5 lacks a lane designation and has no explicit sequencing requirement relative to Wave 4 despite Wave 6 having explicit \"after Wave 5\" gate. (5) The orchestration rule ties serialization to lane membership, but Wave 5's lane is undefined in the plan. This creates genuine ambiguity: either Wave 5 runs in parallel with Wave 4 (file conflict risk on AppAssemblerBuilders.swift), or it runs serially (but this should be documented as clearly as the Wave 6 gate). The reviewer's observation is valid—the plan documents E4↔Wave6 contention but not P4↔E4 contention. The suggested fixes (explicit ordering or cross-file contention table) are appropriate remedies."}},{"packet":"A7 &amp; M3","issue":"A7 (listed under Wave 2/Audio lane) directly edits Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift while M3 (Wave 3/ML lane, declared only 'parallel to Wave 2') edits the init of the class under test, CalendarAwareMeetingDetector.swift, in the same package -- the plan's only mitigation is the vague parenthetical '(Record-ML — coordinate with ML lane)' with no concrete sequencing rule.","severity":"medium","evidence":"Confirmed via direct read: CalendarAwareMeetingDetector.swift line 32 is exactly `Task { await self.start() }` (M3's target) and line 45 has the `isArmed` accessor A7's polling helper depends on. A7's packet text says its ML-side sleep-to-polling fix is done 'in ... CalendarAwareMeetingDetectorTests.swift:130,166,201 (Record-ML — coordinate with ML lane)' -- but A7 itself is scheduled in Wave 2, not Wave 3, and Wave 2/Wave 3 are declared to run in parallel. If the A7 agent (Audio lane) edits the ML test file concurrently with the M3 agent (ML lane) changing the actor's task-lifecycle behavior it tests, either agent's RED/GREEN cycle can be invalidated mid-flight by the other's concurrent edit, and 'coordinate with ML lane' is not an enforceable scheduling constraint in the orchestration mechanics section.","suggested_edit":"Move the Record-ML portion of A7 (CalendarAwareMeetingDetectorTests.swift polling fix) explicitly into the Wave 3/M-series list (e.g. as M3b, sequenced immediately after M3) instead of leaving it as a parenthetical inside an Audio-lane packet, so the same lane that owns CalendarAwareMeetingDetector.swift also owns its test's concurrent-edit risk.","lens":"dependency","verdict":{"real":true,"reasoning":"The plan has a genuine cross-lane coordination defect. Packet A7 (Wave 2, Audio lane) is scheduled to edit Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift while packet M3 (Wave 3, ML lane) simultaneously modifies the class under test (CalendarAwareMeetingDetector.swift init/deinit), with waves running in parallel. A7's polling fix depends on the isArmed accessor and detector initialization behavior; M3's task-lifecycle changes could affect this. The plan acknowledges the coordination need with \"(Record-ML — coordinate with ML lane)\" but provides no explicit sequencing rule in the orchestration mechanics section. This creates a test isolation risk where one agent's RED/GREEN cycle could be invalidated by the other's concurrent edits. The fix (moving A7's ML-side work to M3b in Wave 3) is appropriate because it consolidates ownership in the ML lane and makes sequencing explicit."}},{"packet":"A2/A3/A4","issue":"A2, A3, and A4's file citations (CoreAudioTapCaptureActor.swift:97-101, :265, :95-101) are pre-A1 line numbers; A1 runs first in the same serial lane and inserts new observer-registration/rebuild code into the same file, but the plan never flags that these citations will drift once A1 lands and commits, nor instructs later packets in the lane to re-derive line numbers from a fresh read rather than trust the packet spec verbatim.","severity":"medium","evidence":"Direct read of CoreAudioTapCaptureActor.swift confirms the citations are currently accurate (WAVWriter created at lines 97-101 outside the `do` block starting at 105, matching A2/A4; `cleanup()`/duration-from-wall-clock at line ~267-271 near the cited :265, matching A3). A1's own description requires adding an `.AVAudioEngineConfigurationChange` observer registration (likely near `start()`, before line 94) and removing it in `cleanup()` (called at line 273) -- both insertions shift subsequent line numbers. The ground rules say 'Verify first: confirm defect before fixing' but do not specifically call out that A2-A4's hardcoded line numbers are a pre-A1 snapshot that will be stale by the time those agents run, even though Wave 2 is otherwise correctly marked SERIAL to avoid true file conflicts.","suggested_edit":"Add a note to the Wave 2 header: 'Line numbers cited in A2-A7 are taken from pre-A1 main and will shift once A1 commits -- each agent must re-read the current file and locate the described code by content/symbol name, not by the literal line numbers in this packet.'","lens":"dependency","verdict":{"real":true,"reasoning":"The claim is verified as a genuine defect. Analysis confirms: (1) A3 and A4 citations in the plan (lines ~265 and 95–101) are accurate as measured against pre-A1 main; (2) A1 will add 15-20+ lines of observer registration code within the start() method (after line 165, following the MicCaptureActorRouteChange pattern of ~60 lines); (3) These insertions will shift all subsequent code, including the stop() function (currently line 220) and citations within it; (4) The plan does NOT warn A3-A7 agents to re-read the file or verify line numbers after A1 commits; (5) The SERIAL lane means A1 commits before A3-A7 run, making hardcoded line citations stale. The suggested fix—adding a Wave 2 header note instruc
+... (truncated 18663 chars, full result in /private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/w7m3qsre0.output)</result>
+<diagnostics>Per-agent results: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-the-record-suite/7c35d465-d5ef-477e-a940-9baf3548f83d/subagents/workflows/wf_288b7efa-929/journal.jsonl — one {"type":"result",...} line per completed agent with its full return value.
+If the result above is empty or unexpected, Read this file BEFORE diagnosing — do not assume agents returned non-empty results.
+To re-run with edited post-processing: Workflow({scriptPath: '/Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-the-record-suite/7c35d465-d5ef-477e-a940-9baf3548f83d/workflows/scripts/mega-remediation-premortem-wf_288b7efa-929.js', resumeFromRunId: 'wf_288b7efa-929'}) — agents whose (prompt, opts) are unchanged replay from cache.</diagnostics>
+<failures>[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:citation] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:dependency] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}</failures>
+<usage><agent_count>43</agent_count><agents_done>18</agents_done><agents_error>25</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result><subagent_tokens>730625</subagent_tokens><tool_uses>210</tool_uses><duration_ms>701152</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a8d078535cad3d94b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a8d078535cad3d94b.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1 canary: V5 #205 symlink escape" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed cleanly — only the intended test file was staged and committed. The pre-existing unrelated dirty working tree (theme files, presentation views, etc.) is untouched, consistent with the ground rule to never touch theme files.
+
+## Report — Packet V5 (#205 symlink escape)
+
+1. **Guard status**: Confirmed present on main. The trailing-slash symlink-escape guard is at `Record-ML/Sources/MLInfrastructure/MCP/ObsidianProvider.swift:34` (comment at 32–33, not exactly 32–34 as cited in plan): `guard fileURL.resolvingSymlinksInPath().path.hasPrefix(vaultRoot + "/") else { continue }`. Correctly rejects both symlinks resolving outside the vault and sibling-directory-prefix attacks (`vaultRoot + "/"` prevents `/a/vault` matching `/a/vault-evil`).
+
+2. **Existing tests**: `Record-ML/Tests/Unit/ObsidianProviderTests.swift` already had two tests targeting this (added under "Slice E: E4 — symlink escape", lines 195–228 pre-edit): `vault enumeration rejects symlinks outside vault` and `guard uses trailing slash to prevent sibling-prefix escape`. Both are **source-inspection only** (grep the source text for strings like `"hasPrefix"`/`"vaultRoot + \"/\""`) — they'd pass even if the guard were logically broken, violating TDD-002. No true behavioral test existed, so I added one.
+
+3. **New test added**: `symlinked file resolving outside vault is skipped` — creates a real symlink inside a temp vault pointing to a file outside it containing a unique search term, calls `query()`, asserts `results.isEmpty`. GREEN result: 14/14 tests passed (full `ObsidianProviderTests` suite). RED attempt (temporarily neutering the guard to `guard true || ...`) was blocked by the sandbox's auto-mode classifier as "Create RCE Surface" — it correctly refused to run tests against a live-disabled security guard. I restored the file immediately (confirmed zero diff via `git diff --stat`) and instead verified analytically: without the guard, the enumerator would traverse the symlink, resolve it, read the outside file's content, match the search term, and append it to `results`, which would fail `results.isEmpty` — so the test is a real RED/GREEN discriminator, verified by inspection rather than execution.
+
+4. **Callers found** (via `tokensave_search` literal match): only production caller is `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:163` inside `buildMCPProviders`, wrapped by `CachingContextProvider` (part of Wave 5/E4, out of scope here — not touched). All other callers are test files.
+
+5. **Commit**: `89b83c97` — `test(record-ml): behavioral regression for symlink escape guard (#205)`. Only `Record-ML/Tests/Unit/ObsidianProviderTests.swift` changed (+25 lines); `ObsidianProvider.swift` untouched.
+
+6. **Verdict**: **ALREADY_FIXED** — guard was already correct and shipped on main; added a missing behavioral regression test to close the coverage gap the plan flagged.</result>
+<usage><subagent_tokens>68801</subagent_tokens><tool_uses>18</tool_uses><duration_ms>171480</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a35a24c08773f2dc4</task-id>
+<tool-use-id>toolu_012gB575debqEmDRRBWmY5ew</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a35a24c08773f2dc4.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V1 #190 AEC truncation" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No changes needed — verify-and-close confirmed the fix and its test coverage are already on main.
+
+1. **Bug status**: ALREADY_FIXED. `AECProcessorActor.process(mic:farEnd:)` in `Record-Audio/Sources/AudioInfrastructure/AECProcessorActor.swift:125-170` implements the remainder-carry chunk loop exactly as expected: `combined = remainder + mic.buffer.samples` (line 134), full-frame loop with offset cursor (lines 142-158), and `remainder = Array(combined[offset...])` (line 161) carries the sub-frame leftover into the next call rather than discarding it. `stop()` (line 172-178) intentionally clears `remainder` on session end.
+
+2. **Regression coverage already exists**: `Record-Audio/Tests/Unit/AECProcessorActorTests.swift:518-612`, suite `AECProcessorActorChunkingTests` (SAFE-001/BOUND-001). Specifically `totalOutputAcrossTwoCallsEqualsTotalInput()` (lines 528-557) uses exactly the scenario the packet specifies: two 1,365-sample calls (a size that doesn't divide evenly into the 256-sample frame) plus a flush call, asserting `totalOutput == totalInput`. Doc comment on the suite (lines 511-517) explicitly states this test catches "the pre-fix implementation [that] called speex_echo_cancellation once with min(input, frameSize) samples, silently discarding the rest." Additional boundary tests cover exact-multiple, five-full-frames, and empty-input cases.
+
+3. **Test run**: no new test needed — ran existing suite, all GREEN (no RED demonstration performed since this is a pre-existing, already-committed regression test, not one I authored): `swift test --filter AECProcessorActorChunkingTests` → 4/4 passed, including the SAFE-001 1365-sample test in 0.004s.
+
+4. **Callers found** (grep for `.process(mic:`): exactly one production caller — `Record-Presentation/Sources/Presentation/ViewModels/RecordingStateViewModelStreaming.swift:133`. All other hits are within the test file itself.
+
+5. **Commit**: no commit — no files were changed. Both the fix and its regression test were already landed in commit `4f27ba6b` ("feat(epic-30): domain contract audit remediation — 26 findings P0–P3 (#204)"), predating this session's branch.
+
+6. **Verdict**: ALREADY_FIXED.</result>
+<usage><subagent_tokens>64145</subagent_tokens><tool_uses>9</tool_uses><duration_ms>142185</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a6b145e3e859d724f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a6b145e3e859d724f.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V3 #193 WAV deleted on DB fail" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No changes were needed — this packet is verify-and-close only. Report below.
+
+## V3 Report — #193 WAV deleted on DB fail
+
+1. **Bug status: ALREADY FIXED.** Production file is `Record-App/Sources/Business/UseCases/StopAndTranscribeUseCase.swift` (confirmed via issue #193 body citing this exact path). Fixed in commit `4f27ba6b` (feat(epic-30), already an ancestor of current HEAD — no rebase needed). The old code used a `var successfullyPersisted = false` + `defer` that deleted the WAV on *any* failure including storage throws. Current code (lines 72–90) splits the paths explicitly: cancellation (lines 76–85) does `try? FileManager.default.removeItem` + throws; the storage-persist path (lines 87–90) has no defer/cleanup at all — comment states "If saveRecording throws (transient DB error), the WAV is intentionally preserved on disk." Verified by reading the file directly.
+   - Note: a near-identical duplicate class exists at `Record-CrossPlatform-Foundation/Sources/Business/UseCases/StopAndTranscribeUseCase.swift` still containing the old buggy `successfullyPersisted`/defer pattern. This file is **not compiled into any Package.swift target** (only `Sources/Alignment` from that directory is referenced) — confirmed dead/orphaned code, out of scope per issue's exact file citation and the "touch only the listed file" rule. Flagging for a separate see-something issue rather than touching it.
+
+2. **Regression coverage: already exists.** `Record-App/Tests/Unit/Business/StopAndTranscribeUseCaseTests.swift`, test `wavFileIsPreservedWhenSaveRecordingThrows()` (renamed from `strandedWavFileIsDeletedIfStorageFails` in the same fix commit, now under `// MARK: - WAV Preservation on Persistence Failure (F4/#193)`). It configures `MockStorageEngine` to throw on `saveRecording`, then asserts `FileManager.default.fileExists(atPath: tempURL.path) == true` — an exact RED/GREEN discriminator for this defect.
+
+3. **No new test added** (none was missing). Ran existing test to confirm GREEN:
+```
+✔ Test "WAV file is preserved on disk when saveRecording throws (retryable)" passed after 0.002 seconds.
+✔ Suite "StopAndTranscribeUseCase" passed after 0.002 seconds.
+```
+
+4. **Callers found:** composition root `Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift:74` (constructs the use case); runtime caller `Record-Presentation/Sources/Presentation/ViewModels/RecordingStateViewModel+Stop.swift:33` (`stopAndTranscribe.stopAndTranscribe(session:)`); plus extensive test-only callers in `StopAndTranscribeUseCaseTests.swift` and `StopAndTranscribeDualTrackTests.swift`.
+
+5. **No commit** — no source or test changes were required; the file was already fixed and already has regression coverage. Working tree remains clean for this scope (verified via `git status --short` on the three relevant files: clean).
+
+6. **Verdict: ALREADY_FIXED.**</result>
+<usage><subagent_tokens>78625</subagent_tokens><tool_uses>21</tool_uses><duration_ms>207116</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aec3895c4cbc8d76d</task-id>
+<tool-use-id>toolu_013ZF35RAfoZFwDzTTZeg9rV</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aec3895c4cbc8d76d.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V2 #191 ID mismatch" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Clean — no changes needed, nothing to commit.
+
+## Report — Packet V2 (#191 ID mismatch)
+
+1. **Bug status: ALREADY_FIXED.** `Record-App/Sources/Business/UseCases/StartRecordingUseCase.swift:119` generates a single `sessionID = RecordingID.generate()` (comment at `:117-118` explicitly cites "INV-001: AudioFile.id == RecordingSession.id"). That same `sessionID` is threaded to `audioCapture.start(sessionID: sessionID, ...)` at `:127` and to `RecordingSession(id: sessionID, ...)` at `:142` — one ID, two consumers, no divergent `UUID()` generation.
+
+2. **Regression coverage already exists**: `Record-App/Tests/Unit/Business/StartRecordingUseCaseTests.swift:190-211`, test `sessionIDThreadedConsistently`, explicitly labeled "F2/#191: Session ID threading consistency (INV-001)". It starts the use case, captures `session.id`, calls `mockCapture.stop()`, and asserts `audioFile.id == sessionID`. The mock (`MockAudioCaptureEngine.swift:94,126`) stores whatever `sessionID` was passed into `start()` and returns it as `AudioFile.id` in `stop()` — so this is a genuine wiring check, not source inspection.
+
+3. **Discriminator verified empirically** (no test file changes made — existing test proved sufficient): I temporarily reintroduced the bug (changed `RecordingSession(id: sessionID, ...)` → `RecordingSession(id: RecordingID.generate(), ...)`), ran `swift test --filter sessionIDThreadedConsistently` → **RED**: `Expectation failed: (audioFile.id → 35FC27B4...) == (sessionID → 40547F09...)` with message "INV-001 violation...". Reverted the file, reran → **GREEN**: `Test "F2/#191: session ID threaded consistently..." passed after 0.001 seconds.` Working tree confirmed clean afterward (`git status --short` on both files: no output).
+
+4. **Callers found**: one production caller — `Record-App/Sources/TheRecord/AudioSubAssembler.swift:50` (composition root `startUseCase = StartRecordingUseCase(...)`). All other ~50 hits are test-file instantiations across `Record-App/Tests/Unit/Business/*` and `Record-Presentation/Tests/Unit/Presentation/*` (MenuBarViewModel/RecordingState test suites), none of which needed changes.
+
+5. **Commit**: none — no source or test changes were required; the fix and its regression test both predate this packet.
+
+6. **Verdict: ALREADY_FIXED.**</result>
+<usage><subagent_tokens>79110</subagent_tokens><tool_uses>23</tool_uses><duration_ms>505430</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a8546d57a7e642159</task-id>
+<tool-use-id>toolu_01CGE1anM3kiK9oPqhMcruiq</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a8546d57a7e642159.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V4 #194 silent converter errors" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed cleanly. Report below.
+
+## V4 Report — #194 silent converter errors
+
+1. **Behavior exists and works.** Both sites already implement threshold-termination, not silent swallowing:
+   - `ConverterErrorTracker.recordFailure` (`Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorSupport.swift:240-252`) increments a counter; at `failureThreshold` (5, set at `CoreAudioTapCaptureActor.swift:58`) it returns `true`, and the caller at line ~187-224 calls `continuation.finish()`.
+   - `MicTapBridge.handleConverterError` (`Record-Audio/Sources/AudioInfrastructure/MicTapBridge.swift:109-122`) increments `consecutiveConverterFailures`; at threshold (5) it calls `continuation.finish(throwing: error)` directly.
+   Verdict for the underlying defect: **already fixed on main**, no production bug found.
+
+2. **Existing coverage was weak.** `CoreAudioTapCaptureActorSupportTests.swift` tested a duplicated `MockConverterActor` reimplementation of the counting logic, not the real `ConverterErrorTracker` (which was `private` and thus unreachable even via `@testable import`). No test at all existed for `MicTapBridge.handleConverterError`.
+
+3. **Changes made** (test-only, one production line): dropped `private` → default-internal on `ConverterErrorTracker` (`CoreAudioTapCaptureActorSupport.swift:230`) so tests can drive the real class. Rewrote `CoreAudioTapCaptureActorSupportTests.swift` to exercise the real `ConverterErrorTracker` instead of the mock. Added `MicCaptureActorTests.swift` test `micTapBridgeTerminatesStreamAfterThresholdConverterErrors`, which feeds a real `AVAudioConverter` a format-mismatched `AVAudioPCMBuffer` (verified experimentally: deterministically populates the `error` out-param, no crash) 5 times and asserts the stream throws, timeout-guarded at 2s.
+   - RED: temporarily commented out `continuation.finish(throwing: error)` in `MicTapBridge.swift` → test failed cleanly after 2s timeout (`Expectation failed: didThrow`).
+   - GREEN: restored original code → all 16 `MicCaptureActorTests` pass, all 3 `CoreAudioTapCaptureActorSupportTests` pass, full `Record-Audio` suite 166/166 green.
+
+4. **Callers found**: `ConverterErrorTracker(` — only instantiated at `CoreAudioTapCaptureActorSupport.swift:170` (inside `CoreAudioTapCaptureActor`'s tap setup). `handleConverterError(` — only called from `MicTapBridge.process(_:when:)`. `MicTapBridge` itself is constructed by `MicCaptureActor.swift` and `MicCaptureActorRouteChange.swift`.
+
+5. **Commit**: `b2748528` — `test(audio): real regression coverage for converter error threshold termination (#194)` — touches only `CoreAudioTapCaptureActorSupport.swift`, `CoreAudioTapCaptureActorSupportTests.swift`, `MicCaptureActorTests.swift`.
+
+6. **Verdict: ALREADY_FIXED** (regression coverage added, no production defect existed).</result>
+<usage><subagent_tokens>99989</subagent_tokens><tool_uses>40</tool_uses><duration_ms>500599</duration_ms></usage>
+</task-notification>
+
+---
+
+are they kitting token limits we mihjt need to split better
+
+---
+
+<agent-message from="general-purpose">
+### A1 — System tap ignores mid-session sample-rate change (#244)
+
+**Verdict:** FIXED (already committed prior to scope-change; verified clean this pass)
+
+**Commit:** `18292a11` — "fix(record-audio): rebuild system tap converter on mid-session sample-rate change (#244)"
+5 files changed, 294 insertions(+), 54 deletions(-):
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActor.swift` (+5)
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorCleanup.swift` (+8)
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift` (new, +180)
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorSupport.swift` (73 lines refactored)
+- `Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift` (+82)
+
+**File:line evidence:**
+- `CoreAudioTapCaptureActorRouteChange.swift:41` — `handleTapConfigurationChange()`: guards `state == .recording`, re-reads `eng.inputNode.inputFormat(forBus: 0)`, rebuilds `AVAudioConverter` against the new rate, reinstalls tap via `installConverterTap(...)`, restarts engine — reuses existing `streamContinuation`/`wavWriter`/`tapT0` so the session file and timestamp epoch stay continuous.
+- `CoreAudioTapCaptureActorRouteChange.swift:127-134` — defensive second layer inside the tap callback itself: if `inBuffer.format.sampleRate != inputFormat.sampleRate` (buffer's own format disagrees with the converter's assumed rate), it triggers `Task { await self.handleTapConfigurationChange() }` and returns, catching the race where a buffer arrives before the observer-driven rebuild completes.
+- `CoreAudioTapCaptureActorRouteChange.swift:25-34` — `registerRouteChangeObserver(engine:)` subscribes to `.AVAudioEngineConfigurationChange`.
+- `CoreAudioTapCaptureActorCleanup.swift` — cleanup() now also removes this observer, preventing it firing against a torn-down engine.
+
+**Callers found (impact check):**
+- `installConverterTap(...)` has exactly two call sites, both intended by the fix's shared-logic design: `CoreAudioTapCaptureActorSupport.swift:171` (initial `start()` setup path) and `CoreAudioTapCaptureActorRouteChange.swift:72` (rebuild path inside `handleTapConfigurationChange`).
+- `registerRouteChangeObserver` has one caller: `CoreAudioTapCaptureActorSupport.swift:187` (inside `start()`'s setup).
+- No callers outside `CoreAudioTapCaptureActor`'s own extension files — blast radius fully contained to system-tap capture, no cross-layer impact.
+
+**Test RED/GREEN summary:**
+- Verified no stale method-name mismatch between production and test code (coordinator's flagged concern re: `handleTapConfigurationChange`) — grepped both `Sources/` and `Tests/`, names agree exactly (`handleTapConfigurationChange`, `registerRouteChangeObserver`, `installConverterTap`).
+- `swift build` — clean, no errors.
+- `swift test` (full Record-Audio suite) — **173 tests in 28 suites, all passed**, 0 failures. Includes the 82 new lines of A1-specific tests added in this commit (e.g. `"handleTapConfigurationChange is no-op when not recording"` and source-inspection assertions confirming the observer/rebuild wiring).
+- `git status --short -- Record-Audio/` — empty; zero uncommitted changes in the Audio lane. Exactly one commit exists for A1.
+
+**Note:** unrelated dirty files exist in the working tree (`Record-Presentation` theme/view files, `docs/plans/...`, `scripts/gh-comment.sh`) — none touched by or related to A1; left untouched per scope and the "never touch theme files" rule.
+
+Stopping here per updated scope — not starting A2-A7.
+</agent-message>
+
+---
+
+<task-notification>
+<task-id>adb1306d38dc4df83</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/adb1306d38dc4df83.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 2: Audio lane A2 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 173 tests pass, no regressions. There's also a matching WAVWriterConcurrency test "F3/#192: `_totalSamplesWritten` is only incremented inside writeSucceeded guard" that already covers the WAVWriter piece.
+
+## Report
+
+**Verdict: ALREADY_FIXED** — packet A2 was already implemented and committed on this branch as `c70d5b7a` (`fix(record-audio): wire errorHandler into system tap WAVWriter (#192 remainder)`), 3 commits ahead of A1 (`18292a11`), before three more commits landed after it (F27, F11, #223).
+
+**Evidence:**
+- `CoreAudioTapCaptureActor.swift:114-121` (in `start()`): `WAVWriter` is now constructed with `errorHandler: { error in continuation.finish(); capturedLogger.error(...) }`, mirroring `WAVCleanedAudioSink`'s F22 pattern exactly.
+- `WAVWriter.swift:115-135`: write path sets `writeSucceeded = false`; on success sets it `true`; `_totalSamplesWritten += count` only happens inside `if writeSucceeded` (line 133-135) — confirmed no premature/unconditional increment. On failure, `errorHandler?(.writeFailed(...))` fires (line 129).
+
+**Tests (already present, no new test needed):**
+- `CoreAudioTapCaptureActorTests.swift:268` `startWAVWriterHasErrorHandler` — source-inspection discriminator (justified: reaching `start()` requires real CoreAudio hardware), verified GREEN via `swift test --filter startWAVWriterHasErrorHandler`.
+- `WAVWriterRaceTests.swift` (WAVWriterConcurrency suite) — "F3/#192: `_totalSamplesWritten` is only incremented inside writeSucceeded guard" — also GREEN.
+- Full suite: `swift test` → 173 tests, 28 suites, all passed, no regressions.
+
+**Impact check:** `start(sessionID:configuration:)` (`CoreAudioTapCaptureActor.swift:84`) is the only caller-relevant symbol touched; it's called by `AudioCaptureEngine` conformers' consumers (recording session orchestration) — no other code touches the `WAVWriter` construction site.
+
+No code changes made — nothing left to commit for this packet.</result>
+<usage><subagent_tokens>50785</subagent_tokens><tool_uses>10</tool_uses><duration_ms>58108</duration_ms></usage>
+</task-notification>
+
+---
+
+plewsse keep the plan up to date with what was done and whats remaining
+
+---
+
+<task-notification>
+<task-id>a20caeeb2101d4cfd</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a20caeeb2101d4cfd.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 2: Audio lane A6 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed cleanly on `fix/mega-remediation-20260701`, no other files touched.
+
+## A6 Investigation Report — Silent mic-cleaned WAV (#245)
+
+**(a) Self-cancellation hypothesis: reproduced and confirmed, with RMS numbers.**
+
+Two synthetic-signal tests in `Record-Audio/Tests/Unit/AECSilentOutputInvestigationTests.swift`, both feeding a continuous 440Hz mic sine wave through `AECProcessorActor` for 280 frames (200 warm-up + 80 tail, mirroring the existing R5 fixture's convergence budget):
+
+- **Scenario 1 (silent far-end reference):** tail RMS **0.05102** — healthy, audible output. AEC's basic pass-through when there's nothing to cancel is fine.
+- **Scenario 2 (far-end reference = mic's own signal, no delay):** tail RMS **0.00003**, with the new diagnostic counter reaching **229 consecutive** near-zero-output frames. Output collapses ~1700x relative to scenario 1.
+
+This confirms: if the far-end reference is ever the mic's own signal, Speex correctly (by design) drives output to near-silence. That is correct AEC math given garbage/self-referential input, not a bug in `AECProcessorActor.swift`.
+
+**(b) Root cause outside file scope.** I read `Record-Presentation/Sources/Presentation/ViewModels/RecordingStateViewModelStreaming.swift:106-160` and `RecordingStateViewModelHelpers.swift:15-32` (read-only, not edited). Found **no static code-level aliasing bug**: `nearestSystemFrame()` binary-searches `systemAudioRingBuffer`, which is populated *exclusively* from the `.system`-track stream in `startLiveStream(bufferStream:)` (line 72) — mic frames never enter that buffer. When no system stream is available, it correctly falls back to `TaggedAudioBuffer.silentFarEnd(matching:)` (all-zero), which scenario 1 proves is safe, not the silence bug. If self-cancellation is the real-world cause, the wiring bug (if any) is further upstream — in how the system-audio capture source itself is sourced/routed (`StartRecordingUseCase.getSystemStream()` / the underlying `AudioCaptureEngine` implementation, e.g. `CoreAudioTapCaptureActor`) — not confirmed by static reading, would need live-device investigation. Recommend a follow-up packet against the audio-capture layer.
+
+**(c) Committed:** one commit `82af454d fix(record-audio): log-once diagnostic guard for silent AEC output (#245)` — touches only `AECProcessorActor.swift` (production guard: tracks consecutive near-zero-output frames despite loud mic input, logs once after ~800ms via `logger.error`, resets on `stop()` and on recovery) and the new test file. `WAVCleanedAudioSink.swift` needed no change (writer chain confirmed healthy per A1-A5). **Needs follow-up:** an issue/packet to investigate the system-audio capture source for possible mic/system aliasing at the ScreenCaptureKit/CoreAudio layer.
+
+**(d) RED/GREEN:** all 4 new tests written and run GREEN on first pass after two build fixes (OSLog string concatenation via `+` doesn't compile — combined into single interpolated literals; `#expect` comment argument can't be built via `+` either — same fix).
+
+**(e) Full Record-Audio suite: 177/177 tests passed, 29/29 suites passed.** SwiftLint clean (0 violations) on both touched files after renaming the test type to fit the 40-char limit and replacing a 3-tuple return with a named `SineFixtureResult` struct.</result>
+<usage><subagent_tokens>125405</subagent_tokens><tool_uses>51</tool_uses><duration_ms>529939</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a277819404aa6bd04</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a277819404aa6bd04.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 2: Audio lane A7 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**Verdict: FIXED**
+
+**Commit:** `465c5913dce71cde1456e2f0919c97738b8a4636` (branch `fix/mega-remediation-20260701`)
+
+**Sleeps replaced:**
+- `Record-Audio/Tests/Unit/AudioSessionDetectorTests.swift:41` — `try await Task.sleep(for: .milliseconds(100))  // let start debounce (50ms) fire` → `try await waitForEvent(timeout: .seconds(2)) { await detector.isActive() }`
+- `Record-Audio/Tests/Unit/AudioSessionDetectorCoreAudioTests.swift:126` — `try await Task.sleep(for: .milliseconds(150))  // let start debounce (50ms) fire` → same pattern
+
+Both were the only sleeps in these two files that guessed at a debounce settling duration. The other `Task.sleep` calls in these files (brief-activation-suppressed, self-recording-suppressed tests) assert *absence* of a state change within a debounce window — there's no condition to poll for there, so they were left untouched (out of scope, and converting them would change test semantics, not fix flakiness).
+
+**New helper:** `Record-Audio/Tests/Unit/WaitForEvent.swift` (new file, internal visibility so both test files use it) — `waitForEvent(timeout:pollInterval:_:)` computes a `ContinuousClock` deadline once, polls an async `Bool` predicate every 10ms by default, throws `WaitForEventTimeoutError` if the deadline passes first. Mirrors the `isArmed` poll-loop pattern from `CalendarAwareMeetingDetectorTests.swift` (Phase 0, Record-ML) rather than duplicating it — no pre-existing generic `waitForEvent` helper existed anywhere in the repo (only the unrelated, already-duplicated `waitForEvents` plural/AsyncSequence collector, which was left alone).
+
+**RED/GREEN:** Temporarily set `timeout: .milliseconds(1)` on the `AudioSessionDetectorTests` call site — test failed with `Caught error: WaitForEventTimeoutError()` as expected, proving the helper actually enforces its deadline rather than being a no-op. Reverted to `.seconds(2)`.
+
+**Full suite:** `cd Record-Audio &amp;&amp; swift test` → 177 tests / 29 suites, all passed (0.21s). The two fixed tests now also run faster (they no longer pay the fixed 100/150ms tax — they proceed as soon as `isActive()` flips true, ~50-60ms).</result>
+<usage><subagent_tokens>88845</subagent_tokens><tool_uses>25</tool_uses><duration_ms>303638</duration_ms></usage>
+</task-notification>
+
+---
+
+how many waves are there
+
+---
+
+<task-notification>
+<task-id>a5bc4d77bcbb6a0c0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a5bc4d77bcbb6a0c0.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M1 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report
+
+**Verdict: FIXED (bug confirmed present, now resolved).**
+
+Commit: `228f1324be0df3b331f43904c377ed7a61914c8b` — `fix(record-ml): persist word_timings through diarization upsert (#246)`
+
+**Evidence of the bug (pre-fix):**
+- `GRDBSQL.swift:101-108` — `upsertSegment`'s `ON CONFLICT DO UPDATE` set text/speaker_id/start_time/end_time/confidence but omitted `word_timings` entirely.
+- `GRDBStorageActor+Diarization.swift:39-44` — `attachDiarization`'s write loop never referenced `seg.wordTimings` at all; the INSERT had 7 placeholders/values, no 8th for word_timings.
+
+**Fix:**
+- `GRDBSQL.swift:101-108` — added `word_timings` to the INSERT column list/values and `word_timings = excluded.word_timings` to the ON CONFLICT clause.
+- `GRDBStorageActor+Diarization.swift:33,40-46` — added a `JSONEncoder`, and per-segment encode `seg.wordTimings` to a `String?` (nil stays nil → binds as SQL NULL), passed as the new 8th bind parameter.
+
+**RED/GREEN:** Wrote `Record-ML/Tests/Unit/Storage/GRDBWordTimingsUpsertTests.swift` with two `@Test`s: (1) attach diarization twice with different word_timings on the same segment index → second read must return the second timings, not stale first; (2) attach with non-nil then nil word_timings → stored value must become NULL. RED run confirmed both failed pre-fix (`afterFirst.first?.wordTimings → nil`, i.e. never written at all — worse than the ticket's stale-data framing, it was write-side dead code). Post-fix, both pass.
+
+**Impact check:** `attachDiarization` is called only via `DiarizationWriteRepository` protocol conformance; production caller is `DiarizeMeetingUseCase` (Business layer, `Record-CrossPlatform-Foundation`/`Record-Foundation`). `upsertSegment` has no other callers — used solely inside `attachDiarization`'s loop.
+
+**Test suite:** Full `Record-ML` suite: 317/317 passed on the clean run confirming the fix; one intermittent flake (`MCPLifecycleTests` FD-leak-count assertion, unrelated file) reproduced independently as flaky (passes in isolation) — not caused by this change.</result>
+<usage><subagent_tokens>76207</subagent_tokens><tool_uses>47</tool_uses><duration_ms>480737</duration_ms></usage>
+</task-notification>
+
+---
+
+can you time it?
+
+---
+
+<task-notification>
+<task-id>a85bf5a0e5095bcda</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a85bf5a0e5095bcda.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M2b only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed. Task complete.
+
+## Report
+
+**Commit:** `b1f5b108` — `fix(record-ml): cancel orphaned detached task on diarize timeout (#195)`
+
+**RED test failure mode:** New test `timeoutCancelsOrphanedDetachedTask` in `Record-ML/Tests/Unit/FluidDiarizationPluginTimeoutTests.swift` failed with `Expectation failed: wasCancelled` — after `diarize()` threw its `inferenceFailed` timeout error (50ms timeout), the injected test-inference closure's `Task.sleep(for: .seconds(5))` kept running uninterrupted; the cancellation observer flag never flipped within a 500ms grace window. This also exposed a live regression in the pre-existing `1ms timeout fires` test (elapsed jumped to 10s) once the test seam was routed through the same buggy `Task.detached` pattern used by the real path — confirming the bug was reproducible, not a test artifact.
+
+**Root cause:** `FluidDiarizationPlugin.swift` (originally around `:167–188`, now `runDiarization` at `:174–193`) wrapped `performCompleteDiarization` in a bare `Task.detached { }.value` inside `withTimeout`. Unstructured detached tasks aren't children of the caller, so `withTimeout`'s internal `group.cancelAll()` on timeout never propagated cancellation into the detached task — it kept running as an orphan even after `diarize()` had already thrown to its caller.
+
+**Fix:** Extracted a shared `runDetached&lt;T&gt;(timeout:operation:)` helper (`:204–214`) used by both `runDiarization` and the `testInferenceFunction` test seam in `diarize()` (`:117–129`). It retains the `Task.detached` handle and wraps the await in `withTaskCancellationHandler`, explicitly calling `task.cancel()` in `onCancel` — mirroring the cancellation-forwarding idiom used in `MCPSummarizationPlugin.swift`'s `summarize()`. Fixed the misleading doc comment at `runDiarization` (`:164–173`), which previously claimed the non-Sendable `DiarizerManager` reference "stays within a single isolation domain" — it doesn't; it's escaped via `nonisolated(unsafe)` into the detached task for the call's duration, and the comment now says so.
+
+**GREEN:** All 4 tests in `FluidDiarizationPlugin timeout` suite pass, including the new test (0.586s) and the pre-existing 1ms-timeout test (now 0.002s instead of 10s).
+
+**Full suite:** `swift test` in `Record-ML` — 318 tests in 50 suites, all passed.</result>
+<usage><subagent_tokens>82184</subagent_tokens><tool_uses>32</tool_uses><duration_ms>350868</duration_ms></usage>
+</task-notification>
+
+---
+
+/goal the goal is to finish all the waves and tasks
+
+---
+
+<task-notification>
+<task-id>a3ea6d4098eedcd54</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a3ea6d4098eedcd54.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M3 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## M3 complete — commit `4b388e98`
+
+**Current file state found:** `isArmed` (line 45, `var isArmed: Bool { armedMeeting != nil }`) was already present from Phase 0 and is untouched. Confirmed by diff — only init, `start()`, and teardown were modified.
+
+**Root cause:** `init` fired `Task { await self.start() }` with no stored handle. Worse, `start()` (a sync method) internally spawned a *second* untracked `Task { await refreshCalendar() }` (line 53) — the real leak, since `refreshCalendar()` awaits `calendar.upcomingMeetings(within:)` and could hang/run long with no way to cancel it from `deinit` (which only cancelled `timerTasks`, `calendarListenerTask`, `rawAudioListenerTask`, `unarmedAudioListenerTask`).
+
+**RED test:** Added `shutdownCancelsInFlightInitTask` to `CalendarAwareMeetingDetectorTaskHandleTests.swift`, using a new local `SlowCalendarEngine` mock whose `upcomingMeetings` sleeps 60s and signals via AsyncStreams when started/cancelled. First run failed at compile time (`value of type 'CalendarAwareMeetingDetector' has no member 'shutdown'`) — correct RED reason: the API didn't exist yet.
+
+**Fix (`CalendarAwareMeetingDetector.swift`):** `start()` is now `async` and directly `await`s `refreshCalendar()` (no nested detached Task) so cancellation propagates cooperatively. A stored `initTask` property is assigned from a new actor-isolated `launch()` method (Swift forbids writing isolated storage from a self-capturing closure literal inside `init` itself, so `init` does a trivial synchronous hop into `launch()`, which stores the real handle — same pattern as the existing listener tasks). Added public `shutdown()` cancelling all task handles; `deinit` now also cancels `initTask`.
+
+**GREEN:** New test passes in 0.001s (proves cancellation is immediate, not waiting out the 60s mock sleep). Full Record-ML suite: **319 tests, 50 suites, all passed**, no regressions.</result>
+<usage><subagent_tokens>84251</subagent_tokens><tool_uses>27</tool_uses><duration_ms>360350</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a1e23318142a768dd</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a1e23318142a768dd.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M3b only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>M3b complete. Commit `61cf724d`.
+
+**Helper approach:** Added `Record-ML/Tests/Unit/WaitForEvent.swift` — a near-duplicate of `Record-Audio/Tests/Unit/WaitForEvent.swift` (separate SwiftPM targets can't share test code), same `waitForEvent(timeout:pollInterval:_:)` signature polling a `ContinuousClock` deadline, throwing `WaitForEventTimeoutError`.
+
+**Polling condition:** Rather than adding new state to production code (disallowed), I reused `MockCalendarEngine.upcomingMeetingsCalled` — an existing public actor-isolated flag already flipped inside `upcomingMeetings(within:)` before either returning or throwing. This is the direct analog of Phase 0's `isArmed` pattern: poll pre-existing observable state instead of guessing a sleep duration.
+
+**Sleeps converted (3):**
+- Line ~130 `unarmedPlusAudioDebounced` — "let calendar load" (50ms) → `waitForEvent { await calendar.upcomingMeetingsCalled }`
+- Line ~166 `allDayNeverArmed` — "let calendar load" (100ms) → same poll
+- Line ~201 `calendarDeniedFallsBackToAudio` — "let calendar load" (100ms) → same poll (flag flips true even on the error path, verified by reading `upcomingMeetings`)
+
+**Left alone:** The existing `isArmed` poll loop in `armedPlusAudioNoDebounce` (already fixed by Phase 0, commit `79c82da1`) — untouched, out of scope. No absence-of-change sleeps existed in this file to preserve.
+
+**Results:** `--filter CalendarAwareMeetingDetector` → 11/11 passed. Full `swift test` → 319 tests, 50 suites, all passed.</result>
+<usage><subagent_tokens>87054</subagent_tokens><tool_uses>27</tool_uses><duration_ms>389086</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a5468165a85db8e70</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a5468165a85db8e70.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M4a only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Commit succeeded (a pre-commit hook warning about a missing `test_ratchet.py` fired but failed open, not blocking).
+
+## Final Report
+
+**Verdict: FIXED** (source was already correct; test coverage was missing)
+
+- **Source evidence:** `Record-ML/Sources/MLInfrastructure/Summarization/MCPSummarizationPlugin.swift:190-194` — the `catch` block for `JSONSerialization.jsonObject` already logs the real underlying error (`logger.error("MCP response JSON parse failed: \(String(reflecting: error), privacy: .public) — raw: \(raw, privacy: .private)")`) and rethrows `SummarizationError.generationFailed(underlying: error)` with the actual error attached — not silent, not raw-bytes-only. This was likely fixed by earlier M1/prior work on this branch.
+- **Gap found:** the only existing test for this path (`JSONSerialization throws on malformed input`) merely proved `Foundation.JSONSerialization` throws on bad input — it never exercised `MCPSummarizationPlugin.summarize()` itself, so a regression (e.g. reverting to `underlying: nil`) would have gone undetected.
+- **Fix applied:** added `summarizeSurfacesUnderlyingParseErrorOnMalformedResponse` (`Record-ML/Tests/Unit/MCPSummarizationPluginTests.swift:167-190`) — spins up a real `/bin/sh` fake MCP subprocess emitting malformed JSON on stdout, calls `summarize()`, and asserts the thrown `SummarizationError.generationFailed`'s `underlying` is non-nil. Verified the test actually catches a regression by temporarily reverting the source's catch block to `underlying: nil` — test failed as expected — then restored source via `git checkout`.
+- **Test results:** targeted suite 11/11 pass; full `Record-ML` suite: 320 tests, 50 suites, all pass.
+- **Commit:** `684d63cae3c85660d4cba57ea2c8f7dba370db69` — `fix(record-ml): log JSON parse error in MCPSummarizationPlugin (F13)`, touches only the test file.</result>
+<usage><subagent_tokens>58249</subagent_tokens><tool_uses>17</tool_uses><duration_ms>1256642</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a58aa1197a3d9d733</task-id>
+<tool-use-id>toolu_01EeoFYk5EL5jDKj7HywCd45</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a58aa1197a3d9d733.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M4b only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: CONFIRMED
+
+**Throw behavior** — `Record-ML/Sources/MLInfrastructure/Summarization/SummarizationPrompts.swift:48`, inside `loadTemplate(_:)`: when `Bundle.module.url(forResource:withExtension:subdirectory:)` fails to resolve, the function throws `SummarizationError.missingTemplate(name: "\(name).md")`. Grepped the entire file for `?? ""` — zero matches; no silent fallback exists anywhere in the load/dispatch path.
+
+**Test** — `Record-ML/Tests/Unit/SummarizationPromptsTests.swift:84-89`, `missingTemplateThrows()`, calls `SummarizationPrompts.loadTemplateForTesting(name: "nonexistent")` (a real test-only shim at source line 59 that forwards to the private `loadTemplate`) and asserts `#expect(throws: SummarizationError.self)`. This is genuine behavioral testing, not source inspection.
+
+**Test run** — `swift test --filter "SummarizationPromptsTests"` (run from `Record-ML/`): all 11 tests passed, including `missingTemplateThrows`.
+
+**Full Record-ML suite** — 320 tests / 50 suites, passed on clean run. One transient failure on first run in an unrelated pre-existing flaky test (`MCPLifecycleTests.swift:127` FD-leak check tracked by issue #228) — reran clean, not related to F14/SummarizationPrompts. No code changes made.</result>
+<usage><subagent_tokens>52914</subagent_tokens><tool_uses>18</tool_uses><duration_ms>136167</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a7662808c0c925d99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a7662808c0c925d99.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M4c only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report
+
+**Verdict: FIXED.** File matched the cited path exactly: `Record-ML/Sources/MLInfrastructure/Calendar/EventStore.swift`.
+
+**Root cause (line ~30-38, `LiveEventStore.isPermissionError`):** the classifier returned `true` (→ mapped to `.accessDenied`) for *any* error whose domain was `NSOSStatusErrorDomain` or `NSCocoaErrorDomain`, not just genuine permission denials. Those domains cover a huge range of unrelated system failures (transient DB errors, file errors, etc.), so any such failure was misreported as "access denied," pointing users at Settings for problems Settings can't fix.
+
+**Fix:** extracted the mapping into a pure, testable `EventKitErrorMapper` enum (`map`/`isPermissionError`) in the same file. Only `EKErrorDomain` code 100 (`EKErrorCode.notAuthorized`) now maps to `.accessDenied`; everything else maps to the existing `.systemError` case (no new `CalendarError` cases needed — `.systemError` already existed and was underused).
+
+**TDD:** wrote `Record-ML/Tests/Unit/EventStoreTests.swift` (new — no prior test file existed for `EventStore.swift`) with 4 cases. Confirmed RED by `git stash`-ing the fix and running against the original buggy source — failed with "cannot find `EventKitErrorMapper` in scope" (compile-time RED, since the mapper didn't exist pre-fix). Restored the fix (`git stash pop`), reran: all 4 new tests GREEN.
+
+**Full suite:** `cd Record-ML &amp;&amp; swift test` — 324 tests in 51 suites, all passed.
+
+**Commit:** `48ca3f43 fix(record-ml): stop mapping all EventKit failures to accessDenied (F15)`</result>
+<usage><subagent_tokens>63469</subagent_tokens><tool_uses>29</tool_uses><duration_ms>261354</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ae473ec292aebe1aa</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/ae473ec292aebe1aa.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M5 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Verdict: **OBSOLETE_POST_GRDB**.
+
+Evidence: All write paths in the GRDB storage layer (`Record-ML/Sources/MLInfrastructure/Storage/GRDBStorageActor.swift:45`, `GRDBStorageActor+Transcript.swift:47,63`, `GRDBStorageActor+Recording.swift:199,214`, etc.) go through `dbPool.write { db in ... }`, which is GRDB's `DatabaseWriter` transaction API — it wraps the closure in a transaction and automatically rolls back on any thrown error. No code path bypasses `dbPool.write` for raw connection access. `grep` for `ROLLBACK`/`rollback`/`BEGIN`/`COMMIT`/`TRANSACTION` across `Record-ML/Sources/MLInfrastructure/Storage/` (including `GRDBSQL.swift`, which centralizes all SQL) returns zero matches — no manual transaction management exists anywhere in the current storage layer.
+
+Note: `DuckDBCommandServer.swift` and `DuckDBCommandServerValidation.swift` are still present but only reference each other and `AdminExecutable.swift` — they appear to be dead/leftover DuckDB-era files unrelated to the storage write path (out of scope for this packet; not flagged as the F12 gap).
+
+Recommendation: Close F12 as obsolete — GRDB's built-in rollback-on-throw fully supersedes the manual ROLLBACK-logging concern from the DuckDB era. No code changes made.</result>
+<usage><subagent_tokens>45565</subagent_tokens><tool_uses>6</tool_uses><duration_ms>40571</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>af4a1fc0e0ccc3c40</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/af4a1fc0e0ccc3c40.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M6 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No pending changes to this file/test on the branch — clean.
+
+## Final Report
+
+**Verdict: ALREADY_FIXED — no commit.**
+
+**Evidence:** `Record-ML/Sources/MLInfrastructure/Speaker/JSONSpeakerProfileStore.swift:107`, inside `persist(_:)`, the sole write call is:
+```swift
+let result = Result { try data.write(to: url, options: .atomic) }
+```
+`git blame` shows `.atomic` was introduced in commit `52219e75d` (2026-05-24), well before this remediation branch — this is not new work, just a pre-existing correct implementation. Foundation's `Data.write(to:options: .atomic)` on Darwin writes to a temp file in the same directory then performs an atomic rename over the target, which is precisely the temp-file-then-rename semantics F23 requires. There is only one write call site in the file (`load()` only reads via `Data(contentsOf:)`), so no other path needs hardening.
+
+**Tests:** No RED test was needed since behavior is already correct; existing `JSONSpeakerProfileStoreTests.swift` (2 tests, source-inspection style covering off-pool I/O for B5) is unrelated to F23 and untouched.
+
+**Action taken:** none — verified via Read + git blame only. Working tree for both files is clean; no commit created. Did not run the full suite since no code changed. Recommend the remediation plan mark F23/M6 as already-resolved and move on.</result>
+<usage><subagent_tokens>43907</subagent_tokens><tool_uses>5</tool_uses><duration_ms>35507</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a62aa122ddc8ccd78</task-id>
+<tool-use-id>toolu_01J7cfMnrqrudtzJZy7ak6GM</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a62aa122ddc8ccd78.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M8a only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## M8a — F24: Complete
+
+**Verdict**: Fixed (partial pre-existing correctness). Commit `bd88b5a2`.
+
+**Root cause**: The packet's stated location for `WhisperKitProPlugin.swift` (Record-ML) was wrong — it actually lives at `Record-Pro/Sources/RecordPro/Transcription/WhisperKitProPlugin.swift`. On inspection:
+
+- `Record-ML/Sources/MLInfrastructure/Transcription/WhisperKitPlugin.swift:219-224` — already correctly reads `TimeoutConfig.whisperKitInference` for both the `withTimeout` wrapper and the reported error duration. No change needed.
+- `Record-Pro/Sources/RecordPro/Transcription/WhisperKitProPlugin.swift:191-195` (line numbers shifted from packet's `~195`) — the `withTimeout` call correctly used `TimeoutConfig.whisperKitInference`, but the `catch is TimeoutError` branch hardcoded `TranscriptionError.timeout(duration: 300)`, so the reported error duration would silently drift from the actual configured timeout if `TimeoutConfig.whisperKitInference` (`Record-Foundation/Sources/Domain/Config/TimeoutConfig.swift:7`) ever changed.
+
+**Fix**: Mirrored the existing `WhisperKitPlugin.swift` pattern — compute duration from `TimeoutConfig.whisperKitInference.components` instead of the literal `300`.
+
+**Tests**: Added source-inspection RED tests to `Record-Pro/Tests/Unit/Transcription/WhisperKitProPluginWordTimingTests.swift` (matching the existing D6 pattern in `WhisperKitPluginTests.swift`) — confirmed RED against hardcoded literal, GREEN after fix. RecordProTests: 23/23 pass. Full `Record-ML` suite: 324/324 pass (flaky `MCPLifecycleTests` #228 passed this run, no rerun needed).</result>
+<usage><subagent_tokens>62781</subagent_tokens><tool_uses>30</tool_uses><duration_ms>317179</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a04c585d3ae23ba02</task-id>
+<tool-use-id>toolu_01AaonJkbJo3JS17p1MxW94f</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a04c585d3ae23ba02.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 3: ML lane M8b only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>AppleFoundationModelsPlugin.swift is not in this branch's working diff — meaning it hasn't been touched yet, and confirms it's unmodified from main. The file already has the correct fix.
+
+Confirmed ALREADY_FIXED, no commit made. No code or test changes needed.
+
+**Verdict:** ALREADY_FIXED — no commit.
+
+**Evidence:** `Record-ML/Sources/MLInfrastructure/Summarization/AppleFoundationModelsPlugin.swift:59` already reads:
+```swift
+logger.info("CHECKPOINT C: building Foundation Models prompt — \(transcript.count, privacy: .private) chars")
+```
+`git blame -L 59,59` shows this line was written in commit `4f27ba6b` ("feat(epic-30): domain contract audit remediation — 26 findings P0–P3 (#204)", 2026-06-13) — predating this remediation branch. The current `fix/mega-remediation-20260701` branch's diff shows no changes to this file, confirming it was never touched here.
+
+The only other privacy-relevant logs in the file are consistent with codebase convention: line 100 (`errDesc` from a failed generation) is `.private`; lines 91 and 111 (elapsed time, meetingType enum) are `.public`, which is appropriate since neither is transcript-derived content.
+
+No test file exists for `AppleFoundationModelsPlugin` (`find Record-ML/Tests -iname "*AppleFoundationModels*"` → empty), and none was needed since no fix was made. No test run performed since no code changed; nothing to make GREEN. Reporting ALREADY_FIXED per packet instructions — no commit created, branch left clean for this file.</result>
+<usage><subagent_tokens>43167</subagent_tokens><tool_uses>5</tool_uses><duration_ms>36431</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a1540f2ca9aa50de1</task-id>
+<tool-use-id>toolu_015EmkdmuQovAx63gQaBu4X8</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a1540f2ca9aa50de1.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P1 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 12 SearchViewModelTests pass, GREEN, including the two F7 tests that exercise exactly this packet's requirements.
+
+## Verdict: ALREADY_FIXED — no commit
+
+**Evidence:**
+
+`Record-Presentation/Sources/Presentation/ViewModels/SearchViewModel.swift` already implements the required behavior in both search-execution paths:
+
+- `scheduleSearch()` (lines 89-110): clears `searchError = nil` at the start of each new search attempt (line 91, before the debounce sleep), catches `UserFacingError` distinctly (line 102-104), and has a catch-all branch (lines 105-109) that logs via `logger.error("Search failed with unexpected error: \(error, privacy: .private)")` and sets `searchError = StorageError.searchFailed(underlying: error)` — a generic, non-nil, user-facing error.
+- `invalidateAndResearch()` (lines 57-78): identical pattern — clears error on success, sets `UserFacingError` directly, or wraps generic errors via `StorageError.searchFailed`.
+
+`Record-Presentation/Tests/Unit/Presentation/SearchViewModelTests.swift` already contains an "F7: Generic catch sets searchError" section (lines 150-187) with exactly the two tests the packet calls for:
+- `genericErrorSetsSearchError` — throws `PlainError` (non-`UserFacingError`), asserts `searchError != nil`
+- `clearingSearchTextResetsError` — asserts the error clears when `searchText` is reset
+
+The supporting `MockStorageEngine.setErrorToThrow(_:)` (in `Record-App/Tests/Unit/Business/Mocks/MockStorageEngine.swift:269`, part of the `TestMocks` target) also already exists.
+
+`git diff HEAD` shows zero uncommitted changes to either file — this was already landed, most likely in commit `f759a31a "feat(beta-ga): 14 BETA/GA issues"`.
+
+Ran `swift test --filter "SearchViewModelTests"` from repo root: **12/12 passed**, including both F7 tests. No changes made, no commit created per instructions.</result>
+<usage><subagent_tokens>76125</subagent_tokens><tool_uses>19</tool_uses><duration_ms>136612</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>af0416921a0564b08</task-id>
+<tool-use-id>toolu_015bhbLbCgcwAMdUfNwX5dqX</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/af0416921a0564b08.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P2 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: Done — GREEN, committed as `c33173f4`
+
+**File:** `Record-App/Sources/Business/UseCases/StreamingTranscriptionUseCase.swift`
+**Tests:** `Record-App/Tests/Unit/Business/StreamingTranscriptionUseCaseProducerTests.swift`
+
+**Root cause / fix:** Both `transcribeStream` overloads duplicated an ~80-line per-buffer loop (transcribe call, empty/whitespace filter, consecutive-dedup, error handling, capture-stream failure handling). The duplication had already drifted: the single-model overload (old L136-141) checked `continuation.yield(...)` for `.dropped` and logged a warning on buffer overflow; the dual-model overload (old L250-255) did not — segments silently dropped from the full `bufferingNewest(32)` buffer with zero signal on that path.
+
+Extracted the shared logic into `private static func runTranscriptionLoop(stream:modelId:transcription:logger:continuation:errorLogSuffix:)` (new file, ~L179-268), called from both overloads. Only what genuinely differs stayed inline: model-loading strategy (single load-with-fallback-to-isReady vs. preferred/fallback load-and-retry) and the finish-log wording. An `errorLogSuffix` parameter (`" (fallback overload)"`) preserves the exact original per-chunk error log text for each call site. Both overloads now get the dropped-yield warning — the drift is fixed as a byproduct of the extraction.
+
+**Duplication removed:** ~140 lines of near-duplicate loop logic collapsed into one function used by both call sites (2 inline copies → 1 shared + 2 seven-line call sites).
+
+**TDD:** Confirmed existing 29 tests already covered both overloads' functional behavior (dedup, empty-filter, error surfacing, cancellation, isFinal propagation) but had zero coverage for the dropped-yield logging asymmetry. Added a source-scan regression test (`droppedYieldWarningIsCentralizedAndSharedByBothOverloads`) verifying RED against pre-refactor source (no shared helper exists → fails) and GREEN post-refactor (helper found, called ≥3 times: 1 def + 2 call sites). Verified RED by stashing just the source change and running the test standalone, then restored and confirmed all 31 tests pass, including the new one, run from repo root per the `swift test --filter` convention (no `cd` into subpackage).</result>
+<usage><subagent_tokens>122094</subagent_tokens><tool_uses>34</tool_uses><duration_ms>554305</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aa9343adce00920dc</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aa9343adce00920dc.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P3 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report
+
+**F20 (rawResponse empty debug dump)** — CONFIRMED ALREADY_FIXED. Read the current `Record-Pro/Sources/RecordPro/PipelineRunner.swift` (302 lines pre-change) in full; `grep -n "rawResponse"` returns zero matches. Lines 261–266 (the range the old finding referenced) now belong to `retrySummarize`'s catch/return block, not any debug dump. No commit needed; matches the plan's pre-mortem note.
+
+**#224 (dead `mergeSpeakers`)** — deleted. Repo-wide `grep -rn "mergeSpeakers" --include="*.swift" .` (excluding `.build`/vendored FluidAudio checkouts) found exactly 3 real source copies, matching the issue's original count:
+- `Record-Pro/Sources/RecordPro/PipelineRunner.swift:276` (in scope, target of this packet)
+- `Tools/ProofHarness/Sources/PipelineRunner.swift:248` (out of scope)
+- `Record-CrossPlatform-Foundation/Sources/ProofHarnessWindows/PipelineRunner.swift:297` (out of scope)
+
+Within the in-scope file, `mergeSpeakers` had zero callers — `run()` uses `SentenceAligner.align` (from the `Alignment` library) instead, confirming the merge logic was consolidated there and this copy was orphaned. No test file references `PipelineRunner`, `mergeSpeakers`, or `overlap` (there is no dedicated PipelineRunner test file). Deleted `mergeSpeakers` and its now-unused `overlap` helper (26 lines removed).
+
+Build (`swift build --target RecordPro`) succeeded; `swift test --filter RecordProTests` from repo root passed all 23 tests, 3 suites. Commit: `5adf3dfb refactor(record-pro): remove dead mergeSpeakers (#224)`.</result>
+<usage><subagent_tokens>56358</subagent_tokens><tool_uses>14</tool_uses><duration_ms>153054</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a36e39462b652db0e</task-id>
+<tool-use-id>toolu_01QZMhJhWFWkjkkgGM8n1z82</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a36e39462b652db0e.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P4 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>P4 complete. Commit `f37e9e08` on `fix/mega-remediation-20260701`.
+
+**Item 1 — tautology tests**: ALREADY_FIXED. Neither `MeetingAppMonitorTests.swift` nor `AudioFileLoaderTests.swift` contains `#expect(Bool(true))` anywhere — confirmed by full-file read and grep. `git log -S "Bool(true)"` traced it to commit `bf356ba2` ("permission gate on activation only + stale test..."), which removed both tautologies before this session. No changes needed.
+
+**Item 2 — `internal(set)` warning**: Confirmed real at `MicCaptureActor.swift:38` (actor property, no `public` anywhere on it, so `internal(set)` was redundant). Fixed by removing the modifier: `internal(set) var isUsingVoiceProcessing = false` → `var isUsingVoiceProcessing = false`.
+
+**Item 3 — unused `meetingDetector`**: Confirmed real at `AppAssemblerBuilders.swift:227` — `meetingDetector` had zero references anywhere in the repo (grepped). Its init spawns a `Task { [weak self] ... }`, so I preserved the constructor call and its side effects, replacing `let meetingDetector =` with `_ =` rather than deleting the line outright — keeps `audioDetector`/`eventKit` (used elsewhere in the function) untouched and stays minimal per the E4-collision warning.
+
+**Verification**: `swift build` (root) — clean, no new warnings, only pre-existing unrelated ones in `App.swift`. Ran `MicCaptureActorTests` (16/16 pass, including `isUsingVoiceProcessing is false before start`), `MeetingAppMonitorTests` + `AudioFileLoaderTests` (16/16 pass) from within `Record-Audio/` (these targets aren't wired into root `Package.swift`'s test targets at all, so root-only filtering finds 0 tests — ran locally in-package instead, which built and ran cleanly, no spurious module errors). Confirmed via stash/pop that the two pre-existing `MiscTests` failures (`ThemeEditorView` 786&gt;500 lines, one `cyclomatic_complexity` violation) exist independent of this change — not introduced by it.</result>
+<usage><subagent_tokens>93096</subagent_tokens><tool_uses>52</tool_uses><duration_ms>443033</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a6e7f2c02935f3856</task-id>
+<tool-use-id>toolu_01LoCoBredB8XR4pi4eqLkcv</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a6e7f2c02935f3856.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P5 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report
+
+**Verdict: FIXED (partial finding, not stale).** Commit `189ac925`.
+
+The finding's "5 extension files, ~502 lines" was approximate — actual state was 1 main file + 6 extension files, 518 lines total. Only `MenuBarViewModel.swift` itself (215 lines) exceeded the 200-line cap; the 6 existing extensions were already genuinely cohesive units under cap: `Dependencies` (78, DI struct), `Download` (16, `ModelDownloadDelegate`), `Engine` (62, engine fan-out), `Errors` (32, error mapping/logging), `Storage` (61, recordings CRUD/search/cleanup), `UpcomingMeetings` (54, calendar sections).
+
+Fix: extracted the recording start/stop lifecycle + post-recording pipeline-pass orchestration (`startRecordingTapped`, `stopRecordingTapped`, `handleRecordingCompleted`, `runSummarizationPass`, `runCleanupPass`, `recoverPendingSession` — 63 lines) into a new `MenuBarViewModelRecording.swift`, leaving `MenuBarViewModel.swift` at 153 lines (state, forwarding properties, init, `bindAppState`).
+
+**Before:** `MenuBarViewModel.swift` 215 (over cap)
+**After:** `MenuBarViewModel.swift` 153 (core state/init) + `MenuBarViewModelRecording.swift` 75 (new, recording lifecycle) — all 8 files now under 200 lines.
+
+No public API/signature changes; `handleRecordingCompleted` kept its original `internal` access via explicit modifier inside the `public extension`. No new imports crossing layers (Business/Domain/Foundation/Logging, same as siblings).
+
+Tests: 112/112 pass before and after (`swift test --filter MenuBarViewModel`, run from repo root). `swift build --target Presentation` clean.
+
+Files: `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModel.swift`, `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModelRecording.swift`</result>
+<usage><subagent_tokens>68901</subagent_tokens><tool_uses>26</tool_uses><duration_ms>203835</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aeca6f989f41f2817</task-id>
+<tool-use-id>toolu_01NSEwjZMdYUEEGd4RL4oDu5</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aeca6f989f41f2817.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 4: App/Presentation P6 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: ALREADY_FIXED — no commit
+
+**File verified:** `Record-Foundation/Sources/Domain/Transcription/InferenceMetrics.swift`
+
+`InferenceMetrics.swift` is **65 lines**, well under the Domain 100-line cap, and contains exactly one cohesive type: the `InferenceMetrics` struct itself (properties + memberwise init). The types it references as optional fields — `ProcessMetrics`, `InputOutputShapeMetrics`, `EnvironmentMetrics`, `TimingSplits`, `ComputeUnit` — are **already** split into their own single-responsibility files in the same directory:
+
+| File | Lines | Responsibility |
+|---|---|---|
+| `InferenceMetrics.swift` | 65 | Core inference-run metrics struct |
+| `ComputeUnit.swift` | 19 | Compute unit enum |
+| `EnvironmentMetrics.swift` | 22 | Environment snapshot struct |
+| `ProcessMetrics.swift` | 15 | Process metrics struct |
+| `TimingSplits.swift` | 21 | Timing-split breakdown struct |
+| `InputOutputShapeMetrics.swift` | 25 | Shape metrics struct |
+
+This split predates the branch — `git log` traces it to commit `4f27ba6b` (epic-30 domain contract audit remediation, #204). No line count changed; nothing needed doing.
+
+**Cross-layer consumer check:** `InferenceTelemetry.swift` (Record-ML, Infrastructure layer), `GRDBStorageActor+Telemetry.swift`, `InferenceMetricsRecorder.swift`, `CleanupTranscriptionUseCase.swift`/`StopAndTranscribeUseCase.swift` (Business layer) all consume `InferenceMetrics` and its sub-types — no signatures touched since no edits were made.
+
+**Tests:** Root `Package.swift` doesn't wire Record-Foundation's `DomainTests` target (same pattern as the Record-Audio gap noted in P4). Ran via `Record-Foundation` package directly: `swift test --filter InferenceMetricsTests` → **11/11 pass**, both before and after (identical, since no edits occurred).
+
+**Build:** `swift build --target MLInfrastructure` from root succeeds cleanly, confirming `InferenceTelemetry.swift` still compiles against the unchanged Domain API.
+
+Wave 4 is now complete — this was the last packet.</result>
+<usage><subagent_tokens>61054</subagent_tokens><tool_uses>24</tool_uses><duration_ms>218675</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>abc010b4a2b6592ed</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/abc010b4a2b6592ed.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E1 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 19 tests pass, including all 5 covering the E1 three-way isHealthy behaviors.
+
+## Verdict: ALREADY_FIXED — no commit made
+
+**Evidence** (`Record-ML/Sources/MLInfrastructure/MCP/NotionProvider.swift`):
+
+1. **Nil credential → false**: line 89, `guard let key = apiKey else { return false }` — silent return, no log (correctly distinct from the error-path log below).
+2. **`keychainReadFailed` logged distinctly, returns false**: lines 82–88, the `do/catch` around `credentialStore.credential(for:)` logs `"NotionProvider: Keychain read failed during health check: ..."` via `logger.error(...)` then returns `false` — a separate code path and log message from the nil-credential case.
+3. **Optional live ping, ~3s timeout**: lines 91–107, builds `GET https://api.notion.com/v1/users/me` with `pingRequest.timeoutInterval = 3`, `Authorization: Bearer &lt;key&gt;` header, checks `200...299` status, logs a warning and returns `false` on any thrown/failed ping.
+4. **Return type**: `public func isHealthy() async -&gt; Bool` (line 80) — plain `Bool`, not throwing/optional.
+
+**Test coverage** (`Record-ML/Tests/Unit/NotionProviderTests.swift`, lines 171–221): `healthCheckNoKey` (nil case), `healthCheckKeychainThrows` (keychain error case, using `ThrowingCredentialStore` + `CredentialStoreError.keychainReadFailed`), `healthCheckPingSucceeds` (200 → true), `healthCheckPingUnauthorized` (401 → false).
+
+**Test run**: `cd Record-ML &amp;&amp; swift test --filter NotionProviderTests` — 19/19 tests passed (note: not wired at repo root; root filter matched 0 tests, per-package invocation required as flagged in task instructions).
+
+No code changes were needed; no commit was created.</result>
+<usage><subagent_tokens>51571</subagent_tokens><tool_uses>7</tool_uses><duration_ms>71086</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a821bc3870ed0e939</task-id>
+<tool-use-id>toolu_01GUYeAWaDxPbA9oefoNiwHP</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a821bc3870ed0e939.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E2 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## E2 Report
+
+**Verdict: FIXED (real gap confirmed, not ALREADY_FIXED).**
+
+**Pre-flight claim confirmed accurate.** `get`/`put`/`getSemantic` (`Record-ML/Sources/MLInfrastructure/MCP/GRDBContextCache.swift:34,53,83`) already scoped by `providerID` via `GRDBSQL.selectCached`/`insertCached`/`selectDistinctQueriesWithEmbeddings` (all filter `WHERE provider_id = ?`). But `pruneIfNeeded(maxEntries:)` (line 136) and `entryCount()` (line 145) used `GRDBSQL.countCacheEntries` = `"SELECT COUNT(*) FROM context_cache"` and `pruneCacheOldest` — both global, no `provider_id` filter (`Record-ML/Sources/MLInfrastructure/Storage/GRDBSQL.swift:204-209`, pre-edit). Called from `CachingContextProvider.query` (line 95) with no provider context — cross-provider eviction pollution confirmed real.
+
+**Fix:** Renamed SQL to `countCacheEntriesForProvider`/`pruneCacheOldestForProvider` (both take `provider_id`), changed `pruneIfNeeded(maxEntries:providerID:)` and `entryCount(providerID:)` signatures, updated `CachingContextProvider.swift:95` to pass `pid`, updated existing `MCPProviderIntegrationTests.swift` call sites (was calling `entryCount()` with no args).
+
+**RED→GREEN:** New file `Record-ML/Tests/Unit/GRDBContextCacheTests.swift` — `entryCountIsScopedToProvider` and `pruneIfNeededIsScopedToProvider`. RED confirmed via compile failure (methods didn't accept `providerID`) against current code; GREEN after implementation.
+
+**Test run:** `cd Record-ML &amp;&amp; swift test` (not wired at root — 0 matches confirmed first) → 326 tests, 52 suites, all passing. Root `swift build` also clean.
+
+**Commit:** `6edd6dad`</result>
+<usage><subagent_tokens>76779</subagent_tokens><tool_uses>30</tool_uses><duration_ms>357605</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aad1f842452993c02</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aad1f842452993c02.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E3 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Final Report — E3
+
+**Sandboxing verdict:** CONFIRMED SANDBOXED. `Record-App/scripts/bodyman-entitlements.plist:5` has `com.apple.security.app-sandbox = true` plus `com.apple.security.files.user-selected.read-write = true`. A plain file-system path string cannot be resolved by this app after relaunch without a security-scoped bookmark.
+
+**Field-type finding:** `AppConfig.obsidianVaultPath` (`Record-Foundation/Sources/Domain/Config/AppConfig.swift:30`) was a plain `String?` — exactly the architectural gap the pre-check warned about. `notionEnabled` was already correctly `Bool` with `decodeIfPresent` (line 85) — no change needed there.
+
+**Verdict:** FIXED (not already-fixed, not verify-and-close). Renamed the field to `obsidianVaultBookmark: Data?` (security-scoped bookmark), matching the pre-check's mandated design.
+
+**Commit:** `d074b89c` — `fix(record-app): store Obsidian vault as security-scoped bookmark, not plain path (E3)`
+
+**RED→GREEN:** Rewrote the two E3-tagged tests in `AppConfigTests.swift:333-380` (`obsidianVaultPathDefaultsNilWhenAbsent`/`obsidianVaultPathRoundTrips` → `obsidianVaultBookmarkDefaultsNilWhenAbsent`/`obsidianVaultBookmarkRoundTrips`) plus a new type-assertion test, confirmed RED (6 compile errors referencing the not-yet-existing `Data?` field/init param), then implemented the rename — GREEN (36/36 in `AppConfig` suite).
+
+**Files touched (all in commit):**
+- `Record-Foundation/Sources/Domain/Config/AppConfig.swift` — field, default, init, `Decodable` all renamed/retyped
+- `Record-Foundation/Tests/Unit/Domain/AppConfigTests.swift` — E3 tests rewritten
+- `Record-App/Sources/TheRecord/App.swift` — 4 memberwise-copy sites (only these 4 lines committed; the file had ~14 other unrelated pre-existing hunks from prior uncommitted WIP that I deliberately left untouched via `git add -p`)
+- `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:162-176` — compile-fix at the `buildMCPProviders` call site: resolves the bookmark via `URL(resolvingBookmarkData:options:.withSecurityScope,...)` to construct `ObsidianProvider`. This is the minimal glue needed for the type change to compile — full security-scope start/stop lifecycle around file reads stays E4/E6 scope per your instruction.
+- `Record-App/Tests/Unit/Presentation/AppAssemblerMCPWiringTests.swift` — E4b source-inspection test updated (literal string check `"config.obsidianVaultPath"` → `"config.obsidianVaultBookmark"`); required collateral since it would otherwise falsely fail after my rename.
+
+**Deliberately left out of scope / uncommitted:**
+- `Record-Presentation/Tests/Unit/Presentation/ThemeLoaderTests.swift:305` — updated the one `obsidianVaultPath: config.obsidianVaultPath` call site to compile against the new field, but did NOT `git add` it — the whole file is untracked pre-existing WIP unrelated to E3, not authored by me.
+- `Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift` — a separate, non-sandboxed cross-platform package (Record-Pro/Linux/Windows target); intentionally untouched since bookmark semantics are macOS-sandbox-specific.
+- `SettingsViewModel.swift`/`SettingsViewIntegrationsTab.swift` — own independent `String` UI property, not bound to `AppConfig` yet (that wiring is E5).
+
+**Test run:** `swift test --filter AppConfigTests` at repo root = 0 matches (Record-Foundation isn't wired into root's test target — verified via 0-match check); ran from `Record-Foundation/` instead: 36/36 pass. `swift test --filter AppAssemblerMCPWiringTests` from repo root: 4/4 pass (E4a-d, including E4b now checking the renamed field). Full `swift build` from repo root: clean.
+
+**Process note:** First commit attempt accidentally pulled in ~14 unrelated pre-existing hunks in `App.swift` because `git commit -- &lt;pathspec&gt;` re-stages current worktree content for that path (overriding my earlier `git add -p` partial staging). Caught it via `git show --stat HEAD`, safely undid with local `git reset HEAD~1` (unpushed, no data loss), redid the partial `git add -p` staging, and committed with no trailing pathspec this time — final commit is clean.</result>
+<usage><subagent_tokens>145245</subagent_tokens><tool_uses>82</tool_uses><duration_ms>883013</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>abec038aee9351972</task-id>
+<tool-use-id>toolu_01NpoJ8QddA3jFjpuQdThmbq</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/abec038aee9351972.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E4 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Those remaining changes are pre-existing (unrelated to E4, likely from a concurrent packet on this shared branch) and were left untouched, as expected.
+
+## Report
+
+**Verdict:** REAL GAP FOUND AND FIXED (matches pre-flight's prediction exactly — no other gaps existed).
+
+**Commit:** `ae48c938` — `fix(record-app): gate context cache on config flag, persist under appSupport (E4)`
+
+**Evidence (pre-fix, `AppAssemblerBuilders.swift:128-193`):**
+- `KeychainCredentialStore()` + `migrateAccessibilityIfNeeded()`: present (line 143-144) — correct.
+- Every provider wrapped in `CachingContextProvider`: present (lines 180-192) — correct.
+- Degrade-to-uncached on cache-init throw: present (`guard let cache = contextCache else { return providers }`) — correct.
+- **Gap**: line 135 `contextCache = try GRDBContextCache(databasePath: nil)` was unconditional — ignored `config.contextCache.enabled` entirely and used an ephemeral in-memory DB (nil path), so cached entries never survived relaunch even when caching was "enabled."
+
+**Fix:** Wrapped construction in `if config.contextCache.enabled`, else `contextCache = nil`. When enabled, resolves `Directories.appSupport`, calls `Directories.ensureDirectory(at:)`, and builds a persistent path via new `AppConstants.Paths.contextCacheDatabaseFileName = "context-cache.sqlite"` (mirrors existing `GRDBCommitmentStore` pattern at `AppAssemblerBuilders.swift:57-76`).
+
+**Files touched:** `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift`, `Record-App/Tests/Unit/Presentation/AppAssemblerMCPWiringTests.swift`, `Record-Foundation/Sources/Domain/AppConstants.swift`.
+
+**RED→GREEN:** `E4e: buildMCPProviders gates context cache on config.contextCache.enabled and uses Directories.appSupport` — RED (1 failure, missing `config.contextCache.enabled` string), then GREEN after fix.
+
+**Test run:** `AppAssemblerMCPWiringTests` — 5/5 pass (E4a-d unchanged pass, E4e new pass). Full `swift build` — clean, no errors. Other uncommitted files in the tree (Presentation theme work, settings.json, etc.) belong to concurrent Wave-5 packets and were left untouched.</result>
+<usage><subagent_tokens>72772</subagent_tokens><tool_uses>29</tool_uses><duration_ms>186180</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a7696d03e24125c8a</task-id>
+<tool-use-id>toolu_01HoWxg3afTo3QWpZ6AVh7uM</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a7696d03e24125c8a.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E5 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 6/6 passing. Packet E5 is complete.
+
+## Final Report — Packet E5: Settings "Integrations" Tab
+
+**Pre-flight:** `swift test --filter SettingsIntegrationsTests` before any changes — all 6 pre-existing tests (E5a–E5f) passed.
+
+**Verdict: DONE.** Two commits, one per layer, matching the packet's required split.
+
+**Commits:**
+- `9d6cd115` `feat(record-presentation): Integrations tab wired to IntegrationSettingsStore (E5)` — protocol + ViewModel orchestration + UI
+- `b066e8a1` `feat(record-app): wire IntegrationSettingsStore adapter (E5)` — composition-root adapter + wiring
+
+**Files touched:**
+- New: `Record-Presentation/Sources/Presentation/ViewModels/IntegrationSettingsStore.swift` (protocol), `SettingsViewModelIntegrations.swift`, `SettingsViewModelTheme.swift` (extraction to stay under 200-line cap)
+- Modified: `SettingsViewModel.swift`, `SettingsViewIntegrationsTab.swift`, `SettingsIntegrationsTests.swift`
+- New (composition root): `Record-App/Sources/TheRecord/LiveIntegrationSettingsStore.swift`, `Record-App/Tests/Unit/Presentation/LiveIntegrationSettingsStoreTests.swift`
+- Modified: `Record-App/Sources/TheRecord/App.swift` (added `integrationSettingsStore: LiveIntegrationSettingsStore(configManager:)` to the `SettingsViewModel` construction site)
+
+**RED→GREEN:** Presentation layer E5g–E5q (11 tests, confirmed RED via compile failure, then GREEN). App layer E5r–E5w (6 tests, source-inspection style matching `AppAssemblerMCPWiringTests`, confirmed RED since the adapter file didn't exist, then GREEN after implementing `LiveIntegrationSettingsStore` and wiring `App.swift`).
+
+**Test results:** `SettingsIntegrationsTests` 17/17 pass. `LiveIntegrationSettingsStoreTests` 6/6 pass. Full `AppPresentationTests` suite: 29/29 pass.
+
+**Build:** `swift build` from repo root — clean, no errors, only pre-existing unrelated warnings (Info.plist/xcstrings resource warnings).
+
+**Layer boundary check:** `grep "^import" SettingsViewModel.swift` → `Domain, Foundation, Observation, SwiftUI`. `grep "^import" IntegrationSettingsStore.swift` → `Foundation`. No Infrastructure/MLInfrastructure import in either file.
+
+**Note:** `App.swift` had unrelated pre-existing uncommitted WIP (theme observer refactor). I isolated my change via `git stash push --keep-index`, committed only the minimal E5 diff, then `git stash pop` (resolved one expected merge conflict where both sides added the same `integrationSettingsStore:` line) to restore the unrelated WIP untouched and uncommitted, as it was before this session.</result>
+<usage><subagent_tokens>103161</subagent_tokens><tool_uses>115</tool_uses><duration_ms>1245805</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a70838c00d5cc1739</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a70838c00d5cc1739.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 5: MCP wiring E6 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report — E6 (Wave 5, final packet)
+
+**Verdict: PASS.** Commit `8f8ab978` on `fix/mega-remediation-20260701`.
+
+**File created:** `Record-App/Tests/Unit/Business/QueryContextUseCaseIntegrationTests.swift` (BusinessTests target, which already depends on both `Business` and `MLInfrastructure` — correct home, no Package.swift changes needed).
+
+**What it tests:** A real `ObsidianProvider` reads from a temp vault (3 markdown files created in-test), wrapped in a real `CachingContextProvider` backed by a real `GRDBContextCache` at a temp SQLite file path (not in-memory, per the packet's ask), driven through the real `QueryContextUseCase`. Gated via `.enabled(if: integrationEnabled)` matching the exact pattern in `Record-ML/Tests/Unit/MCPProviderIntegrationTests.swift` (`RUN_INTEGRATION_TESTS=1` env check). Both temp dirs cleaned up via `defer`.
+
+**RED→GREEN:** First run under `RUN_INTEGRATION_TESTS=1` genuinely failed — I'd asserted `entryCount == 1` after the first query, but `GRDBContextCache.put` inserts one row per cached `KnowledgeResult`, and 2 of 3 seeded notes matched "Kubernetes" → 2 rows. Fixed the assertion to `entriesAfterFirst &gt; entriesBeforeFirst` (increase) plus `entriesAfterSecond == entriesAfterFirst` (flat on cache hit) — the more robust, non-timing signal the packet allowed for. Re-ran → GREEN.
+
+**Test runs:** WITH `RUN_INTEGRATION_TESTS=1`: passes (1/1). WITHOUT: correctly skipped ("Set RUN_INTEGRATION_TESTS=1 to run this test"), not failing. No leaked temp files in either run.
+
+**E1–E5 production code:** No changes needed — this packet only added the test.
+
+**Regression check:** Full `BusinessTests` suite (292 tests) run without the env var: one pre-existing unrelated failure in `StreamingTranscriptionSliceBTests.swift` ("transcription loop yields on every iteration"), confirmed failing identically in isolation and self-documented in its own source as an intentional incomplete RED test for a different slice (B6) — not caused by E6.
+
+**Note on commit hygiene:** `git status` showed `Record-App/Sources/TheRecord/App.swift` pre-staged from unrelated prior work (theme loader wiring). My first commit attempt accidentally swept it in since it was already staged. Caught it, used `git reset --soft` (branch has no upstream, nothing pushed) to split it back out, and re-committed with only the one test file — final commit is `102 insertions, 1 file changed`.
+
+Wave 5 is now complete.</result>
+<usage><subagent_tokens>101258</subagent_tokens><tool_uses>52</tool_uses><duration_ms>464608</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a047e6b73b67c7992</task-id>
+<tool-use-id>toolu_01D766615ifvsgkdq6qA6h37</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a047e6b73b67c7992.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 6: contract-audit C1 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Build clean. C1 is complete and correctly scoped.
+
+**Verdict: PASS.** Packet C1 (#211 DiskSpaceMonitor) implemented, wired, tested, and committed as a clean, isolated commit.
+
+**Commit:** `b83dd033cd44ba50595ebb283ac2123b4bf23d23` — `feat(presentation): implement and wire DiskSpaceMonitor (C1, #211)` (9 files, 145 insertions / 5 deletions, scoped exclusively to C1).
+
+**Root cause:** `DiskSpaceMonitor` protocol and its guard logic already existed fully-tested in `RecordingStateViewModel`/`SettingsViewModel` (#124), but had zero production conformances — the composition root always injected `nil`.
+
+**Fix:** Added `FileSystemDiskSpaceMonitor` (`Record-App/Sources/TheRecord/FileSystemDiskSpaceMonitor.swift`), a `FileManager`-backed adapter following the `IOKitSleepAssertionService` composition-root pattern, defaulting to the user's home directory (guaranteed to exist, unlike `Directories.recordings` pre-first-launch). Threaded `diskSpaceMonitor` through `MenuBarViewModel.Dependencies` → `RecordingStateViewModel`, and wired the live instance in `AppAssemblerBuilders.buildMenuBarVM` and the `SettingsViewModel` construction in `App.swift`. Threshold: reused existing 100MB hard-block / 500MB warning constants already defined in `RecordingStateViewModel` — no new threshold logic needed.
+
+**RED→GREEN tests:** `FileSystemDiskSpaceMonitorTests` (3 tests: protocol conformance, positive byte count, home-directory default) and `MenuBarViewModelDiskSpaceWiringTests` (2 tests: blocked-start surfaces error, ample-space start succeeds). All 5 pass; `swift build` clean.
+
+**Notable correction mid-task:** my first `git add` on `App.swift` accidentally swept in ~40 lines of unrelated pre-existing uncommitted ThemeLoader/`activeTheme` WIP sitting in that file from another in-flight packet. I caught this via `git log --stat`, reset the commit, and used a hand-built `git apply --cached` patch to stage only my one-line addition while leaving the theme WIP untouched and uncommitted in the working tree for its owning packet.</result>
+<usage><subagent_tokens>93857</subagent_tokens><tool_uses>88</tool_uses><duration_ms>1088364</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ae3579006aca2a0c6</task-id>
+<tool-use-id>toolu_01N5J1M1Y338zDk46YxhbqcD</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/ae3579006aca2a0c6.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 6: contract-audit C2 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report — C2 / #212 ModelDownloadDelegate
+
+**Verdict:** Fixed. Not dead-on-arrival like C1 — both producer and consumer sides already existed and were already unit-tested:
+- `MenuBarViewModel` conformed to `ModelDownloadDelegate` via `MenuBarViewModelDownload.swift` (updates `downloadProgress`/`statusMessage`).
+- `ParakeetPlugin`/`WhisperKitPlugin` had working `setDownloadDelegate` setters, verified by existing `ParakeetPluginTests`/`WhisperKitPluginTests`.
+- The only gap was the composition root: zero calls to `setDownloadDelegate` anywhere in `Record-App/Sources` — the two halves were simply never connected. (The packet's guess of `ModelDownloadViewModel` as the consumer was wrong — that view model tracks per-model download state locally and isn't the delegate target; `MenuBarViewModel` is the real consumer, confirmed by the existing `MenuBarViewModelDownload.swift` conformance.)
+
+**Root cause of untestability:** `AppAssembler`/`TranscriptionSubAssembler` live in the `TheRecord` executable target, which no test target depends on — so composition-root wiring can't be exercised via normal instantiation. Followed the codebase's existing precedent (`AppAssemblerMCPWiringTests.swift`) of source-inspection "compile-time ratchet" tests.
+
+**Commit:** `0b9dd0dc` — `feat(app): wire ModelDownloadDelegate to progress reporting (C2, #212)`
+
+**Files touched:**
+- `Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift` — added `Built.connectDownloadDelegate` closure that captures concrete `ParakeetPlugin`/`WhisperKitPlugin` instances (before erasure to `any TranscriptionEngine`) and forwards a delegate to primary + cleanup engines.
+- `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift` — `buildMenuBarVM` now calls `transcription.connectDownloadDelegate(menuBarVM)` right after constructing `MenuBarViewModel`.
+- `Record-App/Tests/Unit/Presentation/AppAssemblerDownloadDelegateWiringTests.swift` (new) — 3 source-inspection tests.
+- `Record-App/Sources/TheRecord/App.swift` **not touched** — confirmed via `git diff`/`git show --stat HEAD`; the pre-existing theme-loader WIP remains unstaged and outside this commit.
+
+**RED → GREEN:** `builtExposesConnectDownloadDelegate`, `connectDownloadDelegateCallsSetDownloadDelegate`, `buildMenuBarVMConnectsMenuBarViewModelAsDownloadDelegate` — all 3 failed pre-fix (0 matches), all 3 pass post-fix.
+
+**Test run:** `swift test --filter "AppAssemblerDownloadDelegateWiringTests"` → 3/3 passed. Also re-ran `AppAssemblerMCPWiringTests` (5/5 passed, no regression). `swift build` from repo root → clean.</result>
+<usage><subagent_tokens>116375</subagent_tokens><tool_uses>52</tool_uses><duration_ms>459620</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aeac437e22e4f7430</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aeac437e22e4f7430.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 6: contract-audit C3 only" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: PASS
+
+**Commit:** `093a37b6` — `feat(app): wire real PrivacyModeProvider at composition root (C3, #213)`
+
+**Files touched:** `App.swift` (10 lines, isolated from pre-existing theme-loader WIP via a hand-built patch applied to the git index — confirmed via `git diff HEAD~1 HEAD` showing exactly my 4 additions), `AppAssembler.swift`, `AppAssemblerBuilders.swift` (both fully mine), plus new `LivePrivacyModeProvider.swift` and two new test files. `App.swift` remains `MM` in the working tree — theme WIP still sitting there untouched.
+
+**11 consumer sites, all confirmed:**
+- Record-App `ExportTranscriptUseCase` (2: property + init) — wired via `BroadsheetAppState(exportTranscriptUseCase: ExportTranscriptUseCase(privacyModeProvider:))` in `App.swift`.
+- Record-App `QueryContextUseCase` (2) — wired via `buildEngine` → `QueryContextUseCase(privacyModeProvider:)`.
+- `GenericMCPProvider` (3: property + 2 init overloads) — wired via `buildMCPProviders` → `GenericMCPProvider(privacyModeProvider:)`.
+- Record-CrossPlatform-Foundation's duplicate `ExportTranscriptUseCase`/`QueryContextUseCase` (4) — **left out of scope**: separate, independently-buildable package with no composition root or consumer app (confirmed `ProofHarnessWindows` never references these use cases), matching the E3 precedent.
+
+**Provider design:** hybrid, not a static always-`.default` stub. `LivePrivacyModeProvider` is an actor seeded from `config.privacyMode` at launch and kept live via `.privacyModeChanged` notification forwarding in `setupPrivacyModeObserver()`, mirroring the existing `archivePassEnabledChanged` async-Task pattern — reusing infrastructure already proven in this codebase rather than inventing a UserDefaults-polling implementation.
+
+**RED→GREEN:** `LivePrivacyModeProviderTests` (4 tests, direct `@testable import TheRecord`) and `AppAssemblerPrivacyModeWiringTests` (6 source-inspection tests) — confirmed RED via compile failure (`cannot find 'LivePrivacyModeProvider' in scope`), all 10 GREEN post-implementation. Regression suites (`ExportTranscriptUseCaseTests`, `QueryContextUseCaseTests`, MCP/DiskSpace/DownloadDelegate wiring) — 39 tests, all pass. `swift build` clean.
+
+**Note:** `Record-ML`'s `GenericMCPProviderTests` (separate nested package) fails to link due to a pre-existing, unrelated `AppConfig.init` overload mismatch — confirmed unaffected by this change (clean `Record-ML/` working tree, no files touched there).</result>
+<usage><subagent_tokens>110107</subagent_tokens><tool_uses>116</tool_uses><duration_ms>1146949</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>add59f12c32761e39</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/add59f12c32761e39.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 1: Audio lane" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Adversarial review complete. Ran the full test suite first (`swift test --package-path Record-Audio`): **177 tests, 29 suites, all green.**
+
+## Findings
+
+**1. MAJOR — `handleTapConfigurationChange()` has no failure-path cleanup; every error branch leaves the actor permanently stuck in `.recording` with a dead capture.**
+`Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift:319-372`
+
+The function unconditionally calls `eng.inputNode.removeTap(onBus: 0)` at the top, then has three `guard ... else { logger.error(...); return }` branches (invalid new input format, can't build target format, can't build converter) and a `do { try eng.start() } catch { logger.error(...) }` at the end. **None of these four failure paths reset `state`, finish `streamContinuation`, or call `cleanup()`.** Contrast with `MicCaptureActorRouteChange.handleConfigurationChange()` in the same branch, whose equivalent four failure paths all call the newly-wired `abortRouteChange(with:)` (A5/#223) — finishing the continuation, resetting state to `.idle`, tearing down the engine/observer. `CoreAudioTapCaptureActor` has no `abortRouteChange` equivalent at all (verified via grep — only `cleanup()` exists, and it's never called from this file). Concretely: if a route change happens and the new input format is momentarily invalid, or `eng.start()` throws (e.g., device still settling), the tap is now permanently gone, no more buffers will ever be written, `state` stays `.recording` forever, and the caller gets no error — `stop()` will still "succeed" later, silently producing a truncated WAV with no indication anything went wrong. This is exactly the silent-failure class of bug the rest of this branch (DPS-204, A2, A5) is explicitly trying to eliminate, reintroduced in the one new function that claims to "mirror" the fixed pattern.
+
+**2. MINOR (compounds #1) — tap-callback "defensive second layer" can thrash without a reentrancy guard.**
+`CoreAudioTapCaptureActorRouteChange.swift:401-412` (`installConverterTap`'s tap closure)
+
+On a sample-rate mismatch between the delivered buffer and the format the converter was built for, the callback fires `Task { await self.handleTapConfigurationChange() }` and returns (dropping that buffer). There's no debounce/in-flight flag, so if several buffers arrive mismatched before the first rebuild task drains through the actor's serial queue, each spawns its own full teardown/rebuild/`eng.start()` cycle — and per finding #1, any one of those that hits a transient failure leaves the session dead with no signal.
+
+**3. MINOR — brittle threshold in the new A6 baseline test.**
+`Record-Audio/Tests/Unit/AECSilentOutputInvestigationTests.swift:740-743`
+
+`micSineWithSilentFarEnd_producesNonZeroOutputRMS` asserts `tailRMS &gt; 0.05`; the actual run produced `0.05102` (logged: `[A6-baseline] ... tail RMS: 0.05102`) — roughly a 2% margin. This is a real risk of intermittent flake from minor floating-point/SIMD non-determinism (arch differences, Speex version bumps, compiler optimization changes), not a generous safety margin.
+
+**4. MINOR/nit — A1's actual rebuild correctness is untested, only its wiring is.**
+`Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift` (`CoreAudioTapRouteChangeTests` suite)
+
+All route-change tests except the idle-noop check are source-string presence assertions (`source.contains("AVAudioEngineConfigurationChange")`, etc.) — acknowledged in the test comments as a hardware limitation, so not a hidden gap, but worth flagging: a logic bug in the actual resampling-ratio rebuild (the literal root cause this branch targets) would not be caught by CI.
+
+No issues found in A2 (errorHandler wiring), A3 (duration-from-samples math — verified correct against `WAVWriter.totalSamplesWritten`'s queue-serialized accounting), A4 (do-block move), or the `AudioSessionDetector` permission-gate/deactivation-always-processes change — all check out against their stated intent.</result>
+<usage><subagent_tokens>132568</subagent_tokens><tool_uses>24</tool_uses><duration_ms>380912</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aed14435b3c9abdaf</task-id>
+<tool-use-id>toolu_01SXVzWsD45ccxr4B5foyyfo</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aed14435b3c9abdaf.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 1: ML lane" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed 326/326 green. I have enough for the report.
+
+## Findings — Round 1, Lane ML (fix/mega-remediation-20260701 vs main, Record-ML/)
+
+**1. (Major) M2b's `runDetached` timeout-cancellation doesn't actually protect the real production diarization path — only the test seam.** `Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift:174-193, 207-216`. `runDiarization` wraps `unsafeManager.performCompleteDiarization(...)` in `Task.detached`, and on timeout calls `task.cancel()`. But `performCompleteDiarization` (verified in `FluidAudio/Sources/FluidAudio/Diarizer/Core/DiarizerManager.swift:153`) is a **synchronous, non-`async` `throws` function with zero `Task.isCancelled`/`checkCancellation` checks** — `task.cancel()` is a no-op against it; the CPU-bound native inference call cannot be interrupted mid-flight. Worse, `withTimeout` (`Record-Foundation/Sources/Utilities/Timeout.swift`) uses `withThrowingTaskGroup`, and Swift's structured-concurrency contract requires the group to implicitly await all child tasks before the enclosing call returns — even after `cancelAll()`. So for a genuinely hung/slow `performCompleteDiarization` call, `diarize()` will **not** return a prompt `TimeoutError`/`inferenceFailed`; it will block until the native call finishes on its own, however long that takes. The new regression test `timeoutCancelsOrphanedDetachedTask` (`FluidDiarizationPluginTimeoutTests.swift`) only exercises the `testInferenceFunction` seam using `Task.sleep`, which *is* cancellation-aware and throws `CancellationError` promptly — so the test passes and gives false confidence that the fix works, while the actual production code path (the one the fix's doc comment explicitly claims to protect: "a slow inference call cannot outlive the timeout as an orphaned background task") is unverified and, on inspection, does not behave that way.
+
+**2. (Minor) `MCPSummarizationPlugin.shutdown()` now blocks indefinitely if the subprocess ignores SIGTERM.** `Record-ML/Sources/MLInfrastructure/Summarization/MCPSummarizationPlugin.swift:80-83`. The fix (`p.terminate(); p.waitUntilExit()`) correctly closes the previous fire-and-forget gap (M6-adjacent cleanup, not F23), but `waitUntilExit()` has no timeout and can't be cancelled — a subprocess that traps/ignores SIGTERM (or a "sh -c" wrapper whose grandchild survives the parent's death) will hang `shutdown()` forever, blocking the actor's isolation and tying up a cooperative-pool thread. No SIGKILL escalation or bounded wait was added alongside the fix.
+
+**3. (Minor / informational) `CalendarAwareMeetingDetector.shutdown()` is unreachable from production code.** `Record-ML/Sources/MLInfrastructure/Calendar/CalendarAwareMeetingDetector.swift:199-209`. The only production construction site, `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:255`, does `_ = CalendarAwareMeetingDetector(...)` — the instance is discarded immediately, nothing retains it, and `shutdown()` is never called anywhere outside tests. This isn't a regression introduced by this diff (the discard predates it and the file isn't in the ML lane diff), and `deinit` still cancels `initTask` so the cancellation guarantee technically holds via ARC teardown — but it means the new cancellable-handle API this fix built is dead weight from production's perspective, and the detector's actual lifetime/behavior in the running app is worth a second look by whichever lane owns `AppAssemblerBuilders.swift`.
+
+**Verified as sound (no issues found):**
+- M1 (`word_timings` upsert, `GRDBSQL.swift:101-108`, `GRDBStorageActor+Diarization.swift`) — single write call site, encode/decode paired correctly, real round-trip test (re-attach replaces stale timings, nil clears them) — genuinely fixed.
+- E2 (`GRDBContextCache.pruneIfNeeded`/`entryCount` provider scoping) — both paths consistently filter by `provider_id` in SQL and Swift; no stale caller left with the old unscoped signature anywhere in source (only unrelated stale DuckDB-era code in `.datum/worktrees/` copies, not part of the build).
+- M4c (EventKit error mapping) — clean pure-function extraction, correctly narrows `.accessDenied` to `EKErrorDomain` code 100 only; new unit tests cover all four cases including previously-collapsed `NSOSStatusErrorDomain`/`NSCocoaErrorDomain`/other-EK-code cases.
+- Semantic cache threshold 0.10→0.55 — consistently applied across `CachingContextProvider` default, `SemanticCacheTests`, and matches the simplified single-pass `bestEmbeddingMatch`/`bestFuzzyMatch` refactor (behaviorally equivalent to the old two-stage prefilter).
+- Test suite: `rm -rf .build &amp;&amp; swift test` → **326/326 passed**, matching baseline.</result>
+<usage><subagent_tokens>134629</subagent_tokens><tool_uses>34</tool_uses><duration_ms>611406</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a7f4011c1b01eb43a</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a7f4011c1b01eb43a.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 1: App+Presentation lane" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Round 1 Adversarial Review — App + Presentation Lane
+
+Scope: `git diff main -- Record-App/ Record-Presentation/ Record-Foundation/` on `fix/mega-remediation-20260701` (HEAD `635d11b7`). Verified against actual current-state files, not diff hunks alone. Ran `swift build` (green) and `swift test` (full + targeted reruns) from repo root.
+
+### 1. BLOCKER — Branch does not compile from a clean checkout (missing Theme sources)
+
+`Record-App/Sources/TheRecord/App.swift:169,174,218,235,138` (committed) construct `ThemeLoader()`, declare `var activeTheme: (any AppTheme)?`, and pass `theme: appDelegate.activeTheme` to `BroadsheetRootView`. `Record-Presentation/Sources/Presentation/ViewModels/SettingsViewModel.swift:135,145` declares `let themeLoader: ThemeLoader`; `SettingsViewModelTheme.swift` (committed whole-file in `9d6cd115`) calls `themeLoader.listAvailable()/.load()/.save()/.delete()` and references `JSONTheme`; `SettingsView.swift` (committed diff) instantiates `ThemeEditorView`.
+
+None of these types are defined anywhere tracked by git: `git ls-tree HEAD -- Record-Presentation/Sources/Presentation/Theme/` is empty and `git grep -n "class ThemeLoader\|struct ThemeLoader\|protocol AppTheme" HEAD` returns nothing. The defining files (`Theme/ThemeLoader.swift`, `AppTheme.swift`, `JSONTheme.swift`, `BroadsheetTheme.swift`, `ThemeEditorView.swift`, `Resources/theme-schema.json`, plus their tests) are all `??` untracked in `git status` — they only exist on disk in this working tree. `swift build`/`swift test` are green **here** only because those untracked files happen to be physically present; a fresh `git clone` + checkout of this branch (or `git clean -fd`) fails to compile. Traced the origin: commit `1574c77e` ("Completed agent: Wave 5: MCP wiring E6 only") is mislabeled — its actual diff introduces `themeLoader`/`activeTheme` usage in App.swift with zero relation to MCP wiring, and `9d6cd115` (E5 Integrations tab) piggybacked `SettingsViewModelTheme.swift` on the same undefined types. This is exactly the "WIP collision" risk called out in the review brief, except worse than a stray sweep-in: committed production code now *depends on* uncommitted files. Must either commit `Theme/` + `Resources/theme-schema.json` or revert the App.swift/SettingsViewModel/SettingsView dependencies on them before this branch can ship.
+
+### 2. MAJOR — P5 MenuBarViewModel split silently breaks the #251 regression-guard tests
+
+`Record-Presentation/Tests/Unit/Presentation/MenuBarPipelineRaceTests.swift:154-172` and `BroadsheetAppStatePipelineTests.swift:259-281` hardcode a source-scan against `Sources/Presentation/ViewModels/MenuBarViewModel.swift`, searching for `func startRecordingTapped()` / `func stopRecordingTapped()` to inspect the function body for `pipelineCoordinator.cancelAll()`. Commit `189ac925` (P5) moved both functions into `MenuBarViewModelRecording.swift`. Confirmed via standalone rerun (`swift test --filter "MenuBarPipelineRaceTests|BroadsheetAppStatePipelineTests"`): both tests fail at the `Issue.record("Could not locate startRecordingTapped()...")` fallback — not at the intended `#expect(funcBody.contains(...))` assertion. The plan doc's Wave 7 note ("confirmed via git diff main on each file — zero delta") is true for the test files themselves but misses that their *target* file moved. Net effect: these tests will keep failing with the *same* failure count even after #251 is actually fixed (cancelAll() added), because they now look in the wrong file — the regression gate is permanently defeated, invisible to a pass/fail-count ratchet.
+
+### 3. MINOR — C2/C3 wiring tests are string-containment stubs, not behavior tests
+
+`AppAssemblerPrivacyModeWiringTests.swift` and `AppAssemblerDownloadDelegateWiringTests.swift` (and `LiveIntegrationSettingsStoreTests.swift`) all read `AppAssembler*.swift`/`App.swift` as raw text and assert `.contains("...")`. They'd pass even if, say, a second `LivePrivacyModeProvider` were accidentally constructed for `QueryContextUseCase` as long as the substring `privacyModeProvider: privacyModeProvider` still appears somewhere in the file. I manually verified the actual wiring is correct (single instance: `AppAssembler.assemble()` line 69 → `Assembled.privacyModeProvider` → `App.swift:235` `ExportTranscriptUseCase` and → `buildEngine`/`buildMCPProviders` for `QueryContextUseCase`/`GenericMCPProvider`) — this is a test-quality gap, not a live bug. By contrast, C1's `MenuBarViewModelDiskSpaceWiringTests.swift` does real behavioral testing (injects a mock, asserts on `viewModel.isRecording`/`errorMessage`) — good pattern, not followed by C2/C3.
+
+### 4. MINOR — Codable field rename drops existing user config silently
+
+`Record-Foundation/Sources/Domain/Config/AppConfig.swift`: `obsidianVaultPath: String?` (pre-existing on `main`) renamed to `obsidianVaultBookmark: Data?` with no migration; `decodeIfPresent` means old persisted configs won't crash, but any user who'd already set an Obsidian vault path loses it silently on upgrade, no re-prompt.
+
+### 5. NIT — Unsynchronized delegate-connection race
+
+`AppAssemblerBuilders.swift:302` fires `Task { await transcription.connectDownloadDelegate(menuBarVM) }` with no ordering guarantee against `TranscriptionSubAssembler`'s `Task.detached(priority: .background)` prewarm task (already running by this point), which could start emitting download progress before the delegate is attached. Low real-world likelihood given priority scheduling, but no synchronization enforces it.
+
+### Non-findings (checked, clean)
+IntegrationSettingsStore layer separation is correct (Presentation protocol imports only Foundation; `LiveIntegrationSettingsStore` correctly lives in App and imports MLInfrastructure). `diskSpaceMonitor` threads correctly through `Dependencies` → `RecordingStateViewModel`; unmigrated test call sites are fine since it defaults to nil (guard no-ops). `CalendarAwareMeetingDetector` remains `_ = CalendarAwareMeetingDetector(...)` (correctly not claimed fixed). Full test run showed no other new regressions beyond the two above — `LiveTranscriptionBatchingTests` crash seen in the full parallel run did not reproduce standalone (4/4 pass), consistent with known test-parallelism flakiness, not a real regression.</result>
+<usage><subagent_tokens>153461</subagent_tokens><tool_uses>64</tool_uses><duration_ms>702413</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a973df0737583e95c</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a973df0737583e95c.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 2: Concurrency" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Round 2 — Concurrency Review (full diff, main vs fix/mega-remediation-20260701)
+
+Three findings beyond what per-lane review would surface — all emerge from the *interaction* between two changes in different lanes.
+
+**1. BLOCKER — CalendarAwareMeetingDetector is dead on arrival at the composition root.**
+`Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:255`: `_ = CalendarAwareMeetingDetector(calendar: eventKit, audioDetector: audioDetector)`. On `main` this was `let meetingDetector = ...`; commit `f37e9e08` ("warnings sweep") changed it to `_ =` specifically to silence an unused-variable warning, explicitly claiming this "preserves the constructor call and its init-time side effects." But `Record-ML/Sources/MLInfrastructure/Calendar/CalendarAwareMeetingDetector.swift:36` (the M3/#197 fix, this same branch) changed `init` to spawn `Task { [weak self] in await self?.launch() }` — a **weak**-self kickoff whose entire purpose is to defer storing the real task handle onto the actor. Since nothing anywhere retains the constructed instance (no property, no array, discarded via `_`), ARC deallocates it as soon as the statement completes; by the time the kickoff `Task` runs, `self` is very likely already `nil`, so `launch()`/`start()`/`refreshCalendar()`/the calendar and audio listeners never run. The feature is silently inert — no crash, no warning, nothing in logs. This is exactly the kind of bug that hides between lanes: the ML-lane review would see the init-task fix as correct in isolation (it is, for a *retained* instance); the App-lane review would see `_ = Foo(...)` as an intentional side-effect-only construction. Fix: store the instance on `AppAssembler` (mirroring how `privacyModeProvider` was wired in the same diff) and expose/consume its `events()` stream, or drop the construction entirely if unused. Not reproducible via existing unit tests (they construct+retain the detector directly); confirmed by code+git archaeology, not by running tests.
+
+**2. MAJOR — `CoreAudioTapCaptureActor.handleTapConfigurationChange()` (#244) has no failure-path abort, unlike the sibling it claims to mirror.** `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift:41-94`. On invalid new input format, un-buildable target format, un-buildable converter, or `eng.start()` throwing, the method logs and `return`s — but `state` stays `.recording`, `streamContinuation` is never finished, `wavWriter` is never closed, and (since `removeTap` already ran) no tap is installed. The actor believes it's still recording forever while producing zero further audio, and no caller is ever told. Compare `MicCaptureActorRouteChange.swift`, which calls `abortRouteChange(with:)` on every one of these same branches — finishing the continuation with a thrown error and resetting `state = .idle`. This asymmetry means a route-change failure on the system-audio tap (arguably the more failure-prone path, per the #244 root-cause investigation) produces a silently-stuck session instead of a surfaced error. Not unit-testable without a live `AVAudioEngine`/hardware route change; flagged by reasoning + comparison to sibling implementation.
+
+**3. BLOCKER (untestable without real FluidAudio timing) — `FluidDiarizationPlugin`'s M2a re-entrancy guard is released before the orphaned M2b detached task actually stops.** `diarize()` sets `isDiarizing = true` / `defer { isDiarizing = false }` (`FluidDiarizationPlugin.swift:112-114`), but that `defer` fires the instant `runDiarization` *returns* — which on timeout happens as soon as `withTimeout` throws, **not** when the `Task.detached` running `unsafeManager.performCompleteDiarization(...)` actually finishes. `performCompleteDiarization` is a synchronous, non-cancellation-aware FluidAudio call; `runDetached`'s `task.cancel()` (line ~218) sets the cancellation flag but cannot preempt code that never checks it. `runDiarization`'s doc comment ("a slow inference call cannot outlive the timeout as an orphaned background task") overclaims — `runDetached`'s own doc comment correctly hedges this only for "cancellation-aware work (e.g. `Task.sleep`)". Net effect: after a timeout, `isDiarizing` flips back to `false`, a subsequent `diarize()` call is permitted, and it touches the same non-Sendable `DiarizerManager` (`self.diarizer`) concurrently with the still-running orphaned detached task — a genuine data race on non-Sendable internal state, potential crash or corrupted segments. The test suite's `testInferenceFunction` seam uses `Task.sleep`, which *is* cancellation-aware, so it validates only the half of this pattern that already works correctly; it does not exercise the real synchronous-call path.
+
+**Minor/nit:** `FileSystemDiskSpaceMonitor()` is constructed twice independently (`App.swift:70` and `AppAssemblerBuilders.swift:297`) with no shared identity — harmless today since the type is stateless, but inconsistent with the C3 `LivePrivacyModeProvider` singleton pattern and worth aligning before this type gains any state. New `Task { await transcription.connectDownloadDelegate(menuBarVM) }` (`AppAssemblerBuilders.swift`) is unmanaged but both captures are already retained elsewhere at the composition root — not a hazard.</result>
+<usage><subagent_tokens>95871</subagent_tokens><tool_uses>27</tool_uses><duration_ms>319850</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aca957b0af7473461</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/aca957b0af7473461.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 2: Silent failure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Round 2 — Silent Failure Adversarial Review (full diff, all lanes)
+
+Two categories of genuinely **new** silent-failure defects beyond Round 1's two confirmed bugs. Nothing else in the diff rises above nit-level (A6's AEC diagnostic, F17's streaming-loop refactor, M4c's EventKit mapper, and the theme/JSON error paths in `SettingsViewModelTheme.swift` all correctly propagate or surface errors).
+
+**1. BLOCKER — `LiveIntegrationSettingsStore` (new file): every write silently no-ops with zero log line, not just the Keychain call.**
+`Record-App/Sources/TheRecord/LiveIntegrationSettingsStore.swift:79-82` — the private `updateConfig` helper is the root cause: `guard let current = try? await configManager.load() else { return }` / `try? await configManager.save(...)`. Every mutating method (`setNotionEnabled`, `setObsidianVault`, `clearObsidianVault`) routes through it. If `ConfigManager.load()` ever fails (corrupt config, disk error), **every** Integrations-tab write silently drops with no log, no thrown error, no signal — unlike the sibling failure at `AppAssemblerBuilders.swift:186` (Obsidian bookmark resolution at startup), which at least logs a warning. `setObsidianVault` (line 778) also has a bare `guard let bookmark = try? url.bookmarkData(...) else { return }` with no log. Caller chain confirmed end-to-end: `SettingsView` → `presentObsidianVaultPicker()` → `viewModel.selectObsidianVault(url:)` (`SettingsViewModelIntegrations.swift`) → `LiveIntegrationSettingsStore.setObsidianVault` — every hop returns `Void`/re-reads via `loadObsidianVaultPath()`, which itself collapses "not configured" and "read failed" into the same `""` (line 766-775), so a real failure is indistinguishable from "user never set a vault." Scenario: user picks an Obsidian vault, sandboxed bookmark creation throws (e.g. transient security-scope issue), UI silently shows the field still empty — no error toast, no log line to diagnose from. `LiveIntegrationSettingsStoreTests.swift` only does string-matching on the source file (`adapterSource.contains("KeychainCredentialStore")`) — a behavioral regression here would leave the suite green.
+
+**2. BLOCKER — `CalendarAwareMeetingDetector` constructed and immediately deallocated; auto-arm-on-calendar-meeting is dead code with no signal anywhere.**
+`Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:254-257`: `_ = CalendarAwareMeetingDetector(calendar: eventKit, audioDetector: audioDetector)`. This diff changed a previously-`let meetingDetector = ...` to `_ = ...` (silencing an unused-variable warning) without fixing the underlying bug: the actor's `init` kicks off `Task { [weak self] in await self?.launch() }` (weak capture, `Record-ML/.../CalendarAwareMeetingDetector.swift:29`), but nothing retains the instance past this statement — `Built`/`Dependencies` never stores it. ARC deallocates it as soon as the enclosing expression's scope ends, so `launch()` almost certainly resolves `self` to `nil` and never runs; the calendar-change/audio-arm listeners never start. No crash, no log, no test catches it — `CalendarAwareMeetingDetectorTests.swift` only exercises the actor in isolation (with a retained reference), and there is no assembler/wiring test asserting the detector is actually held or producing events in the composition root. Net effect: THE RECORD's "auto-arm recording when a calendar meeting starts" feature silently does nothing in production, and the diff's own touch of this exact line (to quiet a compiler warning) is itself evidence nobody verified the retention semantics.
+
+Everything else checked (route-change guards in `CoreAudioTapCaptureActorRouteChange.swift` — same already-confirmed stuck-actor pattern as the mic side, not restating; `GRDBContextCache`/`CachingContextProvider` refactors; `MCPSummarizationPlugin`'s new `terminate()`/`waitUntilExit()`; `FileSystemDiskSpaceMonitor`'s `try?` on volume capacity, which degrades to `0` bytes available — a defensible fail-safe default for a disk-space guard, not a masked failure) either preserves or improves error surfacing relative to `main`.</result>
+<usage><subagent_tokens>122466</subagent_tokens><tool_uses>38</tool_uses><duration_ms>348550</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a6a8b9c64a655f9fe</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a6a8b9c64a655f9fe.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 2: Layering" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>This confirms proper composition-root wiring. I now have sufficient evidence for the report.
+
+## Round 2 — Layering Adversarial Review
+
+Reviewed the full `git diff main` (Record-Audio, Record-ML, Record-App, Record-Presentation, Record-Foundation Sources) purely for Domain→Foundation-only / Business→Domain-only / Presentation-never-Infrastructure / composition-root-only-in-App violations.
+
+**Finding 1 (major) — Domain layer now encodes macOS-sandbox-specific semantics, and the parallel cross-platform Domain was left to drift.**
+`Record-Foundation/Sources/Domain/Config/AppConfig.swift:26-33` renames `obsidianVaultPath: String?` → `obsidianVaultBookmark: Data?`, with a doc comment explicitly tying the field to `URL.bookmarkData(options: .withSecurityScope, ...)` and `bodyman-entitlements.plist` sandboxing. That's Darwin-sandbox knowledge baked into a "Domain" type — exactly the kind of platform coupling the existence of a separate `Record-CrossPlatform-Foundation` package is meant to prevent. Confirmed: `Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift:29-30` still has the old `public let obsidianVaultPath: String?` — untouched by this diff. The two `AppConfig` definitions have now diverged in shape (`String?` vs `Data?`), and the diff didn't note or handle the cross-platform sibling at all. Not caught by Round 1 (audio/ML/app+presentation/MCP lanes don't cover Record-CrossPlatform-Foundation).
+
+**Finding 2 (minor/structural, pre-existing but perpetuated) — new composition-root tests placed in the Presentation test target.**
+`Record-Presentation/Tests/Unit/Presentation/LivePrivacyModeProviderTests.swift` and `FileSystemDiskSpaceMonitorTests.swift` both do `@testable import TheRecord` and construct `LivePrivacyModeProvider()` / `FileSystemDiskSpaceMonitor()` directly — concrete types that live in `Record-App/Sources/TheRecord/` (the composition root), not in Presentation. This only compiles because `PresentationTests` in `Package.swift` already (pre-existing, unchanged by this diff — verified `git diff main -- Package.swift` is empty) depends on the `TheRecord` target, an inverted dependency (App→Presentation should be the only direction). This diff doesn't introduce the inversion but exploits it by dropping new App-layer-concrete-type tests into a directory nominally scoped to "Presentation." They belong under `Record-App/Tests/`. Worth a follow-up ticket, not a blocker for this PR.
+
+**Findings that turned out clean (confirmed, not asserted):**
+- E5 (`IntegrationSettingsStore.swift`, `SettingsViewModelIntegrations.swift`, `SettingsViewIntegrationsTab.swift`): protocol correctly declared in `Record-Presentation/Sources/Presentation/ViewModels/`, zero Infrastructure imports; the concrete adapter `LiveIntegrationSettingsStore` (imports `Domain, Foundation, MLInfrastructure, Presentation`) lives correctly in `Record-App/Sources/TheRecord/`. `AppKit` import in the view file is for `NSOpenPanel`, a system UI framework, not Infrastructure.
+- `MenuBarViewModel*.swift` split: `DiskSpaceMonitor` is a pre-existing Domain protocol (`Record-Foundation/Sources/Domain/Protocols/DiskSpaceMonitor.swift`); Presentation only references the protocol type, never a concrete monitor.
+- `ExportTranscriptUseCase.swift` / `QueryContextUseCase.swift` (Record-App/Sources/Business/UseCases): unchanged by this diff (`git diff` empty), both still typed strictly against `any PrivacyModeProvider` — no concrete `LivePrivacyModeProvider` leakage into Business.
+- Construction-site grep across all Sources confirms `FileSystemDiskSpaceMonitor()` and `LiveIntegrationSettingsStore(...)` are instantiated only in `Record-App/Sources/TheRecord/App.swift` and `AppAssemblerBuilders.swift` — composition root only.
+- `AppConstants.swift` addition is a plain string constant, no platform leakage.
+
+Net: two new findings beyond Round 1 — one major (Domain/CrossPlatform-Foundation AppConfig divergence + sandbox semantics in Domain), one minor/structural (test placement). Everything else audited under the layering lens is clean.</result>
+<usage><subagent_tokens>73630</subagent_tokens><tool_uses>24</tool_uses><duration_ms>565836</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab056230818e88415</task-id>
+<tool-use-id>toolu_01NSMTMFPq88psigtyBbJPMB</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/ab056230818e88415.output</output-file>
+<status>completed</status>
+<summary>Agent "Adversarial review Round 3: Mega-adversary vs A1/A6" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: A1 / #244 (tap sample-rate rebuild) — DOES NOT FULLY HOLD
+
+**What's genuinely solid.** The core mechanism is structurally sound and does mirror a pattern already proven in production: `MicCaptureActor` (#49). `handleTapConfigurationChange()` (`Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift:41-94`) removes the stale tap, re-reads `inputFormat(forBus: 0)`, constructs a **brand-new** `AVAudioConverter` (line 67) and calls `installConverterTap` fresh — so there is no stale-closure bug: each rebuild installs a genuinely new tap block capturing the new converter/format, not a reused one. `WAVWriter`'s `sampleRate` field (`WAVWriter.swift:32,76,187`) is fixed once at construction to `configuration.sampleRate` — the **target** format — and the converter's output is always coerced to that same target format, so the WAV header never lies about rate regardless of what the input side does. Attack vector #5 (header mislabeling) does not hold up.
+
+**Where it breaks.** Two concrete gaps:
+
+1. **The "defensive second layer" is almost certainly dead code.** Line 127 (`inBuffer.format.sampleRate != inputFormat.sampleRate`) compares a buffer's format against the exact format string that was passed as the `format:` argument to `installTap(onBus:bufferSize:format:)` on the same line's tap. `installTap`'s `format:` parameter pins/coerces the delivered buffer format — AVFoundation resamples internally to match whatever format you declare at tap-install time. That means `inBuffer.format` is definitionally equal to `inputFormat` for as long as that specific tap instance lives; it cannot silently drift underneath a live tap. The commit message calls this a "catches the race where a buffer arrives before the observer-driven rebuild has completed" — but if that's true, the whole safety story for the async gap between notification-fires and rebuild-completes rests entirely on a check that likely never evaluates true. Nothing in the diff or tests demonstrates this branch is ever exercised.
+
+2. **Zero behavioral coverage of the actual claim.** Of the 4 new tests in `CoreAudioTapCaptureActorTests.swift`, 3 are literal `source.contains("...")` string-presence checks against the raw `.swift` file text (`registersConfigurationChangeObserverAndRebuildHandler`, `tapCallbackDetectsSampleRateMismatch`, `cleanupRemovesRouteChangeObserver`) — they'd pass even if the logic inside those functions were completely wrong, so long as the tokens exist somewhere in the file. The 4th (`handleTapConfigurationChangeNoOpWhenIdle`) only exercises the early-return guard when `state != .recording`. I ran `swift test --package-path Record-Audio --filter CoreAudioTapRouteChangeTests` — all 4 pass, confirming this is exactly what Round 1 flagged, not an overstatement. **No test constructs a converter at rate A, changes to rate B, feeds real PCM through `installConverterTap`'s closure, and asserts the output/WAV duration is correct.** The specific end-to-end scenario that would catch a subtly-wrong fix (44.1kHz→48kHz mid-session, verify unstretched WAV) does not exist. Correctness of the resampling-ratio math itself is assumed, not established.
+
+Residual risk even setting aside the above: `handleTapConfigurationChange` is dispatched via `Task { await self?.handleTapConfigurationChange() }` from a NotificationCenter callback — there's an unbounded async gap between the OS firing `.AVAudioEngineConfigurationChange` and the actor actually executing `removeTap`. What happens to in-flight buffers on the old tap during that window is untested and, per point 1, the intended safety net for it may not function.
+
+## Verdict: A6 / #245 (silent mic-cleaned WAV) — DOES NOT FULLY HOLD
+
+This one is unambiguous by the author's own commit message, not inference. The entire diff (`git show 82af454d`) is **+73/−0 lines, 100% additive**, confined to `AECProcessorActor.swift`: a frame counter, a log-once flag, and `trackSilentOutput()`/`rmsFloat()` helpers that log an error after ~800ms of silent-output-despite-loud-input. No line of AEC signal-processing logic, Speex configuration, or far-end wiring was touched. The commit message states this explicitly: *"Does not change AEC behavior."*
+
+The investigation concluded the observed silence is "correct AEC math given a self-referential far-end input, not a bug in this actor," and that if self-cancellation is the real-world cause, the actual root cause "likely originates further upstream (system audio capture/routing) — outside this packet's file scope; needs a follow-up investigation packet." In other words: **the fix does not claim to fix the root cause, and by its own text neither confirms nor rules out that real-world silent WAVs are still occurring.** It converts a silent failure into a *logged* failure — genuinely useful for future diagnosis — but if #245's headline claim is "silent mic-cleaned WAVs are fixed," that claim is false. It is an observability improvement wearing a fix's clothing, with an open, unassigned follow-up ("upstream... outside this packet's file scope") for the actual mechanism.</result>
+<usage><subagent_tokens>66774</subagent_tokens><tool_uses>18</tool_uses><duration_ms>170116</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a0e9dbe3c8e0076e7</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a0e9dbe3c8e0076e7.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D7: sync CrossPlatform-Foundation AppConfig" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Investigation findings:**
+
+1. **Is `Record-CrossPlatform-Foundation` built/used?** No — it's a fully separate, standalone Swift package (its own `Package.swift`), scaffolded for future Windows/Linux work per `docs/agents/project-layout.md` ("Isolated (cross-platform, macOS 15+, no heavy deps): Record-CrossPlatform-Foundation/ ← Future Windows/Linux work"). The root `Package.swift` never declares `.package(path: "Record-CrossPlatform-Foundation")` as a dependency — the only cross-wiring is that the root package's own `Alignment` target points its source `path:` directly at `Record-CrossPlatform-Foundation/Sources/Alignment` (raw file sharing, unrelated to `AppConfig`).
+
+2. **Same on-disk JSON interop risk?** No. Grepping the whole tree for `AppConfig` usage outside `Domain`, the only I/O call site anywhere is `Record-ML/Sources/MLInfrastructure/Config/ConfigManager.swift` (`import Domain`), which loads/saves `~/.therecord/config.json` and always resolves to `Record-Foundation`'s `Domain.AppConfig` (since `Record-ML` depends on `Record-Foundation`, not `Record-CrossPlatform-Foundation`). CPF's `AppConfig` has zero I/O call sites in its own package — no `ConfigManager` equivalent exists there. The two structs are never encoded/decoded against the same file today.
+
+3. **Does bookmark data make sense cross-platform?** No — `URL.bookmarkData(options: .withSecurityScope, ...)` is a Darwin App Sandbox concept with no Windows/Linux equivalent, so keeping `obsidianVaultPath: String?` as a plain path in CPF is the *correct* choice, not a bug to fix.
+
+**Conclusion:** documentation-only fix per the task's decision tree — this is a legitimate, permanent, intentional divergence, not an interop bug. No functional/code-behavior change was warranted.
+
+**What changed:** added an explanatory comment to the `obsidianVault*` field in both files cross-referencing the other type, explaining the sandbox-vs-cross-platform rationale and confirming no shared on-disk file exists, so a future reader won't rediscover this as a mystery bug.
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-Foundation/Sources/Domain/Config/AppConfig.swift` (99 lines, under the 100-line file-size hook cap)
+- `/Volumes/Extra/repos/gitrdunhq/the-record-suite/Record-CrossPlatform-Foundation/Sources/Domain/Config/AppConfig.swift` (97 lines)
+
+**Build/lint verification:**
+- `swift build --target Domain` at repo root: `Build of target: 'Domain' complete!` (clean)
+- `swift build --target Domain` inside `Record-CrossPlatform-Foundation/`: `Build of target: 'Domain' complete!` (clean)
+- `swiftlint lint --quiet` on both touched files: exit 0, no violations
+
+**Note:** hit a file-size PostToolUse hook (100-line cap) on the first edit attempt to `Record-Foundation/AppConfig.swift` (105 lines) — trimmed the comment to a denser 5-line note to stay under the cap; also noticed the `Read` tool was silently dropping stopwords from this file's content on first read (garbled prose), so I re-verified exact file contents via `nl`/`sed` before editing to avoid a bad `old_string` match.
+
+**Commit:** `2365ca26` — `docs(foundation): document intentional AppConfig obsidianVault* divergence` (not pushed, per instructions).</result>
+<usage><subagent_tokens>72009</subagent_tokens><tool_uses>30</tool_uses><duration_ms>237507</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a1f718fe3e23e3665</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a1f718fe3e23e3665.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D1: Audio route-change abort-on-failure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Blast radius check (tokensave, per project rules):** `handleTapConfigurationChange` has a small, isolated impact graph — only reachable via the `AVAudioEngineConfigurationChange` NotificationCenter observer registered in `registerRouteChangeObserver` (invoked from `setupAggregateAndEngine`/`start()`). No other production code calls it directly, and its signature was unchanged. Risk: **LOW**.
+
+**Files changed:**
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift` — wired `await abortRouteChange()` into all 4 failure branches of `handleTapConfigurationChange()` (invalid new-input-format guard, target-format construction, converter construction, `eng.start()` catch), and added `abortRouteChange()` (internal, not private — matching the existing `cleanup()` convention — with a comment explaining why): finishes `streamContinuation`, best-effort finalizes `wavWriter` (so the WAV header reflects real captured data instead of being left open/truncated, matching what `stop()` does), calls the existing `cleanup()` (engine/tap/aggregate-device teardown), and resets `state = .idle`. +28 lines.
+- `Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift` — added a real behavioral test `abortRouteChangeTearsDownRecordingSession()` plus a test-only actor helper `_testForceRecordingStateForRouteChangeAbort`. It forces the actor into `.recording` with a real `WAVWriter` (with 1600 real samples appended) and a real `AsyncStream` continuation, calls `abortRouteChange()` directly, and asserts: `state` leaves `.recording` (== `.idle`), `wavWriter` is nilled, the stream continuation actually terminates (`iterator.next() == nil`, not just a nil-check on the actor field), and the WAV file's header was patched to the correct data size (44 + 1600*2 bytes) proving `finalize()` really ran. It deliberately does **not** touch a real `AVAudioEngine.inputNode` (which the existing test suite avoids entirely — confirmed no precedent in this file — due to headless-CoreAudio crash risk), instead testing the exact new unit (`abortRouteChange()`) that all 4 failure branches now funnel into. +79 lines.
+
+**Test run** — `swift test --package-path Record-Audio --filter CoreAudioTap`: **20/20 passed**, including the new test. Also ran the full `Record-Audio` suite: **178/178 passed**.
+
+**Swiftlint** on the two touched files: 2 pre-existing violations found, neither introduced by this change:
+- `installConverterTap`'s 7-parameter `function_parameter_count` warning — confirmed present in `git show HEAD:...` before my edit; I didn't touch that function.
+- `CoreAudioTapCaptureActorTests.swift` `file_length` warning — file was already 404 lines (over the 400 default warning threshold) at HEAD before I added anything; my +79 lines pushed it to 483, worsening an existing warning rather than introducing a new violation class. Given the "minimal diff, no unrelated refactors" constraint, I left this as pre-existing debt rather than splitting the test file.
+
+**Commit:** `10ffba88` — `fix(audio): abort route-change failures instead of stranding the actor in .recording`, referencing #223 and #244 in the body. Only the two intended files are in the commit; verified via `git show --stat` and confirmed no Theme-related files (or any other unrelated dirty working-tree state already present in the branch) were staged or touched.</result>
+<usage><subagent_tokens>124644</subagent_tokens><tool_uses>58</tool_uses><duration_ms>606915</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a2b9b9eb035b730b5</task-id>
+<tool-use-id>toolu_01Bv7in7DtJa1UqKzFWfzsa1</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a2b9b9eb035b730b5.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D8: A1 real end-to-end test + dead check" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed as `0416109a`.
+
+## Summary
+
+**Files changed:**
+- `Record-Audio/Sources/AudioInfrastructure/CoreAudioTapCaptureActorRouteChange.swift` (lines ~119–158 area: doc comment above `installConverterTap`, and the tap closure body)
+- `Record-Audio/Tests/Unit/CoreAudioTapCaptureActorTests.swift` (import added, one test replaced, one test added)
+
+**Problem #2 — dead-code conclusion: confirmed dead, removed (option a).**
+Evidence:
+1. `AVAudioNode.installTap(onBus:bufferSize:format:)`'s `format:` parameter causes AVFoundation to internally resample/coerce every buffer that specific tap delivers to match the declared format, for the tap's entire lifetime. A stale-rate buffer can only be produced by a *different* tap instance, and the new tap (with the new format) isn't installed until `handleTapConfigurationChange()` itself runs — so the "race" the comment described is structurally unreachable through this call path.
+2. Corroborating evidence found in the codebase itself: `MicCaptureActorRouteChange.swift` (`#49`), the pattern this file explicitly says it mirrors, installs its tap the same way and has **no** equivalent per-buffer rate check at all.
+
+Removed the `if inBuffer.format.sampleRate != inputFormat.sampleRate { ... Task { handleTapConfigurationChange() } ... }` block and its inaccurate "catches this race" comment, replacing the doc comment with an accurate explanation of why no check is needed. Replaced `tapCallbackDetectsSampleRateMismatch` (a string-presence test) with `installConverterTapHasNoDeadSampleRateRecheck`, which asserts the dead pattern stays removed (guards against silent reintroduction).
+
+**Problem #1 — new behavioral test added.** `converterResamplesWithoutStretchingDuration`: builds a real `AVAudioConverter` (44.1kHz→16kHz), feeds it a real synthetic 440Hz sine `AVAudioPCMBuffer` (0.5s) through the *same* single-shot `converter.convert(to:error:)` input-block idiom and the same `TapConverterInputFlag` type `installConverterTap` uses, and asserts converted duration matches input duration within ±20ms. Driving `installConverterTap`'s actual tap closure was ruled impractical — it requires a live `AVAudioEngine.inputNode` callback from real hardware, which this suite deliberately avoids everywhere else (confirmed by the existing `abortRouteChange` doc comment and the whole suite's design). This test closes the meaningful gap: it would fail hard (by the diagnosed 1.6-1.9x magnitude) if a stale-rate bug were reintroduced.
+
+**Test run** (`swift test --package-path Record-Audio --filter CoreAudioTap`): **21/21 passed** — the 20 pre-existing tests from `10ffba88` plus the new conversion test (the old `tapCallbackDetectsSampleRateMismatch` was swapped 1-for-1 for the new dead-code-guard test, so total count is +1 net).
+
+**Swiftlint**: 2 warnings found, both pre-existing (not introduced by this change) and non-blocking under the project's default (non-`--strict`) lint script: `function_parameter_count` on `installConverterTap` (was already 7 params before this change) and `file_length` on the test file (was already over the 400-line threshold at 483 lines before this change; grew to 576 with the new test). Left alone per "minimal diff, no unrelated refactors" — fixing either would require an unrelated structural refactor.
+
+**Commit**: `0416109a` — `fix(audio): add real conversion-ratio test, remove dead route-change rate check (#244)`. Not pushed.</result>
+<usage><subagent_tokens>95240</subagent_tokens><tool_uses>47</tool_uses><duration_ms>339009</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ae26d8d892e322663</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/ae26d8d892e322663.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D3: MCP security-scoped bookmark access" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Packet D3 is complete and committed. Summary:
+
+**Root cause confirmed:** `ObsidianProvider` resolved a security-scoped bookmark but never called `startAccessingSecurityScopedResource()`, which silently zeroes out results under App Sandbox. `isStale` was read but discarded.
+
+**Files changed** (commit `4b11d3dd`):
+- `Record-ML/Sources/MLInfrastructure/MCP/ObsidianProvider.swift` (+41) — added a `SecurityScopedResourceAccess` protocol seam + `URLSecurityScopedResourceAccess` production impl; the actor now opens the security scope in `init` and releases it in `deinit`, covering every `query()`/`isHealthy()` call for the provider's lifetime.
+- `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift` (+16/-3) — `buildMCPProviders` now logs a warning when the resolved bookmark reports `isStale`.
+- `Record-App/Sources/TheRecord/LiveIntegrationSettingsStore.swift` (+31) — `loadObsidianVaultPath()` now regenerates and persists a fresh bookmark via a new `regenerateObsidianBookmark(for:)` when the stored one is stale (this adapter already owns config persistence and reruns on Settings-open).
+- `Package.swift` (+1) — added `MLInfrastructure` to the `PresentationTests` target so real `ConfigManager`-backed behavioral tests are possible.
+- New: `Record-Presentation/Tests/Unit/Presentation/LiveIntegrationSettingsStoreObsidianStaleBookmarkTests.swift` — real behavioral tests (no mocks) using a real `ConfigManager` and induced staleness (rename the bookmarked directory on disk after bookmark creation).
+- `Record-ML/Tests/Unit/ObsidianProviderTests.swift` (+88) — added a `SpySecurityScopedResourceAccess` (Sendable via `OSAllocatedUnfairLock`) and 3 real behavioral tests proving start-before-query, stop-on-deinit, and no-stop-on-failed-start.
+- `Record-App/Tests/Unit/Presentation/AppAssemblerMCPWiringTests.swift` and `LiveIntegrationSettingsStoreTests.swift` — extended the existing source-inspection ratchet pattern (these targets can't `@testable import TheRecord`/`MLInfrastructure`) with D3-specific assertions.
+
+**Test results (all green):**
+- `swift test --filter LiveIntegrationSettingsStoreObsidianStaleBookmarkTests` → 3/3 passed. (Fixed a test-code-only bug along the way: `FileManager.default.temporaryDirectory` returns `/var/...`, but bookmark resolution canonicalizes through the `/private/var` firmlink; `URL.resolvingSymlinksInPath()` doesn't collapse it the way `realpath(3)` does, so the test now canonicalizes both sides via `realpath()`.)
+- `swift test --package-path Record-ML --filter ObsidianProviderTests` → 17/17 passed, including the 3 new D3 tests.
+- `swift test --filter AppAssemblerMCPWiringTests` and `LiveIntegrationSettingsStoreTests` → all passed including the new D3 ratchet tests.
+
+**swiftlint:** ran on all 8 touched files. Only new warning: a `type_name` warning on the new 54-char test suite name — matches an already-established, tolerated pattern in this codebase (two other test suites already exceed 40 chars with the identical warning), so left as-is. Everything else flagged (silent `try?`, redundant nil-coalescing, `.localizedDescription` logging, function-body-length) is pre-existing, verified via `git stash`/relint diff — not introduced by this change (one pre-existing `function_body_length` violation on `buildMCPProviders` grew from 57→63 lines due to the new `isStale` logging block, but it was already over the 40-line threshold before this change).
+
+**Scope check:** confirmed via `git diff --stat` that only the 8 intended files are staged; Theme files (`Record-Presentation/Sources/Presentation/Theme/`, `JSONThemeTests.swift`, `ThemeLoaderTests.swift`) remain untouched and untracked, as required (out of scope, issue #252).
+
+**Commit:** `4b11d3dd5fd808653209d5a694ff960b2b8da337` on `fix/mega-remediation-20260701`, message starts `fix(mcp): `. Not pushed.</result>
+<usage><subagent_tokens>91527</subagent_tokens><tool_uses>98</tool_uses><duration_ms>1230677</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a24d5ef2ba5bc2b36</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a24d5ef2ba5bc2b36.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D2: ML diarization timeout race" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Packet D2 is complete. Final report:
+
+## Summary
+
+**Commit:** `0975ca05` on `fix/mega-remediation-20260701` (not pushed)
+
+### Files changed
+
+**`Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift`** (lines ~42-50, 118-142, 176-249)
+- Removed the `defer { isDiarizing = false }` in `diarize()` — it released the guard the moment the caller's `await` returned (i.e., on the timeout race), not when the underlying detached work actually finished.
+- Added an explicit `isDiarizing = false` in the `guard diarizer != nil` early-exit branch (no detached task is spawned on that path, so nothing else would release the guard).
+- `runDetached&lt;T&gt;(timeout:operation:)` now creates the `Task.detached` handle explicitly, then spawns a second, weak-self-captured completion-watcher task that awaits `task.value` independently of the timeout race and calls a new `finishDiarizing()` once it resolves (success or throw). The timeout/cancellation race via `withTimeout` + `withTaskCancellationHandler` is unchanged for the caller's return path.
+- Updated doc comments on `isDiarizing`, `runDiarization`, and `runDetached` to state plainly that `performCompleteDiarization` is non-cancellable, so `task.cancel()` is a no-op against it, and that a sufficiently long native hang still ties up the instance's one "slot" indefinitely — documented as an accepted residual risk rather than a bug, per the task's guidance not to fork FluidAudio.
+
+### Concurrency mechanism chosen
+
+Kept the existing **fail-fast** semantics (immediate throw, no waiting) rather than adding a wait/queue — confirmed via grep that `DiarizeMeetingUseCase` (sole meaningful production caller) never retries and treats diarization errors as terminal ("errors are never swallowed here"), and the plugin is instantiated once at the composition root (`TranscriptionSubAssembler.swift:84`), so a second concurrent call is genuinely a caller bug that should surface immediately, not be silently queued.
+
+The re-entrancy guard now tracks "diarizer genuinely in use" via a background completion-watcher task, separate from "caller's await returned" — satisfying the requirement without adding a semaphore/queue.
+
+### Test added
+
+`Record-ML/Tests/Unit/FluidDiarizationPluginTimeoutTests.swift` — `concurrentCallDuringNonCancellableOrphanIsRejected()`: uses a genuinely non-cancellable seam (`DispatchSemaphore` waited on via `Thread.detachNewThread` bridged with `withCheckedContinuation`, not `Task.sleep`/`AsyncStream`, which are cancellation-responsive and wouldn't reproduce the bug). It starts a call that times out at 50ms while its native work is still blocked, asserts a concurrent second call is rejected with `inferenceFailed`, then releases the block and asserts a third call succeeds once the orphan has truly finished. (One iteration hung during development because the reused `testInference` closure blocked the third call on the same already-drained semaphore — fixed by pre-signaling an extra permit before the third call; this was a test bug, not a production bug.)
+
+Actual passing output (`swift test --package-path Record-ML --filter FluidDiarization`):
+```
+✔ Test "second diarize() call is rejected while a prior call's non-cancellable native work is still in flight" passed after 0.506 seconds.
+✔ Suite "FluidDiarizationPlugin timeout" passed after 1.064 seconds.
+✔ Test run with 13 tests in 3 suites passed after 1.064 seconds.
+```
+Also ran the full `Record-ML` suite (334 tests, 53 suites) — all passed, no regressions, including the pre-existing `concurrent diarize calls are serialized — second call throws inferenceFailed` test.
+
+### swiftlint
+
+`swiftlint lint --quiet` on both touched files — zero violations.</result>
+<usage><subagent_tokens>79360</subagent_tokens><tool_uses>70</tool_uses><duration_ms>2420165</duration_ms></usage>
+</task-notification>

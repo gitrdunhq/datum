@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "ff01bf939123",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/AppAssemblerBuilders.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ff/01bf939123/0/metadata.json",
+      "transcript": "/ff/01bf939123/0/full.jsonl",
+      "content_hash": "/ff/01bf939123/0/content_hash.txt",
+      "prompt": "/ff/01bf939123/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 192565,
+    "cache_creation_tokens": 4851630,
+    "cache_read_tokens": 61592617,
+    "output_tokens": 344554,
+    "api_call_count": 529
+  }
+}
