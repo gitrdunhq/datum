@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "d9ba2b9df4b4",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Calendar/CalendarAwareMeetingDetector.swift",
+    "Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d9/ba2b9df4b4/0/metadata.json",
+      "transcript": "/d9/ba2b9df4b4/0/full.jsonl",
+      "content_hash": "/d9/ba2b9df4b4/0/content_hash.txt",
+      "prompt": "/d9/ba2b9df4b4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19013,
+    "cache_creation_tokens": 701875,
+    "cache_read_tokens": 4607680,
+    "output_tokens": 49905,
+    "api_call_count": 47
+  }
+}
