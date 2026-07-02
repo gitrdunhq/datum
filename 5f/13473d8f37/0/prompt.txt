@@ -1484,3 +1484,38 @@ Packet D4 is complete on `fix/mega-remediation-20260701`, commit **`50e00c4b`**.
 **Out of scope respected**: no Theme-related files touched (issue #252). The large unrelated diff visible in `git status` (App.swift, release.sh, Package.resolved, `.build/` artifacts, Theme/Broadsheet view files) predates this session and was **not** staged or committed — only the 9 intended files are in commit `50e00c4b`.</result>
 <usage><subagent_tokens>154971</subagent_tokens><tool_uses>132</tool_uses><duration_ms>1618940</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>a3b0dda1ec2a3d2c6</task-id>
+<tool-use-id>toolu_01TBwjcdXmXDd1voLd6RgHF8</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a3b0dda1ec2a3d2c6.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix packet D5: regression test wrong file path" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed as `4e2f84db4a6afcfc40cd0894462fad282e37a67c`.
+
+## Summary
+
+**Actual bug (option b, false-negative failure — not a-silent-pass, not a compile break):** The P5 split (`189ac925`, "split MenuBarViewModel into real cohesive units") moved `startRecordingTapped()`/`stopRecordingTapped()` out of the monolithic `MenuBarViewModel.swift` into `MenuBarViewModelRecording.swift`, carrying the `pipelineCoordinator.cancelAll()` fix along with them. Issue #251's two source-scan regression-guard tests still hardcoded `Sources/Presentation/ViewModels/MenuBarViewModel.swift` as the scan target, where those functions no longer exist. Both tests deterministically failed with `Issue.record("Could not locate startRecordingTapped()...")` on every run — a hard false-negative, not a vacuous pass and not a build break, matching the issue's claim of "deterministically failing" tests. The underlying production bug was **already fixed** in the code; only the regression gate itself was broken.
+
+**Files fixed:**
+- `Record-Presentation/Tests/Unit/Presentation/MenuBarPipelineRaceTests.swift` — repointed scan path to `MenuBarViewModelRecording.swift`; also fixed marker strings (`"public func startRecordingTapped()"` → `"func startRecordingTapped()"`, since the function is a member of `public extension MenuBarViewModel` and isn't itself `public`-prefixed).
+- `Record-Presentation/Tests/Unit/Presentation/BroadsheetAppStatePipelineTests.swift` (T073-C test) — repointed scan path the same way; markers already matched.
+
+**RED verification** (temporarily removed `pipelineCoordinator.cancelAll()` from `startRecordingTapped()` in `MenuBarViewModelRecording.swift`):
+- `MenuBarPipelineRaceTests`: 4/4 tests failed (source-scan + both behavioral race tests + timing-contract test)
+- `BroadsheetAppStatePipelineTests`: T073-C failed (others unaffected)
+
+**GREEN verification** (reverted, confirmed `git diff --stat` clean on the source file):
+- `MenuBarPipelineRaceTests`: 4/4 passed
+- `BroadsheetAppStatePipelineTests`: 4/4 passed
+
+**swiftlint:** ran on both touched test files — 1 pre-existing `trailing_comma` warning at `MenuBarPipelineRaceTests.swift:63` (confirmed via `git diff` it's outside my changed lines, not introduced by this fix). No new violations.
+
+**Issue #251 scope:** Fully addressed. The production fix (`pipelineCoordinator.cancelAll()` in `startRecordingTapped()`) was already present pre-packet; this packet closes the only remaining gap — the regression tests now actually verify that invariant instead of hard-failing against a stale path. Commit uses `Closes #251`.
+
+**Out of scope, left untouched per constraints:** `ObservableHygieneTests.swift` and `MenuBarViewModelWeakSelfTests.swift` also scan `MenuBarViewModel.swift`, but they check properties/patterns (`#170` forwarding computed props, `weak self` usage) that genuinely still live in that file post-split — unrelated to #251, not touched.</result>
+<usage><subagent_tokens>99840</subagent_tokens><tool_uses>34</tool_uses><duration_ms>305611</duration_ms></usage>
+</task-notification>
