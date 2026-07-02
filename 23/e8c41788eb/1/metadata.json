@@ -1,9 +1,12 @@
 {
   "cli_version": "0.7.7",
   "checkpoint_id": "23e8c41788eb",
+  "session_id": "b5e246c8-3c5f-4c37-9c55-ef991b9ed095",
   "strategy": "manual-commit",
+  "created_at": "2026-07-02T00:56:45.189615Z",
   "branch": "fix/mega-remediation-20260701",
-  "checkpoints_count": 7,
+  "checkpoints_count": 3,
+  "save_step_count": 1,
   "files_touched": [
     "Record-Audio/Sources/AudioInfrastructure/AudioSessionDetector.swift",
     "Record-Audio/Tests/Unit/AVFoundationExportActorTests.swift",
@@ -18,25 +21,29 @@
     "Record-Audio/Tests/Unit/WAVWriterRaceTests.swift",
     "Record-Audio/Tests/Unit/WaveformProcessorTests.swift"
   ],
-  "sessions": [
-    {
-      "metadata": "/23/e8c41788eb/0/metadata.json",
-      "transcript": "/23/e8c41788eb/0/full.jsonl",
-      "content_hash": "/23/e8c41788eb/0/content_hash.txt",
-      "prompt": "/23/e8c41788eb/0/prompt.txt"
-    },
-    {
-      "metadata": "/23/e8c41788eb/1/metadata.json",
-      "transcript": "/23/e8c41788eb/1/full.jsonl",
-      "content_hash": "/23/e8c41788eb/1/content_hash.txt",
-      "prompt": "/23/e8c41788eb/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "8cd98e1d62bd",
   "token_usage": {
-    "input_tokens": 109642,
-    "cache_creation_tokens": 2473813,
-    "cache_read_tokens": 29572872,
-    "output_tokens": 208817,
-    "api_call_count": 286
+    "input_tokens": 90484,
+    "cache_creation_tokens": 1766564,
+    "cache_read_tokens": 23795835,
+    "output_tokens": 156650,
+    "api_call_count": 231
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T00:56:45.151759Z",
+    "agent_lines": 49,
+    "agent_removed": 47,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 49,
+    "total_lines_changed": 96,
+    "agent_percentage": 100,
+    "metric_version": 2
   }
 }
