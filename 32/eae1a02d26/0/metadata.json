@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "32eae1a02d26",
+  "session_id": "7c35d465-d5ef-477e-a940-9baf3548f83d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T05:47:57.670115Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/App.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "2947b74b084e",
+  "token_usage": {
+    "input_tokens": 109705,
+    "cache_creation_tokens": 2756364,
+    "cache_read_tokens": 42607911,
+    "output_tokens": 229394,
+    "api_call_count": 369
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-goal-2026-07-02T03:03:45.411927Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "goal"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "56f05bf22003",
+      "timestamp": "2026-07-02T03:03:45.411927Z",
+      "native": {
+        "command": "/goal"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/goal",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 41
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T05:47:57.542293Z",
+    "agent_lines": 1,
+    "agent_removed": 1,
+    "human_added": 169,
+    "human_modified": 41,
+    "human_removed": 0,
+    "total_committed": 211,
+    "total_lines_changed": 212,
+    "agent_percentage": 0.9433962264150944,
+    "metric_version": 2
+  }
+}
