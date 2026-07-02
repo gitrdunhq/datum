@@ -1,1 +1,9 @@
 audit: unwired code , stubs, fakes, mocks, todos
+
+---
+
+creat issues its allowed
+
+---
+
+forget theme editir fir now
