@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "909f8023848a",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/90/9f8023848a/0/metadata.json",
+      "transcript": "/90/9f8023848a/0/full.jsonl",
+      "content_hash": "/90/9f8023848a/0/content_hash.txt",
+      "prompt": "/90/9f8023848a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 48554,
+    "cache_creation_tokens": 469636,
+    "cache_read_tokens": 11365059,
+    "output_tokens": 62625,
+    "api_call_count": 99
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "909f8023848a",
+  "session_id": "c3e7a459-15d3-4f30-bffc-e7772233ca41",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T15:35:16.852707Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "98e6e2344f3e",
+  "token_usage": {
+    "input_tokens": 48554,
+    "cache_creation_tokens": 469636,
+    "cache_read_tokens": 11365059,
+    "output_tokens": 62625,
+    "api_call_count": 99
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-codex:adversarial-review-2026-07-02T15:07:45.4324Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "codex:adversarial-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "778c04648b6d",
+      "timestamp": "2026-07-02T15:07:45.4324Z",
+      "native": {
+        "command": "/codex:adversarial-review"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/codex:adversarial-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
