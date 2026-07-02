@@ -1,0 +1,134 @@
+@docs/plans/mega-remediation-20260701.md deepen this plan preexecuttion with aflgenrs
+
+---
+
+why socmant failee. tou need to rate limit
+
+---
+
+they done
+
+---
+
+<task-notification>
+<task-id>w7m3qsre0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/w7m3qsre0.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Adversarial pre-mortem fleet on docs/plans/mega-remediation-20260701.md, then edit plan in place" completed</summary>
+<result>{"totalCandidates":37,"confirmedCount":12,"confirmed":[{"packet":"P4 &amp; E4","issue":"P4 (Wave 4, 'parallel to Waves 2-3') and E4 (Wave 5) both edit Record-App/Sources/TheRecord/AppAssemblerBuilders.swift concurrently, but the plan's only cross-wave collision note ('Wave 6 ... after Wave 5 (E4 touches the same assembler)') accounts for Wave 5-&gt;6, not Wave 4-&gt;5.","severity":"high","evidence":"Read of the actual file confirms both citations: P4 targets 'unused meetingDetector AppAssemblerBuilders.swift:227' which is the `let meetingDetector = CalendarAwareMeetingDetector(...)` inside `buildMenuBarVM` (line 227, genuinely never used afterward, matching the packet). E4 targets `AppAssemblerBuilders.swift ~:141` inside `buildMCPProviders` (lines 128-179: KeychainCredentialStore/migrateAccessibilityIfNeeded already at 143-144, GRDBContextCache init at 133-140). Both packets edit the same source file. Wave 4's header says only 'parallel to Waves 2-3' -- nothing in the plan states Wave 5 waits for Wave 4 to finish, and P5/P6 explicitly running LAST in Wave 4's lane means P4 could still be mid-flight or just-landed when Wave 5/E4 starts (since Wave 5 has no stated gate on Wave 4). Two concurrent agents editing the same Swift file in different functions is exactly the 'hidden conflict between packets in different lanes' the lane model assumes away, and it is not the same collision the plan already flagged (E4 vs C1-C3).","suggested_edit":"Add an explicit ordering note under Wave 4 or Wave 5: 'P4 and E4 both touch AppAssemblerBuilders.swift -- P4 must land (commit) before E4 starts, OR run these two specific packets serially even though their lanes are otherwise parallel.' Alternatively, list AppAssemblerBuilders.swift in a cross-lane 'contended files' table at the top of the Orchestration mechanics section so the orchestrator sequences any packet touching it, not just the C-series.","lens":"dependency","verdict":{"real":true,"reasoning":"The defect claim is confirmed. Independent verification shows: (1) P4 genuinely targets AppAssemblerBuilders.swift:227 (the meetingDetector variable), (2) E4 genuinely targets AppAssemblerBuilders.swift ~:141 (MCP provider wiring), both in the same file but different functions. (3) Wave 4 is explicitly labeled \"parallel to Waves 2-3\" with no statement that Wave 5 must wait for it. (4) Wave 5 lacks a lane designation and has no explicit sequencing requirement relative to Wave 4 despite Wave 6 having explicit \"after Wave 5\" gate. (5) The orchestration rule ties serialization to lane membership, but Wave 5's lane is undefined in the plan. This creates genuine ambiguity: either Wave 5 runs in parallel with Wave 4 (file conflict risk on AppAssemblerBuilders.swift), or it runs serially (but this should be documented as clearly as the Wave 6 gate). The reviewer's observation is valid—the plan documents E4↔Wave6 contention but not P4↔E4 contention. The suggested fixes (explicit ordering or cross-file contention table) are appropriate remedies."}},{"packet":"A7 &amp; M3","issue":"A7 (listed under Wave 2/Audio lane) directly edits Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift while M3 (Wave 3/ML lane, declared only 'parallel to Wave 2') edits the init of the class under test, CalendarAwareMeetingDetector.swift, in the same package -- the plan's only mitigation is the vague parenthetical '(Record-ML — coordinate with ML lane)' with no concrete sequencing rule.","severity":"medium","evidence":"Confirmed via direct read: CalendarAwareMeetingDetector.swift line 32 is exactly `Task { await self.start() }` (M3's target) and line 45 has the `isArmed` accessor A7's polling helper depends on. A7's packet text says its ML-side sleep-to-polling fix is done 'in ... CalendarAwareMeetingDetectorTests.swift:130,166,201 (Record-ML — coordinate with ML lane)' -- but A7 itself is scheduled in Wave 2, not Wave 3, and Wave 2/Wave 3 are declared to run in parallel. If the A7 agent (Audio lane) edits the ML test file concurrently with the M3 agent (ML lane) changing the actor's task-lifecycle behavior it tests, either agent's RED/GREEN cycle can be invalidated mid-flight by the other's concurrent edit, and 'coordinate with ML lane' is not an enforceable scheduling constraint in the orchestration mechanics section.","suggested_edit":"Move the Record-ML portion of A7 (CalendarAwareMeetingDetectorTests.swift polling fix) explicitly into the Wave 3/M-series list (e.g. as M3b, sequenced immediately after M3) instead of leaving it as a parenthetical inside an Audio-lane packet, so the same lane that owns CalendarAwareMeetingDetector.swift also owns its test's concurrent-edit risk.","lens":"dependency","verdict":{"real":true,"reasoning":"The plan has a genuine cross-lane coordination defect. Packet A7 (Wave 2, Audio lane) is scheduled to edit Record-ML/Tests/Unit/CalendarAwareMeetingDetectorTests.swift while packet M3 (Wave 3, ML lane) simultaneously modifies the class under test (CalendarAwareMeetingDetector.swift init/deinit), with waves running in parallel. A7's polling fix depends on the isArmed accessor and detector initialization behavior; M3's task-lifecycle changes could affect this. The plan acknowledges the coordination need with \"(Record-ML — coordinate with ML lane)\" but provides no explicit sequencing rule in the orchestration mechanics section. This creates a test isolation risk where one agent's RED/GREEN cycle could be invalidated by the other's concurrent edits. The fix (moving A7's ML-side work to M3b in Wave 3) is appropriate because it consolidates ownership in the ML lane and makes sequencing explicit."}},{"packet":"A2/A3/A4","issue":"A2, A3, and A4's file citations (CoreAudioTapCaptureActor.swift:97-101, :265, :95-101) are pre-A1 line numbers; A1 runs first in the same serial lane and inserts new observer-registration/rebuild code into the same file, but the plan never flags that these citations will drift once A1 lands and commits, nor instructs later packets in the lane to re-derive line numbers from a fresh read rather than trust the packet spec verbatim.","severity":"medium","evidence":"Direct read of CoreAudioTapCaptureActor.swift confirms the citations are currently accurate (WAVWriter created at lines 97-101 outside the `do` block starting at 105, matching A2/A4; `cleanup()`/duration-from-wall-clock at line ~267-271 near the cited :265, matching A3). A1's own description requires adding an `.AVAudioEngineConfigurationChange` observer registration (likely near `start()`, before line 94) and removing it in `cleanup()` (called at line 273) -- both insertions shift subsequent line numbers. The ground rules say 'Verify first: confirm defect before fixing' but do not specifically call out that A2-A4's hardcoded line numbers are a pre-A1 snapshot that will be stale by the time those agents run, even though Wave 2 is otherwise correctly marked SERIAL to avoid true file conflicts.","suggested_edit":"Add a note to the Wave 2 header: 'Line numbers cited in A2-A7 are taken from pre-A1 main and will shift once A1 commits -- each agent must re-read the current file and locate the described code by content/symbol name, not by the literal line numbers in this packet.'","lens":"dependency","verdict":{"real":true,"reasoning":"The claim is verified as a genuine defect. Analysis confirms: (1) A3 and A4 citations in the plan (lines ~265 and 95–101) are accurate as measured against pre-A1 main; (2) A1 will add 15-20+ lines of observer registration code within the start() method (after line 165, following the MicCaptureActorRouteChange pattern of ~60 lines); (3) These insertions will shift all subsequent code, including the stop() function (currently line 220) and citations within it; (4) The plan does NOT warn A3-A7 agents to re-read the file or verify line numbers after A1 commits; (5) The SERIAL lane means A1 commits before A3-A7 run, making hardcoded line citations stale. The suggested fix—adding a Wave 2 header note instruc
+... (truncated 18663 chars, full result in /private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/w7m3qsre0.output)</result>
+<diagnostics>Per-agent results: /Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-the-record-suite/7c35d465-d5ef-477e-a940-9baf3548f83d/subagents/workflows/wf_288b7efa-929/journal.jsonl — one {"type":"result",...} line per completed agent with its full return value.
+If the result above is empty or unexpected, Read this file BEFORE diagnosing — do not assume agents returned non-empty results.
+To re-run with edited post-processing: Workflow({scriptPath: '/Users/samfakhreddine/.claude/projects/-Volumes-Extra-repos-gitrdunhq-the-record-suite/7c35d465-d5ef-477e-a940-9baf3548f83d/workflows/scripts/mega-remediation-premortem-wf_288b7efa-929.js', resumeFromRunId: 'wf_288b7efa-929'}) — agents whose (prompt, opts) are unchanged replay from cache.</diagnostics>
+<failures>[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:sequencing] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.0s"}
+[verify:citation] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:test-gate] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.6s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:rollback] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.5s"}
+[verify:dependency] failed: API Error: Server is temporarily limiting requests (not your usage limit) · {"detail":"Rate limited. Retry after 0.1s"}</failures>
+<usage><agent_count>43</agent_count><agents_done>18</agents_done><agents_error>25</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result><subagent_tokens>730625</subagent_tokens><tool_uses>210</tool_uses><duration_ms>701152</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a8d078535cad3d94b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a8d078535cad3d94b.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1 canary: V5 #205 symlink escape" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Committed cleanly — only the intended test file was staged and committed. The pre-existing unrelated dirty working tree (theme files, presentation views, etc.) is untouched, consistent with the ground rule to never touch theme files.
+
+## Report — Packet V5 (#205 symlink escape)
+
+1. **Guard status**: Confirmed present on main. The trailing-slash symlink-escape guard is at `Record-ML/Sources/MLInfrastructure/MCP/ObsidianProvider.swift:34` (comment at 32–33, not exactly 32–34 as cited in plan): `guard fileURL.resolvingSymlinksInPath().path.hasPrefix(vaultRoot + "/") else { continue }`. Correctly rejects both symlinks resolving outside the vault and sibling-directory-prefix attacks (`vaultRoot + "/"` prevents `/a/vault` matching `/a/vault-evil`).
+
+2. **Existing tests**: `Record-ML/Tests/Unit/ObsidianProviderTests.swift` already had two tests targeting this (added under "Slice E: E4 — symlink escape", lines 195–228 pre-edit): `vault enumeration rejects symlinks outside vault` and `guard uses trailing slash to prevent sibling-prefix escape`. Both are **source-inspection only** (grep the source text for strings like `"hasPrefix"`/`"vaultRoot + \"/\""`) — they'd pass even if the guard were logically broken, violating TDD-002. No true behavioral test existed, so I added one.
+
+3. **New test added**: `symlinked file resolving outside vault is skipped` — creates a real symlink inside a temp vault pointing to a file outside it containing a unique search term, calls `query()`, asserts `results.isEmpty`. GREEN result: 14/14 tests passed (full `ObsidianProviderTests` suite). RED attempt (temporarily neutering the guard to `guard true || ...`) was blocked by the sandbox's auto-mode classifier as "Create RCE Surface" — it correctly refused to run tests against a live-disabled security guard. I restored the file immediately (confirmed zero diff via `git diff --stat`) and instead verified analytically: without the guard, the enumerator would traverse the symlink, resolve it, read the outside file's content, match the search term, and append it to `results`, which would fail `results.isEmpty` — so the test is a real RED/GREEN discriminator, verified by inspection rather than execution.
+
+4. **Callers found** (via `tokensave_search` literal match): only production caller is `Record-App/Sources/TheRecord/AppAssemblerBuilders.swift:163` inside `buildMCPProviders`, wrapped by `CachingContextProvider` (part of Wave 5/E4, out of scope here — not touched). All other callers are test files.
+
+5. **Commit**: `89b83c97` — `test(record-ml): behavioral regression for symlink escape guard (#205)`. Only `Record-ML/Tests/Unit/ObsidianProviderTests.swift` changed (+25 lines); `ObsidianProvider.swift` untouched.
+
+6. **Verdict**: **ALREADY_FIXED** — guard was already correct and shipped on main; added a missing behavioral regression test to close the coverage gap the plan flagged.</result>
+<usage><subagent_tokens>68801</subagent_tokens><tool_uses>18</tool_uses><duration_ms>171480</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a35a24c08773f2dc4</task-id>
+<tool-use-id>toolu_012gB575debqEmDRRBWmY5ew</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a35a24c08773f2dc4.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V1 #190 AEC truncation" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No changes needed — verify-and-close confirmed the fix and its test coverage are already on main.
+
+1. **Bug status**: ALREADY_FIXED. `AECProcessorActor.process(mic:farEnd:)` in `Record-Audio/Sources/AudioInfrastructure/AECProcessorActor.swift:125-170` implements the remainder-carry chunk loop exactly as expected: `combined = remainder + mic.buffer.samples` (line 134), full-frame loop with offset cursor (lines 142-158), and `remainder = Array(combined[offset...])` (line 161) carries the sub-frame leftover into the next call rather than discarding it. `stop()` (line 172-178) intentionally clears `remainder` on session end.
+
+2. **Regression coverage already exists**: `Record-Audio/Tests/Unit/AECProcessorActorTests.swift:518-612`, suite `AECProcessorActorChunkingTests` (SAFE-001/BOUND-001). Specifically `totalOutputAcrossTwoCallsEqualsTotalInput()` (lines 528-557) uses exactly the scenario the packet specifies: two 1,365-sample calls (a size that doesn't divide evenly into the 256-sample frame) plus a flush call, asserting `totalOutput == totalInput`. Doc comment on the suite (lines 511-517) explicitly states this test catches "the pre-fix implementation [that] called speex_echo_cancellation once with min(input, frameSize) samples, silently discarding the rest." Additional boundary tests cover exact-multiple, five-full-frames, and empty-input cases.
+
+3. **Test run**: no new test needed — ran existing suite, all GREEN (no RED demonstration performed since this is a pre-existing, already-committed regression test, not one I authored): `swift test --filter AECProcessorActorChunkingTests` → 4/4 passed, including the SAFE-001 1365-sample test in 0.004s.
+
+4. **Callers found** (grep for `.process(mic:`): exactly one production caller — `Record-Presentation/Sources/Presentation/ViewModels/RecordingStateViewModelStreaming.swift:133`. All other hits are within the test file itself.
+
+5. **Commit**: no commit — no files were changed. Both the fix and its regression test were already landed in commit `4f27ba6b` ("feat(epic-30): domain contract audit remediation — 26 findings P0–P3 (#204)"), predating this session's branch.
+
+6. **Verdict**: ALREADY_FIXED.</result>
+<usage><subagent_tokens>64145</subagent_tokens><tool_uses>9</tool_uses><duration_ms>142185</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a6b145e3e859d724f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/b5e246c8-3c5f-4c37-9c55-ef991b9ed095/tasks/a6b145e3e859d724f.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1: V3 #193 WAV deleted on DB fail" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No changes were needed — this packet is verify-and-close only. Report below.
+
+## V3 Report — #193 WAV deleted on DB fail
+
+1. **Bug status: ALREADY FIXED.** Production file is `Record-App/Sources/Business/UseCases/StopAndTranscribeUseCase.swift` (confirmed via issue #193 body citing this exact path). Fixed in commit `4f27ba6b` (feat(epic-30), already an ancestor of current HEAD — no rebase needed). The old code used a `var successfullyPersisted = false` + `defer` that deleted the WAV on *any* failure including storage throws. Current code (lines 72–90) splits the paths explicitly: cancellation (lines 76–85) does `try? FileManager.default.removeItem` + throws; the storage-persist path (lines 87–90) has no defer/cleanup at all — comment states "If saveRecording throws (transient DB error), the WAV is intentionally preserved on disk." Verified by reading the file directly.
+   - Note: a near-identical duplicate class exists at `Record-CrossPlatform-Foundation/Sources/Business/UseCases/StopAndTranscribeUseCase.swift` still containing the old buggy `successfullyPersisted`/defer pattern. This file is **not compiled into any Package.swift target** (only `Sources/Alignment` from that directory is referenced) — confirmed dead/orphaned code, out of scope per issue's exact file citation and the "touch only the listed file" rule. Flagging for a separate see-something issue rather than touching it.
+
+2. **Regression coverage: already exists.** `Record-App/Tests/Unit/Business/StopAndTranscribeUseCaseTests.swift`, test `wavFileIsPreservedWhenSaveRecordingThrows()` (renamed from `strandedWavFileIsDeletedIfStorageFails` in the same fix commit, now under `// MARK: - WAV Preservation on Persistence Failure (F4/#193)`). It configures `MockStorageEngine` to throw on `saveRecording`, then asserts `FileManager.default.fileExists(atPath: tempURL.path) == true` — an exact RED/GREEN discriminator for this defect.
+
+3. **No new test added** (none was missing). Ran existing test to confirm GREEN:
+```
+✔ Test "WAV file is preserved on disk when saveRecording throws (retryable)" passed after 0.002 seconds.
+✔ Suite "StopAndTranscribeUseCase" passed after 0.002 seconds.
+```
+
+4. **Callers found:** composition root `Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift:74` (constructs the use case); runtime caller `Record-Presentation/Sources/Presentation/ViewModels/RecordingStateViewModel+Stop.swift:33` (`stopAndTranscribe.stopAndTranscribe(session:)`); plus extensive test-only callers in `StopAndTranscribeUseCaseTests.swift` and `StopAndTranscribeDualTrackTests.swift`.
+
+5. **No commit** — no source or test changes were required; the file was already fixed and already has regression coverage. Working tree remains clean for this scope (verified via `git status --short` on the three relevant files: clean).
+
+6. **Verdict: ALREADY_FIXED.**</result>
+<usage><subagent_tokens>78625</subagent_tokens><tool_uses>21</tool_uses><duration_ms>207116</duration_ms></usage>
+</task-notification>
