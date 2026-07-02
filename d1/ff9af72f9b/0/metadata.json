@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "d1ff9af72f9b",
+  "session_id": "7c35d465-d5ef-477e-a940-9baf3548f83d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T02:37:48.688492Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 3,
+  "save_step_count": 4,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Storage/GRDBSQL.swift",
+    "Record-ML/Sources/MLInfrastructure/Storage/GRDBStorageActor+Diarization.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "5668ad25d511",
+  "token_usage": {
+    "input_tokens": 46083,
+    "cache_creation_tokens": 1765207,
+    "cache_read_tokens": 19513519,
+    "output_tokens": 135926,
+    "api_call_count": 174
+  },
+  "session_metrics": {
+    "turn_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T02:37:48.630431Z",
+    "agent_lines": 10,
+    "agent_removed": 3,
+    "human_added": 121,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 131,
+    "total_lines_changed": 134,
+    "agent_percentage": 9.701492537313433,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
