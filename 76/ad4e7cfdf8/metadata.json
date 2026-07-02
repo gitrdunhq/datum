@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "76ad4e7cfdf8",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-ML/Tests/Unit/CachingContextProviderTests.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTests.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTimeoutTests.swift",
+    "Record-ML/Tests/Unit/JSONSpeakerProfileStoreTests.swift",
+    "Record-ML/Tests/Unit/MCPLifecycleTests.swift",
+    "Record-ML/Tests/Unit/MLXSummarizationPluginTests.swift",
+    "Record-ML/Tests/Unit/NotionProviderTests.swift",
+    "Record-ML/Tests/Unit/OSLogPrivacyInfrastructureTests.swift",
+    "Record-ML/Tests/Unit/ObsidianProviderTests.swift",
+    "Record-ML/Tests/Unit/ParakeetPluginTests.swift",
+    "Record-ML/Tests/Unit/WhisperKitPluginTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/76/ad4e7cfdf8/0/metadata.json",
+      "transcript": "/76/ad4e7cfdf8/0/full.jsonl",
+      "content_hash": "/76/ad4e7cfdf8/0/content_hash.txt",
+      "prompt": "/76/ad4e7cfdf8/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19152,
+    "cache_creation_tokens": 704523,
+    "cache_read_tokens": 5334125,
+    "output_tokens": 51413,
+    "api_call_count": 52
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "76ad4e7cfdf8",
+  "session_id": "7c35d465-d5ef-477e-a940-9baf3548f83d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T00:56:10.044999Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-ML/Tests/Unit/CachingContextProviderTests.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTests.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTimeoutTests.swift",
+    "Record-ML/Tests/Unit/JSONSpeakerProfileStoreTests.swift",
+    "Record-ML/Tests/Unit/MCPLifecycleTests.swift",
+    "Record-ML/Tests/Unit/MLXSummarizationPluginTests.swift",
+    "Record-ML/Tests/Unit/NotionProviderTests.swift",
+    "Record-ML/Tests/Unit/OSLogPrivacyInfrastructureTests.swift",
+    "Record-ML/Tests/Unit/ObsidianProviderTests.swift",
+    "Record-ML/Tests/Unit/ParakeetPluginTests.swift",
+    "Record-ML/Tests/Unit/WhisperKitPluginTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "5668ad25d511",
+  "token_usage": {
+    "input_tokens": 19152,
+    "cache_creation_tokens": 704523,
+    "cache_read_tokens": 5334125,
+    "output_tokens": 51413,
+    "api_call_count": 52
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T00:56:10.030362Z",
+    "agent_lines": 27,
+    "agent_removed": 28,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 27,
+    "total_lines_changed": 55,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
