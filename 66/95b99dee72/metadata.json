@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "6695b99dee72",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/AECProcessorActor.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/66/95b99dee72/0/metadata.json",
+      "transcript": "/66/95b99dee72/0/full.jsonl",
+      "content_hash": "/66/95b99dee72/0/content_hash.txt",
+      "prompt": "/66/95b99dee72/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 45742,
+    "cache_creation_tokens": 1749633,
+    "cache_read_tokens": 17432437,
+    "output_tokens": 127782,
+    "api_call_count": 159
+  }
+}
