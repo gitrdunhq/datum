@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "2732f4a86632",
+  "session_id": "7c35d465-d5ef-477e-a940-9baf3548f83d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-02T00:55:43.964273Z",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/MCP/GRDBContextCache.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "5668ad25d511",
+  "token_usage": {
+    "input_tokens": 19017,
+    "cache_creation_tokens": 702997,
+    "cache_read_tokens": 4896864,
+    "output_tokens": 50437,
+    "api_call_count": 49
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-02T00:55:43.950253Z",
+    "agent_lines": 29,
+    "agent_removed": 22,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 29,
+    "total_lines_changed": 51,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
