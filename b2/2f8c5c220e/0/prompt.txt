@@ -1,1 +1,9 @@
 /codex:adversarial-review
+
+---
+
+@Record-App/caliper.md
+
+---
+
+i ran itnagainst the record-app folder
