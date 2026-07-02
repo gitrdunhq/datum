@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "086118d80d65",
+  "strategy": "manual-commit",
+  "branch": "fix/mega-remediation-20260701",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "Record-ML/Tests/Unit/CredentialStoreTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/08/6118d80d65/0/metadata.json",
+      "transcript": "/08/6118d80d65/0/full.jsonl",
+      "content_hash": "/08/6118d80d65/0/content_hash.txt",
+      "prompt": "/08/6118d80d65/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19017,
+    "cache_creation_tokens": 702997,
+    "cache_read_tokens": 4896864,
+    "output_tokens": 50437,
+    "api_call_count": 49
+  }
+}
