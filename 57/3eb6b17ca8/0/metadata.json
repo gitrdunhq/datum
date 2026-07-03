@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "573eb6b17ca8",
+  "session_id": "a7689a1b-2b53-44ae-a4f2-3415985323fc",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-03T00:36:50.275216Z",
+  "branch": "fix/audit-unwired-macos-20260702",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "7703d179d141",
+  "token_usage": {
+    "input_tokens": 34947,
+    "cache_creation_tokens": 534638,
+    "cache_read_tokens": 13453341,
+    "output_tokens": 89179,
+    "api_call_count": 124
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}

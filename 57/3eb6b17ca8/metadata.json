@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "573eb6b17ca8",
+  "strategy": "manual-commit",
+  "branch": "fix/audit-unwired-macos-20260702",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/57/3eb6b17ca8/0/metadata.json",
+      "transcript": "/57/3eb6b17ca8/0/full.jsonl",
+      "content_hash": "/57/3eb6b17ca8/0/content_hash.txt",
+      "prompt": "/57/3eb6b17ca8/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 34947,
+    "cache_creation_tokens": 534638,
+    "cache_read_tokens": 13453341,
+    "output_tokens": 89179,
+    "api_call_count": 124
+  }
+}
