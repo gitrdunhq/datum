@@ -1,0 +1,29 @@
+audit: unwired code , stubs, fakes, mocks, todos
+
+---
+
+creat issues its allowed
+
+---
+
+forget theme editir fir now
+
+---
+
+start clearing gh issues nacklog
+
+---
+
+duckdb we migrated away from. lets rrop test ratchet,/!3 lets go into techdebt
+
+---
+
+the word
+
+---
+
+pr
+
+---
+
+get it passed snd metged
