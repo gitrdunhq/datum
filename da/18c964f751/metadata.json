@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "da18c964f751",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-259-tech-debt-triage",
+  "checkpoints_count": 6,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/da/18c964f751/0/metadata.json",
+      "transcript": "/da/18c964f751/0/full.jsonl",
+      "content_hash": "/da/18c964f751/0/content_hash.txt",
+      "prompt": "/da/18c964f751/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 31795,
+    "cache_creation_tokens": 770709,
+    "cache_read_tokens": 11329004,
+    "output_tokens": 71732,
+    "api_call_count": 111
+  }
+}
