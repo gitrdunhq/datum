@@ -27,3 +27,7 @@ pr
 ---
 
 get it passed snd metged
+
+---
+
+clean up git
