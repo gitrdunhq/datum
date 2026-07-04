@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "81f707b23223",
+  "strategy": "manual-commit",
+  "branch": "feat/279-span-audio-hotpaths",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-CrossPlatform-Foundation/Sources/Domain/Audio/AudioBuffer.swift",
+    "Record-Foundation/Sources/Domain/Audio/AudioBuffer.swift",
+    "Record-Foundation/Tests/Unit/Domain/AudioBufferSpanTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/81/f707b23223/0/metadata.json",
+      "transcript": "/81/f707b23223/0/full.jsonl",
+      "content_hash": "/81/f707b23223/0/content_hash.txt",
+      "prompt": "/81/f707b23223/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 85885,
+    "cache_creation_tokens": 3374918,
+    "cache_read_tokens": 30190723,
+    "output_tokens": 181208,
+    "api_call_count": 274
+  }
+}

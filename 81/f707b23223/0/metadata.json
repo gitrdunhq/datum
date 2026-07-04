@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "81f707b23223",
+  "session_id": "ffc4e4f3-cf4d-4571-a81f-f40c499d1cbd",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-04T07:03:05.104379Z",
+  "branch": "feat/279-span-audio-hotpaths",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-CrossPlatform-Foundation/Sources/Domain/Audio/AudioBuffer.swift",
+    "Record-Foundation/Sources/Domain/Audio/AudioBuffer.swift",
+    "Record-Foundation/Tests/Unit/Domain/AudioBufferSpanTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "522abfdf4873",
+  "token_usage": {
+    "input_tokens": 85885,
+    "cache_creation_tokens": 3374918,
+    "cache_read_tokens": 30190723,
+    "output_tokens": 181208,
+    "api_call_count": 274
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-04T07:03:05.065034Z",
+    "agent_lines": 93,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 93,
+    "total_lines_changed": 95,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

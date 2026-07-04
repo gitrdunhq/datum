@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b8e79czqx</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/323b10e5-9144-4b44-9856-baea8cc865d9/tasks/b8e79czqx.output</output-file>
+<status>completed</status>
+<summary>Background command "Root build + full monorepo test suite" completed (exit code 0)</summary>
+</task-notification>
