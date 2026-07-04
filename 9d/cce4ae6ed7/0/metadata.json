@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "9dcce4ae6ed7",
+  "session_id": "ffc4e4f3-cf4d-4571-a81f-f40c499d1cbd",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-04T07:03:22.350991Z",
+  "branch": "feat/279-span-audio-hotpaths",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "Record-Audio/Sources/AudioInfrastructure/AECProcessorActor.swift",
+    "Record-Audio/Tests/Unit/AECProcessorBenchTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "522abfdf4873",
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-04T07:03:22.350349Z",
+    "agent_lines": 71,
+    "agent_removed": 15,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 71,
+    "total_lines_changed": 86,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
