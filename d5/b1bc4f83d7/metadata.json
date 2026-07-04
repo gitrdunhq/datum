@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "d5b1bc4f83d7",
+  "strategy": "manual-commit",
+  "branch": "fix/280-async-teardown",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/App.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d5/b1bc4f83d7/0/metadata.json",
+      "transcript": "/d5/b1bc4f83d7/0/full.jsonl",
+      "content_hash": "/d5/b1bc4f83d7/0/content_hash.txt",
+      "prompt": "/d5/b1bc4f83d7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18904,
+    "cache_creation_tokens": 258803,
+    "cache_read_tokens": 5374251,
+    "output_tokens": 41033,
+    "api_call_count": 44
+  }
+}
