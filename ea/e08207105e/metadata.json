@@ -1,0 +1,17 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "eae08207105e",
+  "strategy": "manual-commit",
+  "branch": "feat/279-span-audio-hotpaths",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Speaker/VoiceEmbedding.swift",
+    "Record-ML/Tests/Unit/VoiceEmbeddingBenchTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ea/e08207105e/0/metadata.json",
+      "prompt": ""
+    }
+  ]
+}
