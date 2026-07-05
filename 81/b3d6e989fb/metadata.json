@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "81b3d6e989fb",
+  "strategy": "manual-commit",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/81/b3d6e989fb/0/metadata.json",
+      "transcript": "/81/b3d6e989fb/0/full.jsonl",
+      "content_hash": "/81/b3d6e989fb/0/content_hash.txt",
+      "prompt": "/81/b3d6e989fb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 103274,
+    "cache_creation_tokens": 1817431,
+    "cache_read_tokens": 49998128,
+    "output_tokens": 217577,
+    "api_call_count": 439
+  }
+}
