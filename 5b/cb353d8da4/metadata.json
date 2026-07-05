@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "5bcb353d8da4",
+  "strategy": "manual-commit",
+  "branch": "fix/306-diarization-tuning",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/baseline.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/ct-0.60.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/ct-0.65.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/ct-0.75.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/ct-0.80.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/meu-1.0.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/meu-1.5.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-20260704-212821/nc-4.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-refine-20260704-213000/ct-0.50.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-refine-20260704-213000/ct-0.55.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-refine-20260704-213000/ct-0.575.txt",
+    "Tools/ProofHarness/.runs/diarization-sweep-refine-20260704-213000/ct-0.625.txt",
+    "scripts/diarization-sweep.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5b/cb353d8da4/0/metadata.json",
+      "transcript": "/5b/cb353d8da4/0/full.jsonl",
+      "content_hash": "/5b/cb353d8da4/0/content_hash.txt",
+      "prompt": "/5b/cb353d8da4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26032,
+    "cache_creation_tokens": 818086,
+    "cache_read_tokens": 7755041,
+    "output_tokens": 60285,
+    "api_call_count": 71
+  }
+}
