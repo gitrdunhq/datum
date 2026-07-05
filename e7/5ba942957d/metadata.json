@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "e75ba942957d",
+  "strategy": "manual-commit",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "Record-App/Tests/Unit/InfoPlistTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e7/5ba942957d/0/metadata.json",
+      "transcript": "/e7/5ba942957d/0/full.jsonl",
+      "content_hash": "/e7/5ba942957d/0/content_hash.txt",
+      "prompt": "/e7/5ba942957d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 35599,
+    "cache_creation_tokens": 778100,
+    "cache_read_tokens": 22711137,
+    "output_tokens": 98363,
+    "api_call_count": 193
+  }
+}
