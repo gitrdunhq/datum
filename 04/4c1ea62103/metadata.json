@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "044c1ea62103",
+  "strategy": "manual-commit",
+  "branch": "feat/300-speaker-enrollment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-App/docs/architecture/ARCHITECTURE-OVERVIEW.md",
+    "Record-App/docs/architecture/diagrams/00-system-overview.md",
+    "Record-App/docs/architecture/diagrams/03-intelligence-pipeline.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/04/4c1ea62103/0/metadata.json",
+      "transcript": "/04/4c1ea62103/0/full.jsonl",
+      "content_hash": "/04/4c1ea62103/0/content_hash.txt",
+      "prompt": "/04/4c1ea62103/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 178600,
+    "cache_creation_tokens": 5396350,
+    "cache_read_tokens": 55051838,
+    "output_tokens": 332195,
+    "api_call_count": 483
+  }
+}

@@ -1,0 +1,119 @@
+is there tricks to boost it to 90%
+
+---
+
+yes
+
+---
+
+what models are overlap aware
+
+---
+
+ok make a lost ofmtjings we should do and the vbx thing
+
+---
+
+Goal set: a world class, efficient, accurate, performant, highly amazing destination pipeline utilizing multipass and other researched tips and tricks you find by using sonnet agents to search the internet and documentation for real world tips
+
+---
+
+i mesnt diarizatiom
+
+---
+
+<task-notification>
+<task-id>b0e0711p9</task-id>
+<tool-use-id>toolu_016bR1iXSSixjXq1QLBB3UJb</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/b0e0711p9.output</output-file>
+<status>completed</status>
+<summary>Background command "AHC threshold sweep on pure VBx path (no bounds)" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+hit me with a 5 sentence summary of what was fixed how it was and outcome
+
+---
+
+cool push snd pr
+
+---
+
+pleasd to merge them at your convenience
+
+---
+
+lets fix 304
+
+---
+
+oh no we need that runner to be on tbis machine self hosted its too expensive at gh
+
+---
+
+<task-notification>
+<task-id>b13u1f81i</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/b13u1f81i.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch PR 311 checks on self-hosted runner" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+how if vkes
+
+---
+
+<task-notification>
+<task-id>bl4is0xfn</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/bl4is0xfn.output</output-file>
+<status>killed</status>
+<summary>Background command "Poll test-macos job until completion" was stopped</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bkym093dc</task-id>
+<summary>Monitor event: "test-macos self-hosted CI job on PR 311"</summary>
+<event>test-macos: completed failure</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bkym093dc</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/bkym093dc.output</output-file>
+<status>completed</status>
+<summary>Monitor "test-macos self-hosted CI job on PR 311" stream ended</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ben47oavs</task-id>
+<summary>Monitor event: "PR 311 CI rerun after ExpressIssuesTests path fix"</summary>
+<event>CI run 28739591832: completed success</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ben47oavs</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/ben47oavs.output</output-file>
+<status>completed</status>
+<summary>Monitor "PR 311 CI rerun after ExpressIssuesTests path fix" stream ended</summary>
+</task-notification>
+
+---
+
+merge it pleazd
+
+---
+
+can we work 300 now

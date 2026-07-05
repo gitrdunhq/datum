@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "044c1ea62103",
+  "session_id": "5417f2a2-54d7-48c8-92d4-87e43116ab0d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T14:40:35.718077Z",
+  "branch": "feat/300-speaker-enrollment",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [
+    "Record-App/docs/architecture/ARCHITECTURE-OVERVIEW.md",
+    "Record-App/docs/architecture/diagrams/00-system-overview.md",
+    "Record-App/docs/architecture/diagrams/03-intelligence-pipeline.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "1be257675405",
+  "token_usage": {
+    "input_tokens": 178600,
+    "cache_creation_tokens": 5396350,
+    "cache_read_tokens": 55051838,
+    "output_tokens": 332195,
+    "api_call_count": 483
+  },
+  "session_metrics": {
+    "turn_count": 35
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T14:40:35.645314Z",
+    "agent_lines": 22,
+    "agent_removed": 25,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 22,
+    "total_lines_changed": 47,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
