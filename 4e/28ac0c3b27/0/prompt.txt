@@ -1,0 +1,5 @@
+@.temp/fable-diarization-tuning-prompt.md
+
+---
+
+step 0. commit snd push this work snd start from a fresh branch and then go

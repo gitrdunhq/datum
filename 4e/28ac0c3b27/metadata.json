@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "4e28ac0c3b27",
+  "strategy": "manual-commit",
+  "branch": "fix/302-business-plan",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Data/diarization-fixtures/chat-bNrbSSv7OxY.html",
+    "Data/diarization-fixtures/chat-k8K6wQLxooU.html",
+    "Data/diarization-fixtures/chat-lBVtvOpU80Q.html",
+    "Data/diarization-fixtures/chat-meeting-15min.html",
+    "Data/diarization-fixtures/chat-meeting-30min.html",
+    "Data/diarization-fixtures/chat-meeting-60min.html",
+    "Data/diarization-fixtures/chat-rOqgRiNMVqg.html",
+    "Data/diarization-fixtures/proof-report.html",
+    "Data/diarization-fixtures/report.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4e/28ac0c3b27/0/metadata.json",
+      "transcript": "/4e/28ac0c3b27/0/full.jsonl",
+      "content_hash": "/4e/28ac0c3b27/0/content_hash.txt",
+      "prompt": "/4e/28ac0c3b27/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12704,
+    "cache_creation_tokens": 96312,
+    "cache_read_tokens": 343970,
+    "output_tokens": 8142,
+    "api_call_count": 7
+  }
+}

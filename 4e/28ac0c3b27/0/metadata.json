@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "4e28ac0c3b27",
+  "session_id": "5417f2a2-54d7-48c8-92d4-87e43116ab0d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T03:08:48.843406Z",
+  "branch": "fix/302-business-plan",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "Data/diarization-fixtures/chat-bNrbSSv7OxY.html",
+    "Data/diarization-fixtures/chat-k8K6wQLxooU.html",
+    "Data/diarization-fixtures/chat-lBVtvOpU80Q.html",
+    "Data/diarization-fixtures/chat-meeting-15min.html",
+    "Data/diarization-fixtures/chat-meeting-30min.html",
+    "Data/diarization-fixtures/chat-meeting-60min.html",
+    "Data/diarization-fixtures/chat-rOqgRiNMVqg.html",
+    "Data/diarization-fixtures/proof-report.html",
+    "Data/diarization-fixtures/report.json"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "1be257675405",
+  "token_usage": {
+    "input_tokens": 12704,
+    "cache_creation_tokens": 96312,
+    "cache_read_tokens": 343970,
+    "output_tokens": 8142,
+    "api_call_count": 7
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T03:08:48.838757Z",
+    "agent_lines": 3105,
+    "agent_removed": 3424,
+    "human_added": 1560,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4665,
+    "total_lines_changed": 8090,
+    "agent_percentage": 80.70457354758962,
+    "metric_version": 2
+  }
+}
