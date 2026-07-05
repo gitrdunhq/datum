@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "971ba3ef5a4e",
+  "session_id": "4028104c-63d8-4aee-b7a3-6d7a4ee39b0a",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T16:12:50.294432Z",
+  "branch": "fix/316-test-baseline",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "Record-ML/Package.resolved"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "f1a3ca65e545",
+  "token_usage": {
+    "input_tokens": 43782,
+    "cache_creation_tokens": 839130,
+    "cache_read_tokens": 13458063,
+    "output_tokens": 59867,
+    "api_call_count": 130
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T16:12:50.277001Z",
+    "agent_lines": 3,
+    "agent_removed": 3,
+    "human_added": 117,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 120,
+    "total_lines_changed": 123,
+    "agent_percentage": 4.878048780487805,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
