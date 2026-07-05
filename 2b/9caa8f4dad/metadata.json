@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "2b9caa8f4dad",
+  "strategy": "manual-commit",
+  "branch": "fix/306-diarization-tuning",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Data/diarization-fixtures/meeting-30min.json",
+    "Data/diarization-fixtures/meeting-60min.json",
+    "Tools/ProofHarness/Package.swift",
+    "Tools/ProofHarness/Sources/DiarizationScore.swift",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/Sources/RTTMParser.swift",
+    "Tools/ProofHarness/Sources/ScoreDiarization.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2b/9caa8f4dad/0/metadata.json",
+      "transcript": "/2b/9caa8f4dad/0/full.jsonl",
+      "content_hash": "/2b/9caa8f4dad/0/content_hash.txt",
+      "prompt": "/2b/9caa8f4dad/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 25901,
+    "cache_creation_tokens": 817241,
+    "cache_read_tokens": 7594585,
+    "output_tokens": 59889,
+    "api_call_count": 70
+  }
+}

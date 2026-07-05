@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "2b9caa8f4dad",
+  "session_id": "5417f2a2-54d7-48c8-92d4-87e43116ab0d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T03:43:44.192015Z",
+  "branch": "fix/306-diarization-tuning",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "Data/diarization-fixtures/meeting-30min.json",
+    "Data/diarization-fixtures/meeting-60min.json",
+    "Tools/ProofHarness/Package.swift",
+    "Tools/ProofHarness/Sources/DiarizationScore.swift",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift",
+    "Tools/ProofHarness/Sources/ProofHarness.swift",
+    "Tools/ProofHarness/Sources/RTTMParser.swift",
+    "Tools/ProofHarness/Sources/ScoreDiarization.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "1be257675405",
+  "token_usage": {
+    "input_tokens": 25901,
+    "cache_creation_tokens": 817241,
+    "cache_read_tokens": 7594585,
+    "output_tokens": 59889,
+    "api_call_count": 70
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T03:43:44.176682Z",
+    "agent_lines": 352,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 352,
+    "total_lines_changed": 354,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
