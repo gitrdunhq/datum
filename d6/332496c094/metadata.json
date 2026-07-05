@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "d6332496c094",
+  "strategy": "manual-commit",
+  "branch": "fix/306-diarization-tuning",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "Data/diarization-fixtures/ami-es2004a.json",
+    "Data/diarization-fixtures/ami-es2004a.rttm",
+    "Data/diarization-fixtures/ami-es2004a.source.md",
+    "Data/diarization-fixtures/ami-es2004a.wav"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d6/332496c094/0/metadata.json",
+      "transcript": "/d6/332496c094/0/full.jsonl",
+      "content_hash": "/d6/332496c094/0/content_hash.txt",
+      "prompt": "/d6/332496c094/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 94270,
+    "cache_creation_tokens": 1866777,
+    "cache_read_tokens": 26550253,
+    "output_tokens": 179466,
+    "api_call_count": 234
+  }
+}
