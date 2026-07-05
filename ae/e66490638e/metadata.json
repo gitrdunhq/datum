@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "aee66490638e",
+  "strategy": "manual-commit",
+  "branch": "fix/306-diarization-tuning",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Diarization/DiarizationTuning.swift",
+    "Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift",
+    "Record-ML/Tests/Unit/FluidDiarizationPluginTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ae/e66490638e/0/metadata.json",
+      "transcript": "/ae/e66490638e/0/full.jsonl",
+      "content_hash": "/ae/e66490638e/0/content_hash.txt",
+      "prompt": "/ae/e66490638e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 13193,
+    "cache_creation_tokens": 719790,
+    "cache_read_tokens": 6931410,
+    "output_tokens": 50510,
+    "api_call_count": 61
+  }
+}

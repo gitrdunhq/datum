@@ -1,0 +1,53 @@
+<task-notification>
+<task-id>a35fdfa190b6ea1f0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/a35fdfa190b6ea1f0.output</output-file>
+<status>completed</status>
+<summary>Agent "Prototype OfflineDiarizerManager swap" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All measurements complete. Here's the full report.
+
+## Verdict: DROP-IN (mechanically) — but NOT an accuracy win on this fixture
+
+**Integration lift: trivial.** The swap is ~15 changed lines in one file:
+- `OfflineDiarizerManager` returns the **same** `DiarizationResult`/`TimedSpeakerSegment` types as the streaming `DiarizerManager`, so segment extraction code is unchanged.
+- API deltas: `init(config: OfflineDiarizerConfig)` + `prepareModels()` (self-downloading, replaces `DiarizerModels.downloadIfNeeded()` + `initialize(models:)`); entry point is `process(audio: [Float]) async throws` (async, vs the sync `performCompleteDiarization`) — slots straight into the existing `runDetached` closure.
+- Models: different variant ("offline", pyannote community-1) in the same HF repo `FluidInference/speaker-diarization` — **34 MB**, auto-downloaded in ~10s on first `prepareModels()`. Cached at `~/Library/Application Support/FluidAudio/Models/`.
+- Concurrency: same story as streaming — non-Sendable class (uses `nonisolated(unsafe)` internally, spawns its own detached tasks); the plugin's existing `nonisolated(unsafe)` escape works unchanged. macOS 14+ requirement — fine (repo targets macOS 15).
+- Shipping-code cleanup needed: map `OfflineDiarizationError` (new error enum, incl. `.noSpeechDetected`) — currently falls through to generic `inferenceFailed`.
+
+## Diff applied (worktree)
+
+`Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift`:
+1. `private var diarizer: DiarizerManager?` → `OfflineDiarizerManager?`
+2. `prepare()`: `let manager = OfflineDiarizerManager(config: config); try await unsafeManager.prepareModels()` (config reads env `OFFLINE_DIARIZER_NUM_SPEAKERS` → `config.withSpeakers(exactly: n)` for the A/B run)
+3. `runDiarization()`: `try await unsafeManager.process(audio: samples)` replacing `performCompleteDiarization(samples, sampleRate:)`
+
+Support files: new `Tools/ProofHarness/Sources/DiarizeOnly.swift` (`diarize-only` subcommand: load WAV → `plugin.diarize()` → JSON dump), registered in `ProofHarness.swift`; one pre-existing compile fix (`try await xgrammarSummarizer.buildPrompt` in `PipelineRunner.swift:227`). Scorer: `.temp/score_diarization.py`. Segments/logs in worktree `.temp/`.
+
+## Measured numbers (meeting-15min.wav, same scorer for all three, 10ms frames)
+
+| Metric | Streaming (re-measured today) | Offline default | Offline numSpeakers=4 |
+|---|---|---|---|
+| Clusters | **4** | **2** | **4** (forced) |
+| Time-weighted purity | 66.4% | 49.8% | **68.1%** |
+| DER (collar 0 / 0.25) | **45.0% / 42.7%** | 56.3% / 55.1% | 48.5% / 46.8% |
+| FEO070 best-cluster | 80.4% (merged w/ FEO072) | 86.9% (mega-cluster) | 84.5% (merged w/ FEO072) |
+| FEO072 best-cluster | 85.0% | 89.3% | 87.5% |
+| **MEE071 best-cluster** | **72.2%** (one cluster) | 80.9% (mega-cluster) | **40.1% — SPLIT across 2 clusters** |
+| MEE073 best-cluster | 59.1% | 65.6% | 64.5% |
+| Diarization wall-clock | 5.5s (165x RTF) | 5.6s (160x RTF) | 4.6s (197x RTF) |
+
+Note: today's streaming baseline (4 clusters / 66.4%) differs from the quoted 8-cluster / 51.2% baseline — the streaming engine did not reproduce the over-split on this run. All three columns above are same machine, same scorer, same day, so they're directly comparable.
+
+## Key findings / blockers
+
+1. **Default offline config under-clusters badly**: VBx warm-starts with 15 AHC clusters, then collapses to **2** — FEO070+FEO072+MEE071 all merge into one 622s cluster. Worse than streaming on every metric.
+2. **numSpeakers=4 hint** recovers 4 clusters and beats streaming on purity (68.1 vs 66.4) but is slightly worse on DER, still merges FEO070/FEO072 into one cluster, and **splits MEE071 across two clusters (best-cluster 40.1% vs 72.2% streaming) — violates the MEE071 must-not-regress guard**. And production doesn't know the speaker count a priori.
+3. **Both engines share the same dominant confusion** (FEO070/FEO072 merge; conf 27-44%, DER 43-56% vs upstream's 17.7% AMI claim). Also suspicious: the RTTM's total reference speech (901.3s) equals the full audio duration (901s) — near-100% speech density, and the offline segmenter measured 88.7% speech ratio. Suggests the fixture (audio and/or RTTM) is the limiting factor, not the clustering engine — worth verifying against the known tap time-stretch issue before drawing engine conclusions.
+4. Ops notes: first-run model download 34 MB / ~12s prepare; warm prepare 0.1-0.5s; memory unremarkable; macOS 14+ only; `process()` spawns its own detached tasks (segmentation ∥ embedding) — no thread-safety issues observed under the plugin's existing isolation pattern.
+
+**Bottom line**: swapping engines is cheap (an afternoon including error-mapping polish), but on this fixture it does not fix the accuracy problem and regresses MEE071 under the 4-speaker hint. Don't ship on this evidence — investigate the fixture/audio quality signal first.</result>
+<usage><subagent_tokens>134251</subagent_tokens><tool_uses>44</tool_uses><duration_ms>538243</duration_ms></usage>
+<worktree><worktreePath>/Volumes/Extra/repos/gitrdunhq/the-record-suite/.claude/worktrees/agent-a35fdfa190b6ea1f0</worktreePath><worktreeBranch>worktree-agent-a35fdfa190b6ea1f0</worktreeBranch></worktree>
+</task-notification>
