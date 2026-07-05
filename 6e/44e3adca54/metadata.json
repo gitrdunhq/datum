@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "6e44e3adca54",
+  "strategy": "manual-commit",
+  "branch": "feat/300-speaker-enrollment",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "Record-App/Sources/TheRecord/App.swift",
+    "Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6e/44e3adca54/0/metadata.json",
+      "transcript": "/6e/44e3adca54/0/full.jsonl",
+      "content_hash": "/6e/44e3adca54/0/content_hash.txt",
+      "prompt": "/6e/44e3adca54/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 178145,
+    "cache_creation_tokens": 5381491,
+    "cache_read_tokens": 53282003,
+    "output_tokens": 327183,
+    "api_call_count": 471
+  }
+}
