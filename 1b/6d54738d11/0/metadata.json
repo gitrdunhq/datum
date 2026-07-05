@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "1b6d54738d11",
+  "session_id": "4028104c-63d8-4aee-b7a3-6d7a4ee39b0a",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T19:17:54.728066Z",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [
+    "Record-App/Tests/Unit/InfoPlistTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "f1a3ca65e545",
+  "token_usage": {
+    "input_tokens": 101188,
+    "cache_creation_tokens": 1777746,
+    "cache_read_tokens": 47700549,
+    "output_tokens": 203702,
+    "api_call_count": 415
+  },
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T19:17:54.671481Z",
+    "agent_lines": 16,
+    "agent_removed": 0,
+    "human_added": 2,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 18,
+    "total_lines_changed": 18,
+    "agent_percentage": 88.88888888888889,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
