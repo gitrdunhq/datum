@@ -1,0 +1,31 @@
+is there tricks to boost it to 90%
+
+---
+
+yes
+
+---
+
+what models are overlap aware
+
+---
+
+ok make a lost ofmtjings we should do and the vbx thing
+
+---
+
+Goal set: a world class, efficient, accurate, performant, highly amazing destination pipeline utilizing multipass and other researched tips and tricks you find by using sonnet agents to search the internet and documentation for real world tips
+
+---
+
+i mesnt diarizatiom
+
+---
+
+<task-notification>
+<task-id>b0e0711p9</task-id>
+<tool-use-id>toolu_016bR1iXSSixjXq1QLBB3UJb</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/b0e0711p9.output</output-file>
+<status>completed</status>
+<summary>Background command "AHC threshold sweep on pure VBx path (no bounds)" completed (exit code 0)</summary>
+</task-notification>
