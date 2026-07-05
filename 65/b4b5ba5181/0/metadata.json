@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "65b4b5ba5181",
+  "session_id": "4028104c-63d8-4aee-b7a3-6d7a4ee39b0a",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T19:51:29.299677Z",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 3,
+  "save_step_count": 4,
+  "files_touched": [
+    "Record-Foundation/Sources/Domain/Storage/RecordingRepository.swift",
+    "Record-Storage/Sources/StorageInfrastructure/GRDBSQL.swift",
+    "Record-Storage/Tests/Unit/GRDBClearNeedsRetranscriptionTests.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "f1a3ca65e545",
+  "token_usage": {
+    "input_tokens": 102012,
+    "cache_creation_tokens": 1799135,
+    "cache_read_tokens": 48561965,
+    "output_tokens": 208587,
+    "api_call_count": 425
+  },
+  "session_metrics": {
+    "turn_count": 18
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T19:51:29.244118Z",
+    "agent_lines": 101,
+    "agent_removed": 2,
+    "human_added": 74,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 175,
+    "total_lines_changed": 179,
+    "agent_percentage": 57.54189944134078,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

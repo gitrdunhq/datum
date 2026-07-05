@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "65b4b5ba5181",
+  "strategy": "manual-commit",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-Foundation/Sources/Domain/Storage/RecordingRepository.swift",
+    "Record-Storage/Sources/StorageInfrastructure/GRDBSQL.swift",
+    "Record-Storage/Tests/Unit/GRDBClearNeedsRetranscriptionTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/65/b4b5ba5181/0/metadata.json",
+      "transcript": "/65/b4b5ba5181/0/full.jsonl",
+      "content_hash": "/65/b4b5ba5181/0/content_hash.txt",
+      "prompt": "/65/b4b5ba5181/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 102012,
+    "cache_creation_tokens": 1799135,
+    "cache_read_tokens": 48561965,
+    "output_tokens": 208587,
+    "api_call_count": 425
+  }
+}
