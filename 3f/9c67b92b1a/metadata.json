@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "3f9c67b92b1a",
+  "strategy": "manual-commit",
+  "branch": "fix/302-business-plan",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Tools/ProofHarness/Package.resolved",
+    "Tools/ProofHarness/Sources/PipelineRunner.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3f/9c67b92b1a/0/metadata.json",
+      "transcript": "/3f/9c67b92b1a/0/full.jsonl",
+      "content_hash": "/3f/9c67b92b1a/0/content_hash.txt",
+      "prompt": "/3f/9c67b92b1a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12702,
+    "cache_creation_tokens": 95811,
+    "cache_read_tokens": 272853,
+    "output_tokens": 7805,
+    "api_call_count": 6
+  }
+}
