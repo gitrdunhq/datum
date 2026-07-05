@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "9757ea06a2d1",
+  "strategy": "manual-commit",
+  "branch": "fix/316-test-baseline",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Record-App/Package.resolved"
+  ],
+  "sessions": [
+    {
+      "metadata": "/97/57ea06a2d1/0/metadata.json",
+      "transcript": "/97/57ea06a2d1/0/full.jsonl",
+      "content_hash": "/97/57ea06a2d1/0/content_hash.txt",
+      "prompt": "/97/57ea06a2d1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 65444,
+    "cache_creation_tokens": 992155,
+    "cache_read_tokens": 24369959,
+    "output_tokens": 103260,
+    "api_call_count": 214
+  }
+}
