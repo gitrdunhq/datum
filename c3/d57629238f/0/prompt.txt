@@ -1,0 +1,557 @@
+please triage the issues and show me the top 10 next
+
+---
+
+plan how to tacjle the top 10 in seams and waves
+
+---
+
+<agent-message from="verify-219">
+```
+ISSUE: #219
+VERDICT: PARTIAL
+EVIDENCE:
+- .swiftlint.yml:23-25 — SwiftLint rules force_cast, force_try, force_unwrapping are enabled (recommendation #1: DONE)
+- Record-App/Sources/TheRecord/FileSystemDiskSpaceMonitor.swift — DiskSpaceMonitor wired in assembler; issue #211 findings FIXED
+- Record-App/Sources/TheRecord/TranscriptionSubAssembler.swift:115-117 — ModelDownloadDelegate.setDownloadDelegate now called; issue #212 findings FIXED
+- PR #265 merged commit b16b829d — ConsentGate removed as orphaned; issue #217 findings FIXED
+- Record-Foundation/Sources/Domain/Protocols/PermissionService.swift:20-27 vs Record-CrossPlatform-Foundation/Sources/Domain/Protocols/PermissionService.swift:1-24 — calendar methods only in Foundation version, cross-platform has none; issue #214 divergence STILL LIVE
+- contract-audit skill exists and remains active; grep/architecture audit tooling still in use
+RECOMMENDATION: Keep open — PermissionService divergence (#214) remains pending (Task #15 queued), but core research/documentation value is sound. Consider narrowing to focus on remaining architectural wiring gaps and the specific unification work needed for #214/#215.
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-233">
+```
+ISSUE: #233
+VERDICT: LIVE
+EVIDENCE:
+- Skill file does not exist at `.claude/skills/codebase-health/SKILL.md`
+- Issue remains OPEN since creation on 2026-06-18 11:58:57Z, no activity since
+- Referenced issues #226–#232 all exist and were created 2026-06-18, confirming manual analysis was run but not codified
+- No implementation of the 5-phase pattern (Scan, Filter, Verify, Report, File Issues) found anywhere in the repo
+- record-diagnostics-and-tooling skill mentions tokensave_dead_code as a one-liner but does not implement the full pattern
+RECOMMENDATION: Keep open — feature is genuinely needed to automate the codebase-health analysis pattern that produced findings #226–#232, but has not yet been implemented as a reusable skill.
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-218">
+ISSUE: #218
+VERDICT: PARTIAL
+EVIDENCE:
+- DiarizationReadRepository: issue cited defunct DuckDBReaderActor; actually consumed by GRDBStorageActor:Diarization (active in production) — FIXED
+- NotesReadRepository, NotesWriteRepository: consumed by GRDBStorageActor:Notes (active in production) — FIXED
+- SummaryReadRepository, SummaryWriteRepository: consumed by GRDBStorageActor:Summary (active in production) — FIXED
+- LicenseProvider: issue claimed 2 conformances; zero conformances exist in current code (protocols exist in both Record-Foundation and Record-CrossPlatform-Foundation, both unused) — FIXED
+- CameraDetector/CameraSessionDetector: only appears in unit tests, zero production consumers — LIVE
+- KeychainService/LiveKeychainService: protocol with one conformance (LiveKeychainService) but zero production consumers; used only in test code — LIVE
+RECOMMENDATION: Close with evidence; the repository storage protocols have since been consolidated under GRDBStorageActor, and LicenseProvider conformances were removed. Keep open only the two unused infrastructure protocols (CameraDetector, KeychainService) if they're truly scaffolding, or remove them if they're confirmed unneeded.
+</agent-message>
+
+---
+
+<agent-message from="verify-268">
+```
+ISSUE: #268
+VERDICT: LIVE
+EVIDENCE:
+- Prebuilts/Cmlx.xcframework tracked via LFS (was uncompressed dSYM + binaries, now ~94 MiB in history)
+- Data/diarization-fixtures/bNrbSSv7OxY.wav tracked via LFS (was 50.8 MiB pre-LFS blob, still in history)
+- Git pack size: 491 MiB (unchanged from original 496 MiB census) — large blobs remain in history
+- Prebuilts/Cduckdb.xcframework: no longer tracked in git (successfully removed)
+- full.jsonl: not present in current repo (may have been cleaned)
+- Record-CrossPlatform-Foundation/.build/: properly gitignored, no untracked commits
+- Issue created 2026-07-02; no recent history-rewrite attempts visible in commits
+
+RECOMMENDATION: Keep open as reference playbook only — close only if repo size becomes operational problem. Current state is PARTIAL mitigation (LFS migration, unused frameworks removed) but historical blobs remain. No trigger criteria met: no push/clone failures, no quota warnings reported, open branches/PRs likely exist.
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-277">
+ISSUE: #277
+VERDICT: FIXED
+EVIDENCE:
+- Record-Foundation/Sources/Domain/Storage/RecordingRepository.swift:44 — `importMetadata(_:)` properly defined in `RecordingWriteRepository` protocol
+- Record-Presentation/Tests/Unit/Presentation/MeetingDetailViewModelTests.swift:34 — `MockDetailStorage` implements `importMetadata(_:)`
+- Record-Presentation/Tests/Unit/Presentation/MeetingDetailViewModelTests.swift:133 — `DelayingMockDetailStorage` implements `importMetadata(_:)`
+- Record-Presentation/Tests/Unit/Presentation/MeetingDetailStaleSelectionTests.swift:75 — `CancellationAwareStorage` implements `importMetadata(_:)`
+- Build completes successfully with `swift build --build-tests` (no compilation errors)
+- Both test files parse without errors and tests run without protocol conformance issues
+
+RECOMMENDATION: Close — all three test mocks now properly conform to the protocol, PresentationTests target builds and runs successfully.
+</agent-message>
+
+---
+
+<agent-message from="verify-263">
+```
+ISSUE: #263
+VERDICT: LIVE
+EVIDENCE:
+- Record-CrossPlatform-Foundation/Sources/Infrastructure/Stubs.swift:6-26 — ParakeetPlugin returns "[Parakeet Stub Output]"
+- Record-CrossPlatform-Foundation/Sources/Infrastructure/Stubs.swift:28-48 — WhisperKitPlugin returns "[Whisper Stub Output]"
+- Record-CrossPlatform-Foundation/Sources/Infrastructure/Stubs.swift:52-88 — MLXSummarizationPlugin returns "Stub Summary" / "Stub Generated Response"
+- Record-CrossPlatform-Foundation/Sources/Infrastructure/Stubs.swift:92-109 — FluidDiarizationPlugin returns one fake SPEAKER_00 segment
+- Record-CrossPlatform-Foundation/Sources/Infrastructure/Stubs.swift:113-119 — AudioFileLoader returns 1 second of silence (16000 samples)
+- Record-CrossPlatform-Foundation/Sources/ProofHarnessWindows/PipelineRunner.swift:45-49 — wires all five stubs
+- Record-ML/Sources/MLInfrastructure/Transcription/ParakeetPlugin.swift:24 — real ParakeetPlugin exists (name collision hazard confirmed)
+- Record-ML/Sources/MLInfrastructure/Transcription/WhisperKitPlugin.swift:28 — real WhisperKitPlugin exists (name collision hazard confirmed)
+- Record-ML/Sources/MLInfrastructure/Summarization/MLXSummarizationPlugin.swift:29 — real MLXSummarizationPlugin exists (name collision hazard confirmed)
+- Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift:22 — real FluidDiarizationPlugin exists (name collision hazard confirmed)
+- Record-Audio/Sources/AudioInfrastructure/AudioFileLoader.swift:36 — real AudioFileLoader exists (name collision hazard confirmed)
+- All five stubs have NOT been renamed from exact real type names (Stub* prefix still missing)
+- Stubs still live in Sources/Infrastructure/ (production layer smell persists)
+- Also affects Tools/ProofHarness and Record-Pro harnesses (broader scope than issue states)
+RECOMMENDATION: Keep open. Core problems persist: stubs return fake data, live in production layer, and share exact type names with real plugins. Requires refactor per suggested fix (rename to Stub* prefix, move to harness target or dedicated HarnessStubs target).
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-282">
+```
+ISSUE: #282
+VERDICT: PARTIAL
+EVIDENCE:
+- Record-App/Sources/Business/UseCases/PipelineCoordinator.swift:234-236 — CancellationError now properly resets state to .idle in public runSummarizationPass (fixed)
+- Record-App/Sources/Business/UseCases/PipelineCoordinator.swift:260-262 — private runSummarizationPass properly calls clearStateIfActive on CancellationError (fixed)
+- Record-CrossPlatform-Foundation/Sources/Business/UseCases/PipelineCoordinator.swift:171-187 — public runSummarizationPass catches CancellationError but does NOT reset state; missing onPipelineStateChanged?(.idle) call (LIVE BUG)
+- Record-CrossPlatform-Foundation/Sources/Business/UseCases/PipelineCoordinator.swift missing consolidated onStateChange SSOT callback; calls onPipelineStateChanged/onCleanupStateChanged directly (LIVE DIVERGENCE)
+- Record-CrossPlatform-Foundation/Sources/Business/UseCases/PipelineCoordinator.swift missing cleanupGeneration variable and generation guards for cleanup task (LIVE DIVERGENCE)
+- Package.swift:83-90 — Record-CrossPlatform-Foundation/Sources/Business/UseCases/PipelineCoordinator.swift is NOT in any built target; only Alignment module is included (unused copy confirmed)
+- Record-Presentation/Sources/Presentation/ViewModels/MenuBarViewModelRecording.swift:30 — shipping app calls public runSummarizationPass (state reset now works)
+
+RECOMMENDATION: Instance 2 (CancellationError handling) is fixed in shipped code. Instance 1 (diverged copies) remains live — the cross-platform copy has latent bugs and no generation guards. Delete the unused Record-CrossPlatform-Foundation/Sources/Business/UseCases/PipelineCoordinator.swift OR track as deferred under cross-platform migration epic with explicit decision to resolve duplication when that work resumes.
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-293">
+```
+ISSUE: #293
+VERDICT: LIVE
+EVIDENCE:
+- Record-ML/Tests/Unit/MCPLifecycleTests.swift:66 — test asserts `source.contains("server.stop()")` against AppAssembler.swift
+- Record-App/Sources/TheRecord/AppAssembler.swift:52-67 — teardown() exists but contains `withAsyncTeardown` + `storage?.close()`, NO `server.stop()` string
+- commit c45ff579 — "chore: remove DuckDBCommandServer" removed server.stop() wiring per PR #249
+- swift test run in Record-ML — test fails with "Expectation failed" on line 66, marking suite as ✘ FAILED
+- commit 82182055 — "fix(#280): guaranteed async teardown via withAsyncTeardown scope helper" replaced teardown pattern
+
+RECOMMENDATION: Update test to assert `source.contains("withAsyncTeardown")` and `source.contains("storage?.close()")` instead of `server.stop()`, reflecting the current #280 teardown implementation.
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-296">
+```
+ISSUE: #296
+VERDICT: LIVE
+EVIDENCE:
+- Record-App/Sources/TheRecord/AppAssembler.swift:55 — `await withAsyncTeardown { ... } teardown: { ... }` call still present
+- Record-Foundation/Sources/Utilities/AsyncTeardown.swift:1-37 — helper function still defined and documented as SE-0493 placeholder
+- No #available(Swift 6.4, *) guards exist anywhere in codebase
+- System Swift version: 6.3.2 (SE-0493 ships in 6.4, not yet released)
+- One call site confirmed; all test sites also use old pattern
+
+RECOMMENDATION: Keep open — issue is blocked until Swift 6.4 toolchain is available. Once released, the rewrite is mechanical (replace pattern with `defer { await ... }`).
+```
+</agent-message>
+
+---
+
+<agent-message from="verify-294">
+```
+ISSUE: #294
+VERDICT: PARTIAL
+EVIDENCE:
+- Record-Presentation/Sources/Presentation/Views/OnboardingView.swift:33 — `.accessibilityLabel("Onboarding")` remains hardcoded user-facing string (should be localized per #121)
+- Record-Presentation/Sources/Presentation/Views/OnboardingView.swift:54,59,66 — Button strings ARE now localized with `String(localized:)` ("Skip", "Get Started", "Continue")
+- Record-Foundation/Tests/Unit/Domain/LocalizationInfrastructureTests.swift:60-66 — Test pattern only checks `Text(`, `Button(`, `Label(` — does NOT check `accessibilityLabel(` patterns
+- The test should now PASS (buttons are localized) even though `.accessibilityLabel()` was missed
+
+RECOMMENDATION: Close with evidence. The core hardcoded string on line 33 is real and user-facing, but the test no longer fails because it doesn't detect accessibilityLabel violations. The issue's specific claim ("test fails on main") appears stale — localize the label with `String(localized: "Onboarding")` to fully resolve, or if intentional, extend test pattern to catch similar future gaps.
+```
+</agent-message>
+
+---
+
+lersngo wave 1a --> 1d full permissions to do what needs to be dome
+
+---
+
+<task-notification>
+<task-id>afbec10134c9622cd</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/323b10e5-9144-4b44-9856-baea8cc865d9/tasks/afbec10134c9622cd.output</output-file>
+<status>completed</status>
+<summary>Agent "Wave 1b Caliper blast-radius triage" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Waves 1a–1d are done. Summary:
+
+**Wave 1a** (#214, #215) — branch `fix/214-215-protocol-divergence`, commit `2de77884`. Unified `PermissionService`/`SleepAssertionService`/`SummarizationEngine` between the two Foundation packages (zero conformers affected — confirmed no-risk change). Comments posted to both issues.
+
+**Wave 1b** (#269) — no code changes. Re-ran Caliper's blast-radius scan (36→85 findings after correcting the scan path to `Record-App/scripts/`), and found the "dead code" findings were all scanner false positives (calls inside `main()`/thread-callback refs it doesn't resolve). The real findings (god functions, missing test coverage) need pytest coverage added first — recommended as a scoped follow-up rather than a blind refactor of load-bearing test tooling. Triage posted to #269.
+
+**Wave 1c** (#134) — no code changes needed. The "11 inverted tests" premise didn't hold up; audit found only correctly-written RED regression tests. Findings posted to #134; made Wave 2b moot.
+
+**Wave 1d** (#289, #293, #284) — branch `fix/289-293-284-ci-restoration`, 3 commits (`b8c952ca`, `4324d0de`, `1357e5bc`). Fixed 4 stale test assertions, split `setupConfigObservers()` to kill a CCN-18 violation, fixed `MCPLifecycleTests` for the `withAsyncTeardown` refactor, and re-enabled `.github/workflows/ci.yml` (Windows job scoped to `Record-CrossPlatform-Foundation` with `continue-on-error` pending #287). I independently re-verified: full build clean, 906/906 root-package tests + 7/7 Record-ML tests green. Comments posted to all three issues.
+
+Everything is local-only — two branches sitting on top of `main`, nothing pushed, nothing merged, per standing git-scope rules. Wave 2a (#216, composition-root consolidation) remains untouched and pending, as scoped.</result>
+<usage><subagent_tokens>136778</subagent_tokens><tool_uses>53</tool_uses><duration_ms>705161</duration_ms></usage>
+</task-notification>
+
+---
+
+lets bring it in
+
+---
+
+pr please
+
+---
+
+lets do wave 2a
+
+---
+
+ok lets get main fully up to date
+
+---
+
+do it through PR
+
+---
+
+do it through PR
+
+---
+
+ok merge them to main
+
+---
+
+id like to work on 300-302
+
+---
+
+i want to use LibriSpeech
+
+---
+
+please continue we crashed
+
+---
+
+run thr diarization over our fixtures
+
+---
+
+whats the tail look like
+
+---
+
+serve the web report locallan i know rhe ip just serve
+
+---
+
+and this is our codebase not some fsked data
+
+---
+
+i think that we are beta release quality
+
+---
+
+Check on the diarization fixture run (Tools/ProofHarness) — read the log tail and background task status, report progress or completion.
+
+---
+
+lets send out sonnet agents to invesrigate diarization tuning to help fanle 3 agents different fochs
+
+---
+
+<task-notification>
+<task-id>a6fd4f4a7f9a063b5</task-id>
+<tool-use-id>toolu_01PySxG93JBdYBNBu1GzLEUm</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/a6fd4f4a7f9a063b5.output</output-file>
+<status>completed</status>
+<summary>Agent "Empirical failure-pattern analysis of diarization output" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Diarization failure-pattern analysis — `meeting-15min.wav` (issue #306)
+
+Built a time-ordered timeline mapping each predicted turn to its best-overlap true speaker (RTTM), across all 8 predicted IDs vs 4 true speakers.
+
+**(a) Not fragment noise — the extra IDs carry real duration.**
+The 8 predicted IDs are not "1 real cluster + 7 junk slivers." Three carry the bulk (pred 12: 409.5s/41 segs, pred 11: 218.8s/39 segs, pred 13: 111.2s/22 segs = 82% of runtime), and even the "small" ones carry 12–73s across multiple multi-second segments (avg segment length 5–12s, not sub-second blips). This rules out a pure noise/fragmentation artifact — the system is confidently maintaining multiple competing clusters for what should be one speaker.
+
+**(b) Temporal drift is real but speaker-specific, not universal.**
+Splitting the meeting at the midpoint (450.7s):
+- **MEE071 is rock-solid**: pred-ID 11 in both halves (57.4s / 59.0s). No drift, no confusion — proves the embedding *can* be stable for a full 15-min session.
+- **FEO070 drifts hard**: first half mostly pred 1/11/10; second half mostly pred **12/13** — i.e. by the second half, FEO070's turns get absorbed into the cluster otherwise dominated by FEO072 (which sits on pred 12 the whole meeting). This is genuine embedding drift causing cross-speaker merging, not just splitting.
+- **MEE073 is chronically unstable in both halves** (2/13/5 first half, 13/11/4 second half) — never settles on one ID even short-term. Looks like an inherently harder voice to embed consistently (possibly closer acoustic proximity to MEE071/FEO072, or more crosstalk/overlap on this speaker's turns) rather than a drift-over-time story.
+
+**(c) Switches split roughly 70/30 between turn boundaries and mid-turn.**
+125 total pred-ID switches: 86 (69%) land within 1.0s of an actual RTTM speaker-turn boundary; 39 (31%) happen with no true boundary nearby (median distance 0.62s, max 4.2s from switches that *are* boundary-adjacent). So most re-clustering failures happen exactly at real speaker changes (the system spins up a new ID instead of re-matching to an existing speaker's centroid), but a meaningful third of instability is pure mid-utterance embedding noise with no speaker change at all.
+
+**Conclusion — not a simple "raise the cluster threshold" fix.** Three distinct failure modes are present simultaneously: (1) turn-boundary re-identification failure (majority, 69% of switches) — new speaker turns not matched back to existing cluster centroids; (2) mid-turn embedding instability (31% of switches) — same speaker, ID flips without a real change; (3) speaker-specific cross-contamination (FEO070↔FEO072) that's a matching/threshold problem, not fragmentation. A blanket threshold loosening risks merging the currently-correct MEE071 while still not fixing MEE073's chronic instability or FEO070's drift. Investigation should split into: embedding window/smoothing (mid-turn stability), centroid re-matching logic at turn boundaries (streaming vs. re-embed-and-compare), and per-speaker acoustic similarity (why FEO070/FEO072 specifically confuse).</result>
+<usage><subagent_tokens>150451</subagent_tokens><tool_uses>1</tool_uses><duration_ms>47835</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ac5d12ab0c0babfa0</task-id>
+<tool-use-id>toolu_013osajXSpxHZLhkSLoyAdth</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/ac5d12ab0c0babfa0.output</output-file>
+<status>completed</status>
+<summary>Agent "FluidAudio upstream DER tooling and tuning guidance" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report: FluidAudio Diarization Tuning — Issue #306
+
+### Part 1 — Built-in DER/purity scoring (YES, it exists)
+
+**`DiarizationDER`** (`Sources/FluidAudio/Diarizer/DiarizationDER.swift`) is a **public** API in the main `FluidAudio` library target — directly importable by `Tools/ProofHarness` today, no new dependency needed. It implements the standard pyannote/NIST md-eval DER formula (miss + false-alarm + confusion, Hungarian-matched hyp→ref mapping, configurable collar). Input type is `DERSpeakerSegment(speaker:start:end:)`; output is `DERResult(der:confusion:falseAlarm:miss:totalRefSpeech:mapping:)` — the `mapping` field is exactly the cluster-purity signal issue #306 needs (which hyp cluster the Hungarian solver assigned to which true speaker, and which hyp clusters got no match = pure over-segmentation).
+
+A richer, segment-overlap-based version — `DiarizationMetricsCalculator.offlineMetrics()` in `Sources/FluidAudioCLI/Utils/DiarizationMetrics.swift` — adds JER and per-rate breakdowns (missRate/falseAlarmRate/speakerErrorRate), but it's **internal to the `FluidAudioCLI` executable target**, not exported from the library, so it can't be imported directly — porting the ~150-line algorithm (or copying the file) would be needed to use it.
+
+**Wiring plan**: `ProofHarness` already has `FluidDiarizationPlugin` output as `[SpeakerSegment]`; map those + parsed `.rttm` ground truth into `[DERSpeakerSegment]` and call `DiarizationDER.compute(ref:hyp:)` directly. One gap: FluidAudio's RTTM parser (`RTTMParser.loadSegments`) also lives only in `FluidAudioCLI`, not the library — ProofHarness needs its own trivial RTTM line parser (~15 lines) or a copy of that file.
+
+### Part 2 — Upstream config knobs + precedent
+
+Repo: `https://github.com/FluidInference/FluidAudio` (pinned rev `8048812...`, v0.14.7 per `Package.resolved`).
+
+Found the exact tunable in `OfflineDiarizerTypes.swift`: `OfflineDiarizerConfig.Clustering`:
+```swift
+public static let community = Clustering(
+    threshold: 0.6,       // Euclidean distance on unit-normalized embeddings
+    warmStartFa: 0.07, warmStartFb: 0.8,
+    minSpeakers: nil, maxSpeakers: nil, numSpeakers: nil
+)
+```
+`minSpeakers`/`maxSpeakers`/`numSpeakers` are direct config overrides on the same struct — since our fixtures have known ground truth (4 speakers), setting `maxSpeakers: 4` (or `numSpeakers: 4`) is a zero-risk immediate mitigation for the fixture benchmark, independent of threshold tuning.
+
+**Direct upstream precedent for our exact symptom**: FluidAudio's own benchmark docs/tables show mismatched-threshold over-segmentation on AMI meetings that mirrors #306's ratio almost exactly — e.g. `ES2004a: 7 predicted vs 4 actual`, `IS1002b: 9 predicted vs 4 actual`. Upstream guidance: **lower threshold → more/smaller clusters (over-segmentation)**, **higher threshold → fewer/merged clusters**. Default `0.6` targets ~18–20% DER on AMI-SDM (offline/VBx pipeline); an older non-VBx pipeline used `0.7` for ~17.7% DER. Given our 8-vs-4 result, the first experiment to run is raising `threshold` from `0.6` toward `0.7`–`0.8` on `meeting-15min.wav`, in combination with (or instead of) an explicit `maxSpeakers` cap.
+
+Sources:
+- [FluidAudio GitHub](https://github.com/FluidInference/FluidAudio)
+- [FluidAudio Documentation/Benchmarks.md](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/Benchmarks.md)
+- [FluidAudio Documentation/Diarization/GettingStarted.md](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/Diarization/GettingStarted.md)
+- [DeepWiki: Clustering Algorithms &amp; Speaker Management](https://deepwiki.com/FluidInference/FluidAudio/3.2.3-offline-diarization-with-vbx-clustering)</result>
+<usage><subagent_tokens>137916</subagent_tokens><tool_uses>20</tool_uses><duration_ms>201698</duration_ms></usage>
+</task-notification>
+
+---
+
+modify this prompt we will use for fable:
+
+---
+
+modify this prompt we will use for fable: I want you to solve this problem:
+
+[Describe the underlying problem. Include the first task or deliverable only if it helps explain the problem.]
+
+The result I want is:
+
+[Describe the final outcome, what good looks like, and how the result will be used.]
+
+Use these sources:
+
+[List the repositories, documents, research, data, meeting notes, Slack threads,
+examples, tools, accounts, and other context available to the agent.]
+
+Important constraints:
+
+[List the audience, deadline, budget, scope, approvals, security boundaries,
+brand rules, and decisions that must remain human.]
+
+Use dynamic workflows, subagents, loops, verification, and installed skills
+when they fit the job.
+For software work, use Compound Engineering's LFG pipeline. After a
+meaningful run, use Compound Engineering to save the lessons worth keeping.
+
+Before executing:
+
+1. Inspect the source material.
+2. Restate the problem you believe you are solving.
+3. Identify missing context, conflicting instructions, and assumptions that could
+   change the result.
+4. Decide whether the task requires a loop, a dynamic workflow, new
+   infrastructure, or a simpler direct approach.
+5. Show me the proposed approach and the evidence you will use to verify the result.
+
+After approval, execute the work. Delegate independent work to subagents and keep
+going while they run. Pause only for a destructive or irreversible action, a real
+change in scope, or information only I can provide. Do not stop at analysis or
+recommendations if you have the tools and permission to ship the result.
+
+Before reporting progress or completion, audit every claim against a tool result
+from this session. If something is not verified, say so plainly.
+
+When finished, return:
+
+1. The outcome, in one sentence
+2. What you completed and the most important decisions you made
+3. Evidence that the result works
+4. Anything you could not verify
+5. What should be saved or improved so the next run is better
+
+---
+
+modify this prompt we will use for fable: I want you to solve this problem:
+
+[Describe the underlying problem. Include the first task or deliverable only if it helps explain the problem.]
+
+The result I want is:
+
+[Describe the final outcome, what good looks like, and how the result will be used.]
+
+Use these sources:
+
+[List the repositories, documents, research, data, meeting notes, Slack threads,
+examples, tools, accounts, and other context available to the agent.]
+
+Important constraints:
+
+[List the audience, deadline, budget, scope, approvals, security boundaries,
+brand rules, and decisions that must remain human.]
+
+Use dynamic workflows, subagents, loops, verification, and installed skills
+when they fit the job.
+For software work, use Compound Engineering's LFG pipeline. After a
+meaningful run, use Compound Engineering to save the lessons worth keeping.
+
+Before executing:
+
+1. Inspect the source material.
+2. Restate the problem you believe you are solving.
+3. Identify missing context, conflicting instructions, and assumptions that could
+   change the result.
+4. Decide whether the task requires a loop, a dynamic workflow, new
+   infrastructure, or a simpler direct approach.
+5. Show me the proposed approach and the evidence you will use to verify the result.
+
+After approval, execute the work. Delegate independent work to subagents and keep
+going while they run. Pause only for a destructive or irreversible action, a real
+change in scope, or information only I can provide. Do not stop at analysis or
+recommendations if you have the tools and permission to ship the result.
+
+Before reporting progress or completion, audit every claim against a tool result
+from this session. If something is not verified, say so plainly.
+
+When finished, return:
+
+1. The outcome, in one sentence
+2. What you completed and the most important decisions you made
+3. Evidence that the result works
+4. Anything you could not verify
+5. What should be saved or improved so the next run is better
+
+---
+
+I want you to solve this problem:
+
+[Describe the underlying problem. Include the first task or deliverable only if it helps explain the problem.]
+
+The result I want is:
+
+[Describe the final outcome, what good looks like, and how the result will be used.]
+
+Use these sources:
+
+[List the repositories, documents, research, data, meeting notes, Slack threads,
+examples, tools, accounts, and other context available to the agent.]
+
+Important constraints:
+
+[List the audience, deadline, budget, scope, approvals, security boundaries,
+brand rules, and decisions that must remain human.]
+
+Use dynamic workflows, subagents, loops, verification, and installed skills
+when they fit the job.
+For software work, use Compound Engineering's LFG pipeline. After a
+meaningful run, use Compound Engineering to save the lessons worth keeping.
+
+Before executing:
+
+1. Inspect the source material.
+2. Restate the problem you believe you are solving.
+3. Identify missing context, conflicting instructions, and assumptions that could
+   change the result.
+4. Decide whether the task requires a loop, a dynamic workflow, new
+   infrastructure, or a simpler direct approach.
+5. Show me the proposed approach and the evidence you will use to verify the result.
+
+After approval, execute the work. Delegate independent work to subagents and keep
+going while they run. Pause only for a destructive or irreversible action, a real
+change in scope, or information only I can provide. Do not stop at analysis or
+recommendations if you have the tools and permission to ship the result.
+
+Before reporting progress or completion, audit every claim against a tool result
+from this session. If something is not verified, say so plainly.
+
+When finished, return:
+
+1. The outcome, in one sentence
+2. What you completed and the most important decisions you made
+3. Evidence that the result works
+4. Anything you could not verify
+5. What should be saved or improved so the next run is better
+
+---
+
+<task-notification>
+<task-id>ac2763994475c48ed</task-id>
+<tool-use-id>toolu_013WZcZY7JZ7zMPEjiaiyjNT</tool-use-id>
+<output-file>/private/tmp/claude-501/-Volumes-Extra-repos-gitrdunhq-the-record-suite/19d3c20f-6d83-4870-9e23-0e39ce713dc3/tasks/ac2763994475c48ed.output</output-file>
+<status>completed</status>
+<summary>Agent "Diarization config vs FluidAudio tunables" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I'm running as the `diar-config-tuning` fork and can't spawn further sub-agents from here — that call needs to happen at the parent level. Here's my completed investigation:
+
+## Diarization Config Tuning — Findings
+
+**Our wrapper passes zero configuration.** `FluidDiarizationPlugin.prepare()` (Record-ML/Sources/MLInfrastructure/Diarization/FluidDiarizationPlugin.swift) does `let manager = DiarizerManager()` — bare zero-arg init — then `manager.initialize(models:)`. No `DiarizerConfig` is ever constructed or passed anywhere in our codebase. We are 100% on FluidAudio's defaults.
+
+**Current effective defaults** (`FluidAudio/Diarizer/Core/DiarizerTypes.swift:7-36`):
+
+| Param | Default | Meaning |
+|---|---|---|
+| `clusteringThreshold` | 0.7 | base for derived assignment cutoffs below |
+| `minSpeechDuration` | 1.0s | segments shorter are discarded |
+| `minEmbeddingUpdateDuration` | 2.0s | min segment length to refresh a speaker's running embedding |
+| `minSilenceGap` | 0.5s | gap before splitting same-speaker segments |
+| `numClusters` | -1 (auto) | no speaker-count hint given |
+| `chunkDuration` / `chunkOverlap` | 10.0s / 0.0s | no overlap between processing chunks |
+
+**Confirmed at runtime** (`DiarizerManager.swift:24-36`, verified against `SpeakerManager.assignSpeaker` at `SpeakerManager.swift:148`): `speakerThreshold = clusteringThreshold * 1.2 = 0.84` (max cosine **distance** allowed to match an existing speaker — lower distance = more similar), `embeddingThreshold = clusteringThreshold * 0.8 = 0.56` (max distance to refresh a profile). A separate hardcoded `AssignmentConfig.macOS` (0.65/0.45) exists in `SpeakerOperations.swift` but is **not** the path our code actually exercises.
+
+**Biggest structural finding**: FluidAudio ships two diarizers — the streaming `DiarizerManager` we use, and `OfflineDiarizerManager` (VBx clustering, 17.7% DER on AMI per FluidAudio's own CLAUDE.md), purpose-built for full-recording batch processing. Our use case (record full meeting, process after the fact) is inherently offline — we're running the wrong engine for the job.
+
+### Ranked recommendations
+
+1. **Evaluate `OfflineDiarizerManager` as the diarization engine** (`Diarizer/Offline/Core/OfflineDiarizerManager.swift`). Biggest expected accuracy win — it's the benchmarked, purpose-built batch path. This is an engine swap in `FluidDiarizationPlugin.swift`, not a config tweak — bigger integration lift, higher payoff.
+2. **Raise `clusteringThreshold` from 0.7 → ~0.8-0.85** via a custom `DiarizerConfig` passed into `DiarizerManager(config:)`. Confirmed direction: raising it raises the max-distance-for-match cutoff (0.84→~1.0), making merges easier, directly counteracting over-splitting. Cheapest, single-line experiment — try this first operationally.
+3. **Lower `minEmbeddingUpdateDuration` from 2.0s toward 1.0-1.5s.** Real meetings are full of sub-2s backchannel turns ("yeah," "right") that never refresh a speaker's reference embedding — later utterances get compared against a stale anchor and drift into a "new speaker." Needs A/B validation against the meeting-15min purity metric since it could also let noisy short segments corrupt profiles.
+4. **Pass an explicit `numClusters` hint for diagnostic runs only** (we have ground truth: 4 speakers in meeting-15min.rttm) to isolate whether over-splitting is a cluster-count problem vs. a distance-threshold problem before committing to #2/#3.
+
+Aside: FluidAudio's own comment at `DiarizerManager.swift:27-29` claims a "0.9x" multiplier but the code uses `1.2x` — stale comment, worth flagging upstream, not actionable for us.
+
+**Next step**: the parent conversation needs to launch the 3rd investigation agent (post-processing/preprocessing mitigations — segment-merge passes, embedding re-clustering via `speakerDatabase`, chunking/sample-rate checks) since forks can't spawn sub-forks from here.</result>
+<usage><subagent_tokens>113727</subagent_tokens><tool_uses>15</tool_uses><duration_ms>333759</duration_ms></usage>
+</task-notification>
+
+---
+
+one tweak then save to disk, it should ise properly family subagents not all fable. fsble for the arch and thinking.
+
+---
+
+one tweak then save to disk, it should ise properly family subagents not all fable. fsble for the arch and thinking.
