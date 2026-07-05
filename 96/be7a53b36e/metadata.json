@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.7",
+  "checkpoint_id": "96be7a53b36e",
+  "strategy": "manual-commit",
+  "branch": "fix/beta-blockers",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Record-ML/Sources/MLInfrastructure/Summarization/MLXSummarizationPlugin.swift",
+    "Record-ML/Sources/MLInfrastructure/Summarization/XGrammarSummarizationPlugin.swift",
+    "Record-ML/Sources/MLInfrastructure/Transcription/WhisperKitPlugin.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/96/be7a53b36e/0/metadata.json",
+      "transcript": "/96/be7a53b36e/0/full.jsonl",
+      "content_hash": "/96/be7a53b36e/0/content_hash.txt",
+      "prompt": "/96/be7a53b36e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 102577,
+    "cache_creation_tokens": 1812261,
+    "cache_read_tokens": 49355916,
+    "output_tokens": 214821,
+    "api_call_count": 433
+  }
+}
