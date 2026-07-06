@@ -1,0 +1,125 @@
+{
+  "cli_version": "0.7.9-nightly.202607050712.4398a44c1.0.20260705180501-6fdf86ce1bf2+dirty",
+  "checkpoint_id": "b6e0bad95d94",
+  "session_id": "8c742a0d-1c68-4e73-bf23-40f109977f78",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-06T18:06:44.879491Z",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 5,
+  "save_step_count": 5,
+  "files_touched": [
+    "Package.resolved"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "8d7c94acbb9f",
+  "checkpoint_transcript_start": 597,
+  "transcript_lines_at_start": 597,
+  "compact_transcript_start": 84,
+  "token_usage": {
+    "input_tokens": 617,
+    "cache_creation_tokens": 351148,
+    "cache_read_tokens": 2096716,
+    "output_tokens": 18747,
+    "api_call_count": 21
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-datum-route-2026-07-06T16:15:31.64543Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "datum-route"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "e4d573a3a89f",
+      "timestamp": "2026-07-06T16:15:31.64543Z",
+      "native": {
+        "command": "/datum-route"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/datum-route",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-permissions-2026-07-06T17:33:38.643099Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "permissions"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "75a2e570103d",
+      "timestamp": "2026-07-06T17:33:38.643099Z",
+      "native": {
+        "command": "/permissions"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/permissions",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 13
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-06T18:06:44.818633Z",
+    "agent_lines": 10,
+    "agent_removed": 1,
+    "human_added": 426,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 436,
+    "total_lines_changed": 438,
+    "agent_percentage": 2.5114155251141552,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 43,
+      "agent_lines_removed": 2
+    }
+  ]
+}
