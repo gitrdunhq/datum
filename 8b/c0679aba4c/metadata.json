@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.9-nightly.202607050712.4398a44c1.0.20260705180501-6fdf86ce1bf2+dirty",
+  "checkpoint_id": "8bc0679aba4c",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-287/HANDOFF.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/8b/c0679aba4c/0/metadata.json",
+      "transcript": "/8b/c0679aba4c/0/full.jsonl",
+      "compact_transcript": "/8b/c0679aba4c/0/transcript.jsonl",
+      "content_hash": "/8b/c0679aba4c/0/content_hash.txt",
+      "prompt": "/8b/c0679aba4c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 237076,
+    "cache_read_tokens": 471390,
+    "output_tokens": 6184,
+    "api_call_count": 5
+  }
+}

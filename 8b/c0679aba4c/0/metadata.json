@@ -1,0 +1,96 @@
+{
+  "cli_version": "0.7.9-nightly.202607050712.4398a44c1.0.20260705180501-6fdf86ce1bf2+dirty",
+  "checkpoint_id": "8bc0679aba4c",
+  "session_id": "8c742a0d-1c68-4e73-bf23-40f109977f78",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-06T18:12:22.779644Z",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-287/HANDOFF.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "e90dc8f0e0c1",
+  "checkpoint_transcript_start": 768,
+  "transcript_lines_at_start": 768,
+  "compact_transcript_start": 111,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 237076,
+    "cache_read_tokens": 471390,
+    "output_tokens": 6184,
+    "api_call_count": 5
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-datum-route-2026-07-06T16:15:31.64543Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "datum-route"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "e4d573a3a89f",
+      "timestamp": "2026-07-06T16:15:31.64543Z",
+      "native": {
+        "command": "/datum-route"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/datum-route",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-permissions-2026-07-06T17:33:38.643099Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "permissions"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "75a2e570103d",
+      "timestamp": "2026-07-06T17:33:38.643099Z",
+      "native": {
+        "command": "/permissions"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/permissions",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-06T18:12:22.722416Z",
+    "agent_lines": 56,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 56,
+    "total_lines_changed": 56,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
