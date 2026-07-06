@@ -74,6 +74,27 @@ var RATE_LIMIT_JITTER_MS = 2e3;
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage) {
+  const raw = await agent(
+    `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:
+git -C "${wt}" log -1 --format="%H %s"
+git -C "${wt}" status --porcelain -- ${files.join(" ")}
+Return ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `verify-commit:${taskId}:${stage}`, model: "haiku" }
+  );
+  if (!raw) return { committed: false, detail: "independent check returned no result" };
+  const lines = String(raw).trim().split("\n").filter(Boolean);
+  const logLine = lines[0] || "";
+  const statusLines = lines.slice(1);
+  const sha = logLine.split(" ")[0];
+  const messageMatches = logLine.includes(`${commitPrefix}: ${stage} complete`);
+  const clean = statusLines.length === 0;
+  return {
+    committed: messageMatches && clean,
+    commitSha: sha,
+    detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`
+  };
+}
 async function resilientAgent(prompt, opts) {
   const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
   let lastResult = null;
@@ -577,8 +598,21 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
   }
   if (!red || !red.committed) {
-    log(`[${taskId}] RED: agent did not commit \u2014 failing`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: "RED agent did not commit" };
+    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+    if (check.committed) {
+      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
+      red = {
+        success: true,
+        tests_pass: false,
+        committed: true,
+        commit_sha: check.commitSha,
+        files_written: red?.files_written || testFiles,
+        failure_reason: red?.failure_reason
+      };
+    } else {
+      log(`[${taskId}] RED: agent did not commit \u2014 failing (independent check: ${check.detail})`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit (independent check: ${check.detail})` };
+    }
   }
   if (!red || !red.success) {
     log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
@@ -751,12 +785,19 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     );
   }
   if (!green || !green.success || !green.tests_pass) {
-    log(`[${taskId}] GREEN FAILED: ${green?.failure_reason || "tests still failing after 2 attempts"}`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: green?.failure_reason || "GREEN failed" };
+    const reason = !green ? "GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) \u2014 check the subagent transcript for this run to recover the actual failure cause" : green.failure_reason || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? "n/a"})`;
+    log(`[${taskId}] GREEN FAILED: ${reason}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: reason };
   }
   if (!green.committed) {
-    log(`[${taskId}] GREEN: agent did not commit \u2014 failing`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: "GREEN agent did not commit" };
+    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, "GREEN");
+    if (check.committed) {
+      log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
+      green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha };
+    } else {
+      log(`[${taskId}] GREEN: agent did not commit \u2014 failing (independent check: ${check.detail})`);
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
+    }
   }
   const greenOwnership = await verifyFileOwnership(taskId, wt, "GREEN", implFiles, testFiles);
   if (!greenOwnership.ok) {

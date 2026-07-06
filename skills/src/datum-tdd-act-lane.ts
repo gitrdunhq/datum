@@ -1,5 +1,5 @@
 import { model, type ModelName } from './shared/models'
-import { resilientAgent } from './shared/agents'
+import { resilientAgent, verifyCommitIndependently } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -319,8 +319,21 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
 
   // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
   if (!red || !red.committed) {
-    log(`[${taskId}] RED: agent did not commit — failing`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'RED agent did not commit' }
+    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+    if (check.committed) {
+      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
+      red = {
+        success: true,
+        tests_pass: false,
+        committed: true,
+        commit_sha: check.commitSha,
+        files_written: red?.files_written || testFiles,
+        failure_reason: red?.failure_reason,
+      }
+    } else {
+      log(`[${taskId}] RED: agent did not commit — failing (independent check: ${check.detail})`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit (independent check: ${check.detail})` }
+    }
   }
 
   if (!red || !red.success) {
@@ -525,13 +538,26 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   }
 
   if (!green || !green.success || !green.tests_pass) {
-    log(`[${taskId}] GREEN FAILED: ${green?.failure_reason || 'tests still failing after 2 attempts'}`)
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: green?.failure_reason || 'GREEN failed' }
+    // #278: a bare "GREEN failed" with no diagnostics happens when the agent call itself
+    // returns null (crashed, skipped, or exhausted rate-limit retries) — distinguish that
+    // from a result that came back but simply didn't populate failure_reason.
+    const reason = !green
+      ? 'GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) — check the subagent transcript for this run to recover the actual failure cause'
+      : green.failure_reason
+      || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? 'n/a'})`
+    log(`[${taskId}] GREEN FAILED: ${reason}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: reason }
   }
 
   if (!green.committed) {
-    log(`[${taskId}] GREEN: agent did not commit — failing`)
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: 'GREEN agent did not commit' }
+    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, 'GREEN')
+    if (check.committed) {
+      log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
+      green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha }
+    } else {
+      log(`[${taskId}] GREEN: agent did not commit — failing (independent check: ${check.detail})`)
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `GREEN agent did not commit (independent check: ${check.detail})` }
+    }
   }
 
   const greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)

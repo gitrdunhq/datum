@@ -13,6 +13,49 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// ── Independent commit verification (#274) ──────────────────────────────────
+// A stage agent self-reports `committed` in its structured output. If it
+// reports false, that's ambiguous: either it genuinely skipped the commit, or
+// it committed correctly but mis-filled the schema field. Rather than trust
+// the self-report blindly, check the worktree directly before failing the
+// lane — a false negative here wastes a full retry/escalation cycle on work
+// that already succeeded.
+export interface CommitVerification {
+  committed: boolean
+  commitSha?: string
+  detail: string
+}
+
+export async function verifyCommitIndependently(
+  taskId: string,
+  wt: string,
+  files: string[],
+  commitPrefix: string,
+  stage: string,
+): Promise<CommitVerification> {
+  const raw: string | null = await agent(
+    `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:\n` +
+      `git -C "${wt}" log -1 --format="%H %s"\n` +
+      `git -C "${wt}" status --porcelain -- ${files.join(' ')}\n` +
+      `Return ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `verify-commit:${taskId}:${stage}`, model: 'haiku' },
+  )
+  if (!raw) return { committed: false, detail: 'independent check returned no result' }
+
+  const lines = String(raw).trim().split('\n').filter(Boolean)
+  const logLine = lines[0] || ''
+  const statusLines = lines.slice(1)
+  const sha = logLine.split(' ')[0]
+  const messageMatches = logLine.includes(`${commitPrefix}: ${stage} complete`)
+  const clean = statusLines.length === 0
+
+  return {
+    committed: messageMatches && clean,
+    commitSha: sha,
+    detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`,
+  }
+}
+
 export async function resilientAgent(
   prompt: string,
   opts?: AgentOpts & { maxRetries?: number; worktree?: string },
