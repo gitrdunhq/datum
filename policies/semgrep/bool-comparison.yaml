@@ -20,7 +20,7 @@ rules:
       category: code-quality
       subcategory: correctness
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://peps.python.org/pep-0008/#programming-recommendations

@@ -25,7 +25,7 @@ rules:
       category: code-quality
       subcategory: voodoo-retry
       property-domain: determinism
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/

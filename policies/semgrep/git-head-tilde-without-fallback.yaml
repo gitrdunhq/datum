@@ -18,7 +18,7 @@ rules:
       category: code-quality
       subcategory: boundary-condition
       property-domain: availability
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
-        - https://github.com/gitrdunhq/eedom-community-rules
+        - https://github.com/gitrdunhq/caliper-community-rules

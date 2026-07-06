@@ -1,11 +1,11 @@
-"""Eedom blast-radius write-time advisory (issue #83).
+"""Caliper blast-radius write-time advisory (issue #83).
 
-Integrates eedom's CodeGraph for per-write impact analysis in the agent
+Integrates caliper's CodeGraph for per-write impact analysis in the agent
 loop.  Advisory only — findings become WARNING lines in the observation,
 never block execution.
 
-FAIL OPEN: any eedom exception is logged to transcript (if available) and
-silently skipped in the observation.  If eedom is not installed, the module
+FAIL OPEN: any caliper exception is logged to transcript (if available) and
+silently skipped in the observation.  If caliper is not installed, the module
 degrades to no-ops.
 """
 
@@ -14,25 +14,25 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-# Graceful degradation: eedom is an optional dependency.
-_EEDOM_AVAILABLE = False
+# Graceful degradation: caliper is an optional dependency.
+_CALIPER_AVAILABLE = False
 _CodeGraph = None
 
 try:
-    from eedom.plugins._runners.graph_builder import CodeGraph as _CG
+    from caliper.plugins._runners.graph_builder import CodeGraph as _CG
 
     _CodeGraph = _CG
-    _EEDOM_AVAILABLE = True
+    _CALIPER_AVAILABLE = True
 except ImportError:
     pass
 
-_DEFAULT_DB_NAME = "eedom-graph.sqlite"
+_DEFAULT_DB_NAME = "caliper-graph.sqlite"
 _RUN_CHECKS_TIMEOUT_S = 1.0
 
 
-def eedom_available() -> bool:
-    """Return True if eedom is installed and importable."""
-    return _EEDOM_AVAILABLE
+def caliper_available() -> bool:
+    """Return True if caliper is installed and importable."""
+    return _CALIPER_AVAILABLE
 
 
 def init_code_graph(
@@ -41,10 +41,10 @@ def init_code_graph(
 ) -> object | None:
     """Build or refresh the code graph for a repo directory.
 
-    Returns the CodeGraph instance, or None if eedom is unavailable.
+    Returns the CodeGraph instance, or None if caliper is unavailable.
     The database is stored at <repo_dir>/.datum/<db_name>.
     """
-    if not _EEDOM_AVAILABLE or _CodeGraph is None:
+    if not _CALIPER_AVAILABLE or _CodeGraph is None:
         return None
 
     try:
@@ -73,7 +73,7 @@ def check_written_file(
     Returns a list of WARNING strings suitable for appending to the
     write observation.  Returns [] on any failure (fail open).
     """
-    if graph is None or not _EEDOM_AVAILABLE or _CodeGraph is None:
+    if graph is None or not _CALIPER_AVAILABLE or _CodeGraph is None:
         return []
 
     try:
@@ -101,7 +101,7 @@ def check_written_file(
             desc = f.get("description", "")
             detail = f" ({name})" if name else ""
             warnings.append(
-                f"[eedom blast-radius] {severity}: {check}{detail} — {desc}"
+                f"[caliper blast-radius] {severity}: {check}{detail} — {desc}"
             )
 
         if elapsed > _RUN_CHECKS_TIMEOUT_S and not warnings:

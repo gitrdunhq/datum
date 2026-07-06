@@ -1,3 +1,3 @@
-Source: gitrdunhq/eedom-community-rules (rules/**/semgrep/*.yaml)
-Copied: 2026-06-11
+Source: gitrdunhq/caliper-community-rules (rules/**/semgrep/*.yaml)
+Copied: 2026-06-22
 Sync: manual — re-copy when community rules update

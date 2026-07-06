@@ -23,7 +23,7 @@ rules:
       category: code-quality
       subcategory: bloater
       property-domain: boundedness
-      eedom-plugin: semgrep
+      caliper-plugin: semgrep
       compliance_mappings: []
       references:
         - https://refactoring.guru/smells/switch-statements

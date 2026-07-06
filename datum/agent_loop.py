@@ -36,7 +36,7 @@ class FailureLayer(str, Enum):
     PLANNING = "planning"
 
 
-from datum.eedom_blast_radius import check_written_file, init_code_graph
+from datum.caliper_blast_radius import check_written_file, init_code_graph
 from datum.local_llm import (
     PATHLESS_WRITE_TOOLS,
     WRITE_TOOLS,
@@ -309,11 +309,11 @@ MIN_STEP_BUDGET_S = 5.0
 # isn't cut off mid-response.
 BUDGET_SLACK_S = 2.0
 
-# ── Eedom blast-radius advisory state (per-episode, fail open) ──────────
+# ── Caliper blast-radius advisory state (per-episode, fail open) ──────────
 # Initialized at episode start in agent_loop(); used on each .py write.
 # Module-level so tests can patch them.
-_eedom_graph: object | None = None
-_eedom_repo_dir: str = ""
+_caliper_graph: object | None = None
+_caliper_repo_dir: str = ""
 
 
 def _is_passing_test_run(command: str, output: str) -> bool:
@@ -1215,13 +1215,13 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
     progress = _ProgressWriter(phase)
     progress.start(task)
 
-    # ── Eedom blast-radius: init graph at episode start (fail open) ─────
-    global _eedom_graph, _eedom_repo_dir
-    _eedom_repo_dir = str(resolved_repo)
+    # ── Caliper blast-radius: init graph at episode start (fail open) ─────
+    global _caliper_graph, _caliper_repo_dir
+    _caliper_repo_dir = str(resolved_repo)
     try:
-        _eedom_graph = init_code_graph(resolved_repo)
+        _caliper_graph = init_code_graph(resolved_repo)
     except Exception:
-        _eedom_graph = None
+        _caliper_graph = None
 
     # No-progress breaker state: fires once per episode when consecutive
     # steps repeat the same (tool, args) AND observation identically.
@@ -1553,20 +1553,20 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 )
                 continue
 
-            # Issue 84: post-GREEN eedom gate
+            # Issue 84: post-GREEN caliper gate
             if phase in ("act_green", "act_refactor"):
                 import subprocess
 
-                eedom_out = resolved_repo / ".datum" / "eedom_review.json"
-                eedom_out.parent.mkdir(parents=True, exist_ok=True)
-                eedom_out.unlink(missing_ok=True)
+                caliper_out = resolved_repo / ".datum" / "caliper_review.json"
+                caliper_out.parent.mkdir(parents=True, exist_ok=True)
+                caliper_out.unlink(missing_ok=True)
 
                 try:
                     res = subprocess.run(
                         [
                             "uv",
                             "run",
-                            "eedom",
+                            "caliper",
                             "review",
                             "--repo-path",
                             ".",
@@ -1575,7 +1575,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                             "--format",
                             "json",
                             "--output",
-                            str(eedom_out),
+                            str(caliper_out),
                         ],
                         cwd=resolved_repo,
                         capture_output=True,
@@ -1584,32 +1584,32 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     )
                 except Exception as e:
                     return _finish(
-                        None, True, f"eedom_gate_crashed: {e}", FailureLayer.PLANNING
+                        None, True, f"caliper_gate_crashed: {e}", FailureLayer.PLANNING
                     )
 
                 if res.returncode != 0:
                     return _finish(
                         None,
                         True,
-                        f"eedom_gate_failed: exit {res.returncode}. Output: {res.stderr}\n{res.stdout}",
+                        f"caliper_gate_failed: exit {res.returncode}. Output: {res.stderr}\n{res.stdout}",
                         FailureLayer.VERIFICATION,
                     )
 
-                if not eedom_out.exists():
+                if not caliper_out.exists():
                     return _finish(
                         None,
                         True,
-                        "eedom_gate_failed: missing output file (fail closed)",
+                        "caliper_gate_failed: missing output file (fail closed)",
                         FailureLayer.VERIFICATION,
                     )
 
                 try:
-                    findings = json.loads(eedom_out.read_text())
+                    findings = json.loads(caliper_out.read_text())
                 except Exception as e:
                     return _finish(
                         None,
                         True,
-                        f"eedom_gate_failed: invalid json output: {e}",
+                        f"caliper_gate_failed: invalid json output: {e}",
                         FailureLayer.VERIFICATION,
                     )
 
@@ -1621,7 +1621,7 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                 ]
 
                 if critical_high:
-                    msg = "EEDOM REVIEW REJECTED COMPLETION:\n"
+                    msg = "CALIPER REVIEW REJECTED COMPLETION:\n"
                     for f in critical_high:
                         msg += f"- [{f.get('severity')}] {f.get('plugin')}: {f.get('message')}\n"
                         if "file" in f:
@@ -2018,11 +2018,11 @@ def agent_loop(task: str, config: dict, phase: str = "agent", on_step=None) -> d
                     for warning in _lint_python(content):
                         observation += f"\nWARNING: {warning}"
 
-                    # Tier-2: eedom blast-radius advisory (fail open).
+                    # Tier-2: caliper blast-radius advisory (fail open).
                     # Runs after lint so structural warnings appear even
-                    # if eedom is absent or errors out.
+                    # if caliper is absent or errors out.
                     for warning in check_written_file(
-                        _eedom_graph, str(target), _eedom_repo_dir
+                        _caliper_graph, str(target), _caliper_repo_dir
                     ):
                         observation += f"\nWARNING: {warning}"
 
