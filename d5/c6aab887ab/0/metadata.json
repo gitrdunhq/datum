@@ -1,0 +1,73 @@
+{
+  "cli_version": "0.7.9-nightly.202607050712.4398a44c1.0.20260705180501-6fdf86ce1bf2+dirty",
+  "checkpoint_id": "d5c6aab887ab",
+  "session_id": "8c742a0d-1c68-4e73-bf23-40f109977f78",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-06T16:27:37.251503Z",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 5,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "4c89e64621de",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 20867,
+    "cache_creation_tokens": 248112,
+    "cache_read_tokens": 3695411,
+    "output_tokens": 45642,
+    "api_call_count": 35
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-datum-route-2026-07-06T16:15:31.64543Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "datum-route"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "e4d573a3a89f",
+      "timestamp": "2026-07-06T16:15:31.64543Z",
+      "native": {
+        "command": "/datum-route"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/datum-route",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 33,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 2,
+        "scripts/tsan.sh": 31
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 33,
+      "agent_lines_removed": 1
+    }
+  ]
+}
