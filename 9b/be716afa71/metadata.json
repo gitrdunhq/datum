@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.9-nightly.202607050712.4398a44c1.0.20260705180501-6fdf86ce1bf2+dirty",
+  "checkpoint_id": "9bbe716afa71",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/epics/datum/epic-287/lane-plan.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9b/be716afa71/0/metadata.json",
+      "transcript": "/9b/be716afa71/0/full.jsonl",
+      "compact_transcript": "/9b/be716afa71/0/transcript.jsonl",
+      "content_hash": "/9b/be716afa71/0/content_hash.txt",
+      "prompt": "/9b/be716afa71/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 155,
+    "cache_creation_tokens": 139554,
+    "cache_read_tokens": 1046358,
+    "output_tokens": 6503,
+    "api_call_count": 13
+  }
+}
