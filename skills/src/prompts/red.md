@@ -47,6 +47,7 @@ AFTER WRITING:
 CONSTRAINTS:
 - Append new test functions to existing test files — keep all existing tests intact
 - Only write and commit test files: {{testFilesList}}
+- OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift — this is a production implementation file, not a test file. If it is not a test file, do not write it.
 
 BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
 - Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`

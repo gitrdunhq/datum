@@ -14,4 +14,4 @@ AFTER WRITING:
 2. Commit: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"
 3. Report commit_sha.
 
-Only write and commit test files: {{testFilesList}}
+Only write and commit test files: {{testFilesList}}. OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are strictly prohibited (e.g., NoOpPermissionService.swift is a production impl file — do not write it).
