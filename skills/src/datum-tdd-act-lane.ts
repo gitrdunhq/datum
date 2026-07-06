@@ -195,19 +195,25 @@ List the files changed.`,
   // Stray files from pre-preflight skeleton writes or abandoned tasks pollute
   // test collectors (pytest/vitest).  Remove any test file that is untracked
   // but not listed in the lane plan's files[].
-  const allowedTestPaths = new Set(testFiles)
-  for (const f of testFiles) {
-    // Also allow variants (e.g. "tests/foo.test.ts" and "test/foo.test.ts")
-    allowedTestPaths.add(f.replace('./', '').replace('test/', '').replace('tests/', ''))
+  //
+  // Deletion decisions are made by datum's own `lane-cleanup` command (plain
+  // Python, no LLM in the loop) — not by handing a sub-agent a "find files
+  // matching a pattern, then rm each one" prompt. The latter is indistinguishable
+  // from an arbitrary shell deletion to any permission classifier watching the
+  // sub-agent's tool calls, because it is one.
+  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/
+  if (testFiles.some(f => scriptTestPattern.test(f))) {
+    const allowedArgs = testFiles.map(f => `--allowed "${f.replace(/"/g, '\\"')}"`).join(' ')
+    const cleanupCmd = `datum lane-cleanup "${wt}" ${allowedArgs}`
+    await agent(`Run: ${cleanupCmd}`, {
+      label: `pre-red-cleanup:${taskId}`,
+      phase: 'Act',
+      model: model('fast'),
+    })
+    log(`[${taskId}] Pre-RED cleanup completed`)
+  } else {
+    log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`)
   }
-  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '\.(test|spec)\.(ts|js|tsx|jsx)$|test_.*\.py$' | grep -vxFf <(echo ${testFiles.map(f => f.replace(/'/g, "'\\''")).join('\n')} 2>/dev/null) || true`
-  await agent(
-    `Run: ${cleanupCmd}
-For each file found, run: rm -v "<file>"
-Return the list of removed files, or "none" if nothing to remove.`,
-    { label: `pre-red-cleanup:${taskId}`, phase: 'Act', model: model('fast') },
-  )
-  log(`[${taskId}] Pre-RED cleanup completed`)
 
   // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
