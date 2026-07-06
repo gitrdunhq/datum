@@ -489,14 +489,19 @@ List the files changed.`,
   for (const f of testFiles) {
     allowedTestPaths.add(f.replace("./", "").replace("test/", "").replace("tests/", ""));
   }
-  const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '.(test|spec).(ts|js|tsx|jsx)$|test_.*.py$' | grep -vxFf <(echo ${testFiles.map((f) => f.replace(/'/g, "'\\''")).join("\n")} 2>/dev/null) || true`;
-  await agent(
-    `Run: ${cleanupCmd}
+  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/;
+  if (testFiles.some((f) => scriptTestPattern.test(f))) {
+    const cleanupCmd = `cd "${wt}" && git ls-files --others --exclude-standard tests/ src/ 2>/dev/null | grep -E '.(test|spec).(ts|js|tsx|jsx)$|test_.*.py$' | grep -vxFf <(echo ${testFiles.map((f) => f.replace(/'/g, "'\\''")).join("\n")} 2>/dev/null) || true`;
+    await agent(
+      `Run: ${cleanupCmd}
 For each file found, run: rm -v "<file>"
 Return the list of removed files, or "none" if nothing to remove.`,
-    { label: `pre-red-cleanup:${taskId}`, phase: "Act", model: model("fast") }
-  );
-  log(`[${taskId}] Pre-RED cleanup completed`);
+      { label: `pre-red-cleanup:${taskId}`, phase: "Act", model: model("fast") }
+    );
+    log(`[${taskId}] Pre-RED cleanup completed`);
+  } else {
+    log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`);
+  }
   log(`[${taskId}] RED: writing failing tests`);
   const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
