@@ -141,6 +141,27 @@ def inject_conflict_edges(tasks: list[dict]) -> None:
                     break
 
 
+def inject_read_dependency_edges(tasks: list[dict]) -> None:
+    """Add depends_on edges for lanes that read (but don't write) another
+    lane's file (#280).
+
+    inject_conflict_edges only sees the `files` write list, so a lane that
+    merely references a type/protocol owned by another lane's file (without
+    writing to it) gets no dependency edge and can be dispatched before its
+    prerequisite lands. Each task may declare an optional `reads` list of
+    file paths it depends on without owning. Mutates in place.
+    """
+    ownership, _ = build_file_ownership(tasks)
+    for task in tasks:
+        for f in task.get("reads", []):
+            owner = ownership.get(f)
+            if owner is None or owner == task["id"]:
+                continue
+            deps = task.setdefault("depends_on", [])
+            if owner not in deps:
+                deps.append(owner)
+
+
 def topological_sort(tasks: list[dict]) -> list[str]:
     """Return task IDs in topological order. Raises on cycle."""
     id_set = {t["id"] for t in tasks}
@@ -359,6 +380,7 @@ def main() -> None:
     if args.validate:
         try:
             inject_conflict_edges(tasks)
+            inject_read_dependency_edges(tasks)
             topological_sort(tasks)
             print(json.dumps({"valid": True, "task_count": len(tasks)}))
         except ValueError as e:
@@ -367,6 +389,7 @@ def main() -> None:
         return
 
     inject_conflict_edges(tasks)
+    inject_read_dependency_edges(tasks)
 
     try:
         sorted_ids = topological_sort(tasks)

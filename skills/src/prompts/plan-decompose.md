@@ -22,10 +22,11 @@ RULES:
 - The 'files' array MUST list EVERY file the implementation agent will need to create or modify — not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.
 - Tasks sharing files must have a dependency edge or be in the same lane
 - Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.
-- Every task needs: title, acceptance_criteria, files, depends_on, red_note
+- Every task needs: title, acceptance_criteria, files, reads, depends_on, red_note
 - ACs must be specific enough to write a failing test from — function names, expected values, exception types
 - red_note tells the RED agent what the failing test should prove — use the project's language and test framework, not Python/pytest unless that IS the project language
 - depends_on lists task IDs this task requires to be completed first
+- reads lists files this task's implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on — otherwise the reader may run before the writer produces that file.
 
 Return JSON matching this schema:
 [
@@ -38,6 +39,7 @@ Return JSON matching this schema:
       "function_name(bad_input) raises SpecificError with 'message'"
     ],
     "files": ["src/module/file", "tests/test_file"],
+    "reads": [],
     "depends_on": [],
     "introduces_stubs": false,
     "red_note": "The failing test must call function_name with input and assert on the return value",

@@ -17,6 +17,11 @@
       "items": { "type": "string" },
       "minItems": 1
     },
+    "reads": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
     "depends_on": {
       "type": "array",
       "items": { "type": "string", "pattern": "^task-\\d+$" },

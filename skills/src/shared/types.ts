@@ -69,6 +69,7 @@ export interface LanePlan {
 export interface Lane {
   title: string
   files: string[]
+  reads?: string[]
   depends_on?: string[]
   acceptance_criteria?: string[]
   red_note?: string
