@@ -501,6 +501,24 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+@app.command(name="lane-cleanup")
+def lane_cleanup_cmd(
+    worktree: str = typer.Argument(..., help="Path to the lane's git worktree"),
+    allowed: list[str] = typer.Option(
+        [], "--allowed", help="Test file path from the lane plan to keep (repeatable)"
+    ),
+):
+    """Remove stray untracked test-scaffold files before RED (internal)."""
+    from datum.lane_cleanup import clean_lane_worktree
+
+    removed = clean_lane_worktree(Path(worktree), allowed)
+    if removed:
+        for path in removed:
+            console.print(f"removed: {path}")
+    else:
+        console.print("none")
+
+
 def _strip_thinking(text: str) -> str:
     if "<channel|>" in text:
         return text.split("<channel|>", 1)[1].strip()
