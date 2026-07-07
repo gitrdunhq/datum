@@ -97,26 +97,40 @@ Return ONLY the raw output, no explanation, no markdown fences.`,
     detail: match ? `found_commit="${match}" uncommitted_files=${statusLines.length}` : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`
   };
 }
-async function resilientAgent(prompt, opts) {
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
   const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
   let lastResult = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    lastResult = await agent(prompt, opts);
-    if (lastResult !== null) return lastResult;
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    }
     if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agent(
+      const dirty = await agentFn(
         `Run: git -C "${opts.worktree}" status --porcelain
 Return ONLY the raw output, no explanation.`,
         { label: "retry-guard", model: "haiku" }
       );
       if (dirty && dirty.trim().length > 0) {
-        log(`[resilientAgent] attempt ${attempt + 1} returned null but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
         return lastResult;
       }
     }
     if (attempt < maxRetries) {
       const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS);
-      log(`[resilientAgent] attempt ${attempt + 1} returned null, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
       await sleepMs(delay);
     }
   }

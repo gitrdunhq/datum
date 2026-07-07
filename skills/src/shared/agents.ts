@@ -64,28 +64,58 @@ export async function verifyCommitIndependently(
   }
 }
 
+// Injectable deps so resilientAgent's retry/backoff/dirty-guard logic can be
+// exercised in unit tests without the sandbox's ambient `agent`/`log`
+// globals. Production callers never pass this — it defaults to the real
+// globals, so behavior is unchanged for every existing call site.
+export interface ResilientAgentDeps {
+  agentFn?: (prompt: string, opts?: AgentOpts) => Promise<any>
+  logFn?: (message: string) => void
+}
+
 export async function resilientAgent(
   prompt: string,
   opts?: AgentOpts & { maxRetries?: number; worktree?: string },
+  deps?: ResilientAgentDeps,
 ): Promise<any> {
+  const agentFn = deps?.agentFn ?? agent
+  const logFn = deps?.logFn ?? log
   const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES
   let lastResult: any = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    lastResult = await agent(prompt, opts)
+    // A subagent that stalls mid-conversation and never calls
+    // StructuredOutput (even after the runtime's in-conversation nudge) can
+    // cause agent() to THROW rather than resolve to null (#332). Treat that
+    // the same way we already treat a null result: retryable, subject to the
+    // same dirty-worktree guard, never allowed to escape and crash the lane.
+    let threw = false
+    let caughtMessage = ''
+    try {
+      lastResult = await agentFn(prompt, opts)
+    } catch (err) {
+      threw = true
+      caughtMessage = err instanceof Error ? err.message : String(err)
+      lastResult = null
+    }
 
-    if (lastResult !== null) return lastResult
+    if (!threw && lastResult !== null) return lastResult
+
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} — treating as retryable`)
+    }
 
     // If a worktree was provided, check for dirty state before retrying —
-    // a null result after file writes means the agent partially completed
-    // and a blind replay would duplicate work or create extra commits.
+    // a null result (or a thrown error) after file writes means the agent
+    // partially completed and a blind replay would duplicate work or create
+    // extra commits.
     if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agent(
+      const dirty = await agentFn(
         `Run: git -C "${opts.worktree}" status --porcelain\nReturn ONLY the raw output, no explanation.`,
         { label: 'retry-guard', model: 'haiku' },
       )
       if (dirty && dirty.trim().length > 0) {
-        log(`[resilientAgent] attempt ${attempt + 1} returned null but worktree is dirty — aborting retry to prevent duplicate writes`)
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} but worktree is dirty — aborting retry to prevent duplicate writes`)
         return lastResult
       }
     }
@@ -93,7 +123,8 @@ export async function resilientAgent(
     if (attempt < maxRetries) {
       const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt)
         + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS)
-      log(`[resilientAgent] attempt ${attempt + 1} returned null, backing off ${Math.round(delay / 1000)}s before retry ${attempt + 2}/${maxRetries + 1}`)
+      const reason = threw ? `threw: ${caughtMessage}` : 'returned null'
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1000)}s before retry ${attempt + 2}/${maxRetries + 1}`)
       await sleepMs(delay)
     }
   }
