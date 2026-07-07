@@ -11,11 +11,63 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
-SEVERITY_LABEL = {"high": "[HIGH]", "medium": "[MEDIUM]", "low": "[LOW]", "info": "[INFO]"}
+SEVERITY_LABEL = {
+    "high": "[HIGH]",
+    "medium": "[MEDIUM]",
+    "low": "[LOW]",
+    "info": "[INFO]",
+}
+
+# Lane-commit conventions written by skills/src/shared/agents.ts's
+# commitStage() — e.g. "red(some-task): RED complete". Used as a git-derived
+# fallback for the RETRO.md Delivery section when live lane-state wasn't
+# collected (#302).
+_GREEN_COMMIT_RE = re.compile(r"\bgreen\(([^)]+)\)")
+_RED_COMMIT_RE = re.compile(r"\bred\(([^)]+)\)")
+
+
+def _git_derived_delivery(git: dict) -> dict | None:
+    """Derive a Delivery-section proxy from the git collector's commit log.
+
+    Reuses the same `git.commits` list (already collected via `git log
+    base_sha..merge_sha --oneline` by datum/closeout/collect_git.py — the
+    same collector that feeds the Change Size section) instead of running a
+    second git-log query. A task is counted "completed" if it has a
+    `green(<task>)` lane commit; "total" is every task id seen in a
+    `red(<task>)` or `green(<task>)` commit (red-only tasks are proxy
+    failures/incomplete work).
+    """
+    commits = git.get("commits") or []
+    if not commits:
+        return None
+
+    green_tasks: set[str] = set()
+    red_tasks: set[str] = set()
+    for line in commits:
+        m = _GREEN_COMMIT_RE.search(line)
+        if m:
+            green_tasks.add(m.group(1))
+        m = _RED_COMMIT_RE.search(line)
+        if m:
+            red_tasks.add(m.group(1))
+
+    all_tasks = red_tasks | green_tasks
+    if not all_tasks:
+        return None
+
+    completed = len(green_tasks)
+    total = len(all_tasks)
+    return {
+        "completed": completed,
+        "total": total,
+        "failed_terminal": total - completed,
+        "say_do_ratio": round(completed / total, 3) if total else 0,
+    }
 
 
 def render_review_report(packets_dir: Path, output_path: Path) -> None:
@@ -113,6 +165,18 @@ def render_closeout_retro(closeout_data: Path, output_path: Path) -> None:
     lane_tools = data.get("lane_tools") or {}
     solutions = data.get("solutions") or []
 
+    # Live lane-state (via collect_tasks.py) is the authoritative source for
+    # Delivery numbers. When it wasn't collected (e.g. closeout run against a
+    # branch whose work was done by hand, or a run-id with no state.json),
+    # `tasks.total` is 0 even though real work landed — fall back to a
+    # git-derived proxy instead of silently reporting 0/0 (#302).
+    delivery_source = "lane-state"
+    if not tasks.get("total"):
+        git_delivery = _git_derived_delivery(git)
+        if git_delivery is not None:
+            tasks = git_delivery
+            delivery_source = "git-derived"
+
     lines = [
         "# DATUM Retro",
         "",
@@ -121,6 +185,14 @@ def render_closeout_retro(closeout_data: Path, output_path: Path) -> None:
         "",
         "## Delivery",
         "",
+    ]
+    if delivery_source == "git-derived":
+        lines.append(
+            "_Derived from git history (lane-state unavailable) — "
+            "commit-based proxy, not live pipeline data._"
+        )
+        lines.append("")
+    lines += [
         f"- Tasks completed: {tasks.get('completed', 0)} / {tasks.get('total', 0)}",
         f"- Failed terminal lanes: {tasks.get('failed_terminal', 0)}",
         f"- Say:do ratio: {tasks.get('say_do_ratio', 0)}",
