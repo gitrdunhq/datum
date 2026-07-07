@@ -247,6 +247,21 @@ export function groupBlockedByRoot(
 }
 
 // ---------------------------------------------------------------------------
+// filterGreenLanes — GREEN merge gate. A completed-lane id whose recorded
+// stage is 'RED' never reaches the squash-merge step, even if some upstream
+// caller mistakenly marked it 'completed' — it's reported and left in place.
+// ---------------------------------------------------------------------------
+
+export function filterGreenLanes(
+  completedIds: string[],
+  results: Record<string, LaneOutcome>,
+): { greenIds: string[]; redOnlyIds: string[] } {
+  const greenIds = completedIds.filter((id) => results?.[id]?.stage !== 'RED')
+  const redOnlyIds = completedIds.filter((id) => results?.[id]?.stage === 'RED')
+  return { greenIds, redOnlyIds }
+}
+
+// ---------------------------------------------------------------------------
 // fnv1a64 / laneSpecHash — content-addressed lane identity for epic-scoped
 // completion markers. The sandbox has no crypto module, so we use FNV-1a
 // (64-bit, BigInt) — collision resistance is not a security property here,

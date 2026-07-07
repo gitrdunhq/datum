@@ -1,5 +1,6 @@
 import { model } from './shared/models'
 import type { MergeArgs } from './shared/types'
+import { filterGreenLanes } from './shared/utils'
 
 export const meta = {
   name: 'datum-tdd-act-merge',
@@ -15,8 +16,7 @@ phase('Merge')
 // GREEN or it doesn't merge: a lane whose last recorded stage is RED never
 // squash-merges onto the epic branch, even if something upstream marked it
 // 'completed' — it's left in place on its own lane branch and reported.
-const greenIds = a.completedIds.filter(id => a.results?.[id]?.stage !== 'RED')
-const redOnlyIds = a.completedIds.filter(id => a.results?.[id]?.stage === 'RED')
+const { greenIds, redOnlyIds } = filterGreenLanes(a.completedIds, a.results)
 
 for (const id of redOnlyIds) {
   log(`[${id}] left in place, not merged — stage is RED (branch: ${a.epicBranch}--${id})`)

@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes } from './utils'
 import type { Lane, LanePlan, LaneOutcome } from './types'
 
 // ---------------------------------------------------------------------------
@@ -241,5 +241,110 @@ describe('task-002 — computeBlockedLanes', () => {
     // Neither blocked lane should be eligible for dispatch as a runnable lane.
     expect(blocked.B.status).not.toBe('completed')
     expect(blocked.C.status).not.toBe('completed')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// task-004 — groupBlockedByRoot
+// ---------------------------------------------------------------------------
+
+describe('task-004 — groupBlockedByRoot', () => {
+  it('groups a single blocked descendant under its one failed root', () => {
+    const lanePlan = makeLanePlan({
+      A: [],
+      B: ['A'],
+    })
+
+    const groups = groupBlockedByRoot(lanePlan, ['A'], ['B'])
+
+    expect(groups.A).toEqual(['B'])
+  })
+
+  it('groups a transitive chain (A fails, B depends_on A, C depends_on B) under A, not B', () => {
+    const lanePlan = makeLanePlan({
+      A: [],
+      B: ['A'],
+      C: ['B'],
+    })
+
+    const groups = groupBlockedByRoot(lanePlan, ['A'], ['B', 'C'])
+
+    expect(groups.A).toEqual(['B', 'C'])
+  })
+
+  it('diamond dependency: a lane blocked by two independent failed roots appears under both', () => {
+    // A and D both fail. C depends_on both A and D. C must be grouped under
+    // both roots, not deduplicated to just one (Refine Q2).
+    const lanePlan = makeLanePlan({
+      A: [],
+      D: [],
+      C: ['A', 'D'],
+    })
+
+    const groups = groupBlockedByRoot(lanePlan, ['A', 'D'], ['C'])
+
+    expect(groups.A).toEqual(['C'])
+    expect(groups.D).toEqual(['C'])
+  })
+
+  it('a failed root with no blocked descendants still appears as an empty group', () => {
+    const lanePlan = makeLanePlan({ A: [] })
+
+    const groups = groupBlockedByRoot(lanePlan, ['A'], [])
+
+    expect(groups.A).toEqual([])
+  })
+
+  it('a blocked lane whose ancestry never reaches a failed root contributes to no group', () => {
+    // B depends on A, but A is not in `failures` (e.g. A is still running,
+    // or A's own status is 'blocked' rather than 'failed') — B should not be
+    // silently attributed to any root.
+    const lanePlan = makeLanePlan({
+      A: [],
+      B: ['A'],
+    })
+
+    const groups = groupBlockedByRoot(lanePlan, [], ['B'])
+
+    expect(groups).toEqual({})
+  })
+})
+
+// ---------------------------------------------------------------------------
+// task-005 — filterGreenLanes
+// ---------------------------------------------------------------------------
+
+describe('task-005 — filterGreenLanes', () => {
+  it('a lane whose stage is RED is excluded from greenIds and reported in redOnlyIds', () => {
+    const results: Record<string, LaneOutcome> = {
+      A: { task_id: 'A', status: 'completed', stage: 'REFACTOR' },
+      B: { task_id: 'B', status: 'completed', stage: 'RED' },
+    }
+
+    const { greenIds, redOnlyIds } = filterGreenLanes(['A', 'B'], results)
+
+    expect(greenIds).toEqual(['A'])
+    expect(redOnlyIds).toEqual(['B'])
+  })
+
+  it('all-GREEN input produces an empty redOnlyIds and preserves order in greenIds', () => {
+    const results: Record<string, LaneOutcome> = {
+      A: { task_id: 'A', status: 'completed', stage: 'REFACTOR' },
+      B: { task_id: 'B', status: 'completed', stage: 'REFACTOR' },
+    }
+
+    const { greenIds, redOnlyIds } = filterGreenLanes(['A', 'B'], results)
+
+    expect(greenIds).toEqual(['A', 'B'])
+    expect(redOnlyIds).toEqual([])
+  })
+
+  it('a completed id missing from results (no stage recorded) is treated as green, not excluded', () => {
+    const results: Record<string, LaneOutcome> = {}
+
+    const { greenIds, redOnlyIds } = filterGreenLanes(['A'], results)
+
+    expect(greenIds).toEqual(['A'])
+    expect(redOnlyIds).toEqual([])
   })
 })

@@ -16,11 +16,17 @@ function model(tier) {
   return activeTiers[tier];
 }
 
+// skills/src/shared/utils.ts
+function filterGreenLanes(completedIds, results) {
+  const greenIds2 = completedIds.filter((id) => results?.[id]?.stage !== "RED");
+  const redOnlyIds2 = completedIds.filter((id) => results?.[id]?.stage === "RED");
+  return { greenIds: greenIds2, redOnlyIds: redOnlyIds2 };
+}
+
 // skills/src/datum-tdd-act-merge.ts
 var a = args;
 phase("Merge");
-var greenIds = a.completedIds.filter((id) => a.results?.[id]?.stage !== "RED");
-var redOnlyIds = a.completedIds.filter((id) => a.results?.[id]?.stage === "RED");
+var { greenIds, redOnlyIds } = filterGreenLanes(a.completedIds, a.results);
 for (const id of redOnlyIds) {
   log(`[${id}] left in place, not merged \u2014 stage is RED (branch: ${a.epicBranch}--${id})`);
 }
