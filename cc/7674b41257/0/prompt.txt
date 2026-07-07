@@ -1,0 +1,97 @@
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-ae2fa3e569e4584d2 | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-223937-b0-root/.datum/worktrees/20260706-22393</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a742e8ca4c2d17f87 | Read the file: cat ".datum/runs/20260706-223937-b0/lane-state/task-007.json" 2&gt;/dev/null || echo "" If the file exists, return ONL</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a3ec2331b7b67e79a | Read the file: cat "docs/epics/datum/epic-287/skeletons/preflight-task-007.json" 2&gt;/dev/null || echo "" If the file exists, return</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a776678750e68174b | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a54bff9f435ede0d3 | Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own b</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a7894a6d1fe6a5601 | Run these ast-grep commands on the test files and report what was found. For each command, capture the output. If ast-grep is not</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a4e7047aeb3b55a49 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-223937-b0-root/.datum/worktrees/20260706-22</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a72c39d6130a17778 | Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a35329b5f4c2878c2 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-af0a3b48439fcd9e6 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-ac049a83e79f3a691 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-ad7e5f06772d1ef46 | datum worktrees cleanup --run-id 20260706-223937-b0 --epic-branch datum/epic-287 &amp;&amp; git worktree remove .datum/worktrees/20260706-</event>
+</task-notification>
+
+---
+
+please implement directlyh fir this session
