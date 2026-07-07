@@ -64,7 +64,7 @@ var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 phase("Validate");
 var checkResult = await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/<branch>.
+  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validate_check_default, {

@@ -101,7 +101,7 @@ var yolo = !!a.yolo;
 phase("Read");
 var context = await agent(
   renderPrompt(util_read_context_default, {
-    extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
+    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
 4. "current_state": read CURRENT_STATE.md if it exists (first 80 lines), else null
 5. "prior_defects": run \`jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null\` \u2014 return as string, empty if none
 6. "error_history": read .datum/ERRORS.md if it exists (first 40 lines), else null`

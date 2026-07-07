@@ -55,8 +55,8 @@ var yolo = !!a.yolo;
 phase("Read");
 var context = await agent(
   renderPrompt(util_read_context_default, {
-    extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
-4. "tasks_content": full contents of docs/epics/<branch>/TASKS.md`
+    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
+4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md`
   }),
   { label: "read-context", model: model("fast") }
 );

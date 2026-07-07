@@ -30,7 +30,7 @@ phase('Validate')
 
 // Validate agent reads context itself (collapsed read-context)
 const checkResult = await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/<branch>.
+  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validateCheckTemplate, {

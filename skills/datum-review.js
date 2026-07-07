@@ -98,9 +98,8 @@ var reportLines = [
   ""
 ];
 await agent(
-  `Run \`git rev-parse --abbrev-ref HEAD\` to get the branch name.
-Write this content to "docs/epics/<branch>/REVIEW-REPORT.md" (create dirs if needed).
-Commit: git add "docs/epics/<branch>/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
+  `Write this content to "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" (create dirs if needed).
+Commit: git add "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
 
 CONTENT:
 ${reportLines.join("\n")}`,

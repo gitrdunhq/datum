@@ -97,9 +97,9 @@ var yolo = !!a.yolo;
 phase("Read");
 var readResult = await agent(
   renderPrompt(util_read_context_default, {
-    extraFields: `3. "ticket_exists": whether docs/epics/<branch>/TICKET.md exists (true/false)
+    extraFields: `3. "ticket_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/TICKET.md exists (true/false)
 4. "ticket_content": if ticket_exists, read the full file contents, else null
-5. "spec_exists": whether docs/epics/<branch>/SPEC.md exists (true/false)
+5. "spec_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md exists (true/false)
 6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
 7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\``
   }),

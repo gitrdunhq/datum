@@ -25,8 +25,8 @@ phase('Read')
 
 const context = await agent(
   renderPrompt(readContextTemplate, {
-    extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
-4. "tasks_content": full contents of docs/epics/<branch>/TASKS.md`,
+    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
+4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md`,
   }),
   { label: 'read-context', model: model('fast') },
 )
