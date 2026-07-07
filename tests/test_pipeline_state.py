@@ -9,7 +9,46 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from datum.cli import app
-from datum.pipeline_state import read_pipeline_state, write_pipeline_state
+from datum.pipeline_state import (
+    read_pipeline_state,
+    reset_stale_pipeline_state,
+    write_pipeline_state,
+)
+
+
+def test_reset_stale_pipeline_state_clears_on_branch_mismatch(tmp_path: Path) -> None:
+    write_pipeline_state(
+        branch="datum/other-epic",
+        run_id="prior-run",
+        route="feature",
+        completed_phases=["refine", "plan", "properties", "act"],
+        datum_dir=tmp_path,
+    )
+    cleared = reset_stale_pipeline_state("datum/new-epic", datum_dir=tmp_path)
+    assert cleared is not None
+    assert cleared["branch"] == "datum/other-epic"
+    state = read_pipeline_state(tmp_path)
+    assert state["branch"] == "datum/new-epic"
+    assert state["completedPhases"] == []
+
+
+def test_reset_stale_pipeline_state_noop_on_same_branch(tmp_path: Path) -> None:
+    write_pipeline_state(
+        branch="datum/new-epic",
+        run_id="prior-run",
+        route="feature",
+        completed_phases=["refine"],
+        datum_dir=tmp_path,
+    )
+    cleared = reset_stale_pipeline_state("datum/new-epic", datum_dir=tmp_path)
+    assert cleared is None
+    state = read_pipeline_state(tmp_path)
+    assert state["completedPhases"] == ["refine"]
+
+
+def test_reset_stale_pipeline_state_noop_when_no_prior_state(tmp_path: Path) -> None:
+    assert reset_stale_pipeline_state("datum/new-epic", datum_dir=tmp_path) is None
+    assert read_pipeline_state(tmp_path) is None
 
 
 def test_write_then_read_round_trips(tmp_path: Path) -> None:

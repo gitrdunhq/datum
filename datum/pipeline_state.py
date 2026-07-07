@@ -95,3 +95,27 @@ def write_pipeline_state(
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "pipeline-state.json").write_text(json.dumps(state, indent=2))
     return state
+
+
+def reset_stale_pipeline_state(
+    branch: str, datum_dir: Path | None = None
+) -> dict[str, Any] | None:
+    """Clear pipeline-state.json when it belongs to a different branch.
+
+    .datum/pipeline-state.json is a single global file, not epic-scoped
+    (#337). Bootstrapping a new/different branch must not leave a prior
+    epic's completedPhases sitting there for datum-go's auto-resume logic
+    to inherit later. Returns the prior state dict if a reset happened,
+    otherwise None.
+    """
+    prior_state = read_pipeline_state(datum_dir)
+    if not prior_state or prior_state.get("branch") == branch:
+        return None
+    write_pipeline_state(
+        branch=branch,
+        run_id="",
+        route=prior_state.get("route", ""),
+        completed_phases=[],
+        datum_dir=datum_dir,
+    )
+    return prior_state

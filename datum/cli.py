@@ -357,6 +357,14 @@ def init(
     if not json_output:
         console.print(f"[dim]Branch: {branch}[/dim]")
 
+    from datum.pipeline_state import reset_stale_pipeline_state
+
+    cleared_state = reset_stale_pipeline_state(branch)
+    if cleared_state and not json_output:
+        console.print(
+            f"[dim]Cleared stale pipeline state from '{cleared_state.get('branch')}'[/dim]"
+        )
+
     # Create epic dir and TICKET.md
     epic_dir = Path(
         config.get("epic_dir_pattern", "docs/epics/{branch}").format(branch=branch)
