@@ -249,6 +249,36 @@ def _install_workflows():
         console.print(f"[dim]Workflows: {total} already current[/dim]")
 
 
+def _unsafe_branch_state_message() -> str | None:
+    """Return a human-readable error if the working tree is mid-conflict.
+
+    Covers the classic unresolved-merge case (MERGE_HEAD present) which
+    leaves conflict markers in the tree — unsafe to adopt for a new epic.
+    """
+    import subprocess
+
+    if Path(".git", "MERGE_HEAD").exists():
+        return (
+            "Unresolved merge conflict detected (MERGE_HEAD present) — "
+            "resolve the conflict before running `datum init`."
+        )
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain=1"], capture_output=True, text=True
+    )
+    if status.returncode == 0:
+        for line in status.stdout.splitlines():
+            # Unmerged paths surface with XY codes like UU/AA/DD/AU/UA/UD/DU.
+            code = line[:2]
+            if code in {"UU", "AA", "DD", "AU", "UA", "UD", "DU"}:
+                return (
+                    "Unresolved merge conflict detected in the working tree — "
+                    "resolve the conflict before running `datum init`."
+                )
+
+    return None
+
+
 @app.command()
 def init(
     name: str = typer.Option(
@@ -256,21 +286,48 @@ def init(
         "--name",
         help="Epic title; slugified into a descriptive datum/<slug> branch (#55).",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-readable JSON (epicBranch/lanePlanPath/adopted) instead of rich text.",
+    ),
 ):
     """Bootstrap the repository for DATUM execution."""
+    import contextlib
+    import io
     import subprocess
     import sys
 
     from datum.bootstrap import seed_state_docs
     from datum.detect import detect_repo
-    from datum.state import ensure_feature_branch
+    from datum.state import PROTECTED_BRANCHES, current_branch, ensure_feature_branch
+
+    # In --json mode, every downstream helper (ensure_feature_branch,
+    # _install_workflows, seed_state_docs.main) still writes its own
+    # human/JSON status lines to stdout. Swallow all of that so stdout
+    # carries exactly one JSON object — the one we print at the end.
+    quiet_stdout = (
+        contextlib.redirect_stdout(io.StringIO())
+        if json_output
+        else contextlib.nullcontext()
+    )
+
+    def _fail(message: str) -> None:
+        if json_output:
+            print(json.dumps({"error": "unsafe_branch_state", "message": message}))
+        else:
+            console.print(f"[bold red]{message}[/bold red]")
+        raise typer.Exit(1)
 
     res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
     if res.returncode != 0:
-        console.print(
-            "[bold red]Cannot init — repo has no commits. Run `git commit` first.[/bold red]"
-        )
-        raise typer.Exit(1)
+        _fail("Cannot init — repo has no commits. Run `git commit` first.")
+
+    unsafe_message = _unsafe_branch_state_message()
+    if unsafe_message:
+        _fail(unsafe_message)
+
+    branch_before = current_branch()
 
     # Auto-detect repo configuration
     config = detect_repo(".")
@@ -279,22 +336,26 @@ def init(
 
     if config_path.exists():
         existing = json.loads(config_path.read_text())
-        console.print(
-            "[dim]Existing config found — merging (existing values preserved)[/dim]"
-        )
+        if not json_output:
+            console.print(
+                "[dim]Existing config found — merging (existing values preserved)[/dim]"
+            )
         for k, v in config.items():
             existing.setdefault(k, v)
         config = existing
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
-    console.print(
-        f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
-    )
-    console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
-    console.print(f"[dim]Config written to {config_path}[/dim]")
+    if not json_output:
+        console.print(
+            f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
+        )
+        console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
+        console.print(f"[dim]Config written to {config_path}[/dim]")
 
-    branch = ensure_feature_branch(name)
-    console.print(f"[dim]Branch: {branch}[/dim]")
+    with quiet_stdout:
+        branch = ensure_feature_branch(name)
+    if not json_output:
+        console.print(f"[dim]Branch: {branch}[/dim]")
 
     # Create epic dir and TICKET.md
     epic_dir = Path(
@@ -302,22 +363,53 @@ def init(
     )
     epic_dir.mkdir(parents=True, exist_ok=True)
     ticket_path = epic_dir / "TICKET.md"
-    if not ticket_path.exists():
+    ticket_existed = ticket_path.exists()
+    if not ticket_existed:
         ticket_path.write_text(
             "# [Epic Title]\n\n## What\n\n## Requirements\n\n## Not This\n\n"
         )
-        console.print(f"[dim]TICKET.md created at {ticket_path} — fill it in[/dim]")
+        if not json_output:
+            console.print(f"[dim]TICKET.md created at {ticket_path} — fill it in[/dim]")
+
+    # Adoption: a non-default branch that had no pre-existing epic artifacts
+    # (TICKET.md) is treated as an existing feature branch being bootstrapped
+    # into a DATUM epic in place, rather than a brand-new epic branch (#213).
+    adopted = bool(
+        branch_before
+        and branch_before not in PROTECTED_BRANCHES
+        and branch == branch_before
+        and not ticket_existed
+    )
+    lane_plan_path = str(Path(".datum") / "lane-plan.json")
 
     # Install workflows to ~/.claude/workflows/
-    _install_workflows()
+    with quiet_stdout:
+        _install_workflows()
 
-    console.print("[bold green]Bootstrapping DATUM...[/bold green]")
+    if not json_output:
+        console.print("[bold green]Bootstrapping DATUM...[/bold green]")
     try:
-        seed_state_docs.main()
-        console.print("[bold green]✓ Repo seeded.[/bold green]")
+        with quiet_stdout:
+            seed_state_docs.main()
+        if not json_output:
+            console.print("[bold green]✓ Repo seeded.[/bold green]")
     except Exception as e:
-        console.print(f"[bold red]Bootstrap failed: {e}[/bold red]")
+        if json_output:
+            print(json.dumps({"error": "bootstrap_failed", "message": str(e)}))
+        else:
+            console.print(f"[bold red]Bootstrap failed: {e}[/bold red]")
         sys.exit(1)
+
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "epicBranch": branch,
+                    "lanePlanPath": lane_plan_path,
+                    "adopted": adopted,
+                }
+            )
+        )
 
 
 @app.command()

@@ -3,7 +3,6 @@ import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLa
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
-import detectBranchPrompt from './prompts/util-detect-branch.md'
 
 export const meta = {
   name: 'datum-go',
@@ -156,12 +155,21 @@ if (shouldRun('act', 3)) {
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
   const language = globalCfg.language || DEFAULT_CONFIG.language
 
-  // Detect branch + generate runId
-  const branchInfo = await agent(detectBranchPrompt, { label: 'act-detect', model: model('fast') })
-  const info = parseAgentJson(branchInfo, { branch: '', timestamp: '' }) as { branch: string; timestamp: string }
-  const epicBranch = info.branch
+  // Bootstrap: resolve branch + generate runId via the CLI adopt path
+  // (`datum init --json`, #213) instead of an inline-only agent prompt.
+  // The CLI detects/adopts an existing feature branch (epicBranch) and
+  // guards against unsafe branch state; we still ask the agent for a
+  // fresh timestamp to use as this run's runId.
+  const bootstrapInfo = await agent(
+    `Run this EXACT command and capture its raw stdout: datum init --json
+Then run: date +%Y%m%d-%H%M%S
+Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
+    { label: 'act-bootstrap', model: model('fast') },
+  )
+  const info = parseAgentJson(bootstrapInfo, { epicBranch: '', timestamp: '' }) as { epicBranch: string; timestamp: string; lanePlanPath?: string; adopted?: boolean }
+  const epicBranch = info.epicBranch
   const runId = info.timestamp
-  if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`)
+  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`)
 
   // Skeleton dir from Plan phase (pre-generated test contracts)
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`

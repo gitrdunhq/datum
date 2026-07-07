@@ -226,9 +226,6 @@ function detectStartFrom(state) {
   return null;
 }
 
-// skills/src/prompts/util-detect-branch.md
-var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
-
 // skills/src/datum-go.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 function parseArgs(raw) {
@@ -333,11 +330,16 @@ if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
   const language = globalCfg.language || DEFAULT_CONFIG.language;
-  const branchInfo = await agent(util_detect_branch_default, { label: "act-detect", model: model("fast") });
-  const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
-  const epicBranch = info.branch;
+  const bootstrapInfo = await agent(
+    `Run this EXACT command and capture its raw stdout: datum init --json
+Then run: date +%Y%m%d-%H%M%S
+Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
+    { label: "act-bootstrap", model: model("fast") }
+  );
+  const info = parseAgentJson(bootstrapInfo, { epicBranch: "", timestamp: "" });
+  const epicBranch = info.epicBranch;
   const runId = info.timestamp;
-  if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`);
+  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`);
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
   const epicDir = `docs/epics/${epicBranch}`;
   const resolveText = await agent(
