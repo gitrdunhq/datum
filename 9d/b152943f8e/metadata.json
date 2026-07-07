@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "9db152943f8e",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Record-CrossPlatform-Foundation/Sources/Domain/Recording/RecordingTypes.swift",
+    "Record-CrossPlatform-Foundation/Tests/Business/RecordingReadWriteUseCasesTests.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9d/b152943f8e/0/metadata.json",
+      "transcript": "/9d/b152943f8e/0/full.jsonl",
+      "compact_transcript": "/9d/b152943f8e/0/transcript.jsonl",
+      "content_hash": "/9d/b152943f8e/0/content_hash.txt",
+      "prompt": "/9d/b152943f8e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 93987,
+    "cache_creation_tokens": 2251488,
+    "cache_read_tokens": 36067300,
+    "output_tokens": 205677,
+    "api_call_count": 333
+  }
+}
