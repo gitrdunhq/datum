@@ -638,7 +638,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount2 = 0;
     let gatePassed = false;
     const countRaw = await agent(
-      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern '${testFuncDiffPattern.replace(/^-E\s+/, "")}' --required ${acCount}
+      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern ${testFuncDiffPattern.replace(/^-E\s+/, "")} --required ${acCount}
 Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,

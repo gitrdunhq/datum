@@ -55,7 +55,7 @@ fi
 DIFF=""
 if git -C "$REPO" rev-parse HEAD~1 >/dev/null 2>&1; then
     # Normal case: diff between parent and current commit
-    DIFF=$(git -C "$REPO" diff --no-stat HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
+    DIFF=$(git -C "$REPO" diff HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
 elif git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
     # First commit — git diff HEAD~1 fails; use git log -p -1 to get the patch
     DIFF=$(git -C "$REPO" log -p -1 -- "${FILES[@]}" 2>/dev/null || true)
