@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "6015c7f5d5f4",
+  "strategy": "manual-commit",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/60/15c7f5d5f4/0/metadata.json",
+      "transcript": "/60/15c7f5d5f4/0/full.jsonl",
+      "compact_transcript": "/60/15c7f5d5f4/0/transcript.jsonl",
+      "content_hash": "/60/15c7f5d5f4/0/content_hash.txt",
+      "prompt": "/60/15c7f5d5f4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 148850,
+    "cache_creation_tokens": 2912184,
+    "cache_read_tokens": 48162285,
+    "output_tokens": 281780,
+    "api_call_count": 444
+  }
+}
