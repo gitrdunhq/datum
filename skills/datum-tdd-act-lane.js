@@ -446,6 +446,14 @@ No markdown fences, no explanation.`,
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];
+  if (!wt || typeof wt !== "string" || !wt.startsWith("/")) {
+    return {
+      task_id: taskId,
+      status: "failed",
+      stage: "CRASH",
+      error: `no worktree path for ${taskId} (setup returned ${JSON.stringify(wt)}) \u2014 refusing to run outside an isolated worktree`
+    };
+  }
   const issueId = getIssueId(lanePlan2, taskId);
   const runId = cfg2.runId;
   const isStructural = lane.stage === "structural";

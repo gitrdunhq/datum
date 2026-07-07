@@ -46,10 +46,21 @@ var setupText = await agent(
 Return ONLY the JSON output, no explanation.`,
   { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
-var worktreePaths = typeof setupText === "string" ? JSON.parse(setupText.replace(/```[a-z]*\n?/g, "").trim()) : setupText;
-var validPaths = Object.values(worktreePaths || {}).filter(Boolean);
+var rawPaths = typeof setupText === "string" ? parseAgentJson(setupText, null) : setupText;
+if (!rawPaths || typeof rawPaths !== "object") {
+  throw new Error(`Setup failed for ${a.batchRunId}: CLI output was not JSON \u2014 ${String(setupText).slice(0, 300)}`);
+}
+var worktreePaths = {};
+for (const [lid, wtp] of Object.entries(rawPaths)) {
+  if (typeof wtp === "string" && wtp.startsWith("/")) {
+    worktreePaths[lid] = wtp;
+  } else {
+    log(`  [warn] dropping ${lid}: setup returned invalid worktree path ${JSON.stringify(wtp)}`);
+  }
+}
+var validPaths = Object.values(worktreePaths);
 if (validPaths.length === 0) throw new Error(`Setup failed: no worktree paths for ${a.batchRunId}`);
-for (const [lid, wtp] of Object.entries(worktreePaths || {})) {
+for (const [lid, wtp] of Object.entries(worktreePaths)) {
   log(`  worktree ${lid}: ${wtp}`);
 }
 var planJson = JSON.stringify(a.lanePlan).replace(/'/g, "'\\''");

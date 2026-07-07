@@ -77,6 +77,27 @@ function buildWaves(lanePlan2) {
   }
   return waves2;
 }
+function epicSlug(branch) {
+  return branch.replace(/[^A-Za-z0-9._-]/g, "-");
+}
+function fnv1a64(input) {
+  const PRIME = 0x100000001b3n;
+  const MASK = 0xffffffffffffffffn;
+  let hash = 0xcbf29ce484222325n;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = hash * PRIME & MASK;
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
+}
+function laneSpecHash(lane) {
+  const spec = {
+    files: lane.files || [],
+    acceptance_criteria: lane.acceptance_criteria || [],
+    depends_on: lane.depends_on || []
+  };
+  return fnv1a64(JSON.stringify(spec));
+}
 function resolveLanePlanPrompt(epicDir2) {
   return `[${epicDir2}]
 ls "${epicDir2}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"
@@ -99,6 +120,30 @@ function parseAgentJson(text, fallback) {
   } catch {
     return fallback;
   }
+}
+function renderPrompt(template, vars) {
+  return template.replace(
+    /\{\{(\w+)\}\}/g,
+    (_match, key) => vars[key] ?? `{{${key}}}`
+  );
+}
+
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
+
+// skills/src/prompts/lane-state-read.md
+var lane_state_read_default = "Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary:\n\n```\npython3 - <<'PYEOF'\nimport json, glob, os, subprocess\nout = {}\nfor f in sorted(glob.glob('.datum/epics/{{epicSlug}}/lane-state/*.json')):\n    try:\n        d = json.load(open(f))\n    except Exception:\n        continue\n    mc = d.get('merge_commit', '')\n    anc = False\n    if mc:\n        anc = subprocess.run(['git', 'merge-base', '--is-ancestor', mc, '{{epicBranch}}'],\n                             capture_output=True).returncode == 0\n    tid = d.get('task_id') or os.path.basename(f)[:-5]\n    out[tid] = {'status': d.get('status', ''), 'spec_hash': d.get('spec_hash', ''), 'ancestor': anc}\nprint(json.dumps(out))\nPYEOF\n```\n\nIf the lane-state directory does not exist, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n";
+
+// skills/src/prompts/lane-state-write.md
+var lane_state_write_default = "Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE:\n\n```\npython3 - <<'PYEOF'\nimport json, os, subprocess, datetime\nentries = json.loads('''{{entriesJson}}''')\nmerge_commit = subprocess.check_output(['git', 'rev-parse', '{{epicBranch}}']).decode().strip()\nts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')\nd = '.datum/epics/{{epicSlug}}/lane-state'\nos.makedirs(d, exist_ok=True)\nfor e in entries:\n    marker = {\n        'schema_version': '1.0',\n        'task_id': e['task_id'],\n        'status': 'completed',\n        'epic_branch': '{{epicBranch}}',\n        'merge_commit': merge_commit,\n        'spec_hash': e['spec_hash'],\n        'run_id': '{{runId}}',\n        'completed_at': ts,\n    }\n    with open(os.path.join(d, e['task_id'] + '.json'), 'w') as fh:\n        json.dump(marker, fh, indent=2)\n        fh.write('\\n')\nprint('DONE')\nPYEOF\n```\n\nDo not commit these files; they are local scheduler state.\n";
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function laneStateReadPrompt(vars) {
+  return renderPrompt(lane_state_read_default, vars);
+}
+function laneStateWritePrompt(vars) {
+  return renderPrompt(lane_state_write_default, vars);
 }
 
 // skills/src/prompts/util-detect-branch.md
@@ -147,21 +192,38 @@ log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
 for (let i = 0; i < waves.length; i++) {
   log(`  Wave ${i}: [${waves[i].join(", ")}]`);
 }
+var slug = epicSlug(epicBranch);
+var markerText = await agent(
+  laneStateReadPrompt({ epicBranch, epicSlug: slug }),
+  { label: "lane-state-read", phase: "Topology", model: model("fast") }
+);
+var priorMarkers = parseAgentJson(markerText, {});
+var alreadyMerged = lanePlan.topological_order.filter((id) => {
+  const m = priorMarkers[id];
+  return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {});
+});
+var results = {};
+var failures = [];
+var completedLanes = [];
+for (const id of alreadyMerged) {
+  results[id] = { task_id: id, status: "completed" };
+  completedLanes.push(id);
+}
+if (alreadyMerged.length > 0) {
+  log(`Epic-scoped state: ${alreadyMerged.length} lane(s) already merged, skipping: [${alreadyMerged.join(", ")}]`);
+}
 var MAX_BATCH = 5;
-var allLaneIds = lanePlan.topological_order;
+var allLaneIds = lanePlan.topological_order.filter((id) => !alreadyMerged.includes(id));
 var batches = [];
 for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
   batches.push(allLaneIds.slice(i, i + MAX_BATCH));
 }
 if (batches.length > 1) {
-  log(`Auto-partitioned ${lanePlan.total_lanes} tasks into ${batches.length} batches (max ${MAX_BATCH}/batch)`);
+  log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches (max ${MAX_BATCH}/batch)`);
   for (let b = 0; b < batches.length; b++) {
     log(`  Batch ${b}: [${batches[b].join(", ")}]`);
   }
 }
-var results = {};
-var failures = [];
-var completedLanes = [];
 for (let bi = 0; bi < batches.length; bi++) {
   const batchLaneIds = batches[bi];
   const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : "";
@@ -172,11 +234,17 @@ ${"=".repeat(60)}
 ${"=".repeat(60)}`);
   for (const lid of batchLaneIds) {
     const deps = lanePlan.lanes[lid]?.depends_on || [];
-    const missing = deps.filter((d) => !batchLaneIds.includes(d) && !completedLanes.includes(d) && !failures.includes(d));
-    if (missing.length > 0) {
-      results[lid] = { task_id: lid, status: "skipped", stage: "SKIPPED", error: `unmet cross-batch deps: [${missing.join(", ")}]` };
-      log(`  SKIPPED ${lid}: deps [${missing.join(", ")}] never ran`);
-    }
+    const unmet = deps.filter((d) => !batchLaneIds.includes(d) && !completedLanes.includes(d));
+    if (unmet.length === 0) continue;
+    const failedDeps = unmet.filter((d) => failures.includes(d) || results[d]?.status === "blocked");
+    const neverRan = unmet.filter((d) => !failedDeps.includes(d));
+    const rootCauses = failedDeps.map((d) => `${d}@${results[d]?.stage || "?"}`);
+    const detail = [
+      rootCauses.length > 0 ? `dep(s) failed/blocked: [${rootCauses.join(", ")}]` : "",
+      neverRan.length > 0 ? `dep(s) never ran: [${neverRan.join(", ")}]` : ""
+    ].filter(Boolean).join("; ");
+    results[lid] = { task_id: lid, status: "blocked", stage: "SKIPPED", error: `blocked \u2014 ${detail}` };
+    log(`  BLOCKED ${lid}: ${detail}`);
   }
   const runnableBatchIds = batchLaneIds.filter((id) => !results[id]);
   if (runnableBatchIds.length === 0) {
@@ -206,24 +274,32 @@ ${"=".repeat(60)}`);
     if (!r || r.status === "failed") {
       failures.push(id);
       log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
-    } else if (r.status === "skipped") {
-      log(`  SKIPPED ${id}: ${r.error || "dependency failed"}`);
+    } else if (r.status === "skipped" || r.status === "blocked") {
+      log(`  ${r.status.toUpperCase()} ${id}: ${r.error || "dependency failed"}`);
     } else {
       completedLanes.push(id);
     }
   }
   log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
   log("\u2500\u2500 Merge \u2500\u2500");
+  const mergedIds = batchLaneIds.filter((id) => completedLanes.includes(id));
   await workflow(
     { scriptPath: sk("datum-tdd-act-merge") },
     {
       epicBranch,
-      completedIds: batchLaneIds.filter((id) => completedLanes.includes(id)),
+      completedIds: mergedIds,
       batchRunId,
       topoOrder: lanePlan.topological_order,
       batchTag
     }
   );
+  if (mergedIds.length > 0) {
+    const entriesJson = JSON.stringify(mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })));
+    await agent(
+      laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
+      { label: `lane-state-write${batchTag}`, phase: "Act", model: model("fast") }
+    );
+  }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
 await workflow(
@@ -231,9 +307,10 @@ await workflow(
   { completedLanes, lanePlan, runId }
 );
 var skippedLanes = Object.keys(results).filter((id) => results[id]?.status === "skipped");
+var blockedLanes = Object.keys(results).filter((id) => results[id]?.status === "blocked");
 log(`
 ${"\u2550".repeat(60)}`);
-log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed, ${skippedLanes.length} skipped`);
+log(`ACT COMPLETE: ${completedLanes.length}/${lanePlan.total_lanes} succeeded, ${failures.length} failed, ${skippedLanes.length} skipped, ${blockedLanes.length} blocked`);
 if (completedLanes.length > 0) log(`  completed: [${completedLanes.join(", ")}]`);
 if (failures.length > 0) {
   log(`  failed:    [${failures.join(", ")}]`);
@@ -243,6 +320,13 @@ if (failures.length > 0) {
   }
 }
 if (skippedLanes.length > 0) log(`  skipped:   [${skippedLanes.join(", ")}]`);
+if (blockedLanes.length > 0) {
+  log(`  blocked:   [${blockedLanes.join(", ")}]`);
+  for (const bid of blockedLanes) {
+    const r = results[bid];
+    if (r) log(`    ${bid}: ${r.error}`);
+  }
+}
 log(`${"\u2550".repeat(60)}`);
 if (failures.length > 0) {
   log("\u2500\u2500 Triage \u2500\u2500");
@@ -257,7 +341,9 @@ return {
   completed: completedLanes.length,
   failed: failures.length,
   skipped: skippedLanes.length,
+  blocked: blockedLanes.length,
   failedLanes: failures,
   skippedLanes,
+  blockedLanes,
   completedLanes
 };
