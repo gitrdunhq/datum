@@ -439,7 +439,19 @@ Return ONLY the raw stdout of the second command. Do not reformat, summarize, or
       },
     )
     // Parse the JSON output from the script
-    if (countRaw && typeof countRaw === 'object') {
+    if (countRaw === null || countRaw === undefined) {
+      // agent() genuinely returned nothing — this is an infrastructure failure of the
+      // count-gate script call itself, not "0 tests found". Do NOT silently default to
+      // newTestCount=0/gatePassed=false here; that would misreport a tooling failure as
+      // a real gate failure and mask the fact the check never ran (#315).
+      log(`[${taskId}] RED FAILED: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`)
+      return {
+        task_id: taskId,
+        status: 'failed',
+        stage: 'RED',
+        error: `count_gate_no_output: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`,
+      }
+    } else if (typeof countRaw === 'object') {
       const obj = countRaw as { new_test_count?: number; passed?: boolean }
       newTestCount = obj.new_test_count || 0
       gatePassed = obj.passed !== undefined ? Boolean(obj.passed) : newTestCount >= acCount

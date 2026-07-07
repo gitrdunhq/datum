@@ -742,7 +742,15 @@ Return ONLY the raw stdout of the second command. Do not reformat, summarize, or
         model: model("fast")
       }
     );
-    if (countRaw && typeof countRaw === "object") {
+    if (countRaw === null || countRaw === void 0) {
+      log(`[${taskId}] RED FAILED: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`);
+      return {
+        task_id: taskId,
+        status: "failed",
+        stage: "RED",
+        error: `count_gate_no_output: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`
+      };
+    } else if (typeof countRaw === "object") {
       const obj = countRaw;
       newTestCount2 = obj.new_test_count || 0;
       gatePassed = obj.passed !== void 0 ? Boolean(obj.passed) : newTestCount2 >= acCount;
