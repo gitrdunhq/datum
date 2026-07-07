@@ -77,23 +77,24 @@ function sleepMs(ms) {
 async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage) {
   const raw = await agent(
     `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:
-git -C "${wt}" log -1 --format="%H %s"
+git -C "${wt}" log --format="%H %s"
 git -C "${wt}" status --porcelain -- ${files.join(" ")}
 Return ONLY the raw output, no explanation, no markdown fences.`,
     { label: `verify-commit:${taskId}:${stage}`, model: "haiku" }
   );
   if (!raw) return { committed: false, detail: "independent check returned no result" };
   const lines = String(raw).trim().split("\n").filter(Boolean);
-  const logLine = lines[0] || "";
-  const statusLines = lines.slice(1);
-  const sha = logLine.split(" ")[0];
-  const messageMatches = logLine.includes(`${commitPrefix}: ${stage} complete`);
+  const shaLine = /^[0-9a-f]{40} /;
+  const logLines = lines.filter((l) => shaLine.test(l));
+  const statusLines = lines.filter((l) => !shaLine.test(l));
+  const target = `${commitPrefix}: ${stage} complete`;
+  const match = logLines.find((l) => l.includes(target));
   const clean = statusLines.length === 0;
   return {
-    committed: messageMatches && clean,
-    commitSha: sha,
+    committed: Boolean(match) && clean,
+    commitSha: match ? match.split(" ")[0] : "",
     clean,
-    detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`
+    detail: match ? `found_commit="${match}" uncommitted_files=${statusLines.length}` : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`
   };
 }
 async function resilientAgent(prompt, opts) {
