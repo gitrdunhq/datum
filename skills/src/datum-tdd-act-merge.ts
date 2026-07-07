@@ -12,13 +12,23 @@ const a = args as MergeArgs
 // ── Merge ──
 phase('Merge')
 
-if (a.completedIds.length === 0) {
-  log(`No lanes completed${a.batchTag} — skipping merge`)
+// GREEN or it doesn't merge: a lane whose last recorded stage is RED never
+// squash-merges onto the epic branch, even if something upstream marked it
+// 'completed' — it's left in place on its own lane branch and reported.
+const greenIds = a.completedIds.filter(id => a.results?.[id]?.stage !== 'RED')
+const redOnlyIds = a.completedIds.filter(id => a.results?.[id]?.stage === 'RED')
+
+for (const id of redOnlyIds) {
+  log(`[${id}] left in place, not merged — stage is RED (branch: ${a.epicBranch}--${id})`)
+}
+
+if (greenIds.length === 0) {
+  log(`No GREEN/REFACTOR-complete lanes${a.batchTag} — skipping merge`)
 } else {
-  const mergeOrder = a.topoOrder.filter(id => a.completedIds.includes(id))
+  const mergeOrder = a.topoOrder.filter(id => greenIds.includes(id))
   await agent(
     `datum worktrees merge --epic-branch ${a.epicBranch} --lane-order ${mergeOrder.join(',')} ` +
-    `--commit-message "act(${a.batchRunId}): merge ${a.completedIds.length} lanes"`,
+    `--commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
     { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }
   )
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(' → ')}]`)

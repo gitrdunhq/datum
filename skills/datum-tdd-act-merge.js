@@ -19,12 +19,17 @@ function model(tier) {
 // skills/src/datum-tdd-act-merge.ts
 var a = args;
 phase("Merge");
-if (a.completedIds.length === 0) {
-  log(`No lanes completed${a.batchTag} \u2014 skipping merge`);
+var greenIds = a.completedIds.filter((id) => a.results?.[id]?.stage !== "RED");
+var redOnlyIds = a.completedIds.filter((id) => a.results?.[id]?.stage === "RED");
+for (const id of redOnlyIds) {
+  log(`[${id}] left in place, not merged \u2014 stage is RED (branch: ${a.epicBranch}--${id})`);
+}
+if (greenIds.length === 0) {
+  log(`No GREEN/REFACTOR-complete lanes${a.batchTag} \u2014 skipping merge`);
 } else {
-  const mergeOrder = a.topoOrder.filter((id) => a.completedIds.includes(id));
+  const mergeOrder = a.topoOrder.filter((id) => greenIds.includes(id));
   await agent(
-    `datum worktrees merge --epic-branch ${a.epicBranch} --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${a.completedIds.length} lanes"`,
+    `datum worktrees merge --epic-branch ${a.epicBranch} --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
     { label: `merge${a.batchTag}`, phase: "Merge", model: model("fast") }
   );
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
