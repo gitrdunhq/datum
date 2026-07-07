@@ -23,6 +23,44 @@ def _version_callback(value: bool):
         raise typer.Exit()
 
 
+def _render_llms_txt() -> str:
+    """Flat, plain-text rendering of the full command tree (llms.txt style).
+
+    Rich's boxed --help panels are lossy for LLMs (borders, truncation,
+    column wrapping). This walks the underlying click command tree and
+    prints one line per command path with its help text, no formatting.
+    """
+    from typer.core import TyperGroup
+    from typer.main import get_command
+
+    root = get_command(app)
+    lines = [
+        "# datum",
+        "",
+        (app.info.help or "").strip(),
+        "",
+        "## Commands",
+        "",
+    ]
+
+    def _walk(cmd, prefix: str) -> None:
+        for name, sub in sorted(cmd.commands.items()):
+            full = f"{prefix} {name}".strip()
+            help_text = (sub.get_short_help_str(limit=200) or "").strip()
+            lines.append(f"- `{full}`: {help_text}" if help_text else f"- `{full}`")
+            if isinstance(sub, TyperGroup) or hasattr(sub, "commands"):
+                _walk(sub, full)
+
+    _walk(root, "datum")
+    return "\n".join(lines)
+
+
+def _llms_txt_callback(value: bool):
+    if value:
+        print(_render_llms_txt())
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="datum",
     help="DATUM V2 - Agentic Production Line Orchestrator",
@@ -39,6 +77,13 @@ def main_callback(
         callback=_version_callback,
         is_eager=True,
         help="Show version and exit",
+    ),
+    llms_txt: bool = typer.Option(
+        False,
+        "--llms-txt",
+        callback=_llms_txt_callback,
+        is_eager=True,
+        help="Print the full command tree as flat plain text (for LLMs/agents) and exit",
     ),
 ):
     import os
