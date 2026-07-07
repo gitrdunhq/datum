@@ -645,7 +645,7 @@ def lane_plan_distribute_cmd(
     source: str = typer.Argument(
         ..., help="Path to the already-approved lane-plan.json"
     ),
-    targets: list[str] = typer.Option(
+    targets: list[str] = typer.Option(  # noqa: B008
         ..., "--target", help="Directory to copy lane-plan.json into (repeatable)"
     ),
 ):
