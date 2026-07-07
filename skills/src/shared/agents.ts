@@ -23,6 +23,7 @@ function sleepMs(ms: number): Promise<void> {
 export interface CommitVerification {
   committed: boolean
   commitSha?: string
+  clean?: boolean
   detail: string
 }
 
@@ -52,6 +53,7 @@ export async function verifyCommitIndependently(
   return {
     committed: messageMatches && clean,
     commitSha: sha,
+    clean,
     detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`,
   }
 }

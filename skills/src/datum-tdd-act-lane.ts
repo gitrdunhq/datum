@@ -616,6 +616,13 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     if (check.committed) {
       log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
       green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha }
+    } else if (green.tests_pass && check.clean === true) {
+      // #296 follow-on: a lane whose acceptance criteria are already satisfied
+      // (dep content merged in, or the epic base already had the change) has a
+      // legitimate no-op GREEN — tests pass with a clean worktree and nothing
+      // to commit. Its deliverable is the RED test commit; skeptics still run.
+      log(`[${taskId}] GREEN: no implementation change needed — tests pass and worktree is clean (${check.detail}); accepting no-op GREEN with RED commit as deliverable`)
+      green = { ...green, committed: true, commit_sha: red.commit_sha }
     } else {
       log(`[${taskId}] GREEN: agent did not commit — failing (independent check: ${check.detail})`)
       return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `GREEN agent did not commit (independent check: ${check.detail})` }
@@ -780,6 +787,7 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
         depResolvers[taskId](skipResult)
         return skipResult
       }
+
     }
 
     log(`[${taskId}] deps satisfied — launching`)

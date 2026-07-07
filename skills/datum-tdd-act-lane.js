@@ -92,6 +92,7 @@ Return ONLY the raw output, no explanation, no markdown fences.`,
   return {
     committed: messageMatches && clean,
     commitSha: sha,
+    clean,
     detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`
   };
 }
@@ -808,6 +809,9 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     if (check.committed) {
       log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
       green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha };
+    } else if (green.tests_pass && check.clean === true) {
+      log(`[${taskId}] GREEN: no implementation change needed \u2014 tests pass and worktree is clean (${check.detail}); accepting no-op GREEN with RED commit as deliverable`);
+      green = { ...green, committed: true, commit_sha: red.commit_sha };
     } else {
       log(`[${taskId}] GREEN: agent did not commit \u2014 failing (independent check: ${check.detail})`);
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
