@@ -477,6 +477,9 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const testFuncDiffRegex = cfg2.language === "swift" ? "[+][[:space:]]*(@Test|func test)" : cfg2.language === "go" ? "[+][[:space:]]*func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
   const testFuncGrepRegex = cfg2.language === "swift" ? "@Test|func test" : cfg2.language === "go" ? "func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
   const testFuncBodyRegex = cfg2.language === "swift" ? "func test" : cfg2.language === "go" ? "func Test" : "def test_";
+  const testFuncDiffRegexB64 = cfg2.language === "swift" ? "WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk=" : cfg2.language === "go" ? "WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp" : "WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf";
+  const testFuncGrepRegexB64 = cfg2.language === "swift" ? "QFRlc3R8ZnVuYyB0ZXN0" : cfg2.language === "go" ? "ZnVuYyBUZXN0" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA==" : "ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw==";
+  const testFuncBodyRegexB64 = cfg2.language === "swift" ? "ZnVuYyB0ZXN0" : cfg2.language === "go" ? "ZnVuYyBUZXN0" : "ZGVmIHRlc3Rf";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   if (completionPath) {
     const completionExist = await agent(
@@ -638,7 +641,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount2 = 0;
     let gatePassed = false;
     const countRaw = await agent(
-      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern '${testFuncDiffRegex}' --required ${acCount}
+      `Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself \u2014 let the shell's own base64 -d do that):
+bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern "$(echo '${testFuncDiffRegexB64}' | base64 -d)" --required ${acCount}
 Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,
@@ -691,9 +695,9 @@ ${testFiles.map((f) => sgPatterns.map(
       (p) => `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
     ).join("\n")).join("\n")}
 
-Also check for pass-only test bodies:
+Also check for pass-only test bodies (decode the base64 token verbatim via base64 -d, don't retype it):
 ${testFiles.map(
-      (f) => `grep -A1 '${testFuncBodyRegex}' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `grep -A1 "$(echo '${testFuncBodyRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n")}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -718,11 +722,11 @@ Output raw JSON only.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
   }
   const rawCounts = await agent(
-    `Count test functions in these files:
+    `Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself \u2014 base64 -d handles that):
 After-counts (current worktree):
-${testFiles.map((f) => `grep -c -E '${testFuncGrepRegex}' "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
+${testFiles.map((f) => `grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
 Before-counts (parent commit \u2014 0 for first commit):
-${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E '${testFuncGrepRegex}' || echo 0`).join("\n")}
+${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" || echo 0`).join("\n")}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`,
