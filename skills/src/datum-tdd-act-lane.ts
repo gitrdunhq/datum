@@ -788,6 +788,27 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
         return skipResult
       }
 
+      // #296: dep lane work exists only on the dep's lane branch until the
+      // end-of-batch squash merge — merge it into this lane's worktree so
+      // RED/GREEN compile against types the dep introduced. Squash merges
+      // apply in topo order at batch end, so the dep content dedupes cleanly.
+      const wt = worktreePaths[taskId]
+      if (typeof wt === 'string' && wt.startsWith('/')) {
+        const depBranches: string[] = inBatchDeps.map((d) => `${cfg.epicBranch}--${d}`)
+        const mergeOut = await resilientAgent(
+          `Run these commands in order in "${wt}". If any command fails, stop and return its full output including stderr. Otherwise return ONLY the raw combined output, no explanation, no markdown fences.\n` +
+            depBranches.map((b) => `git -C "${wt}" merge --no-edit "${b}"`).join('\n'),
+          { label: `dep-merge:${taskId}`, model: 'haiku' },
+        )
+        if (mergeOut === null || /CONFLICT|Automatic merge failed|error:|fatal:/i.test(String(mergeOut))) {
+          const err = `dep_merge_failed: could not merge [${depBranches.join(', ')}] into ${taskId} worktree — ${String(mergeOut).slice(0, 300)}`
+          log(`[${taskId}] ${err}`)
+          const failResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'CRASH', error: err }
+          depResolvers[taskId](failResult)
+          return failResult
+        }
+        log(`[${taskId}] merged in-batch dep branches: [${depBranches.join(', ')}]`)
+      }
     }
 
     log(`[${taskId}] deps satisfied — launching`)
