@@ -53,7 +53,7 @@ Merges to target branch, closes GitHub issues, tags the run, generates docs.
 |---|---|
 | **Lane** | One task = one lane = one git worktree. Physical isolation, not just convention. |
 | **DAG scheduling** | Lanes declare dependencies. Topo-sort produces waves. Parallelism within a wave, ordering between waves. |
-| **Skeleton generation** | Before RED, datum pre-generates test scaffolding from acceptance criteria. One named test per AC — traceability is machine-verifiable. |
+| **Skeleton generation** | Before RED, datum pre-generates test scaffolding from acceptance criteria. One named test per AC — traceability is machine-verifiable. Supports flat, directory/package-style (e.g. Swift/JVM test packages), and docs-only test conventions via `test_convention` (#270). |
 | **Gates** | Every phase has a pass/fail gate. Non-yolo runs halt and wait for human input. Pipeline state persists for resume. |
 | **File ownership** | Each lane declares which files it touches. The pipeline enforces this — a lane physically cannot commit changes to files it doesn't own. |
 | **Self-healing** | If the pipeline crashes unexpectedly, it auto-files a deduplicated GitHub issue before halting. |
@@ -81,9 +81,22 @@ datum go --start-from act
 datum go --issue 42 --yolo
 ```
 
+### Bootstrapping from an existing feature branch
+
+`datum init` (and by extension `datum go`) can adopt an existing feature branch instead of
+always cutting a new one. If you're already checked out on a non-default, non-protected
+branch that has no `TICKET.md` yet, `datum init` bootstraps the epic in place on that branch
+rather than creating a new `datum/<slug>` branch (#213). `datum init --json` reports this via
+an `"adopted": true` field so calling scripts/workflows can detect it:
+
+```bash
+git checkout -b my-feature-branch
+datum init --json   # {"epicBranch": "my-feature-branch", ..., "adopted": true}
+```
+
 ## Architecture
 
 - **CLI**: Python (Typer) — `datum <command>`
 - **Workflows**: TypeScript, compiled to JS — orchestrate agents, manage worktrees, enforce gates
-- **Local LLM**: Lightweight phases use a local model. If confidence is low, escalates to Claude with accumulated context as a head start.
+- **Local LLM**: Lightweight phases use a local model. If confidence is low, escalates to Claude with accumulated context as a head start. Config lives under a `[local_llm]` table in a TOML config file; a duplicate `[local_llm]` table (or any other duplicate key) fails fast with a clear "Duplicate [local_llm] table" error naming the offending config file, instead of a bare TOML parser traceback (#265).
 - **State**: `.datum/` directory per repo — pipeline state, run artifacts, lane plans
