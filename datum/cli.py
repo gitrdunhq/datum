@@ -1088,8 +1088,14 @@ def walkthrough():
         console.print(f"[bold red]Epic directory not found: {epic_dir}[/bold red]")
         raise typer.Exit(1)
 
-    output_path = generate_walkthrough(epic_dir)
-    console.print(f"[bold green]✓ Walkthrough generated: {output_path}[/bold green]")
+    result = generate_walkthrough(epic_dir)
+    if result.degraded:
+        console.print(
+            f"[bold yellow]⚠ Walkthrough degraded (LLM unavailable) — "
+            f"deterministic git-derived fallback written: {result}[/bold yellow]"
+        )
+    else:
+        console.print(f"[bold green]✓ Walkthrough generated: {result}[/bold green]")
 
 
 @app.command()
@@ -1164,9 +1170,16 @@ def closeout(
     if epic_dir.exists():
         try:
             wt_path = generate_walkthrough(epic_dir)
-            console.print(
-                f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]"
-            )
+            if wt_path.degraded:
+                console.print(
+                    f"[bold yellow]⚠ Walkthrough degraded (LLM unavailable) — "
+                    f"deterministic git-derived fallback written → {wt_path}"
+                    "[/bold yellow]"
+                )
+            else:
+                console.print(
+                    f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]"
+                )
         except Exception as e:
             console.print(
                 f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]"
