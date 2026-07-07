@@ -25,13 +25,27 @@ const setupText = await agent(
   `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.join(',')}\nReturn ONLY the JSON output, no explanation.`,
   { label: `setup-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
-const worktreePaths: Record<string, string> = typeof setupText === 'string'
-  ? JSON.parse(setupText.replace(/```[a-z]*\n?/g, '').trim())
-  : setupText
+const rawPaths = (typeof setupText === 'string'
+  ? parseAgentJson(setupText, null)
+  : setupText) as Record<string, string> | null
+if (!rawPaths || typeof rawPaths !== 'object') {
+  throw new Error(`Setup failed for ${a.batchRunId}: CLI output was not JSON — ${String(setupText).slice(0, 300)}`)
+}
 
-const validPaths = Object.values(worktreePaths || {}).filter(Boolean)
+// Keep only absolute paths — a lane with a missing/garbage entry must be dropped
+// here so it fails fast in the lane scheduler instead of running in the main checkout.
+const worktreePaths: Record<string, string> = {}
+for (const [lid, wtp] of Object.entries(rawPaths)) {
+  if (typeof wtp === 'string' && wtp.startsWith('/')) {
+    worktreePaths[lid] = wtp
+  } else {
+    log(`  [warn] dropping ${lid}: setup returned invalid worktree path ${JSON.stringify(wtp)}`)
+  }
+}
+
+const validPaths = Object.values(worktreePaths)
 if (validPaths.length === 0) throw new Error(`Setup failed: no worktree paths for ${a.batchRunId}`)
-for (const [lid, wtp] of Object.entries(worktreePaths || {})) {
+for (const [lid, wtp] of Object.entries(worktreePaths)) {
   log(`  worktree ${lid}: ${wtp}`)
 }
 

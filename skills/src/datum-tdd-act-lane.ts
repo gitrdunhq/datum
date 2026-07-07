@@ -95,6 +95,16 @@ async function runLane(
 ): Promise<LaneOutcome> {
   const lane: Lane = lanePlan.lanes[taskId]
   const wt: string = worktreePaths[taskId]
+  // A lane without an absolute worktree path must never run — agents would fall
+  // back to the main checkout and commit RED/partial work onto the epic branch.
+  if (!wt || typeof wt !== 'string' || !wt.startsWith('/')) {
+    return {
+      task_id: taskId,
+      status: 'failed',
+      stage: 'CRASH',
+      error: `no worktree path for ${taskId} (setup returned ${JSON.stringify(wt)}) — refusing to run outside an isolated worktree`,
+    }
+  }
   const issueId: string = getIssueId(lanePlan as any, taskId)
   const runId: string = (cfg as any).runId
   const isStructural: boolean = lane.stage === 'structural'
