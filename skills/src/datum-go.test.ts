@@ -133,6 +133,72 @@ describe('adopt-existing-feature-branch — AC3', () => {
 // triggered; existing behavior is preserved.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// parseArgs — non-JSON free-text args must not be silently dropped (#319).
+//
+// Incident: a caller passed `--start-from act` as raw args. It wasn't valid
+// JSON, wasn't "yolo", wasn't a bare issue number, so it fell into the catch
+// branch and became `{ yolo: true, freeText: raw }` with zero indication
+// anything was ignored. `startFrom` was never set, `explicitStart` stayed
+// false, and the pipeline silently resumed from stale `completedPhases`
+// state — skipping 7 bug-fix lanes with no warning.
+//
+// These tests exercise `parseArgs` in isolation (it's a pure string ->
+// object function with no dependency on the sandbox globals `log`/`agent`/
+// `workflow`, so we can extract and eval it directly from source) to lock
+// in: (a) `--start-from <phase>` / `--route <route>` are recovered from
+// free text, and (b) any remaining unrecognized free text triggers a loud
+// warning via `log(...)` mentioning it was ignored.
+// ---------------------------------------------------------------------------
+
+describe('parseArgs — non-JSON free-text args (#319)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  // Extract the `parseArgs` function body from source and eval it in a
+  // sandbox that captures `log(...)` calls, mirroring how the real workflow
+  // sandbox injects `log` as an ambient global.
+  function loadParseArgs(): { parseArgs: (raw: string) => Record<string, unknown>; logs: string[] } {
+    const match = src.match(/function parseArgs\(raw: string\): Record<string, unknown> \{[\s\S]*?\n\}\n/)
+    expect(match).not.toBeNull()
+    const fnSrc = match![0]
+      // strip TS-only annotations so this can run as plain JS via `new Function`
+      .replace('function parseArgs(raw: string): Record<string, unknown> {', 'function parseArgs(raw) {')
+      .replace(': Record<string, unknown>', '')
+
+    const logs: string[] = []
+    const factory = new Function('log', `${fnSrc}\nreturn parseArgs;`)
+    const parseArgs = factory((msg: string) => logs.push(msg)) as (raw: string) => Record<string, unknown>
+    return { parseArgs, logs }
+  }
+
+  it('recovers --start-from from non-JSON free text instead of silently dropping it', () => {
+    const { parseArgs, logs } = loadParseArgs()
+    const result = parseArgs('--start-from act')
+
+    expect(result.startFrom).toBe('act')
+    // A recognized flag was recovered — still log, but not the "IGNORED" warning.
+    expect(logs.some((l) => l.includes('IGNORED'))).toBe(false)
+  })
+
+  it('recovers --route from non-JSON free text', () => {
+    const { parseArgs } = loadParseArgs()
+    const result = parseArgs('--route bugfix')
+
+    expect(result.route).toBe('bugfix')
+  })
+
+  it('logs a loud warning when free text is neither JSON, yolo, an issue number, nor a recognized flag', () => {
+    const { parseArgs, logs } = loadParseArgs()
+    const raw = 'do something totally unrecognized'
+    const result = parseArgs(raw)
+
+    expect(result.freeText).toBe(raw)
+    expect(result.startFrom).toBeUndefined()
+    expect(result.route).toBeUndefined()
+    expect(logs.some((l) => l.includes('WARNING') && l.includes(raw) && l.includes('IGNORED'))).toBe(true)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)

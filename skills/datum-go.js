@@ -231,7 +231,17 @@ function parseArgs(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    return { yolo: true, freeText: raw };
+    const result = { yolo: true, freeText: raw };
+    const startFromMatch = raw.match(/--start-from[=\s]+(\S+)/);
+    const routeMatch = raw.match(/--route[=\s]+(\S+)/);
+    if (startFromMatch) result.startFrom = startFromMatch[1];
+    if (routeMatch) result.route = routeMatch[1];
+    if (!startFromMatch && !routeMatch) {
+      log(`WARNING: args "${raw}" is not valid JSON and was not recognized as yolo/#N \u2014 all flags in it (startFrom, route, phases) were IGNORED. Pass valid JSON to set these, or use --start-from <phase> / --route <route>.`);
+    } else {
+      log(`args "${raw}" is not valid JSON \u2014 recovered ${startFromMatch ? `startFrom=${startFromMatch[1]} ` : ""}${routeMatch ? `route=${routeMatch[1]}` : ""}from flags. Other fields (e.g. phases) are not supported this way \u2014 pass valid JSON to set them.`);
+    }
+    return result;
   }
 }
 var a = typeof args === "string" ? parseArgs(rawArgs) : args || {};

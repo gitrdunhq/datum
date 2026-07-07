@@ -16,8 +16,25 @@ const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g,
 function parseArgs(raw: string): Record<string, unknown> {
   if (!raw || raw.toLowerCase() === 'yolo') return { yolo: true }
   if (/^#?\d+$/.test(raw)) return { yolo: true, issueNumber: parseInt(raw.replace('#', ''), 10) }
-  try { return JSON.parse(raw) } catch {
-    return { yolo: true, freeText: raw }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // Not valid JSON, not "yolo", not a bare issue number. Rather than silently
+    // dropping any flags the caller intended (#319 — `--start-from act` was
+    // silently discarded, pipeline resumed from stale state and skipped 7
+    // bug-fix lanes with no warning), recover the common CLI-style overrides
+    // and loudly flag anything we couldn't recover.
+    const result: Record<string, unknown> = { yolo: true, freeText: raw }
+    const startFromMatch = raw.match(/--start-from[=\s]+(\S+)/)
+    const routeMatch = raw.match(/--route[=\s]+(\S+)/)
+    if (startFromMatch) result.startFrom = startFromMatch[1]
+    if (routeMatch) result.route = routeMatch[1]
+    if (!startFromMatch && !routeMatch) {
+      log(`WARNING: args "${raw}" is not valid JSON and was not recognized as yolo/#N — all flags in it (startFrom, route, phases) were IGNORED. Pass valid JSON to set these, or use --start-from <phase> / --route <route>.`)
+    } else {
+      log(`args "${raw}" is not valid JSON — recovered ${startFromMatch ? `startFrom=${startFromMatch[1]} ` : ''}${routeMatch ? `route=${routeMatch[1]}` : ''}from flags. Other fields (e.g. phases) are not supported this way — pass valid JSON to set them.`)
+    }
+    return result
   }
 }
 const a = (typeof args === 'string') ? parseArgs(rawArgs) : (args || {})
