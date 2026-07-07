@@ -87,6 +87,34 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
   log(`Model tiers: fast=${model('fast')}, balanced=${model('balanced')}, deep=${model('deep')}`)
 }
 
+// Preflight: the globally installed `datum` CLI is a `uv tool install --editable`
+// pointing at whatever path was on disk (dist-info/direct_url.json) the last time
+// it was installed. If a prior pipeline step ran an install command with cwd
+// inside a lane worktree instead of the repo root, that link silently gets
+// repointed at a throwaway worktree — every subsequent `datum ...` invocation
+// across the whole pipeline then runs a frozen, stale copy of the code with no
+// indication anything is wrong (#327). Verify the editable install still
+// resolves to this repo root before running anything else, and fail loud
+// rather than silently continuing on a stale binary.
+const toolCheckText = await agent(
+  `REPO_ROOT=$(git rev-parse --show-toplevel) && ` +
+  `DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && ` +
+  `if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && ` +
+  `INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && ` +
+  `EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && ` +
+  `if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+  { label: 'preflight-tool-check', model: model('fast') },
+)
+const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }
+if (!toolCheck.ok) {
+  throw new Error(
+    `datum CLI tool install is stale/misdirected (#327): the globally installed editable ` +
+    `\`datum\` points at "${toolCheck.installed}" but this repo root is "${toolCheck.expected}". ` +
+    `Every "datum ..." command this pipeline runs would silently execute code from the wrong ` +
+    `location. Fix: run \`uv tool install --editable . --force\` from "${toolCheck.expected}", then re-run.`
+  )
+}
+
 // Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
 const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
 

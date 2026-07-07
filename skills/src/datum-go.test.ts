@@ -199,6 +199,33 @@ describe('parseArgs — non-JSON free-text args (#319)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// #327 — preflight check that the globally installed `datum` uv tool editable
+// link still resolves to this repo root, before any pipeline phase runs.
+// ---------------------------------------------------------------------------
+
+describe('preflight tool-install check (#327)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('checks the uv tool editable install direct_url.json against the repo root before running any phase', () => {
+    expect(src).toMatch(/direct_url\.json/)
+    expect(src).toMatch(/git rev-parse --show-toplevel/)
+  })
+
+  it('fails loud with a clear remediation message when the install is misdirected', () => {
+    expect(src).toMatch(/throw new Error\(\s*`datum CLI tool install is stale\/misdirected/)
+    expect(src).toMatch(/uv tool install --editable \. --force/)
+  })
+
+  it('the preflight check runs before the auto-resume / first phase logic', () => {
+    const preflightIdx = src.indexOf('preflight-tool-check')
+    const firstPhaseIdx = src.indexOf("shouldRun('refine', 0)")
+    expect(preflightIdx).toBeGreaterThan(-1)
+    expect(firstPhaseIdx).toBeGreaterThan(-1)
+    expect(preflightIdx).toBeLessThan(firstPhaseIdx)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)
