@@ -1,0 +1,251 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 10,
+  "topological_order": [
+    "guard-duplicate-local-llm-toml",
+    "path-boundary-file-ownership",
+    "relax-test-artifact-convention",
+    "adopt-existing-feature-branch",
+    "recognize-bug-squash-branch-slug",
+    "git-fallback-retro-delivery",
+    "fail-loud-walkthrough",
+    "filter-transcript-noise-memory-extract",
+    "validate-testcommand-before-dispatch",
+    "cleanup-orphaned-zero-commit-lane-branches"
+  ],
+  "file_ownership": {
+    "datum/local_llm.py": "guard-duplicate-local-llm-toml",
+    "tests/test_local_llm_config_dup.py": "guard-duplicate-local-llm-toml",
+    "skills/src/datum-tdd-act-lane.ts": "path-boundary-file-ownership",
+    "skills/datum-tdd-act-lane.js": "path-boundary-file-ownership",
+    "skills/src/datum-tdd-act-lane.test.ts": "path-boundary-file-ownership",
+    "datum/skeleton_creator.py": "relax-test-artifact-convention",
+    "tests/test_skeleton_test_convention.py": "relax-test-artifact-convention",
+    "datum/cli.py": "adopt-existing-feature-branch",
+    "skills/src/datum-go.ts": "adopt-existing-feature-branch",
+    "skills/datum-go.js": "adopt-existing-feature-branch",
+    "skills/src/datum-go.test.ts": "adopt-existing-feature-branch",
+    "datum/closeout_cmd.py": "recognize-bug-squash-branch-slug",
+    "tests/test_closeout_cmd.py": "recognize-bug-squash-branch-slug",
+    "datum/closeout/commit_closeout.py": "git-fallback-retro-delivery",
+    "tests/test_commit_closeout.py": "git-fallback-retro-delivery",
+    "skills/src/datum-closeout.ts": "fail-loud-walkthrough",
+    "skills/datum-closeout.js": "fail-loud-walkthrough",
+    "skills/src/datum-closeout.test.ts": "fail-loud-walkthrough",
+    "datum/memory_extract.py": "filter-transcript-noise-memory-extract",
+    "tests/test_memory_extract.py": "filter-transcript-noise-memory-extract",
+    "datum/testcommand_validate.py": "validate-testcommand-before-dispatch",
+    "tests/test_testcommand_validate.py": "validate-testcommand-before-dispatch",
+    "skills/src/datum-tdd-act-setup.ts": "validate-testcommand-before-dispatch",
+    "skills/datum-tdd-act-setup.js": "validate-testcommand-before-dispatch",
+    "datum/worktree_manager.py": "cleanup-orphaned-zero-commit-lane-branches",
+    "tests/test_worktree_manager.py": "cleanup-orphaned-zero-commit-lane-branches"
+  },
+  "lanes": {
+    "guard-duplicate-local-llm-toml": {
+      "id": "guard-duplicate-local-llm-toml",
+      "title": "R1 \u2014 Clear error on duplicate [local_llm] TOML table (#265)",
+      "files": [
+        "datum/local_llm.py",
+        "tests/test_local_llm_config_dup.py"
+      ],
+      "acceptance_criteria": [
+        "_load_raw_config() raising on a duplicate [local_llm] table converts the tomllib.TOMLDecodeError into a ValueError (or dedicated DatumConfigError) whose message contains the offending config file path and the phrase 'duplicate' and 'local_llm'",
+        "load_config() surfaces the same actionable error (no unhandled TOMLDecodeError traceback) when the selected config file has two [local_llm] headers",
+        "Loading assets/config.toml.default and a single-[local_llm] fixture still returns a valid parsed dict unchanged"
+      ],
+      "red_note": "pytest: write a fixture config.toml with two [local_llm] headers, point _load_raw_config()/load_config() at it, and assert it raises a ValueError whose message names the file path \u2014 assert it is NOT a bare tomllib.TOMLDecodeError. Add a positive case loading a single-[local_llm] fixture that still parses.",
+      "introduces_stubs": false,
+      "estimated_loc": 45,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "path-boundary-file-ownership": {
+      "id": "path-boundary-file-ownership",
+      "title": "R2 \u2014 Path-boundary matching in verifyFileOwnership (#269)",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "skills/datum-tdd-act-lane.js",
+        "skills/src/datum-tdd-act-lane.test.ts"
+      ],
+      "acceptance_criteria": [
+        "verifyFileOwnership with changed=['NewFoo.test.ts'] and allowedFiles=['Foo.test.ts'] returns a violation (i.e. NewFoo is treated as forbidden/not-allowed) \u2014 the suffix collision does NOT make NewFoo.test.ts count as the allowed Foo.test.ts",
+        "verifyFileOwnership with changed=['src/Foo.test.ts'] and allowedFiles=['src/Foo.test.ts'] returns no file_ownership_violation (exact path match)",
+        "verifyFileOwnership with changed=['src/Unrelated.ts'] and allowedFiles=['src/Foo.test.ts'] still returns file_ownership_violation",
+        "skills/datum-tdd-act-lane.js is regenerated from the TS via bash scripts/build-workflows.sh (never hand-edited)"
+      ],
+      "red_note": "TS test runner (as used by skills/src/shared/utils.test.ts): call verifyFileOwnership directly with the suffix-collision case (changed NewFoo.test.ts, allowed Foo.test.ts) and assert it is flagged as a violation; add a positive exact-match case and a genuine-violation case. Test must fail against the current substring/suffix implementation.",
+      "introduces_stubs": false,
+      "estimated_loc": 40,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "relax-test-artifact-convention": {
+      "id": "relax-test-artifact-convention",
+      "title": "R3 \u2014 Support test-package/directory conventions in skeleton_creator (#270)",
+      "files": [
+        "datum/skeleton_creator.py",
+        "tests/test_skeleton_test_convention.py"
+      ],
+      "acceptance_criteria": [
+        "The stub-decision logic accepts a task declaring a directory-path/glob test convention (e.g. a Swift/JVM-style test package dir) and produces the correct package-style stub target instead of a flat single-extension file",
+        "A docs-only task (no source test file expected) does NOT generate a flat-extension test-file stub",
+        "An existing single-flat-extension task continues to generate the same flat test-file stub as before (no regression)"
+      ],
+      "red_note": "pytest: drive the skeleton_creator extension/convention logic with three task shapes \u2014 (a) a directory/package test convention, (b) a docs-only task, (c) an existing flat-extension task \u2014 and assert the stub target for each. The directory-convention and docs-only cases must fail against the current single-extension inference.",
+      "introduces_stubs": false,
+      "estimated_loc": 55,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "adopt-existing-feature-branch": {
+      "id": "adopt-existing-feature-branch",
+      "title": "R4 \u2014 Bootstrap epic from an existing feature branch (#213)",
+      "files": [
+        "datum/cli.py",
+        "skills/src/datum-go.ts",
+        "skills/datum-go.js",
+        "skills/src/datum-go.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum init exposes an adopt-existing-branch path that, when run on a non-default branch with no existing TICKET.md/lane-plan artifacts, sets epicBranch to the current branch and produces the lanePlanPath state shape downstream phases expect",
+        "When the current branch has unsafe/conflicting state (e.g. uncommitted conflicting changes or divergence from base), the CLI exits with a non-zero clear error rather than proceeding",
+        "datum-go.ts's bootstrap step routes to the CLI adopt path (no inline shell bootstrap) and skills/datum-go.js is regenerated via bash scripts/build-workflows.sh",
+        "A default-branch or artifact-present case does NOT trigger adoption (existing behavior preserved)"
+      ],
+      "red_note": "pytest for the CLI init adopt path: invoke datum init's adopt mode on a simulated non-default branch with no TICKET.md and assert epicBranch/lanePlanPath state is produced; assert a conflicting/unsafe branch state exits non-zero with a clear error. TS test asserts datum-go bootstrap calls the CLI adopt path rather than inline bootstrap.",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "recognize-bug-squash-branch-slug": {
+      "id": "recognize-bug-squash-branch-slug",
+      "title": "R5 \u2014 Recognize non-epic-NNN branch slugs in closeout (#301)",
+      "files": [
+        "datum/closeout_cmd.py",
+        "tests/test_closeout_cmd.py"
+      ],
+      "acceptance_criteria": [
+        "detect_context(branch='bug-squash-306', epic_number=None) returns epic_number=306",
+        "detect_context(branch='epic-23', epic_number=None) returns epic_number=23 (existing pattern unchanged)",
+        "detect_context(branch='some-random-branch', epic_number=None) does not silently return 0 \u2014 it emits a clear warning and signals unrecognized detection",
+        "detect_context(branch='some-random-branch', epic_number=42) returns epic_number=42 (explicit override wins over regex)"
+      ],
+      "red_note": "pytest in tests/test_closeout_cmd.py: assert detect_context resolves bug-squash-306 \u2192 306, epic-23 \u2192 23, an override wins over regex, and an unrecognized slug produces a warning rather than a silent epic_number=0. The bug-squash and unrecognized-warning cases must fail against the current epic-(\\d+)-only regex.",
+      "introduces_stubs": false,
+      "estimated_loc": 35,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "git-fallback-retro-delivery": {
+      "id": "git-fallback-retro-delivery",
+      "title": "R6 \u2014 Git-derived fallback for RETRO.md Delivery section (#302)",
+      "files": [
+        "datum/closeout/commit_closeout.py",
+        "tests/test_commit_closeout.py"
+      ],
+      "acceptance_criteria": [
+        "When lane-state dir is missing, Delivery-section generation returns a non-0/0 delivered/total count derived from git log green(task-N) trailers on the epic branch",
+        "The RETRO.md Delivery output labels fallback numbers with an explicit git-derived provenance marker distinct from lane-state-derived output",
+        "When lane-state IS present, the existing lane-state-derived Delivery counts are produced unchanged"
+      ],
+      "red_note": "pytest: simulate a missing .datum/runs/<runId>/lane-state/ directory with a git history containing green(task-N) commits, call the Delivery-section generator, and assert a non-0/0 count that is labeled git-derived. Add a case with lane-state present asserting the original path is untouched.",
+      "introduces_stubs": false,
+      "estimated_loc": 55,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "fail-loud-walkthrough": {
+      "id": "fail-loud-walkthrough",
+      "title": "R7 \u2014 Fail loud on walkthrough generation failure (#303)",
+      "files": [
+        "skills/src/datum-closeout.ts",
+        "skills/datum-closeout.js",
+        "skills/src/datum-closeout.test.ts"
+      ],
+      "acceptance_criteria": [
+        "generate_walkthrough prints the success checkmark only when the returned walkthrough content is non-empty/LLM-produced",
+        "When LLM escalation fails and content degrades to empty, output shows a clear failure/degraded-mode indicator (not a checkmark) and closeout still completes (does not hard-abort)",
+        "skills/datum-closeout.js is regenerated from the TS via bash scripts/build-workflows.sh"
+      ],
+      "red_note": "TS test runner: stub generate_walkthrough's LLM path to return empty/failed content and assert the emitted status is a degraded-mode indicator, not a success checkmark; stub a successful non-empty return and assert the checkmark is shown. The empty-path case must fail against the current always-checkmark behavior.",
+      "introduces_stubs": false,
+      "estimated_loc": 35,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "filter-transcript-noise-memory-extract": {
+      "id": "filter-transcript-noise-memory-extract",
+      "title": "R8 \u2014 Filter transcript/tool-call noise from memory extraction (#304)",
+      "files": [
+        "datum/memory_extract.py",
+        "tests/test_memory_extract.py"
+      ],
+      "acceptance_criteria": [
+        "_extract_from_transcript given a transcript mixing a genuine correction statement with tool_use/tool_result JSON and code-block noise returns the genuine statement as the only high-confidence candidate",
+        "Lines that are pure file paths or raw code/JSON blobs matching a CORRECTION_PATTERN (e.g. an 'always' inside a JSON blob) are skipped or downgraded below high-confidence",
+        "A clean transcript with a genuine correction and no noise still yields the same high-confidence candidate as before (no regression)"
+      ],
+      "red_note": "pytest: feed _extract_from_transcript a transcript containing (a) a real correction line and (b) tool_use/tool_result JSON plus a code block that would spuriously match CORRECTION_PATTERNS; assert only the genuine line surfaces high-confidence. Add a clean-transcript regression asserting unchanged extraction. Noise case must fail against current uniform high-confidence tagging.",
+      "introduces_stubs": false,
+      "estimated_loc": 50,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    },
+    "validate-testcommand-before-dispatch": {
+      "id": "validate-testcommand-before-dispatch",
+      "title": "R9 \u2014 Validate testCommand against sub-package files before lane dispatch (#307)",
+      "files": [
+        "datum/cli.py",
+        "datum/testcommand_validate.py",
+        "tests/test_testcommand_validate.py",
+        "skills/src/datum-tdd-act-setup.ts",
+        "skills/datum-tdd-act-setup.js"
+      ],
+      "acceptance_criteria": [
+        "A new/extended datum CLI subcommand validates a testCommand against target sub-package files and exits non-zero with an actionable error naming the lane and the failure reason when the command is not runnable",
+        "A valid, runnable testCommand passes validation and returns success (setup proceeds unchanged)",
+        "datum-tdd-act-setup.ts calls the datum CLI validation subcommand before worktree distribution (no inline TS shell logic) and halts setup on failure",
+        "skills/datum-tdd-act-setup.js is regenerated from the TS via bash scripts/build-workflows.sh"
+      ],
+      "red_note": "pytest against the new validation module/CLI subcommand: assert a non-runnable testCommand for a lane returns a non-zero result with an error naming the lane and reason, and a valid testCommand returns success. Both cases must fail against the current absence of any testCommand validation.",
+      "introduces_stubs": false,
+      "estimated_loc": 80,
+      "depends_on": [
+        "adopt-existing-feature-branch"
+      ],
+      "file_conflict_with": {
+        "datum/cli.py": "adopt-existing-feature-branch"
+      },
+      "stage": "queued"
+    },
+    "cleanup-orphaned-zero-commit-lane-branches": {
+      "id": "cleanup-orphaned-zero-commit-lane-branches",
+      "title": "R10 \u2014 Delete orphaned zero-commit lane branches on cleanup (#309)",
+      "files": [
+        "datum/worktree_manager.py",
+        "tests/test_worktree_manager.py"
+      ],
+      "acceptance_criteria": [
+        "cleanup_run_worktrees() enumerates lane branches via git for-each-ref refs/heads/<epic_branch>--* independent of on-disk worktree directories",
+        "A lane branch with zero commits ahead of its epic/base branch and no worktree directory on disk is deleted by cleanup",
+        "A lane branch WITH commits ahead of base is NOT deleted even when its worktree directory is missing"
+      ],
+      "red_note": "pytest: set up a git repo with an epic branch and a lane branch <epic>--laneX that has zero commits ahead and NO worktree directory; call cleanup_run_worktrees() and assert the branch is deleted. Add a lane branch with a commit ahead and no worktree dir and assert it survives. Deletion case must fail against the current worktree-dir-only discovery.",
+      "introduces_stubs": false,
+      "estimated_loc": 55,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued"
+    }
+  }
+}
