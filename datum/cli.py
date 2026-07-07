@@ -671,7 +671,7 @@ def lane_plan_distribute_cmd(
 @app.command(name="lane-cleanup")
 def lane_cleanup_cmd(
     worktree: str = typer.Argument(..., help="Path to the lane's git worktree"),
-    allowed: list[str] = typer.Option(
+    allowed: list[str] = typer.Option(  # noqa: B008
         [], "--allowed", help="Test file path from the lane plan to keep (repeatable)"
     ),
 ):

@@ -466,8 +466,8 @@ def structured(
 
     try:
         import outlines
-    except ImportError:
-        raise RuntimeError("Grammar support requires: pip install outlines")
+    except ImportError as err:
+        raise RuntimeError("Grammar support requires: pip install outlines") from err
 
     config = load_config()
     kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
