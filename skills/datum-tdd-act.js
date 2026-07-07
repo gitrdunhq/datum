@@ -22,7 +22,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
-  skills_dir: ""
+  skills_dir: "",
+  context_files: []
 };
 var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)

@@ -1,10 +1,9 @@
 // Pure utility functions for the datum TDD workflow pipeline.
-// Most functions here are deterministic and side-effect-free; a couple
-// (buildContextFilesSection) read from the filesystem by design since they
-// exist to pull project docs into a prompt payload.
+// All functions here are deterministic and side-effect-free. Workflow
+// scripts run in a sandbox with no filesystem/Node API access, so any
+// actual file reads (e.g. for context_files) must happen via the agent()
+// API at the call site — this module only renders already-fetched content.
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import type {
   LanePlan,
   Lane,
@@ -848,29 +847,29 @@ export function assertAcyclicTasks(
 }
 
 // ---------------------------------------------------------------------------
-// buildContextFilesSection — reads each context_files entry (resolved
-// relative to projectRoot) and renders a "PROJECT BUILD CONSTRAINTS"
-// section carrying their full contents for injection into the decompose
-// prompt. Missing files are reported via `warn` and skipped rather than
-// throwing, so a stale config entry never blocks a plan run. Returns ''
-// when contextFiles is absent/empty so no section is introduced.
+// buildContextFilesSection — renders a "PROJECT BUILD CONSTRAINTS" section
+// from already-fetched context_files content for injection into the
+// decompose prompt. Takes a relPath -> content map rather than reading
+// files itself: workflow scripts run in a sandbox with no filesystem
+// access, so the caller must fetch each file's content via the agent()
+// API first (a null value means the entry was not found). Missing files
+// are reported via `warn` and skipped rather than throwing, so a stale
+// config entry never blocks a plan run. Returns '' when fileContents is
+// absent/empty so no section is introduced.
 // ---------------------------------------------------------------------------
 
 export function buildContextFilesSection(
-  contextFiles: string[] | undefined,
-  projectRoot: string,
+  fileContents: Record<string, string | null> | undefined,
   warn: (message: string) => void,
 ): string {
-  if (!contextFiles || contextFiles.length === 0) return ''
+  if (!fileContents || Object.keys(fileContents).length === 0) return ''
 
   const blocks: string[] = []
-  for (const relPath of contextFiles) {
-    const fullPath = join(projectRoot, relPath)
-    if (!existsSync(fullPath)) {
+  for (const [relPath, content] of Object.entries(fileContents)) {
+    if (content === null) {
       warn(`context_files entry not found, skipping: ${relPath}`)
       continue
     }
-    const content = readFileSync(fullPath, 'utf8')
     blocks.push(`### ${relPath}\n${content}`)
   }
 

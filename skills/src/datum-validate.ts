@@ -21,7 +21,7 @@ const yolo: boolean = !!a.yolo
 const cfgText = !a.testCommand
   ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
   : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as unknown as Record<string, string> : {}
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──

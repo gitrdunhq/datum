@@ -9,9 +9,8 @@
 // - prompts/plan-decompose.md's BUILD-ORDER / IMPORT ANALYSIS CHECK and
 //   PROJECT BUILD CONSTRAINTS sections.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
 
@@ -87,33 +86,22 @@ describe('datum-plan-buildorder-and-context — AC2: acyclic tasks proceed uncha
 // ---------------------------------------------------------------------------
 
 describe('datum-plan-buildorder-and-context — AC3: context_files injection', () => {
-  let projectRoot: string
-
-  beforeEach(() => {
-    projectRoot = mkdtempSync(join(tmpdir(), 'datum-plan-ctxfiles-'))
-  })
-
-  afterEach(() => {
-    rmSync(projectRoot, { recursive: true, force: true })
-  })
-
   it('injects the full contents of an existing context_files entry into the returned section', () => {
-    const docsDir = join(projectRoot, 'docs')
-    mkdirSync(docsDir, { recursive: true })
     const sentinel = 'SENTINEL_BUILD_ORDER_CONTENT_9f3c'
-    writeFileSync(join(docsDir, 'architecture.md'), sentinel)
-
     const warnings: string[] = []
-    const section = buildContextFilesSection(['docs/architecture.md'], projectRoot, (msg: string) => warnings.push(msg))
+    const section = buildContextFilesSection({ 'docs/architecture.md': sentinel }, (msg: string) => warnings.push(msg))
 
     expect(section).toContain(sentinel)
     expect(section).toContain('PROJECT BUILD CONSTRAINTS')
     expect(warnings).toEqual([])
   })
 
-  it('datum-plan.ts reads context_files from repoCfg and wires buildContextFilesSection into the decompose prompt call', () => {
+  it('datum-plan.ts reads context_files from repoCfg via agent() and wires buildContextFilesSection into the decompose prompt call', () => {
     expect(datumPlanSrc).toMatch(/repoCfg\.context_files/)
     expect(datumPlanSrc).toMatch(/buildContextFilesSection\(/)
+    // Must not reintroduce direct fs access — workflow scripts run sandboxed.
+    expect(datumPlanSrc).not.toMatch(/from 'node:fs'/)
+    expect(datumPlanSrc).not.toMatch(/from 'node:path'/)
 
     const cfgIdx = datumPlanSrc.indexOf('repoCfg.context_files')
     const decomposeCallIdx = datumPlanSrc.indexOf('planDecomposeTemplate')
@@ -129,22 +117,12 @@ describe('datum-plan-buildorder-and-context — AC3: context_files injection', (
 // ---------------------------------------------------------------------------
 
 describe('datum-plan-buildorder-and-context — AC4: missing context_files entry warns and is skipped', () => {
-  let projectRoot: string
-
-  beforeEach(() => {
-    projectRoot = mkdtempSync(join(tmpdir(), 'datum-plan-ctxfiles-missing-'))
-  })
-
-  afterEach(() => {
-    rmSync(projectRoot, { recursive: true, force: true })
-  })
-
   it('does not throw and calls the warn callback naming the missing path', () => {
     const warnings: string[] = []
 
     let section: string | undefined
     expect(() => {
-      section = buildContextFilesSection(['docs/does-not-exist.md'], projectRoot, (msg: string) => warnings.push(msg))
+      section = buildContextFilesSection({ 'docs/does-not-exist.md': null }, (msg: string) => warnings.push(msg))
     }).not.toThrow()
 
     expect(warnings.length).toBe(1)
@@ -154,15 +132,10 @@ describe('datum-plan-buildorder-and-context — AC4: missing context_files entry
   })
 
   it('mixes a missing entry with an existing one: existing content is injected, missing one only warns', () => {
-    const docsDir = join(projectRoot, 'docs')
-    mkdirSync(docsDir, { recursive: true })
     const sentinel = 'SENTINEL_PRESENT_FILE_7ad1'
-    writeFileSync(join(docsDir, 'present.md'), sentinel)
-
     const warnings: string[] = []
     const section = buildContextFilesSection(
-      ['docs/present.md', 'docs/absent.md'],
-      projectRoot,
+      { 'docs/present.md': sentinel, 'docs/absent.md': null },
       (msg: string) => warnings.push(msg),
     )
 
@@ -179,22 +152,22 @@ describe('datum-plan-buildorder-and-context — AC4: missing context_files entry
 // ---------------------------------------------------------------------------
 
 describe('datum-plan-buildorder-and-context — AC5: absent/empty context_files is a no-op', () => {
-  it('returns an empty string when contextFiles is undefined', () => {
+  it('returns an empty string when fileContents is undefined', () => {
     const warnings: string[] = []
-    const section = buildContextFilesSection(undefined, '/does/not/matter', (msg: string) => warnings.push(msg))
+    const section = buildContextFilesSection(undefined, (msg: string) => warnings.push(msg))
     expect(section).toBe('')
     expect(warnings).toEqual([])
   })
 
-  it('returns an empty string when contextFiles is an empty array', () => {
+  it('returns an empty string when fileContents is an empty object', () => {
     const warnings: string[] = []
-    const section = buildContextFilesSection([], '/does/not/matter', (msg: string) => warnings.push(msg))
+    const section = buildContextFilesSection({}, (msg: string) => warnings.push(msg))
     expect(section).toBe('')
     expect(warnings).toEqual([])
   })
 
   it('an empty context-files section never introduces a PROJECT BUILD CONSTRAINTS header', () => {
-    const section = buildContextFilesSection([], '/does/not/matter', () => {})
+    const section = buildContextFilesSection({}, () => {})
     expect(section).not.toContain('PROJECT BUILD CONSTRAINTS')
   })
 })

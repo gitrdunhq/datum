@@ -55,10 +55,19 @@ const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Reco
 const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
 const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
 
+const contextFilesList: string[] = (repoCfg.context_files as string[] | undefined) || []
+const contextFileContents: Record<string, string | null> = {}
+for (const relPath of contextFilesList) {
+  const raw = await agent(
+    `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
+    { label: `read-context-file:${relPath}`, model: model('fast') },
+  )
+  const content = typeof raw === 'string' ? raw : JSON.stringify(raw)
+  contextFileContents[relPath] = content.trim() === 'NOT_FOUND' ? null : content
+}
 const contextFilesWarnings: string[] = []
 const contextFilesSection: string = buildContextFilesSection(
-  repoCfg.context_files as string[] | undefined,
-  '.',
+  contextFileContents,
   (msg: string) => contextFilesWarnings.push(msg),
 )
 for (const warning of contextFilesWarnings) log(`context_files: ${warning}`)

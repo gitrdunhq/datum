@@ -25,6 +25,14 @@ Decomposes the spec into a **lane plan** — a DAG of independent work units wit
 
 Produces `lane-plan.json` and `TASKS.md`. Human approval gate.
 
+Before the lane plan is written, `datum-plan` runs a deterministic cycle guard (`assertAcyclicTasks`) over the decomposed tasks' `depends_on` edges and throws — refusing to write `tasks.json`/`lane-plan.json` — if any dependency cycle is found, naming the task ids involved. Decomposition also honors an optional `context_files` array in `.datum/config.json` (defaults to `[]`): each listed path is read from the repo root and injected into the decomposition prompt as authoritative project build-order/module-boundary documentation, taking precedence over any build order the model would otherwise infer from source imports. Missing `context_files` entries are logged as warnings and skipped rather than failing the phase.
+
+```json
+{
+  "context_files": ["docs/ARCHITECTURE.md", "docs/module-boundaries.md"]
+}
+```
+
 ### Act — The TDD Engine
 
 This is the core. Each lane runs the full **RED / GREEN / REFACTOR** cycle in an isolated git worktree:

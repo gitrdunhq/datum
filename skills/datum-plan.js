@@ -29,6 +29,62 @@ function renderPrompt(template, vars) {
     (_match, key) => vars[key] ?? `{{${key}}}`
   );
 }
+function assertAcyclicTasks(tasks2) {
+  const ids = tasks2.map((t) => t.id);
+  const idSet = new Set(ids);
+  const inDeg = {};
+  const adj = {};
+  for (const id of ids) inDeg[id] = 0;
+  for (const task of tasks2) {
+    const deps = (task.depends_on || []).filter((dep) => idSet.has(dep));
+    inDeg[task.id] += deps.length;
+    for (const dep of deps) {
+      ;
+      (adj[dep] = adj[dep] || []).push(task.id);
+    }
+  }
+  let queue = ids.filter((id) => inDeg[id] === 0);
+  const placed = new Set(queue);
+  while (queue.length > 0) {
+    const next = [];
+    for (const id of queue) {
+      for (const child of adj[id] || []) {
+        inDeg[child]--;
+        if (inDeg[child] === 0 && !placed.has(child)) {
+          placed.add(child);
+          next.push(child);
+        }
+      }
+    }
+    queue = next;
+  }
+  const cyclic = ids.filter((id) => !placed.has(id));
+  if (cyclic.length > 0) {
+    throw new Error(
+      `Cyclic dependency detected among tasks: ${cyclic.sort().join(", ")}`
+    );
+  }
+}
+function buildContextFilesSection(fileContents, warn) {
+  if (!fileContents || Object.keys(fileContents).length === 0) return "";
+  const blocks = [];
+  for (const [relPath, content] of Object.entries(fileContents)) {
+    if (content === null) {
+      warn(`context_files entry not found, skipping: ${relPath}`);
+      continue;
+    }
+    blocks.push(`### ${relPath}
+${content}`);
+  }
+  if (blocks.length === 0) return "";
+  return [
+    "PROJECT BUILD CONSTRAINTS",
+    "",
+    "The following project documentation was listed in context_files and is authoritative. Where these docs conflict with a build order inferred from source imports, the project docs take precedence over inferred imports.",
+    "",
+    ...blocks
+  ].join("\n");
+}
 
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
@@ -44,7 +100,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
-  skills_dir: ""
+  skills_dir: "",
+  context_files: []
 };
 var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
@@ -77,9 +134,6 @@ Output raw JSON only.`,
 // skills/src/prompts/plan-approaches.md
 var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["src/module/file1", "src/module/file2"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
-// skills/src/prompts/plan-decompose.md
-var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nLanguage: {{language}}\nTest framework: {{testFramework}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- PROTOCOL COMPLETENESS CHECK (do this for every task before finalizing its `files`): read each acceptance_criteria and ask "does satisfying this AC require adding or changing a method, property, or signature declared on a protocol, an abstract contract, a trait, or a base class?" (e.g. an AC like "use case calls repository.newMethod(...)" implies `newMethod` must be added to wherever the repository\'s contract is declared, not just its concrete implementation). If yes, search the repo (grep/ast-grep) for the declaration site of that contract/type \u2014 the keywords to search for vary by language ("protocol", "trait", "abstract", or the equivalent construct that declares a contract rather than an implementation) \u2014 and add that declaring file to `files` alongside the implementation file, since the lane\'s implementer needs to edit both in the same commit. Do not add it to `reads` in this case; `reads` is for files this task depends on but does not modify, and a contract gaining a new required member IS a modification. If no declaring file exists yet (the contract itself is new), say so in `red_note` instead of inventing a path.\n- NO-CODE-CHURN / DOCS-ONLY DETECTION (do this once, before writing any task\'s `red_note`): read the SPEC content for an NFR-style constraint stating the epic\'s diff must contain zero files of a given source-code extension, or that the epic is documentation-only/docs-only (e.g. "the diff must contain zero .swift/.py files", "documentation-only epic", "no code churn"). If such a constraint is present, then for every task whose `files[]` includes a test-artifact path that is directory-shaped or otherwise extensionless in a context where the epic\'s implementation language would normally require a compiled test package for that path (e.g. a Swift Testing target directory like `tests/CpdTableTests`), append this exact instruction to that task\'s `red_note`: "This epic forbids any file of the forbidden extension(s) in the diff. Write this test artifact as a single extensionless file containing pseudo-code/plain-text assertions \u2014 NOT a real compiled test package. Do NOT create a Package.swift, do NOT create a nested Tests/<Target>/ subdirectory, and do NOT add `import XCTest`/`import Testing` or any other compiled-test-framework import." Apply this identically to every affected lane so the constraint is decided once, centrally, at plan time rather than inferred independently per-lane.\n- UNIFICATION / FORK-CONSUMPTION PARITY CHECK (do this once, before finalizing any flip lane or deletion lane): read the SPEC for language describing a fork-consumption epic \u2014 e.g. "flip consumer(s) to the shared/canonical copy", "delete the fork/duplicate", "consolidate X into shared Y", or any end-state where a source tree is deleted in favor of an existing alternate tree. If detected, actually read and compare the fork\'s and the shared copy\'s file sets and public API surface for the specific files named in the SPEC \u2014 file existence, method/property signatures, protocol/contract conformance \u2014 do not just trust the SPEC\'s audit narrative. For every concrete gap found (a file present in the fork but missing from the shared copy, a method/property the fork\'s callers require that the shared copy lacks, a behavioral divergence the SPEC\'s own audit notes call out), emit a dedicated port task/lane scoped only to that gap\'s files, and add its id to the flip lane\'s `depends_on` so the flip lane is scoped to "flip now that parity is real," not "flip and also happen to fix everything wrong along the way." If the comparison can\'t be done confidently (the named files aren\'t findable, or the SPEC\'s claimed shared-copy location doesn\'t exist yet), do not fabricate port lanes \u2014 note the uncertainty in the flip lane\'s `red_note` instead, same fallback style as the PROTOCOL COMPLETENESS CHECK above.\n- BASELINE SYNC CHECK (same pass as the parity check above, unification epics only): before finalizing the flip lane, check whether the fork\'s target files as they exist on the epic branch actually match `main` for those same files \u2014 i.e. whether `main` has newer fixes to the fork that this plan doesn\'t yet account for. If a divergence is found, emit a dedicated sync-from-main task/lane scoped to only the diverging files, and add it to the flip lane\'s `depends_on` ahead of any parity-check port lanes. If this can\'t be determined confidently, note it in the flip lane\'s `red_note` rather than guessing \u2014 do not invent a sync lane speculatively.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: title, acceptance_criteria, files, reads, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove \u2014 use the project\'s language and test framework, not Python/pytest unless that IS the project language\n- depends_on lists task IDs this task requires to be completed first\n- reads lists files this task\'s implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on \u2014 otherwise the reader may run before the writer produces that file.\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "descriptive-task-id",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["src/module/file", "tests/test_file"],\n    "reads": [],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
-
 // skills/src/prompts/plan-impact.md
 var plan_impact_default = 'Impact analyzer. For each module/file the SPEC will change, assess blast radius.\n\nWorking directory: {{wt}}\nFiles to analyze:\n{{filesList}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<function_name>($$$)\' .` \u2014 find all callers structurally\n2. `scc --no-cocomo <file>` \u2014 LOC and complexity for a specific file\n3. GitNexus (gitnexus_impact) if available\n4. grep as fallback\n\nFor each file:\n1. Use ast-grep to find all callers/importers (structural, not string match)\n2. Run `scc --no-cocomo <file>` to get LOC and complexity\n3. Check if it\'s covered by existing tests (ast-grep for test functions referencing it)\n4. Assess risk from caller count + complexity\n\nReturn JSON:\n{\n  "files": [\n    {\n      "path": "src/module/file",\n      "loc": 150,\n      "callers": ["src/other/module", "src/cli"],\n      "caller_count": 2,\n      "has_tests": true,\n      "test_files": ["tests/test_file"],\n      "risk": "low|medium|high",\n      "notes": "why this risk level"\n    }\n  ],\n  "high_risk_files": ["files with risk=high that need isolated lanes"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -101,6 +155,9 @@ Hand-escaping large files reliably produces invalid JSON (stray backslashes, une
 
 // skills/src/prompts/util-run-gate.md
 var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";
+
+// skills/src/prompts/plan-decompose.md
+var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nLanguage: {{language}}\nTest framework: {{testFramework}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nBUILD-ORDER / IMPORT ANALYSIS CHECK:\nBefore finalizing depends_on for any task, trace the actual import/reference graph implied by the codebase scan and the SPEC \u2014 which modules/files import or call which others \u2014 and make sure each task\'s depends_on reflects that real build order, not just narrative ordering from the SPEC. A task that will import or call code another task creates must depend_on that task.\n\nPROJECT BUILD CONSTRAINTS:\n{{contextFilesSection}}\nThe context_files section above (when present) lists project documentation that is authoritative for build order and module boundaries. Where these project docs conflict with a build order you would otherwise infer from source imports, the project docs take precedence over inferred imports \u2014 follow the documented order and note the override in the affected task\'s red_note.\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- PROTOCOL COMPLETENESS CHECK (do this for every task before finalizing its `files`): read each acceptance_criteria and ask "does satisfying this AC require adding or changing a method, property, or signature declared on a protocol, an abstract contract, a trait, or a base class?" (e.g. an AC like "use case calls repository.newMethod(...)" implies `newMethod` must be added to wherever the repository\'s contract is declared, not just its concrete implementation). If yes, search the repo (grep/ast-grep) for the declaration site of that contract/type \u2014 the keywords to search for vary by language ("protocol", "trait", "abstract", or the equivalent construct that declares a contract rather than an implementation) \u2014 and add that declaring file to `files` alongside the implementation file, since the lane\'s implementer needs to edit both in the same commit. Do not add it to `reads` in this case; `reads` is for files this task depends on but does not modify, and a contract gaining a new required member IS a modification. If no declaring file exists yet (the contract itself is new), say so in `red_note` instead of inventing a path.\n- NO-CODE-CHURN / DOCS-ONLY DETECTION (do this once, before writing any task\'s `red_note`): read the SPEC content for an NFR-style constraint stating the epic\'s diff must contain zero files of a given source-code extension, or that the epic is documentation-only/docs-only (e.g. "the diff must contain zero .swift/.py files", "documentation-only epic", "no code churn"). If such a constraint is present, then for every task whose `files[]` includes a test-artifact path that is directory-shaped or otherwise extensionless in a context where the epic\'s implementation language would normally require a compiled test package for that path (e.g. a Swift Testing target directory like `tests/CpdTableTests`), append this exact instruction to that task\'s `red_note`: "This epic forbids any file of the forbidden extension(s) in the diff. Write this test artifact as a single extensionless file containing pseudo-code/plain-text assertions \u2014 NOT a real compiled test package. Do NOT create a Package.swift, do NOT create a nested Tests/<Target>/ subdirectory, and do NOT add `import XCTest`/`import Testing` or any other compiled-test-framework import." Apply this identically to every affected lane so the constraint is decided once, centrally, at plan time rather than inferred independently per-lane.\n- UNIFICATION / FORK-CONSUMPTION PARITY CHECK (do this once, before finalizing any flip lane or deletion lane): read the SPEC for language describing a fork-consumption epic \u2014 e.g. "flip consumer(s) to the shared/canonical copy", "delete the fork/duplicate", "consolidate X into shared Y", or any end-state where a source tree is deleted in favor of an existing alternate tree. If detected, actually read and compare the fork\'s and the shared copy\'s file sets and public API surface for the specific files named in the SPEC \u2014 file existence, method/property signatures, protocol/contract conformance \u2014 do not just trust the SPEC\'s audit narrative. For every concrete gap found (a file present in the fork but missing from the shared copy, a method/property the fork\'s callers require that the shared copy lacks, a behavioral divergence the SPEC\'s own audit notes call out), emit a dedicated port task/lane scoped only to that gap\'s files, and add its id to the flip lane\'s `depends_on` so the flip lane is scoped to "flip now that parity is real," not "flip and also happen to fix everything wrong along the way." If the comparison can\'t be done confidently (the named files aren\'t findable, or the SPEC\'s claimed shared-copy location doesn\'t exist yet), do not fabricate port lanes \u2014 note the uncertainty in the flip lane\'s `red_note` instead, same fallback style as the PROTOCOL COMPLETENESS CHECK above.\n- BASELINE SYNC CHECK (same pass as the parity check above, unification epics only): before finalizing the flip lane, check whether the fork\'s target files as they exist on the epic branch actually match `main` for those same files \u2014 i.e. whether `main` has newer fixes to the fork that this plan doesn\'t yet account for. If a divergence is found, emit a dedicated sync-from-main task/lane scoped to only the diverging files, and add it to the flip lane\'s `depends_on` ahead of any parity-check port lanes. If this can\'t be determined confidently, note it in the flip lane\'s `red_note` rather than guessing \u2014 do not invent a sync lane speculatively.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: title, acceptance_criteria, files, reads, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove \u2014 use the project\'s language and test framework, not Python/pytest unless that IS the project language\n- depends_on lists task IDs this task requires to be completed first\n- reads lists files this task\'s implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on \u2014 otherwise the reader may run before the writer produces that file.\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "descriptive-task-id",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["src/module/file", "tests/test_file"],\n    "reads": [],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/datum-plan.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -126,6 +183,22 @@ var cfgText = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: mod
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : { ...DEFAULT_CONFIG };
 var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
+var contextFilesList = repoCfg.context_files || [];
+var contextFileContents = {};
+for (const relPath of contextFilesList) {
+  const raw = await agent(
+    `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
+    { label: `read-context-file:${relPath}`, model: model("fast") }
+  );
+  const content = typeof raw === "string" ? raw : JSON.stringify(raw);
+  contextFileContents[relPath] = content.trim() === "NOT_FOUND" ? null : content;
+}
+var contextFilesWarnings = [];
+var contextFilesSection = buildContextFilesSection(
+  contextFileContents,
+  (msg) => contextFilesWarnings.push(msg)
+);
+for (const warning of contextFilesWarnings) log(`context_files: ${warning}`);
 phase("Decompose");
 var approachesRaw = await agent(
   renderPrompt(plan_approaches_default, { specContent, currentState: ctx.current_state || "(not available)" }),
@@ -143,13 +216,14 @@ var isComplex = chosen?.blast_radius === "high" || (chosen?.estimated_tasks || 0
 var decomposeModel = isComplex ? model("deep") : model("balanced");
 if (isComplex) log("Complex epic \u2014 using opus for decomposition");
 var tasksRaw = await agent(
-  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework }),
+  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection }),
   { label: "decompose-tasks", model: decomposeModel }
 );
 var tasks = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
 if (!Array.isArray(tasks) || tasks.length === 0) {
   throw new Error(`Task decomposition returned 0 tasks \u2014 refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`);
 }
+assertAcyclicTasks(tasks);
 var tasksJson = JSON.stringify(tasks);
 log(`Decomposed into ${tasks.length} tasks`);
 for (const task of tasks) {

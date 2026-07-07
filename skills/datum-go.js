@@ -180,7 +180,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
-  skills_dir: ""
+  skills_dir: "",
+  context_files: []
 };
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
