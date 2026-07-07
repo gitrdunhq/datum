@@ -1780,6 +1780,139 @@ def tdd_args_cmd(
     print(json.dumps(output, indent=2))
 
 
+# ── Dev tooling / lane-tools / gitnexus centralization (#305) ──────────────
+# Every wrapper here is a pure passthrough subprocess call to the existing,
+# unmodified script — same pattern as `gate`/`test-signal`/`skeleton` above.
+# Purpose: collapse all agent-invoked scripts under `datum` so a single
+# `Bash(datum *)` allowlist entry covers them (see issue #305).
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _scripts_dir() -> Path:
+    return _repo_root() / "scripts"
+
+
+dev_app = typer.Typer(
+    name="dev", help="Internal developer tooling scripts (scripts/*)."
+)
+app.add_typer(dev_app)
+
+_DEV_BASH_SCRIPTS = {
+    "build-workflows": "build-workflows.sh",
+    "hook-file-ownership": "hook-file-ownership.sh",
+    "test-ts": "test-ts.sh",
+    "test-count-gate": "test-count-gate",
+}
+
+_DEV_PYTHON_SCRIPTS = {
+    "cost-model": "cost-model.py",
+    "workflow-dashboard": "workflow-dashboard.py",
+    "extract-mermaid": "extract_mermaid.py",
+    "render-diagram": "mermaid_to_image.py",
+    "resilient-diagram": "resilient_diagram.py",
+    "transcript-to-html": "transcript_to_html.py",
+}
+
+
+def _make_bash_wrapper(script_name: str):
+    def _wrapper(ctx: typer.Context):
+        import subprocess
+
+        script_path = _scripts_dir() / script_name
+        res = subprocess.run(["bash", str(script_path)] + ctx.args)
+        raise typer.Exit(res.returncode)
+
+    return _wrapper
+
+
+def _make_python_wrapper(script_name: str):
+    def _wrapper(ctx: typer.Context):
+        import subprocess
+        import sys
+
+        script_path = _scripts_dir() / script_name
+        res = subprocess.run([sys.executable, str(script_path)] + ctx.args)
+        raise typer.Exit(res.returncode)
+
+    return _wrapper
+
+
+for _cmd_name, _script_name in _DEV_BASH_SCRIPTS.items():
+    dev_app.command(
+        name=_cmd_name,
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=f"Run scripts/{_script_name}.",
+    )(_make_bash_wrapper(_script_name))
+
+for _cmd_name, _script_name in _DEV_PYTHON_SCRIPTS.items():
+    dev_app.command(
+        name=_cmd_name,
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=f"Run scripts/{_script_name}.",
+    )(_make_python_wrapper(_script_name))
+
+
+lane_tools_app = typer.Typer(
+    name="lane-tools", help="Lane-tools scripts (scripts/lane-tools/*), manifest-gated."
+)
+app.add_typer(lane_tools_app)
+
+_LANE_TOOLS_SCRIPTS = {
+    "corpus-sql": "corpus_sql.py",
+    "find-callers": "find_callers.py",
+    "grep-search": "grep_search.py",
+    "list-dir": "list_dir.py",
+    "read-file": "read_file.py",
+    "read-file-range": "read_file_range.py",
+    "read-todos": "read_todos.py",
+    "write-to-file": "write_to_file.py",
+    "write-todos": "write_todos.py",
+    "multi-replace-file-content": "multi_replace_file_content.py",
+    "replace-file-content": "replace_file_content.py",
+    "filter-gitnexus-output": "filter_gitnexus_output.py",
+    "run-command": "run_command.py",
+}
+
+
+def _make_lane_tools_wrapper(script_name: str):
+    def _wrapper(ctx: typer.Context):
+        import subprocess
+        import sys
+
+        script_path = _scripts_dir() / "lane-tools" / script_name
+        res = subprocess.run([sys.executable, str(script_path)] + ctx.args)
+        raise typer.Exit(res.returncode)
+
+    return _wrapper
+
+
+for _cmd_name, _script_name in _LANE_TOOLS_SCRIPTS.items():
+    lane_tools_app.command(
+        name=_cmd_name,
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=f"Run scripts/lane-tools/{_script_name} (manifest-gated).",
+    )(_make_lane_tools_wrapper(_script_name))
+
+
+gitnexus_app = typer.Typer(name="gitnexus", help="GitNexus CLI wrappers.")
+app.add_typer(gitnexus_app)
+
+
+@gitnexus_app.command(
+    name="analyze",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def gitnexus_analyze(ctx: typer.Context):
+    """Run `npx gitnexus analyze` (indexes the repo for GitNexus MCP tools)."""
+    import subprocess
+
+    res = subprocess.run(["npx", "gitnexus", "analyze"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
