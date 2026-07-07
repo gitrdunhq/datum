@@ -417,7 +417,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
     }
     const setup = await workflow(
       { scriptPath: sk("datum-tdd-act-setup") },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag }
     );
     const act = await workflow(
       { scriptPath: sk("datum-tdd-act-lane") },

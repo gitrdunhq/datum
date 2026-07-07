@@ -272,7 +272,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag },
     ) as SetupResult
 
     // Lane execution — direct child workflow
