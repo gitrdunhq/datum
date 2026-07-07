@@ -12,7 +12,8 @@ export const meta = {
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -89,7 +90,14 @@ var plan_triage_default = 'Triage agent. Read the plan and decide if deep codeba
 var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nAfter appending, commit: git add TASKS.md && git commit -m "plan: deepen \u2014 research findings"\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/util-read-context.md
-var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
+var util_read_context_default = `Return a JSON object with:
+1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
+2. "epic_dir": "docs/epics/" + the branch name
+{{extraFields}}
+If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
+\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
+Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
+`;
 
 // skills/src/prompts/util-run-gate.md
 var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";

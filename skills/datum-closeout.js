@@ -11,7 +11,8 @@ export const meta = {
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -43,7 +44,14 @@ function model(tier) {
 var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact:\n- Write the file\n- Commit: git add <file> && git commit -m "closeout: write <artifact>"\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/util-read-context.md
-var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
+var util_read_context_default = `Return a JSON object with:
+1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
+2. "epic_dir": "docs/epics/" + the branch name
+{{extraFields}}
+If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
+\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
+Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
+`;
 
 // skills/src/datum-closeout.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";

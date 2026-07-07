@@ -12,7 +12,8 @@ export const meta = {
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -85,7 +86,14 @@ Output the full QUESTIONS.md content as markdown. No JSON wrapping.
 `;
 
 // skills/src/prompts/util-read-context.md
-var util_read_context_default = 'Return a JSON object with:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "epic_dir": "docs/epics/" + the branch name\n{{extraFields}}\nOutput raw JSON only. No markdown fences.\n';
+var util_read_context_default = `Return a JSON object with:
+1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
+2. "epic_dir": "docs/epics/" + the branch name
+{{extraFields}}
+If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
+\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
+Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
+`;
 
 // skills/src/prompts/util-run-gate.md
 var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";

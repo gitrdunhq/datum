@@ -401,7 +401,10 @@ export function resolveLanePlanPath(epicDir: string, agentResult: string): strin
 
 export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
   if (!text || typeof text !== 'string') return fallback
-  const cleaned = text.replace(/```[a-z]*\n?/g, '').trim()
+  // Only strip a fence that wraps the WHOLE response — stripping every ``` occurrence
+  // would corrupt embedded code fences (e.g. ```mermaid) inside file-content string values.
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/)
+  const cleaned = (fenced ? fenced[1] : text).trim()
   const start = cleaned.search(/[{[]/)
   const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
   if (start === -1 || end === -1) return fallback
