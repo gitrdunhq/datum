@@ -168,6 +168,64 @@ function classifyFiles(files) {
   const implFiles = (files || []).filter((f) => !isTest(f));
   return { testFiles, implFiles };
 }
+var FIRST_PARTY_PY_PACKAGES = ["datum", "scripts", "tests"];
+function joinPosix(baseDir, rel) {
+  const baseParts = baseDir.split("/").filter((p) => p !== "" && p !== ".");
+  const relParts = rel.split("/");
+  for (const part of relParts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") baseParts.pop();
+    else baseParts.push(part);
+  }
+  return baseParts.join("/");
+}
+function dirnamePosix(p) {
+  const parts = p.split("/");
+  parts.pop();
+  return parts.join("/");
+}
+function ensureTsExtension(p) {
+  return /\.(ts|tsx|js|jsx|json)$/.test(p) ? p : `${p}.ts`;
+}
+function extractRequiredScopeFiles(content, testFilePath, language) {
+  const required = /* @__PURE__ */ new Set();
+  const dir = dirnamePosix(testFilePath);
+  if (language === "typescript" || language === "javascript") {
+    const importRe = /(?:import\s+(?:type\s+)?(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+|require\(\s*)['"](\.\.?\/[^'"]+)['"]\)?/g;
+    let m;
+    while (m = importRe.exec(content)) {
+      required.add(ensureTsExtension(joinPosix(dir, m[1])));
+    }
+    const readFileRe = /readFileSync\(\s*join\(\s*__dirname\s*,\s*([^)]+)\)/g;
+    let rm;
+    while (rm = readFileRe.exec(content)) {
+      const argsStr = rm[1];
+      const segRe = /['"]([^'"]+)['"]/g;
+      const segs = [];
+      let sm;
+      while (sm = segRe.exec(argsStr)) segs.push(sm[1]);
+      if (segs.length > 0) {
+        required.add(joinPosix(dir, segs.join("/")));
+      }
+    }
+  } else if (language === "python") {
+    const fromRe = /(?:^|\n)[ \t]*from\s+([\w]+(?:\.[\w]+)*)\s+import\s+/g;
+    const importRe = /(?:^|\n)[ \t]*import\s+([\w]+(?:\.[\w]+)*)/g;
+    const modules = [];
+    let m;
+    while (m = fromRe.exec(content)) modules.push(m[1]);
+    while (m = importRe.exec(content)) modules.push(m[1]);
+    for (const mod of modules) {
+      const top = mod.split(".")[0];
+      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue;
+      required.add(`${mod.split(".").join("/")}.py`);
+    }
+  }
+  return [...required];
+}
+function findScopeGaps(requiredFiles, allowedFiles) {
+  return requiredFiles.filter((rf) => !allowedFiles.some((af) => pathBoundaryMatch(rf, af)));
+}
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
@@ -629,8 +687,28 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
         failure_reason: red?.failure_reason
       };
     } else {
-      log(`[${taskId}] RED: agent did not commit \u2014 failing (independent check: ${check.detail})`);
-      return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit (independent check: ${check.detail})` };
+      log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
+        { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      );
+      if (!red || !red.committed) {
+        const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+        if (retryCheck.committed) {
+          log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) \u2014 treating as committed (#274)`);
+          red = {
+            success: true,
+            tests_pass: false,
+            committed: true,
+            commit_sha: retryCheck.commitSha,
+            files_written: red?.files_written || testFiles,
+            failure_reason: red?.failure_reason
+          };
+        } else {
+          log(`[${taskId}] RED: agent did not commit after retry \u2014 failing (independent check: ${retryCheck.detail})`);
+          return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` };
+        }
+      }
     }
   }
   if (!red || !red.success) {
@@ -739,6 +817,44 @@ Output raw JSON only.`,
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
+  }
+  const scopeTestContentsRaw = await agent(
+    `Read the contents of these RED test file(s) in the worktree:
+${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join("\n")}
+Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || "path"}": "contents..."}. No markdown fences, no explanation.`,
+    { label: `scope-repair-read:${taskId}`, phase: "Act", model: model("fast") }
+  );
+  const scopeTestContents = parseAgentJson(scopeTestContentsRaw, {});
+  const requiredScopeFiles = /* @__PURE__ */ new Set();
+  for (const tf of testFiles) {
+    const tContent = scopeTestContents[tf] || "";
+    if (!tContent) continue;
+    for (const rf of extractRequiredScopeFiles(tContent, tf, laneLanguage)) {
+      requiredScopeFiles.add(rf);
+    }
+  }
+  const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles]);
+  if (scopeGaps.length > 0) {
+    const scopeExistsRaw = await agent(
+      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
+${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join("\n")}
+Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
+      { label: `scope-repair-check:${taskId}`, phase: "Act", model: model("fast") }
+    );
+    const scopeExistsParsed = parseAgentJson(scopeExistsRaw, {});
+    const existingGaps = scopeExistsParsed.existing || [];
+    const missingGaps = scopeExistsParsed.missing || [];
+    for (const f of existingGaps) {
+      if (!implFiles.includes(f)) {
+        implFiles.push(f);
+        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files \u2014 required by RED test import/assertion, was missing from lane.files`);
+      }
+    }
+    if (missingGaps.length > 0) {
+      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(", ")} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`;
+      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `scope_gap: ${msg}` };
+    }
   }
   const rawCounts = await agent(
     `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):

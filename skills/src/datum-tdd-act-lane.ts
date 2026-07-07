@@ -30,6 +30,8 @@ import {
   buildPacket,
   parseAgentJson,
   verifyFileOwnership as verifyFileOwnershipMatch,
+  extractRequiredScopeFiles,
+  findScopeGaps,
 } from './shared/utils'
 import {
   redPrompt,
@@ -357,6 +359,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   }
 
   // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
+  // If the first attempt didn't commit, retry via redRetryPrompt (the recovery path that
+  // already exists for a failed-but-committed attempt) before hard-failing the lane (#333).
   if (!red || !red.committed) {
     const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
     if (check.committed) {
@@ -370,8 +374,30 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
         failure_reason: red?.failure_reason,
       }
     } else {
-      log(`[${taskId}] RED: agent did not commit — failing (independent check: ${check.detail})`)
-      return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit (independent check: ${check.detail})` }
+      log(`[${taskId}] RED: agent did not commit on first attempt — retrying (independent check: ${check.detail})`)
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
+        { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+      )
+      // Re-run the same commit-check gate (not around it) so a retry that still didn't
+      // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
+      if (!red || !red.committed) {
+        const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+        if (retryCheck.committed) {
+          log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) — treating as committed (#274)`)
+          red = {
+            success: true,
+            tests_pass: false,
+            committed: true,
+            commit_sha: retryCheck.commitSha,
+            files_written: red?.files_written || testFiles,
+            failure_reason: red?.failure_reason,
+          }
+        } else {
+          log(`[${taskId}] RED: agent did not commit after retry — failing (independent check: ${retryCheck.detail})`)
+          return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` }
+        }
+      }
     }
   }
 
@@ -500,6 +526,56 @@ Output raw JSON only.`,
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(', ')}`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
+  }
+
+  // ── Scope repair (#325/#334/#335) ──────────────────────────────────────────
+  // The committed RED test may import/assert against files the lane plan
+  // never granted write access to (allowed_write_files == testFiles+implFiles
+  // here). Left unchecked, GREEN deadlocks at scope_exceeded: no change
+  // confined to implFiles can satisfy an AC whose target lives elsewhere.
+  // Parse the actual RED test content for required files and either
+  // auto-add unambiguous, existing targets to implFiles, or fail loud now —
+  // before GREEN burns an attempt on a lane that structurally cannot pass.
+  const scopeTestContentsRaw = await agent(
+    `Read the contents of these RED test file(s) in the worktree:
+${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join('\n')}
+Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || 'path'}": "contents..."}. No markdown fences, no explanation.`,
+    { label: `scope-repair-read:${taskId}`, phase: 'Act', model: model('fast') },
+  )
+  const scopeTestContents = parseAgentJson<Record<string, string>>(scopeTestContentsRaw as string, {})
+
+  const requiredScopeFiles = new Set<string>()
+  for (const tf of testFiles) {
+    const tContent = scopeTestContents[tf] || ''
+    if (!tContent) continue
+    for (const rf of extractRequiredScopeFiles(tContent, tf, laneLanguage)) {
+      requiredScopeFiles.add(rf)
+    }
+  }
+
+  const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles])
+  if (scopeGaps.length > 0) {
+    const scopeExistsRaw = await agent(
+      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
+${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join('\n')}
+Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
+      { label: `scope-repair-check:${taskId}`, phase: 'Act', model: model('fast') },
+    )
+    const scopeExistsParsed = parseAgentJson<{ existing?: string[]; missing?: string[] }>(scopeExistsRaw as string, {})
+    const existingGaps = scopeExistsParsed.existing || []
+    const missingGaps = scopeExistsParsed.missing || []
+
+    for (const f of existingGaps) {
+      if (!implFiles.includes(f)) {
+        implFiles.push(f)
+        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files — required by RED test import/assertion, was missing from lane.files`)
+      }
+    }
+    if (missingGaps.length > 0) {
+      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(', ')} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`
+      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `scope_gap: ${msg}` }
+    }
   }
 
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
