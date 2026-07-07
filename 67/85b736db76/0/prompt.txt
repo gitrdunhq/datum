@@ -1,0 +1,498 @@
+<task-notification>
+<task-id>bu2jky16z</task-id>
+<summary>Monitor event: "datum-go wf_dfd5d55e-a7e: agent labels as lanes dispatch"</summary>
+<event>agent: {"agentType":"workflow-subagent","spawnDepth":1}
+agent: {"agentType":"workflow-subagent","spawnDepth":1}
+agent: {"agentType":"workflow-subagent","spawnDepth":1}
+agent: {"agentType":"workflow-subagent","spawnDepth":1}</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a0278bf0a690a9182 | Report which lanes of epic datum/epic-287 already have epic-scoped completion markers. Run this exact script from the repo root an
+agent-a2cc95d6ea45ff777 | Run these two commands and return ONLY a JSON object with two fields: 1. "branch": output of `git rev-parse --abbrev-ref HEAD` 2.
+agent-a77e1dd324d4b1f0e | Return a JSON object with two fields: 1. "config": contents of .datum/config.json (or {} if missing) 2. "state": contents of .datu
+agent-a9a06d2c667a39136 | Read docs/epics/datum/epic-287/lane-plan.json and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences,
+agent-a9fe6e3c7a2db1d69 | cd "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root" &amp;&amp; datum worktrees setup --run-id 20
+agent-ab0806551d7e40caa | [docs/epics/datum/epic-287] ls "docs/epics/datum/epic-287/lane-plan-final.json" 2&gt;/dev/null &amp;&amp; echo "final" || echo "default" Retu
+agent-af2d963a7f2cce748 | git worktree add --detach .datum/worktrees/20260706-202909-b0-root datum/epic-287 2&gt;&amp;1 &amp;&amp; echo '{"root": "'$(cd .datum/worktrees/2</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-abad2ca6ea4c70e22 | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datum" &amp;&amp; printf '%s' '{"schem</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a17c34cf80b7abcb3 | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datum/worktrees/20260706-20290</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a6be9daf5f0c1bf7f | Read the file: cat ".datum/runs/20260706-202909-b0/lane-state/task-002.json" 2&gt;/dev/null || echo "" If the file exists, return ONL</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a72a6a841e79dce02 | Read the file: cat "docs/epics/datum/epic-287/skeletons/preflight-task-002.json" 2&gt;/dev/null || echo "" If the file exists, return</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a3ce64f9cb3f18ee5 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a5537798a01a8afea | Run: bash scripts/test-count-gate --repo "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ab0761ad551fcf136 | Run these ast-grep commands on the test files and report what was found. For each command, capture the output. If ast-grep is not</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ad14d7026f2b9f0e8 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datum/worktrees/20260706-20</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a00b109189f998d0b | Count test functions in these files: After-counts (current worktree): grep -c -E '@Test|func test' "/Volumes/Extra/repos/gitrdunhq</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a14f82457c890bdf2 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a322e101e38b6f318 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a708b3344a60d8e5c | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datum/worktrees/20260706-20</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a3ccea96073f2f43d | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`
+agent-a58c53502ad0464fd | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`
+agent-aceb93636e10a9a4a | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ad0d425746386d60b | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a0e952ce17e885cf4 | Run: mkdir -p ./.datum/runs/20260706-202909-b0/lane-state Write to file: ./.datum/runs/20260706-202909-b0/lane-state/task-002.json</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-aa119fbd1a98edff3 | Read the file: cat ".datum/runs/20260706-202909-b0/lane-state/task-003.json" 2&gt;/dev/null || echo "" If the file exists, return ONL
+agent-ae63f0e50df005ecb | Read the file: cat ".datum/runs/20260706-202909-b0/lane-state/task-004.json" 2&gt;/dev/null || echo "" If the file exists, return ONL</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ace44e62ad8a4b2c9 | Read the file: cat "docs/epics/datum/epic-287/skeletons/preflight-task-003.json" 2&gt;/dev/null || echo "" If the file exists, return
+agent-afe075a885b9d98f0 | Read the file: cat "docs/epics/datum/epic-287/skeletons/preflight-task-004.json" 2&gt;/dev/null || echo "" If the file exists, return</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a35271f1a40bf0e14 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`
+agent-a935b66d78d34eb73 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a2629a738d0983232 | Run: bash scripts/test-count-gate --repo "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a6b438fb10a44e197 | Run these two commands in order in "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datu</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a2ae210244f25642d | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a46dd0490535ea389 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-202909-b0-root/.datum/worktrees/20260706-20</event>
+</task-notification>
+
+---
+
+l
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-abad6852849f99d30 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a18b2b858486baa57 | Run: mkdir -p ./.datum/runs/20260706-202909-b0/lane-state Write to file: ./.datum/runs/20260706-202909-b0/lane-state/task-004.json</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ac7527d1d4540fa63 | datum worktrees merge --epic-branch datum/epic-287 --lane-order task-002,task-004 --commit-message "act(20260706-202909-b0): merge</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a1f2d1c06c56e278a | datum worktrees cleanup --run-id 20260706-202909-b0 --epic-branch datum/epic-287 &amp;&amp; git worktree remove .datum/worktrees/20260706-</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a503f30d79b6566d4 | Record epic-scoped completion markers for lanes just squash-merged into datum/epic-287. Run this exact script from the repo root a</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a137c7138a194d303 | git worktree add --detach .datum/worktrees/20260706-202909-b2-root datum/epic-287 2&gt;&amp;1 &amp;&amp; echo '{"root": "'$(cd .datum/worktrees/2</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a1fbbbe753003e99e | unset GITHUB_TOKEN &amp;&amp; gh issue list --repo gitrdunhq/datum --state open --search '[datum-bug] workflow-bug: GREEN stage fails lane</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-ab79d45dd8ffc6dd3 | Write this exact content to .datum/pipeline-state.json: { "branch": "", "runId": "", "route": "resume", "completedPhases": [ "prop</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a2650a6feebea5331 | Read TWO config files and merge them (global defaults, repo overrides): 1. Global: ~/.datum/config.json (may not exist — skip if m</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>byxu1hu7k</task-id>
+<summary>Monitor event: "wf_dfd5d55e-a7e: new agents with prompt snippets"</summary>
+<event>agent-a637c01da9d6780a7 | First: determine the branch with `git rev-parse --abbrev-ref HEAD` and set epic_dir to docs/epics/&lt;branch&gt;. Then perform validatio</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a1efc6e58c08464bc | [docs/epics/datum/epic-287] ls "docs/epics/datum/epic-287/lane-plan-final.json" 2&gt;/dev/null &amp;&amp; echo "final" || echo "default" Retu
+agent-a61552e94ef860f0d | Run these two commands and return ONLY a JSON object with two fields: 1. "branch": output of `git rev-parse --abbrev-ref HEAD` 2.
+agent-a7c48e2d44dd54ba4 | Return a JSON object with two fields: 1. "config": contents of .datum/config.json (or {} if missing) 2. "state": contents of .datu</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a83f03aa9bcd406e7 | Read docs/epics/datum/epic-287/lane-plan.json and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences,</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a6d102cc27a5d7665 | Report which lanes of epic datum/epic-287 already have epic-scoped completion markers. Run this exact script from the repo root an</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a0933629892999ae3 | git worktree add --detach .datum/worktrees/20260706-215228-b0-root datum/epic-287 2&gt;&amp;1 &amp;&amp; echo '{"root": "'$(cd .datum/worktrees/2</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a334b91609c4c1c82 | cd "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root" &amp;&amp; datum worktrees setup --run-id 20</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a1d5141e3b015cf15 | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root/.datum" &amp;&amp; printf '%s' '{"schem</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a2c8b5ee7e56c114a | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root/.datum/worktrees/20260706-21522</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a099b0f1ef7b0e757 | Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own b</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a8ea708f63594e718 | Run these ast-grep commands on the test files and report what was found. For each command, capture the output. If ast-grep is not</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-af4a88b338fa2a347 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root/.datum/worktrees/20260706-21</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a49d7882e1fa96967 | Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a6b3dfade19a8c62f | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-acb462d271a24fcfd | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a5c71f13913d2642c | Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own b</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a6e200b327a56d42d | Run these ast-grep commands on the test files and report what was found. For each command, capture the output. If ast-grep is not
+agent-a96cc3973a0932f4e | Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own b</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a31599375ca09722c | Run these ast-grep commands on the test files and report what was found. For each command, capture the output. If ast-grep is not</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a72fe07b248709ad3 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root/.datum/worktrees/20260706-21</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a2f9dd14e43409ef4 | Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a12b70f924b627c45 | Run: git -C "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-215228-b0-root/.datum/worktrees/20260706-21</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-ab0c23726f6ed9d59 | Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-aef60d52ffa533a8e | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a5b98cb8d9d3ac913 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-aa3c0e8a0bdeeb2ed | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-acfc1bd8fdc34053b | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-afa37ad5116a73e75 | # datum &gt; Agentic software delivery pipeline — language-agnostic, config-driven. ## CLI Rule - All commands use `datum &lt;command&gt;`</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bunm9s14k</task-id>
+<summary>Monitor event: "wf_3bd7b36e-599 (epic-287 act relaunch): new agents with prompt snippets"</summary>
+<event>agent-a3661c75dc5c7bfa7 | datum worktrees cleanup --run-id 20260706-215228-b0 --epic-branch datum/epic-287 &amp;&amp; git worktree remove .datum/worktrees/20260706-</event>
+</task-notification>
