@@ -107,6 +107,70 @@ describe('path-boundary-file-ownership — AC3', () => {
 })
 
 // ---------------------------------------------------------------------------
+// AC5 — issue #269 follow-up: a bare, extensionless allowed_write_files
+// entry standing in for "this whole directory belongs to this lane" must
+// match files scaffolded inside it (e.g. an SPM test target directory).
+// ---------------------------------------------------------------------------
+
+describe('path-boundary-file-ownership — AC5 (directory-boundary nesting)', () => {
+  it('allows a file nested inside a bare directory-shaped allowed path', () => {
+    const verifyFileOwnership = getVerifyFileOwnership()
+    expect(typeof verifyFileOwnership).toBe('function')
+
+    const allowed = ['docs/epics/e1/tests/CpdTableTests']
+    const result = verifyFileOwnership!(
+      ['docs/epics/e1/tests/CpdTableTests/Package.swift'],
+      allowed,
+      [],
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.violations).toEqual([])
+  })
+
+  it('allows a deeply nested file inside the allowed directory', () => {
+    const verifyFileOwnership = getVerifyFileOwnership()
+    expect(typeof verifyFileOwnership).toBe('function')
+
+    const allowed = ['docs/epics/e1/tests/CpdTableTests']
+    const result = verifyFileOwnership!(
+      ['docs/epics/e1/tests/CpdTableTests/Tests/CpdTableTests/CpdTableTests.swift'],
+      allowed,
+      [],
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.violations).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC6 — the directory-boundary match must be a real path-segment boundary,
+// not a bare string prefix: a sibling directory whose name merely starts
+// with the allowed directory's name must still be flagged as a violation.
+// ---------------------------------------------------------------------------
+
+describe('path-boundary-file-ownership — AC6 (sibling-prefix guard)', () => {
+  it('still flags a sibling-prefixed path as a violation, not a directory match', () => {
+    const verifyFileOwnership = getVerifyFileOwnership()
+    expect(typeof verifyFileOwnership).toBe('function')
+
+    const allowed = ['docs/epics/e1/tests/CpdTableTests']
+    const result = verifyFileOwnership!(
+      ['docs/epics/e1/tests/CpdTableTestsExtra/file.ts'],
+      allowed,
+      [],
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(
+      result.violations.some((v) => v.includes('docs/epics/e1/tests/CpdTableTestsExtra/file.ts')),
+    ).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // AC4 — the fix must live in the TS source and the compiled bundle must be
 // regenerated via scripts/build-workflows.sh, never hand-edited.
 // ---------------------------------------------------------------------------

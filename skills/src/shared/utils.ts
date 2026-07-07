@@ -314,10 +314,26 @@ export function epicSlug(branch: string): string {
 // ownership (#269). Matching is exact-path or path-boundary aware — never a
 // raw suffix/substring comparison, which would treat "NewFoo.test.ts" as
 // matching an allowed "Foo.test.ts" ("NewFoo.test.ts".endsWith("Foo.test.ts")).
+//
+// Also covers the directory-boundary case (#269 follow-up): a lane-plan
+// `allowed_write_files` entry may be a bare, extensionless path standing in
+// for "this whole directory belongs to this lane" (e.g. an SPM test target
+// directory). A changed file nested inside that directory — such as
+// "<dir>/Package.swift" — must match "<dir>" even though neither string is a
+// suffix of the other. This is checked as a real path-segment boundary
+// (`a` must start with `b + '/'`), not a bare string prefix, so a sibling
+// like "CpdTableTestsExtra/file.ts" does NOT match allowed "CpdTableTests".
+// The match is intentionally one-directional: only "changed file lives
+// inside allowed directory" is a real scenario; the reverse never occurs.
 // ---------------------------------------------------------------------------
 
 export function pathBoundaryMatch(a: string, b: string): boolean {
-  return a === b || a.endsWith('/' + b) || b.endsWith('/' + a)
+  return (
+    a === b ||
+    a.endsWith('/' + b) ||
+    b.endsWith('/' + a) ||
+    a.startsWith(b + '/')
+  )
 }
 
 export function verifyFileOwnership(
