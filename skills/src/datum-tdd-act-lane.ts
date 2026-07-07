@@ -186,33 +186,14 @@ async function runLane(
     ? 'func Test'
     : 'def test_'
 
-  // Base64-encoded versions of the same regexes for use in agent-executed
-  // shell commands. Backslash/paren-heavy ERE patterns (esp. TS/JS) are
-  // regularly mis-transcribed by the fast-tier agent that has to compose a
-  // Bash tool call from prompt text (#288/#289 recurred even after fixing
-  // the quoting above — verified the script+pattern were correct in
-  // isolation, so the fast agent was the point of failure). An opaque
-  // base64 token has nothing for the agent to misquote or re-escape; the
-  // shell decodes it back to the exact bytes via `base64 -d`.
-  const testFuncDiffRegexB64: string = laneLanguage === 'swift'
-    ? 'WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk='
-    : laneLanguage === 'go'
-    ? 'WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0'
-    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
-    ? 'WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp'
-    : 'WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf'
-  const testFuncGrepRegexB64: string = laneLanguage === 'swift'
-    ? 'QFRlc3R8ZnVuYyB0ZXN0'
-    : laneLanguage === 'go'
-    ? 'ZnVuYyBUZXN0'
-    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
-    ? 'aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA=='
-    : 'ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw=='
-  const testFuncBodyRegexB64: string = laneLanguage === 'swift'
-    ? 'ZnVuYyB0ZXN0'
-    : laneLanguage === 'go'
-    ? 'ZnVuYyBUZXN0'
-    : 'ZGVmIHRlc3Rf'
+  // Backslash/paren-heavy ERE patterns (esp. TS/JS) were regularly
+  // mis-transcribed by the fast-tier agent composing a Bash tool call from
+  // prompt text (#288/#289 recurred even after fixing the quoting above —
+  // verified the script+pattern were correct in isolation, so the fast agent
+  // was the point of failure). Call sites now write the pattern to a temp
+  // file via a quoted heredoc (`<<'PATTERN_EOF'`) — the quoted delimiter
+  // disables all shell interpretation of its contents, so the agent copies
+  // the pattern verbatim with nothing to escape or misquote.
 
   // ── Cross-run completion check: skip if a previous run already completed this lane ──
   const completionPath = runId
@@ -428,9 +409,15 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount = 0
     let gatePassed = false
     const countRaw: string | null = await agent(
-      `Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own base64 -d do that):
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern "$(echo '${testFuncDiffRegexB64}' | base64 -d)" --required ${acCount}
-Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
+      `Run this EXACT sequence of two commands verbatim:
+1. Write the pattern to a temp file (the quoted heredoc delimiter means the shell does no interpretation of its contents — copy the line between the markers exactly as-is):
+PATFILE=$(mktemp)
+cat > "$PATFILE" <<'PATTERN_EOF'
+${testFuncDiffRegex}
+PATTERN_EOF
+2. Run the gate script against that file:
+bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern-file "$PATFILE" --required ${acCount}
+Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
       },
@@ -490,9 +477,14 @@ ${testFiles.map((f) => sgPatterns.map((p) =>
     `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
   ).join('\n')).join('\n')}
 
-Also check for pass-only test bodies (decode the base64 token verbatim via base64 -d, don't retype it):
+Also check for pass-only test bodies. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
+BODYPATFILE=$(mktemp)
+cat > "$BODYPATFILE" <<'PATTERN_EOF'
+${testFuncBodyRegex}
+PATTERN_EOF
+Then run:
 ${testFiles.map((f) =>
-    `grep -A1 "$(echo '${testFuncBodyRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    `grep -A1 -f "$BODYPATFILE" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
   ).join('\n')}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -522,11 +514,16 @@ Output raw JSON only.`,
 
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
   const rawCounts = await agent(
-    `Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -d handles that):
+    `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
+GREPPATFILE=$(mktemp)
+cat > "$GREPPATFILE" <<'PATTERN_EOF'
+${testFuncGrepRegex}
+PATTERN_EOF
+Then run:
 After-counts (current worktree):
-${testFiles.map(f => `grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
+${testFiles.map(f => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
 Before-counts (parent commit — 0 for first commit):
-${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" || echo 0`).join('\n')}
+${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join('\n')}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`, phase: 'Act', model: model('fast'),

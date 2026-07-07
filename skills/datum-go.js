@@ -264,23 +264,25 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var lastResult = {};
 var haltedAt = "";
+var resolvedBranch = "";
+var resolvedRunId = "";
 var completedPhases = priorState?.completedPhases ? [...priorState.completedPhases] : [];
 function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
 async function markPhaseComplete(p) {
   if (!completedPhases.includes(p)) completedPhases.push(p);
-  const state = {
-    branch: globalCfg.branch || "",
-    runId: "",
-    route,
-    completedPhases,
-    currentPhase: null,
-    lastUpdated: ""
-  };
   await agent(
-    `Write this exact content to .datum/pipeline-state.json:
-${serializeState(state)}
+    `Run \`git rev-parse --abbrev-ref HEAD\` and \`date +%Y-%m-%dT%H:%M:%S\` to get the real branch name and timestamp.
+Write this exact JSON to .datum/pipeline-state.json, substituting BRANCH_PLACEHOLDER and TIMESTAMP_PLACEHOLDER with those real values (do not invent or leave them blank):
+${serializeState({
+      branch: resolvedBranch || "BRANCH_PLACEHOLDER",
+      runId: resolvedRunId || "",
+      route,
+      completedPhases,
+      currentPhase: null,
+      lastUpdated: "TIMESTAMP_PLACEHOLDER"
+    })}
 Overwrite if exists. No other output.`,
     { label: `save-state:${p}`, model: model("fast") }
   );
@@ -339,6 +341,8 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   const info = parseAgentJson(bootstrapInfo, { epicBranch: "", timestamp: "" });
   const epicBranch = info.epicBranch;
   const runId = info.timestamp;
+  resolvedBranch = epicBranch;
+  resolvedRunId = runId;
   if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`);
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
   const epicDir = `docs/epics/${epicBranch}`;

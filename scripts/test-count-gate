@@ -9,6 +9,10 @@
 #   scripts/test-count-gate --repo <wt> --files <file1> <file2> ... \
 #     --pattern '<grep-pattern>' --required <min-count>
 #
+# Use --pattern-file <path> instead of --pattern when the pattern contains
+# characters that don't survive shell quoting layers; the script reads the
+# pattern from the file verbatim (trailing newline stripped).
+#
 # Exit codes:
 #   0 — passed (new_test_count >= required)
 #   1 — failed (new_test_count < required)
@@ -38,6 +42,7 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --pattern) PATTERN="$2"; shift 2 ;;
+        --pattern-file) PATTERN="$(cat "$2")"; shift 2 ;;
         --regex) REGEX_TYPE="$2"; shift 2 ;;
         --required) REQUIRED="$2"; shift 2 ;;
         -h|--help) usage ;;

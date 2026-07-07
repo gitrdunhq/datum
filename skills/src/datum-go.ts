@@ -75,6 +75,8 @@ const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
 
 let lastResult: PhaseResult = {}
 let haltedAt = ''
+let resolvedBranch = ''
+let resolvedRunId = ''
 const completedPhases: Phase[] = priorState?.completedPhases ? [...priorState.completedPhases] : []
 
 function shouldRun(p: Phase, idx: number): boolean {
@@ -83,16 +85,18 @@ function shouldRun(p: Phase, idx: number): boolean {
 
 async function markPhaseComplete(p: Phase): Promise<void> {
   if (!completedPhases.includes(p)) completedPhases.push(p)
-  const state: PipelineState = {
-    branch: globalCfg.branch || '',
-    runId: '',
-    route,
-    completedPhases,
-    currentPhase: null,
-    lastUpdated: '',
-  }
   await agent(
-    `Write this exact content to .datum/pipeline-state.json:\n${serializeState(state)}\nOverwrite if exists. No other output.`,
+    `Run \`git rev-parse --abbrev-ref HEAD\` and \`date +%Y-%m-%dT%H:%M:%S\` to get the real branch name and timestamp.
+Write this exact JSON to .datum/pipeline-state.json, substituting BRANCH_PLACEHOLDER and TIMESTAMP_PLACEHOLDER with those real values (do not invent or leave them blank):
+${serializeState({
+      branch: resolvedBranch || 'BRANCH_PLACEHOLDER',
+      runId: resolvedRunId || '',
+      route,
+      completedPhases,
+      currentPhase: null,
+      lastUpdated: 'TIMESTAMP_PLACEHOLDER',
+    })}
+Overwrite if exists. No other output.`,
     { label: `save-state:${p}`, model: model('fast') },
   )
 }
@@ -169,6 +173,8 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   const info = parseAgentJson(bootstrapInfo, { epicBranch: '', timestamp: '' }) as { epicBranch: string; timestamp: string; lanePlanPath?: string; adopted?: boolean }
   const epicBranch = info.epicBranch
   const runId = info.timestamp
+  resolvedBranch = epicBranch
+  resolvedRunId = runId
   if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`)
 
   // Skeleton dir from Plan phase (pre-generated test contracts)
