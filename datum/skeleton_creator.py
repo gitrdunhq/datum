@@ -19,6 +19,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
+
+TestConvention = Literal["flat", "directory", "docs-only"]
 
 
 def _write_skeleton(dest: Path, content: str) -> None:
@@ -353,14 +356,35 @@ def slugify(text: str) -> str:
     return _slugify(text, max_len=60).replace("-", "_")
 
 
-def infer_test_path(task_files: list[str], language: str, ac_id: str) -> str:
-    """Derive a test file path from the task's source files."""
+def infer_test_path(
+    task_files: list[str],
+    language: str,
+    ac_id: str,
+    test_convention: TestConvention = "flat",
+) -> str | None:
+    """Derive a test file path from the task's source files.
+
+    test_convention controls the shape of the produced stub target:
+      - "flat" (default): a single flat-extension test file (existing behavior).
+      - "directory": a package/directory-style test target (e.g. Swift/JVM
+        test package dirs), returned as a directory path.
+      - "docs-only": the task has no source test file to stub; returns None.
+    """
+    if test_convention == "docs-only":
+        return None
+
     mock_markers = ["Mock", "mock", "Stub", "stub", "Fake", "fake", "Spy", "spy"]
     for f in task_files:
         if any(m in Path(f).stem or m in Path(f).parent.name for m in mock_markers):
             continue
         if any(t in f for t in ["Test", "test", "Spec", "spec", "_test.", "_spec."]):
             return f
+
+    if test_convention == "directory" and task_files:
+        src = task_files[0]
+        parent_name = Path(src).parent.name
+        return f"Tests/{parent_name}Tests/"
+
     # Derive from source file
     if task_files:
         src = task_files[0]
