@@ -316,7 +316,7 @@ ${"=".repeat(60)}`);
   log("\u2500\u2500 Setup \u2500\u2500");
   const setup = await workflow(
     { scriptPath: sk("datum-tdd-act-setup") },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag }
   );
   log("\u2500\u2500 Act \u2500\u2500");
   const act = await workflow(

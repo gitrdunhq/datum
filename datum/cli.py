@@ -640,6 +640,34 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+@app.command(name="lane-plan-distribute")
+def lane_plan_distribute_cmd(
+    source: str = typer.Argument(
+        ..., help="Path to the already-approved lane-plan.json"
+    ),
+    targets: list[str] = typer.Option(
+        ..., "--target", help="Directory to copy lane-plan.json into (repeatable)"
+    ),
+):
+    """Copy an already-approved lane-plan.json into worktree dirs (internal).
+
+    Pure file copy — never reads the plan's contents as instructions. The
+    plan itself is produced and gated by the Plan phase; this command only
+    distributes that existing file to each lane's worktree so ACT can read it.
+    """
+    src = Path(source)
+    if not src.is_file():
+        console.print(f"[red]Not found: {source}[/red]")
+        raise typer.Exit(1)
+
+    for target in targets:
+        dest_dir = Path(target)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / "lane-plan.json"
+        dest.write_bytes(src.read_bytes())
+        console.print(f"wrote: {dest}")
+
+
 @app.command(name="lane-cleanup")
 def lane_cleanup_cmd(
     worktree: str = typer.Argument(..., help="Path to the lane's git worktree"),

@@ -7,6 +7,7 @@ export interface SetupArgs {
   epicBranch: string
   batchLaneIds: string[]
   lanePlan: LanePlan
+  lanePlanPath: string
   batchTag: string
 }
 export interface SetupResult {
