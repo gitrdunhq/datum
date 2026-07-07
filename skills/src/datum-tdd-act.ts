@@ -113,7 +113,7 @@ const allLaneIds = lanePlan.topological_order.filter((id: string) => !alreadyMer
 const remainingWaves = waves
   .map((wave) => wave.filter((id) => allLaneIds.includes(id)))
   .filter((wave) => wave.length > 0)
-const batches: string[][] = packWaves(remainingWaves, MAX_BATCH)
+const batches: string[][] = packWaves(remainingWaves, MAX_BATCH, lanePlan)
 log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`)
 
 if (batches.length > 1) {

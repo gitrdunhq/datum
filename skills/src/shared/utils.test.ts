@@ -140,7 +140,7 @@ describe('task-002 — packWaves', () => {
     expect(waves.length).toBe(8)
     expect(waves.flat().length).toBe(22)
 
-    const batches = packWaves(waves, 5)
+    const batches = packWaves(waves, 5, lanePlan)
     assertNoForwardDependency(lanePlan, batches)
   })
 
@@ -177,9 +177,43 @@ describe('task-002 — packWaves', () => {
 
       const lanePlan = makeLanePlan(depsById)
       const waves = buildWaves(lanePlan)
-      const batches = packWaves(waves, 5)
+      const batches = packWaves(waves, 5, lanePlan)
       assertNoForwardDependency(lanePlan, batches)
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // #300 (RED) — the 2-wave fast path must not co-batch a lane with its own
+  // dependency just because both waves fit under maxBatch. This is the
+  // real-world shape every actual caller hits: buildWaves(lanePlan) waves
+  // always carry genuine cross-wave dependency edges, unlike the bare
+  // fixture arrays AC1-3 use.
+  // -------------------------------------------------------------------------
+
+  it('#300: a 2-wave lane plan with a real cross-wave dependency never co-batches a lane with its own dep', () => {
+    const lanePlan = makeLanePlan({
+      A: [],
+      B: ['A'],
+    })
+    const waves = buildWaves(lanePlan)
+    expect(waves).toEqual([['A'], ['B']])
+
+    // maxBatch=5 gives ample room for the old merging fast path to cram
+    // both A and B into one batch — exactly the bug.
+    const batches = packWaves(waves, 5, lanePlan)
+    assertNoForwardDependency(lanePlan, batches)
+  })
+
+  it('#300: still packs tightly when two small waves genuinely have no dependency between them', () => {
+    const lanePlan = makeLanePlan({
+      A: [],
+      B: [],
+    })
+    // Two independent single-lane waves fed in directly (not via buildWaves,
+    // which would put both in wave 0) — simulates a caller with real
+    // pre-partitioned, dependency-free wave groups.
+    const batches = packWaves([['A'], ['B']], 5, lanePlan)
+    expect(batches).toEqual([['A', 'B']])
   })
 })
 

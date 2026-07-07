@@ -93,11 +93,46 @@ export function buildWaves(lanePlan: LanePlan): string[][] {
 // it preserves the tightest possible packing in that narrow case.
 // ---------------------------------------------------------------------------
 
-export function packWaves(waves: string[][], maxBatch: number): string[][] {
+export function packWaves(waves: string[][], maxBatch: number, lanePlan?: LanePlan): string[][] {
+  if (lanePlan) {
+    return packWavesSafe(waves, maxBatch, lanePlan)
+  }
   if (waves.length <= 2) {
     return packWavesMerging(waves, maxBatch)
   }
   return packWavesStrict(waves, maxBatch)
+}
+
+// Dependency-aware pack: greedily fills the current batch, but flushes and
+// starts a fresh batch before adding a lane whose depends_on includes a lane
+// already sitting in the (not-yet-flushed) current batch. A dependency in an
+// already-flushed batch is always safe, since every flushed batch has a
+// strictly earlier index than the one being filled. This replaces the
+// wave-count-based dispatch above for every real caller, since a lane's
+// dependency always lives in a strictly earlier wave — merging adjacent
+// waves is only safe when checked against actual depends_on edges, not
+// assumed safe just because there happen to be <=2 waves.
+function packWavesSafe(waves: string[][], maxBatch: number, lanePlan: LanePlan): string[][] {
+  const batches: string[][] = []
+  let current: string[] = []
+
+  for (const wave of waves) {
+    for (const id of wave) {
+      const deps = lanePlan.lanes?.[id]?.depends_on || []
+      const blockedByCurrent = deps.some((d) => current.includes(d))
+      if (current.length > 0 && (current.length >= maxBatch || blockedByCurrent)) {
+        batches.push(current)
+        current = []
+      }
+      current.push(id)
+    }
+  }
+
+  if (current.length > 0) {
+    batches.push(current)
+  }
+
+  return batches
 }
 
 // Greedy flatten-and-chunk: fills each batch to maxBatch, spilling lanes

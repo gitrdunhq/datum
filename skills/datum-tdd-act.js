@@ -77,11 +77,33 @@ function buildWaves(lanePlan2) {
   }
   return waves2;
 }
-function packWaves(waves2, maxBatch) {
+function packWaves(waves2, maxBatch, lanePlan2) {
+  if (lanePlan2) {
+    return packWavesSafe(waves2, maxBatch, lanePlan2);
+  }
   if (waves2.length <= 2) {
     return packWavesMerging(waves2, maxBatch);
   }
   return packWavesStrict(waves2, maxBatch);
+}
+function packWavesSafe(waves2, maxBatch, lanePlan2) {
+  const batches2 = [];
+  let current = [];
+  for (const wave of waves2) {
+    for (const id of wave) {
+      const deps = lanePlan2.lanes?.[id]?.depends_on || [];
+      const blockedByCurrent = deps.some((d) => current.includes(d));
+      if (current.length > 0 && (current.length >= maxBatch || blockedByCurrent)) {
+        batches2.push(current);
+        current = [];
+      }
+      current.push(id);
+    }
+  }
+  if (current.length > 0) {
+    batches2.push(current);
+  }
+  return batches2;
 }
 function packWavesMerging(waves2, maxBatch) {
   const batches2 = [];
@@ -255,7 +277,7 @@ if (alreadyMerged.length > 0) {
 var MAX_BATCH = 5;
 var allLaneIds = lanePlan.topological_order.filter((id) => !alreadyMerged.includes(id));
 var remainingWaves = waves.map((wave) => wave.filter((id) => allLaneIds.includes(id))).filter((wave) => wave.length > 0);
-var batches = packWaves(remainingWaves, MAX_BATCH);
+var batches = packWaves(remainingWaves, MAX_BATCH, lanePlan);
 log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`);
 if (batches.length > 1) {
   log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches (max ${MAX_BATCH}/batch)`);
