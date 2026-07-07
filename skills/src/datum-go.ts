@@ -1,5 +1,5 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
@@ -193,7 +193,7 @@ if (shouldRun('act', 3)) {
   // plan entry, and its merge_commit is an ancestor of the epic branch tip.
   const slug = epicSlug(epicBranch)
   const markerText = await agent(
-    laneStateReadPrompt({ epicBranch, epicSlug: slug }),
+    laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(' ') }),
     { label: 'lane-state-read', phase: 'Act', model: model('fast') },
   )
   const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
@@ -216,10 +216,11 @@ if (shouldRun('act', 3)) {
   // Batch partitioning
   const MAX_BATCH = 5
   const allLaneIds = lanePlan.topological_order.filter((id: string) => !alreadyMerged.includes(id))
-  const batches: string[][] = []
-  for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
-    batches.push(allLaneIds.slice(i, i + MAX_BATCH))
-  }
+  const remainingWaves = waves
+    .map((wave) => wave.filter((id) => allLaneIds.includes(id)))
+    .filter((wave) => wave.length > 0)
+  const batches: string[][] = packWaves(remainingWaves, MAX_BATCH)
+  log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`)
   if (batches.length > 1) {
     log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches`)
   }
@@ -292,6 +293,7 @@ if (shouldRun('act', 3)) {
       {
         epicBranch,
         completedIds: mergedIds,
+        results: actResults,
         batchRunId,
         topoOrder: lanePlan.topological_order,
         batchTag,
@@ -314,16 +316,17 @@ if (shouldRun('act', 3)) {
     { completedLanes: actCompleted, lanePlan, runId },
   )
 
+  const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
+  const actBlocked = Object.keys(actResults).filter(id => actResults[id]?.status === 'blocked')
+
   // Triage — direct child workflow
   if (actFailures.length > 0) {
     await workflow(
       { scriptPath: sk('datum-tdd-act-triage') },
-      { failures: actFailures, results: actResults, lanePlan, runId, epicBranch },
+      { failures: actFailures, blocked: actBlocked.map(id => actResults[id]), results: actResults, lanePlan, runId, epicBranch },
     )
   }
 
-  const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
-  const actBlocked = Object.keys(actResults).filter(id => actResults[id]?.status === 'blocked')
   await markPhaseComplete('act')
   log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }

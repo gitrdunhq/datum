@@ -1,6 +1,6 @@
 import { model, setModelTiers } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
@@ -86,7 +86,7 @@ for (let i = 0; i < waves.length; i++) {
 
 const slug = epicSlug(epicBranch)
 const markerText = await agent(
-  laneStateReadPrompt({ epicBranch, epicSlug: slug }),
+  laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(' ') }),
   { label: 'lane-state-read', phase: 'Topology', model: model('fast') },
 )
 const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
@@ -110,10 +110,11 @@ if (alreadyMerged.length > 0) {
 
 const MAX_BATCH = 5
 const allLaneIds = lanePlan.topological_order.filter((id: string) => !alreadyMerged.includes(id))
-const batches: string[][] = []
-for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
-  batches.push(allLaneIds.slice(i, i + MAX_BATCH))
-}
+const remainingWaves = waves
+  .map((wave) => wave.filter((id) => allLaneIds.includes(id)))
+  .filter((wave) => wave.length > 0)
+const batches: string[][] = packWaves(remainingWaves, MAX_BATCH)
+log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`)
 
 if (batches.length > 1) {
   log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches (max ${MAX_BATCH}/batch)`)
@@ -194,6 +195,7 @@ for (let bi = 0; bi < batches.length; bi++) {
     {
       epicBranch,
       completedIds: mergedIds,
+      results,
       batchRunId,
       topoOrder: lanePlan.topological_order,
       batchTag,
@@ -249,7 +251,7 @@ if (failures.length > 0) {
   log('── Triage ──')
   await workflow(
     { scriptPath: sk('datum-tdd-act-triage') },
-    { failures, results, lanePlan, runId, epicBranch }
+    { failures, blocked: blockedLanes.map(id => results[id]), results, lanePlan, runId, epicBranch }
   )
 }
 

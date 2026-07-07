@@ -48,6 +48,46 @@ function buildWaves(lanePlan) {
   }
   return waves;
 }
+function packWaves(waves, maxBatch) {
+  if (waves.length <= 2) {
+    return packWavesMerging(waves, maxBatch);
+  }
+  return packWavesStrict(waves, maxBatch);
+}
+function packWavesMerging(waves, maxBatch) {
+  const batches = [];
+  let current = [];
+  for (const wave of waves) {
+    let idx = 0;
+    while (idx < wave.length) {
+      const remaining = maxBatch - current.length;
+      if (remaining <= 0) {
+        batches.push(current);
+        current = [];
+        continue;
+      }
+      const take = Math.min(remaining, wave.length - idx);
+      current.push(...wave.slice(idx, idx + take));
+      idx += take;
+    }
+  }
+  if (current.length > 0) {
+    batches.push(current);
+  }
+  return batches;
+}
+function packWavesStrict(waves, maxBatch) {
+  const batches = [];
+  for (const wave of waves) {
+    let idx = 0;
+    while (idx < wave.length) {
+      const take = Math.min(maxBatch, wave.length - idx);
+      batches.push(wave.slice(idx, idx + take));
+      idx += take;
+    }
+  }
+  return batches;
+}
 function epicSlug(branch) {
   return branch.replace(/[^A-Za-z0-9._-]/g, "-");
 }
@@ -128,10 +168,10 @@ function skillPath(skillsDir, name) {
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/lane-state-read.md
-var lane_state_read_default = "Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary:\n\n```\npython3 - <<'PYEOF'\nimport json, glob, os, subprocess\nout = {}\nfor f in sorted(glob.glob('.datum/epics/{{epicSlug}}/lane-state/*.json')):\n    try:\n        d = json.load(open(f))\n    except Exception:\n        continue\n    mc = d.get('merge_commit', '')\n    anc = False\n    if mc:\n        anc = subprocess.run(['git', 'merge-base', '--is-ancestor', mc, '{{epicBranch}}'],\n                             capture_output=True).returncode == 0\n    tid = d.get('task_id') or os.path.basename(f)[:-5]\n    out[tid] = {'status': d.get('status', ''), 'spec_hash': d.get('spec_hash', ''), 'ancestor': anc}\nprint(json.dumps(out))\nPYEOF\n```\n\nIf the lane-state directory does not exist, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n";
+var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
 // skills/src/prompts/lane-state-write.md
-var lane_state_write_default = "Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE:\n\n```\npython3 - <<'PYEOF'\nimport json, os, subprocess, datetime\nentries = json.loads('''{{entriesJson}}''')\nmerge_commit = subprocess.check_output(['git', 'rev-parse', '{{epicBranch}}']).decode().strip()\nts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')\nd = '.datum/epics/{{epicSlug}}/lane-state'\nos.makedirs(d, exist_ok=True)\nfor e in entries:\n    marker = {\n        'schema_version': '1.0',\n        'task_id': e['task_id'],\n        'status': 'completed',\n        'epic_branch': '{{epicBranch}}',\n        'merge_commit': merge_commit,\n        'spec_hash': e['spec_hash'],\n        'run_id': '{{runId}}',\n        'completed_at': ts,\n    }\n    with open(os.path.join(d, e['task_id'] + '.json'), 'w') as fh:\n        json.dump(marker, fh, indent=2)\n        fh.write('\\n')\nprint('DONE')\nPYEOF\n```\n\nDo not commit these files; they are local scheduler state.\n";
+var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
@@ -295,7 +335,7 @@ if (shouldRun("act", 3)) {
   log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
   const slug = epicSlug(epicBranch);
   const markerText = await agent(
-    laneStateReadPrompt({ epicBranch, epicSlug: slug }),
+    laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(" ") }),
     { label: "lane-state-read", phase: "Act", model: model("fast") }
   );
   const priorMarkers = parseAgentJson(markerText, {});
@@ -315,10 +355,9 @@ if (shouldRun("act", 3)) {
   }
   const MAX_BATCH = 5;
   const allLaneIds = lanePlan.topological_order.filter((id) => !alreadyMerged.includes(id));
-  const batches = [];
-  for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
-    batches.push(allLaneIds.slice(i, i + MAX_BATCH));
-  }
+  const remainingWaves = waves.map((wave) => wave.filter((id) => allLaneIds.includes(id))).filter((wave) => wave.length > 0);
+  const batches = packWaves(remainingWaves, MAX_BATCH);
+  log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`);
   if (batches.length > 1) {
     log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches`);
   }
@@ -381,6 +420,7 @@ if (shouldRun("act", 3)) {
       {
         epicBranch,
         completedIds: mergedIds,
+        results: actResults,
         batchRunId,
         topoOrder: lanePlan.topological_order,
         batchTag
@@ -398,14 +438,14 @@ if (shouldRun("act", 3)) {
     { scriptPath: sk("datum-tdd-act-docs") },
     { completedLanes: actCompleted, lanePlan, runId }
   );
+  const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
+  const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
   if (actFailures.length > 0) {
     await workflow(
       { scriptPath: sk("datum-tdd-act-triage") },
-      { failures: actFailures, results: actResults, lanePlan, runId, epicBranch }
+      { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch }
     );
   }
-  const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
-  const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
   await markPhaseComplete("act");
   log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
