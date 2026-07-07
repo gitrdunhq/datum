@@ -147,6 +147,9 @@ var tasksRaw = await agent(
   { label: "decompose-tasks", model: decomposeModel }
 );
 var tasks = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
+if (!Array.isArray(tasks) || tasks.length === 0) {
+  throw new Error(`Task decomposition returned 0 tasks \u2014 refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`);
+}
 var tasksJson = JSON.stringify(tasks);
 log(`Decomposed into ${tasks.length} tasks`);
 for (const task of tasks) {

@@ -91,6 +91,9 @@ const tasksRaw = await agent(
 )
 
 const tasks = typeof tasksRaw === 'string' ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[]) : tasksRaw
+if (!Array.isArray(tasks) || tasks.length === 0) {
+  throw new Error(`Task decomposition returned 0 tasks — refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`)
+}
 const tasksJson: string = JSON.stringify(tasks)
 log(`Decomposed into ${tasks.length} tasks`)
 for (const task of tasks) {
