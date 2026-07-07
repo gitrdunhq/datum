@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "22bcc44f0249",
+  "session_id": "34049556-f4aa-4742-a046-bafddb134199",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-07T08:42:14.444384Z",
+  "branch": "datum/epic-287",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "1bc101a175ed",
+  "token_usage": {
+    "input_tokens": 206867,
+    "cache_creation_tokens": 3256507,
+    "cache_read_tokens": 64265600,
+    "output_tokens": 343301,
+    "api_call_count": 576
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01TJJGi9NC4jgPVGpi5XhjH8",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "datum-go"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1bc101a175ed",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 21,
+        "end": 22,
+        "entry_ids": [
+          "d3b09400-3acf-44cb-9942-26059deff4b9"
+        ],
+        "tool_use_id": "toolu_01TJJGi9NC4jgPVGpi5XhjH8"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01TJJGi9NC4jgPVGpi5XhjH8"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: datum-go",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
