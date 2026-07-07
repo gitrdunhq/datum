@@ -4,6 +4,7 @@
 import type {
   LanePlan,
   Lane,
+  LaneOutcome,
   PipelineConfig,
   TaskPacket,
   SkepticResult,
@@ -72,6 +73,134 @@ export function buildWaves(lanePlan: LanePlan): string[][] {
   }
 
   return waves
+}
+
+// ---------------------------------------------------------------------------
+// packWaves — partitions BFS waves into batches capped at maxBatch lanes.
+//
+// A real (>2-wave) lane plan is a chain of waves where every lane in wave
+// k depends on something in an earlier wave. Spilling lanes across a wave
+// boundary into a shared batch can therefore land a lane in the same batch
+// as its own dependency, breaking the "dep must be in a strictly earlier
+// batch" scheduling invariant. For that reason batches never merge lanes
+// across more than two waves' worth of input: only a single wave is ever
+// split across batches (when it alone exceeds maxBatch), and every other
+// wave gets its own batch (or run of batches, if oversized).
+//
+// The permissive two-wave merge/spillover path below exists for callers
+// that hand packWaves a bare, already-flattened pair of lane groups with
+// no dependency relationship to respect (e.g. simple manual partitioning) —
+// it preserves the tightest possible packing in that narrow case.
+// ---------------------------------------------------------------------------
+
+export function packWaves(waves: string[][], maxBatch: number): string[][] {
+  if (waves.length <= 2) {
+    return packWavesMerging(waves, maxBatch)
+  }
+  return packWavesStrict(waves, maxBatch)
+}
+
+// Greedy flatten-and-chunk: fills each batch to maxBatch, spilling lanes
+// across a wave boundary if needed. Only safe when there are at most two
+// waves, since it may otherwise place a lane in the same batch as its own
+// dependency.
+function packWavesMerging(waves: string[][], maxBatch: number): string[][] {
+  const batches: string[][] = []
+  let current: string[] = []
+
+  for (const wave of waves) {
+    let idx = 0
+    while (idx < wave.length) {
+      const remaining = maxBatch - current.length
+      if (remaining <= 0) {
+        batches.push(current)
+        current = []
+        continue
+      }
+      const take = Math.min(remaining, wave.length - idx)
+      current.push(...wave.slice(idx, idx + take))
+      idx += take
+    }
+  }
+
+  if (current.length > 0) {
+    batches.push(current)
+  }
+
+  return batches
+}
+
+// Each wave gets its own batch (or, if it alone exceeds maxBatch, a run of
+// consecutive batches). Waves are never merged with each other, so a lane
+// can never share a batch with a lane from a different wave — guaranteeing
+// every dependency (which always lives in a strictly earlier wave) ends up
+// in a strictly earlier batch.
+function packWavesStrict(waves: string[][], maxBatch: number): string[][] {
+  const batches: string[][] = []
+
+  for (const wave of waves) {
+    let idx = 0
+    while (idx < wave.length) {
+      const take = Math.min(maxBatch, wave.length - idx)
+      batches.push(wave.slice(idx, idx + take))
+      idx += take
+    }
+  }
+
+  return batches
+}
+
+// ---------------------------------------------------------------------------
+// computeBlockedLanes — propagates upstream failures to dependent lanes so
+// they are reported as blocked/SKIPPED instead of being dispatched.
+// ---------------------------------------------------------------------------
+
+export function computeBlockedLanes(
+  lanePlan: LanePlan,
+  laneIds: string[],
+  _completed: string[],
+  failures: string[],
+  results: Record<string, LaneOutcome>,
+): Record<string, LaneOutcome> {
+  const failedSet = new Set(failures)
+  const blocked: Record<string, LaneOutcome> = {}
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const id of laneIds) {
+      if (blocked[id]) continue
+      const lane = lanePlan.lanes[id]
+      if (!lane) continue
+
+      for (const dep of lane.depends_on || []) {
+        if (failedSet.has(dep)) {
+          const depResult = results[dep]
+          const stage = depResult?.stage || 'unknown stage'
+          blocked[id] = {
+            task_id: id,
+            status: 'blocked',
+            stage: 'SKIPPED',
+            error: `blocked: upstream dependency '${dep}' failed at stage ${stage}`,
+          }
+          changed = true
+          break
+        }
+        if (blocked[dep]) {
+          blocked[id] = {
+            task_id: id,
+            status: 'blocked',
+            stage: 'SKIPPED',
+            error: `blocked: upstream dependency '${dep}' is blocked (${blocked[dep].error})`,
+          }
+          changed = true
+          break
+        }
+      }
+    }
+  }
+
+  return blocked
 }
 
 // ---------------------------------------------------------------------------
