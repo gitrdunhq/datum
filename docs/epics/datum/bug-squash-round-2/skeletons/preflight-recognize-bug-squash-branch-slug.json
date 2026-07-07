@@ -1,0 +1,61 @@
+{
+  "task_id": "recognize-bug-squash-branch-slug",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_closeout_cmd.py",
+      "kind": "pytest",
+      "purpose": "Verify detect_context(branch='bug-squash-306', epic_number=None) re",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_detect_context_branch_bug_squash_306_epic_number_none_return",
+      "skeleton_written": false,
+      "content": "# Skeleton: recognize-bug-squash-branch-slug AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_detect_context_branch_bug_squash_306_epic_number_none_return \u2192 tests/test_closeout_cmd.py\n\nimport pytest\n\n\nclass Testrecognize_bug_squash_branch_slug_AC1:\n    def test_ac1_detect_context_branch_bug_squash_306_epic_number_none_return(self):\n        \"\"\"\n        PROP-001: detect_context(branch='bug-squash-306', epic_number=None) returns epic_number=30\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_closeout_cmd.py",
+      "kind": "pytest",
+      "purpose": "Verify detect_context(branch='epic-23', epic_number=None) returns e",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_detect_context_branch_epic_23_epic_number_none_returns_epic",
+      "skeleton_written": false,
+      "content": "# Skeleton: recognize-bug-squash-branch-slug AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_detect_context_branch_epic_23_epic_number_none_returns_epic \u2192 tests/test_closeout_cmd.py\n\nimport pytest\n\n\nclass Testrecognize_bug_squash_branch_slug_AC2:\n    def test_ac2_detect_context_branch_epic_23_epic_number_none_returns_epic(self):\n        \"\"\"\n        PROP-002: detect_context(branch='epic-23', epic_number=None) returns epic_number=23 (exist\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_closeout_cmd.py",
+      "kind": "pytest",
+      "purpose": "Verify detect_context(branch='some-random-branch', epic_number=None",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_detect_context_branch_some_random_branch_epic_number_none_do",
+      "skeleton_written": false,
+      "content": "# Skeleton: recognize-bug-squash-branch-slug AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_detect_context_branch_some_random_branch_epic_number_none_do \u2192 tests/test_closeout_cmd.py\n\nimport pytest\n\n\nclass Testrecognize_bug_squash_branch_slug_AC3:\n    def test_ac3_detect_context_branch_some_random_branch_epic_number_none_do(self):\n        \"\"\"\n        PROP-003: detect_context(branch='some-random-branch', epic_number=None) does not silently \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_closeout_cmd.py",
+      "kind": "pytest",
+      "purpose": "Verify detect_context(branch='some-random-branch', epic_number=42) ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_detect_context_branch_some_random_branch_epic_number_42_retu",
+      "skeleton_written": false,
+      "content": "# Skeleton: recognize-bug-squash-branch-slug AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_detect_context_branch_some_random_branch_epic_number_42_retu \u2192 tests/test_closeout_cmd.py\n\nimport pytest\n\n\nclass Testrecognize_bug_squash_branch_slug_AC4:\n    def test_ac4_detect_context_branch_some_random_branch_epic_number_42_retu(self):\n        \"\"\"\n        PROP-004: detect_context(branch='some-random-branch', epic_number=42) returns epic_number=\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/closeout_cmd.py": "\nfrom __future__ import annotations\n\nimport json\nimport re\nimport subprocess\nimport sys\nfrom datetime import datetime\nfrom pathlib import Path\n\n\ndef _git(*args: str) -> str:\n    ...\n\n\ndef detect_context(\n    run_id: str | None = None,\n) -> dict:\n    branch = _git(\"rev-parse\", \"--abbrev-ref\", \"HEAD\")\n    detected_merge_sha = merge_sha or _git(\"rev-parse\", \"HEAD\")\n\n    detected_epic = epic_number\n        m = re.search(r\"epic-(\\d+)\", branch)\n        detected_epic = int(m.group(1)) if m else 0\n\n    detected_base = base_sha\n            detected_base = _git(\"merge-base\", \"main\", \"HEAD\")\n            detected_base = _git(\"rev-parse\", \"HEAD~1\")\n\n    detected_run_id = run_id or datetime.now().strftime(\"%Y%m%d-%H%M%S\")\n\n\n\ndef run_stage1(\n    run_id: str,\n) -> dict:\n        runs_dir = Path(\".datum/runs\")\n    run_dir = runs_dir / run_id\n\n    base_args = [sys.executable, \"-m\"]\n    results: dict[str, dict] = {}\n\n    simple_collectors = [\n        name = mod.split(\".\")[-1]\n        proc = subprocess.run(\n            capture_output=True,\n            text=True,\n            results[name] = json.loads(proc.stdout) if proc.stdout.strip() else {}\n            results[name] = {\"ok\": False, \"stderr\": proc.stderr[:200]}\n\n    sha_collectors = [\n        name = mod.split(\".\")[-1]\n        proc = subprocess.run(\n            capture_output=True,\n            text=True,\n            results[name] = json.loads(proc.stdout) if proc.stdout.strip() else {}\n            results[name] = {\"ok\": False, \"stderr\": proc.stderr[:200]}\n\n\n\ndef run_collate(run_id: str, merge_sha: str, epic_number: int) -> Path:\n    ...\n\n\ndef run_archive(run_id: str) -> None:\n    ...\n\n\ndef sweep_project_memories(memory_dir: Path, epic_branch: str) -> int:\n    ...\n        \n    \n            \n            \n            \n            \n            \n            \n        \n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

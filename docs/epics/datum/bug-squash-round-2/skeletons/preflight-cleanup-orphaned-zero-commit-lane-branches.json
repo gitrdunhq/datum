@@ -1,0 +1,49 @@
+{
+  "task_id": "cleanup-orphaned-zero-commit-lane-branches",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_worktree_manager.py",
+      "kind": "pytest",
+      "purpose": "Verify cleanup_run_worktrees() enumerates lane branches via git for",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_cleanup_run_worktrees_enumerates_lane_branches_via_git_for_e",
+      "skeleton_written": false,
+      "content": "# Skeleton: cleanup-orphaned-zero-commit-lane-branches AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_cleanup_run_worktrees_enumerates_lane_branches_via_git_for_e \u2192 tests/test_worktree_manager.py\n\nimport pytest\n\n\nclass Testcleanup_orphaned_zero_commit_lane_branches_AC1:\n    def test_ac1_cleanup_run_worktrees_enumerates_lane_branches_via_git_for_e(self):\n        \"\"\"\n        PROP-001: cleanup_run_worktrees() enumerates lane branches via git for-each-ref refs/heads\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_worktree_manager.py",
+      "kind": "pytest",
+      "purpose": "Verify A lane branch with zero commits ahead of its epic/base branc",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_a_lane_branch_with_zero_commits_ahead_of_its_epic_base_branc",
+      "skeleton_written": false,
+      "content": "# Skeleton: cleanup-orphaned-zero-commit-lane-branches AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_a_lane_branch_with_zero_commits_ahead_of_its_epic_base_branc \u2192 tests/test_worktree_manager.py\n\nimport pytest\n\n\nclass Testcleanup_orphaned_zero_commit_lane_branches_AC2:\n    def test_ac2_a_lane_branch_with_zero_commits_ahead_of_its_epic_base_branc(self):\n        \"\"\"\n        PROP-002: A lane branch with zero commits ahead of its epic/base branch and no worktree di\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_worktree_manager.py",
+      "kind": "pytest",
+      "purpose": "Verify A lane branch WITH commits ahead of base is NOT deleted even",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_a_lane_branch_with_commits_ahead_of_base_is_not_deleted_even",
+      "skeleton_written": false,
+      "content": "# Skeleton: cleanup-orphaned-zero-commit-lane-branches AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_a_lane_branch_with_commits_ahead_of_base_is_not_deleted_even \u2192 tests/test_worktree_manager.py\n\nimport pytest\n\n\nclass Testcleanup_orphaned_zero_commit_lane_branches_AC3:\n    def test_ac3_a_lane_branch_with_commits_ahead_of_base_is_not_deleted_even(self):\n        \"\"\"\n        PROP-003: A lane branch WITH commits ahead of base is NOT deleted even when its worktree d\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/worktree_manager.py": "\nfrom __future__ import annotations\n\nimport json\nimport subprocess\nfrom pathlib import Path\n\nWORKTREE_ROOT = \".datum/worktrees\"\n\n\ndef _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess:\n    ...\n\n\ndef create_lane_worktree(\n    epic_branch: str,\n) -> Path:\n    repo_root = (repo_root or Path(\".\")).resolve()\n    worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id\n    lane_branch = f\"{epic_branch}--{lane_id}\"\n\n\n        registered = _git(\n\n    result = _git(\n        cwd=repo_root,\n        check=False,\n\n\ndef remove_lane_worktree(\n    lane_id: str,\n    force: bool = True,\n) -> None:\n    repo_root = (repo_root or Path(\".\")).resolve()\n    worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id\n    lane_branch = f\"{epic_branch}--{lane_id}\"\n\n    flags = [\"--force\"] if force else []\n\n\ndef prune_stale_worktrees(repo_root: Path | None = None) -> None:\n    ...\n\n\ndef list_worktrees(repo_root: Path | None = None) -> list[dict]:\n    ...\n\n\n\ndef setup_pipeline_worktrees(\n    run_id: str,\n) -> dict[str, Path]:\n    repo_root = (repo_root or Path(\".\")).resolve()\n\n    result = _git([\"rev-parse\", epic_branch], cwd=repo_root, check=False)\n    base_sha = result.stdout.strip()\n\n    mapping: dict[str, Path] = {}\n        mapping[lane_id] = create_lane_worktree(\n            epic_branch, lane_id, run_id, base_sha, repo_root=repo_root\n\n\ndef merge_lane_branches(\n    epic_branch: str,\n) -> str:\n    repo_root = (repo_root or Path(\".\")).resolve()\n\n    checkout = _git([\"checkout\", epic_branch], cwd=repo_root, check=False)\n\n        lane_branch = f\"{epic_branch}--{lane_id}\"\n        result = _git(\n            cwd=repo_root,\n            check=False,\n\n    commit = _git([\"commit\", \"-m\", commit_message], cwd=repo_root, check=False)\n\n    sha = _git([\"rev-parse\", \"HEAD\"], cwd=repo_root).stdout.strip()\n\n\ndef cleanup_run_worktrees(\n    run_id: str,\n) -> list[str]:\n    repo_root = (repo_root or Path(\".\")).resolve()\n    run_dir = repo_root / WORKTREE_ROOT / run_id\n\n\n    cleaned: list[str] = []\n            lane_id = lane_dir.name\n\n\n\n\n\ndef worktree_path_for_lane(\n    lane_id: str,\n) -> Path:\n    repo_root = (repo_root or Path(\".\")).resolve()\n\n\ndef write_lane_order(lane_order: list[str], repo_root: Path | None = None) -> None:\n    ...\n\n\ndef read_lane_order(repo_root: Path | None = None) -> list[str]:\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
