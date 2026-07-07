@@ -1762,7 +1762,11 @@ def pipeline_state_save_cmd(
     ).stdout.strip()
 
     prior = read_pipeline_state()
-    completed = list(prior["completedPhases"]) if prior else []
+    completed = (
+        list(prior["completedPhases"])
+        if prior and prior.get("branch") == branch
+        else []
+    )
     if phase not in completed:
         completed.append(phase)
 
