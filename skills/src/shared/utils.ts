@@ -75,6 +75,41 @@ export function buildWaves(lanePlan: LanePlan): string[][] {
 }
 
 // ---------------------------------------------------------------------------
+// fnv1a64 / laneSpecHash — content-addressed lane identity for epic-scoped
+// completion markers. The sandbox has no crypto module, so we use FNV-1a
+// (64-bit, BigInt) — collision resistance is not a security property here,
+// only change detection on a handful of lane specs.
+// ---------------------------------------------------------------------------
+
+// Filesystem-safe slug for an epic branch name, used as the directory key
+// under .datum/epics/. "datum/epic-287" → "datum-epic-287".
+export function epicSlug(branch: string): string {
+  return branch.replace(/[^A-Za-z0-9._-]/g, '-')
+}
+
+export function fnv1a64(input: string): string {
+  const PRIME = 0x100000001b3n
+  const MASK = 0xffffffffffffffffn
+  let hash = 0xcbf29ce484222325n
+  for (let i = 0; i < input.length; i++) {
+    hash ^= BigInt(input.charCodeAt(i))
+    hash = (hash * PRIME) & MASK
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, '0')}`
+}
+
+// Hash of the fields that define WHAT a lane does. title/red_note/model hints
+// are presentation — editing them must not invalidate a completed lane.
+export function laneSpecHash(lane: Pick<Lane, 'files' | 'acceptance_criteria' | 'depends_on'>): string {
+  const spec = {
+    files: lane.files || [],
+    acceptance_criteria: lane.acceptance_criteria || [],
+    depends_on: lane.depends_on || [],
+  }
+  return fnv1a64(JSON.stringify(spec))
+}
+
+// ---------------------------------------------------------------------------
 // classifyFiles — separates test files from implementation files
 // ---------------------------------------------------------------------------
 
