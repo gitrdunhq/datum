@@ -68,9 +68,28 @@ def create_lane_worktree(
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"git worktree add failed for lane {lane_id}: {result.stderr.strip()}"
+        # lane_branch has no run_id in its name (only worktree_path does), so a
+        # branch left over from an earlier incomplete run collides with -b here.
+        # Reuse it (checkout, no -b) instead of deleting/recreating — preserves
+        # any RED/GREEN work already on it and never needs branch deletion.
+        branch_exists = (
+            _git(
+                ["rev-parse", "--verify", "--quiet", lane_branch],
+                cwd=repo_root,
+                check=False,
+            ).returncode
+            == 0
         )
+        if branch_exists:
+            result = _git(
+                ["worktree", "add", str(worktree_path), lane_branch],
+                cwd=repo_root,
+                check=False,
+            )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"git worktree add failed for lane {lane_id}: {result.stderr.strip()}"
+            )
     return worktree_path
 
 
