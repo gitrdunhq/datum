@@ -29,6 +29,60 @@ def test_detect_context_parses_epic_number_from_branch():
     assert ctx["epic_number"] == 23
 
 
+def test_detect_context_parses_epic_number_from_bug_squash_branch():
+    """#301: bug-squash-NNN branches (see docs/epics/datum/) resolve epic_number."""
+    from datum.closeout_cmd import detect_context
+
+    with patch(
+        "datum.closeout_cmd._git",
+        side_effect=[
+            "datum/bug-squash-281",  # rev-parse HEAD branch
+            "abc1234",  # rev-parse HEAD (merge sha)
+            "def5678",  # base sha detection
+        ],
+    ):
+        ctx = detect_context()
+    assert ctx["epic_number"] == 281
+
+
+def test_detect_context_unrecognized_branch_warns_and_uses_sentinel(caplog):
+    """#301: an unrecognized branch slug must not silently default to 0 —
+    it should log a warning and use an obviously-invalid sentinel instead."""
+    from datum.closeout_cmd import UNKNOWN_EPIC_NUMBER, detect_context
+
+    with patch(
+        "datum.closeout_cmd._git",
+        side_effect=[
+            "datum/bug-squash-round-2",  # rev-parse HEAD branch (no numeric suffix)
+            "abc1234",  # rev-parse HEAD (merge sha)
+            "def5678",  # base sha detection
+        ],
+    ):
+        with caplog.at_level("WARNING", logger="datum.closeout_cmd"):
+            ctx = detect_context()
+
+    assert ctx["epic_number"] == UNKNOWN_EPIC_NUMBER
+    assert ctx["epic_number"] != 0
+    assert any("epic number" in record.message.lower() for record in caplog.records)
+
+
+def test_detect_context_explicit_epic_number_wins_over_branch_parse():
+    """#301: an explicit --epic-number always overrides branch-name parsing,
+    even for an unrecognized branch slug."""
+    from datum.closeout_cmd import detect_context
+
+    with patch(
+        "datum.closeout_cmd._git",
+        side_effect=[
+            "some-random-branch",  # rev-parse HEAD branch
+            "abc1234",  # rev-parse HEAD (merge sha)
+            "def5678",  # base sha detection
+        ],
+    ):
+        ctx = detect_context(epic_number=42)
+    assert ctx["epic_number"] == 42
+
+
 def test_detect_context_generates_run_id():
     from datum.closeout_cmd import detect_context
 
