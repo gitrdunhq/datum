@@ -1,0 +1,71 @@
+{
+  "task_id": "task-004",
+  "language": "typescript",
+  "framework": "vitest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/datum-tdd-act-triage.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify TriageArgs (shared/types.ts) gains a `blocked: LaneOutcome[]",
+      "property_id": "PROP-001",
+      "function_name": "ac1_triageargs_shared_types_ts_gains_a_blocked_laneoutcome_field",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-004 AC1 \u2014 PROP-001\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC1 \u2192 ac1_triageargs_shared_types_ts_gains_a_blocked_laneoutcome_field \u2192 skills/src/datum-tdd-act-triage.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-001: TriageArgs (shared/types.ts) gains a `blocked: LaneOutcome[]` field\ndescribe('task-004 \u2014 PROP-001', () => {\n    it('ac1_triageargs_shared_types_ts_gains_a_blocked_laneoutcome_field', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-001\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/datum-tdd-act-triage.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify datum-go.ts and datum-tdd-act.ts pass their computed blocked",
+      "property_id": "PROP-002",
+      "function_name": "ac2_datum_go_ts_and_datum_tdd_act_ts_pass_their_computed_blocked",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-004 AC2 \u2014 PROP-002\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC2 \u2192 ac2_datum_go_ts_and_datum_tdd_act_ts_pass_their_computed_blocked \u2192 skills/src/datum-tdd-act-triage.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-002: datum-go.ts and datum-tdd-act.ts pass their computed blocked-lane list to the tr\ndescribe('task-004 \u2014 PROP-002', () => {\n    it('ac2_datum_go_ts_and_datum_tdd_act_ts_pass_their_computed_blocked', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-002\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/datum-tdd-act-triage.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify for a run with 1 root failure and 3 transitively blocked dep",
+      "property_id": "PROP-003",
+      "function_name": "ac3_for_a_run_with_1_root_failure_and_3_transitively_blocked_dep",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-004 AC3 \u2014 PROP-003\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC3 \u2192 ac3_for_a_run_with_1_root_failure_and_3_transitively_blocked_dep \u2192 skills/src/datum-tdd-act-triage.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-003: for a run with 1 root failure and 3 transitively blocked dependents, triage outp\ndescribe('task-004 \u2014 PROP-003', () => {\n    it('ac3_for_a_run_with_1_root_failure_and_3_transitively_blocked_dep', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-003\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/datum-tdd-act-triage.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify two independent failure chains (unrelated root causes) produ",
+      "property_id": "PROP-004",
+      "function_name": "ac4_two_independent_failure_chains_unrelated_root_causes_produce",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-004 AC4 \u2014 PROP-004\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC4 \u2192 ac4_two_independent_failure_chains_unrelated_root_causes_produce \u2192 skills/src/datum-tdd-act-triage.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-004: two independent failure chains (unrelated root causes) produce 2 separate groups\ndescribe('task-004 \u2014 PROP-004', () => {\n    it('ac4_two_independent_failure_chains_unrelated_root_causes_produce', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-004\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/datum-tdd-act-triage.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify a lane plan with zero blocked lanes produces triage output i",
+      "property_id": "PROP-005",
+      "function_name": "ac5_a_lane_plan_with_zero_blocked_lanes_produces_triage_output_i",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-004 AC5 \u2014 PROP-005\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC5 \u2192 ac5_a_lane_plan_with_zero_blocked_lanes_produces_triage_output_i \u2192 skills/src/datum-tdd-act-triage.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-005: a lane plan with zero blocked lanes produces triage output identical to current \ndescribe('task-004 \u2014 PROP-005', () => {\n    it('ac5_a_lane_plan_with_zero_blocked_lanes_produces_triage_output_i', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-005\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

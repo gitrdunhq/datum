@@ -1,0 +1,95 @@
+{
+  "task_id": "task-003",
+  "language": "typescript",
+  "framework": "vitest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify datum-go.ts and datum-tdd-act.ts call packWaves(buildWaves(l",
+      "property_id": "PROP-001",
+      "function_name": "ac1_datum_go_ts_and_datum_tdd_act_ts_call_packwaves_buildwaves_l",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC1 \u2014 PROP-001\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC1 \u2192 ac1_datum_go_ts_and_datum_tdd_act_ts_call_packwaves_buildwaves_l \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-001: datum-go.ts and datum-tdd-act.ts call packWaves(buildWaves(lanePlan), MAX_BATCH)\ndescribe('task-003 \u2014 PROP-001', () => {\n    it('ac1_datum_go_ts_and_datum_tdd_act_ts_call_packwaves_buildwaves_l', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-001\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify the existing 'N lanes in M waves' log line is preserved and ",
+      "property_id": "PROP-002",
+      "function_name": "ac2_the_existing_n_lanes_in_m_waves_log_line_is_preserved_and_fo",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC2 \u2014 PROP-002\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC2 \u2192 ac2_the_existing_n_lanes_in_m_waves_log_line_is_preserved_and_fo \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-002: the existing 'N lanes in M waves' log line is preserved and followed by a new 'W\ndescribe('task-003 \u2014 PROP-002', () => {\n    it('ac2_the_existing_n_lanes_in_m_waves_log_line_is_preserved_and_fo', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-002\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify a lane whose single dependency is in failures is marked stat",
+      "property_id": "PROP-003",
+      "function_name": "ac3_a_lane_whose_single_dependency_is_in_failures_is_marked_stat",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC3 \u2014 PROP-003\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC3 \u2192 ac3_a_lane_whose_single_dependency_is_in_failures_is_marked_stat \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-003: a lane whose single dependency is in failures is marked status:'blocked', stage:\ndescribe('task-003 \u2014 PROP-003', () => {\n    it('ac3_a_lane_whose_single_dependency_is_in_failures_is_marked_stat', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-003\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify a transitive chain A fails -> B depends on A -> C depends on",
+      "property_id": "PROP-004",
+      "function_name": "ac4_a_transitive_chain_a_fails_b_depends_on_a_c_depends_on_b_res",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC4 \u2014 PROP-004\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC4 \u2192 ac4_a_transitive_chain_a_fails_b_depends_on_a_c_depends_on_b_res \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-004: a transitive chain A fails -> B depends on A -> C depends on B results in both B\ndescribe('task-003 \u2014 PROP-004', () => {\n    it('ac4_a_transitive_chain_a_fails_b_depends_on_a_c_depends_on_b_res', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-004\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify datum-tdd-act-lane.ts's in-file DAG gating (~673-734) emits ",
+      "property_id": "PROP-005",
+      "function_name": "ac5_datum_tdd_act_lane_ts_s_in_file_dag_gating_673_734_emits_sta",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC5 \u2014 PROP-005\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC5 \u2192 ac5_datum_tdd_act_lane_ts_s_in_file_dag_gating_673_734_emits_sta \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-005: datum-tdd-act-lane.ts's in-file DAG gating (~673-734) emits status:'blocked' (no\ndescribe('task-003 \u2014 PROP-005', () => {\n    it('ac5_datum_tdd_act_lane_ts_s_in_file_dag_gating_673_734_emits_sta', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-005\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify the completion-check:${taskId}/completion-write:${taskId} ag",
+      "property_id": "PROP-006",
+      "function_name": "ac6_the_completion_check_taskid_completion_write_taskid_agent_di",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC6 \u2014 PROP-006\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC6 \u2192 ac6_the_completion_check_taskid_completion_write_taskid_agent_di \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-006: the completion-check:${taskId}/completion-write:${taskId} agent dispatches in da\ndescribe('task-003 \u2014 PROP-006', () => {\n    it('ac6_the_completion_check_taskid_completion_write_taskid_agent_di', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-006\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "skills/src/datum-tdd-act.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify re-invoking act on a fixture epic whose lanes are all alread",
+      "property_id": "PROP-007",
+      "function_name": "ac7_re_invoking_act_on_a_fixture_epic_whose_lanes_are_all_alread",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-003 AC7 \u2014 PROP-007\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC7 \u2192 ac7_re_invoking_act_on_a_fixture_epic_whose_lanes_are_all_alread \u2192 skills/src/datum-tdd-act.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-007: re-invoking act on a fixture epic whose lanes are all already merged (markers pr\ndescribe('task-003 \u2014 PROP-007', () => {\n    it('ac7_re_invoking_act_on_a_fixture_epic_whose_lanes_are_all_alread', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-007\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

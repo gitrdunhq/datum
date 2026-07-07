@@ -1,0 +1,83 @@
+{
+  "task_id": "task-001",
+  "language": "typescript",
+  "framework": "vitest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify `datum lane-state write --epic datum/epic-287 --task task-00",
+      "property_id": "PROP-001",
+      "function_name": "ac1_datum_lane_state_write_epic_datum_epic_287_task_task_002_sta",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC1 \u2014 PROP-001\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC1 \u2192 ac1_datum_lane_state_write_epic_datum_epic_287_task_task_002_sta \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-001: `datum lane-state write --epic datum/epic-287 --task task-002 --status completed\ndescribe('task-001 \u2014 PROP-001', () => {\n    it('ac1_datum_lane_state_write_epic_datum_epic_287_task_task_002_sta', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-001\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify `datum lane-state read --epic datum/epic-287 --task task-002",
+      "property_id": "PROP-002",
+      "function_name": "ac2_datum_lane_state_read_epic_datum_epic_287_task_task_002_exit",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC2 \u2014 PROP-002\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC2 \u2192 ac2_datum_lane_state_read_epic_datum_epic_287_task_task_002_exit \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-002: `datum lane-state read --epic datum/epic-287 --task task-002` exits 0 and prints\ndescribe('task-001 \u2014 PROP-002', () => {\n    it('ac2_datum_lane_state_read_epic_datum_epic_287_task_task_002_exit', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-002\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify `datum lane-state read --epic datum/epic-287 --task task-999",
+      "property_id": "PROP-003",
+      "function_name": "ac3_datum_lane_state_read_epic_datum_epic_287_task_task_999_no_m",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC3 \u2014 PROP-003\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC3 \u2192 ac3_datum_lane_state_read_epic_datum_epic_287_task_task_999_no_m \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-003: `datum lane-state read --epic datum/epic-287 --task task-999` (no marker) exits \ndescribe('task-001 \u2014 PROP-003', () => {\n    it('ac3_datum_lane_state_read_epic_datum_epic_287_task_task_999_no_m', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-003\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify writing the same marker twice with identical inputs (same --",
+      "property_id": "PROP-004",
+      "function_name": "ac4_writing_the_same_marker_twice_with_identical_inputs_same_mer",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC4 \u2014 PROP-004\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC4 \u2192 ac4_writing_the_same_marker_twice_with_identical_inputs_same_mer \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-004: writing the same marker twice with identical inputs (same --merge-commit/--spec-\ndescribe('task-001 \u2014 PROP-004', () => {\n    it('ac4_writing_the_same_marker_twice_with_identical_inputs_same_mer', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-004\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify `datum lane-state write --epic '../../etc' --task x --status",
+      "property_id": "PROP-005",
+      "function_name": "ac5_datum_lane_state_write_epic_etc_task_x_status_completed_exit",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC5 \u2014 PROP-005\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC5 \u2192 ac5_datum_lane_state_write_epic_etc_task_x_status_completed_exit \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-005: `datum lane-state write --epic '../../etc' --task x --status completed` exits no\ndescribe('task-001 \u2014 PROP-005', () => {\n    it('ac5_datum_lane_state_write_epic_etc_task_x_status_completed_exit', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-005\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_lane_state_cli.py",
+      "kind": "vitest",
+      "purpose": "Verify epic branch slugification matches 'datum/epic-287' -> 'datum",
+      "property_id": "PROP-006",
+      "function_name": "ac6_epic_branch_slugification_matches_datum_epic_287_datum_epic",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-001 AC6 \u2014 PROP-006\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC6 \u2192 ac6_epic_branch_slugification_matches_datum_epic_287_datum_epic \u2192 tests/test_lane_state_cli.py\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-006: epic branch slugification matches 'datum/epic-287' -> 'datum-epic-287' (slashes \ndescribe('task-001 \u2014 PROP-006', () => {\n    it('ac6_epic_branch_slugification_matches_datum_epic_287_datum_epic', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-006\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -1,0 +1,71 @@
+{
+  "task_id": "task-005",
+  "language": "typescript",
+  "framework": "vitest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/datum-tdd-act-merge.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify MergeArgs gains per-candidate stage data (e.g. a stages map ",
+      "property_id": "PROP-001",
+      "function_name": "ac1_mergeargs_gains_per_candidate_stage_data_e_g_a_stages_map_or",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-005 AC1 \u2014 PROP-001\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC1 \u2192 ac1_mergeargs_gains_per_candidate_stage_data_e_g_a_stages_map_or \u2192 skills/src/datum-tdd-act-merge.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-001: MergeArgs gains per-candidate stage data (e.g. a stages map or LaneOutcome[] car\ndescribe('task-005 \u2014 PROP-001', () => {\n    it('ac1_mergeargs_gains_per_candidate_stage_data_e_g_a_stages_map_or', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-001\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/datum-tdd-act-merge.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify a completedIds list containing a lane whose stage is 'RED' i",
+      "property_id": "PROP-002",
+      "function_name": "ac2_a_completedids_list_containing_a_lane_whose_stage_is_red_is",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-005 AC2 \u2014 PROP-002\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC2 \u2192 ac2_a_completedids_list_containing_a_lane_whose_stage_is_red_is \u2192 skills/src/datum-tdd-act-merge.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-002: a completedIds list containing a lane whose stage is 'RED' is excluded from the \ndescribe('task-005 \u2014 PROP-002', () => {\n    it('ac2_a_completedids_list_containing_a_lane_whose_stage_is_red_is', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-002\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/datum-tdd-act-merge.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify the excluded RED-only lane is surfaced in the merge stage's ",
+      "property_id": "PROP-003",
+      "function_name": "ac3_the_excluded_red_only_lane_is_surfaced_in_the_merge_stage_s",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-005 AC3 \u2014 PROP-003\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC3 \u2192 ac3_the_excluded_red_only_lane_is_surfaced_in_the_merge_stage_s \u2192 skills/src/datum-tdd-act-merge.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-003: the excluded RED-only lane is surfaced in the merge stage's output/log as 'left \ndescribe('task-005 \u2014 PROP-003', () => {\n    it('ac3_the_excluded_red_only_lane_is_surfaced_in_the_merge_stage_s', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-003\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/datum-tdd-act-merge.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify after a merge run, no commit reachable from the epic branch ",
+      "property_id": "PROP-004",
+      "function_name": "ac4_after_a_merge_run_no_commit_reachable_from_the_epic_branch_t",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-005 AC4 \u2014 PROP-004\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC4 \u2192 ac4_after_a_merge_run_no_commit_reachable_from_the_epic_branch_t \u2192 skills/src/datum-tdd-act-merge.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-004: after a merge run, no commit reachable from the epic branch tip matches the patt\ndescribe('task-005 \u2014 PROP-004', () => {\n    it('ac4_after_a_merge_run_no_commit_reachable_from_the_epic_branch_t', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-004\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/datum-tdd-act-merge.test.ts",
+      "kind": "vitest",
+      "purpose": "Verify a lane plan where all candidates are GREEN/REFACTOR-complete",
+      "property_id": "PROP-005",
+      "function_name": "ac5_a_lane_plan_where_all_candidates_are_green_refactor_complete",
+      "skeleton_written": false,
+      "content": "// Skeleton: task-005 AC5 \u2014 PROP-005\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: AC5 \u2192 ac5_a_lane_plan_where_all_candidates_are_green_refactor_complete \u2192 skills/src/datum-tdd-act-merge.test.ts\n\nimport { describe, it, expect } from 'vitest';\n\n// PROP-005: a lane plan where all candidates are GREEN/REFACTOR-complete merges identically \ndescribe('task-005 \u2014 PROP-005', () => {\n    it('ac5_a_lane_plan_where_all_candidates_are_green_refactor_complete', async () => {\n        // Arrange\n\n        // Act\n\n        // Assert \u2014 prove PROP-005\n        throw new Error('RED agent: implement this assertion');\n    });\n});\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -1,0 +1,33 @@
+{
+  "batch": true,
+  "language": "typescript",
+  "tasks_processed": 5,
+  "output_dir": "docs/epics/datum/bug-squash-281/skeletons",
+  "tasks": {
+    "task-001": {
+      "path": "docs/epics/datum/bug-squash-281/skeletons/preflight-task-001.json",
+      "skeleton_count": 6,
+      "framework": "vitest"
+    },
+    "task-002": {
+      "path": "docs/epics/datum/bug-squash-281/skeletons/preflight-task-002.json",
+      "skeleton_count": 7,
+      "framework": "vitest"
+    },
+    "task-003": {
+      "path": "docs/epics/datum/bug-squash-281/skeletons/preflight-task-003.json",
+      "skeleton_count": 7,
+      "framework": "vitest"
+    },
+    "task-004": {
+      "path": "docs/epics/datum/bug-squash-281/skeletons/preflight-task-004.json",
+      "skeleton_count": 5,
+      "framework": "vitest"
+    },
+    "task-005": {
+      "path": "docs/epics/datum/bug-squash-281/skeletons/preflight-task-005.json",
+      "skeleton_count": 5,
+      "framework": "vitest"
+    }
+  }
+}
