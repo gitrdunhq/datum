@@ -37,7 +37,9 @@ export const PHASES: readonly Phase[] = ['refine', 'plan', 'properties', 'act', 
 export type TddStage = 'RED' | 'GREEN' | 'REFACTOR'
 export type FailureStage = TddStage | 'SKIPPED' | 'UNKNOWN' | 'CRASH'
 
-export type LaneStatus = 'completed' | 'failed' | 'skipped'
+// 'blocked' = never dispatched because a dependency failed or was itself blocked;
+// carries the root-cause lane in error. Distinct from 'skipped' (dep never ran).
+export type LaneStatus = 'completed' | 'failed' | 'skipped' | 'blocked'
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 export const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'] as const
 

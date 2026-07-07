@@ -1,5 +1,6 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath } from './shared/utils'
+import { buildWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
 import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import detectBranchPrompt from './prompts/util-detect-branch.md'
@@ -187,22 +188,43 @@ if (shouldRun('act', 3)) {
   }
   log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`)
 
+  // Epic-scoped completion markers: lanes merged in prior runs/sessions skip entirely.
+  // A marker counts only if status=completed, its spec_hash matches the current lane
+  // plan entry, and its merge_commit is an ancestor of the epic branch tip.
+  const slug = epicSlug(epicBranch)
+  const markerText = await agent(
+    laneStateReadPrompt({ epicBranch, epicSlug: slug }),
+    { label: 'lane-state-read', phase: 'Act', model: model('fast') },
+  )
+  const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
+  const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
+    const m = priorMarkers[id]
+    return !!m && m.status === 'completed' && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {})
+  })
+
+  const actResults: Record<string, LaneOutcome> = {}
+  const actFailures: string[] = []
+  const actCompleted: string[] = []
+  for (const id of alreadyMerged) {
+    actResults[id] = { task_id: id, status: 'completed' }
+    actCompleted.push(id)
+  }
+  if (alreadyMerged.length > 0) {
+    log(`Epic-scoped state: ${alreadyMerged.length} lane(s) already merged, skipping: [${alreadyMerged.join(', ')}]`)
+  }
+
   // Batch partitioning
   const MAX_BATCH = 5
-  const allLaneIds = lanePlan.topological_order
+  const allLaneIds = lanePlan.topological_order.filter((id: string) => !alreadyMerged.includes(id))
   const batches: string[][] = []
   for (let i = 0; i < allLaneIds.length; i += MAX_BATCH) {
     batches.push(allLaneIds.slice(i, i + MAX_BATCH))
   }
   if (batches.length > 1) {
-    log(`Auto-partitioned ${lanePlan.total_lanes} tasks into ${batches.length} batches`)
+    log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches`)
   }
 
   // Batch loop — each sub-workflow is a DIRECT child of datum-go (1 level, not 2)
-  const actResults: Record<string, LaneOutcome> = {}
-  const actFailures: string[] = []
-  const actCompleted: string[] = []
-
   for (let bi = 0; bi < batches.length; bi++) {
     const batchLaneIds = batches[bi]
     const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : ''
@@ -210,14 +232,21 @@ if (shouldRun('act', 3)) {
 
     if (batches.length > 1) log(`\n=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(', ')}] ===`)
 
-    // Cross-batch dependency check: skip lanes whose deps never ran
+    // Cross-batch dependency check: block lanes whose deps failed/were blocked,
+    // skip lanes whose deps never ran. Failed deps are NOT satisfied deps.
     for (const lid of batchLaneIds) {
       const deps: string[] = lanePlan.lanes[lid]?.depends_on || []
-      const missing = deps.filter((d: string) => !batchLaneIds.includes(d) && !actCompleted.includes(d) && !actFailures.includes(d))
-      if (missing.length > 0) {
-        actResults[lid] = { task_id: lid, status: 'skipped', stage: 'SKIPPED', error: `unmet cross-batch deps: [${missing.join(', ')}]` }
-        log(`  SKIPPED ${lid}: deps [${missing.join(', ')}] never ran`)
-      }
+      const unmet = deps.filter((d: string) => !batchLaneIds.includes(d) && !actCompleted.includes(d))
+      if (unmet.length === 0) continue
+      const failedDeps = unmet.filter((d: string) => actFailures.includes(d) || actResults[d]?.status === 'blocked')
+      const neverRan = unmet.filter((d: string) => !failedDeps.includes(d))
+      const rootCauses = failedDeps.map((d: string) => `${d}@${actResults[d]?.stage || '?'}`)
+      const detail = [
+        rootCauses.length > 0 ? `dep(s) failed/blocked: [${rootCauses.join(', ')}]` : '',
+        neverRan.length > 0 ? `dep(s) never ran: [${neverRan.join(', ')}]` : '',
+      ].filter(Boolean).join('; ')
+      actResults[lid] = { task_id: lid, status: 'blocked', stage: 'SKIPPED', error: `blocked — ${detail}` }
+      log(`  BLOCKED ${lid}: ${detail}`)
     }
     const runnableBatchIds = batchLaneIds.filter((id: string) => !actResults[id])
     if (runnableBatchIds.length === 0) {
@@ -248,8 +277,8 @@ if (shouldRun('act', 3)) {
       if (!r || r.status === 'failed') {
         actFailures.push(id)
         log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
-      } else if (r.status === 'skipped') {
-        log(`  SKIPPED ${id}: ${r.error || 'dependency failed'}`)
+      } else if (r.status === 'skipped' || r.status === 'blocked') {
+        log(`  ${r.status.toUpperCase()} ${id}: ${r.error || 'dependency failed'}`)
       } else {
         actCompleted.push(id)
       }
@@ -257,16 +286,26 @@ if (shouldRun('act', 3)) {
     log(`Act${batchTag} done: ${batchLaneIds.filter(id => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`)
 
     // Merge + Cleanup — direct child workflow
+    const mergedIds = batchLaneIds.filter(id => actCompleted.includes(id))
     await workflow(
       { scriptPath: sk('datum-tdd-act-merge') },
       {
         epicBranch,
-        completedIds: batchLaneIds.filter(id => actCompleted.includes(id)),
+        completedIds: mergedIds,
         batchRunId,
         topoOrder: lanePlan.topological_order,
         batchTag,
       },
     )
+
+    // Persist epic-scoped completion markers so future runs/sessions skip these lanes
+    if (mergedIds.length > 0) {
+      const entriesJson = JSON.stringify(mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })))
+      await agent(
+        laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
+        { label: `lane-state-write${batchTag}`, phase: 'Act', model: model('fast') },
+      )
+    }
   }
 
   // Docs — direct child workflow
@@ -284,9 +323,10 @@ if (shouldRun('act', 3)) {
   }
 
   const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
+  const actBlocked = Object.keys(actResults).filter(id => actResults[id]?.status === 'blocked')
   await markPhaseComplete('act')
-  log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped`)
-  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, failedLanes: actFailures, skippedLanes: actSkipped }
+  log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
+  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
 }

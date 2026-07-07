@@ -14,6 +14,8 @@ import skepticContractTemplate from '../prompts/skeptic-contract.md'
 import refactorCheckTemplate from '../prompts/refactor-check.md'
 import docsCheckTemplate from '../prompts/docs-check.md'
 import docsSyncTemplate from '../prompts/docs-sync.md'
+import laneStateReadTemplate from '../prompts/lane-state-read.md'
+import laneStateWriteTemplate from '../prompts/lane-state-write.md'
 import { renderPrompt } from './utils'
 import type { SkepticLens } from './types'
 
@@ -87,4 +89,13 @@ export function docsCheckPrompt(vars: { changedFiles: string }): string {
 
 export function docsSyncPrompt(vars: { docsPacket: string }): string {
   return PREAMBLE + renderPrompt(docsSyncTemplate, vars as PromptVars)
+}
+
+// Epic-scoped lane-state markers — no TDD preamble; these are pure bookkeeping ops.
+export function laneStateReadPrompt(vars: { epicBranch: string; epicSlug: string }): string {
+  return renderPrompt(laneStateReadTemplate, vars as PromptVars)
+}
+
+export function laneStateWritePrompt(vars: { epicBranch: string; epicSlug: string; runId: string; entriesJson: string }): string {
+  return renderPrompt(laneStateWriteTemplate, vars as PromptVars)
 }
