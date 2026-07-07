@@ -450,12 +450,12 @@ def gate_refine(yolo: bool, config: dict) -> None:
 
 def gate_plan(yolo: bool, config: dict) -> None:
     tasks_path = resolve_artifact("TASKS.md")
-    lane_plan_path = Path(".datum/lane-plan.json")
+    lane_plan_path = resolve_artifact("lane-plan.json")
 
     if not tasks_path.exists():
         fail("TASKS.md not found")
     if not lane_plan_path.exists():
-        fail("Missing .datum/lane-plan.json. Run datum lane-plan first.")
+        fail("Missing lane-plan.json. Run datum lane-plan first.")
 
     # Validate lane-plan.json structure
     with lane_plan_path.open() as f:
@@ -572,7 +572,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
                     "passed": False,
                     "needs_human": True,
                     "message": "TASKS.md and lane-plan.json ready for human approval. Re-run with --approve to approve.",
-                    "artifacts": ["TASKS.md", ".datum/lane-plan.json"],
+                    "artifacts": [str(tasks_path), str(lane_plan_path)],
                 }
             )
         )
