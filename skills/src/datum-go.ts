@@ -75,8 +75,8 @@ const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
 
 let lastResult: PhaseResult = {}
 let haltedAt = ''
-let resolvedBranch = ''
-let resolvedRunId = ''
+let resolvedBranch = priorState?.branch || ''
+let resolvedRunId = priorState?.runId || ''
 const completedPhases: Phase[] = priorState?.completedPhases ? [...priorState.completedPhases] : []
 
 function shouldRun(p: Phase, idx: number): boolean {

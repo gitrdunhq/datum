@@ -264,8 +264,8 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var lastResult = {};
 var haltedAt = "";
-var resolvedBranch = "";
-var resolvedRunId = "";
+var resolvedBranch = priorState?.branch || "";
+var resolvedRunId = priorState?.runId || "";
 var completedPhases = priorState?.completedPhases ? [...priorState.completedPhases] : [];
 function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
