@@ -1,4 +1,6 @@
 import json
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -1515,6 +1517,102 @@ def worktrees_cleanup(
     typer.echo(json.dumps({"cleaned": cleaned}))
 
 
+# ── Lane state markers ───────────────────────────────────────────────────────
+
+lane_state_app = typer.Typer(
+    name="lane-state", help="Read/write deterministic per-task lane-state markers."
+)
+app.add_typer(lane_state_app)
+
+
+def _lane_state_slugify_epic(epic: str) -> str:
+    """Convert an epic identifier (e.g. 'datum/epic-287') to a filesystem-safe slug."""
+
+    if ".." in epic:
+        raise ValueError(f"epic identifier must not contain '..': {epic!r}")
+
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", epic).strip("-")
+    if not slug:
+        raise ValueError(f"epic identifier produced an empty slug: {epic!r}")
+    return slug
+
+
+def _lane_state_dir(epic: str) -> Path:
+    """Resolve (and validate) the .datum/epics/<slug>/lane-state directory for an epic."""
+    epics_root = (Path(".datum") / "epics").resolve()
+    slug = _lane_state_slugify_epic(epic)
+    lane_state_dir = (epics_root / slug / "lane-state").resolve()
+
+    # Defense in depth: the resolved directory must stay inside .datum/epics/.
+    if epics_root not in lane_state_dir.parents and lane_state_dir != epics_root:
+        raise ValueError(
+            f"resolved lane-state directory escapes .datum/epics/: {epic!r}"
+        )
+
+    return lane_state_dir
+
+
+def _resolve_lane_state_dir_or_exit(epic: str) -> Path:
+    """Resolve the lane-state directory for an epic, or exit(1) with a clear error."""
+    try:
+        return _lane_state_dir(epic)
+    except ValueError as exc:
+        console_err.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+
+@lane_state_app.command("write")
+def lane_state_write(
+    epic: str = typer.Option(
+        ..., "--epic", help="Epic identifier, e.g. 'datum/epic-287'"
+    ),
+    task: str = typer.Option(..., "--task", help="Task ID, e.g. 'task-002'"),
+    status: str = typer.Option(..., "--status", help="Lane status, e.g. 'completed'"),
+    merge_commit: str = typer.Option("", "--merge-commit", help="Merge commit SHA"),
+    spec_hash: str = typer.Option("", "--spec-hash", help="Spec hash"),
+    run_id: str = typer.Option("", "--run-id", help="Run ID"),
+    completed_at: str = typer.Option(
+        "", "--completed-at", help="ISO8601 completion timestamp (defaults to now, UTC)"
+    ),
+):
+    """Write a deterministic lane-state marker for a task."""
+    lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    lane_dir.mkdir(parents=True, exist_ok=True)
+
+    resolved_completed_at = completed_at or datetime.now(UTC).isoformat()
+
+    marker = {
+        "task_id": task,
+        "status": status,
+        "merge_commit": merge_commit,
+        "spec_hash": spec_hash,
+        "run_id": run_id,
+        "completed_at": resolved_completed_at,
+    }
+
+    marker_path = lane_dir / f"{task}.json"
+    marker_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
+
+    typer.echo(json.dumps(marker, indent=2, sort_keys=True))
+
+
+@lane_state_app.command("read")
+def lane_state_read(
+    epic: str = typer.Option(
+        ..., "--epic", help="Epic identifier, e.g. 'datum/epic-287'"
+    ),
+    task: str = typer.Option(..., "--task", help="Task ID, e.g. 'task-002'"),
+):
+    """Read a lane-state marker for a task, printing {"status": "not_found"} if absent."""
+    lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    marker_path = lane_dir / f"{task}.json"
+    if not marker_path.exists():
+        typer.echo(json.dumps({"status": "not_found"}))
+        return
+
+    typer.echo(marker_path.read_text().strip())
+
+
 # ── TDD stage verification (#133) ────────────────────────────────────────────
 
 
@@ -1589,7 +1687,6 @@ def tdd_args_cmd(
       datum tdd-args
 
     """
-    import re
     from datetime import datetime
 
     # Resolve feature name: --feature is required.
