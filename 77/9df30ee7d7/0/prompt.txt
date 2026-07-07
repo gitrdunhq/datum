@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a61d9f22283fd4c09 | Report which lanes of epic datum/epic-287 already have epic-scoped completion markers. Run this exact script from the repo root an</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a5f283fa67746df3b | git worktree add --detach .datum/worktrees/20260706-223937-b0-root datum/epic-287 2&gt;&amp;1 &amp;&amp; echo '{"root": "'$(cd .datum/worktrees/2</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-a4e4f73666df9a2b4 | cd "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-223937-b0-root" &amp;&amp; datum worktrees setup --run-id 20</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bsxr3t642</task-id>
+<summary>Monitor event: "epic-287 act relaunch wf_52688f99-60d agent dispatch"</summary>
+<event>agent-af6bfc760866d2623 | mkdir -p "/Volumes/Extra/repos/gitrdunhq/the-record-suite/.datum/worktrees/20260706-223937-b0-root/.datum" &amp;&amp; printf '%s' '{"schem</event>
+</task-notification>
