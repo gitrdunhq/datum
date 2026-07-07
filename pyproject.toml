@@ -23,6 +23,13 @@ memory = [
     "tokenizers>=0.22.0",
     "numpy>=2.0.0",
     "outlines>=1.3.0",
+    # transformers>=5.13 breaks mlx-lm 0.31.3's AutoTokenizer.register() call
+    # at import time (str passed where a config class is now expected). No
+    # upstream fix yet — datum.local_llm._patch_transformers_for_mlx_lm()
+    # applies the workaround from
+    # https://github.com/ml-explore/mlx-lm/issues/1458#issuecomment-4887373330
+    # before every mlx_lm import, so no version cap is needed here.
+    "transformers",
 ]
 # RAG/corpus retrieval deps (datum/memory): TF-IDF fallback + corpus SQL.
 # Distinct from [memory], which is local-LLM (mlx/outlines) deps.
@@ -37,6 +44,11 @@ rag = [
 
 [project.scripts]
 datum = "datum.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+]
 
 [build-system]
 requires = ["hatchling"]

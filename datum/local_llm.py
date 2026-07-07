@@ -25,6 +25,41 @@ _logger = get_logger("local_llm")
 
 _model_cache: dict = {}
 
+_mlx_lm_patched = False
+
+
+def _patch_transformers_for_mlx_lm() -> None:
+    """Work around transformers>=5.13 breaking mlx_lm's import-time registration.
+
+    mlx_lm.tokenizer_utils calls `AutoTokenizer.register("NewlineTokenizer", ...)`
+    with a string in place of a config class. transformers 5.13 dereferences
+    `config_class.__module__` unconditionally, raising AttributeError on import.
+    No fix has landed upstream yet (mlx-lm is pinned at 0.31.3, latest as of
+    writing) — this shim mirrors the workaround from
+    https://github.com/ml-explore/mlx-lm/issues/1458#issuecomment-4887373330,
+    skipping any registration where the "config class" is actually a string.
+    Idempotent and no-ops if transformers isn't installed or already patched.
+    """
+    global _mlx_lm_patched
+    if _mlx_lm_patched:
+        return
+    _mlx_lm_patched = True
+
+    try:
+        from transformers.models.auto import tokenization_auto
+    except ImportError:
+        return
+
+    _orig_register = tokenization_auto.AutoTokenizer.register
+
+    def _safe_register(config_class, *args, **kwargs):
+        if isinstance(config_class, str):
+            return None
+        return _orig_register(config_class, *args, **kwargs)
+
+    tokenization_auto.AutoTokenizer.register = _safe_register
+
+
 DEFAULTS = {
     "enabled": False,
     "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
@@ -116,6 +151,7 @@ def is_available() -> bool:
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         return False
     try:
+        _patch_transformers_for_mlx_lm()
         import mlx_lm  # noqa: F401
 
         return True
@@ -137,6 +173,7 @@ def load_model(model_id: str = DEFAULTS["model"]):
 
     import os
 
+    _patch_transformers_for_mlx_lm()
     from mlx_lm import load
 
     config = load_config()
@@ -260,6 +297,7 @@ def generate(
             max_time_s=max_time_s,
         )
 
+    _patch_transformers_for_mlx_lm()
     from mlx_lm import stream_generate
 
     model, tokenizer = load_model(model_id)
@@ -1135,6 +1173,7 @@ def multi_turn_phase(
 
     _mt_cache = None
     try:
+        _patch_transformers_for_mlx_lm()
         from mlx_lm.models.cache import make_prompt_cache as _make_cache
 
         model, tokenizer = load_model(model_id)
