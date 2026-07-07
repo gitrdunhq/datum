@@ -1,0 +1,178 @@
+# Walkthrough
+
+## Summary of Changes
+
+(deterministic fallback — LLM unavailable; summary derived from 68 commit(s) on this branch)
+
+## Implementation Lanes
+
+- 9241846 fix(datum-plan): read context_files via agent() instead of node:fs, unbreak the build
+- 5f50fec review: REVIEW-REPORT.md (6 findings)
+- 155bc4b feat(init): proactively clear stale pipeline-state.json on branch bootstrap
+- aeb6fd4 fix(pipeline-state): don't inherit completedPhases from a different epic's stale state
+- 42e27d9 act(20260707-152304-b1): merge 1 lanes
+- d279a55 act(20260707-152304-b0): merge 2 lanes
+- 23a6d9e properties: derive PROPERTIES.md
+- a07be8e plan: deepen + rebuild
+- 87dfc2a plan: deepen — research findings
+- 3ee532b plan: pre-generate RED skeletons
+- df6862c plan: tasks.json + lane-plan.json + TASKS.md
+- ef25421 refine: write SPEC.md + QUESTIONS.md
+- 3d96402 fix(plan): verify shared-tree parity and main-sync before unification flip lanes (#310)
+- f5509ba fix(datum-go): detect new-epic intent from freeText brief, don't silently resume (#213)
+- 6dc2a75 fix(plan): centralize no-code-churn test-artifact shape guidance in red_note (#270)
+- 3e452f3 fix(datum-go): fail loud if the installed datum tool is repointed at a stale worktree (#327)
+- d8e3e33 fix(memory): filter pipeline/tool noise out of dream's regex-extraction fallback (#304)
+- 8da7ab6 fix(closeout): generate_walkthrough's fallback has real content and no longer claims success (#303)
+- 4c4cc97 fix(closeout): RETRO.md Delivery section falls back to git history when lane-state is absent (#302)
+- 664e7c6 fix(closeout): recognize bug-squash-NNN branches for epic_number, warn instead of silent 0 (#301)
+- ef0e373 fix(plan): decompose-tasks checks for protocol/contract completeness in files[] (#308)
+- 51c29ab fix(agents): resilientAgent treats a thrown StructuredOutput-crash as retryable, not fatal (#332)
+- f3f12a4 fix(lane): skip RED/GREEN dispatch when lane branch already has stage-complete commits (#331)
+- 2a8b66a fix(lane): pathBoundaryMatch also matches files nested in an allowed directory (#269)
+- 09d31a2 fix(worktree): preserve lane branches with real commits during cleanup (#309)
+- fbdf00f fix(datum-go): warn loudly and recover common flags on unparseable args (#319)
+- fbea0a9 fix(act-lane): fail loud instead of crashing when count-gate agent returns null (#315)
+- 9771e26 fix(lane-plan): auto-detect per-lane test_command, preflight unrunnable lanes (#326, #307)
+- e574e49 fix(act-lane): auto-repair lane scope gaps found in committed RED tests (#325, #334, #335)
+- 1ddc6e0 fix(act-lane): retry RED stage on no-commit instead of hard-failing (#333)
+- 6ac2d33 fix(pipeline): verify phase completion against git evidence, not agent claims
+- 204ea28 review: REVIEW-REPORT.md (9 findings)
+- b2990f9 lint: fix B904 missing raise-from and B008 typer default in touched files
+- 0477f38 fix(pipeline): fail loud when task decomposition returns 0 tasks
+- 8819747 fix(pipeline): validate checks TASKS.md at repo root instead of epic dir
+- b78132a fix(pipeline): quote shell-interpolated file paths and branch names
+- 14deeee fix(pipeline): datum-go's inline act loop was dropping lanePlanPath
+- dcb72ad fix(pipeline): move worktree/branch cleanup off raw git commands onto datum CLI
+- 95417e4 fix(pipeline): halt before validate/review/closeout when act completes 0 lanes
+- a78c0b4 review: REVIEW-REPORT.md (12 findings)
+- b34f2c6 lint: silence B008 false positive on new lane-plan-distribute --target option
+- 96aac1f fix(pipeline): replace prompt-embedded lane-plan writes with deterministic CLI copy
+- f57760e fix(pipeline): verifyCommitIndependently searches full lane history, not just HEAD
+- d86cb6f closeout(20260707-093851): archive pipeline artifacts to docs/epics/datum/bug-squash-round-2
+- 41c0dc0 closeout: write RETRO.md
+- fbd12c6 closeout: append CHANGELOG.md entry
+- f63c55d closeout: write CURRENT_STATE.md
+- 7be6c6f review: REVIEW-REPORT.md (4 findings)
+- cb282f9 fix(worktree): deregister stale worktree when lane branch is checked out elsewhere
+- 35a7bd6 fix(lane): path-boundary-aware verifyFileOwnership, exported from shared/utils
+- 2d5f424 review: REVIEW-REPORT.md (9 findings)
+- f68a656 fix(worktree): reuse existing lane branch on worktree add collision
+- b8e0599 fix(pipeline): seed resolvedBranch/runId from prior pipeline-state on resume
+- 30689a7 review: REVIEW-REPORT.md (6 findings)
+- 0a0b4fd fix(pipeline): resolve safety-classifier blockers in datum-go run
+- 03da9ec fix(build): add @types/node, exclude .test.ts from workflow entry points
+- c366d03 docs: record CLI-only mandate and pipeline overview updates for #265/#270/#213
+- 9ce97a4 review: REVIEW-REPORT.md (7 findings)
+- ffd293b act(20260707-033030-b1): merge 2 lanes
+- 8ccdaab act(20260707-033030-b0): merge 1 lanes
+- 0125180 properties: derive PROPERTIES.md
+- c271035 fix(pipeline): require programmatic JSON construction for large file-content embeds
+- 7f3f486 fix(pipeline): replace ambiguous <branch> placeholder with shell substitution
+- ea4040d plan: deepen — research findings
+- b8935ef plan: pre-generate RED skeletons
+- 95b5d52 plan: tasks.json + lane-plan.json + TASKS.md
+- cd9eb5c docs(bug-squash-round-2): answer refine gate questions
+- d13c0e5 refine: write SPEC.md + QUESTIONS.md
+
+## Files Touched
+
+- AGENTS.md
+- CHANGELOG.md
+- CURRENT_STATE.md
+- datum/cli.py
+- datum/closeout_cmd.py
+- datum/lane_plan.py
+- datum/local_llm.py
+- datum/memory_extract.py
+- datum/pipeline_state.py
+- datum/render.py
+- datum/skeleton_creator.py
+- datum/walkthrough.py
+- datum/worktree_manager.py
+- docs/datum-pipeline-overview.md
+- docs/epics/datum/bug-squash-round-2/PROPERTIES.md
+- docs/epics/datum/bug-squash-round-2/QUESTIONS.md
+- docs/epics/datum/bug-squash-round-2/RETRO.md
+- docs/epics/datum/bug-squash-round-2/REVIEW-REPORT.md
+- docs/epics/datum/bug-squash-round-2/SPEC.md
+- docs/epics/datum/bug-squash-round-2/TASKS.md
+- docs/epics/datum/bug-squash-round-2/TICKET.md
+- docs/epics/datum/bug-squash-round-2/WALKTHROUGH.md
+- docs/epics/datum/bug-squash-round-2/lane-plan.json
+- docs/epics/datum/bug-squash-round-2/skeletons/batch-summary.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-adopt-existing-feature-branch.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-cleanup-orphaned-zero-commit-lane-branches.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-fail-loud-walkthrough.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-filter-transcript-noise-memory-extract.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-git-fallback-retro-delivery.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-guard-duplicate-local-llm-toml.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-path-boundary-file-ownership.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-recognize-bug-squash-branch-slug.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-relax-test-artifact-convention.json
+- docs/epics/datum/bug-squash-round-2/skeletons/preflight-validate-testcommand-before-dispatch.json
+- docs/epics/datum/bug-squash-round-2/tasks.json
+- docs/epics/datum/consumer-first-build-order/PROPERTIES.md
+- docs/epics/datum/consumer-first-build-order/QUESTIONS.md
+- docs/epics/datum/consumer-first-build-order/REVIEW-REPORT.md
+- docs/epics/datum/consumer-first-build-order/SPEC.md
+- docs/epics/datum/consumer-first-build-order/TASKS.md
+- docs/epics/datum/consumer-first-build-order/lane-plan.json
+- docs/epics/datum/consumer-first-build-order/skeletons/batch-summary.json
+- docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-context-files-config-default.json
+- docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-cycle-detection.json
+- docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-upstream-source-context.json
+- docs/epics/datum/consumer-first-build-order/skeletons/preflight-datum-plan-buildorder-and-context.json
+- docs/epics/datum/consumer-first-build-order/skeletons/preflight-wire-lane-upstream-injection.json
+- docs/epics/datum/consumer-first-build-order/tasks.json
+- package-lock.json
+- package.json
+- scripts/build-workflows.sh
+- scripts/test-count-gate
+- skills/datum-awake.js
+- skills/datum-closeout.js
+- skills/datum-go.js
+- skills/datum-plan.js
+- skills/datum-properties.js
+- skills/datum-refine.js
+- skills/datum-review.js
+- skills/datum-tdd-act-lane.js
+- skills/datum-tdd-act-merge.js
+- skills/datum-tdd-act-setup.js
+- skills/datum-tdd-act.js
+- skills/datum-validate.js
+- skills/src/datum-closeout.ts
+- skills/src/datum-go.test.ts
+- skills/src/datum-go.ts
+- skills/src/datum-plan.test.ts
+- skills/src/datum-plan.ts
+- skills/src/datum-properties.ts
+- skills/src/datum-refine.ts
+- skills/src/datum-review.ts
+- skills/src/datum-tdd-act-lane.test.ts
+- skills/src/datum-tdd-act-lane.ts
+- skills/src/datum-tdd-act-merge.ts
+- skills/src/datum-tdd-act-setup.ts
+- skills/src/datum-tdd-act.ts
+- skills/src/datum-validate.ts
+- skills/src/prompts/plan-decompose.md
+- skills/src/prompts/util-read-context.md
+- skills/src/shared/agents.test.ts
+- skills/src/shared/agents.ts
+- skills/src/shared/graph.test.ts
+- skills/src/shared/graph.ts
+- skills/src/shared/models.test.ts
+- skills/src/shared/models.ts
+- skills/src/shared/types.ts
+- skills/src/shared/utils.test.ts
+- skills/src/shared/utils.ts
+- skills/tsconfig.json
+- tests/test_closeout_cmd.py
+- tests/test_lane_plan_test_command.py
+- tests/test_local_llm_config_dup.py
+- tests/test_memory_extract.py
+- tests/test_pipeline_state.py
+- tests/test_render.py
+- tests/test_skeleton_test_convention.py
+- tests/test_walkthrough.py
+- tests/test_worktree_manager.py
