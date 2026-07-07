@@ -478,6 +478,10 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   await markPhaseComplete("act");
   log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
+  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+    haltedAt = "act";
+    log(`Act produced 0/${lanePlan.total_lanes} completed lanes \u2014 halting before validate/review/closeout to avoid reporting false completion.`);
+  }
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);
 }

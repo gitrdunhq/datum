@@ -344,6 +344,14 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   await markPhaseComplete('act')
   log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }
+
+  // A run where nothing landed must not fall through to validate/review/closeout —
+  // those phases would otherwise report/mark success for an epic that shipped no
+  // code, even in yolo mode where the per-phase gates above are bypassed.
+  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+    haltedAt = 'act'
+    log(`Act produced 0/${lanePlan.total_lanes} completed lanes — halting before validate/review/closeout to avoid reporting false completion.`)
+  }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
 }
