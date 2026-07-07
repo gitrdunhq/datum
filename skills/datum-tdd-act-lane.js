@@ -365,6 +365,15 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras
     ...extras
   };
 }
+function detectExistingLaneCommits(logOutput, taskId) {
+  const redTarget = `red(${taskId}): RED complete`;
+  const greenTarget = `green(${taskId}): GREEN complete`;
+  const lines = (logOutput || "").split("\n");
+  return {
+    hasRed: lines.some((l) => l.includes(redTarget)),
+    hasGreen: lines.some((l) => l.includes(greenTarget))
+  };
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -564,6 +573,12 @@ No markdown fences, no explanation.`,
     }
   }
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
+  const laneHistoryRaw = await agent(
+    `Run: git -C "${wt}" log --format="%H %s"
+Return ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `lane-history-check:${taskId}`, phase: "Act", model: "haiku" }
+  );
+  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   async function writeCompletion() {
     if (!runId) return;
     const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`;
@@ -577,6 +592,14 @@ List the files changed.`,
     );
   }
   if (isStructural) {
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+    if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+    await updateStage(issueId, "done");
+    await writeCompletion();
+    return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+  }
+  if (redAlreadyCommitted && greenAlreadyCommitted) {
+    log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
@@ -667,56 +690,69 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     taskId,
     testFuncPattern: testFuncLabel
   };
-  let red = await resilientAgent(
-    redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
-  );
-  if (red?.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
-  }
-  if (!red || !red.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
-    if (check.committed) {
-      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
-      red = {
-        success: true,
-        tests_pass: false,
-        committed: true,
-        commit_sha: check.commitSha,
-        files_written: red?.files_written || testFiles,
-        failure_reason: red?.failure_reason
-      };
-    } else {
-      log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
-      red = await resilientAgent(
-        redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
-        { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
-      );
-      if (!red || !red.committed) {
-        const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
-        if (retryCheck.committed) {
-          log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) \u2014 treating as committed (#274)`);
-          red = {
-            success: true,
-            tests_pass: false,
-            committed: true,
-            commit_sha: retryCheck.commitSha,
-            files_written: red?.files_written || testFiles,
-            failure_reason: red?.failure_reason
-          };
-        } else {
-          log(`[${taskId}] RED: agent did not commit after retry \u2014 failing (independent check: ${retryCheck.detail})`);
-          return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` };
+  let red = null;
+  if (redAlreadyCommitted) {
+    log(`[${taskId}] RED commit already exists on lane branch \u2014 skipping RED dispatch, resuming from GREEN (#331)`);
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+    red = {
+      success: true,
+      tests_pass: false,
+      committed: true,
+      commit_sha: existingRedCheck.commitSha,
+      files_written: testFiles
+    };
+  } else {
+    red = await resilientAgent(
+      redPrompt(promptVars),
+      { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+    );
+    if (red?.success) {
+      log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
+    }
+    if (!red || !red.committed) {
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+      if (check.committed) {
+        log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
+        red = {
+          success: true,
+          tests_pass: false,
+          committed: true,
+          commit_sha: check.commitSha,
+          files_written: red?.files_written || testFiles,
+          failure_reason: red?.failure_reason
+        };
+      } else {
+        log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
+        red = await resilientAgent(
+          redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
+          { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+        );
+        if (!red || !red.committed) {
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+          if (retryCheck.committed) {
+            log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) \u2014 treating as committed (#274)`);
+            red = {
+              success: true,
+              tests_pass: false,
+              committed: true,
+              commit_sha: retryCheck.commitSha,
+              files_written: red?.files_written || testFiles,
+              failure_reason: red?.failure_reason
+            };
+          } else {
+            log(`[${taskId}] RED: agent did not commit after retry \u2014 failing (independent check: ${retryCheck.detail})`);
+            return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` };
+          }
         }
       }
     }
-  }
-  if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
-    red = await resilientAgent(
-      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
-      { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
-    );
+    if (!red || !red.success) {
+      log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
+        { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      );
+    }
   }
   if (!red || !red.success) {
     log(`[${taskId}] RED FAILED: ${red?.failure_reason || "no files written after 2 attempts"}`);

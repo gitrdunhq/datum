@@ -432,3 +432,53 @@ describe('findScopeGaps — issue #325/#334/#335: allowed_write_files vs RED tes
     expect(gaps).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// detectExistingLaneCommits — issue #331: don't re-dispatch RED/GREEN for a
+// lane branch that already has those stage-complete commits.
+// ---------------------------------------------------------------------------
+
+import { detectExistingLaneCommits } from './utils'
+
+describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual git history', () => {
+  it('reports both RED and GREEN as present when both stage-complete commits exist', () => {
+    const log = [
+      'cccccccccccccccccccccccccccccccccccccccccc green(filter-transcript-noise-memory-extract): GREEN complete',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(filter-transcript-noise-memory-extract): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
+      hasRed: true,
+      hasGreen: true,
+    })
+  })
+
+  it('reports only RED as present when GREEN has not landed yet', () => {
+    const log = [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(some-lane): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false })
+  })
+
+  it('reports neither present for a fresh lane branch with no stage commits', () => {
+    const log = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit'
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+  })
+
+  it('does not match commits belonging to a different lane id (prefix collision)', () => {
+    // "filter-transcript-noise" must not match "filter-transcript-noise-memory-extract"
+    const log = [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(filter-transcript-noise): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
+      hasRed: false,
+      hasGreen: false,
+    })
+  })
+
+  it('handles empty log output without throwing', () => {
+    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+  })
+})

@@ -32,6 +32,7 @@ import {
   verifyFileOwnership as verifyFileOwnershipMatch,
   extractRequiredScopeFiles,
   findScopeGaps,
+  detectExistingLaneCommits,
 } from './shared/utils'
 import {
   redPrompt,
@@ -210,6 +211,23 @@ No markdown fences, no explanation.`,
 
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
+  // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
+  // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
+  // partial-run interruption can re-dispatch a lane whose branch already has
+  // RED and/or GREEN stage-complete commits from a prior invocation. Dispatching
+  // a fresh RED agent in that case only duplicates coverage or regresses a
+  // shipped fix. Check the ACTUAL git history of the lane branch (not the
+  // in-memory lane-plan status, which is exactly what went stale in #331) —
+  // search the full log the same way verifyCommitIndependently does for #274,
+  // since later stages may have already landed and the target commit is not
+  // necessarily HEAD.
+  const laneHistoryRaw: string | null = await agent(
+    `Run: git -C "${wt}" log --format="%H %s"\nReturn ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `lane-history-check:${taskId}`, phase: 'Act', model: 'haiku' },
+  )
+  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
+    detectExistingLaneCommits(laneHistoryRaw || '', taskId)
+
   // ── File-based completion write helper ──
   async function writeCompletion(): Promise<void> {
     if (!runId) return
@@ -225,6 +243,19 @@ List the files changed.`,
   }
 
   if (isStructural) {
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+    if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+    await updateStage(issueId, 'done')
+    await writeCompletion()
+    return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+  }
+
+  if (redAlreadyCommitted && greenAlreadyCommitted) {
+    // Both stage-complete commits already exist — the lane's work is done;
+    // re-running RED/GREEN here would only duplicate coverage or regress a
+    // shipped fix (#331). Resume from REFACTOR, same as the isStructural
+    // fast-path above.
+    log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
@@ -349,64 +380,83 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testFuncPattern: testFuncLabel,
   }
 
-  let red: StageResult | null = await resilientAgent(
-    redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
-  )
+  let red: StageResult | null = null
 
-  if (red?.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
-  }
+  if (redAlreadyCommitted) {
+    // RED commit already exists on the lane branch (but GREEN doesn't yet) —
+    // resume from GREEN instead of re-dispatching RED (#331). Reconstruct the
+    // StageResult from git history using the same independent-verification
+    // helper the retry paths below already rely on (#274), rather than
+    // re-running the RED agent against tests that already exist.
+    log(`[${taskId}] RED commit already exists on lane branch — skipping RED dispatch, resuming from GREEN (#331)`)
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+    red = {
+      success: true,
+      tests_pass: false,
+      committed: true,
+      commit_sha: existingRedCheck.commitSha,
+      files_written: testFiles,
+    }
+  } else {
+    red = await resilientAgent(
+      redPrompt(promptVars),
+      { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+    )
 
-  // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
-  // If the first attempt didn't commit, retry via redRetryPrompt (the recovery path that
-  // already exists for a failed-but-committed attempt) before hard-failing the lane (#333).
-  if (!red || !red.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
-    if (check.committed) {
-      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
-      red = {
-        success: true,
-        tests_pass: false,
-        committed: true,
-        commit_sha: check.commitSha,
-        files_written: red?.files_written || testFiles,
-        failure_reason: red?.failure_reason,
-      }
-    } else {
-      log(`[${taskId}] RED: agent did not commit on first attempt — retrying (independent check: ${check.detail})`)
-      red = await resilientAgent(
-        redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
-        { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
-      )
-      // Re-run the same commit-check gate (not around it) so a retry that still didn't
-      // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
-      if (!red || !red.committed) {
-        const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
-        if (retryCheck.committed) {
-          log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) — treating as committed (#274)`)
-          red = {
-            success: true,
-            tests_pass: false,
-            committed: true,
-            commit_sha: retryCheck.commitSha,
-            files_written: red?.files_written || testFiles,
-            failure_reason: red?.failure_reason,
+    if (red?.success) {
+      log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
+    }
+
+    // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
+    // If the first attempt didn't commit, retry via redRetryPrompt (the recovery path that
+    // already exists for a failed-but-committed attempt) before hard-failing the lane (#333).
+    if (!red || !red.committed) {
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+      if (check.committed) {
+        log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
+        red = {
+          success: true,
+          tests_pass: false,
+          committed: true,
+          commit_sha: check.commitSha,
+          files_written: red?.files_written || testFiles,
+          failure_reason: red?.failure_reason,
+        }
+      } else {
+        log(`[${taskId}] RED: agent did not commit on first attempt — retrying (independent check: ${check.detail})`)
+        red = await resilientAgent(
+          redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
+          { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+        )
+        // Re-run the same commit-check gate (not around it) so a retry that still didn't
+        // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
+        if (!red || !red.committed) {
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+          if (retryCheck.committed) {
+            log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) — treating as committed (#274)`)
+            red = {
+              success: true,
+              tests_pass: false,
+              committed: true,
+              commit_sha: retryCheck.commitSha,
+              files_written: red?.files_written || testFiles,
+              failure_reason: red?.failure_reason,
+            }
+          } else {
+            log(`[${taskId}] RED: agent did not commit after retry — failing (independent check: ${retryCheck.detail})`)
+            return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` }
           }
-        } else {
-          log(`[${taskId}] RED: agent did not commit after retry — failing (independent check: ${retryCheck.detail})`)
-          return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` }
         }
       }
     }
-  }
 
-  if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
-    red = await resilientAgent(
-      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
-      { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
-    )
+    if (!red || !red.success) {
+      log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
+        { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+      )
+    }
   }
 
   if (!red || !red.success) {

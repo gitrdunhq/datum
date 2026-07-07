@@ -750,6 +750,35 @@ export function buildPacket(
 }
 
 // ---------------------------------------------------------------------------
+// detectExistingLaneCommits — parses `git log --format="%H %s"` output for a
+// lane branch to determine whether RED and/or GREEN stage-complete commits
+// already exist (#331). A stale lane-plan snapshot, a retried batch, or a
+// lane re-queued after a partial-run interruption can re-dispatch a lane
+// whose branch already carries this work — dispatching a fresh RED agent in
+// that case only duplicates coverage or regresses a shipped fix. Pure so it
+// can be unit-tested against literal `git log` text without a live worktree;
+// datum-tdd-act-lane.ts's runLane() feeds it real git log output before
+// deciding whether to (re)dispatch RED/GREEN for a lane.
+//
+// Matches the exact commit-message convention produced by buildPacket()
+// above (`red(${taskId})`/`green(${taskId})`) and commitStage() in
+// shared/agents.ts (`${commitPrefix}: ${stage} complete`).
+// ---------------------------------------------------------------------------
+
+export function detectExistingLaneCommits(
+  logOutput: string,
+  taskId: string,
+): { hasRed: boolean; hasGreen: boolean } {
+  const redTarget = `red(${taskId}): RED complete`
+  const greenTarget = `green(${taskId}): GREEN complete`
+  const lines = (logOutput || '').split('\n')
+  return {
+    hasRed: lines.some((l) => l.includes(redTarget)),
+    hasGreen: lines.some((l) => l.includes(greenTarget)),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // renderPrompt — replaces {{key}} placeholders with values
 // ---------------------------------------------------------------------------
 
