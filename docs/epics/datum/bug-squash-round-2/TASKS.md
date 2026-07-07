@@ -120,3 +120,50 @@ Extend cleanup_run_worktrees() to enumerate lane branches via git for-each-ref r
 - **Files**: datum/worktree_manager.py, tests/test_worktree_manager.py
 - **RED Note**: pytest: set up a git repo with an epic branch and a lane branch <epic>--laneX that has zero commits ahead and NO worktree directory; call cleanup_run_worktrees() and assert the branch is deleted. Add a lane branch with a commit ahead and no worktree dir and assert it survives. Deletion case must fail against the current worktree-dir-only discovery.
 - **Estimated LOC**: 55
+
+## Research Findings
+
+### guard-duplicate-local-llm-toml: R1 — Clear error on duplicate [local_llm] TOML table (#265)
+- **Pattern**: `_load_raw_config()` at `datum/local_llm.py:1499` does `tomllib.load(f)` directly (line 1518) with no try/except; `load_config()` at `datum/local_llm.py:1628` duplicates the same tomllib-import-and-load dance (lines 1640-1647) instead of delegating to `_load_raw_config()`.
+- **Convention**: No dedicated `DatumConfigError` class exists yet in `datum/local_llm.py` — this task will need to introduce one (or reuse a ValueError per the AC wording).
+- **Pitfall**: Both call sites import tomllib independently with the `tomli` fallback for older Python — the fix must wrap both, not just one, or `load_config()`'s duplicate import will still raise raw `TOMLDecodeError`.
+
+### verifyFileOwnership: File ownership check bug (#suffix/prefix false negatives)
+- **Pattern**: `skills/src/datum-tdd-act-lane.ts:77-81` — the violation check is `forbiddenFiles.some(fb => f.endsWith(fb) || fb.endsWith(f))` for forbidden and `!allowedFiles.some(a => f.endsWith(a) || a.endsWith(f))` for allowed. This suffix/prefix matching is the likely root cause of false negatives/positives (e.g. `src/Foo.test.ts` vs `src/Unrelated.ts` won't cross-match, but shorter path fragments can spuriously match via `endsWith`).
+- **Convention**: `verifyFileOwnership` (lines 53-74) calls the agent to git-diff the worktree and parses `files_changed` via `parseAgentJson`; used identically at RED (line 517) and GREEN (line 639) stages.
+- **Pitfall**: Any fix here changes behavior at two call sites (RED and GREEN) — both must be covered by the RED test. Remember `skills/datum-tdd-act-lane.js` is generated; edit `skills/src/datum-tdd-act-lane.ts` and rebuild via `bash scripts/build-workflows.sh`.
+
+### skeleton_creator: Single-extension inference bug (#231/#235 follow-up)
+- **Pattern**: `infer_test_path()` at `datum/skeleton_creator.py:356` and `build_impl_stubs()` (line 259, see docstring at 267-268 referencing #235/#231) already contain one prior fix for extension-language mismatches — the current task extends this to more languages/extensions.
+- **Convention**: Extension/language mapping done via literal `ext_map` dict (line 375) and per-language `if language == "x"` branches — the codebase does NOT use a single shared extension registry; each function (`infer_test_path`, `make_function_name`, `infer_module`) reimplements its own per-language branching, so a new extension must be added consistently across all of them if it affects skeleton generation logic.
+- **Pitfall**: `build_impl_stubs` explicitly skips unknown extensions (line 296, "skip, don't write stubs") — a naive "make it match everything" fix could silently break that safety skip.
+
+### adopt-existing-feature-branch: R4 — Bootstrap epic existing feature branch (#213)
+- **Pattern**: `datum/cli.py:253 def init(...)` exists already but has no adopt-existing-branch mode (`grep` for "adopt" in cli.py returned nothing). This will be a net-new code path inside the existing `init` command, following the `@app.command()` / typer.Option pattern seen throughout `datum/cli.py` (e.g. lines 100, 115, 124, 252...).
+- **Convention**: `datum-go.ts`'s Act phase (`skills/src/datum-go.ts:140-170`) currently does its own inline branch/runId detection via an `agent()` call to `detectBranchPrompt` (lines 158-159) then builds `epicBranch`, `skeletonDir`, `epicDir` from it — this is the "inline bootstrap" the task says must be replaced by a CLI adopt-path call.
+- **Pitfall**: `skills/datum-go.js` is generated — never hand-edit; run `bash scripts/build-workflows.sh` after editing `skills/src/datum-go.ts`.
+
+### recognize-bug-squash-branch-slug: R5 — Recognize non-epic-NNN branch slugs (#…)
+- **Pattern**: `datum/closeout_cmd.py:26 def detect_context(...)` — epic number is parsed via `re.search(r"epic-(\d+)", branch)` at line 39, defaulting silently to `epic_number = 0` if no match (`int(m.group(1)) if m else 0`). This is the exact "silent 0" bug the AC calls out.
+- **Convention**: `detect_context` already supports an explicit `epic_number` override parameter (line 30) that short-circuits the regex — the fix should extend the regex/parsing (e.g. also match `bug-squash-(\d+)`), preserving the override-wins precedence.
+- **Pitfall**: A silent `epic_number=0` fallback has no warning path currently — the AC requires a warning to be emitted for genuinely unrecognized slugs instead of just defaulting quietly.
+
+### git-fallback-retro-delivery: R6 — Git-derived fallback for RETRO.md Delivery section (#302)
+- **Pattern**: `datum/render.py:102 def render_closeout_retro(...)` builds the "## Delivery" section (lines 121-124) purely from `data.get("tasks")` / `data.get("git")` dict counts read from `closeout_data` JSON — there is no git-derived fallback logic here at all currently, and no reference to `.datum/runs/<runId>/lane-state/` in `render.py`.
+- **Convention**: `lane-state` read/write prompts live in `skills/src/prompts/lane-state-read.md` / `lane-state-write.md` and are invoked from `skills/src/datum-tdd-act.ts` / `datum-tdd-act-lane.ts` / `datum-go.ts` — the "green(task-N) commit" convention used for git-derived counting should follow the same commit-message tagging used elsewhere in the lane pipeline (search those files for the commit message format used when marking a task green).
+- **Pitfall**: This is Python-side rendering (`datum/render.py`), not TS — double check the task's stated `**Files**` list against where `render_closeout_retro` actually lives before starting RED.
+
+### fail-loud-walkthrough: R7 — Fail loud on walkthrough generation failure (#303)
+- **Pattern**: The actual walkthrough success/failure logic is in **`datum/walkthrough.py`** (`generate_walkthrough`, line 13), NOT in `skills/src/datum-closeout.ts` as the task description states — `grep` for "walkthrough" in `datum-closeout.ts` returns zero matches. The checkmark itself is printed by the caller in `datum/cli.py:1040-1053` (closeout command), which always prints `"[bold green]✓ Walkthrough generated..."` because `generate_walkthrough()` never raises — on LLM failure it silently calls `_write_fallback()` (walkthrough.py:69) and returns the same `output_path` as success, swallowing the distinction (see the `except Exception as exc: ... _write_fallback(...); return output_path` at walkthrough.py:46-50).
+- **Convention**: `run_phase(..., schema=...)` from `datum/local_llm.py` returns a dict with an `"escalated"` key (walkthrough.py:35) used elsewhere to detect degraded LLM output — the fix should propagate that signal (e.g. return a tuple/flag from `generate_walkthrough`, or have it raise a distinguishable exception) so `cli.py`'s caller can print a degraded-mode message instead of the checkmark.
+- **Pitfall**: Correct the task's file list before starting — RED tests should target `datum/walkthrough.py` and `datum/cli.py`, not `skills/src/datum-closeout.ts`, since that TS file has no walkthrough logic to change. Flag this discrepancy to the human triager.
+
+### validate-testcommand-before-dispatch: R9 — Validate testCommand before lane dispatch (#307)
+- **Pattern**: No `datum/testcommand_validate.py` exists yet — this is a wholly new module, consistent with `adopt-existing-feature-branch` (R4) also adding new CLI surface in `datum/cli.py`.
+- **Convention**: New CLI subcommands in this codebase follow the typer `@app.command()` decorator pattern seen throughout `datum/cli.py` (16+ existing commands at lines 100-1437) — add the new validation subcommand the same way, then call it from `skills/src/datum-tdd-act-setup.ts` via `agent()`/shell-exec rather than reimplementing validation logic in TS (per CLI-first convention already established for datum-go.ts's Act phase, see R4 findings above).
+- **Pitfall**: Depends on `adopt-existing-feature-branch` (R4) per the task's own `**Depends on**` field — do not start R9 lane work until R4's CLI adopt path lands, since both touch `datum/cli.py` init/bootstrap-adjacent surface and could conflict.
+
+### worktree-branch-orphan-cleanup: R10 — Delete orphaned lane branches with no worktree dir (git-derived)
+- **Pattern**: `cleanup_run_worktrees()` at `datum/worktree_manager.py:208` discovers lanes solely by iterating `.datum/worktrees/<run_id>/` subdirectories (lines 224-229) — it has no fallback path for lane branches that exist in git but whose worktree directory was already removed (e.g. by a prior partial cleanup or manual `git worktree remove`).
+- **Convention**: `remove_lane_worktree()` (worktree_manager.py:85 docstring) already handles "remove worktree + delete its sub-branch" as one paired operation — the orphan-cleanup fix should reuse this same delete-branch code path for branches found without a worktree dir, rather than writing a second branch-deletion routine.
+- **Pitfall**: Must check commits-ahead-of-base via `git rev-list <base>..<branch> --count` (or equivalent) before deleting — deleting a branch with unmerged commits and no worktree would lose work; the AC explicitly requires the "commits ahead" branch to survive.
