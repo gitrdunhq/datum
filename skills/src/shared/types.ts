@@ -28,6 +28,7 @@ export interface LaneResult {
 
 export interface MergeArgs {
   completedIds: string[]
+  results: Record<string, LaneOutcome>
   epicBranch: string
   batchRunId: string
   topoOrder: string[]
@@ -49,6 +50,7 @@ export interface DocsResult {
 
 export interface TriageArgs {
   failures: string[]
+  blocked: LaneOutcome[]
   results: Record<string, LaneOutcome>
   lanePlan: LanePlan
   runId: string

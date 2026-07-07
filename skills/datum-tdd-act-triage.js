@@ -36,6 +36,35 @@ var TRIAGE_SCHEMA = {
   required: ["issues"]
 };
 
+// skills/src/shared/utils.ts
+function groupBlockedByRoot(lanePlan, failures, blockedIds) {
+  const failedSet = new Set(failures);
+  const groups = {};
+  for (const f of failures) groups[f] = /* @__PURE__ */ new Set();
+  for (const bid of blockedIds) {
+    const seen = /* @__PURE__ */ new Set();
+    const queue = [...lanePlan.lanes[bid]?.depends_on || []];
+    const roots = /* @__PURE__ */ new Set();
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      if (failedSet.has(cur)) {
+        roots.add(cur);
+        continue;
+      }
+      queue.push(...lanePlan.lanes[cur]?.depends_on || []);
+    }
+    for (const r of roots) {
+      if (!groups[r]) groups[r] = /* @__PURE__ */ new Set();
+      groups[r].add(bid);
+    }
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(groups)) out[k] = [...v].sort();
+  return out;
+}
+
 // skills/src/datum-tdd-act-triage.ts
 var a = args;
 phase("Triage");
@@ -43,17 +72,21 @@ var filed = 0;
 if (a.failures.length === 0) {
   log("[triage] All lanes succeeded \u2014 no issues to file");
 } else {
+  const blockedIds = (a.blocked || []).map((r) => r.task_id);
+  const groups = groupBlockedByRoot(a.lanePlan, a.failures, blockedIds);
   const failureDetails = a.failures.map((fid) => {
     const r = a.results[fid];
     const lane = a.lanePlan.lanes[fid];
-    return `Lane ${fid} ("${lane?.title || "unknown"}"): failed at ${r?.stage || "UNKNOWN"} \u2014 ${r?.error || "null result"}`;
+    const descendants = groups[fid] || [];
+    const chainNote = descendants.length > 0 ? ` \u2014 blocks ${descendants.length} dependent lane(s): [${descendants.join(", ")}] (do not diagnose these separately; they are consequences of this root failure)` : "";
+    return `Lane ${fid} ("${lane?.title || "unknown"}"): failed at ${r?.stage || "UNKNOWN"} \u2014 ${r?.error || "null result"}${chainNote}`;
   }).join("\n");
   const triage = await agent(
     `Analyze these TDD workflow failures and categorize each one.
 
 Run ID: ${a.runId}
 Epic branch: ${a.epicBranch}
-Failed lanes:
+Failed lanes (each root failure lists the dependent lanes it transitively blocked \u2014 treat each root + its blocked descendants as ONE group, not N independent failures):
 ${failureDetails}
 
 For each failure, determine:

@@ -204,6 +204,49 @@ export function computeBlockedLanes(
 }
 
 // ---------------------------------------------------------------------------
+// groupBlockedByRoot — groups transitively blocked lanes under every failed
+// root they trace back to (a diamond-dependency lane can appear under more
+// than one root's group — triage is for human diagnosis, so showing every
+// causal path is more useful than picking one arbitrarily).
+// ---------------------------------------------------------------------------
+
+export function groupBlockedByRoot(
+  lanePlan: LanePlan,
+  failures: string[],
+  blockedIds: string[],
+): Record<string, string[]> {
+  const failedSet = new Set(failures)
+  const groups: Record<string, Set<string>> = {}
+  for (const f of failures) groups[f] = new Set()
+
+  for (const bid of blockedIds) {
+    const seen = new Set<string>()
+    const queue: string[] = [...(lanePlan.lanes[bid]?.depends_on || [])]
+    const roots = new Set<string>()
+
+    while (queue.length > 0) {
+      const cur = queue.shift() as string
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      if (failedSet.has(cur)) {
+        roots.add(cur)
+        continue
+      }
+      queue.push(...(lanePlan.lanes[cur]?.depends_on || []))
+    }
+
+    for (const r of roots) {
+      if (!groups[r]) groups[r] = new Set()
+      groups[r].add(bid)
+    }
+  }
+
+  const out: Record<string, string[]> = {}
+  for (const [k, v] of Object.entries(groups)) out[k] = [...v].sort()
+  return out
+}
+
+// ---------------------------------------------------------------------------
 // fnv1a64 / laneSpecHash — content-addressed lane identity for epic-scoped
 // completion markers. The sandbox has no crypto module, so we use FNV-1a
 // (64-bit, BigInt) — collision resistance is not a security property here,

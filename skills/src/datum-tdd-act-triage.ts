@@ -1,6 +1,7 @@
 import { model } from './shared/models'
 import type { TriageArgs, TriageAnalysis } from './shared/types'
 import { TRIAGE_SCHEMA } from './shared/schemas'
+import { groupBlockedByRoot } from './shared/utils'
 
 export const meta = {
   name: 'datum-tdd-act-triage',
@@ -16,17 +17,24 @@ let filed = 0
 if (a.failures.length === 0) {
   log('[triage] All lanes succeeded — no issues to file')
 } else {
+  const blockedIds = (a.blocked || []).map((r) => r.task_id)
+  const groups = groupBlockedByRoot(a.lanePlan, a.failures, blockedIds)
+
   const failureDetails = a.failures.map(fid => {
     const r = a.results[fid]
     const lane = a.lanePlan.lanes[fid]
-    return `Lane ${fid} ("${lane?.title || 'unknown'}"): failed at ${r?.stage || 'UNKNOWN'} — ${r?.error || 'null result'}`
+    const descendants = groups[fid] || []
+    const chainNote = descendants.length > 0
+      ? ` — blocks ${descendants.length} dependent lane(s): [${descendants.join(', ')}] (do not diagnose these separately; they are consequences of this root failure)`
+      : ''
+    return `Lane ${fid} ("${lane?.title || 'unknown'}"): failed at ${r?.stage || 'UNKNOWN'} — ${r?.error || 'null result'}${chainNote}`
   }).join('\n')
 
   const triage = await agent(
     `Analyze these TDD workflow failures and categorize each one.\n\n` +
     `Run ID: ${a.runId}\n` +
     `Epic branch: ${a.epicBranch}\n` +
-    `Failed lanes:\n${failureDetails}\n\n` +
+    `Failed lanes (each root failure lists the dependent lanes it transitively blocked — treat each root + its blocked descendants as ONE group, not N independent failures):\n${failureDetails}\n\n` +
     `For each failure, determine:\n` +
     `- Is this a WORKFLOW BUG (datum-tdd-act.js logic error)?\n` +
     `- Is this a LANE PLAN issue (bad ACs, wrong files, missing deps)?\n` +
