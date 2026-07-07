@@ -71,7 +71,7 @@ Then perform validation:
 ${renderPrompt(validate_check_default, {
     wt: ".",
     specPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md",
-    tasksPath: "TASKS.md",
+    tasksPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md",
     testCommand
   })}`,
   { label: "validate-check", model: model("balanced") }
