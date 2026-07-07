@@ -113,8 +113,28 @@ async function runLane(
    const laneTestCmd: string = cfg.testCommand
    const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
 
+   // Per-lane language, inferred from this lane's own file extensions. A
+   // single repo-wide cfg.language is wrong for mixed-language repos (this
+   // one is Python CLI + TypeScript workflow scripts) and silently falls
+   // through to the Python test-pattern branch when cfg.language is unset
+   // (e.g. .datum/config.json missing, config lives in config.toml instead)
+   // — confirmed root cause of the test-count-gate false-negative that
+   // looked like a recurrence of #288/#289 but wasn't a quoting bug at all.
+   const laneFiles = [...testFiles, ...implFiles]
+   const laneLanguage: string = laneFiles.some((f) => /\.(ts|tsx)$/.test(f))
+     ? 'typescript'
+     : laneFiles.some((f) => /\.(js|jsx|mjs)$/.test(f))
+     ? 'javascript'
+     : laneFiles.some((f) => /\.go$/.test(f))
+     ? 'go'
+     : laneFiles.some((f) => /\.swift$/.test(f))
+     ? 'swift'
+     : laneFiles.some((f) => /\.py$/.test(f))
+     ? 'python'
+     : cfg.language
+
    // ── Swift target-scoped test command (prevents cross-target contamination, #228, #229) ──
-   const swiftTargetFilter: string | null = cfg.language === 'swift'
+   const swiftTargetFilter: string | null = laneLanguage === 'swift'
      ? (() => {
          // Derive target name from impl files: use the first non-"Tests" path segment
          const swft = implFiles[0]
@@ -139,23 +159,23 @@ async function runLane(
   // to double-quoting bugs when a caller wrapped it in another pair (#288/#289).
   // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
   // NB: no '^' anchor on '+' — macOS git 2.54.0 with core.pager may emit 2-space indented patch lines
-  const testFuncDiffRegex: string = cfg.language === 'swift'
+  const testFuncDiffRegex: string = laneLanguage === 'swift'
     ? '[+][[:space:]]*(@Test|func test)'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? '[+][[:space:]]*func Test'
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? '[+][[:space:]]*(it\\(|test\\(|describe\\()'
     : '[+][[:space:]]*def test_'
-  const testFuncGrepRegex: string = cfg.language === 'swift'
+  const testFuncGrepRegex: string = laneLanguage === 'swift'
     ? '@Test|func test'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'func Test'
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? 'it\\(|test\\(|describe\\('
     : 'def test_|async def test_'
-  const testFuncBodyRegex: string = cfg.language === 'swift'
+  const testFuncBodyRegex: string = laneLanguage === 'swift'
     ? 'func test'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'func Test'
     : 'def test_'
 
@@ -167,23 +187,23 @@ async function runLane(
   // isolation, so the fast agent was the point of failure). An opaque
   // base64 token has nothing for the agent to misquote or re-escape; the
   // shell decodes it back to the exact bytes via `base64 -d`.
-  const testFuncDiffRegexB64: string = cfg.language === 'swift'
+  const testFuncDiffRegexB64: string = laneLanguage === 'swift'
     ? 'WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk='
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0'
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? 'WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp'
     : 'WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf'
-  const testFuncGrepRegexB64: string = cfg.language === 'swift'
+  const testFuncGrepRegexB64: string = laneLanguage === 'swift'
     ? 'QFRlc3R8ZnVuYyB0ZXN0'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'ZnVuYyBUZXN0'
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? 'aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA=='
     : 'ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw=='
-  const testFuncBodyRegexB64: string = cfg.language === 'swift'
+  const testFuncBodyRegexB64: string = laneLanguage === 'swift'
     ? 'ZnVuYyB0ZXN0'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'ZnVuYyBUZXN0'
     : 'ZGVmIHRlc3Rf'
 
@@ -258,7 +278,7 @@ List the files changed.`,
 
   // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg.language} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
   const preflightPath = `.datum/runs/${cfg.runId}/preflight-${taskId}.json`
 
   // Check for pre-generated skeletons from Plan phase first
@@ -329,11 +349,11 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', redExtras)
   const redCtxCmd: string = laneCtxCmd(redPacket, wt)
 
-  const testFuncLabel: string = cfg.language === 'swift'
+  const testFuncLabel: string = laneLanguage === 'swift'
     ? '@Test or func test'
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? 'func Test'
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? 'it( or test( or describe('
     : 'def test_'
 
@@ -435,17 +455,17 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
   }
 
   // Structural assertion check — deterministic ast-grep scan, no LLM needed
-  const sgPatterns: { pattern: string; name: string }[] = cfg.language === 'swift'
+  const sgPatterns: { pattern: string; name: string }[] = laneLanguage === 'swift'
     ? [
         { pattern: 'XCTFail', name: 'XCTFail' },
         { pattern: 'fatalError', name: 'fatalError' },
       ]
-    : cfg.language === 'go'
+    : laneLanguage === 'go'
     ? [
         { pattern: 't.Fatal("not implemented")', name: 't.Fatal placeholder' },
         { pattern: 'panic("not implemented")', name: 'panic placeholder' },
       ]
-    : cfg.language === 'typescript' || cfg.language === 'javascript'
+    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? [
         { pattern: 'throw new Error', name: 'throw placeholder' },
         { pattern: 'expect(true).toBe(false)', name: 'forced failure' },

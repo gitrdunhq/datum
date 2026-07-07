@@ -461,7 +461,9 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const acStr = (lane.acceptance_criteria || []).join("\n");
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
-  const swiftTargetFilter = cfg2.language === "swift" ? (() => {
+  const laneFiles = [...testFiles, ...implFiles];
+  const laneLanguage = laneFiles.some((f) => /\.(ts|tsx)$/.test(f)) ? "typescript" : laneFiles.some((f) => /\.(js|jsx|mjs)$/.test(f)) ? "javascript" : laneFiles.some((f) => /\.go$/.test(f)) ? "go" : laneFiles.some((f) => /\.swift$/.test(f)) ? "swift" : laneFiles.some((f) => /\.py$/.test(f)) ? "python" : cfg2.language;
+  const swiftTargetFilter = laneLanguage === "swift" ? (() => {
     const swft = implFiles[0];
     if (swft) {
       const parts = swft.split("/");
@@ -474,12 +476,12 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   })() : null;
   const scopedTestCmd = swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
   const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
-  const testFuncDiffRegex = cfg2.language === "swift" ? "[+][[:space:]]*(@Test|func test)" : cfg2.language === "go" ? "[+][[:space:]]*func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
-  const testFuncGrepRegex = cfg2.language === "swift" ? "@Test|func test" : cfg2.language === "go" ? "func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
-  const testFuncBodyRegex = cfg2.language === "swift" ? "func test" : cfg2.language === "go" ? "func Test" : "def test_";
-  const testFuncDiffRegexB64 = cfg2.language === "swift" ? "WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk=" : cfg2.language === "go" ? "WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp" : "WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf";
-  const testFuncGrepRegexB64 = cfg2.language === "swift" ? "QFRlc3R8ZnVuYyB0ZXN0" : cfg2.language === "go" ? "ZnVuYyBUZXN0" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA==" : "ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw==";
-  const testFuncBodyRegexB64 = cfg2.language === "swift" ? "ZnVuYyB0ZXN0" : cfg2.language === "go" ? "ZnVuYyBUZXN0" : "ZGVmIHRlc3Rf";
+  const testFuncDiffRegex = laneLanguage === "swift" ? "[+][[:space:]]*(@Test|func test)" : laneLanguage === "go" ? "[+][[:space:]]*func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
+  const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
+  const testFuncBodyRegex = laneLanguage === "swift" ? "func test" : laneLanguage === "go" ? "func Test" : "def test_";
+  const testFuncDiffRegexB64 = laneLanguage === "swift" ? "WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk=" : laneLanguage === "go" ? "WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp" : "WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf";
+  const testFuncGrepRegexB64 = laneLanguage === "swift" ? "QFRlc3R8ZnVuYyB0ZXN0" : laneLanguage === "go" ? "ZnVuYyBUZXN0" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA==" : "ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw==";
+  const testFuncBodyRegexB64 = laneLanguage === "swift" ? "ZnVuYyB0ZXN0" : laneLanguage === "go" ? "ZnVuYyBUZXN0" : "ZGVmIHRlc3Rf";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   if (completionPath) {
     const completionExist = await agent(
@@ -531,7 +533,7 @@ List the files changed.`,
     log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`);
   }
   log(`[${taskId}] RED: writing failing tests`);
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${cfg2.language} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
   const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   let targetContext;
@@ -589,7 +591,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   const redExtras = targetContext ? { target_context: targetContext } : {};
   const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", redExtras);
   const redCtxCmd = laneCtxCmd(redPacket, wt);
-  const testFuncLabel = cfg2.language === "swift" ? "@Test or func test" : cfg2.language === "go" ? "func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "it( or test( or describe(" : "def test_";
+  const testFuncLabel = laneLanguage === "swift" ? "@Test or func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it( or test( or describe(" : "def test_";
   const promptVars = {
     wt,
     skeletonCmd,
@@ -673,13 +675,13 @@ Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any
     }
     log(`[${taskId}] RED: ${newTestCount2} new test functions confirmed (>= ${acCount} ACs)`);
   }
-  const sgPatterns = cfg2.language === "swift" ? [
+  const sgPatterns = laneLanguage === "swift" ? [
     { pattern: "XCTFail", name: "XCTFail" },
     { pattern: "fatalError", name: "fatalError" }
-  ] : cfg2.language === "go" ? [
+  ] : laneLanguage === "go" ? [
     { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
     { pattern: 'panic("not implemented")', name: "panic placeholder" }
-  ] : cfg2.language === "typescript" || cfg2.language === "javascript" ? [
+  ] : laneLanguage === "typescript" || laneLanguage === "javascript" ? [
     { pattern: "throw new Error", name: "throw placeholder" },
     { pattern: "expect(true).toBe(false)", name: "forced failure" }
   ] : [
