@@ -130,10 +130,23 @@ def remove_lane_worktree(
     *,
     repo_root: Path | None = None,
     force: bool = True,
-) -> None:
-    """Remove a lane worktree and delete its sub-branch.
+) -> dict:
+    """Remove a lane worktree; delete its sub-branch only if safe to do so.
+
+    The worktree directory is always removed (it holds no commits of its
+    own — the branch does). The lane sub-branch (<epic_branch>--<lane_id>)
+    is force-deleted ONLY when it has zero commits beyond the point it was
+    forked from the epic branch (checked via `git merge-base`, matching how
+    create_lane_worktree() establishes base_sha). If the branch has real
+    RED/GREEN commits, it is preserved and reported back so a caller can
+    surface it rather than silently discarding work.
 
     Fails open: errors are not raised so pipeline teardown always completes.
+    On any git failure while determining commit state, the branch is
+    preserved (safer than guessing "empty").
+
+    Returns:
+        {"lane_id": ..., "branch": lane_branch, "deleted": bool, "preserved": bool}
     """
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
@@ -141,7 +154,46 @@ def remove_lane_worktree(
 
     flags = ["--force"] if force else []
     _git(["worktree", "remove", str(worktree_path)] + flags, cwd=repo_root, check=False)
-    _git(["branch", "-D", lane_branch], cwd=repo_root, check=False)
+
+    branch_check = _git(
+        ["rev-parse", "--verify", "--quiet", lane_branch], cwd=repo_root, check=False
+    )
+    if branch_check.returncode != 0:
+        # Branch doesn't exist (already gone / never created) — nothing to do.
+        return {
+            "lane_id": lane_id,
+            "branch": lane_branch,
+            "deleted": False,
+            "preserved": False,
+        }
+
+    merge_base = _git(
+        ["merge-base", lane_branch, epic_branch], cwd=repo_root, check=False
+    )
+    lane_sha = _git(["rev-parse", lane_branch], cwd=repo_root, check=False)
+
+    has_no_new_commits = (
+        merge_base.returncode == 0
+        and lane_sha.returncode == 0
+        and merge_base.stdout.strip() == lane_sha.stdout.strip()
+    )
+
+    if has_no_new_commits:
+        _git(["branch", "-D", lane_branch], cwd=repo_root, check=False)
+        return {
+            "lane_id": lane_id,
+            "branch": lane_branch,
+            "deleted": True,
+            "preserved": False,
+        }
+
+    # Real commits (or undeterminable state) — preserve, don't delete.
+    return {
+        "lane_id": lane_id,
+        "branch": lane_branch,
+        "deleted": False,
+        "preserved": True,
+    }
 
 
 def prune_stale_worktrees(repo_root: Path | None = None) -> None:
@@ -259,25 +311,43 @@ def cleanup_run_worktrees(
     epic_branch: str,
     *,
     repo_root: Path | None = None,
-) -> list[str]:
+) -> dict[str, list[str]]:
     """Remove all lane worktrees for a given run_id, plus its root worktree.
 
     Discovers lanes by listing .datum/worktrees/<run_id>/. The root worktree
     at .datum/worktrees/<run_id>-root (created --detach, no branch to delete)
     is force-removed too — this is the sole cleanup entrypoint so pipeline
     teardown never needs a raw `git worktree remove` in an agent prompt.
-    Returns list of lane_ids (plus "<run_id>-root" if present) cleaned up.
+
+    A lane's worktree directory is always removed. Its sub-branch is only
+    force-deleted if it has zero commits beyond the epic-branch fork point
+    (see remove_lane_worktree()); branches with real RED/GREEN commits are
+    preserved and reported so nothing is silently discarded.
+
+    Returns:
+        {
+            "removed": [lane_ids (plus "<run_id>-root" if present) whose
+                        worktree was cleaned and branch deleted/absent],
+            "preserved_with_commits": [lane_ids whose branch has real
+                                        commits and was NOT deleted],
+        }
     """
     repo_root = (repo_root or Path(".")).resolve()
     run_dir = repo_root / WORKTREE_ROOT / run_id
 
-    cleaned: list[str] = []
+    removed: list[str] = []
+    preserved_with_commits: list[str] = []
     if run_dir.exists():
         for lane_dir in sorted(run_dir.iterdir()):
             if lane_dir.is_dir():
                 lane_id = lane_dir.name
-                remove_lane_worktree(lane_id, run_id, epic_branch, repo_root=repo_root)
-                cleaned.append(lane_id)
+                result = remove_lane_worktree(
+                    lane_id, run_id, epic_branch, repo_root=repo_root
+                )
+                if result["preserved"]:
+                    preserved_with_commits.append(lane_id)
+                else:
+                    removed.append(lane_id)
         try:
             run_dir.rmdir()
         except OSError:
@@ -288,11 +358,11 @@ def cleanup_run_worktrees(
         _git(
             ["worktree", "remove", str(root_dir), "--force"], cwd=repo_root, check=False
         )
-        cleaned.append(f"{run_id}-root")
+        removed.append(f"{run_id}-root")
 
     prune_stale_worktrees(repo_root=repo_root)
 
-    return cleaned
+    return {"removed": removed, "preserved_with_commits": preserved_with_commits}
 
 
 def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:

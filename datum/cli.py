@@ -1678,8 +1678,14 @@ def worktrees_cleanup(
     """Remove all lane worktrees for a given run, including its root worktree."""
     from datum.worktree_manager import cleanup_run_worktrees
 
-    cleaned = cleanup_run_worktrees(run_id, epic_branch)
-    typer.echo(json.dumps({"cleaned": cleaned}))
+    result = cleanup_run_worktrees(run_id, epic_branch)
+    if result["preserved_with_commits"]:
+        typer.echo(
+            "WARNING: preserved lane branch(es) with real commits "
+            f"(not deleted): {', '.join(result['preserved_with_commits'])}",
+            err=True,
+        )
+    typer.echo(json.dumps({"cleaned": result}))
 
 
 @app.command(name="housekeep-epic")
