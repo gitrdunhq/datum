@@ -316,7 +316,7 @@ export function epicSlug(branch: string): string {
 // matching an allowed "Foo.test.ts" ("NewFoo.test.ts".endsWith("Foo.test.ts")).
 // ---------------------------------------------------------------------------
 
-function pathBoundaryMatch(a: string, b: string): boolean {
+export function pathBoundaryMatch(a: string, b: string): boolean {
   return a === b || a.endsWith('/' + b) || b.endsWith('/' + a)
 }
 
@@ -404,6 +404,97 @@ export function classifyFiles(files: string[]): {
   const testFiles = (files || []).filter(isTest)
   const implFiles = (files || []).filter((f) => !isTest(f))
   return { testFiles, implFiles }
+}
+
+// ---------------------------------------------------------------------------
+// extractRequiredScopeFiles / findScopeGaps — issue #325/#334/#335: a lane's
+// allowed_write_files (lane.files) must cover every file the lane's RED test
+// actually requires (relative imports, hard-coded source-read targets,
+// first-party Python module imports). Without this, GREEN can deadlock at
+// `scope_exceeded` — no in-scope change can satisfy an AC whose target file
+// was never granted write access.
+// ---------------------------------------------------------------------------
+
+// Python top-level packages this repo owns. Anything else (pytest, os, json,
+// subprocess, numpy, ...) is a stdlib/third-party import, not a scope
+// requirement.
+const FIRST_PARTY_PY_PACKAGES = ['datum', 'scripts', 'tests']
+
+function joinPosix(baseDir: string, rel: string): string {
+  const baseParts = baseDir.split('/').filter((p) => p !== '' && p !== '.')
+  const relParts = rel.split('/')
+  for (const part of relParts) {
+    if (part === '' || part === '.') continue
+    if (part === '..') baseParts.pop()
+    else baseParts.push(part)
+  }
+  return baseParts.join('/')
+}
+
+function dirnamePosix(p: string): string {
+  const parts = p.split('/')
+  parts.pop()
+  return parts.join('/')
+}
+
+function ensureTsExtension(p: string): string {
+  return /\.(ts|tsx|js|jsx|json)$/.test(p) ? p : `${p}.ts`
+}
+
+/**
+ * Parse a RED test file's content for the files it structurally requires —
+ * relative imports, `require(...)` calls, `readFileSync(join(__dirname, ...))`
+ * hard-coded reads (TS/JS), and first-party `from a.b import c` / `import a.b`
+ * module imports (Python). Returns deduplicated repo-relative paths.
+ */
+export function extractRequiredScopeFiles(
+  content: string,
+  testFilePath: string,
+  language: string,
+): string[] {
+  const required = new Set<string>()
+  const dir = dirnamePosix(testFilePath)
+
+  if (language === 'typescript' || language === 'javascript') {
+    const importRe = /(?:import\s+(?:type\s+)?(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+|require\(\s*)['"](\.\.?\/[^'"]+)['"]\)?/g
+    let m: RegExpExecArray | null
+    while ((m = importRe.exec(content))) {
+      required.add(ensureTsExtension(joinPosix(dir, m[1])))
+    }
+
+    const readFileRe = /readFileSync\(\s*join\(\s*__dirname\s*,\s*([^)]+)\)/g
+    let rm: RegExpExecArray | null
+    while ((rm = readFileRe.exec(content))) {
+      const argsStr = rm[1]
+      const segRe = /['"]([^'"]+)['"]/g
+      const segs: string[] = []
+      let sm: RegExpExecArray | null
+      while ((sm = segRe.exec(argsStr))) segs.push(sm[1])
+      if (segs.length > 0) {
+        required.add(joinPosix(dir, segs.join('/')))
+      }
+    }
+  } else if (language === 'python') {
+    const fromRe = /(?:^|\n)[ \t]*from\s+([\w]+(?:\.[\w]+)*)\s+import\s+/g
+    const importRe = /(?:^|\n)[ \t]*import\s+([\w]+(?:\.[\w]+)*)/g
+    const modules: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = fromRe.exec(content))) modules.push(m[1])
+    while ((m = importRe.exec(content))) modules.push(m[1])
+
+    for (const mod of modules) {
+      const top = mod.split('.')[0]
+      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue
+      required.add(`${mod.split('.').join('/')}.py`)
+    }
+  }
+
+  return [...required]
+}
+
+/** Which of `requiredFiles` are not covered (path-boundary-aware) by `allowedFiles`. */
+export function findScopeGaps(requiredFiles: string[], allowedFiles: string[]): string[] {
+  return requiredFiles.filter((rf) => !allowedFiles.some((af) => pathBoundaryMatch(rf, af)))
 }
 
 // ---------------------------------------------------------------------------
