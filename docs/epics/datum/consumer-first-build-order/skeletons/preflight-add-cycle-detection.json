@@ -1,0 +1,59 @@
+{
+  "task_id": "add-cycle-detection",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/graph.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify detectCycles([]) and detectCycles for any acyclic DAG return",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_detectcycles_and_detectcycles_for_any_acyclic_dag_returns_no",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-cycle-detection AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_detectcycles_and_detectcycles_for_any_acyclic_dag_returns_no \u2192 skills/src/shared/graph.test.ts\n\nimport pytest\n\n\nclass Testadd_cycle_detection_AC1:\n    def test_ac1_detectcycles_and_detectcycles_for_any_acyclic_dag_returns_no(self):\n        \"\"\"\n        PROP-001: detectCycles([]) and detectCycles for any acyclic DAG returns [] (no cycles)\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/graph.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify detectCycles detects a direct cycle: tasks A(depends_on:[B])",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_detectcycles_detects_a_direct_cycle_tasks_a_depends_on_b_and",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-cycle-detection AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_detectcycles_detects_a_direct_cycle_tasks_a_depends_on_b_and \u2192 skills/src/shared/graph.test.ts\n\nimport pytest\n\n\nclass Testadd_cycle_detection_AC2:\n    def test_ac2_detectcycles_detects_a_direct_cycle_tasks_a_depends_on_b_and(self):\n        \"\"\"\n        PROP-002: detectCycles detects a direct cycle: tasks A(depends_on:[B]) and B(depends_on:[A\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/graph.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify detectCycles detects a transitive cycle: A->B->C->A returns ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_detectcycles_detects_a_transitive_cycle_a_b_c_a_returns_a_cy",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-cycle-detection AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_detectcycles_detects_a_transitive_cycle_a_b_c_a_returns_a_cy \u2192 skills/src/shared/graph.test.ts\n\nimport pytest\n\n\nclass Testadd_cycle_detection_AC3:\n    def test_ac3_detectcycles_detects_a_transitive_cycle_a_b_c_a_returns_a_cy(self):\n        \"\"\"\n        PROP-003: detectCycles detects a transitive cycle: A->B->C->A returns a cycle containing A\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/shared/graph.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify detectCycles is pure (no I/O, no filesystem, deterministic f",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_detectcycles_is_pure_no_i_o_no_filesystem_deterministic_for",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-cycle-detection AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_detectcycles_is_pure_no_i_o_no_filesystem_deterministic_for \u2192 skills/src/shared/graph.test.ts\n\nimport pytest\n\n\nclass Testadd_cycle_detection_AC4:\n    def test_ac4_detectcycles_is_pure_no_i_o_no_filesystem_deterministic_for(self):\n        \"\"\"\n        PROP-004: detectCycles is pure (no I/O, no filesystem, deterministic for identical input)\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

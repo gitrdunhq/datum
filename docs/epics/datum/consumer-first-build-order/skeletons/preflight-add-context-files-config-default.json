@@ -1,0 +1,49 @@
+{
+  "task_id": "add-context-files-config-default",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/models.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify DEFAULT_CONFIG.context_files deep-equals [] (empty array) by",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_default_config_context_files_deep_equals_empty_array_by_defa",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-context-files-config-default AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_default_config_context_files_deep_equals_empty_array_by_defa \u2192 skills/src/shared/models.test.ts\n\nimport pytest\n\n\nclass Testadd_context_files_config_default_AC1:\n    def test_ac1_default_config_context_files_deep_equals_empty_array_by_defa(self):\n        \"\"\"\n        PROP-001: DEFAULT_CONFIG.context_files deep-equals [] (empty array) by default\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/models.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify DEFAULT_CONFIG still exposes existing keys language, test_fr",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_default_config_still_exposes_existing_keys_language_test_fra",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-context-files-config-default AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_default_config_still_exposes_existing_keys_language_test_fra \u2192 skills/src/shared/models.test.ts\n\nimport pytest\n\n\nclass Testadd_context_files_config_default_AC2:\n    def test_ac2_default_config_still_exposes_existing_keys_language_test_fra(self):\n        \"\"\"\n        PROP-002: DEFAULT_CONFIG still exposes existing keys language, test_framework, test_comman\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/models.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A config object merged over DEFAULT_CONFIG that omits contex",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_a_config_object_merged_over_default_config_that_omits_contex",
+      "skeleton_written": false,
+      "content": "# Skeleton: add-context-files-config-default AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_a_config_object_merged_over_default_config_that_omits_contex \u2192 skills/src/shared/models.test.ts\n\nimport pytest\n\n\nclass Testadd_context_files_config_default_AC3:\n    def test_ac3_a_config_object_merged_over_default_config_that_omits_contex(self):\n        \"\"\"\n        PROP-003: A config object merged over DEFAULT_CONFIG that omits context_files resolves con\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/models.ts": "export type ModelTier = 'fast' | 'balanced' | 'deep'\nexport type ModelName = string\n\nconst DEFAULT_TIERS: Record<ModelTier, string> = {\n}\n\nlet activeTiers: Record<ModelTier, string> = { ...DEFAULT_TIERS }\n\nexport function setModelTiers(tiers: Partial<Record<ModelTier, string>>): void {\n  activeTiers = { ...DEFAULT_TIERS, ...tiers }\n}\n\nexport function model(tier: ModelTier): string {\n}\n\nexport function getModelTiers(): Record<ModelTier, string> {\n}\n\nexport const ROUTE_PHASES = {\n} as const\n\nexport type Route = keyof typeof ROUTE_PHASES\nexport type Phase = 'refine' | 'plan' | 'properties' | 'act' | 'validate' | 'review' | 'closeout'\nexport const PHASES: readonly Phase[] = ['refine', 'plan', 'properties', 'act', 'validate', 'review', 'closeout'] as const\n\nexport type TddStage = 'RED' | 'GREEN' | 'REFACTOR'\nexport type FailureStage = TddStage | 'SKIPPED' | 'UNKNOWN' | 'CRASH'\n\n// 'blocked' = never dispatched because a dependency failed or was itself blocked;\n// carries the root-cause lane in error. Distinct from 'skipped' (dep never ran).\nexport type LaneStatus = 'completed' | 'failed' | 'skipped' | 'blocked'\nexport type Severity = 'critical' | 'high' | 'medium' | 'low'\nexport const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'] as const\n\nexport type SkepticVerdict = 'PASS' | 'FRAGILE' | 'BROKEN'\nexport type ReviewDomain = 'Security' | 'Performance' | 'Architecture' | 'Correctness'\n\nexport type AmbiguityLevel = 'high' | 'medium' | 'low' | 'trivial'\nexport type RiskLevel = 'low' | 'medium' | 'high'\nexport type TriageCategory = 'workflow-bug' | 'lane-plan' | 'agent-behavior' | 'infrastructure' | 'test-quality'\nexport type Scope = 'narrow' | 'moderate' | 'broad'\nexport type BranchType = 'main' | 'feature' | 'hotfix'\nexport type InputType = 'ticket' | 'bug' | 'question' | 'audit' | 'continuation' | 'raw-idea'\n\nexport const DEFAULT_CONFIG = {\n} as const\n\nexport const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):\n1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)\n2. Repo: .datum/config.json (required \u2014 if missing, return {\"error\": \"missing .datum/config.json \u2014 run datum init first\"})\nMerge: start with global, overlay repo on top (repo wins on conflict). For nested objects like \"models\", merge keys (repo overrides individual tiers).\nReturn the merged JSON. Output raw JSON only.`\n\nexport function skillPath(skillsDir: string, name: string): string {\n}\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
