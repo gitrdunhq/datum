@@ -2,6 +2,48 @@
 
 All notable changes to DATUM are documented here.
 
+## [Bug Squash Round 2] — 2026-07-07 (run 20260707-093851)
+
+### Fixed
+
+Epic targeted ten self-filed bugs from epic #282 (issues #265, #269, #270, #213, #301,
+#302, #303, #304, #307, #309 — see `docs/epics/datum/bug-squash-round-2/SPEC.md`).
+21 commits merged to `main` at `7be6c6f082cd`, 55 files touched, +2556/-203 LOC.
+During self-hosted execution the pipeline encountered its own bugs mid-run and fixed
+them inline rather than only landing the ten original targets:
+
+- **`fix(pipeline)`**: replaced ambiguous `<branch>` placeholder with real shell
+  substitution (`7f3f486`)
+- **`fix(pipeline)`**: required programmatic JSON construction for large file-content
+  embeds, avoiding string-interpolation breakage (`c271035`)
+- **`fix(pipeline)`**: resolved safety-classifier blockers in `datum go` run (`0a0b4fd`)
+- **`fix(pipeline)`**: seed `resolvedBranch`/`runId` from prior pipeline-state on resume
+  (`b8e0599`)
+- **`fix(build)`**: added `@types/node`, excluded `.test.ts` from workflow entry points
+  (`03da9ec`)
+- **`fix(worktree)`**: reuse existing lane branch on worktree-add collision (`f68a656`)
+- **`fix(worktree)`**: deregister stale worktree when lane branch is checked out
+  elsewhere (`cb282f9`)
+- **`fix(lane)`**: path-boundary-aware `verifyFileOwnership`, exported from
+  `shared/utils` (`35a7bd6`)
+- **`docs`**: recorded CLI-only mandate and pipeline overview updates for #265/#270/#213
+  (`c366d03`)
+
+Four review passes ran during the epic, converging from 9 findings → 7 → 6 → 4
+(`2d5f424`, `9ce97a4`, `30689a7`, `7be6c6f`).
+
+### Known Gaps
+
+- This run's closeout telemetry (`tasks`, `solutions`, `brief_defects`, `token_metrics`
+  in `closeout-data.json`) was empty/zero, so per-task completion status against the
+  original R1–R10 requirements could not be confirmed. Treat R1–R10 as **unverified**
+  pending a follow-up check (see `follow-ups.json`).
+- GitNexus impact-detail collection was unavailable this run (MCP not live), so no
+  symbol-level blast-radius data exists for this merge (base `badb2a9b` → merge
+  `7be6c6f0`).
+
+---
+
 ## [Bug Squash #167 Act Phase — Partial] — 2026-06-14 (run 20260614-161954)
 
 ### Fixed
