@@ -214,9 +214,6 @@ function parseState(raw) {
     return null;
   }
 }
-function serializeState(state) {
-  return JSON.stringify(state, null, 2);
-}
 function detectStartFrom(state) {
   if (!state || !state.completedPhases?.length) return null;
   const ORDER = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
@@ -270,20 +267,11 @@ var completedPhases = priorState?.completedPhases ? [...priorState.completedPhas
 function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
-async function markPhaseComplete(p) {
+async function markPhaseComplete(p, testsPass) {
   if (!completedPhases.includes(p)) completedPhases.push(p);
+  const testsFlag = p === "validate" ? testsPass ? " --tests-pass" : " --tests-fail" : "";
   await agent(
-    `Run \`git rev-parse --abbrev-ref HEAD\` and \`date +%Y-%m-%dT%H:%M:%S\` to get the real branch name and timestamp.
-Write this exact JSON to .datum/pipeline-state.json, substituting BRANCH_PLACEHOLDER and TIMESTAMP_PLACEHOLDER with those real values (do not invent or leave them blank):
-${serializeState({
-      branch: resolvedBranch || "BRANCH_PLACEHOLDER",
-      runId: resolvedRunId || "",
-      route,
-      completedPhases,
-      currentPhase: null,
-      lastUpdated: "TIMESTAMP_PLACEHOLDER"
-    })}
-Overwrite if exists. No other output.`,
+    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     { label: `save-state:${p}`, model: model("fast") }
   );
 }
@@ -493,7 +481,7 @@ if (shouldRun("validate", 4)) {
     log("Validate FAILED \u2014 tests are red. Pipeline halted.");
   } else {
     log("Validate complete");
-    await markPhaseComplete("validate");
+    await markPhaseComplete("validate", !!lastResult.testsPassed);
   }
 }
 if (shouldRun("review", 5)) {

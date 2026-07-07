@@ -2,7 +2,7 @@ import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/ty
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
-import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
+import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 
 export const meta = {
   name: 'datum-go',
@@ -83,20 +83,11 @@ function shouldRun(p: Phase, idx: number): boolean {
   return !haltedAt && startIdx <= idx && activePhases.includes(p)
 }
 
-async function markPhaseComplete(p: Phase): Promise<void> {
+async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
   if (!completedPhases.includes(p)) completedPhases.push(p)
+  const testsFlag = p === 'validate' ? (testsPass ? ' --tests-pass' : ' --tests-fail') : ''
   await agent(
-    `Run \`git rev-parse --abbrev-ref HEAD\` and \`date +%Y-%m-%dT%H:%M:%S\` to get the real branch name and timestamp.
-Write this exact JSON to .datum/pipeline-state.json, substituting BRANCH_PLACEHOLDER and TIMESTAMP_PLACEHOLDER with those real values (do not invent or leave them blank):
-${serializeState({
-      branch: resolvedBranch || 'BRANCH_PLACEHOLDER',
-      runId: resolvedRunId || '',
-      route,
-      completedPhases,
-      currentPhase: null,
-      lastUpdated: 'TIMESTAMP_PLACEHOLDER',
-    })}
-Overwrite if exists. No other output.`,
+    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     { label: `save-state:${p}`, model: model('fast') },
   )
 }
@@ -365,7 +356,7 @@ if (shouldRun('validate', 4)) {
     log('Validate FAILED — tests are red. Pipeline halted.')
   } else {
     log('Validate complete')
-    await markPhaseComplete('validate')
+    await markPhaseComplete('validate', !!lastResult.testsPassed)
   }
 }
 

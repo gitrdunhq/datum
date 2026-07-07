@@ -1699,6 +1699,64 @@ def housekeep_epic_cmd(
     typer.echo(json.dumps(result))
 
 
+@app.command(name="pipeline-state-save")
+def pipeline_state_save_cmd(
+    phase: str = typer.Option(
+        ...,
+        "--phase",
+        help="Phase that just finished: refine, plan, properties, act, validate, review, closeout",
+    ),
+    run_id: str = typer.Option(..., "--run-id", help="Pipeline run ID"),
+    route: str = typer.Option(
+        ..., "--route", help="Pipeline route (feature/bugfix/etc)"
+    ),
+    tests_pass: bool = typer.Option(
+        False,
+        "--tests-pass/--tests-fail",
+        help="Required for --phase validate: whether the test run actually passed",
+    ),
+):
+    """Verify a phase actually completed, then append it to .datum/pipeline-state.json.
+
+    Never trusts a bare completion claim: the phase is checked against
+    real git/filesystem evidence first (see datum.pipeline_state.verify_phase).
+    Refuses (exit 1) and writes nothing if verification fails.
+    """
+    import subprocess
+
+    from datum.pipeline_state import (
+        read_pipeline_state,
+        verify_phase,
+        write_pipeline_state,
+    )
+
+    ok, reason = verify_phase(phase, run_id=run_id, tests_pass=tests_pass)
+    if not ok:
+        typer.echo(json.dumps({"verified": False, "phase": phase, "reason": reason}))
+        raise typer.Exit(code=1)
+
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    prior = read_pipeline_state()
+    completed = list(prior["completedPhases"]) if prior else []
+    if phase not in completed:
+        completed.append(phase)
+
+    state = write_pipeline_state(
+        branch=branch,
+        run_id=run_id,
+        route=route,
+        completed_phases=completed,
+        current_phase=None,
+    )
+    typer.echo(json.dumps(state))
+
+
 # ── Lane state markers ───────────────────────────────────────────────────────
 
 lane_state_app = typer.Typer(
