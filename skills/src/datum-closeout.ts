@@ -73,15 +73,9 @@ const synth = typeof synthResult === 'string'
 
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)
 
-// Housekeep: delete merged lane/worktree branches and pipeline-state
+// Housekeep: delete merged lane/worktree branches and pipeline-state (deterministic, no LLM)
 await agent(
-  `Clean up after the epic:
-1. Delete pipeline state: rm -f .datum/pipeline-state.json
-2. Delete merged lane branches for THIS epic only (exact prefix match, no other epics/runs):
-   git branch --merged | grep -E '^[* ]+${ctx.branch}--' | xargs -r git branch -d 2>/dev/null
-3. Prune worktree refs: git worktree prune 2>/dev/null
-4. Report what was deleted.
-Output a short summary only.`,
+  `Run: datum housekeep-epic ${ctx.branch}`,
   { label: 'housekeep', model: model('fast') },
 )
 

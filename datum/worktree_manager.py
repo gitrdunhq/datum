@@ -260,32 +260,70 @@ def cleanup_run_worktrees(
     *,
     repo_root: Path | None = None,
 ) -> list[str]:
-    """Remove all lane worktrees for a given run_id.
+    """Remove all lane worktrees for a given run_id, plus its root worktree.
 
-    Discovers lanes by listing .datum/worktrees/<run_id>/.
-    Returns list of lane_ids cleaned up.
+    Discovers lanes by listing .datum/worktrees/<run_id>/. The root worktree
+    at .datum/worktrees/<run_id>-root (created --detach, no branch to delete)
+    is force-removed too — this is the sole cleanup entrypoint so pipeline
+    teardown never needs a raw `git worktree remove` in an agent prompt.
+    Returns list of lane_ids (plus "<run_id>-root" if present) cleaned up.
     """
     repo_root = (repo_root or Path(".")).resolve()
     run_dir = repo_root / WORKTREE_ROOT / run_id
 
-    if not run_dir.exists():
-        return []
-
     cleaned: list[str] = []
-    for lane_dir in sorted(run_dir.iterdir()):
-        if lane_dir.is_dir():
-            lane_id = lane_dir.name
-            remove_lane_worktree(lane_id, run_id, epic_branch, repo_root=repo_root)
-            cleaned.append(lane_id)
+    if run_dir.exists():
+        for lane_dir in sorted(run_dir.iterdir()):
+            if lane_dir.is_dir():
+                lane_id = lane_dir.name
+                remove_lane_worktree(lane_id, run_id, epic_branch, repo_root=repo_root)
+                cleaned.append(lane_id)
+        try:
+            run_dir.rmdir()
+        except OSError:
+            pass
+
+    root_dir = repo_root / WORKTREE_ROOT / f"{run_id}-root"
+    if root_dir.exists():
+        _git(
+            ["worktree", "remove", str(root_dir), "--force"], cwd=repo_root, check=False
+        )
+        cleaned.append(f"{run_id}-root")
 
     prune_stale_worktrees(repo_root=repo_root)
 
-    try:
-        run_dir.rmdir()
-    except OSError:
-        pass
-
     return cleaned
+
+
+def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
+    """Delete merged lane branches for one epic, its pipeline-state marker, and prune worktree refs.
+
+    Only removes branches git already reports as merged (`branch -d`, never
+    `-D`), and only those matching the exact `<epic_branch>--` prefix — never
+    other epics/runs. Deterministic, no LLM in the loop, so closeout never
+    needs a raw `git branch --merged | xargs git branch -d` pipeline in an
+    agent prompt.
+    """
+    repo_root = (repo_root or Path(".")).resolve()
+
+    state_path = repo_root / ".datum" / "pipeline-state.json"
+    state_removed = state_path.exists()
+    if state_removed:
+        state_path.unlink()
+
+    merged = _git(["branch", "--merged"], cwd=repo_root, check=False).stdout
+    prefix = f"{epic_branch}--"
+    deleted: list[str] = []
+    for line in merged.splitlines():
+        name = line.strip().lstrip("*").strip()
+        if name.startswith(prefix):
+            result = _git(["branch", "-d", name], cwd=repo_root, check=False)
+            if result.returncode == 0:
+                deleted.append(name)
+
+    prune_stale_worktrees(repo_root=repo_root)
+
+    return {"deleted_branches": deleted, "pipeline_state_removed": state_removed}
 
 
 def worktree_path_for_lane(

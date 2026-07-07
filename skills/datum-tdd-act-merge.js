@@ -42,7 +42,7 @@ if (greenIds.length === 0) {
 }
 phase("Cleanup");
 await agent(
-  `datum worktrees cleanup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} && git worktree remove .datum/worktrees/${a.batchRunId}-root --force 2>/dev/null; git worktree prune`,
+  `datum worktrees cleanup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch}`,
   { label: `cleanup${a.batchTag}`, phase: "Cleanup", model: model("fast") }
 );
 return { merged: a.completedIds.length > 0 };

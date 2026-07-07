@@ -1675,11 +1675,28 @@ def worktrees_cleanup(
     run_id: str = typer.Option(..., "--run-id", help="Run ID to clean up"),
     epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
 ):
-    """Remove all lane worktrees for a given run."""
+    """Remove all lane worktrees for a given run, including its root worktree."""
     from datum.worktree_manager import cleanup_run_worktrees
 
     cleaned = cleanup_run_worktrees(run_id, epic_branch)
     typer.echo(json.dumps({"cleaned": cleaned}))
+
+
+@app.command(name="housekeep-epic")
+def housekeep_epic_cmd(
+    epic_branch: str = typer.Argument(
+        ..., help="Epic branch whose merged lane branches to clean up"
+    ),
+):
+    """Delete merged lane branches + pipeline-state for one epic (internal, deterministic).
+
+    Only deletes branches git reports as merged, matching the exact
+    `<epic_branch>--` prefix — never other epics/runs.
+    """
+    from datum.worktree_manager import housekeep_epic
+
+    result = housekeep_epic(epic_branch)
+    typer.echo(json.dumps(result))
 
 
 # ── Lane state markers ───────────────────────────────────────────────────────
