@@ -475,7 +475,7 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
     }
     return null;
   })() : null;
-  const scopedTestCmd = swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
+  const scopedTestCmd = typeof lane.test_command === "string" && lane.test_command.trim() ? lane.test_command.trim() : swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
   const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
   const testFuncDiffRegex = laneLanguage === "swift" ? "[+][[:space:]]*(@Test|func test)" : laneLanguage === "go" ? "[+][[:space:]]*func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
   const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";

@@ -77,6 +77,12 @@ export interface Lane {
   red_note?: string
   stage?: 'structural' | 'behavioral'
   green_model?: ModelName
+  /** Verbatim test command override for lanes the repo-wide command can't
+   *  reach (e.g. files in a sub-package with its own Package.swift). When set,
+   *  the auto Swift --filter scoping is skipped — the override carries its own
+   *  scoping. Excluded from laneSpecHash: changing it never invalidates a
+   *  completed lane marker. */
+  test_command?: string
 }
 
 export interface PipelineConfig {

@@ -148,7 +148,14 @@ async function runLane(
          return null
        })()
      : null
-   const scopedTestCmd = swiftTargetFilter
+   // Per-lane test_command override: a lane whose files live in a sub-package
+   // (own Package.swift) can't be tested by the repo-wide command — the root
+   // package doesn't compile its targets. When the plan sets test_command on a
+   // lane, use it verbatim and skip the auto --filter (the override is
+   // expected to carry its own scoping, e.g. --package-path X --filter Y).
+   const scopedTestCmd = typeof lane.test_command === 'string' && lane.test_command.trim()
+     ? lane.test_command.trim()
+     : swiftTargetFilter
      ? `${cfg.testCommand} ${swiftTargetFilter}`
      : cfg.testCommand
    const scopedLaneCfg: PipelineConfig = { ...cfg, testCommand: scopedTestCmd }
