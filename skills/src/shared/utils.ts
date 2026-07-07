@@ -309,6 +309,36 @@ export function epicSlug(branch: string): string {
   return branch.replace(/[^A-Za-z0-9._-]/g, '-')
 }
 
+// ---------------------------------------------------------------------------
+// verifyFileOwnership — path-boundary-aware allow/forbid check for lane
+// ownership (#269). Matching is exact-path or path-boundary aware — never a
+// raw suffix/substring comparison, which would treat "NewFoo.test.ts" as
+// matching an allowed "Foo.test.ts" ("NewFoo.test.ts".endsWith("Foo.test.ts")).
+// ---------------------------------------------------------------------------
+
+function pathBoundaryMatch(a: string, b: string): boolean {
+  return a === b || a.endsWith('/' + b) || b.endsWith('/' + a)
+}
+
+export function verifyFileOwnership(
+  changed: string[],
+  allowedFiles: string[],
+  forbiddenFiles: string[] = [],
+): { ok: boolean; violations: string[] } {
+  const violations: string[] = []
+
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
+      violations.push(`${f} is owned by another lane`)
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a) => pathBoundaryMatch(f, a))) {
+      violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
+    }
+  }
+
+  return { ok: violations.length === 0, violations }
+}
+
 export function fnv1a64(input: string): string {
   const PRIME = 0x100000001b3n
   const MASK = 0xffffffffffffffffn

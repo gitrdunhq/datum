@@ -139,6 +139,21 @@ function getIssueId(lanePlan2, taskId) {
 }
 
 // skills/src/shared/utils.ts
+function pathBoundaryMatch(a2, b) {
+  return a2 === b || a2.endsWith("/" + b) || b.endsWith("/" + a2);
+}
+function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
+  const violations = [];
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
+      violations.push(`${f} is owned by another lane`);
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a2) => pathBoundaryMatch(f, a2))) {
+      violations.push(`${f} is not in allowed files list [${allowedFiles.join(", ")}]`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
 function classifyFiles(files) {
   const isImplAdjacent = (f) => {
     return f.includes("/Mocks/") || f.includes("/mocks/") || f.includes("/Fakes/") || f.includes("/fakes/") || f.includes("/Stubs/") || f.includes("/stubs/") || f.includes("/Fixtures/") || f.includes("/fixtures/") || f.includes("/Helpers/") || f.includes("/helpers/");
@@ -424,7 +439,7 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
-async function verifyFileOwnership(taskId, wt, stage, allowedFiles, forbiddenFiles) {
+async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
   const result = await agent(
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
@@ -434,16 +449,7 @@ No markdown fences, no explanation.`,
   if (!result) return { ok: true, violations: [] };
   const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
   const changed = parsed.files_changed || [];
-  const violations = [];
-  for (const f of changed) {
-    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
-      violations.push(`${f} is owned by another lane`);
-    }
-    if (allowedFiles.length > 0 && !allowedFiles.some((a2) => f.endsWith(a2) || a2.endsWith(f))) {
-      violations.push(`${f} is not in allowed files list [${allowedFiles.join(", ")}]`);
-    }
-  }
-  return { ok: violations.length === 0, violations };
+  return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
@@ -728,7 +734,7 @@ Output raw JSON only.`,
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   await updateStage(issueId, "red", red.commit_sha);
-  const redOwnership = await verifyFileOwnership(taskId, wt, "RED", testFiles, implFiles);
+  const redOwnership = await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
@@ -831,7 +837,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
     }
   }
-  const greenOwnership = await verifyFileOwnership(taskId, wt, "GREEN", implFiles, testFiles);
+  const greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
   if (!greenOwnership.ok) {
     log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };

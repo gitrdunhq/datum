@@ -29,6 +29,7 @@ import {
   crossValidateBugs,
   buildPacket,
   parseAgentJson,
+  verifyFileOwnership as verifyFileOwnershipMatch,
 } from './shared/utils'
 import {
   redPrompt,
@@ -71,18 +72,7 @@ No markdown fences, no explanation.`,
     : result as { files_changed?: string[] }
 
   const changed = parsed.files_changed || []
-  const violations: string[] = []
-
-  for (const f of changed) {
-    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
-      violations.push(`${f} is owned by another lane`)
-    }
-    if (allowedFiles.length > 0 && !allowedFiles.some((a) => f.endsWith(a) || a.endsWith(f))) {
-      violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
-    }
-  }
-
-  return { ok: violations.length === 0, violations }
+  return verifyFileOwnershipMatch(changed, allowedFiles, forbiddenFiles)
 }
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────
