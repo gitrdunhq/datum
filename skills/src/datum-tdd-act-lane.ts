@@ -133,28 +133,31 @@ async function runLane(
      : cfg.testCommand
    const scopedLaneCfg: PipelineConfig = { ...cfg, testCommand: scopedTestCmd }
 
-   // Language-aware grep patterns for test function detection
+   // Language-aware grep patterns for test function detection.
+  // Bare ERE regex only — no embedded shell quotes or -E flag here. Every call
+  // site applies its own single quotes; embedding quotes in the constant led
+  // to double-quoting bugs when a caller wrapped it in another pair (#288/#289).
   // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
   // NB: no '^' anchor on '+' — macOS git 2.54.0 with core.pager may emit 2-space indented patch lines
-  const testFuncDiffPattern: string = cfg.language === 'swift'
-    ? "-E '[+][[:space:]]*(@Test|func test)'"
+  const testFuncDiffRegex: string = cfg.language === 'swift'
+    ? '[+][[:space:]]*(@Test|func test)'
     : cfg.language === 'go'
-    ? "-E '[+][[:space:]]*func Test'"
+    ? '[+][[:space:]]*func Test'
     : cfg.language === 'typescript' || cfg.language === 'javascript'
-    ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'"
-    : "-E '[+][[:space:]]*def test_'"
-  const testFuncGrepPattern: string = cfg.language === 'swift'
-    ? "-E '@Test|func test'"
+    ? '[+][[:space:]]*(it\\(|test\\(|describe\\()'
+    : '[+][[:space:]]*def test_'
+  const testFuncGrepRegex: string = cfg.language === 'swift'
+    ? '@Test|func test'
     : cfg.language === 'go'
-    ? "-E 'func Test'"
+    ? 'func Test'
     : cfg.language === 'typescript' || cfg.language === 'javascript'
-    ? "-E 'it\\(|test\\(|describe\\('"
-    : "-E 'def test_|async def test_'"
-  const testFuncBodyPattern: string = cfg.language === 'swift'
-    ? "'func test'"
+    ? 'it\\(|test\\(|describe\\('
+    : 'def test_|async def test_'
+  const testFuncBodyRegex: string = cfg.language === 'swift'
+    ? 'func test'
     : cfg.language === 'go'
-    ? "'func Test'"
-    : "'def test_'"
+    ? 'func Test'
+    : 'def test_'
 
   // ── Cross-run completion check: skip if a previous run already completed this lane ──
   const completionPath = runId
@@ -370,7 +373,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount = 0
     let gatePassed = false
     const countRaw: string | null = await agent(
-      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern ${testFuncDiffPattern.replace(/^-E\s+/, '')} --required ${acCount}
+      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern '${testFuncDiffRegex}' --required ${acCount}
 Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
@@ -433,7 +436,7 @@ ${testFiles.map((f) => sgPatterns.map((p) =>
 
 Also check for pass-only test bodies:
 ${testFiles.map((f) =>
-    `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    `grep -A1 '${testFuncBodyRegex}' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
   ).join('\n')}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -465,9 +468,9 @@ Output raw JSON only.`,
   const rawCounts = await agent(
     `Count test functions in these files:
 After-counts (current worktree):
-${testFiles.map(f => `grep -c ${testFuncGrepPattern} "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
+${testFiles.map(f => `grep -c -E '${testFuncGrepRegex}' "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
 Before-counts (parent commit — 0 for first commit):
-${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join('\n')}
+${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E '${testFuncGrepRegex}' || echo 0`).join('\n')}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`, phase: 'Act', model: model('fast'),

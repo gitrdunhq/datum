@@ -474,9 +474,9 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   })() : null;
   const scopedTestCmd = swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
   const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
-  const testFuncDiffPattern = cfg2.language === "swift" ? "-E '[+][[:space:]]*(@Test|func test)'" : cfg2.language === "go" ? "-E '[+][[:space:]]*func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E '[+][[:space:]]*(it\\(|test\\(|describe\\()'" : "-E '[+][[:space:]]*def test_'";
-  const testFuncGrepPattern = cfg2.language === "swift" ? "-E '@Test|func test'" : cfg2.language === "go" ? "-E 'func Test'" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "-E 'it\\(|test\\(|describe\\('" : "-E 'def test_|async def test_'";
-  const testFuncBodyPattern = cfg2.language === "swift" ? "'func test'" : cfg2.language === "go" ? "'func Test'" : "'def test_'";
+  const testFuncDiffRegex = cfg2.language === "swift" ? "[+][[:space:]]*(@Test|func test)" : cfg2.language === "go" ? "[+][[:space:]]*func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
+  const testFuncGrepRegex = cfg2.language === "swift" ? "@Test|func test" : cfg2.language === "go" ? "func Test" : cfg2.language === "typescript" || cfg2.language === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
+  const testFuncBodyRegex = cfg2.language === "swift" ? "func test" : cfg2.language === "go" ? "func Test" : "def test_";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   if (completionPath) {
     const completionExist = await agent(
@@ -638,7 +638,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount2 = 0;
     let gatePassed = false;
     const countRaw = await agent(
-      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern ${testFuncDiffPattern.replace(/^-E\s+/, "")} --required ${acCount}
+      `Run: bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern '${testFuncDiffRegex}' --required ${acCount}
 Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,
@@ -693,7 +693,7 @@ ${testFiles.map((f) => sgPatterns.map(
 
 Also check for pass-only test bodies:
 ${testFiles.map(
-      (f) => `grep -A1 ${testFuncBodyPattern} "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `grep -A1 '${testFuncBodyRegex}' "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n")}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -720,9 +720,9 @@ Output raw JSON only.`,
   const rawCounts = await agent(
     `Count test functions in these files:
 After-counts (current worktree):
-${testFiles.map((f) => `grep -c ${testFuncGrepPattern} "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
+${testFiles.map((f) => `grep -c -E '${testFuncGrepRegex}' "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
 Before-counts (parent commit \u2014 0 for first commit):
-${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c ${testFuncGrepPattern} || echo 0`).join("\n")}
+${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E '${testFuncGrepRegex}' || echo 0`).join("\n")}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`,
