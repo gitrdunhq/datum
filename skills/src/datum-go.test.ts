@@ -251,3 +251,52 @@ describe('adopt-existing-feature-branch — AC4', () => {
     expect(readFileSync(ticketPath, 'utf8')).toBe(sentinel)
   })
 })
+
+// ---------------------------------------------------------------------------
+// new-epic detection (#213 follow-up) — a freeText brief that clearly
+// describes different work than the existing TICKET.md must trigger a new
+// epic bootstrap instead of silently resuming the checked-out one.
+//
+// Incident: on a feature branch with its own TICKET.md from a prior epic,
+// `datum go yolo "new brief"` resumed the existing epic because the
+// bootstrap logic only ever checked "is TICKET.md missing?" — never whether
+// the brief the caller just typed described a different piece of work.
+// Fixing this by shelling out to a real LLM mid-test isn't practical, so
+// these are source-string assertions (same convention as AC3 / #327 above)
+// that lock in: the guard conditions, that it reuses the existing
+// `datum init --name <slug>` CLI bootstrap path rather than a second
+// mechanism, and that it runs before auto-resume decides to skip Refine.
+// ---------------------------------------------------------------------------
+
+describe('new-epic detection from freeText brief (#213 follow-up)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('only runs the new-epic check when freeText is present, prior state exists, and start was not explicit', () => {
+    expect(src).toMatch(/if \(a\.freeText && priorState && !explicitStart\)/)
+  })
+
+  it('reuses the existing `datum init --name <slug>` bootstrap path rather than inventing a second mechanism', () => {
+    expect(src).toMatch(/datum init --name <slug> --json/)
+  })
+
+  it('gates auto-resume on the new-epic decision so a detected new epic does not get skipped straight past Refine', () => {
+    expect(src).toMatch(/if \(priorState && !explicitStart && !newEpicBranch\)/)
+  })
+
+  it('the new-epic check runs before the auto-resume block', () => {
+    const newEpicIdx = src.indexOf('New-epic detection')
+    const resumeIdx = src.indexOf('if (priorState && !explicitStart && !newEpicBranch)')
+    expect(newEpicIdx).toBeGreaterThan(-1)
+    expect(resumeIdx).toBeGreaterThan(-1)
+    expect(newEpicIdx).toBeLessThan(resumeIdx)
+  })
+
+  it('bare `datum go yolo` (no freeText) never triggers the new-epic check, preserving existing resume behavior', () => {
+    // Guard requires a.freeText to be truthy — parseArgs only sets freeText
+    // in the catch-all branch, never for bare "yolo"/JSON/issue-number input.
+    expect(src).toMatch(/a\.freeText && priorState && !explicitStart/)
+    // `--start-from` explicitly set must also short-circuit the check,
+    // preserving `--start-from`/`--route` resume behavior untouched.
+    expect(src).toMatch(/explicitStart: boolean = !!a\.startFrom/)
+  })
+})

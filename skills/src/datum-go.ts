@@ -136,7 +136,40 @@ async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
     { label: `save-state:${p}`, model: model('fast') },
   )
 }
-if (priorState && !explicitStart) {
+
+// New-epic detection (#213 follow-up): a branch can already carry a
+// TICKET.md + pipeline-state from a PRIOR epic. Historically the only
+// trigger for bootstrapping a new epic was "TICKET.md is entirely
+// missing" — if one existed, we silently resumed it, even when the
+// caller just typed a free-text brief describing something completely
+// different. Reuse the exact CLI bootstrap path Act already uses
+// (`datum init --name <slug>`, #213) instead of inventing a second
+// mechanism — just trigger it earlier, before auto-resume decides to
+// skip straight past Refine.
+let newEpicBranch = ''
+if (a.freeText && priorState && !explicitStart) {
+  const newEpicText = await agent(
+    `An existing epic is checked out on this branch. Prior pipeline state: ${JSON.stringify(priorState)}.
+Read the current epic's TICKET.md (its branch is "${priorState.branch}"; the file lives at docs/epics/${priorState.branch}/TICKET.md) and compare its title/scope to this NEW brief the caller just typed:
+"""
+${a.freeText}
+"""
+Decide: does the brief describe the SAME piece of work as the existing TICKET.md, or a CLEARLY DIFFERENT one?
+- If SAME, or you cannot confidently tell they differ: output {"newEpic": false}.
+- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief, then run exactly: datum init --name <slug> --json
+  and return the raw JSON it printed, merged with {"newEpic": true, "reason": "<why they differ>"}.
+Output ONLY raw JSON, no markdown fences, no explanation.`,
+    { label: 'new-epic-check', model: model('balanced') },
+  )
+  const newEpicInfo = parseAgentJson(newEpicText as string, { newEpic: false }) as { newEpic: boolean; epicBranch?: string; reason?: string }
+  if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
+    log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`)
+    newEpicBranch = newEpicInfo.epicBranch
+    resolvedBranch = newEpicInfo.epicBranch
+  }
+}
+
+if (priorState && !explicitStart && !newEpicBranch) {
   const resumeAt = detectStartFrom(priorState)
   if (resumeAt) {
     const resumeIdx = PHASES.indexOf(resumeAt)
