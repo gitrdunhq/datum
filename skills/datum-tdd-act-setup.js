@@ -35,7 +35,7 @@ function parseAgentJson(text, fallback) {
 var a = args;
 phase("Setup");
 var rootWtText = await agent(
-  `git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>&1 && echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
+  `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
   { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var rootWtInfo = parseAgentJson(rootWtText, {});
@@ -43,7 +43,7 @@ var rootWt = rootWtInfo.root;
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId}`);
 log(`Root worktree${a.batchTag}: ${rootWt}`);
 var setupText = await agent(
-  `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.join(",")}
+  `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(",")}
 Return ONLY the JSON output, no explanation.`,
   { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );

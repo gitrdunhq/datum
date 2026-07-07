@@ -35,14 +35,14 @@ if (greenIds.length === 0) {
 } else {
   const mergeOrder = a.topoOrder.filter((id) => greenIds.includes(id));
   await agent(
-    `datum worktrees merge --epic-branch ${a.epicBranch} --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
+    `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
     { label: `merge${a.batchTag}`, phase: "Merge", model: model("fast") }
   );
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
 }
 phase("Cleanup");
 await agent(
-  `datum worktrees cleanup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch}`,
+  `datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`,
   { label: `cleanup${a.batchTag}`, phase: "Cleanup", model: model("fast") }
 );
 return { merged: a.completedIds.length > 0 };

@@ -78,7 +78,7 @@ async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage)
   const raw = await agent(
     `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:
 git -C "${wt}" log --format="%H %s"
-git -C "${wt}" status --porcelain -- ${files.join(" ")}
+git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(" ")}
 Return ONLY the raw output, no explanation, no markdown fences.`,
     { label: `verify-commit:${taskId}:${stage}`, model: "haiku" }
   );
@@ -656,7 +656,7 @@ cat > "$PATFILE" <<'PATTERN_EOF'
 ${testFuncDiffRegex}
 PATTERN_EOF
 2. Run the gate script against that file:
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern-file "$PATFILE" --required ${acCount}
+bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map((f) => `"${f}"`).join(" ")} --pattern-file "$PATFILE" --required ${acCount}
 Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,

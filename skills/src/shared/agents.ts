@@ -37,7 +37,7 @@ export async function verifyCommitIndependently(
   const raw: string | null = await agent(
     `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:\n` +
       `git -C "${wt}" log --format="%H %s"\n` +
-      `git -C "${wt}" status --porcelain -- ${files.join(' ')}\n` +
+      `git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(' ')}\n` +
       `Return ONLY the raw output, no explanation, no markdown fences.`,
     { label: `verify-commit:${taskId}:${stage}`, model: 'haiku' },
   )
