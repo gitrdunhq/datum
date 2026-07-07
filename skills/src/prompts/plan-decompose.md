@@ -15,6 +15,13 @@ Codebase scan (files, patterns, test conventions):
 Prior failure patterns:
 {{priorFailures}}
 
+BUILD-ORDER / IMPORT ANALYSIS CHECK:
+Before finalizing depends_on for any task, trace the actual import/reference graph implied by the codebase scan and the SPEC — which modules/files import or call which others — and make sure each task's depends_on reflects that real build order, not just narrative ordering from the SPEC. A task that will import or call code another task creates must depend_on that task.
+
+PROJECT BUILD CONSTRAINTS:
+{{contextFilesSection}}
+The context_files section above (when present) lists project documentation that is authoritative for build order and module boundaries. Where these project docs conflict with a build order you would otherwise infer from source imports, the project docs take precedence over inferred imports — follow the documented order and note the override in the affected task's red_note.
+
 RULES:
 - Each task maps to one lane in the TDD pipeline
 - Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"

@@ -1,6 +1,10 @@
 // Pure utility functions for the datum TDD workflow pipeline.
-// Every function here is deterministic and side-effect-free.
+// Most functions here are deterministic and side-effect-free; a couple
+// (buildContextFilesSection) read from the filesystem by design since they
+// exist to pull project docs into a prompt payload.
 
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type {
   LanePlan,
   Lane,
@@ -790,4 +794,93 @@ export function renderPrompt(
     /\{\{(\w+)\}\}/g,
     (_match, key: string) => (vars as Record<string, string>)[key] ?? `{{${key}}}`,
   )
+}
+
+// ---------------------------------------------------------------------------
+// assertAcyclicTasks — Kahn's-algorithm cycle guard for decomposed tasks.
+//
+// Throws an Error naming only the task ids that participate in a
+// dependency cycle (tasks not reachable from a topological sort) before a
+// caller writes tasks.json/lane-plan.json for a graph that can never
+// schedule. Ignores depends_on entries that reference ids outside the
+// given task list (those aren't cycles within this set).
+// ---------------------------------------------------------------------------
+
+export function assertAcyclicTasks(
+  tasks: Array<{ id: string; depends_on?: string[] }>,
+): void {
+  const ids = tasks.map((t) => t.id)
+  const idSet = new Set(ids)
+  const inDeg: Record<string, number> = {}
+  const adj: Record<string, string[]> = {}
+  for (const id of ids) inDeg[id] = 0
+
+  for (const task of tasks) {
+    const deps = (task.depends_on || []).filter((dep) => idSet.has(dep))
+    inDeg[task.id] += deps.length
+    for (const dep of deps) {
+      ;(adj[dep] = adj[dep] || []).push(task.id)
+    }
+  }
+
+  let queue = ids.filter((id) => inDeg[id] === 0)
+  const placed = new Set<string>(queue)
+  while (queue.length > 0) {
+    const next: string[] = []
+    for (const id of queue) {
+      for (const child of adj[id] || []) {
+        inDeg[child]--
+        if (inDeg[child] === 0 && !placed.has(child)) {
+          placed.add(child)
+          next.push(child)
+        }
+      }
+    }
+    queue = next
+  }
+
+  const cyclic = ids.filter((id) => !placed.has(id))
+  if (cyclic.length > 0) {
+    throw new Error(
+      `Cyclic dependency detected among tasks: ${cyclic.sort().join(', ')}`,
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// buildContextFilesSection — reads each context_files entry (resolved
+// relative to projectRoot) and renders a "PROJECT BUILD CONSTRAINTS"
+// section carrying their full contents for injection into the decompose
+// prompt. Missing files are reported via `warn` and skipped rather than
+// throwing, so a stale config entry never blocks a plan run. Returns ''
+// when contextFiles is absent/empty so no section is introduced.
+// ---------------------------------------------------------------------------
+
+export function buildContextFilesSection(
+  contextFiles: string[] | undefined,
+  projectRoot: string,
+  warn: (message: string) => void,
+): string {
+  if (!contextFiles || contextFiles.length === 0) return ''
+
+  const blocks: string[] = []
+  for (const relPath of contextFiles) {
+    const fullPath = join(projectRoot, relPath)
+    if (!existsSync(fullPath)) {
+      warn(`context_files entry not found, skipping: ${relPath}`)
+      continue
+    }
+    const content = readFileSync(fullPath, 'utf8')
+    blocks.push(`### ${relPath}\n${content}`)
+  }
+
+  if (blocks.length === 0) return ''
+
+  return [
+    'PROJECT BUILD CONSTRAINTS',
+    '',
+    'The following project documentation was listed in context_files and is authoritative. Where these docs conflict with a build order inferred from source imports, the project docs take precedence over inferred imports.',
+    '',
+    ...blocks,
+  ].join('\n')
 }
