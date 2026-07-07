@@ -15,6 +15,7 @@ See: references/git-workflows.md and GitHub issue #137.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -86,6 +87,35 @@ def create_lane_worktree(
                 cwd=repo_root,
                 check=False,
             )
+        if result.returncode != 0:
+            # A stale worktree from an even earlier incomplete run may still hold
+            # lane_branch checked out ("already used by worktree at '<path>'").
+            # That worktree's directory is orphaned (its run finished/errored
+            # without cleanup) — deregister it (not the branch, not its commits)
+            # so lane_branch is free, then retry the checkout.
+            match = re.search(r"already used by worktree at '([^']+)'", result.stderr)
+            if match:
+                stale_path = match.group(1)
+                # Non-force remove: git itself refuses if the stale worktree has
+                # uncommitted changes, so this never silently discards work.
+                remove_result = _git(
+                    ["worktree", "remove", stale_path],
+                    cwd=repo_root,
+                    check=False,
+                )
+                if remove_result.returncode != 0:
+                    raise RuntimeError(
+                        f"lane branch {lane_branch} is locked to stale worktree "
+                        f"{stale_path}, which has uncommitted changes and cannot "
+                        f"be auto-removed: {remove_result.stderr.strip()}. "
+                        f"Inspect and resolve it manually before retrying."
+                    )
+                _git(["worktree", "prune"], cwd=repo_root, check=False)
+                result = _git(
+                    ["worktree", "add", str(worktree_path), lane_branch],
+                    cwd=repo_root,
+                    check=False,
+                )
         if result.returncode != 0:
             raise RuntimeError(
                 f"git worktree add failed for lane {lane_id}: {result.stderr.strip()}"
