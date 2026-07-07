@@ -518,7 +518,7 @@ List the files changed.`,
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
     await writeCompletion();
-    return { task_id: taskId, status: "completed" };
+    return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
   const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/;
   if (testFiles.some((f) => scriptTestPattern.test(f))) {
@@ -861,7 +861,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   log(`[${taskId}] === LANE COMPLETE ===`);
   await updateStage(issueId, "done");
   await writeCompletion();
-  return { task_id: taskId, status: "completed" };
+  return { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
   log(`[${taskId}] REFACTOR: checking if needed`);
@@ -931,9 +931,9 @@ var dagResults = await parallel(
     if (crossBatchFailed.length > 0 || crossBatchMissing.length > 0) {
       const failedPart = crossBatchFailed.length > 0 ? `failed [${crossBatchFailed.join(", ")}]` : "";
       const missingPart = crossBatchMissing.length > 0 ? `never executed [${crossBatchMissing.join(", ")}]` : "";
-      const err = `skipped: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(", ")}`;
+      const err = `blocked: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(", ")}`;
       log(`[${taskId}] ${err}`);
-      const skipResult = { task_id: taskId, status: "skipped", stage: "SKIPPED", error: err };
+      const skipResult = { task_id: taskId, status: "blocked", stage: "SKIPPED", error: err };
       depResolvers[taskId](skipResult);
       return skipResult;
     }
@@ -943,9 +943,9 @@ var dagResults = await parallel(
       const depResults = await Promise.all(inBatchDeps.map((d) => depPromises[d]));
       const failedDeps = depResults.filter((r) => r.status !== "completed");
       if (failedDeps.length > 0) {
-        const err = `skipped: dep(s) failed [${failedDeps.map((r) => r.task_id).join(", ")}]`;
+        const err = `blocked: dep(s) failed [${failedDeps.map((r) => r.task_id).join(", ")}]`;
         log(`[${taskId}] ${err}`);
-        const skipResult = { task_id: taskId, status: "skipped", stage: "SKIPPED", error: err };
+        const skipResult = { task_id: taskId, status: "blocked", stage: "SKIPPED", error: err };
         depResolvers[taskId](skipResult);
         return skipResult;
       }

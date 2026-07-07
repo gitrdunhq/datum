@@ -1,31 +1,16 @@
 Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.
 
-Run this exact script from the repo root and return ONLY the word DONE:
+Run this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:
 
 ```
-python3 - <<'PYEOF'
-import json, os, subprocess, datetime
-entries = json.loads('''{{entriesJson}}''')
-merge_commit = subprocess.check_output(['git', 'rev-parse', '{{epicBranch}}']).decode().strip()
-ts = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-d = '.datum/epics/{{epicSlug}}/lane-state'
-os.makedirs(d, exist_ok=True)
-for e in entries:
-    marker = {
-        'schema_version': '1.0',
-        'task_id': e['task_id'],
-        'status': 'completed',
-        'epic_branch': '{{epicBranch}}',
-        'merge_commit': merge_commit,
-        'spec_hash': e['spec_hash'],
-        'run_id': '{{runId}}',
-        'completed_at': ts,
-    }
-    with open(os.path.join(d, e['task_id'] + '.json'), 'w') as fh:
-        json.dump(marker, fh, indent=2)
-        fh.write('\n')
-print('DONE')
-PYEOF
+MC=$(git rev-parse {{epicBranch}})
+echo '{{entriesJson}}' | jq -c '.[]' | while read -r e; do
+  TID=$(echo "$e" | jq -r '.task_id')
+  SHASH=$(echo "$e" | jq -r '.spec_hash')
+  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \
+    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null
+done
+echo DONE
 ```
 
-Do not commit these files; they are local scheduler state.
+Do not write files directly; all state must go through the `datum lane-state write` CLI call above.

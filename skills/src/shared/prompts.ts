@@ -92,7 +92,7 @@ export function docsSyncPrompt(vars: { docsPacket: string }): string {
 }
 
 // Epic-scoped lane-state markers — no TDD preamble; these are pure bookkeeping ops.
-export function laneStateReadPrompt(vars: { epicBranch: string; epicSlug: string }): string {
+export function laneStateReadPrompt(vars: { epicBranch: string; epicSlug: string; taskIdsSpace: string }): string {
   return renderPrompt(laneStateReadTemplate, vars as PromptVars)
 }
 

@@ -249,7 +249,7 @@ List the files changed.`,
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
     await writeCompletion()
-    return { task_id: taskId, status: 'completed' }
+    return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
 
   // ── Pre-RED cleanup: remove stray untracked test files from prior skeleton runs ──
@@ -673,7 +673,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   log(`[${taskId}] === LANE COMPLETE ===`)
   await updateStage(issueId, 'done')
   await writeCompletion()
-  return { task_id: taskId, status: 'completed' }
+  return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
 }
 
 // ── Refactor sub-saga ──────────────────────────────────────────────────────
@@ -768,9 +768,9 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
     if (crossBatchFailed.length > 0 || crossBatchMissing.length > 0) {
       const failedPart = crossBatchFailed.length > 0 ? `failed [${crossBatchFailed.join(', ')}]` : ''
       const missingPart = crossBatchMissing.length > 0 ? `never executed [${crossBatchMissing.join(', ')}]` : ''
-      const err = `skipped: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(', ')}`
+      const err = `blocked: cross-batch dep(s) ${[failedPart, missingPart].filter(Boolean).join(', ')}`
       log(`[${taskId}] ${err}`)
-      const skipResult: LaneOutcome = { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: err }
+      const skipResult: LaneOutcome = { task_id: taskId, status: 'blocked', stage: 'SKIPPED', error: err }
       depResolvers[taskId](skipResult)
       return skipResult
     }
@@ -781,9 +781,9 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
       const depResults: LaneOutcome[] = await Promise.all(inBatchDeps.map((d) => depPromises[d]))
       const failedDeps: LaneOutcome[] = depResults.filter((r) => r.status !== 'completed')
       if (failedDeps.length > 0) {
-        const err = `skipped: dep(s) failed [${failedDeps.map((r) => r.task_id).join(', ')}]`
+        const err = `blocked: dep(s) failed [${failedDeps.map((r) => r.task_id).join(', ')}]`
         log(`[${taskId}] ${err}`)
-        const skipResult: LaneOutcome = { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: err }
+        const skipResult: LaneOutcome = { task_id: taskId, status: 'blocked', stage: 'SKIPPED', error: err }
         depResolvers[taskId](skipResult)
         return skipResult
       }
