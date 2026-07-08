@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from datum.local_llm import run_phase
@@ -10,28 +11,28 @@ from datum.models.walkthrough_schema import WalkthroughSummary
 logger = logging.getLogger(__name__)
 
 
-class WalkthroughResult(Path):
-    """A ``Path`` to the generated WALKTHROUGH.md that also carries a
-    ``degraded`` flag.
+@dataclass(frozen=True)
+class WalkthroughResult:
+    """The path to the generated WALKTHROUGH.md plus whether it was written
+    by the deterministic git-derived fallback (LLM unavailable) rather than
+    real synthesis (#303).
 
-    Subclassing ``Path`` means every existing caller/test that treats the
-    return value as a plain path (``isinstance(x, Path)``, ``.exists()``,
-    ``.read_text()``, string formatting) keeps working unchanged, while the
-    CLI can additionally check ``.degraded`` to avoid printing a success
-    checkmark when the file is a deterministic (non-LLM) fallback (#303).
+    Composition over ``Path`` subclassing: callers only ever check
+    ``.degraded`` and format the path into a message, so a plain
+    dataclass covers every real use site without inheriting from a
+    CPython-internal type whose subclassing contract shifts across
+    versions (ARCH-002).
     """
 
-    __slots__ = ("_degraded",)
+    path: Path
+    degraded: bool
 
-    @property
-    def degraded(self) -> bool:
-        return getattr(self, "_degraded", False)
+    def __str__(self) -> str:
+        return str(self.path)
 
 
 def _as_result(output_path: Path, *, degraded: bool) -> WalkthroughResult:
-    result = WalkthroughResult(str(output_path))
-    result._degraded = degraded
-    return result
+    return WalkthroughResult(path=output_path, degraded=degraded)
 
 
 def generate_walkthrough(epic_dir: Path) -> WalkthroughResult:

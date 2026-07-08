@@ -48,22 +48,22 @@ _STRUCTURED_RESULT = {
 def test_generate_walkthrough_returns_path(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    assert isinstance(result, Path)
-    assert result.name.endswith("WALKTHROUGH.md")
+    assert isinstance(result.path, Path)
+    assert result.path.name.endswith("WALKTHROUGH.md")
 
 
 @patch("datum.walkthrough.run_phase")
 def test_generate_walkthrough_creates_file(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    assert result.exists()
+    assert result.path.exists()
 
 
 @patch("datum.walkthrough.run_phase")
 def test_generate_walkthrough_llm_content_rendered(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    content = result.read_text()
+    content = result.path.read_text()
     assert "test summary" in content
     assert "RED: tests written" in content
     assert "datum/walkthrough.py" in content
@@ -77,8 +77,8 @@ def test_generate_walkthrough_fallback(mock_run_phase, tmp_path):
         "phase": "sidecar_docs",
     }
     result = generate_walkthrough(tmp_path)
-    assert isinstance(result, Path)
-    assert result.name.endswith("WALKTHROUGH.md")
+    assert isinstance(result.path, Path)
+    assert result.path.name.endswith("WALKTHROUGH.md")
 
 
 @patch("datum.walkthrough.run_phase")
@@ -113,7 +113,7 @@ def test_generate_walkthrough_fallback_is_not_empty(mock_run_phase, tmp_path):
         "phase": "sidecar_docs",
     }
     result = generate_walkthrough(tmp_path)
-    content = result.read_text()
+    content = result.path.read_text()
     assert content.strip() != "# Walkthrough"
     assert "LLM unavailable" in content
 
