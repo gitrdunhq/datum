@@ -279,6 +279,31 @@ def _unsafe_branch_state_message() -> str | None:
     return None
 
 
+def _quiet_stdout_ctx(json_output: bool):
+    """Context manager that swallows stdout when ``json_output`` is set.
+
+    ``init()`` calls into helpers from other modules (``ensure_feature_branch``,
+    ``_install_workflows``, ``seed_state_docs.main``) that print their own
+    human-readable status lines unconditionally. In ``--json`` mode those
+    helpers are not JSON-aware, so this wraps each call site instead of
+    threading a `quiet` flag through every downstream module (ARCH-003):
+    the coupling is real but explicit and centralized here, rather than
+    each call site improvising its own `io.StringIO()` redirect. If a
+    helper starts writing status via the shared `console` instance instead
+    of `print()`, this still catches it — Rich's `Console` resolves
+    `sys.stdout` dynamically at write time when constructed without an
+    explicit `file=`.
+    """
+    import contextlib
+    import io
+
+    return (
+        contextlib.redirect_stdout(io.StringIO())
+        if json_output
+        else contextlib.nullcontext()
+    )
+
+
 @app.command()
 def init(
     name: str = typer.Option(
@@ -293,8 +318,6 @@ def init(
     ),
 ):
     """Bootstrap the repository for DATUM execution."""
-    import contextlib
-    import io
     import subprocess
     import sys
 
@@ -302,15 +325,9 @@ def init(
     from datum.detect import detect_repo
     from datum.state import PROTECTED_BRANCHES, current_branch, ensure_feature_branch
 
-    # In --json mode, every downstream helper (ensure_feature_branch,
-    # _install_workflows, seed_state_docs.main) still writes its own
-    # human/JSON status lines to stdout. Swallow all of that so stdout
-    # carries exactly one JSON object — the one we print at the end.
-    quiet_stdout = (
-        contextlib.redirect_stdout(io.StringIO())
-        if json_output
-        else contextlib.nullcontext()
-    )
+    # In --json mode, downstream helpers still write their own human status
+    # lines to stdout — see _quiet_stdout_ctx() for why this is centralized.
+    quiet_stdout = _quiet_stdout_ctx(json_output)
 
     def _fail(message: str) -> None:
         if json_output:
