@@ -383,13 +383,19 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
 
     merged = _git(["branch", "--merged"], cwd=repo_root, check=False).stdout
     prefix = f"{epic_branch}--"
-    deleted: list[str] = []
+    candidates: list[str] = []
     for line in merged.splitlines():
         name = line.strip().lstrip("*").strip()
         if name.startswith(prefix):
-            result = _git(["branch", "-d", name], cwd=repo_root, check=False)
-            if result.returncode == 0:
-                deleted.append(name)
+            candidates.append(name)
+
+    deleted: list[str] = []
+    if candidates:
+        result = _git(["branch", "-d", *candidates], cwd=repo_root, check=False)
+        for line in result.stdout.splitlines():
+            match = re.match(r"^Deleted branch (\S+) ", line.strip())
+            if match:
+                deleted.append(match.group(1))
 
     prune_stale_worktrees(repo_root=repo_root)
 

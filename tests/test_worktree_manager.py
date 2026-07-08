@@ -14,7 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from datum.worktree_manager import cleanup_run_worktrees, remove_lane_worktree
+from datum.worktree_manager import (
+    cleanup_run_worktrees,
+    housekeep_epic,
+    remove_lane_worktree,
+)
 
 
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -145,3 +149,61 @@ class TestCleanupRunWorktreesReportsPreservedBranches:
         )
         assert empty_check.returncode != 0
         assert busy_check.returncode == 0
+
+
+class TestHousekeepEpic:
+    def test_batches_branch_deletion_for_multiple_merged_lanes(self, repo: Path):
+        epic_branch = "epic/test"
+        lane_a = _make_lane_branch(repo, epic_branch, "task-a")
+        lane_b = _make_lane_branch(repo, epic_branch, "task-b")
+        _git(["checkout", epic_branch], cwd=repo)
+
+        result = housekeep_epic(epic_branch, repo_root=repo)
+
+        assert sorted(result["deleted_branches"]) == sorted([lane_a, lane_b])
+        for branch in (lane_a, lane_b):
+            check = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", branch],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+            )
+            assert check.returncode != 0
+
+    def test_removes_pipeline_state_marker(self, repo: Path):
+        state_dir = repo / ".datum"
+        state_dir.mkdir(exist_ok=True)
+        state_path = state_dir / "pipeline-state.json"
+        state_path.write_text("{}")
+
+        result = housekeep_epic("epic/test", repo_root=repo)
+
+        assert result["pipeline_state_removed"] is True
+        assert not state_path.exists()
+
+    def test_leaves_unmerged_lane_branch_alone_while_deleting_merged_one(
+        self, repo: Path
+    ):
+        epic_branch = "epic/test"
+        merged_lane = _make_lane_branch(repo, epic_branch, "task-merged")
+        unmerged_lane = _make_lane_branch(repo, epic_branch, "task-unmerged")
+        _add_lane_commit(repo, unmerged_lane, "unmerged_work.py")
+        _git(["checkout", epic_branch], cwd=repo)
+
+        result = housekeep_epic(epic_branch, repo_root=repo)
+
+        assert result["deleted_branches"] == [merged_lane]
+        merged_check = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", merged_lane],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        unmerged_check = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", unmerged_lane],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        assert merged_check.returncode != 0
+        assert unmerged_check.returncode == 0
