@@ -8,11 +8,29 @@ for the deterministic stages; synthesis (RETRO) is optional via --synthesize.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# Sentinel used when no numeric epic identifier can be parsed from the branch
+# name at all. Deliberately not a valid epic number (real epic numbers are
+# always >= 1 — see datum/models/closeout_data_schema.py) so it can never be
+# mistaken for a real epic while still satisfying the int-typed contract that
+# downstream consumers (run_collate/collate.py/tag_epic.py) rely on (#301).
+UNKNOWN_EPIC_NUMBER = -1
+
+# Branch-slug patterns recognized for epic-number auto-detection, checked in
+# order. Covers both `datum/epic-23`-style epic branches and the
+# `bug-squash-NNN`-style branches already used in docs/epics/datum/ (#301).
+_EPIC_NUMBER_PATTERNS = (
+    re.compile(r"epic-(\d+)"),
+    re.compile(r"bug-squash-(\d+)"),
+)
 
 
 def _git(*args: str) -> str:
@@ -21,6 +39,36 @@ def _git(*args: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def _detect_epic_number(branch: str) -> int | None:
+    """Extract an epic number from a branch slug, or None if unrecognized."""
+    for pattern in _EPIC_NUMBER_PATTERNS:
+        m = pattern.search(branch)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _find_previous_epic_closeout_sha() -> str | None:
+    """Most recent commit whose subject is a `closeout(<run-id>): ...` line.
+
+    Epics in this repo chain linearly on a single branch rather than fast-
+    forwarding `main` after each merge (FU-3, 20260707-173926 follow-ups) —
+    `main` can sit stale for many epics, so `git merge-base main HEAD` can
+    resolve to a base far older than the immediately-prior epic's actual
+    merge point, inflating git-stat scope across unrelated epics. The
+    previous epic's own `closeout(...)` commit is the reliable boundary.
+    """
+    try:
+        output = _git("log", "--format=%H %s")
+    except RuntimeError:
+        return None
+    for line in output.splitlines():
+        sha, _, subject = line.partition(" ")
+        if subject.startswith("closeout("):
+            return sha
+    return None
 
 
 def detect_context(
@@ -33,14 +81,26 @@ def detect_context(
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
     detected_merge_sha = merge_sha or _git("rev-parse", "HEAD")
 
-    # Parse epic number from branch name (datum/epic-23 → 23)
+    # Parse epic number from branch name (datum/epic-23 → 23,
+    # bug-squash-306 → 306). Explicit epic_number always wins.
     detected_epic = epic_number
     if detected_epic is None:
-        m = re.search(r"epic-(\d+)", branch)
-        detected_epic = int(m.group(1)) if m else 0
+        detected_epic = _detect_epic_number(branch)
+        if detected_epic is None:
+            logger.warning(
+                "Could not parse an epic number from branch %r (recognized "
+                "patterns: epic-N, bug-squash-N) — epic_number will be set "
+                "to the sentinel %d instead of silently defaulting to 0. "
+                "Pass --epic-number explicitly to avoid this warning.",
+                branch,
+                UNKNOWN_EPIC_NUMBER,
+            )
+            detected_epic = UNKNOWN_EPIC_NUMBER
 
     # Base SHA: the merge-base with main, or HEAD~N if on main
     detected_base = base_sha
+    if detected_base is None:
+        detected_base = _find_previous_epic_closeout_sha()
     if detected_base is None:
         try:
             detected_base = _git("merge-base", "main", "HEAD")
@@ -160,40 +220,48 @@ def sweep_project_memories(memory_dir: Path, epic_branch: str) -> int:
     """Sweep project-state memories and stamp them with the closing epic and today's date."""
     if not memory_dir.is_dir():
         return 0
-        
+
     count = 0
     today = datetime.now().strftime("%Y-%m-%d")
-    
+
     for md_file in memory_dir.glob("*.md"):
         if md_file.name in {"MEMORY.md", "INDEX.md"}:
             continue
-            
+
         content = md_file.read_text(encoding="utf-8")
         if not content.startswith("---"):
             continue
-            
+
         end_idx = content.find("---", 3)
         if end_idx == -1:
             continue
-            
+
         frontmatter = content[3:end_idx]
-        if "type: project" not in frontmatter and "type: 'project'" not in frontmatter and 'type: "project"' not in frontmatter:
+        if (
+            "type: project" not in frontmatter
+            and "type: 'project'" not in frontmatter
+            and 'type: "project"' not in frontmatter
+        ):
             continue
-            
+
         # Add or update `epic:`
         if re.search(r"^epic:.*$", frontmatter, flags=re.MULTILINE):
-            frontmatter = re.sub(r"^epic:.*$", f"epic: {epic_branch}", frontmatter, flags=re.MULTILINE)
+            frontmatter = re.sub(
+                r"^epic:.*$", f"epic: {epic_branch}", frontmatter, flags=re.MULTILINE
+            )
         else:
             frontmatter = frontmatter.rstrip() + f"\nepic: {epic_branch}\n"
-            
+
         # Add or update `updated:`
         if re.search(r"^updated:.*$", frontmatter, flags=re.MULTILINE):
-            frontmatter = re.sub(r"^updated:.*$", f"updated: {today}", frontmatter, flags=re.MULTILINE)
+            frontmatter = re.sub(
+                r"^updated:.*$", f"updated: {today}", frontmatter, flags=re.MULTILINE
+            )
         else:
             frontmatter = frontmatter.rstrip() + f"\nupdated: {today}\n"
-            
+
         new_content = f"---{frontmatter}---{content[end_idx+3:]}"
         md_file.write_text(new_content, encoding="utf-8")
         count += 1
-        
+
     return count

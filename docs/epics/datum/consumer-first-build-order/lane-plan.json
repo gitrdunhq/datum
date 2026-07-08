@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 5,
+  "topological_order": [
+    "add-context-files-config-default",
+    "add-upstream-source-context",
+    "wire-lane-upstream-injection",
+    "add-cycle-detection",
+    "datum-plan-buildorder-and-context"
+  ],
+  "file_ownership": {
+    "skills/src/shared/models.ts": "add-context-files-config-default",
+    "skills/src/shared/models.test.ts": "add-context-files-config-default",
+    "skills/src/shared/types.ts": "add-upstream-source-context",
+    "skills/src/shared/utils.ts": "add-upstream-source-context",
+    "skills/src/shared/utils.test.ts": "add-upstream-source-context",
+    "skills/src/datum-tdd-act-lane.ts": "wire-lane-upstream-injection",
+    "skills/src/datum-tdd-act-lane.test.ts": "wire-lane-upstream-injection",
+    "skills/src/shared/graph.ts": "add-cycle-detection",
+    "skills/src/shared/graph.test.ts": "add-cycle-detection",
+    "skills/src/datum-plan.ts": "datum-plan-buildorder-and-context",
+    "skills/src/prompts/plan-decompose.md": "datum-plan-buildorder-and-context",
+    "skills/src/datum-plan.test.ts": "datum-plan-buildorder-and-context"
+  },
+  "lanes": {
+    "add-context-files-config-default": {
+      "id": "add-context-files-config-default",
+      "title": "Add context_files default to DEFAULT_CONFIG",
+      "files": [
+        "skills/src/shared/models.ts",
+        "skills/src/shared/models.test.ts"
+      ],
+      "acceptance_criteria": [
+        "DEFAULT_CONFIG.context_files deep-equals [] (empty array) by default",
+        "DEFAULT_CONFIG still exposes existing keys language, test_framework, test_command, skills_dir unchanged",
+        "A config object merged over DEFAULT_CONFIG that omits context_files resolves context_files to [] (default applied, not undefined)"
+      ],
+      "red_note": "This is a TypeScript/vitest project (.test.ts files built via scripts/build-workflows.sh), NOT pytest. Write skills/src/shared/models.test.ts importing DEFAULT_CONFIG from './models' and assert expect(DEFAULT_CONFIG.context_files).toEqual([]) plus that the existing keys are still present. The test must fail today because context_files does not exist on DEFAULT_CONFIG.",
+      "introduces_stubs": false,
+      "estimated_loc": 25,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "test_command": "npx vitest run"
+    },
+    "add-upstream-source-context": {
+      "id": "add-upstream-source-context",
+      "title": "Add TaskPacket.upstream_source, resolveUpstreamSource helper, and buildPacket wiring",
+      "files": [
+        "skills/src/shared/types.ts",
+        "skills/src/shared/utils.ts",
+        "skills/src/shared/utils.test.ts"
+      ],
+      "acceptance_criteria": [
+        "TaskPacket interface declares optional upstream_source?: Record<string, string> (type-checks under tsc)",
+        "resolveUpstreamSource(lane, allLanes, worktreeDir) returns a Record mapping each transitive-depends_on implFile path to its full file contents read from worktreeDir",
+        "resolveUpstreamSource excludes testFiles of upstream lanes (only implFiles per classifyFiles are included)",
+        "resolveUpstreamSource throws an Error whose message names the missing file path and owning lane when a required upstream implFile does not exist on disk",
+        "buildPacket, when passed an upstream_source map, includes it verbatim under packet.upstream_source; when not passed, packet.upstream_source is absent or empty"
+      ],
+      "red_note": "TypeScript/vitest, not pytest. In skills/src/shared/utils.test.ts create a temp worktree dir (os.tmpdir/mkdtemp), write a fixture upstream impl file (e.g. vdj-state.js) and a fixture test file, define two Lane objects where the downstream lane has depends_on referencing the upstream lane, then assert resolveUpstreamSource returns { 'vdj-state.js': '<contents>' } and does NOT include the upstream test file. Add a case where the upstream impl file is not written and assert resolveUpstreamSource throws with the missing path in the message. Add a buildPacket case asserting the returned packet carries upstream_source when supplied. utils.ts is high blast-radius (14 importers) \u2014 keep changes additive; do not alter existing buildPacket parameters' behavior.",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "test_command": "npx vitest run"
+    },
+    "wire-lane-upstream-injection": {
+      "id": "wire-lane-upstream-injection",
+      "title": "Inject upstream_source into RED/GREEN/REFACTOR packets in datum-tdd-act-lane",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "skills/src/datum-tdd-act-lane.test.ts"
+      ],
+      "acceptance_criteria": [
+        "For a lane with depends_on:['lane:vdj-state'] whose upstream produced vdj-state.js on disk, the written RED-stage TaskPacket JSON contains the full contents of vdj-state.js under upstream_source['vdj-state.js']",
+        "For a lane with no depends_on, the written TaskPacket has upstream_source empty or absent (no injected upstream content)",
+        "When a depends_on lane's implFile is missing from the worktree at packet-build time, runLane surfaces the resolveUpstreamSource Error (fail fast) instead of writing a packet with empty upstream content"
+      ],
+      "red_note": "TypeScript/vitest, not pytest. In skills/src/datum-tdd-act-lane.test.ts set up a fixture worktree with an upstream impl file present and two lanes (dependent + upstream), invoke the packet-building path for the dependent lane, and assert the emitted TaskPacket JSON includes upstream_source with the upstream file contents. Add a negative case: a lane with no depends_on yields no/empty upstream_source. Add a missing-file case asserting the build path throws. datum-tdd-act-lane.ts is the largest file in scope (761 LOC) with existing coverage in datum-tdd-act-lane.test.ts \u2014 keep this lane's new assertions in a dedicated describe block and do not reuse other lanes' test files.",
+      "introduces_stubs": false,
+      "estimated_loc": 55,
+      "depends_on": [
+        "add-upstream-source-context"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "test_command": "npx vitest run"
+    },
+    "add-cycle-detection": {
+      "id": "add-cycle-detection",
+      "title": "Add deterministic import-graph cycle detection module",
+      "files": [
+        "skills/src/shared/graph.ts",
+        "skills/src/shared/graph.test.ts"
+      ],
+      "acceptance_criteria": [
+        "detectCycles([]) and detectCycles for any acyclic DAG returns [] (no cycles)",
+        "detectCycles detects a direct cycle: tasks A(depends_on:[B]) and B(depends_on:[A]) returns a cycle containing both A and B",
+        "detectCycles detects a transitive cycle: A->B->C->A returns a cycle containing A, B, and C",
+        "detectCycles is pure (no I/O, no filesystem, deterministic for identical input)"
+      ],
+      "red_note": "TypeScript/vitest, not pytest. In skills/src/shared/graph.test.ts import detectCycles from './graph' and assert: empty input -> []; a linear DAG -> []; two-node mutual depends_on -> a returned cycle set containing both ids; a three-node transitive loop -> a set containing all three ids. Tests must fail because graph.ts does not exist yet. Assertions must check actual cycle membership (deleting the function body must fail the test), not just truthiness.",
+      "introduces_stubs": false,
+      "estimated_loc": 50,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "test_command": "npx vitest run"
+    },
+    "datum-plan-buildorder-and-context": {
+      "id": "datum-plan-buildorder-and-context",
+      "title": "Wire cycle guard, context_files injection, and build-order prompt into datum-plan",
+      "files": [
+        "skills/src/datum-plan.ts",
+        "skills/src/prompts/plan-decompose.md",
+        "skills/src/datum-plan.test.ts"
+      ],
+      "acceptance_criteria": [
+        "When the decomposed tasks contain a dependency cycle, datum-plan throws/halts with an explicit Error naming the cyclic task ids/files before lane-plan.json is written (never emits a cyclic depends_on graph)",
+        "When tasks are acyclic, datum-plan proceeds to lane-plan generation unchanged",
+        "datum-plan reads context_files from the merged config and injects each existing file's full contents (resolved relative to project root) into the decompose prompt payload",
+        "A context_files entry whose path does not exist relative to project root produces a logged warning and is skipped; the plan run continues (no throw)",
+        "When context_files is absent or [], no context-files prompt section content is injected and the decompose prompt payload is byte-identical to today's (backward compatible)",
+        "prompts/plan-decompose.md contains a section titled with 'BUILD-ORDER' / 'IMPORT ANALYSIS CHECK' and a 'PROJECT BUILD CONSTRAINTS' section that references context_files and states project docs take precedence over inferred imports"
+      ],
+      "red_note": "TypeScript/vitest, not pytest. skills/src/datum-plan.test.ts does NOT exist today (confirmed coverage gap) \u2014 create it. Cover: (a) feeding cyclic tasks through the plan step throws an Error naming the cyclic ids before lane-plan.json is written; (b) acyclic tasks do not throw; (c) with a config listing an existing context_files path, the built decompose prompt payload string includes that file's contents and the 'PROJECT BUILD CONSTRAINTS' text; (d) a non-existent context_files path warns and is skipped without throwing; (e) with context_files absent/[], the rendered prompt contains no injected constraints section; (f) assert the plan-decompose.md template string includes 'BUILD-ORDER' and 'PROJECT BUILD CONSTRAINTS'. datum-plan.ts is imported by datum-go.ts and datum-properties.ts \u2014 keep changes additive. Note: skills/datum-plan.js is generated via scripts/build-workflows.sh; edit only the .ts and .md source.",
+      "introduces_stubs": false,
+      "estimated_loc": 110,
+      "depends_on": [
+        "add-cycle-detection",
+        "add-context-files-config-default"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "test_command": "npx vitest run"
+    }
+  }
+}

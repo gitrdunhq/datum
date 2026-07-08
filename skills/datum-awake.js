@@ -12,7 +12,8 @@ export const meta = {
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;

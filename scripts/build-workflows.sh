@@ -20,7 +20,7 @@ fi
 
 # ── Bundle with esbuild ──
 echo "==> Bundling with esbuild..."
-ENTRY_POINTS=$(find "$SRC_DIR" -maxdepth 1 -name 'datum-*.ts' | sort)
+ENTRY_POINTS=$(find "$SRC_DIR" -maxdepth 1 -name 'datum-*.ts' -not -name '*.test.ts' | sort)
 
 for entry in $ENTRY_POINTS; do
   basename=$(basename "$entry" .ts)

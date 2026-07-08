@@ -1,0 +1,58 @@
+{
+  "batch": true,
+  "language": "python",
+  "tasks_processed": 10,
+  "output_dir": "docs/epics/datum/bug-squash-round-2/skeletons",
+  "tasks": {
+    "guard-duplicate-local-llm-toml": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-guard-duplicate-local-llm-toml.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "path-boundary-file-ownership": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-path-boundary-file-ownership.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "relax-test-artifact-convention": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-relax-test-artifact-convention.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "adopt-existing-feature-branch": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-adopt-existing-feature-branch.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "recognize-bug-squash-branch-slug": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-recognize-bug-squash-branch-slug.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "git-fallback-retro-delivery": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-git-fallback-retro-delivery.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "fail-loud-walkthrough": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-fail-loud-walkthrough.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "filter-transcript-noise-memory-extract": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-filter-transcript-noise-memory-extract.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "validate-testcommand-before-dispatch": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-validate-testcommand-before-dispatch.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "cleanup-orphaned-zero-commit-lane-branches": {
+      "path": "docs/epics/datum/bug-squash-round-2/skeletons/preflight-cleanup-orphaned-zero-commit-lane-branches.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    }
+  }
+}

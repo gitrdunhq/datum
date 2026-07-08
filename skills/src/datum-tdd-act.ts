@@ -158,7 +158,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   log('── Setup ──')
   const setup = await workflow(
     { scriptPath: sk('datum-tdd-act-setup') },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag }
   ) as SetupResult
 
   // Act

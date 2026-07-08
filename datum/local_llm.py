@@ -466,8 +466,8 @@ def structured(
 
     try:
         import outlines
-    except ImportError:
-        raise RuntimeError("Grammar support requires: pip install outlines")
+    except ImportError as err:
+        raise RuntimeError("Grammar support requires: pip install outlines") from err
 
     config = load_config()
     kv_bits = config.get("kv_bits", DEFAULTS["kv_bits"])
@@ -1496,6 +1496,29 @@ def _load_multi_turn_config(phase: str) -> dict:
     return mt
 
 
+def _translate_toml_decode_error(config_path: Path, exc: Exception) -> ValueError:
+    """Convert a bare tomllib/tomli TOMLDecodeError into an actionable
+    ValueError naming the offending file path.
+
+    Duplicate-table errors from tomllib/tomli mention "twice", "already
+    exists", or "already defined" but not the word "duplicate" —
+    normalize the message so callers can rely on consistent, greppable
+    wording regardless of the underlying parser's phrasing.
+    """
+    detail = str(exc)
+    detail_lower = detail.lower()
+    is_duplicate = any(
+        marker in detail_lower
+        for marker in ("twice", "already exists", "already defined", "duplicate")
+    )
+    if is_duplicate:
+        return ValueError(
+            f"Duplicate [local_llm] table (or other duplicate TOML key) "
+            f"in config file {config_path}: {detail}"
+        )
+    return ValueError(f"Failed to parse config file {config_path}: {detail}")
+
+
 def _load_raw_config() -> dict:
     import os
 
@@ -1515,7 +1538,10 @@ def _load_raw_config() -> dict:
             except ImportError:
                 return {}
         with config_path.open("rb") as f:
-            return tomllib.load(f)
+            try:
+                return tomllib.load(f)
+            except tomllib.TOMLDecodeError as exc:
+                raise _translate_toml_decode_error(config_path, exc) from exc
     return {}
 
 
@@ -1626,29 +1652,14 @@ def get_metrics_summary() -> dict:
 
 
 def load_config() -> dict:
-    import os
+    """Return the effective [local_llm] config, merged over DEFAULTS.
 
-    project_dir = os.environ.get("DATUM_PROJECT_DIR", ".")
-    for config_path in [
-        Path(project_dir) / ".datum/config.toml",
-        Path(".datum/config.toml"),
-        Path("assets/config.toml.default"),
-    ]:
-        if not config_path.exists():
-            continue
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib
-            except ImportError:
-                return DEFAULTS.copy()
-        with config_path.open("rb") as f:
-            config = tomllib.load(f)
-        local = config.get("local_llm", {})
-        return {**DEFAULTS, **local}
-
-    return DEFAULTS.copy()
+    Delegates file discovery and TOML parsing (including duplicate-table
+    error translation) to _load_raw_config().
+    """
+    raw_config = _load_raw_config()
+    local = raw_config.get("local_llm", {})
+    return {**DEFAULTS, **local}
 
 
 def should_use_local(phase: str) -> bool:

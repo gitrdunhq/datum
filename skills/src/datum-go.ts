@@ -2,8 +2,7 @@ import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/ty
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
-import { parseState, serializeState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
-import detectBranchPrompt from './prompts/util-detect-branch.md'
+import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 
 export const meta = {
   name: 'datum-go',
@@ -17,8 +16,25 @@ const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g,
 function parseArgs(raw: string): Record<string, unknown> {
   if (!raw || raw.toLowerCase() === 'yolo') return { yolo: true }
   if (/^#?\d+$/.test(raw)) return { yolo: true, issueNumber: parseInt(raw.replace('#', ''), 10) }
-  try { return JSON.parse(raw) } catch {
-    return { yolo: true, freeText: raw }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // Not valid JSON, not "yolo", not a bare issue number. Rather than silently
+    // dropping any flags the caller intended (#319 — `--start-from act` was
+    // silently discarded, pipeline resumed from stale state and skipped 7
+    // bug-fix lanes with no warning), recover the common CLI-style overrides
+    // and loudly flag anything we couldn't recover.
+    const result: Record<string, unknown> = { yolo: true, freeText: raw }
+    const startFromMatch = raw.match(/--start-from[=\s]+(\S+)/)
+    const routeMatch = raw.match(/--route[=\s]+(\S+)/)
+    if (startFromMatch) result.startFrom = startFromMatch[1]
+    if (routeMatch) result.route = routeMatch[1]
+    if (!startFromMatch && !routeMatch) {
+      log(`WARNING: args "${raw}" is not valid JSON and was not recognized as yolo/#N — all flags in it (startFrom, route, phases) were IGNORED. Pass valid JSON to set these, or use --start-from <phase> / --route <route>.`)
+    } else {
+      log(`args "${raw}" is not valid JSON — recovered ${startFromMatch ? `startFrom=${startFromMatch[1]} ` : ''}${routeMatch ? `route=${routeMatch[1]}` : ''}from flags. Other fields (e.g. phases) are not supported this way — pass valid JSON to set them.`)
+    }
+    return result
   }
 }
 const a = (typeof args === 'string') ? parseArgs(rawArgs) : (args || {})
@@ -71,33 +87,89 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
   log(`Model tiers: fast=${model('fast')}, balanced=${model('balanced')}, deep=${model('deep')}`)
 }
 
+// Preflight: the globally installed `datum` CLI is a `uv tool install --editable`
+// pointing at whatever path was on disk (dist-info/direct_url.json) the last time
+// it was installed. If a prior pipeline step ran an install command with cwd
+// inside a lane worktree instead of the repo root, that link silently gets
+// repointed at a throwaway worktree — every subsequent `datum ...` invocation
+// across the whole pipeline then runs a frozen, stale copy of the code with no
+// indication anything is wrong (#327). Verify the editable install still
+// resolves to this repo root before running anything else, and fail loud
+// rather than silently continuing on a stale binary.
+const toolCheckText = await agent(
+  `REPO_ROOT=$(git rev-parse --show-toplevel) && ` +
+  `DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && ` +
+  `if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && ` +
+  `INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && ` +
+  `EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && ` +
+  `if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+  { label: 'preflight-tool-check', model: model('fast') },
+)
+const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }
+if (!toolCheck.ok) {
+  throw new Error(
+    `datum CLI tool install is stale/misdirected (#327): the globally installed editable ` +
+    `\`datum\` points at "${toolCheck.installed}" but this repo root is "${toolCheck.expected}". ` +
+    `Every "datum ..." command this pipeline runs would silently execute code from the wrong ` +
+    `location. Fix: run \`uv tool install --editable . --force\` from "${toolCheck.expected}", then re-run.`
+  )
+}
+
 // Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
 const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
 
 let lastResult: PhaseResult = {}
 let haltedAt = ''
+let resolvedBranch = priorState?.branch || ''
+let resolvedRunId = priorState?.runId || ''
 const completedPhases: Phase[] = priorState?.completedPhases ? [...priorState.completedPhases] : []
 
 function shouldRun(p: Phase, idx: number): boolean {
   return !haltedAt && startIdx <= idx && activePhases.includes(p)
 }
 
-async function markPhaseComplete(p: Phase): Promise<void> {
+async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
   if (!completedPhases.includes(p)) completedPhases.push(p)
-  const state: PipelineState = {
-    branch: globalCfg.branch || '',
-    runId: '',
-    route,
-    completedPhases,
-    currentPhase: null,
-    lastUpdated: '',
-  }
+  const testsFlag = p === 'validate' ? (testsPass ? ' --tests-pass' : ' --tests-fail') : ''
   await agent(
-    `Write this exact content to .datum/pipeline-state.json:\n${serializeState(state)}\nOverwrite if exists. No other output.`,
+    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     { label: `save-state:${p}`, model: model('fast') },
   )
 }
-if (priorState && !explicitStart) {
+
+// New-epic detection (#213 follow-up): a branch can already carry a
+// TICKET.md + pipeline-state from a PRIOR epic. Historically the only
+// trigger for bootstrapping a new epic was "TICKET.md is entirely
+// missing" — if one existed, we silently resumed it, even when the
+// caller just typed a free-text brief describing something completely
+// different. Reuse the exact CLI bootstrap path Act already uses
+// (`datum init --name <slug>`, #213) instead of inventing a second
+// mechanism — just trigger it earlier, before auto-resume decides to
+// skip straight past Refine.
+let newEpicBranch = ''
+if (a.freeText && priorState && !explicitStart) {
+  const newEpicText = await agent(
+    `An existing epic is checked out on this branch. Prior pipeline state: ${JSON.stringify(priorState)}.
+Read the current epic's TICKET.md (its branch is "${priorState.branch}"; the file lives at docs/epics/${priorState.branch}/TICKET.md) and compare its title/scope to this NEW brief the caller just typed:
+"""
+${a.freeText}
+"""
+Decide: does the brief describe the SAME piece of work as the existing TICKET.md, or a CLEARLY DIFFERENT one?
+- If SAME, or you cannot confidently tell they differ: output {"newEpic": false}.
+- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief, then run exactly: datum init --name <slug> --json
+  and return the raw JSON it printed, merged with {"newEpic": true, "reason": "<why they differ>"}.
+Output ONLY raw JSON, no markdown fences, no explanation.`,
+    { label: 'new-epic-check', model: model('balanced') },
+  )
+  const newEpicInfo = parseAgentJson(newEpicText as string, { newEpic: false }) as { newEpic: boolean; epicBranch?: string; reason?: string }
+  if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
+    log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`)
+    newEpicBranch = newEpicInfo.epicBranch
+    resolvedBranch = newEpicInfo.epicBranch
+  }
+}
+
+if (priorState && !explicitStart && !newEpicBranch) {
   const resumeAt = detectStartFrom(priorState)
   if (resumeAt) {
     const resumeIdx = PHASES.indexOf(resumeAt)
@@ -156,12 +228,23 @@ if (shouldRun('act', 3)) {
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
   const language = globalCfg.language || DEFAULT_CONFIG.language
 
-  // Detect branch + generate runId
-  const branchInfo = await agent(detectBranchPrompt, { label: 'act-detect', model: model('fast') })
-  const info = parseAgentJson(branchInfo, { branch: '', timestamp: '' }) as { branch: string; timestamp: string }
-  const epicBranch = info.branch
+  // Bootstrap: resolve branch + generate runId via the CLI adopt path
+  // (`datum init --json`, #213) instead of an inline-only agent prompt.
+  // The CLI detects/adopts an existing feature branch (epicBranch) and
+  // guards against unsafe branch state; we still ask the agent for a
+  // fresh timestamp to use as this run's runId.
+  const bootstrapInfo = await agent(
+    `Run this EXACT command and capture its raw stdout: datum init --json
+Then run: date +%Y%m%d-%H%M%S
+Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
+    { label: 'act-bootstrap', model: model('fast') },
+  )
+  const info = parseAgentJson(bootstrapInfo, { epicBranch: '', timestamp: '' }) as { epicBranch: string; timestamp: string; lanePlanPath?: string; adopted?: boolean }
+  const epicBranch = info.epicBranch
   const runId = info.timestamp
-  if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`)
+  resolvedBranch = epicBranch
+  resolvedRunId = runId
+  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`)
 
   // Skeleton dir from Plan phase (pre-generated test contracts)
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`
@@ -258,7 +341,7 @@ if (shouldRun('act', 3)) {
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag },
     ) as SetupResult
 
     // Lane execution — direct child workflow
@@ -330,6 +413,14 @@ if (shouldRun('act', 3)) {
   await markPhaseComplete('act')
   log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }
+
+  // A run where nothing landed must not fall through to validate/review/closeout —
+  // those phases would otherwise report/mark success for an epic that shipped no
+  // code, even in yolo mode where the per-phase gates above are bypassed.
+  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+    haltedAt = 'act'
+    log(`Act produced 0/${lanePlan.total_lanes} completed lanes — halting before validate/review/closeout to avoid reporting false completion.`)
+  }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
 }
@@ -343,7 +434,7 @@ if (shouldRun('validate', 4)) {
     log('Validate FAILED — tests are red. Pipeline halted.')
   } else {
     log('Validate complete')
-    await markPhaseComplete('validate')
+    await markPhaseComplete('validate', !!lastResult.testsPassed)
   }
 }
 

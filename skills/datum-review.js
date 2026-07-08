@@ -22,7 +22,8 @@ function model(tier) {
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -98,9 +99,8 @@ var reportLines = [
   ""
 ];
 await agent(
-  `Run \`git rev-parse --abbrev-ref HEAD\` to get the branch name.
-Write this content to "docs/epics/<branch>/REVIEW-REPORT.md" (create dirs if needed).
-Commit: git add "docs/epics/<branch>/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
+  `Write this content to "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" (create dirs if needed).
+Commit: git add "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
 
 CONTENT:
 ${reportLines.join("\n")}`,

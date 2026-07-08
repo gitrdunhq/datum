@@ -1,8 +1,7 @@
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
 import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import planApproachesTemplate from './prompts/plan-approaches.md'
-import planDecomposeTemplate from './prompts/plan-decompose.md'
 import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
 import planDeepenTemplate from './prompts/plan-deepen.md'
@@ -31,7 +30,7 @@ phase('Read')
 
 const context = await agent(
   renderPrompt(readContextTemplate, {
-    extraFields: `3. "spec_content": full contents of docs/epics/<branch>/SPEC.md
+    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
 4. "current_state": read CURRENT_STATE.md if it exists (first 80 lines), else null
 5. "prior_defects": run \`jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null\` — return as string, empty if none
 6. "error_history": read .datum/ERRORS.md if it exists (first 40 lines), else null`,
@@ -52,9 +51,28 @@ log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 const priorFailures: string = [ctx.prior_defects || '', ctx.error_history || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
 const cfgText = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : { ...DEFAULT_CONFIG }
-const language: string = repoCfg.language || DEFAULT_CONFIG.language
-const testFramework: string = repoCfg.test_framework || DEFAULT_CONFIG.test_framework
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, unknown> : { ...DEFAULT_CONFIG }
+const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
+const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
+
+const contextFilesList: string[] = (repoCfg.context_files as string[] | undefined) || []
+const contextFileContents: Record<string, string | null> = {}
+for (const relPath of contextFilesList) {
+  const raw = await agent(
+    `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
+    { label: `read-context-file:${relPath}`, model: model('fast') },
+  )
+  const content = typeof raw === 'string' ? raw : JSON.stringify(raw)
+  contextFileContents[relPath] = content.trim() === 'NOT_FOUND' ? null : content
+}
+const contextFilesWarnings: string[] = []
+const contextFilesSection: string = buildContextFilesSection(
+  contextFileContents,
+  (msg: string) => contextFilesWarnings.push(msg),
+)
+for (const warning of contextFilesWarnings) log(`context_files: ${warning}`)
+
+import planDecomposeTemplate from './prompts/plan-decompose.md'
 
 // ── Decompose (approach → impact → decompose → build — all substantive, kept separate) ──
 
@@ -86,11 +104,15 @@ const decomposeModel = isComplex ? model('deep') : model('balanced')
 if (isComplex) log('Complex epic — using opus for decomposition')
 
 const tasksRaw = await agent(
-  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework }),
+  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection }),
   { label: 'decompose-tasks', model: decomposeModel },
 )
 
 const tasks = typeof tasksRaw === 'string' ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[]) : tasksRaw
+if (!Array.isArray(tasks) || tasks.length === 0) {
+  throw new Error(`Task decomposition returned 0 tasks — refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`)
+}
+assertAcyclicTasks(tasks)
 const tasksJson: string = JSON.stringify(tasks)
 log(`Decomposed into ${tasks.length} tasks`)
 for (const task of tasks) {

@@ -58,7 +58,8 @@ export const DEFAULT_CONFIG = {
   test_framework: '',
   test_command: '',
   skills_dir: '',
-} as const
+  context_files: [] as string[],
+}
 
 export const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist — skip if missing)

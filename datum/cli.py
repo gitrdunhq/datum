@@ -249,12 +249,72 @@ def _install_workflows():
         console.print(f"[dim]Workflows: {total} already current[/dim]")
 
 
+def _unsafe_branch_state_message() -> str | None:
+    """Return a human-readable error if the working tree is mid-conflict.
+
+    Covers the classic unresolved-merge case (MERGE_HEAD present) which
+    leaves conflict markers in the tree — unsafe to adopt for a new epic.
+    """
+    import subprocess
+
+    if Path(".git", "MERGE_HEAD").exists():
+        return (
+            "Unresolved merge conflict detected (MERGE_HEAD present) — "
+            "resolve the conflict before running `datum init`."
+        )
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain=1"], capture_output=True, text=True
+    )
+    if status.returncode == 0:
+        for line in status.stdout.splitlines():
+            # Unmerged paths surface with XY codes like UU/AA/DD/AU/UA/UD/DU.
+            code = line[:2]
+            if code in {"UU", "AA", "DD", "AU", "UA", "UD", "DU"}:
+                return (
+                    "Unresolved merge conflict detected in the working tree — "
+                    "resolve the conflict before running `datum init`."
+                )
+
+    return None
+
+
+def _quiet_stdout_ctx(json_output: bool):
+    """Context manager that swallows stdout when ``json_output`` is set.
+
+    ``init()`` calls into helpers from other modules (``ensure_feature_branch``,
+    ``_install_workflows``, ``seed_state_docs.main``) that print their own
+    human-readable status lines unconditionally. In ``--json`` mode those
+    helpers are not JSON-aware, so this wraps each call site instead of
+    threading a `quiet` flag through every downstream module (ARCH-003):
+    the coupling is real but explicit and centralized here, rather than
+    each call site improvising its own `io.StringIO()` redirect. If a
+    helper starts writing status via the shared `console` instance instead
+    of `print()`, this still catches it — Rich's `Console` resolves
+    `sys.stdout` dynamically at write time when constructed without an
+    explicit `file=`.
+    """
+    import contextlib
+    import io
+
+    return (
+        contextlib.redirect_stdout(io.StringIO())
+        if json_output
+        else contextlib.nullcontext()
+    )
+
+
 @app.command()
 def init(
     name: str = typer.Option(
         None,
         "--name",
         help="Epic title; slugified into a descriptive datum/<slug> branch (#55).",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-readable JSON (epicBranch/lanePlanPath/adopted) instead of rich text.",
     ),
 ):
     """Bootstrap the repository for DATUM execution."""
@@ -263,14 +323,28 @@ def init(
 
     from datum.bootstrap import seed_state_docs
     from datum.detect import detect_repo
-    from datum.state import ensure_feature_branch
+    from datum.state import PROTECTED_BRANCHES, current_branch, ensure_feature_branch
+
+    # In --json mode, downstream helpers still write their own human status
+    # lines to stdout — see _quiet_stdout_ctx() for why this is centralized.
+    quiet_stdout = _quiet_stdout_ctx(json_output)
+
+    def _fail(message: str) -> None:
+        if json_output:
+            print(json.dumps({"error": "unsafe_branch_state", "message": message}))
+        else:
+            console.print(f"[bold red]{message}[/bold red]")
+        raise typer.Exit(1)
 
     res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True)
     if res.returncode != 0:
-        console.print(
-            "[bold red]Cannot init — repo has no commits. Run `git commit` first.[/bold red]"
-        )
-        raise typer.Exit(1)
+        _fail("Cannot init — repo has no commits. Run `git commit` first.")
+
+    unsafe_message = _unsafe_branch_state_message()
+    if unsafe_message:
+        _fail(unsafe_message)
+
+    branch_before = current_branch()
 
     # Auto-detect repo configuration
     config = detect_repo(".")
@@ -279,22 +353,34 @@ def init(
 
     if config_path.exists():
         existing = json.loads(config_path.read_text())
-        console.print(
-            "[dim]Existing config found — merging (existing values preserved)[/dim]"
-        )
+        if not json_output:
+            console.print(
+                "[dim]Existing config found — merging (existing values preserved)[/dim]"
+            )
         for k, v in config.items():
             existing.setdefault(k, v)
         config = existing
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
-    console.print(
-        f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
-    )
-    console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
-    console.print(f"[dim]Config written to {config_path}[/dim]")
+    if not json_output:
+        console.print(
+            f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
+        )
+        console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
+        console.print(f"[dim]Config written to {config_path}[/dim]")
 
-    branch = ensure_feature_branch(name)
-    console.print(f"[dim]Branch: {branch}[/dim]")
+    with quiet_stdout:
+        branch = ensure_feature_branch(name)
+    if not json_output:
+        console.print(f"[dim]Branch: {branch}[/dim]")
+
+    from datum.pipeline_state import reset_stale_pipeline_state
+
+    cleared_state = reset_stale_pipeline_state(branch)
+    if cleared_state and not json_output:
+        console.print(
+            f"[dim]Cleared stale pipeline state from '{cleared_state.get('branch')}'[/dim]"
+        )
 
     # Create epic dir and TICKET.md
     epic_dir = Path(
@@ -302,22 +388,53 @@ def init(
     )
     epic_dir.mkdir(parents=True, exist_ok=True)
     ticket_path = epic_dir / "TICKET.md"
-    if not ticket_path.exists():
+    ticket_existed = ticket_path.exists()
+    if not ticket_existed:
         ticket_path.write_text(
             "# [Epic Title]\n\n## What\n\n## Requirements\n\n## Not This\n\n"
         )
-        console.print(f"[dim]TICKET.md created at {ticket_path} — fill it in[/dim]")
+        if not json_output:
+            console.print(f"[dim]TICKET.md created at {ticket_path} — fill it in[/dim]")
+
+    # Adoption: a non-default branch that had no pre-existing epic artifacts
+    # (TICKET.md) is treated as an existing feature branch being bootstrapped
+    # into a DATUM epic in place, rather than a brand-new epic branch (#213).
+    adopted = bool(
+        branch_before
+        and branch_before not in PROTECTED_BRANCHES
+        and branch == branch_before
+        and not ticket_existed
+    )
+    lane_plan_path = str(Path(".datum") / "lane-plan.json")
 
     # Install workflows to ~/.claude/workflows/
-    _install_workflows()
+    with quiet_stdout:
+        _install_workflows()
 
-    console.print("[bold green]Bootstrapping DATUM...[/bold green]")
+    if not json_output:
+        console.print("[bold green]Bootstrapping DATUM...[/bold green]")
     try:
-        seed_state_docs.main()
-        console.print("[bold green]✓ Repo seeded.[/bold green]")
+        with quiet_stdout:
+            seed_state_docs.main()
+        if not json_output:
+            console.print("[bold green]✓ Repo seeded.[/bold green]")
     except Exception as e:
-        console.print(f"[bold red]Bootstrap failed: {e}[/bold red]")
+        if json_output:
+            print(json.dumps({"error": "bootstrap_failed", "message": str(e)}))
+        else:
+            console.print(f"[bold red]Bootstrap failed: {e}[/bold red]")
         sys.exit(1)
+
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "epicBranch": branch,
+                    "lanePlanPath": lane_plan_path,
+                    "adopted": adopted,
+                }
+            )
+        )
 
 
 @app.command()
@@ -548,10 +665,38 @@ def bugfile(
         console.print("[yellow]Skipped — duplicate issue already open[/yellow]")
 
 
+@app.command(name="lane-plan-distribute")
+def lane_plan_distribute_cmd(
+    source: str = typer.Argument(
+        ..., help="Path to the already-approved lane-plan.json"
+    ),
+    targets: list[str] = typer.Option(  # noqa: B008
+        ..., "--target", help="Directory to copy lane-plan.json into (repeatable)"
+    ),
+):
+    """Copy an already-approved lane-plan.json into worktree dirs (internal).
+
+    Pure file copy — never reads the plan's contents as instructions. The
+    plan itself is produced and gated by the Plan phase; this command only
+    distributes that existing file to each lane's worktree so ACT can read it.
+    """
+    src = Path(source)
+    if not src.is_file():
+        console.print(f"[red]Not found: {source}[/red]")
+        raise typer.Exit(1)
+
+    for target in targets:
+        dest_dir = Path(target)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / "lane-plan.json"
+        dest.write_bytes(src.read_bytes())
+        console.print(f"wrote: {dest}")
+
+
 @app.command(name="lane-cleanup")
 def lane_cleanup_cmd(
     worktree: str = typer.Argument(..., help="Path to the lane's git worktree"),
-    allowed: list[str] = typer.Option(
+    allowed: list[str] = typer.Option(  # noqa: B008
         [], "--allowed", help="Test file path from the lane plan to keep (repeatable)"
     ),
 ):
@@ -968,8 +1113,14 @@ def walkthrough():
         console.print(f"[bold red]Epic directory not found: {epic_dir}[/bold red]")
         raise typer.Exit(1)
 
-    output_path = generate_walkthrough(epic_dir)
-    console.print(f"[bold green]✓ Walkthrough generated: {output_path}[/bold green]")
+    result = generate_walkthrough(epic_dir)
+    if result.degraded:
+        console.print(
+            f"[bold yellow]⚠ Walkthrough degraded (LLM unavailable) — "
+            f"deterministic git-derived fallback written: {result}[/bold yellow]"
+        )
+    else:
+        console.print(f"[bold green]✓ Walkthrough generated: {result}[/bold green]")
 
 
 @app.command()
@@ -1044,9 +1195,16 @@ def closeout(
     if epic_dir.exists():
         try:
             wt_path = generate_walkthrough(epic_dir)
-            console.print(
-                f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]"
-            )
+            if wt_path.degraded:
+                console.print(
+                    f"[bold yellow]⚠ Walkthrough degraded (LLM unavailable) — "
+                    f"deterministic git-derived fallback written → {wt_path}"
+                    "[/bold yellow]"
+                )
+            else:
+                console.print(
+                    f"[bold green]✓ Walkthrough generated → {wt_path}[/bold green]"
+                )
         except Exception as e:
             console.print(
                 f"[bold yellow]Walkthrough generation failed: {e}[/bold yellow]"
@@ -1555,11 +1713,96 @@ def worktrees_cleanup(
     run_id: str = typer.Option(..., "--run-id", help="Run ID to clean up"),
     epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
 ):
-    """Remove all lane worktrees for a given run."""
+    """Remove all lane worktrees for a given run, including its root worktree."""
     from datum.worktree_manager import cleanup_run_worktrees
 
-    cleaned = cleanup_run_worktrees(run_id, epic_branch)
-    typer.echo(json.dumps({"cleaned": cleaned}))
+    result = cleanup_run_worktrees(run_id, epic_branch)
+    if result["preserved_with_commits"]:
+        typer.echo(
+            "WARNING: preserved lane branch(es) with real commits "
+            f"(not deleted): {', '.join(result['preserved_with_commits'])}",
+            err=True,
+        )
+    typer.echo(json.dumps({"cleaned": result}))
+
+
+@app.command(name="housekeep-epic")
+def housekeep_epic_cmd(
+    epic_branch: str = typer.Argument(
+        ..., help="Epic branch whose merged lane branches to clean up"
+    ),
+):
+    """Delete merged lane branches + pipeline-state for one epic (internal, deterministic).
+
+    Only deletes branches git reports as merged, matching the exact
+    `<epic_branch>--` prefix — never other epics/runs.
+    """
+    from datum.worktree_manager import housekeep_epic
+
+    result = housekeep_epic(epic_branch)
+    typer.echo(json.dumps(result))
+
+
+@app.command(name="pipeline-state-save")
+def pipeline_state_save_cmd(
+    phase: str = typer.Option(
+        ...,
+        "--phase",
+        help="Phase that just finished: refine, plan, properties, act, validate, review, closeout",
+    ),
+    run_id: str = typer.Option(..., "--run-id", help="Pipeline run ID"),
+    route: str = typer.Option(
+        ..., "--route", help="Pipeline route (feature/bugfix/etc)"
+    ),
+    tests_pass: bool = typer.Option(
+        False,
+        "--tests-pass/--tests-fail",
+        help="Required for --phase validate: whether the test run actually passed",
+    ),
+):
+    """Verify a phase actually completed, then append it to .datum/pipeline-state.json.
+
+    Never trusts a bare completion claim: the phase is checked against
+    real git/filesystem evidence first (see datum.pipeline_state.verify_phase).
+    Refuses (exit 1) and writes nothing if verification fails.
+    """
+    import subprocess
+
+    from datum.pipeline_state import (
+        read_pipeline_state,
+        verify_phase,
+        write_pipeline_state,
+    )
+
+    ok, reason = verify_phase(phase, run_id=run_id, tests_pass=tests_pass)
+    if not ok:
+        typer.echo(json.dumps({"verified": False, "phase": phase, "reason": reason}))
+        raise typer.Exit(code=1)
+
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    prior = read_pipeline_state()
+    completed = (
+        list(prior["completedPhases"])
+        if prior and prior.get("branch") == branch
+        else []
+    )
+    if phase not in completed:
+        completed.append(phase)
+
+    state = write_pipeline_state(
+        branch=branch,
+        run_id=run_id,
+        route=route,
+        completed_phases=completed,
+        current_phase=None,
+    )
+    typer.echo(json.dumps(state))
 
 
 # ── Lane state markers ───────────────────────────────────────────────────────

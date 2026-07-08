@@ -1,0 +1,33 @@
+{
+  "batch": true,
+  "language": "python",
+  "tasks_processed": 5,
+  "output_dir": "docs/epics/datum/consumer-first-build-order/skeletons",
+  "tasks": {
+    "add-context-files-config-default": {
+      "path": "docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-context-files-config-default.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "add-upstream-source-context": {
+      "path": "docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-upstream-source-context.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "wire-lane-upstream-injection": {
+      "path": "docs/epics/datum/consumer-first-build-order/skeletons/preflight-wire-lane-upstream-injection.json",
+      "skeleton_count": 3,
+      "framework": "pytest"
+    },
+    "add-cycle-detection": {
+      "path": "docs/epics/datum/consumer-first-build-order/skeletons/preflight-add-cycle-detection.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "datum-plan-buildorder-and-context": {
+      "path": "docs/epics/datum/consumer-first-build-order/skeletons/preflight-datum-plan-buildorder-and-context.json",
+      "skeleton_count": 6,
+      "framework": "pytest"
+    }
+  }
+}

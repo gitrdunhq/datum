@@ -32,6 +32,31 @@ CORRECTION_PATTERNS: list[tuple[str, str, str]] = [
 
 CONTEXT_WINDOW = 200
 
+# Substrings that mark a message as pipeline/tool noise (raw transcript or
+# tool-call artifacts) rather than genuine user-authored content. Any message
+# containing one of these is skipped outright before pattern matching — it
+# should never surface as a memory candidate, at any confidence tier.
+NOISE_MARKERS: tuple[str, ...] = (
+    "<task-notification>",
+    "<task-id>",
+    "system-reminder",
+    "Base directory skill:",
+    "Tool loaded.",
+)
+
+# Regex patterns for noise that isn't a fixed substring (e.g. skill-invocation
+# boilerplate that varies by skill name).
+NOISE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r'Run the ["“][\w-]+["”]\s+workflow', re.IGNORECASE),
+)
+
+
+def _is_noise(text: str) -> bool:
+    """True if `text` looks like raw pipeline/tool-call noise, not user content."""
+    if any(marker in text for marker in NOISE_MARKERS):
+        return True
+    return any(pattern.search(text) for pattern in NOISE_PATTERNS)
+
 
 def _extract_from_transcript(transcript_path: Path) -> list[dict]:
     candidates: list[dict] = []
@@ -64,6 +89,9 @@ def _extract_from_transcript(transcript_path: Path) -> list[dict]:
                 continue
 
             if not text.strip():
+                continue
+
+            if _is_noise(text):
                 continue
 
             for pattern, suggested_type, confidence in CORRECTION_PATTERNS:

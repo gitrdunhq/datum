@@ -12,8 +12,8 @@ const a = args as SetupArgs
 phase('Setup')
 
 const rootWtText = await agent(
-  `git worktree add --detach .datum/worktrees/${a.batchRunId}-root ${a.epicBranch} 2>&1 && ` +
-  `echo '{"root": "'$(cd .datum/worktrees/${a.batchRunId}-root && pwd)'"}'`,
+  `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && ` +
+  `echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
   { label: `root-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
 const rootWtInfo = parseAgentJson(rootWtText, {}) as { root?: string }
@@ -22,7 +22,7 @@ if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId}
 log(`Root worktree${a.batchTag}: ${rootWt}`)
 
 const setupText = await agent(
-  `cd "${rootWt}" && datum worktrees setup --run-id ${a.batchRunId} --epic-branch ${a.epicBranch} --lane-ids ${a.batchLaneIds.join(',')}\nReturn ONLY the JSON output, no explanation.`,
+  `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(',')}\nReturn ONLY the JSON output, no explanation.`,
   { label: `setup-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
 const rawPaths = (typeof setupText === 'string'
@@ -49,28 +49,20 @@ for (const [lid, wtp] of Object.entries(worktreePaths)) {
   log(`  worktree ${lid}: ${wtp}`)
 }
 
-// Guardrail: this prompt embeds the full lane plan (task titles + acceptance
-// criteria). Without an explicit single-command contract, a fast-tier agent
-// has read the plan and gone off executing the epic's tasks directly in the
-// main checkout — committing mis-attributed green(task-N) commits onto the
-// epic branch (observed 2026-07-06, epic-287 run 20260706-223937-b0).
-const MECHANICAL_ONLY =
-  `You are a MECHANICAL FILE-PROVISIONING agent. Run EXACTLY the shell command below, ` +
-  `then stop and report its output. The JSON payload is opaque data to write to disk — ` +
-  `do NOT read it, act on its contents, implement anything it describes, edit any ` +
-  `source file, or run any git command.\n\n`
-const planJson = JSON.stringify(a.lanePlan).replace(/'/g, "'\\''")
+// The lane plan was already produced and gated by the Plan phase and is
+// already committed on epicBranch at lanePlanPath — rootWt is a checkout of
+// that same branch, so the file already exists there too. Distribution is a
+// deterministic file copy (datum/cli.py: lane-plan-distribute), never an
+// agent handed raw plan JSON to write — see #327-adjacent friction where a
+// fast-tier agent previously misread a "write this JSON, don't act on it"
+// prompt as an invitation to implement the plan directly in the main
+// checkout (observed 2026-07-06, epic-287 run 20260706-223937-b0).
+const planSource = `${rootWt}/${a.lanePlanPath}`
+const distributeTargets = [rootWt, ...validPaths].map(p => `--target "${p}/.datum"`).join(' ')
 await agent(
-  MECHANICAL_ONLY +
-    `mkdir -p "${rootWt}/.datum" && printf '%s' '${planJson}' > "${rootWt}/.datum/lane-plan.json"`,
-  { label: `write-plan${a.batchTag}`, phase: 'Setup', model: model('fast') }
+  `Run: datum lane-plan-distribute "${planSource}" ${distributeTargets}`,
+  { label: `distribute-plan${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
-const cpCmd = validPaths
-  .map(p => `mkdir -p "${p}/.datum" && cp "${rootWt}/.datum/lane-plan.json" "${p}/.datum/lane-plan.json"`)
-  .join(' && ')
-if (cpCmd) {
-  await agent(MECHANICAL_ONLY + cpCmd, { label: `copy-plans${a.batchTag}`, phase: 'Setup', model: model('fast') })
-}
 
 log(`Setup${a.batchTag}: ${a.batchLaneIds.length} lane worktrees`)
 

@@ -1,0 +1,49 @@
+{
+  "task_id": "git-fallback-retro-delivery",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_commit_closeout.py",
+      "kind": "pytest",
+      "purpose": "Verify When lane-state dir is missing, Delivery-section generation ",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_when_lane_state_dir_is_missing_delivery_section_generation_r",
+      "skeleton_written": false,
+      "content": "# Skeleton: git-fallback-retro-delivery AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_when_lane_state_dir_is_missing_delivery_section_generation_r \u2192 tests/test_commit_closeout.py\n\nimport pytest\n\n\nclass Testgit_fallback_retro_delivery_AC1:\n    def test_ac1_when_lane_state_dir_is_missing_delivery_section_generation_r(self):\n        \"\"\"\n        PROP-001: When lane-state dir is missing, Delivery-section generation returns a non-0/0 de\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_commit_closeout.py",
+      "kind": "pytest",
+      "purpose": "Verify The RETRO.md Delivery output labels fallback numbers with an",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_retro_md_delivery_output_labels_fallback_numbers_with_an",
+      "skeleton_written": false,
+      "content": "# Skeleton: git-fallback-retro-delivery AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_retro_md_delivery_output_labels_fallback_numbers_with_an \u2192 tests/test_commit_closeout.py\n\nimport pytest\n\n\nclass Testgit_fallback_retro_delivery_AC2:\n    def test_ac2_the_retro_md_delivery_output_labels_fallback_numbers_with_an(self):\n        \"\"\"\n        PROP-002: The RETRO.md Delivery output labels fallback numbers with an explicit git-derive\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_commit_closeout.py",
+      "kind": "pytest",
+      "purpose": "Verify When lane-state IS present, the existing lane-state-derived ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_when_lane_state_is_present_the_existing_lane_state_derived_d",
+      "skeleton_written": false,
+      "content": "# Skeleton: git-fallback-retro-delivery AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_when_lane_state_is_present_the_existing_lane_state_derived_d \u2192 tests/test_commit_closeout.py\n\nimport pytest\n\n\nclass Testgit_fallback_retro_delivery_AC3:\n    def test_ac3_when_lane_state_is_present_the_existing_lane_state_derived_d(self):\n        \"\"\"\n        PROP-003: When lane-state IS present, the existing lane-state-derived Delivery counts are \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/closeout/commit_closeout.py": "#!/usr/bin/env python3\n\nimport json\nimport subprocess\nimport sys\nfrom pathlib import Path\n\nSYNTHESIS_FILES = [\n]\n\n\ndef git(*args: str) -> subprocess.CompletedProcess:\n    ...\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n            \n            \n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -2,6 +2,103 @@
 
 All notable changes to DATUM are documented here.
 
+## [Consumer-First Build-Order] — 2026-07-07 (run 20260707-173926)
+
+### Added
+
+Epic ticket (GitHub issue #264, `docs/epics/datum/consumer-first-build-order/`) gave
+`datum-plan` a real build-order analysis step instead of inferring `depends_on` purely
+from SPEC narrative. Merge `9241846` on top of base `7be6c6f082cd`; epic's own scope was
+30 files, +1753/-18 LOC (`ef25421`..`9241846`):
+
+- **`feat(shared/models)`**: `context_files: []` added to `DEFAULT_CONFIG` so a project's
+  `.datum/config.json` can declare build-constraint docs (e.g. `BUILD-ORDER.md`)
+- **`feat(shared/utils)`**: `TaskPacket.upstream_source` + `resolveUpstreamSource()` —
+  reads the full source of a lane's transitive `depends_on` implFiles from the worktree
+  (excluding testFiles), fails fast if a required upstream file is missing on disk
+- **`feat(datum-tdd-act-lane)`**: RED/GREEN/REFACTOR `buildPacket` calls now carry
+  `upstream_source` so act-lane agents see real upstream interfaces instead of
+  hallucinating them
+- **`feat(shared/graph)`**: new pure `detectCycles()` module — detects direct and
+  transitive dependency cycles over `{id, depends_on}` task graphs
+- **`feat(datum-plan)`**: calls `detectCycles` before writing `lane-plan.json` (halts
+  loud on a cycle instead of emitting one), reads `context_files` into the decompose
+  prompt, and `plan-decompose.md` gained a "BUILD-ORDER / IMPORT ANALYSIS CHECK" and
+  "PROJECT BUILD CONSTRAINTS" section
+- **`fix(datum-plan)`**: `context_files` reader initially used `node:fs` directly and
+  broke the build; switched to the `agent()` tool convention (`9241846`, fixed inline
+  during the run)
+
+One review pass returned 6 findings (2 high, 4 medium) — `PERF-001` N+1 `git branch -d`
+subprocess calls in `worktree_manager.py::housekeep_epic()`, `ARCH-001` bidirectional
+logic in `pathBoundaryMatch()` contradicting its documented one-directional contract
+(correctness risk, not just style), `PERF-002`/`PERF-003` O(n·m) `.some()` loops in
+`verifyFileOwnership`/`findScopeGaps`, `ARCH-002` `WalkthroughResult` subclassing `Path`,
+`ARCH-003` `contextlib.redirect_stdout` coupling in `cli.py::init()`. None are confirmed
+resolved in the commit log after the review commit (`5f50fec`) — see Known Gaps.
+
+### Known Gaps
+
+- **Un-closed-out intermediate work.** This run's `closeout-data.json` git stats span
+  back to base `badb2a9bceb9` — 68 commits, +4462/-461 LOC across 64 files — which
+  conflates this epic with 36 commits of prior pipeline-hardening work
+  (`7be6c6f082cd`..`ef25421`) that never went through its own Refine → Plan → Review →
+  Closeout cycle (auto-repair of lane scope gaps #325/#334/#335, per-lane
+  `test_command` preflight #326/#307, RED-stage retry #333, count-gate crash guards
+  #315, CLI-flag recovery #319, three review passes converging 12 → 9 → 6 findings, and
+  more). Recommend a retroactive mini-closeout — see `follow-ups.json`.
+- The 6 review findings above are not confirmed fixed — recommend explicit
+  verification before treating this epic as fully closed.
+- `tasks`, `solutions`, `token_metrics` in `closeout-data.json` were again empty/zero,
+  repeating the same telemetry-capture gap flagged in the prior closeout's
+  `follow-ups.json` (FU-2) — still unresolved across two consecutive runs.
+- `gitnexus_diff.available` is `true` but carries no impact-detail payload; MCP was not
+  live during data capture.
+
+---
+
+## [Bug Squash Round 2] — 2026-07-07 (run 20260707-093851)
+
+### Fixed
+
+Epic targeted ten self-filed bugs from epic #282 (issues #265, #269, #270, #213, #301,
+#302, #303, #304, #307, #309 — see `docs/epics/datum/bug-squash-round-2/SPEC.md`).
+21 commits merged to `main` at `7be6c6f082cd`, 55 files touched, +2556/-203 LOC.
+During self-hosted execution the pipeline encountered its own bugs mid-run and fixed
+them inline rather than only landing the ten original targets:
+
+- **`fix(pipeline)`**: replaced ambiguous `<branch>` placeholder with real shell
+  substitution (`7f3f486`)
+- **`fix(pipeline)`**: required programmatic JSON construction for large file-content
+  embeds, avoiding string-interpolation breakage (`c271035`)
+- **`fix(pipeline)`**: resolved safety-classifier blockers in `datum go` run (`0a0b4fd`)
+- **`fix(pipeline)`**: seed `resolvedBranch`/`runId` from prior pipeline-state on resume
+  (`b8e0599`)
+- **`fix(build)`**: added `@types/node`, excluded `.test.ts` from workflow entry points
+  (`03da9ec`)
+- **`fix(worktree)`**: reuse existing lane branch on worktree-add collision (`f68a656`)
+- **`fix(worktree)`**: deregister stale worktree when lane branch is checked out
+  elsewhere (`cb282f9`)
+- **`fix(lane)`**: path-boundary-aware `verifyFileOwnership`, exported from
+  `shared/utils` (`35a7bd6`)
+- **`docs`**: recorded CLI-only mandate and pipeline overview updates for #265/#270/#213
+  (`c366d03`)
+
+Four review passes ran during the epic, converging from 9 findings → 7 → 6 → 4
+(`2d5f424`, `9ce97a4`, `30689a7`, `7be6c6f`).
+
+### Known Gaps
+
+- This run's closeout telemetry (`tasks`, `solutions`, `brief_defects`, `token_metrics`
+  in `closeout-data.json`) was empty/zero, so per-task completion status against the
+  original R1–R10 requirements could not be confirmed. Treat R1–R10 as **unverified**
+  pending a follow-up check (see `follow-ups.json`).
+- GitNexus impact-detail collection was unavailable this run (MCP not live), so no
+  symbol-level blast-radius data exists for this merge (base `badb2a9b` → merge
+  `7be6c6f0`).
+
+---
+
 ## [Bug Squash #167 Act Phase — Partial] — 2026-06-14 (run 20260614-161954)
 
 ### Fixed

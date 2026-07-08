@@ -1,5 +1,8 @@
 // Pure utility functions for the datum TDD workflow pipeline.
-// Every function here is deterministic and side-effect-free.
+// All functions here are deterministic and side-effect-free. Workflow
+// scripts run in a sandbox with no filesystem/Node API access, so any
+// actual file reads (e.g. for context_files) must happen via the agent()
+// API at the call site — this module only renders already-fetched content.
 
 import type {
   LanePlan,
@@ -309,6 +312,51 @@ export function epicSlug(branch: string): string {
   return branch.replace(/[^A-Za-z0-9._-]/g, '-')
 }
 
+// ---------------------------------------------------------------------------
+// verifyFileOwnership — path-boundary-aware allow/forbid check for lane
+// ownership (#269). Matching is exact-path or path-boundary aware — never a
+// raw suffix/substring comparison, which would treat "NewFoo.test.ts" as
+// matching an allowed "Foo.test.ts" ("NewFoo.test.ts".endsWith("Foo.test.ts")).
+//
+// Also covers the directory-boundary case (#269 follow-up): a lane-plan
+// `allowed_write_files` entry may be a bare, extensionless path standing in
+// for "this whole directory belongs to this lane" (e.g. an SPM test target
+// directory). A changed file nested inside that directory — such as
+// "<dir>/Package.swift" — must match "<dir>" even though neither string is a
+// suffix of the other. This is checked as a real path-segment boundary
+// (`a` must start with `b + '/'`), not a bare string prefix, so a sibling
+// like "CpdTableTestsExtra/file.ts" does NOT match allowed "CpdTableTests".
+// The match is intentionally one-directional: only "changed file lives
+// inside allowed directory" is a real scenario; the reverse never occurs.
+// ---------------------------------------------------------------------------
+
+export function pathBoundaryMatch(a: string, b: string): boolean {
+  return (
+    a === b ||
+    a.endsWith('/' + b) ||
+    a.startsWith(b + '/')
+  )
+}
+
+export function verifyFileOwnership(
+  changed: string[],
+  allowedFiles: string[],
+  forbiddenFiles: string[] = [],
+): { ok: boolean; violations: string[] } {
+  const violations: string[] = []
+
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
+      violations.push(`${f} is owned by another lane`)
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a) => pathBoundaryMatch(f, a))) {
+      violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
+    }
+  }
+
+  return { ok: violations.length === 0, violations }
+}
+
 export function fnv1a64(input: string): string {
   const PRIME = 0x100000001b3n
   const MASK = 0xffffffffffffffffn
@@ -377,6 +425,97 @@ export function classifyFiles(files: string[]): {
 }
 
 // ---------------------------------------------------------------------------
+// extractRequiredScopeFiles / findScopeGaps — issue #325/#334/#335: a lane's
+// allowed_write_files (lane.files) must cover every file the lane's RED test
+// actually requires (relative imports, hard-coded source-read targets,
+// first-party Python module imports). Without this, GREEN can deadlock at
+// `scope_exceeded` — no in-scope change can satisfy an AC whose target file
+// was never granted write access.
+// ---------------------------------------------------------------------------
+
+// Python top-level packages this repo owns. Anything else (pytest, os, json,
+// subprocess, numpy, ...) is a stdlib/third-party import, not a scope
+// requirement.
+const FIRST_PARTY_PY_PACKAGES = ['datum', 'scripts', 'tests']
+
+function joinPosix(baseDir: string, rel: string): string {
+  const baseParts = baseDir.split('/').filter((p) => p !== '' && p !== '.')
+  const relParts = rel.split('/')
+  for (const part of relParts) {
+    if (part === '' || part === '.') continue
+    if (part === '..') baseParts.pop()
+    else baseParts.push(part)
+  }
+  return baseParts.join('/')
+}
+
+function dirnamePosix(p: string): string {
+  const parts = p.split('/')
+  parts.pop()
+  return parts.join('/')
+}
+
+function ensureTsExtension(p: string): string {
+  return /\.(ts|tsx|js|jsx|json)$/.test(p) ? p : `${p}.ts`
+}
+
+/**
+ * Parse a RED test file's content for the files it structurally requires —
+ * relative imports, `require(...)` calls, `readFileSync(join(__dirname, ...))`
+ * hard-coded reads (TS/JS), and first-party `from a.b import c` / `import a.b`
+ * module imports (Python). Returns deduplicated repo-relative paths.
+ */
+export function extractRequiredScopeFiles(
+  content: string,
+  testFilePath: string,
+  language: string,
+): string[] {
+  const required = new Set<string>()
+  const dir = dirnamePosix(testFilePath)
+
+  if (language === 'typescript' || language === 'javascript') {
+    const importRe = /(?:import\s+(?:type\s+)?(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+|require\(\s*)['"](\.\.?\/[^'"]+)['"]\)?/g
+    let m: RegExpExecArray | null
+    while ((m = importRe.exec(content))) {
+      required.add(ensureTsExtension(joinPosix(dir, m[1])))
+    }
+
+    const readFileRe = /readFileSync\(\s*join\(\s*__dirname\s*,\s*([^)]+)\)/g
+    let rm: RegExpExecArray | null
+    while ((rm = readFileRe.exec(content))) {
+      const argsStr = rm[1]
+      const segRe = /['"]([^'"]+)['"]/g
+      const segs: string[] = []
+      let sm: RegExpExecArray | null
+      while ((sm = segRe.exec(argsStr))) segs.push(sm[1])
+      if (segs.length > 0) {
+        required.add(joinPosix(dir, segs.join('/')))
+      }
+    }
+  } else if (language === 'python') {
+    const fromRe = /(?:^|\n)[ \t]*from\s+([\w]+(?:\.[\w]+)*)\s+import\s+/g
+    const importRe = /(?:^|\n)[ \t]*import\s+([\w]+(?:\.[\w]+)*)/g
+    const modules: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = fromRe.exec(content))) modules.push(m[1])
+    while ((m = importRe.exec(content))) modules.push(m[1])
+
+    for (const mod of modules) {
+      const top = mod.split('.')[0]
+      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue
+      required.add(`${mod.split('.').join('/')}.py`)
+    }
+  }
+
+  return [...required]
+}
+
+/** Which of `requiredFiles` are not covered (path-boundary-aware) by `allowedFiles`. */
+export function findScopeGaps(requiredFiles: string[], allowedFiles: string[]): string[] {
+  return requiredFiles.filter((rf) => !allowedFiles.some((af) => pathBoundaryMatch(rf, af)))
+}
+
+// ---------------------------------------------------------------------------
 // resolveLanePlanPath — prefer lane-plan-final.json over lane-plan.json
 // ---------------------------------------------------------------------------
 
@@ -401,7 +540,10 @@ export function resolveLanePlanPath(epicDir: string, agentResult: string): strin
 
 export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
   if (!text || typeof text !== 'string') return fallback
-  const cleaned = text.replace(/```[a-z]*\n?/g, '').trim()
+  // Only strip a fence that wraps the WHOLE response — stripping every ``` occurrence
+  // would corrupt embedded code fences (e.g. ```mermaid) inside file-content string values.
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/)
+  const cleaned = (fenced ? fenced[1] : text).trim()
   const start = cleaned.search(/[{[]/)
   const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
   if (start === -1 || end === -1) return fallback
@@ -610,6 +752,35 @@ export function buildPacket(
 }
 
 // ---------------------------------------------------------------------------
+// detectExistingLaneCommits — parses `git log --format="%H %s"` output for a
+// lane branch to determine whether RED and/or GREEN stage-complete commits
+// already exist (#331). A stale lane-plan snapshot, a retried batch, or a
+// lane re-queued after a partial-run interruption can re-dispatch a lane
+// whose branch already carries this work — dispatching a fresh RED agent in
+// that case only duplicates coverage or regresses a shipped fix. Pure so it
+// can be unit-tested against literal `git log` text without a live worktree;
+// datum-tdd-act-lane.ts's runLane() feeds it real git log output before
+// deciding whether to (re)dispatch RED/GREEN for a lane.
+//
+// Matches the exact commit-message convention produced by buildPacket()
+// above (`red(${taskId})`/`green(${taskId})`) and commitStage() in
+// shared/agents.ts (`${commitPrefix}: ${stage} complete`).
+// ---------------------------------------------------------------------------
+
+export function detectExistingLaneCommits(
+  logOutput: string,
+  taskId: string,
+): { hasRed: boolean; hasGreen: boolean } {
+  const redTarget = `red(${taskId}): RED complete`
+  const greenTarget = `green(${taskId}): GREEN complete`
+  const lines = (logOutput || '').split('\n')
+  return {
+    hasRed: lines.some((l) => l.includes(redTarget)),
+    hasGreen: lines.some((l) => l.includes(greenTarget)),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // renderPrompt — replaces {{key}} placeholders with values
 // ---------------------------------------------------------------------------
 
@@ -621,4 +792,93 @@ export function renderPrompt(
     /\{\{(\w+)\}\}/g,
     (_match, key: string) => (vars as Record<string, string>)[key] ?? `{{${key}}}`,
   )
+}
+
+// ---------------------------------------------------------------------------
+// assertAcyclicTasks — Kahn's-algorithm cycle guard for decomposed tasks.
+//
+// Throws an Error naming only the task ids that participate in a
+// dependency cycle (tasks not reachable from a topological sort) before a
+// caller writes tasks.json/lane-plan.json for a graph that can never
+// schedule. Ignores depends_on entries that reference ids outside the
+// given task list (those aren't cycles within this set).
+// ---------------------------------------------------------------------------
+
+export function assertAcyclicTasks(
+  tasks: Array<{ id: string; depends_on?: string[] }>,
+): void {
+  const ids = tasks.map((t) => t.id)
+  const idSet = new Set(ids)
+  const inDeg: Record<string, number> = {}
+  const adj: Record<string, string[]> = {}
+  for (const id of ids) inDeg[id] = 0
+
+  for (const task of tasks) {
+    const deps = (task.depends_on || []).filter((dep) => idSet.has(dep))
+    inDeg[task.id] += deps.length
+    for (const dep of deps) {
+      ;(adj[dep] = adj[dep] || []).push(task.id)
+    }
+  }
+
+  let queue = ids.filter((id) => inDeg[id] === 0)
+  const placed = new Set<string>(queue)
+  while (queue.length > 0) {
+    const next: string[] = []
+    for (const id of queue) {
+      for (const child of adj[id] || []) {
+        inDeg[child]--
+        if (inDeg[child] === 0 && !placed.has(child)) {
+          placed.add(child)
+          next.push(child)
+        }
+      }
+    }
+    queue = next
+  }
+
+  const cyclic = ids.filter((id) => !placed.has(id))
+  if (cyclic.length > 0) {
+    throw new Error(
+      `Cyclic dependency detected among tasks: ${cyclic.sort().join(', ')}`,
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// buildContextFilesSection — renders a "PROJECT BUILD CONSTRAINTS" section
+// from already-fetched context_files content for injection into the
+// decompose prompt. Takes a relPath -> content map rather than reading
+// files itself: workflow scripts run in a sandbox with no filesystem
+// access, so the caller must fetch each file's content via the agent()
+// API first (a null value means the entry was not found). Missing files
+// are reported via `warn` and skipped rather than throwing, so a stale
+// config entry never blocks a plan run. Returns '' when fileContents is
+// absent/empty so no section is introduced.
+// ---------------------------------------------------------------------------
+
+export function buildContextFilesSection(
+  fileContents: Record<string, string | null> | undefined,
+  warn: (message: string) => void,
+): string {
+  if (!fileContents || Object.keys(fileContents).length === 0) return ''
+
+  const blocks: string[] = []
+  for (const [relPath, content] of Object.entries(fileContents)) {
+    if (content === null) {
+      warn(`context_files entry not found, skipping: ${relPath}`)
+      continue
+    }
+    blocks.push(`### ${relPath}\n${content}`)
+  }
+
+  if (blocks.length === 0) return ''
+
+  return [
+    'PROJECT BUILD CONSTRAINTS',
+    '',
+    'The following project documentation was listed in context_files and is authoritative. Where these docs conflict with a build order inferred from source imports, the project docs take precedence over inferred imports.',
+    '',
+    ...blocks,
+  ].join('\n')
 }

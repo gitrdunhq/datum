@@ -21,7 +21,7 @@ const yolo: boolean = !!a.yolo
 const cfgText = !a.testCommand
   ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
   : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, string> : {}
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as unknown as Record<string, string> : {}
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──
@@ -30,13 +30,13 @@ phase('Validate')
 
 // Validate agent reads context itself (collapsed read-context)
 const checkResult = await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/<branch>.
+  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validateCheckTemplate, {
     wt: '.',
     specPath: 'docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md',
-    tasksPath: 'TASKS.md',
+    tasksPath: 'docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md',
     testCommand,
   })}`,
   { label: 'validate-check', model: model('balanced') },

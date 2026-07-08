@@ -1,6 +1,7 @@
 import pathlib
 from pathlib import Path
 from unittest.mock import patch
+
 from datum.walkthrough import generate_walkthrough
 
 
@@ -47,22 +48,22 @@ _STRUCTURED_RESULT = {
 def test_generate_walkthrough_returns_path(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    assert isinstance(result, Path)
-    assert result.name.endswith("WALKTHROUGH.md")
+    assert isinstance(result.path, Path)
+    assert result.path.name.endswith("WALKTHROUGH.md")
 
 
 @patch("datum.walkthrough.run_phase")
 def test_generate_walkthrough_creates_file(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    assert result.exists()
+    assert result.path.exists()
 
 
 @patch("datum.walkthrough.run_phase")
 def test_generate_walkthrough_llm_content_rendered(mock_run_phase, tmp_path):
     mock_run_phase.return_value = _STRUCTURED_RESULT
     result = generate_walkthrough(tmp_path)
-    content = result.read_text()
+    content = result.path.read_text()
     assert "test summary" in content
     assert "RED: tests written" in content
     assert "datum/walkthrough.py" in content
@@ -76,12 +77,50 @@ def test_generate_walkthrough_fallback(mock_run_phase, tmp_path):
         "phase": "sidecar_docs",
     }
     result = generate_walkthrough(tmp_path)
-    assert isinstance(result, Path)
-    assert result.name.endswith("WALKTHROUGH.md")
+    assert isinstance(result.path, Path)
+    assert result.path.name.endswith("WALKTHROUGH.md")
+
+
+@patch("datum.walkthrough.run_phase")
+def test_generate_walkthrough_fallback_is_flagged_degraded(mock_run_phase, tmp_path):
+    """#303: on LLM failure the returned result must report degraded=True so
+    the CLI can avoid printing a misleading success checkmark."""
+    mock_run_phase.return_value = {
+        "result": None,
+        "escalated": True,
+        "reason": "phase_not_local",
+        "phase": "sidecar_docs",
+    }
+    result = generate_walkthrough(tmp_path)
+    assert result.degraded is True
+
+
+@patch("datum.walkthrough.run_phase")
+def test_generate_walkthrough_success_is_not_degraded(mock_run_phase, tmp_path):
+    mock_run_phase.return_value = _STRUCTURED_RESULT
+    result = generate_walkthrough(tmp_path)
+    assert result.degraded is False
+
+
+@patch("datum.walkthrough.run_phase")
+def test_generate_walkthrough_fallback_is_not_empty(mock_run_phase, tmp_path):
+    """#303: the fallback must not silently degrade to an empty stub — it
+    should contain real content derived from git log/diff."""
+    mock_run_phase.return_value = {
+        "result": None,
+        "escalated": True,
+        "reason": "phase_not_local",
+        "phase": "sidecar_docs",
+    }
+    result = generate_walkthrough(tmp_path)
+    content = result.path.read_text()
+    assert content.strip() != "# Walkthrough"
+    assert "LLM unavailable" in content
 
 
 def test_walkthrough_cli_registered():
     from typer.testing import CliRunner
+
     from datum.cli import app
 
     runner = CliRunner()

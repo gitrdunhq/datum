@@ -286,11 +286,142 @@ def render_tasks_md(
     return "\n".join(lines)
 
 
+# ── Per-lane test-command detection & preflight (#326, #307) ───────────────
+#
+# A mixed-language repo (this one: Python `datum/` package + TypeScript
+# `skills/src/` workflow sources) has exactly one `language`/`test_command`
+# pair in the epic-level .datum/config.json. A lane whose files live entirely
+# in the other language silently inherits the wrong command: e.g. a lane
+# touching only skills/src/*.ts + its vitest spec gets "uv run pytest -x -q",
+# which collects zero tests and reports a false pass/fail signal (#326).
+# `infer_lane_language` sniffs the lane's own file extensions (mirrors the
+# priority order already used client-side in datum-tdd-act-lane.ts) so we can
+# set a per-lane `test_command` override in lane-plan.json when it disagrees
+# with the epic-level default (`Lane.test_command` is already consumed there,
+# added in 4bdfdcf).
+
+# Extension -> language, checked in this priority order (first match wins the
+# tie-break when a lane touches more than one language).
+_LANE_LANGUAGE_EXTENSIONS: list[tuple[str, str]] = [
+    (".ts", "typescript"),
+    (".tsx", "typescript"),
+    (".js", "javascript"),
+    (".jsx", "javascript"),
+    (".mjs", "javascript"),
+    (".go", "go"),
+    (".swift", "swift"),
+    (".rs", "rust"),
+    (".py", "python"),
+]
+
+# Default test command for a lane whose files are dominated by this language.
+# Kept deliberately small (no framework auto-detection) — this is a per-lane
+# override for the common cases, not a rebuild of datum/detect.py.
+LANE_LANGUAGE_TEST_COMMANDS: dict[str, str] = {
+    "python": "uv run pytest -x -q",
+    "typescript": "npx vitest run",
+    "javascript": "npx vitest run",
+    "go": "go test ./...",
+    "rust": "cargo test",
+    "swift": "swift test",
+}
+
+# Substrings that identify which language a test_command string targets.
+# Used to detect a global/override command that clearly can't run a lane's
+# file scope (e.g. "uv run pytest" against a lane of only *.ts files).
+_TEST_COMMAND_LANGUAGE_MARKERS: list[tuple[str, str]] = [
+    ("pytest", "python"),
+    ("vitest", "typescript"),
+    ("jest", "typescript"),
+    ("mocha", "typescript"),
+    ("go test", "go"),
+    ("cargo test", "rust"),
+    ("swift test", "swift"),
+]
+
+
+def infer_lane_language(files: list[str]) -> str | None:
+    """Infer the dominant language of a lane from its file extensions.
+
+    Returns None when the lane has no recognized-extension files (e.g. docs,
+    JSON config) — callers should treat that as "no override, no opinion."
+    """
+    counts: dict[str, int] = {}
+    for f in files:
+        suffix = Path(f).suffix.lower()
+        for ext, lang in _LANE_LANGUAGE_EXTENSIONS:
+            if suffix == ext:
+                counts[lang] = counts.get(lang, 0) + 1
+                break
+    if not counts:
+        return None
+    return max(counts, key=counts.get)
+
+
+def detect_command_language(test_command: str | None) -> str | None:
+    """Best-effort guess at which language a test_command string targets."""
+    if not test_command:
+        return None
+    lowered = test_command.lower()
+    for marker, lang in _TEST_COMMAND_LANGUAGE_MARKERS:
+        if marker in lowered:
+            return lang
+    return None
+
+
+def detect_lane_test_command(
+    files: list[str],
+    global_test_command: str | None,
+) -> str | None:
+    """Return a per-lane test_command override, or None if the global
+    command already matches the lane's inferred language."""
+    lane_lang = infer_lane_language(files)
+    if lane_lang is None:
+        return None
+    global_lang = detect_command_language(global_test_command)
+    if global_lang == lane_lang:
+        return None
+    override = LANE_LANGUAGE_TEST_COMMANDS.get(lane_lang)
+    if override is None or override == global_test_command:
+        return None
+    return override
+
+
+def validate_lane_test_commands(lanes: dict) -> list[str]:
+    """Preflight: for each lane, confirm its effective test_command (the
+    lane-level override if set, else it must already have been resolved by
+    the caller) targets the same language as the lane's own files.
+
+    Returns a list of actionable error strings; empty means all lanes look
+    runnable. This is a cheap static check (extension sniff + substring
+    match), not a build-system introspection framework — it exists to catch
+    the "lane files are TypeScript but test_command is pytest" class of bug
+    before a lane is dispatched to burn agent tokens (#307).
+    """
+    errors: list[str] = []
+    for lid, lane in lanes.items():
+        effective_cmd = lane.get("test_command")
+        if not effective_cmd:
+            continue
+        lane_lang = infer_lane_language(lane.get("files", []))
+        if lane_lang is None:
+            continue
+        cmd_lang = detect_command_language(effective_cmd)
+        if cmd_lang is not None and cmd_lang != lane_lang:
+            errors.append(
+                f"lane {lid}'s files are {lane_lang} but test_command "
+                f"{effective_cmd!r} looks like {cmd_lang} — no test target "
+                f"would ever run"
+            )
+    return errors
+
+
 def build_lane_plan(
     tasks: list[dict],
     sorted_ids: list[str],
     ownership: dict,
     units: dict | None = None,
+    global_test_command: str | None = None,
 ) -> dict:
     """Build the full lane-plan.json structure."""
     task_map = {t["id"]: t for t in tasks}
@@ -317,6 +448,17 @@ def build_lane_plan(
             "file_conflict_with": write_conflicts,
             "stage": "queued",
         }
+
+        # Explicit per-task test_command always wins; otherwise auto-detect
+        # from the lane's own files when they disagree with the epic-level
+        # default (#326).
+        explicit_cmd = task.get("test_command")
+        if explicit_cmd:
+            lanes[tid]["test_command"] = explicit_cmd
+        else:
+            detected = detect_lane_test_command(task["files"], global_test_command)
+            if detected:
+                lanes[tid]["test_command"] = detected
 
     result = {
         "schema_version": "1.0.0",
@@ -397,8 +539,36 @@ def main() -> None:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
 
+    # Load the epic-level default test_command (.datum/config.json) so
+    # per-lane detection can tell whether the lane's own language actually
+    # differs from it (#326). Missing/unreadable config is not fatal here —
+    # detect_lane_test_command() treats a missing default as "no opinion" and
+    # falls back to LANE_LANGUAGE_TEST_COMMANDS for the lane's own language.
+    global_test_command = None
+    config_path = Path(".datum/config.json")
+    if config_path.exists():
+        try:
+            global_test_command = json.loads(config_path.read_text()).get(
+                "test_command"
+            )
+        except (json.JSONDecodeError, OSError):
+            global_test_command = None
+
     ownership, _ = build_file_ownership(tasks)
-    lane_plan = build_lane_plan(tasks, sorted_ids, ownership, units)
+    lane_plan = build_lane_plan(
+        tasks, sorted_ids, ownership, units, global_test_command
+    )
+
+    # Preflight (#307): fail fast, before a single agent-token is spent, if
+    # any lane's effective test_command clearly can't run its own file scope.
+    test_cmd_errors = validate_lane_test_commands(lane_plan["lanes"])
+    if test_cmd_errors:
+        print(
+            json.dumps(
+                {"error": "Unrunnable lane test_command(s)", "details": test_cmd_errors}
+            )
+        )
+        sys.exit(1)
 
     # Write lane-plan.json
     out_path = Path(args.output)

@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps } from './utils'
 import type { Lane, LanePlan, LaneOutcome } from './types'
 
 // ---------------------------------------------------------------------------
@@ -380,5 +380,105 @@ describe('task-005 — filterGreenLanes', () => {
 
     expect(greenIds).toEqual(['A'])
     expect(redOnlyIds).toEqual([])
+  })
+})
+
+describe('extractRequiredScopeFiles — issue #325/#334/#335: RED test import/assertion targets', () => {
+  it('resolves a TS relative `import * as x from` target to a repo-relative path', () => {
+    const content = `import * as utils from './shared/utils'\n`
+    const required = extractRequiredScopeFiles(content, 'skills/src/datum-tdd-act-lane.test.ts', 'typescript')
+    expect(required).toContain('skills/src/shared/utils.ts')
+  })
+
+  it('resolves a readFileSync(join(__dirname, ...)) hard-coded source-read target', () => {
+    const content = `const utilsSource = readFileSync(join(__dirname, 'shared', 'utils.ts'), 'utf8')\n`
+    const required = extractRequiredScopeFiles(content, 'skills/src/datum-tdd-act-lane.test.ts', 'typescript')
+    expect(required).toContain('skills/src/shared/utils.ts')
+  })
+
+  it('resolves a Python first-party `from a.b import c` target to a repo-relative .py path', () => {
+    const content = `    from datum.render import render_closeout_retro\n`
+    const required = extractRequiredScopeFiles(content, 'tests/test_commit_closeout.py', 'python')
+    expect(required).toContain('datum/render.py')
+  })
+
+  it('does not treat stdlib/third-party Python imports (pytest, json, subprocess) as required repo files', () => {
+    const content = `import pytest\nimport json\nimport subprocess\n`
+    const required = extractRequiredScopeFiles(content, 'tests/test_commit_closeout.py', 'python')
+    expect(required).toEqual([])
+  })
+
+  it('dedupes when the same target is referenced more than once', () => {
+    const content = `import * as utils from './shared/utils'\nimport { verifyFileOwnership } from './shared/utils'\n`
+    const required = extractRequiredScopeFiles(content, 'skills/src/datum-tdd-act-lane.test.ts', 'typescript')
+    expect(required.filter((f) => f === 'skills/src/shared/utils.ts')).toHaveLength(1)
+  })
+})
+
+describe('findScopeGaps — issue #325/#334/#335: allowed_write_files vs RED test requirements', () => {
+  it('flags a required file missing from allowed_write_files', () => {
+    const gaps = findScopeGaps(
+      ['skills/src/shared/utils.ts'],
+      ['skills/src/datum-tdd-act-lane.ts', 'skills/datum-tdd-act-lane.js'],
+    )
+    expect(gaps).toEqual(['skills/src/shared/utils.ts'])
+  })
+
+  it('reports no gap when the required file is already allowed (path-boundary aware)', () => {
+    const gaps = findScopeGaps(
+      ['datum/render.py'],
+      ['datum/closeout/commit_closeout.py', 'datum/render.py'],
+    )
+    expect(gaps).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// detectExistingLaneCommits — issue #331: don't re-dispatch RED/GREEN for a
+// lane branch that already has those stage-complete commits.
+// ---------------------------------------------------------------------------
+
+import { detectExistingLaneCommits } from './utils'
+
+describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual git history', () => {
+  it('reports both RED and GREEN as present when both stage-complete commits exist', () => {
+    const log = [
+      'cccccccccccccccccccccccccccccccccccccccccc green(filter-transcript-noise-memory-extract): GREEN complete',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(filter-transcript-noise-memory-extract): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
+      hasRed: true,
+      hasGreen: true,
+    })
+  })
+
+  it('reports only RED as present when GREEN has not landed yet', () => {
+    const log = [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(some-lane): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false })
+  })
+
+  it('reports neither present for a fresh lane branch with no stage commits', () => {
+    const log = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit'
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+  })
+
+  it('does not match commits belonging to a different lane id (prefix collision)', () => {
+    // "filter-transcript-noise" must not match "filter-transcript-noise-memory-extract"
+    const log = [
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(filter-transcript-noise): RED complete',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
+    ].join('\n')
+    expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
+      hasRed: false,
+      hasGreen: false,
+    })
+  })
+
+  it('handles empty log output without throwing', () => {
+    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
   })
 })

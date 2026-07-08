@@ -77,45 +77,60 @@ function sleepMs(ms) {
 async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage) {
   const raw = await agent(
     `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:
-git -C "${wt}" log -1 --format="%H %s"
-git -C "${wt}" status --porcelain -- ${files.join(" ")}
+git -C "${wt}" log --format="%H %s"
+git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(" ")}
 Return ONLY the raw output, no explanation, no markdown fences.`,
     { label: `verify-commit:${taskId}:${stage}`, model: "haiku" }
   );
   if (!raw) return { committed: false, detail: "independent check returned no result" };
   const lines = String(raw).trim().split("\n").filter(Boolean);
-  const logLine = lines[0] || "";
-  const statusLines = lines.slice(1);
-  const sha = logLine.split(" ")[0];
-  const messageMatches = logLine.includes(`${commitPrefix}: ${stage} complete`);
+  const shaLine = /^[0-9a-f]{40} /;
+  const logLines = lines.filter((l) => shaLine.test(l));
+  const statusLines = lines.filter((l) => !shaLine.test(l));
+  const target = `${commitPrefix}: ${stage} complete`;
+  const match = logLines.find((l) => l.includes(target));
   const clean = statusLines.length === 0;
   return {
-    committed: messageMatches && clean,
-    commitSha: sha,
+    committed: Boolean(match) && clean,
+    commitSha: match ? match.split(" ")[0] : "",
     clean,
-    detail: `last_commit="${logLine}" uncommitted_files=${statusLines.length}`
+    detail: match ? `found_commit="${match}" uncommitted_files=${statusLines.length}` : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`
   };
 }
-async function resilientAgent(prompt, opts) {
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
   const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
   let lastResult = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    lastResult = await agent(prompt, opts);
-    if (lastResult !== null) return lastResult;
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    }
     if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agent(
+      const dirty = await agentFn(
         `Run: git -C "${opts.worktree}" status --porcelain
 Return ONLY the raw output, no explanation.`,
         { label: "retry-guard", model: "haiku" }
       );
       if (dirty && dirty.trim().length > 0) {
-        log(`[resilientAgent] attempt ${attempt + 1} returned null but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
         return lastResult;
       }
     }
     if (attempt < maxRetries) {
       const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS);
-      log(`[resilientAgent] attempt ${attempt + 1} returned null, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
       await sleepMs(delay);
     }
   }
@@ -139,6 +154,21 @@ function getIssueId(lanePlan2, taskId) {
 }
 
 // skills/src/shared/utils.ts
+function pathBoundaryMatch(a2, b) {
+  return a2 === b || a2.endsWith("/" + b) || a2.startsWith(b + "/");
+}
+function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
+  const violations = [];
+  for (const f of changed) {
+    if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
+      violations.push(`${f} is owned by another lane`);
+    }
+    if (allowedFiles.length > 0 && !allowedFiles.some((a2) => pathBoundaryMatch(f, a2))) {
+      violations.push(`${f} is not in allowed files list [${allowedFiles.join(", ")}]`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
 function classifyFiles(files) {
   const isImplAdjacent = (f) => {
     return f.includes("/Mocks/") || f.includes("/mocks/") || f.includes("/Fakes/") || f.includes("/fakes/") || f.includes("/Stubs/") || f.includes("/stubs/") || f.includes("/Fixtures/") || f.includes("/fixtures/") || f.includes("/Helpers/") || f.includes("/helpers/");
@@ -152,9 +182,68 @@ function classifyFiles(files) {
   const implFiles = (files || []).filter((f) => !isTest(f));
   return { testFiles, implFiles };
 }
+var FIRST_PARTY_PY_PACKAGES = ["datum", "scripts", "tests"];
+function joinPosix(baseDir, rel) {
+  const baseParts = baseDir.split("/").filter((p) => p !== "" && p !== ".");
+  const relParts = rel.split("/");
+  for (const part of relParts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") baseParts.pop();
+    else baseParts.push(part);
+  }
+  return baseParts.join("/");
+}
+function dirnamePosix(p) {
+  const parts = p.split("/");
+  parts.pop();
+  return parts.join("/");
+}
+function ensureTsExtension(p) {
+  return /\.(ts|tsx|js|jsx|json)$/.test(p) ? p : `${p}.ts`;
+}
+function extractRequiredScopeFiles(content, testFilePath, language) {
+  const required = /* @__PURE__ */ new Set();
+  const dir = dirnamePosix(testFilePath);
+  if (language === "typescript" || language === "javascript") {
+    const importRe = /(?:import\s+(?:type\s+)?(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+|require\(\s*)['"](\.\.?\/[^'"]+)['"]\)?/g;
+    let m;
+    while (m = importRe.exec(content)) {
+      required.add(ensureTsExtension(joinPosix(dir, m[1])));
+    }
+    const readFileRe = /readFileSync\(\s*join\(\s*__dirname\s*,\s*([^)]+)\)/g;
+    let rm;
+    while (rm = readFileRe.exec(content)) {
+      const argsStr = rm[1];
+      const segRe = /['"]([^'"]+)['"]/g;
+      const segs = [];
+      let sm;
+      while (sm = segRe.exec(argsStr)) segs.push(sm[1]);
+      if (segs.length > 0) {
+        required.add(joinPosix(dir, segs.join("/")));
+      }
+    }
+  } else if (language === "python") {
+    const fromRe = /(?:^|\n)[ \t]*from\s+([\w]+(?:\.[\w]+)*)\s+import\s+/g;
+    const importRe = /(?:^|\n)[ \t]*import\s+([\w]+(?:\.[\w]+)*)/g;
+    const modules = [];
+    let m;
+    while (m = fromRe.exec(content)) modules.push(m[1]);
+    while (m = importRe.exec(content)) modules.push(m[1]);
+    for (const mod of modules) {
+      const top = mod.split(".")[0];
+      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue;
+      required.add(`${mod.split(".").join("/")}.py`);
+    }
+  }
+  return [...required];
+}
+function findScopeGaps(requiredFiles, allowedFiles) {
+  return requiredFiles.filter((rf) => !allowedFiles.some((af) => pathBoundaryMatch(rf, af)));
+}
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -290,6 +379,15 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras
     ...extras
   };
 }
+function detectExistingLaneCommits(logOutput, taskId) {
+  const redTarget = `red(${taskId}): RED complete`;
+  const greenTarget = `green(${taskId}): GREEN complete`;
+  const lines = (logOutput || "").split("\n");
+  return {
+    hasRed: lines.some((l) => l.includes(redTarget)),
+    hasGreen: lines.some((l) => l.includes(greenTarget))
+  };
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -423,7 +521,7 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
-async function verifyFileOwnership(taskId, wt, stage, allowedFiles, forbiddenFiles) {
+async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
   const result = await agent(
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
@@ -433,16 +531,7 @@ No markdown fences, no explanation.`,
   if (!result) return { ok: true, violations: [] };
   const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
   const changed = parsed.files_changed || [];
-  const violations = [];
-  for (const f of changed) {
-    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
-      violations.push(`${f} is owned by another lane`);
-    }
-    if (allowedFiles.length > 0 && !allowedFiles.some((a2) => f.endsWith(a2) || a2.endsWith(f))) {
-      violations.push(`${f} is not in allowed files list [${allowedFiles.join(", ")}]`);
-    }
-  }
-  return { ok: violations.length === 0, violations };
+  return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
@@ -480,9 +569,6 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const testFuncDiffRegex = laneLanguage === "swift" ? "[+][[:space:]]*(@Test|func test)" : laneLanguage === "go" ? "[+][[:space:]]*func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
   const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
   const testFuncBodyRegex = laneLanguage === "swift" ? "func test" : laneLanguage === "go" ? "func Test" : "def test_";
-  const testFuncDiffRegexB64 = laneLanguage === "swift" ? "WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk=" : laneLanguage === "go" ? "WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp" : "WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf";
-  const testFuncGrepRegexB64 = laneLanguage === "swift" ? "QFRlc3R8ZnVuYyB0ZXN0" : laneLanguage === "go" ? "ZnVuYyBUZXN0" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA==" : "ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw==";
-  const testFuncBodyRegexB64 = laneLanguage === "swift" ? "ZnVuYyB0ZXN0" : laneLanguage === "go" ? "ZnVuYyBUZXN0" : "ZGVmIHRlc3Rf";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   if (completionPath) {
     const completionExist = await agent(
@@ -501,6 +587,12 @@ No markdown fences, no explanation.`,
     }
   }
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
+  const laneHistoryRaw = await agent(
+    `Run: git -C "${wt}" log --format="%H %s"
+Return ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `lane-history-check:${taskId}`, phase: "Act", model: "haiku" }
+  );
+  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   async function writeCompletion() {
     if (!runId) return;
     const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`;
@@ -514,6 +606,14 @@ List the files changed.`,
     );
   }
   if (isStructural) {
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+    if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+    await updateStage(issueId, "done");
+    await writeCompletion();
+    return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+  }
+  if (redAlreadyCommitted && greenAlreadyCommitted) {
+    log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
@@ -604,36 +704,69 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     taskId,
     testFuncPattern: testFuncLabel
   };
-  let red = await resilientAgent(
-    redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
-  );
-  if (red?.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
-  }
-  if (!red || !red.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
-    if (check.committed) {
-      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
-      red = {
-        success: true,
-        tests_pass: false,
-        committed: true,
-        commit_sha: check.commitSha,
-        files_written: red?.files_written || testFiles,
-        failure_reason: red?.failure_reason
-      };
-    } else {
-      log(`[${taskId}] RED: agent did not commit \u2014 failing (independent check: ${check.detail})`);
-      return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit (independent check: ${check.detail})` };
-    }
-  }
-  if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
+  let red = null;
+  if (redAlreadyCommitted) {
+    log(`[${taskId}] RED commit already exists on lane branch \u2014 skipping RED dispatch, resuming from GREEN (#331)`);
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+    red = {
+      success: true,
+      tests_pass: false,
+      committed: true,
+      commit_sha: existingRedCheck.commitSha,
+      files_written: testFiles
+    };
+  } else {
     red = await resilientAgent(
-      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
-      { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      redPrompt(promptVars),
+      { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
     );
+    if (red?.success) {
+      log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
+    }
+    if (!red || !red.committed) {
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+      if (check.committed) {
+        log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
+        red = {
+          success: true,
+          tests_pass: false,
+          committed: true,
+          commit_sha: check.commitSha,
+          files_written: red?.files_written || testFiles,
+          failure_reason: red?.failure_reason
+        };
+      } else {
+        log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
+        red = await resilientAgent(
+          redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
+          { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+        );
+        if (!red || !red.committed) {
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+          if (retryCheck.committed) {
+            log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) \u2014 treating as committed (#274)`);
+            red = {
+              success: true,
+              tests_pass: false,
+              committed: true,
+              commit_sha: retryCheck.commitSha,
+              files_written: red?.files_written || testFiles,
+              failure_reason: red?.failure_reason
+            };
+          } else {
+            log(`[${taskId}] RED: agent did not commit after retry \u2014 failing (independent check: ${retryCheck.detail})`);
+            return { task_id: taskId, status: "failed", stage: "RED", error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` };
+          }
+        }
+      }
+    }
+    if (!red || !red.success) {
+      log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
+        { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      );
+    }
   }
   if (!red || !red.success) {
     log(`[${taskId}] RED FAILED: ${red?.failure_reason || "no files written after 2 attempts"}`);
@@ -644,16 +777,30 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount2 = 0;
     let gatePassed = false;
     const countRaw = await agent(
-      `Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself \u2014 let the shell's own base64 -d do that):
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(" ")} --pattern "$(echo '${testFuncDiffRegexB64}' | base64 -d)" --required ${acCount}
-Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
+      `Run this EXACT sequence of two commands verbatim:
+1. Write the pattern to a temp file (the quoted heredoc delimiter means the shell does no interpretation of its contents \u2014 copy the line between the markers exactly as-is):
+PATFILE=$(mktemp)
+cat > "$PATFILE" <<'PATTERN_EOF'
+${testFuncDiffRegex}
+PATTERN_EOF
+2. Run the gate script against that file:
+bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map((f) => `"${f}"`).join(" ")} --pattern-file "$PATFILE" --required ${acCount}
+Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`,
         phase: "Act",
         model: model("fast")
       }
     );
-    if (countRaw && typeof countRaw === "object") {
+    if (countRaw === null || countRaw === void 0) {
+      log(`[${taskId}] RED FAILED: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`);
+      return {
+        task_id: taskId,
+        status: "failed",
+        stage: "RED",
+        error: `count_gate_no_output: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`
+      };
+    } else if (typeof countRaw === "object") {
       const obj = countRaw;
       newTestCount2 = obj.new_test_count || 0;
       gatePassed = obj.passed !== void 0 ? Boolean(obj.passed) : newTestCount2 >= acCount;
@@ -698,9 +845,14 @@ ${testFiles.map((f) => sgPatterns.map(
       (p) => `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
     ).join("\n")).join("\n")}
 
-Also check for pass-only test bodies (decode the base64 token verbatim via base64 -d, don't retype it):
+Also check for pass-only test bodies. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):
+BODYPATFILE=$(mktemp)
+cat > "$BODYPATFILE" <<'PATTERN_EOF'
+${testFuncBodyRegex}
+PATTERN_EOF
+Then run:
 ${testFiles.map(
-      (f) => `grep -A1 "$(echo '${testFuncBodyRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `grep -A1 -f "$BODYPATFILE" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n")}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -719,17 +871,60 @@ Output raw JSON only.`,
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   await updateStage(issueId, "red", red.commit_sha);
-  const redOwnership = await verifyFileOwnership(taskId, wt, "RED", testFiles, implFiles);
+  const redOwnership = await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
   }
+  const scopeTestContentsRaw = await agent(
+    `Read the contents of these RED test file(s) in the worktree:
+${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join("\n")}
+Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || "path"}": "contents..."}. No markdown fences, no explanation.`,
+    { label: `scope-repair-read:${taskId}`, phase: "Act", model: model("fast") }
+  );
+  const scopeTestContents = parseAgentJson(scopeTestContentsRaw, {});
+  const requiredScopeFiles = /* @__PURE__ */ new Set();
+  for (const tf of testFiles) {
+    const tContent = scopeTestContents[tf] || "";
+    if (!tContent) continue;
+    for (const rf of extractRequiredScopeFiles(tContent, tf, laneLanguage)) {
+      requiredScopeFiles.add(rf);
+    }
+  }
+  const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles]);
+  if (scopeGaps.length > 0) {
+    const scopeExistsRaw = await agent(
+      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
+${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join("\n")}
+Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
+      { label: `scope-repair-check:${taskId}`, phase: "Act", model: model("fast") }
+    );
+    const scopeExistsParsed = parseAgentJson(scopeExistsRaw, {});
+    const existingGaps = scopeExistsParsed.existing || [];
+    const missingGaps = scopeExistsParsed.missing || [];
+    for (const f of existingGaps) {
+      if (!implFiles.includes(f)) {
+        implFiles.push(f);
+        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files \u2014 required by RED test import/assertion, was missing from lane.files`);
+      }
+    }
+    if (missingGaps.length > 0) {
+      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(", ")} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`;
+      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `scope_gap: ${msg}` };
+    }
+  }
   const rawCounts = await agent(
-    `Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself \u2014 base64 -d handles that):
+    `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):
+GREPPATFILE=$(mktemp)
+cat > "$GREPPATFILE" <<'PATTERN_EOF'
+${testFuncGrepRegex}
+PATTERN_EOF
+Then run:
 After-counts (current worktree):
-${testFiles.map((f) => `grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
+${testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
 Before-counts (parent commit \u2014 0 for first commit):
-${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" || echo 0`).join("\n")}
+${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join("\n")}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`,
@@ -817,7 +1012,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
     }
   }
-  const greenOwnership = await verifyFileOwnership(taskId, wt, "GREEN", implFiles, testFiles);
+  const greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
   if (!greenOwnership.ok) {
     log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };

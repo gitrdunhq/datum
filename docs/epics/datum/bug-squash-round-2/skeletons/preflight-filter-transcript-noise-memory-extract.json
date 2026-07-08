@@ -1,0 +1,49 @@
+{
+  "task_id": "filter-transcript-noise-memory-extract",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_memory_extract.py",
+      "kind": "pytest",
+      "purpose": "Verify _extract_from_transcript given a transcript mixing a genuine",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_extract_from_transcript_given_a_transcript_mixing_a_genuine",
+      "skeleton_written": false,
+      "content": "# Skeleton: filter-transcript-noise-memory-extract AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_extract_from_transcript_given_a_transcript_mixing_a_genuine \u2192 tests/test_memory_extract.py\n\nimport pytest\n\n\nclass Testfilter_transcript_noise_memory_extract_AC1:\n    def test_ac1_extract_from_transcript_given_a_transcript_mixing_a_genuine(self):\n        \"\"\"\n        PROP-001: _extract_from_transcript given a transcript mixing a genuine correction statemen\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_memory_extract.py",
+      "kind": "pytest",
+      "purpose": "Verify Lines that are pure file paths or raw code/JSON blobs matchi",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_lines_that_are_pure_file_paths_or_raw_code_json_blobs_matchi",
+      "skeleton_written": false,
+      "content": "# Skeleton: filter-transcript-noise-memory-extract AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_lines_that_are_pure_file_paths_or_raw_code_json_blobs_matchi \u2192 tests/test_memory_extract.py\n\nimport pytest\n\n\nclass Testfilter_transcript_noise_memory_extract_AC2:\n    def test_ac2_lines_that_are_pure_file_paths_or_raw_code_json_blobs_matchi(self):\n        \"\"\"\n        PROP-002: Lines that are pure file paths or raw code/JSON blobs matching a CORRECTION_PATT\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_memory_extract.py",
+      "kind": "pytest",
+      "purpose": "Verify A clean transcript with a genuine correction and no noise st",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_a_clean_transcript_with_a_genuine_correction_and_no_noise_st",
+      "skeleton_written": false,
+      "content": "# Skeleton: filter-transcript-noise-memory-extract AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_a_clean_transcript_with_a_genuine_correction_and_no_noise_st \u2192 tests/test_memory_extract.py\n\nimport pytest\n\n\nclass Testfilter_transcript_noise_memory_extract_AC3:\n    def test_ac3_a_clean_transcript_with_a_genuine_correction_and_no_noise_st(self):\n        \"\"\"\n        PROP-003: A clean transcript with a genuine correction and no noise still yields the same \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/memory_extract.py": "#!/usr/bin/env python3\n\nfrom __future__ import annotations\n\nimport json\nimport re\nimport sys\nfrom pathlib import Path\n\nCORRECTION_PATTERNS: list[tuple[str, str, str]] = [\n]\n\nCONTEXT_WINDOW = 200\n\n\ndef _extract_from_transcript(transcript_path: Path) -> list[dict]:\n    ...\n\n\n\n\n\n\n\n\ndef main() -> None:\n    ...\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

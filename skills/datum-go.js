@@ -144,7 +144,8 @@ function resolveLanePlanPath(epicDir, agentResult) {
 }
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
-  const cleaned = text.replace(/```[a-z]*\n?/g, "").trim();
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
   const start = cleaned.search(/[{[]/);
   const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
   if (start === -1 || end === -1) return fallback;
@@ -179,7 +180,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
-  skills_dir: ""
+  skills_dir: "",
+  context_files: []
 };
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
@@ -213,9 +215,6 @@ function parseState(raw) {
     return null;
   }
 }
-function serializeState(state) {
-  return JSON.stringify(state, null, 2);
-}
 function detectStartFrom(state) {
   if (!state || !state.completedPhases?.length) return null;
   const ORDER = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
@@ -225,9 +224,6 @@ function detectStartFrom(state) {
   return null;
 }
 
-// skills/src/prompts/util-detect-branch.md
-var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
-
 // skills/src/datum-go.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 function parseArgs(raw) {
@@ -236,7 +232,17 @@ function parseArgs(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    return { yolo: true, freeText: raw };
+    const result = { yolo: true, freeText: raw };
+    const startFromMatch = raw.match(/--start-from[=\s]+(\S+)/);
+    const routeMatch = raw.match(/--route[=\s]+(\S+)/);
+    if (startFromMatch) result.startFrom = startFromMatch[1];
+    if (routeMatch) result.route = routeMatch[1];
+    if (!startFromMatch && !routeMatch) {
+      log(`WARNING: args "${raw}" is not valid JSON and was not recognized as yolo/#N \u2014 all flags in it (startFrom, route, phases) were IGNORED. Pass valid JSON to set these, or use --start-from <phase> / --route <route>.`);
+    } else {
+      log(`args "${raw}" is not valid JSON \u2014 recovered ${startFromMatch ? `startFrom=${startFromMatch[1]} ` : ""}${routeMatch ? `route=${routeMatch[1]}` : ""}from flags. Other fields (e.g. phases) are not supported this way \u2014 pass valid JSON to set them.`);
+    }
+    return result;
   }
 }
 var a = typeof args === "string" ? parseArgs(rawArgs) : args || {};
@@ -263,31 +269,56 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
   setModelTiers(globalCfg.models);
   log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);
 }
+var toolCheckText = await agent(
+  `REPO_ROOT=$(git rev-parse --show-toplevel) && DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+  { label: "preflight-tool-check", model: model("fast") }
+);
+var toolCheck = parseAgentJson(toolCheckText, { ok: true });
+if (!toolCheck.ok) {
+  throw new Error(
+    `datum CLI tool install is stale/misdirected (#327): the globally installed editable \`datum\` points at "${toolCheck.installed}" but this repo root is "${toolCheck.expected}". Every "datum ..." command this pipeline runs would silently execute code from the wrong location. Fix: run \`uv tool install --editable . --force\` from "${toolCheck.expected}", then re-run.`
+  );
+}
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var lastResult = {};
 var haltedAt = "";
+var resolvedBranch = priorState?.branch || "";
+var resolvedRunId = priorState?.runId || "";
 var completedPhases = priorState?.completedPhases ? [...priorState.completedPhases] : [];
 function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
-async function markPhaseComplete(p) {
+async function markPhaseComplete(p, testsPass) {
   if (!completedPhases.includes(p)) completedPhases.push(p);
-  const state = {
-    branch: globalCfg.branch || "",
-    runId: "",
-    route,
-    completedPhases,
-    currentPhase: null,
-    lastUpdated: ""
-  };
+  const testsFlag = p === "validate" ? testsPass ? " --tests-pass" : " --tests-fail" : "";
   await agent(
-    `Write this exact content to .datum/pipeline-state.json:
-${serializeState(state)}
-Overwrite if exists. No other output.`,
+    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     { label: `save-state:${p}`, model: model("fast") }
   );
 }
-if (priorState && !explicitStart) {
+var newEpicBranch = "";
+if (a.freeText && priorState && !explicitStart) {
+  const newEpicText = await agent(
+    `An existing epic is checked out on this branch. Prior pipeline state: ${JSON.stringify(priorState)}.
+Read the current epic's TICKET.md (its branch is "${priorState.branch}"; the file lives at docs/epics/${priorState.branch}/TICKET.md) and compare its title/scope to this NEW brief the caller just typed:
+"""
+${a.freeText}
+"""
+Decide: does the brief describe the SAME piece of work as the existing TICKET.md, or a CLEARLY DIFFERENT one?
+- If SAME, or you cannot confidently tell they differ: output {"newEpic": false}.
+- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief, then run exactly: datum init --name <slug> --json
+  and return the raw JSON it printed, merged with {"newEpic": true, "reason": "<why they differ>"}.
+Output ONLY raw JSON, no markdown fences, no explanation.`,
+    { label: "new-epic-check", model: model("balanced") }
+  );
+  const newEpicInfo = parseAgentJson(newEpicText, { newEpic: false });
+  if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
+    log(`New epic detected \u2014 brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || "no reason given"}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`);
+    newEpicBranch = newEpicInfo.epicBranch;
+    resolvedBranch = newEpicInfo.epicBranch;
+  }
+}
+if (priorState && !explicitStart && !newEpicBranch) {
   const resumeAt = detectStartFrom(priorState);
   if (resumeAt) {
     const resumeIdx = PHASES.indexOf(resumeAt);
@@ -332,11 +363,18 @@ if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
   const language = globalCfg.language || DEFAULT_CONFIG.language;
-  const branchInfo = await agent(util_detect_branch_default, { label: "act-detect", model: model("fast") });
-  const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
-  const epicBranch = info.branch;
+  const bootstrapInfo = await agent(
+    `Run this EXACT command and capture its raw stdout: datum init --json
+Then run: date +%Y%m%d-%H%M%S
+Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
+    { label: "act-bootstrap", model: model("fast") }
+  );
+  const info = parseAgentJson(bootstrapInfo, { epicBranch: "", timestamp: "" });
+  const epicBranch = info.epicBranch;
   const runId = info.timestamp;
-  if (!epicBranch || !runId) throw new Error(`Failed to detect branch/timestamp: ${JSON.stringify(info)}`);
+  resolvedBranch = epicBranch;
+  resolvedRunId = runId;
+  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`);
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
   const epicDir = `docs/epics/${epicBranch}`;
   const resolveText = await agent(
@@ -410,7 +448,7 @@ if (shouldRun("act", 3)) {
     }
     const setup = await workflow(
       { scriptPath: sk("datum-tdd-act-setup") },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, batchTag }
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag }
     );
     const act = await workflow(
       { scriptPath: sk("datum-tdd-act-lane") },
@@ -471,6 +509,10 @@ if (shouldRun("act", 3)) {
   await markPhaseComplete("act");
   log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
+  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+    haltedAt = "act";
+    log(`Act produced 0/${lanePlan.total_lanes} completed lanes \u2014 halting before validate/review/closeout to avoid reporting false completion.`);
+  }
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);
 }
@@ -482,7 +524,7 @@ if (shouldRun("validate", 4)) {
     log("Validate FAILED \u2014 tests are red. Pipeline halted.");
   } else {
     log("Validate complete");
-    await markPhaseComplete("validate");
+    await markPhaseComplete("validate", !!lastResult.testsPassed);
   }
 }
 if (shouldRun("review", 5)) {

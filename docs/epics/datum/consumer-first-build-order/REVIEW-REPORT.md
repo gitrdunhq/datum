@@ -1,0 +1,15 @@
+# Review Report
+
+**Findings:** 6 unique (2 high/critical)
+
+## Findings
+
+| ID | Severity | File | Line | Description | Suggestion |
+|---|---|---|---|---|---|
+| PERF-001 | high | datum/worktree_manager.py | 390 | N+1 git subprocess calls in housekeep_epic() — calls `git branch -d` once per merged branch in a loop (line 387-392), resulting in separate subprocess invocation per branch. With many branches this becomes slow. | Batch the deletions using a single `git branch -d` call with multiple branch names, or collect branches first and delete in one operation to reduce subprocess overhead. |
+| PERF-002 | medium | skills/src/shared/utils.ts | 351 | O(n*m) complexity in verifyFileOwnership() — for each changed file, calls `.some()` on forbiddenFiles and allowedFiles arrays (lines 351 and 354), resulting in nested iteration that becomes slow with large file lists or many ownership rules. | Convert forbiddenFiles and allowedFiles to Sets and use Set.has() instead of .some() for O(1) lookups, reducing overall complexity from O(n*m) to O(n). |
+| PERF-003 | medium | skills/src/shared/utils.ts | 517 | O(n*m) complexity in findScopeGaps() — for each requiredFile, calls `.some()` on allowedFiles array, creating quadratic complexity (line 517). Called in scope repair phase during RED stage of lane execution. | Convert allowedFiles to a Set or precompute pathBoundaryMatch results in a lookup structure to reduce from O(n*m) to O(n) complexity. |
+| ARCH-001 | high | skills/src/shared/utils.ts | 334 | pathBoundaryMatch() function has bidirectional logic that contradicts its documented one-directional intent. The expression `b.endsWith('/' + a)` enables reverse-direction matches that the comment explicitly says should never occur, potentially causing false-positive path ownership validations. | Remove the `b.endsWith('/' + a)` check. The function should only check exact matches and forward containment (a starts with b + '/'). The reverse direction 'b contains a' is not a valid scenario per the documented contract. |
+| ARCH-002 | medium | datum/walkthrough.py | 13 | WalkthroughResult subclasses Python's builtin Path class to add a degraded property. Path is not designed for subclassing, and using __slots__ to add instance attributes to it violates the abstraction boundary. The use of instance attribute assignment on a Path object is fragile and breaks encapsulation. | Use composition instead of inheritance. Return a named tuple like `(path: Path, degraded: bool)` or a custom dataclass wrapping Path, rather than subclassing Path itself. |
+| ARCH-003 | medium | datum/cli.py | 309 | The init() function uses contextlib.redirect_stdout() to suppress output from downstream helper functions (ensure_feature_branch, _install_workflows, seed_state_docs.main). This creates tight coupling to the implementation details of those functions and makes the code less testable and composable. | Refactor downstream functions to accept an optional parameter controlling output verbosity (e.g., quiet: bool), or use a logging-based approach with configurable log levels, rather than globally redirecting stdout. |
+

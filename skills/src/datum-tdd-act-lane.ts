@@ -29,6 +29,10 @@ import {
   crossValidateBugs,
   buildPacket,
   parseAgentJson,
+  verifyFileOwnership as verifyFileOwnershipMatch,
+  extractRequiredScopeFiles,
+  findScopeGaps,
+  detectExistingLaneCommits,
 } from './shared/utils'
 import {
   redPrompt,
@@ -71,18 +75,7 @@ No markdown fences, no explanation.`,
     : result as { files_changed?: string[] }
 
   const changed = parsed.files_changed || []
-  const violations: string[] = []
-
-  for (const f of changed) {
-    if (forbiddenFiles.some((fb) => f.endsWith(fb) || fb.endsWith(f))) {
-      violations.push(`${f} is owned by another lane`)
-    }
-    if (allowedFiles.length > 0 && !allowedFiles.some((a) => f.endsWith(a) || a.endsWith(f))) {
-      violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
-    }
-  }
-
-  return { ok: violations.length === 0, violations }
+  return verifyFileOwnershipMatch(changed, allowedFiles, forbiddenFiles)
 }
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────
@@ -186,33 +179,14 @@ async function runLane(
     ? 'func Test'
     : 'def test_'
 
-  // Base64-encoded versions of the same regexes for use in agent-executed
-  // shell commands. Backslash/paren-heavy ERE patterns (esp. TS/JS) are
-  // regularly mis-transcribed by the fast-tier agent that has to compose a
-  // Bash tool call from prompt text (#288/#289 recurred even after fixing
-  // the quoting above — verified the script+pattern were correct in
-  // isolation, so the fast agent was the point of failure). An opaque
-  // base64 token has nothing for the agent to misquote or re-escape; the
-  // shell decodes it back to the exact bytes via `base64 -d`.
-  const testFuncDiffRegexB64: string = laneLanguage === 'swift'
-    ? 'WytdW1s6c3BhY2U6XV0qKEBUZXN0fGZ1bmMgdGVzdCk='
-    : laneLanguage === 'go'
-    ? 'WytdW1s6c3BhY2U6XV0qZnVuYyBUZXN0'
-    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
-    ? 'WytdW1s6c3BhY2U6XV0qKGl0XCh8dGVzdFwofGRlc2NyaWJlXCgp'
-    : 'WytdW1s6c3BhY2U6XV0qZGVmIHRlc3Rf'
-  const testFuncGrepRegexB64: string = laneLanguage === 'swift'
-    ? 'QFRlc3R8ZnVuYyB0ZXN0'
-    : laneLanguage === 'go'
-    ? 'ZnVuYyBUZXN0'
-    : laneLanguage === 'typescript' || laneLanguage === 'javascript'
-    ? 'aXRcKHx0ZXN0XCh8ZGVzY3JpYmVcKA=='
-    : 'ZGVmIHRlc3RffGFzeW5jIGRlZiB0ZXN0Xw=='
-  const testFuncBodyRegexB64: string = laneLanguage === 'swift'
-    ? 'ZnVuYyB0ZXN0'
-    : laneLanguage === 'go'
-    ? 'ZnVuYyBUZXN0'
-    : 'ZGVmIHRlc3Rf'
+  // Backslash/paren-heavy ERE patterns (esp. TS/JS) were regularly
+  // mis-transcribed by the fast-tier agent composing a Bash tool call from
+  // prompt text (#288/#289 recurred even after fixing the quoting above —
+  // verified the script+pattern were correct in isolation, so the fast agent
+  // was the point of failure). Call sites now write the pattern to a temp
+  // file via a quoted heredoc (`<<'PATTERN_EOF'`) — the quoted delimiter
+  // disables all shell interpretation of its contents, so the agent copies
+  // the pattern verbatim with nothing to escape or misquote.
 
   // ── Cross-run completion check: skip if a previous run already completed this lane ──
   const completionPath = runId
@@ -237,6 +211,23 @@ No markdown fences, no explanation.`,
 
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
+  // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
+  // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
+  // partial-run interruption can re-dispatch a lane whose branch already has
+  // RED and/or GREEN stage-complete commits from a prior invocation. Dispatching
+  // a fresh RED agent in that case only duplicates coverage or regresses a
+  // shipped fix. Check the ACTUAL git history of the lane branch (not the
+  // in-memory lane-plan status, which is exactly what went stale in #331) —
+  // search the full log the same way verifyCommitIndependently does for #274,
+  // since later stages may have already landed and the target commit is not
+  // necessarily HEAD.
+  const laneHistoryRaw: string | null = await agent(
+    `Run: git -C "${wt}" log --format="%H %s"\nReturn ONLY the raw output, no explanation, no markdown fences.`,
+    { label: `lane-history-check:${taskId}`, phase: 'Act', model: 'haiku' },
+  )
+  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
+    detectExistingLaneCommits(laneHistoryRaw || '', taskId)
+
   // ── File-based completion write helper ──
   async function writeCompletion(): Promise<void> {
     if (!runId) return
@@ -252,6 +243,19 @@ List the files changed.`,
   }
 
   if (isStructural) {
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+    if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+    await updateStage(issueId, 'done')
+    await writeCompletion()
+    return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+  }
+
+  if (redAlreadyCommitted && greenAlreadyCommitted) {
+    // Both stage-complete commits already exist — the lane's work is done;
+    // re-running RED/GREEN here would only duplicate coverage or regress a
+    // shipped fix (#331). Resume from REFACTOR, same as the isStructural
+    // fast-path above.
+    log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
@@ -376,40 +380,83 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testFuncPattern: testFuncLabel,
   }
 
-  let red: StageResult | null = await resilientAgent(
-    redPrompt(promptVars),
-    { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
-  )
+  let red: StageResult | null = null
 
-  if (red?.success) {
-    log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
-  }
-
-  // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
-  if (!red || !red.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
-    if (check.committed) {
-      log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
-      red = {
-        success: true,
-        tests_pass: false,
-        committed: true,
-        commit_sha: check.commitSha,
-        files_written: red?.files_written || testFiles,
-        failure_reason: red?.failure_reason,
-      }
-    } else {
-      log(`[${taskId}] RED: agent did not commit — failing (independent check: ${check.detail})`)
-      return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit (independent check: ${check.detail})` }
+  if (redAlreadyCommitted) {
+    // RED commit already exists on the lane branch (but GREEN doesn't yet) —
+    // resume from GREEN instead of re-dispatching RED (#331). Reconstruct the
+    // StageResult from git history using the same independent-verification
+    // helper the retry paths below already rely on (#274), rather than
+    // re-running the RED agent against tests that already exist.
+    log(`[${taskId}] RED commit already exists on lane branch — skipping RED dispatch, resuming from GREEN (#331)`)
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+    red = {
+      success: true,
+      tests_pass: false,
+      committed: true,
+      commit_sha: existingRedCheck.commitSha,
+      files_written: testFiles,
     }
-  }
-
-  if (!red || !red.success) {
-    log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
+  } else {
     red = await resilientAgent(
-      redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
-      { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+      redPrompt(promptVars),
+      { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
     )
+
+    if (red?.success) {
+      log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
+    }
+
+    // ── Commit check first — prevents misleading 'found 0' errors from count gate (#245) ──
+    // If the first attempt didn't commit, retry via redRetryPrompt (the recovery path that
+    // already exists for a failed-but-committed attempt) before hard-failing the lane (#333).
+    if (!red || !red.committed) {
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+      if (check.committed) {
+        log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
+        red = {
+          success: true,
+          tests_pass: false,
+          committed: true,
+          commit_sha: check.commitSha,
+          files_written: red?.files_written || testFiles,
+          failure_reason: red?.failure_reason,
+        }
+      } else {
+        log(`[${taskId}] RED: agent did not commit on first attempt — retrying (independent check: ${check.detail})`)
+        red = await resilientAgent(
+          redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
+          { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+        )
+        // Re-run the same commit-check gate (not around it) so a retry that still didn't
+        // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
+        if (!red || !red.committed) {
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+          if (retryCheck.committed) {
+            log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) — treating as committed (#274)`)
+            red = {
+              success: true,
+              tests_pass: false,
+              committed: true,
+              commit_sha: retryCheck.commitSha,
+              files_written: red?.files_written || testFiles,
+              failure_reason: red?.failure_reason,
+            }
+          } else {
+            log(`[${taskId}] RED: agent did not commit after retry — failing (independent check: ${retryCheck.detail})`)
+            return { task_id: taskId, status: 'failed', stage: 'RED', error: `RED agent did not commit after retry (independent check: ${retryCheck.detail})` }
+          }
+        }
+      }
+    }
+
+    if (!red || !red.success) {
+      log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
+        { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+      )
+    }
   }
 
   if (!red || !red.success) {
@@ -428,15 +475,33 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     let newTestCount = 0
     let gatePassed = false
     const countRaw: string | null = await agent(
-      `Run this EXACT command, copying the base64 token verbatim (do not decode, retype, or re-escape it yourself — let the shell's own base64 -d do that):
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.join(' ')} --pattern "$(echo '${testFuncDiffRegexB64}' | base64 -d)" --required ${acCount}
-Return ONLY the raw stdout of the script. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
+      `Run this EXACT sequence of two commands verbatim:
+1. Write the pattern to a temp file (the quoted heredoc delimiter means the shell does no interpretation of its contents — copy the line between the markers exactly as-is):
+PATFILE=$(mktemp)
+cat > "$PATFILE" <<'PATTERN_EOF'
+${testFuncDiffRegex}
+PATTERN_EOF
+2. Run the gate script against that file:
+bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map(f => `"${f}"`).join(' ')} --pattern-file "$PATFILE" --required ${acCount}
+Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
       {
         label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
       },
     )
     // Parse the JSON output from the script
-    if (countRaw && typeof countRaw === 'object') {
+    if (countRaw === null || countRaw === undefined) {
+      // agent() genuinely returned nothing — this is an infrastructure failure of the
+      // count-gate script call itself, not "0 tests found". Do NOT silently default to
+      // newTestCount=0/gatePassed=false here; that would misreport a tooling failure as
+      // a real gate failure and mask the fact the check never ran (#315).
+      log(`[${taskId}] RED FAILED: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`)
+      return {
+        task_id: taskId,
+        status: 'failed',
+        stage: 'RED',
+        error: `count_gate_no_output: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`,
+      }
+    } else if (typeof countRaw === 'object') {
       const obj = countRaw as { new_test_count?: number; passed?: boolean }
       newTestCount = obj.new_test_count || 0
       gatePassed = obj.passed !== undefined ? Boolean(obj.passed) : newTestCount >= acCount
@@ -490,9 +555,14 @@ ${testFiles.map((f) => sgPatterns.map((p) =>
     `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
   ).join('\n')).join('\n')}
 
-Also check for pass-only test bodies (decode the base64 token verbatim via base64 -d, don't retype it):
+Also check for pass-only test bodies. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
+BODYPATFILE=$(mktemp)
+cat > "$BODYPATFILE" <<'PATTERN_EOF'
+${testFuncBodyRegex}
+PATTERN_EOF
+Then run:
 ${testFiles.map((f) =>
-    `grep -A1 "$(echo '${testFuncBodyRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    `grep -A1 -f "$BODYPATFILE" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
   ).join('\n')}
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
@@ -520,13 +590,68 @@ Output raw JSON only.`,
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
   }
 
+  // ── Scope repair (#325/#334/#335) ──────────────────────────────────────────
+  // The committed RED test may import/assert against files the lane plan
+  // never granted write access to (allowed_write_files == testFiles+implFiles
+  // here). Left unchecked, GREEN deadlocks at scope_exceeded: no change
+  // confined to implFiles can satisfy an AC whose target lives elsewhere.
+  // Parse the actual RED test content for required files and either
+  // auto-add unambiguous, existing targets to implFiles, or fail loud now —
+  // before GREEN burns an attempt on a lane that structurally cannot pass.
+  const scopeTestContentsRaw = await agent(
+    `Read the contents of these RED test file(s) in the worktree:
+${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join('\n')}
+Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || 'path'}": "contents..."}. No markdown fences, no explanation.`,
+    { label: `scope-repair-read:${taskId}`, phase: 'Act', model: model('fast') },
+  )
+  const scopeTestContents = parseAgentJson<Record<string, string>>(scopeTestContentsRaw as string, {})
+
+  const requiredScopeFiles = new Set<string>()
+  for (const tf of testFiles) {
+    const tContent = scopeTestContents[tf] || ''
+    if (!tContent) continue
+    for (const rf of extractRequiredScopeFiles(tContent, tf, laneLanguage)) {
+      requiredScopeFiles.add(rf)
+    }
+  }
+
+  const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles])
+  if (scopeGaps.length > 0) {
+    const scopeExistsRaw = await agent(
+      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
+${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join('\n')}
+Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
+      { label: `scope-repair-check:${taskId}`, phase: 'Act', model: model('fast') },
+    )
+    const scopeExistsParsed = parseAgentJson<{ existing?: string[]; missing?: string[] }>(scopeExistsRaw as string, {})
+    const existingGaps = scopeExistsParsed.existing || []
+    const missingGaps = scopeExistsParsed.missing || []
+
+    for (const f of existingGaps) {
+      if (!implFiles.includes(f)) {
+        implFiles.push(f)
+        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files — required by RED test import/assertion, was missing from lane.files`)
+      }
+    }
+    if (missingGaps.length > 0) {
+      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(', ')} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`
+      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `scope_gap: ${msg}` }
+    }
+  }
+
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
   const rawCounts = await agent(
-    `Count test functions in these files (copy the base64 token verbatim into each command, do not decode/retype it yourself — base64 -d handles that):
+    `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
+GREPPATFILE=$(mktemp)
+cat > "$GREPPATFILE" <<'PATTERN_EOF'
+${testFuncGrepRegex}
+PATTERN_EOF
+Then run:
 After-counts (current worktree):
-${testFiles.map(f => `grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
+${testFiles.map(f => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
 Before-counts (parent commit — 0 for first commit):
-${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E "$(echo '${testFuncGrepRegexB64}' | base64 -d)" || echo 0`).join('\n')}
+${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join('\n')}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
     {
       label: `test-count:${taskId}`, phase: 'Act', model: model('fast'),
