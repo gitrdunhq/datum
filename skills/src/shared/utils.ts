@@ -334,7 +334,6 @@ export function pathBoundaryMatch(a: string, b: string): boolean {
   return (
     a === b ||
     a.endsWith('/' + b) ||
-    b.endsWith('/' + a) ||
     a.startsWith(b + '/')
   )
 }

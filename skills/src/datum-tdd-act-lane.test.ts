@@ -104,6 +104,20 @@ describe('path-boundary-file-ownership — AC3', () => {
     expect(result.violations.length).toBeGreaterThan(0)
     expect(result.violations.some((v) => v.includes('src/Unrelated.ts'))).toBe(true)
   })
+
+  it('does not match in reverse: a bare changed filename must not match a longer allowed path that merely ends with it (ARCH-001)', () => {
+    const verifyFileOwnership = getVerifyFileOwnership()
+    expect(typeof verifyFileOwnership).toBe('function')
+
+    // "src/utils.ts".endsWith("/" + "utils.ts") is true, but a changed file
+    // named "utils.ts" living at the repo root is NOT the same file as, nor
+    // nested inside, "src/utils.ts" — matching must be one-directional
+    // (changed file lives inside allowed path), never the reverse.
+    const result = verifyFileOwnership!(['utils.ts'], ['src/utils.ts'], [])
+
+    expect(result.ok).toBe(false)
+    expect(result.violations.some((v) => v.includes('utils.ts'))).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
