@@ -50,6 +50,27 @@ def _detect_epic_number(branch: str) -> int | None:
     return None
 
 
+def _find_previous_epic_closeout_sha() -> str | None:
+    """Most recent commit whose subject is a `closeout(<run-id>): ...` line.
+
+    Epics in this repo chain linearly on a single branch rather than fast-
+    forwarding `main` after each merge (FU-3, 20260707-173926 follow-ups) —
+    `main` can sit stale for many epics, so `git merge-base main HEAD` can
+    resolve to a base far older than the immediately-prior epic's actual
+    merge point, inflating git-stat scope across unrelated epics. The
+    previous epic's own `closeout(...)` commit is the reliable boundary.
+    """
+    try:
+        output = _git("log", "--format=%H %s")
+    except RuntimeError:
+        return None
+    for line in output.splitlines():
+        sha, _, subject = line.partition(" ")
+        if subject.startswith("closeout("):
+            return sha
+    return None
+
+
 def detect_context(
     run_id: str | None = None,
     base_sha: str | None = None,
@@ -78,6 +99,8 @@ def detect_context(
 
     # Base SHA: the merge-base with main, or HEAD~N if on main
     detected_base = base_sha
+    if detected_base is None:
+        detected_base = _find_previous_epic_closeout_sha()
     if detected_base is None:
         try:
             detected_base = _git("merge-base", "main", "HEAD")
