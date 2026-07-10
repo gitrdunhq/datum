@@ -7,3 +7,7 @@ lots of merge conflicts
 ---
 
 we dropped DuckDB for SQLite didnt we
+
+---
+
+yes continue and update all project memory about sqlite
