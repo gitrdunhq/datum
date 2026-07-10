@@ -1,0 +1,33 @@
+PR it
+
+---
+
+lots of merge conflicts
+
+---
+
+we dropped DuckDB for SQLite didnt we
+
+---
+
+yes continue and update all project memory about sqlite
+
+---
+
+lets get main up to date
+
+---
+
+Check `gh pr view 346 --json mergeable,mergeStateStatus,statusCheckRollup` for the datum/epic-287 -> main PR in /Volumes/Extra/repos/gitrdunhq/the-record-suite. If test-macos succeeded and all checks pass, merge PR 346 into main with `gh pr merge 346 --merge` (regular merge commit, not squash/rebase, to preserve the TDD RED/GREEN commit history), then verify local main is fast-forwarded/up to date with origin/main and report back. If test-macos failed, fetch the failure logs via `gh api repos/gitrdunhq/Record-Suite/actions/jobs/<job-id>/logs`, diagnose, and report/fix. If still in progress, schedule another wakeup.
+
+---
+
+Check `gh pr view 346 --json mergeable,mergeStateStatus,statusCheckRollup` for the datum/epic-287 -> main PR in /Volumes/Extra/repos/gitrdunhq/the-record-suite. If test-macos succeeded and all checks pass, merge PR 346 into main with `gh pr merge 346 --merge` (regular merge commit, not squash/rebase, to preserve the TDD RED/GREEN commit history), then verify local main is fast-forwarded/up to date with origin/main and report back. If test-macos failed, fetch the failure logs via `gh api repos/gitrdunhq/Record-Suite/actions/jobs/<job-id>/logs`, diagnose, and report/fix. If still in progress, schedule another wakeup.
+
+---
+
+Check `gh pr view 346 --json mergeable,mergeStateStatus,statusCheckRollup` for the datum/epic-287 -> main PR in /Volumes/Extra/repos/gitrdunhq/the-record-suite. If test-macos succeeded and all checks pass, merge PR 346 into main with `gh pr merge 346 --merge` (regular merge commit, not squash/rebase, to preserve the TDD RED/GREEN commit history), then verify local main is fast-forwarded/up to date with origin/main and report back. If test-macos failed, fetch the failure logs via `gh api repos/gitrdunhq/Record-Suite/actions/jobs/<job-id>/logs`, diagnose, and report/fix. If still in progress, check step-level progress via `gh api repos/gitrdunhq/Record-Suite/actions/runs/29107218245/jobs` and schedule another wakeup if it's still making progress.
+
+---
+
+whats in the task.locL? probably add it to gitignore for future

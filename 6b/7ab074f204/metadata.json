@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "6b7ab074f204",
+  "strategy": "manual-commit",
+  "branch": "chore/ignore-scheduled-tasks-lock",
+  "checkpoints_count": 5,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/6b/7ab074f204/0/metadata.json",
+      "transcript": "/6b/7ab074f204/0/full.jsonl",
+      "compact_transcript": "/6b/7ab074f204/0/transcript.jsonl",
+      "content_hash": "/6b/7ab074f204/0/content_hash.txt",
+      "prompt": "/6b/7ab074f204/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 125770,
+    "cache_creation_tokens": 1830515,
+    "cache_read_tokens": 38167997,
+    "output_tokens": 186192,
+    "api_call_count": 326
+  }
+}
