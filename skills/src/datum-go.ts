@@ -373,7 +373,9 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
       { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir },
+        // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
+        // in the lane runner, same as datum-tdd-act passes it.
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir, yolo },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
