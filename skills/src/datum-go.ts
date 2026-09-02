@@ -3,7 +3,7 @@ import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLa
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
-import { resolveSkillPath, skillsDirHint, bootPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
+import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
 
 export const meta = {
   name: 'datum-go',
@@ -119,12 +119,14 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 // resolves to this repo root before running anything else, and fail loud
 // rather than silently continuing on a stale binary.
 const toolCheckText = await agent(
+  runCommandPrompt(
   `REPO_ROOT=$(git rev-parse --show-toplevel) && ` +
   `DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && ` +
   `if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && ` +
   `INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && ` +
   `EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && ` +
   `if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+  ),
   { label: 'preflight-tool-check', model: model('fast') },
 )
 const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }

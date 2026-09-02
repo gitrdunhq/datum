@@ -245,12 +245,15 @@ function skillsDirHint(skillsDir) {
 function bootPrompt(configFingerprint2 = "") {
   const stamp = configFingerprint2 ? `
 (config fingerprint: ${configFingerprint2})` : "";
-  return `Return a JSON object with four fields:
+  return `Your task: read files with the Read tool and run commands with the Bash tool, then return a JSON object with four fields:
 1. "config": contents of .datum/config.json (or {} if missing)
 2. "state": contents of .datum/pipeline-state.json (or null if missing)
 3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
 4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
-Output raw JSON only.${stamp}`;
+Do not ask for clarification and do not message anyone \u2014 this prompt is the whole task. Output raw JSON only.${stamp}`;
+}
+function runCommandPrompt(command) {
+  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
 }
 var NO_FINGERPRINT_WARNING = 'args.configFingerprint not set \u2014 on Workflow resume the cached config read is replayed and a config edit is NOT picked up (#354). Launch with args: { ..., configFingerprint: "<output of `datum config-fingerprint`>" }.';
 
@@ -312,7 +315,9 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
   log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);
 }
 var toolCheckText = await agent(
-  `REPO_ROOT=$(git rev-parse --show-toplevel) && DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+  runCommandPrompt(
+    `REPO_ROOT=$(git rev-parse --show-toplevel) && DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`
+  ),
   { label: "preflight-tool-check", model: model("fast") }
 );
 var toolCheck = parseAgentJson(toolCheckText, { ok: true });

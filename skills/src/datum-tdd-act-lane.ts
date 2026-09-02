@@ -1,4 +1,5 @@
 import { model, type ModelName } from './shared/models'
+import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, verifyCommitIndependently } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
@@ -950,7 +951,7 @@ async function runRefactor(
     log(`[${taskId}] REFACTOR broke tests — agent should not have committed`)
     if (refactor.committed) {
       await agent(
-        `git -C "${wt}" revert --no-edit HEAD`,
+        runCommandPrompt(`git -C "${wt}" revert --no-edit HEAD`),
         { label: `revert-refactor:${taskId}`, phase: 'Act', model: model('fast') },
       )
     }
