@@ -235,3 +235,40 @@ describe('#357 — unified commit convention across RED/GREEN/REFACTOR', () => {
     expect(laneSource).toMatch(/laneCommitCommand\(\{[^}]*stage:\s*'REFACTOR'/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// #356 — the lane runner must run the contract preflight at RED time (fail
+// RED, not GREEN, on a contract contradiction), and route a blocked GREEN
+// through decideGreenBlock instead of the blind opus retry.
+// ---------------------------------------------------------------------------
+
+describe('#356 — RED-time contract preflight and GREEN block routing', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('runs the contract preflight after RED is verified and before GREEN, failing RED on contract_conflict', () => {
+    const preflightIdx = laneSource.indexOf('datum.contract_preflight')
+    const greenIdx = laneSource.indexOf('greenPrompt(greenVars)')
+    const redVerifiedIdx = laneSource.indexOf('RED verified')
+    expect(preflightIdx).toBeGreaterThan(redVerifiedIdx)
+    expect(preflightIdx).toBeLessThan(greenIdx)
+    const block = laneSource.slice(preflightIdx, greenIdx)
+    expect(block).toMatch(/stage: 'RED'[^\n]*contract_conflict/)
+  })
+
+  it('decides GREEN retry vs blocked with decideGreenBlock and returns needs_write on the outcome', () => {
+    expect(laneSource).toMatch(/decideGreenBlock\(/)
+    expect(laneSource).toMatch(/status: 'blocked',\s*stage: 'GREEN'/)
+    expect(laneSource).toMatch(/needs_write:/)
+  })
+
+  it('auto-widens only in yolo mode and re-runs GREEN once', () => {
+    expect(laneSource).toMatch(/autoWidenTargets\(/)
+    expect(laneSource).toMatch(/cfg\.yolo/)
+  })
+
+  it('the GREEN prompt documents the structured blocked result', () => {
+    const green = readFileSync(join(__dirname, 'prompts', 'green.md'), 'utf8')
+    expect(green).toMatch(/status="blocked"|status: "blocked"|"status":\s*"blocked"/)
+    expect(green).toMatch(/needs_write/)
+  })
+})

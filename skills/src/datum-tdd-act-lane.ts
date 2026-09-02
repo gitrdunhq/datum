@@ -15,6 +15,7 @@ import type {
   SkepticResult,
   RefactorCheck,
   TaskPacket,
+  ContractPreflight,
 } from './shared/types'
 import {
   STAGE_RESULT_SCHEMA,
@@ -34,6 +35,9 @@ import {
   findScopeGaps,
   detectExistingLaneCommits,
   laneCommitCommand,
+  parseContractPreflight,
+  decideGreenBlock,
+  autoWidenTargets,
 } from './shared/utils'
 import {
   redPrompt,
@@ -643,6 +647,38 @@ Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...
     }
   }
 
+  // ── Contract preflight (#356) ─────────────────────────────────────────────
+  // Run the committed RED test once against the current tree (deterministic
+  // Python: `python -m datum.contract_preflight`, exposed as `datum
+  // contract-preflight`) and fail RED — not GREEN — when a TypeError/
+  // AttributeError originates in, or names a contract defined only in, a file
+  // GREEN cannot write (GREEN's allowed set is implFiles). Without this the
+  // lane burned three identical GREEN attempts before a human noticed the
+  // RED test had constructed a dataclass without one of its required fields.
+  const contractPreflightCmd = (allowed: string[]): string =>
+    `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` +
+    testFiles.map((f) => `--test-file "${f}"`).join(' ') +
+    (allowed.length > 0 ? ' ' + allowed.map((f) => `--allowed "${f}"`).join(' ') : '')
+  const contractPreflightPrompt = (allowed: string[]): string =>
+    `Run: ${contractPreflightCmd(allowed)}
+The command exits 1 when it finds a conflict — that is expected, not an error; still return its output.
+Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`
+  const isPytestLane: boolean = laneLanguage === 'python' && /pytest/.test(scopedTestCmd)
+
+  if (isPytestLane) {
+    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), {
+      label: `contract-preflight:${taskId}`, phase: 'Act', model: model('fast'),
+    })
+    const redPreflight: ContractPreflight = parseContractPreflight(redPreflightRaw as string)
+    if (redPreflight.status === 'contract_conflict') {
+      log(`[${taskId}] RED FAILED: contract conflict — ${redPreflight.reason}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `contract_conflict: ${redPreflight.reason}`, needs_write: redPreflight.needs_write }
+    }
+    log(`[${taskId}] contract preflight: ${redPreflight.status}${redPreflight.status === 'skipped' ? ` (${redPreflight.reason})` : ''}`)
+  } else {
+    log(`[${taskId}] contract preflight skipped (not a pytest lane)`)
+  }
+
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
   const rawCounts = await agent(
     `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
@@ -724,15 +760,57 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   }
 
   if (!green || !green.success || !green.tests_pass) {
-    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || 'unknown'}, escalating to opus`)
-    green = await resilientAgent(
-      greenRetryPrompt({
-        ...greenVars,
-        failureReason: green?.failure_reason || 'unknown',
-        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
-      }),
-      { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
-    )
+    // ── Blocked vs retry (#356) ────────────────────────────────────────────
+    // Before spending the opus retry, decide whether this failure can be
+    // fixed inside allowed_write_files at all. A structured blocked result,
+    // a scope_exceeded reason, or a contract preflight showing a TypeError/
+    // AttributeError rooted in an unwritable file means an identical re-run
+    // can never pass — surface it once instead of retrying blind.
+    let greenPreflight: ContractPreflight | null = null
+    const selfReportedBlock = !!green && (green.status === 'blocked' || /scope_exceeded/i.test(green.failure_reason || ''))
+    if (green && isPytestLane && !selfReportedBlock) {
+      const raw = await agent(contractPreflightPrompt(implFiles), {
+        label: `contract-check:${taskId}`, phase: 'Act', model: model('fast'),
+      })
+      greenPreflight = parseContractPreflight(raw as string)
+    }
+    const decision = decideGreenBlock(green, greenPreflight)
+
+    if (decision.blocked) {
+      const { widen, rejected } = cfg.yolo
+        ? autoWidenTargets(decision.needsWrite)
+        : { widen: [] as string[], rejected: decision.needsWrite }
+      if (cfg.yolo && widen.length > 0 && rejected.length === 0) {
+        for (const f of widen) if (!implFiles.includes(f)) implFiles.push(f)
+        log(`[${taskId}] GREEN blocked — yolo auto-widened allowed_write_files with [${widen.join(', ')}] (all inside src/); re-running GREEN once`)
+        const widenedPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
+        green = await resilientAgent(
+          greenRetryPrompt({
+            ...greenVars,
+            greenCtxCmd: laneCtxCmd(widenedPacket, wt),
+            implFilesList: implFiles.join(' '),
+            failureReason: `blocked: ${decision.reason} — allowed_write_files now also includes ${widen.join(', ')}`,
+            greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason }),
+          }),
+          { label: `green-widened:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+        )
+      } else {
+        const refusal = cfg.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(', ')}] not inside src/)` : ''
+        const err = `needs_approval: GREEN blocked — needs write access to [${decision.needsWrite.join(', ') || 'unspecified'}]: ${decision.reason}${refusal}`
+        log(`[${taskId}] ${err}`)
+        return { task_id: taskId, status: 'blocked', stage: 'GREEN', error: err, needs_write: decision.needsWrite }
+      }
+    } else {
+      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || 'unknown'}, escalating to opus`)
+      green = await resilientAgent(
+        greenRetryPrompt({
+          ...greenVars,
+          failureReason: green?.failure_reason || 'unknown',
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
+        }),
+        { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
+      )
+    }
   }
 
   if (!green || !green.success || !green.tests_pass) {

@@ -20,6 +20,10 @@ export const STAGE_RESULT_SCHEMA = {
     committed: { type: 'boolean' },
     commit_sha: { type: 'string' },
     failure_reason: { type: 'string' },
+    // #356: structured GREEN block — {status:"blocked", needs_write:[paths], reason}
+    status: { type: 'string', enum: ['ok', 'blocked'] },
+    needs_write: { type: 'array', items: { type: 'string' } },
+    reason: { type: 'string' },
   },
   required: ['success', 'tests_pass', 'committed'],
 } as const

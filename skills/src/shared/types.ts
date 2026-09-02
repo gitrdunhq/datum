@@ -94,6 +94,9 @@ export interface PipelineConfig {
   language: string
   test_framework?: string  // e.g. 'xctest', 'swift-testing', 'pytest', 'jest'
   skeletonDir?: string
+  /** yolo mode (#356): a blocked GREEN auto-widens allowed_write_files for
+   *  src/ paths and re-runs once instead of stopping for lead approval. */
+  yolo?: boolean
 }
 
 export interface LaneOutcome {
@@ -101,6 +104,10 @@ export interface LaneOutcome {
   status: LaneStatus
   stage?: FailureStage
   error?: string
+  /** #356: files GREEN needs write access to before it can pass. Set only on
+   *  a `blocked` GREEN outcome; the orchestrator surfaces it once as a single
+   *  lead-approval question. */
+  needs_write?: string[]
 }
 
 // Agent result types
@@ -121,6 +128,28 @@ export interface StageResult {
   committed: boolean
   commit_sha?: string
   failure_reason?: string
+  /** #356: structured GREEN block. `blocked` means "tests cannot pass without
+   *  writing `needs_write`", which the agent must NOT write. */
+  status?: 'ok' | 'blocked'
+  needs_write?: string[]
+  reason?: string
+}
+
+/** JSON emitted by `python -m datum.contract_preflight` (#356). */
+export interface ContractPreflight {
+  status: 'ok' | 'contract_conflict' | 'skipped'
+  conflicts: Array<{
+    test: string
+    kind: string
+    error_type: string
+    message: string
+    origin_file: string | null
+    symbol: string | null
+    defined_in: string[]
+  }>
+  needs_write: string[]
+  reason: string
+  pytest_exit_code?: number | null
 }
 
 export interface CommitResult {

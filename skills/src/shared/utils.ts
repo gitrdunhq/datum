@@ -12,6 +12,8 @@ import type {
   TaskPacket,
   SkepticResult,
   SkepticLens,
+  StageResult,
+  ContractPreflight,
 } from './types'
 import type { TddStage, Severity } from './models'
 
@@ -749,6 +751,103 @@ export function buildPacket(
     ...(cfg.test_framework ? { test_framework: cfg.test_framework } : {}),
     ...extras,
   }
+}
+
+// ---------------------------------------------------------------------------
+// #356 — GREEN cannot pass when the RED test contradicts an existing contract.
+//
+// parseContractPreflight: reads the JSON `python -m datum.contract_preflight`
+// prints (fail-open to `skipped` on garbage, so a tooling hiccup never turns
+// into a false "blocked").
+//
+// decideGreenBlock: the single place that decides whether a failed GREEN
+// attempt is *blocked* (needs write access outside allowed_write_files —
+// surface once to the lead / auto-widen in yolo) or an ordinary failure
+// (eligible for the normal opus retry). Blocked when:
+//   (b) the agent returned the structured {status:"blocked", needs_write, reason}
+//       or the legacy `scope_exceeded: <files>` failure_reason, or
+//   (c) the contract preflight found a TypeError/AttributeError originating in
+//       a file GREEN cannot write — re-running GREEN with an unchanged
+//       allowed_write_files can never pass, so it must not be retried.
+//
+// autoWidenTargets: yolo-mode guard — only paths inside src/ may be added to
+// allowed_write_files automatically; anything else still needs a human.
+// ---------------------------------------------------------------------------
+
+const SKIPPED_PREFLIGHT: ContractPreflight = { status: 'skipped', conflicts: [], needs_write: [], reason: 'no preflight result' }
+
+export function parseContractPreflight(raw: string | null | undefined): ContractPreflight {
+  if (!raw) return SKIPPED_PREFLIGHT
+  const parsed = parseAgentJson<Partial<ContractPreflight>>(raw, {})
+  if (!parsed || typeof parsed !== 'object' || !parsed.status) return SKIPPED_PREFLIGHT
+  if (parsed.status !== 'ok' && parsed.status !== 'contract_conflict' && parsed.status !== 'skipped') return SKIPPED_PREFLIGHT
+  return {
+    status: parsed.status,
+    conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
+    needs_write: Array.isArray(parsed.needs_write) ? parsed.needs_write.filter((p): p is string => typeof p === 'string') : [],
+    reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+    pytest_exit_code: parsed.pytest_exit_code ?? null,
+  }
+}
+
+export interface GreenBlockDecision {
+  blocked: boolean
+  needsWrite: string[]
+  reason: string
+}
+
+const SCOPE_EXCEEDED_RE = /scope_exceeded:\s*(.+)$/i
+
+export function decideGreenBlock(
+  green: StageResult | null,
+  preflight: ContractPreflight | null,
+): GreenBlockDecision {
+  const notBlocked: GreenBlockDecision = { blocked: false, needsWrite: [], reason: '' }
+  if (!green) return notBlocked
+  if (green.success && green.tests_pass) return notBlocked
+
+  if (green.status === 'blocked') {
+    return {
+      blocked: true,
+      needsWrite: (green.needs_write || []).filter(Boolean),
+      reason: green.reason || green.failure_reason || 'GREEN agent reported status=blocked',
+    }
+  }
+
+  const scope = (green.failure_reason || '').match(SCOPE_EXCEEDED_RE)
+  if (scope) {
+    const files = scope[1].split(/[,\s]+/).map((f) => f.trim()).filter(Boolean)
+    return { blocked: true, needsWrite: files, reason: green.failure_reason || 'scope_exceeded' }
+  }
+
+  if (preflight && preflight.status === 'contract_conflict') {
+    const detail = preflight.conflicts
+      .map((c) => `${c.test}: ${c.error_type}: ${c.message} (${c.kind}${c.symbol ? `, symbol ${c.symbol}` : ''}, defined in ${c.defined_in.join(', ')})`)
+      .join('; ')
+    return {
+      blocked: true,
+      needsWrite: preflight.needs_write,
+      reason: `contract_conflict: RED test contradicts a contract GREEN cannot write — ${detail || preflight.reason}. Re-running GREEN with an unchanged allowed_write_files cannot pass.`,
+    }
+  }
+
+  return notBlocked
+}
+
+export const AUTO_WIDEN_PREFIXES: readonly string[] = ['src/']
+
+export function autoWidenTargets(
+  needsWrite: string[],
+  prefixes: readonly string[] = AUTO_WIDEN_PREFIXES,
+): { widen: string[]; rejected: string[] } {
+  const widen: string[] = []
+  const rejected: string[] = []
+  for (const p of needsWrite) {
+    const safe = !p.split('/').includes('..') && !p.startsWith('/')
+    if (safe && prefixes.some((pre) => p.startsWith(pre))) widen.push(p)
+    else rejected.push(p)
+  }
+  return { widen, rejected }
 }
 
 // ---------------------------------------------------------------------------

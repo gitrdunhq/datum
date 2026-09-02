@@ -34,6 +34,6 @@ PACKET FIELDS:
 
 CONSTRAINTS:
 - Only write and commit implementation files: {{implFilesList}}
-- If making tests pass requires modifying files outside {{implFilesList}}, report success=false with failure_reason='scope_exceeded: <list-of-files>'. Do NOT write files outside allowed scope.
+- If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) — one honest blocked result beats three blind attempts.
 - Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
 - For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
