@@ -16,6 +16,11 @@ function model(tier) {
   return activeTiers[tier];
 }
 
+// skills/src/shared/boot.ts
+function runCommandPrompt(command) {
+  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
+}
+
 // skills/src/shared/utils.ts
 function filterGreenLanes(completedIds, results) {
   const greenIds2 = completedIds.filter((id) => results?.[id]?.stage !== "RED");
@@ -35,14 +40,16 @@ if (greenIds.length === 0) {
 } else {
   const mergeOrder = a.topoOrder.filter((id) => greenIds.includes(id));
   await agent(
-    `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
+    runCommandPrompt(
+      `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`
+    ),
     { label: `merge${a.batchTag}`, phase: "Merge", model: model("fast") }
   );
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
 }
 phase("Cleanup");
 await agent(
-  `datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`,
+  runCommandPrompt(`datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`),
   { label: `cleanup${a.batchTag}`, phase: "Cleanup", model: model("fast") }
 );
 return { merged: a.completedIds.length > 0 };

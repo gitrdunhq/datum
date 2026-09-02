@@ -16,6 +16,11 @@ function model(tier) {
   return activeTiers[tier];
 }
 
+// skills/src/shared/boot.ts
+function runCommandPrompt(command) {
+  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
+}
+
 // skills/src/shared/utils.ts
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
@@ -35,7 +40,9 @@ function parseAgentJson(text, fallback) {
 var a = args;
 phase("Setup");
 var rootWtText = await agent(
-  `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
+  runCommandPrompt(
+    `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`
+  ),
   { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var rootWtInfo = parseAgentJson(rootWtText, {});
@@ -43,8 +50,9 @@ var rootWt = rootWtInfo.root;
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId}`);
 log(`Root worktree${a.batchTag}: ${rootWt}`);
 var setupText = await agent(
-  `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(",")}
-Return ONLY the JSON output, no explanation.`,
+  runCommandPrompt(
+    `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(",")}`
+  ) + "\nThe stdout is JSON \u2014 return it verbatim.",
   { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
 );
 var rawPaths = typeof setupText === "string" ? parseAgentJson(setupText, null) : setupText;

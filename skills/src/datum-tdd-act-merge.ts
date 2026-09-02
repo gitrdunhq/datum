@@ -1,4 +1,5 @@
 import { model } from './shared/models'
+import { runCommandPrompt } from './shared/boot'
 import type { MergeArgs } from './shared/types'
 import { filterGreenLanes } from './shared/utils'
 
@@ -27,8 +28,10 @@ if (greenIds.length === 0) {
 } else {
   const mergeOrder = a.topoOrder.filter(id => greenIds.includes(id))
   await agent(
-    `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(',')} ` +
-    `--commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
+    runCommandPrompt(
+      `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(',')} ` +
+      `--commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
+    ),
     { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }
   )
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(' → ')}]`)
@@ -38,7 +41,7 @@ if (greenIds.length === 0) {
 phase('Cleanup')
 
 await agent(
-  `datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`,
+  runCommandPrompt(`datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`),
   { label: `cleanup${a.batchTag}`, phase: 'Cleanup', model: model('fast') }
 )
 

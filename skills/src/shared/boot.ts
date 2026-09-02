@@ -63,12 +63,26 @@ export function skillsDirHint(skillsDir: string): string {
  */
 export function bootPrompt(configFingerprint: string = ''): string {
   const stamp = configFingerprint ? `\n(config fingerprint: ${configFingerprint})` : ''
-  return `Return a JSON object with four fields:
+  return `Your task: read files with the Read tool and run commands with the Bash tool, then return a JSON object with four fields:
 1. "config": contents of .datum/config.json (or {} if missing)
 2. "state": contents of .datum/pipeline-state.json (or null if missing)
 3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
 4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
-Output raw JSON only.${stamp}`
+Do not ask for clarification and do not message anyone — this prompt is the whole task. Output raw JSON only.${stamp}`
+}
+
+/**
+ * Wrap a shell one-liner so the agent runs it instead of asking "what is my
+ * task?" (#355). The sandbox has no non-LLM shell primitive, so every
+ * shell-out goes through an agent; the instruction has to be explicit.
+ */
+export function runCommandPrompt(command: string): string {
+  return (
+    'Run exactly this command with the Bash tool and return only its stdout, nothing else. ' +
+    'Do not ask for clarification, do not message anyone, do not summarise or explain — ' +
+    'this prompt is the whole task.\n\n' +
+    command
+  )
 }
 
 /** Logged once when the launcher did not pass args.configFingerprint. */

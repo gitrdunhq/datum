@@ -1,4 +1,5 @@
 import { model } from './shared/models'
+import { runCommandPrompt } from './shared/boot'
 import type { SetupArgs } from './shared/types'
 import { parseAgentJson } from './shared/utils'
 
@@ -12,8 +13,10 @@ const a = args as SetupArgs
 phase('Setup')
 
 const rootWtText = await agent(
-  `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && ` +
-  `echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
+  runCommandPrompt(
+    `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && ` +
+    `echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
+  ),
   { label: `root-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
 const rootWtInfo = parseAgentJson(rootWtText, {}) as { root?: string }
@@ -22,7 +25,9 @@ if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId}
 log(`Root worktree${a.batchTag}: ${rootWt}`)
 
 const setupText = await agent(
-  `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(',')}\nReturn ONLY the JSON output, no explanation.`,
+  runCommandPrompt(
+    `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(',')}`,
+  ) + '\nThe stdout is JSON — return it verbatim.',
   { label: `setup-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
 )
 const rawPaths = (typeof setupText === 'string'

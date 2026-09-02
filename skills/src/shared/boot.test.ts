@@ -7,6 +7,9 @@
 // #354 — the boot/config-read agent is replay-cached by (prompt, opts); the
 //        prompt must carry a config fingerprint so a changed config changes
 //        the cache key.
+// #355 — a bare shell one-liner as an agent prompt makes the agent ask
+//        "what is my task?"; every shell-out prompt must be wrapped with an
+//        explicit run-this-and-return-stdout instruction.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -14,6 +17,7 @@ import {
   resolveSkillPath,
   skillsDirHint,
   bootPrompt,
+  runCommandPrompt,
 } from './boot'
 
 describe('resolveSkillPath (#353)', () => {
@@ -107,5 +111,30 @@ describe('bootPrompt (#353, #354)', () => {
     expect(p).toContain(LOCAL_SKILLS_DIR)
     expect(p).toContain('"localSkills"')
     expect(p).toContain('"repoRoot"')
+  })
+})
+
+describe('bootPrompt (#355)', () => {
+  it('gives an explicit task instead of a bare command', () => {
+    const p = bootPrompt('sha256:aaaa')
+    expect(p).toMatch(/Bash tool/)
+    expect(p).toMatch(/raw JSON only/i)
+    expect(p).toMatch(/do not ask/i)
+  })
+})
+
+describe('runCommandPrompt (#355)', () => {
+  it('wraps a bare command with an explicit run-and-return-stdout instruction', () => {
+    const cmd = 'REPO_ROOT=$(git rev-parse --show-toplevel) && echo "$REPO_ROOT"'
+    const p = runCommandPrompt(cmd)
+    expect(p).toContain('Run exactly this command with the Bash tool')
+    expect(p).toContain('return only its stdout')
+    expect(p).toContain(cmd)
+    expect(p).toMatch(/do not ask/i)
+  })
+
+  it('never returns the bare command unchanged', () => {
+    expect(runCommandPrompt('ls')).not.toBe('ls')
+    expect(runCommandPrompt('ls').startsWith('ls')).toBe(false)
   })
 })

@@ -16,6 +16,11 @@ function model(tier) {
   return activeTiers[tier];
 }
 
+// skills/src/shared/boot.ts
+function runCommandPrompt(command) {
+  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
+}
+
 // skills/src/shared/schemas.ts
 var STAGE_RESULT_SCHEMA = {
   type: "object",
@@ -1239,7 +1244,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
     log(`[${taskId}] REFACTOR broke tests \u2014 agent should not have committed`);
     if (refactor.committed) {
       await agent(
-        `git -C "${wt}" revert --no-edit HEAD`,
+        runCommandPrompt(`git -C "${wt}" revert --no-edit HEAD`),
         { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") }
       );
     }
