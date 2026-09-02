@@ -35,7 +35,7 @@ Inside your AI coding tool, say `datum go` to run the full pipeline, or `datum <
 ```
 /datum go          Full pipeline: Refine → Plan → Act → Validate → Review → Merge → Closeout
 /datum yolo        Same but skip optional gates
-/datum init        Bootstrap a new repo for DATUM
+/datum init        Bootstrap a new repo for DATUM (also installs .datum/skills, .claude/agents/datum-*.md and .datum/hooks; --refresh re-copies them)
 /datum mermaid     Generate Mermaid diagrams
 ```
 
