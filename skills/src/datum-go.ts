@@ -1,8 +1,9 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
-import { model, setModelTiers, PHASES, READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath, type Phase, type Route } from './shared/models'
+import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
+import { resolveSkillPath, skillsDirHint, bootPrompt } from './shared/boot'
 
 export const meta = {
   name: 'datum-go',
@@ -71,15 +72,30 @@ interface PhaseResult {
 
 // Read config + pipeline state in one agent call (single haiku, no routing overhead)
 const bootText = await agent(
-  `Return a JSON object with two fields:
-1. "config": contents of .datum/config.json (or {} if missing)
-2. "state": contents of .datum/pipeline-state.json (or null if missing)
-Output raw JSON only.`,
+  bootPrompt(),
   { label: 'read-config+state', model: model('fast') },
 )
-const boot = parseAgentJson(bootText as string, { config: {}, state: null }) as { config: Record<string, string>; state: unknown }
+const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '' }) as {
+  config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string
+}
 const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string, any>
-const sk = (name: string) => skillPath(globalCfg.skills_dir || '', name)
+// Sub-workflow scriptPaths (#353): prefer the repo-local .datum/skills copy
+// written by `datum init`; an out-of-repo absolute skills_dir is refused by
+// the Workflow harness, so log the fix once instead of dying on a stack trace.
+let skillsDirHinted = false
+const sk = (name: string): string => {
+  const r = resolveSkillPath({
+    name,
+    skillsDir: globalCfg.skills_dir || '',
+    localSkills: boot.localSkills || [],
+    repoRoot: boot.repoRoot || '',
+  })
+  if (r.outsideRepo && !skillsDirHinted) {
+    skillsDirHinted = true
+    log(skillsDirHint(globalCfg.skills_dir))
+  }
+  return r.path
+}
 
 // Apply model tier overrides from config.json { "models": { "fast": "...", "balanced": "...", "deep": "..." } }
 if (globalCfg.models && typeof globalCfg.models === 'object') {
