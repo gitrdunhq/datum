@@ -851,6 +851,98 @@ export function autoWidenTargets(
 }
 
 // ---------------------------------------------------------------------------
+// #358 — (1) the epic branch was never compared against main before
+// validate, so a bug already fixed on main failed the epic; (2) test-running
+// prompts piped the suite into `tail`, which masks the exit code.
+// ---------------------------------------------------------------------------
+
+export interface ValidateArgs {
+  yolo: boolean
+  noMergeMain: boolean
+  testCommand?: string
+  [key: string]: unknown
+}
+
+/** Parse datum-validate's args: "yolo", "--no-merge-main", both, JSON, or an object. */
+export function parseValidateArgs(raw: unknown): ValidateArgs {
+  const base: ValidateArgs = { yolo: false, noMergeMain: false }
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    return { ...base, ...o, yolo: !!o.yolo, noMergeMain: !!(o.noMergeMain ?? o['no-merge-main']) }
+  }
+  if (typeof raw !== 'string') return base
+  const text = raw.trim().replace(/^"|"$/g, '').trim()
+  if (!text) return base
+  if (text.startsWith('{')) {
+    try {
+      return parseValidateArgs(JSON.parse(text))
+    } catch {
+      return base
+    }
+  }
+  const tokens = text.split(/\s+/).map((t) => t.toLowerCase())
+  return {
+    yolo: tokens.includes('yolo'),
+    noMergeMain: tokens.includes('--no-merge-main') || tokens.includes('no-merge-main'),
+  }
+}
+
+/** Shell steps that fetch main and (unless disabled) merge it into the epic branch. */
+export function mainSyncPrompt(noMergeMain: boolean): string {
+  const merge = noMergeMain
+    ? `3. Do NOT merge. Return JSON: {"behind": <BEHIND>, "merged": false, "conflict": false}`
+    : `3. If BEHIND is 0, return JSON: {"behind": 0, "merged": false, "conflict": false}
+4. Otherwise run: git merge --no-edit origin/main > .datum/main-sync.log 2>&1; MERGE_EXIT=$?
+   If MERGE_EXIT is 0, return JSON: {"behind": <BEHIND>, "merged": true, "conflict": false}
+   If it is not 0, run: git merge --abort
+   and return JSON: {"behind": <BEHIND>, "merged": false, "conflict": true, "output": "<last 20 lines of .datum/main-sync.log>"}`
+  return `Sync the epic branch with main before validating (#358). Run these commands in order at the repo root:
+1. git fetch origin main
+   If the fetch fails (no remote, no network), return JSON: {"error": "<stderr>"}
+2. BEHIND=$(git rev-list --count HEAD..origin/main)
+${merge}
+Do not read the exit code through a pipe. Output raw JSON only, no markdown fences, no explanation.`
+}
+
+export interface MainSyncResult {
+  behind: number
+  merged: boolean
+  conflict: boolean
+  output?: string
+  error?: string
+}
+
+export function evaluateMainSync(result: MainSyncResult | null | undefined, noMergeMain: boolean): { ok: boolean; message: string } {
+  if (!result || typeof result !== 'object' || typeof result.behind !== 'number') {
+    return { ok: false, message: `could not determine whether the epic is behind main: ${result?.error || 'no sync result (git fetch origin main failed or returned unparseable output)'}` }
+  }
+  if (result.conflict) {
+    return { ok: false, message: `merging origin/main into the epic branch hit a conflict (epic was ${result.behind} commits behind main); merge aborted — resolve by hand, then re-run validate: ${result.output || ''}`.trim() }
+  }
+  if (result.behind > 0 && !result.merged) {
+    return {
+      ok: false,
+      message: noMergeMain
+        ? `epic is ${result.behind} commits behind main — merge origin/main into the epic branch (or drop --no-merge-main) before validating`
+        : `epic is ${result.behind} commits behind main and origin/main was not merged`,
+    }
+  }
+  return { ok: true, message: result.merged ? `merged origin/main into the epic branch (was ${result.behind} commits behind)` : 'epic branch is up to date with main' }
+}
+
+/**
+ * Run the suite with its output written to a log file and the exit status
+ * read directly — never `cmd 2>&1 | tail`, which reports tail's status.
+ */
+export function testRunCommand(testCommand: string, wt: string, stage: string): string {
+  const logPath = `${wt}/.datum/test-output-${stage}.log`
+  return (
+    `mkdir -p "${wt}/.datum" && ( cd "${wt}" && ${testCommand} ) > "${logPath}" 2>&1; TEST_EXIT=$?; ` +
+    `tail -50 "${logPath}"; echo "TEST_EXIT=$TEST_EXIT"`
+  )
+}
+
+// ---------------------------------------------------------------------------
 // laneCommitCommand — the ONE commit convention for RED/GREEN/REFACTOR (#357).
 //
 // Every stage used to hand-roll `git commit -m "<prefix>: <STAGE> complete"`

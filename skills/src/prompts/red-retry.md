@@ -10,7 +10,8 @@ Call methods that don't exist yet — the language's missing-method error (Attri
 NEVER use hardcoded failure stubs (raise NotImplementedError, fatalError, panic) — test fixtures may auto-skip them.
 
 AFTER WRITING:
-1. Run {{testCommand}} — tests must fail. Report tests_pass=false.
+1. Run the suite with exactly: {{testRunCmd}}
+   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code — never pipe the test command into tail or grep, a pipe masks the exit code). Tests must fail. Report tests_pass=false and test_exit_code.
 2. Commit: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
    Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.
 3. Report commit_sha.

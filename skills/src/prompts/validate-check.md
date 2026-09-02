@@ -6,8 +6,10 @@ TASKS path: {{tasksPath}}
 Test command: {{testCommand}}
 
 STEPS:
-1. Run the full test suite: {{testCommand}}
-   If any test fails → report immediately. Do not proceed.
+1. Run the full test suite with exactly this command: {{testRunCmd}}
+   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.
+   That code is the real exit status — never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.
+   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 → report immediately. Do not proceed.
 
 2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)
    If violations exist in files touched by this epic, auto-fix them.

@@ -20,7 +20,8 @@ APPROACH:
 4. Implement only what the errors require
 
 AFTER WRITING:
-5. Run {{testCommand}} — ALL tests must pass. Report tests_pass=true and the exit code.
+5. Run the suite with exactly: {{testRunCmd}}
+   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code — never pipe the test command into tail or grep, a pipe masks the exit code). ALL tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code from it.
 6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
 7. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
    Use that exact commit command — it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.

@@ -38,6 +38,7 @@ import {
   parseContractPreflight,
   decideGreenBlock,
   autoWidenTargets,
+  testRunCommand,
 } from './shared/utils'
 import {
   redPrompt,
@@ -379,6 +380,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     redCtxCmd,
     redPacketStr: JSON.stringify(redPacket),
     testCommand: scopedTestCmd,
+    // #358: file-backed run, real exit status — never `cmd | tail`.
+    testRunCmd: testRunCommand(scopedTestCmd, wt, 'RED'),
     testFilesList: testFiles.join(' '),
     commitPrefix: redPacket.commit_prefix,
     // One commit convention for every stage (#357): datum author + Datum-* trailers.
@@ -745,6 +748,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     greenCtxCmd,
     greenPacketStr: JSON.stringify(greenPacket),
     testCommand: scopedTestCmd,
+    testRunCmd: testRunCommand(scopedTestCmd, wt, 'GREEN'),
     implFilesList: implFiles.join(' '),
     commitPrefix: greenPacket.commit_prefix,
     commitCmd: laneCommitCommand({ wt, taskId, stage: 'GREEN', runId }),
@@ -923,6 +927,7 @@ async function runRefactor(
       refactorCtxCmd,
       refactorPacketStr: JSON.stringify(refactorPacket),
       testCommand: cfg.testCommand,
+      testRunCmd: testRunCommand(cfg.testCommand, wt, 'REFACTOR'),
       allFilesList: [...testFiles, ...implFiles].join(' '),
       commitPrefix: refactorPacket.commit_prefix,
       // Same author/trailer scheme as RED and GREEN (#357) — a REFACTOR commit
