@@ -58,6 +58,7 @@ build-backend = "hatchling.build"
 packages = ["datum", "scripts"]
 
 [tool.hatch.build.targets.wheel.force-include]
+"agents" = "agents"
 "assets" = "assets"
 "references" = "references"
 "templates" = "templates"
