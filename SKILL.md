@@ -65,6 +65,17 @@ Epic artifacts always live at `docs/epics/<branch>/`.
 
 After each phase: `datum gate <phase> [--approve]`
 
+## Launching `datum-go`
+
+Compute the config fingerprint first and pass it in `args` — the boot agent that reads `.datum/config.json` is replay-cached on `Workflow({resumeFromRunId})`, and the fingerprint in its prompt is what makes an edited config invalidate that cache (#354). Recompute it on every launch, including resumes.
+
+```
+FP=$(datum config-fingerprint)
+Workflow({ name: "datum-go", args: { yolo: true, configFingerprint: "<FP>" } })
+```
+
+Without `configFingerprint` the script logs a warning and a resumed run replays the stale config read.
+
 ## Act Phase — TDD Workflow Pipeline
 
 Act is handled by the `datum-tdd-act` TypeScript workflow (`skills/src/datum-tdd-act.ts`).

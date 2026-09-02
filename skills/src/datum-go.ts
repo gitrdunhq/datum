@@ -3,7 +3,7 @@ import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLa
 import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
-import { resolveSkillPath, skillsDirHint, bootPrompt } from './shared/boot'
+import { resolveSkillPath, skillsDirHint, bootPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
 
 export const meta = {
   name: 'datum-go',
@@ -71,8 +71,14 @@ interface PhaseResult {
 }
 
 // Read config + pipeline state in one agent call (single haiku, no routing overhead)
+// #354: the fingerprint in the prompt is the cache key that lets a resumed
+// run notice an edited config. Warn once when the launcher omitted it.
+// ('' rather than undefined: esbuild emits `void 0`, which trips the
+// build's leaked-TypeScript grep.)
+const configFingerprint: string = typeof a.configFingerprint === 'string' ? a.configFingerprint : ''
+if (!configFingerprint) log(NO_FINGERPRINT_WARNING)
 const bootText = await agent(
-  bootPrompt(),
+  bootPrompt(configFingerprint),
   { label: 'read-config+state', model: model('fast') },
 )
 const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '' }) as {

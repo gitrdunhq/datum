@@ -214,6 +214,26 @@ def issue_stage_cmd(
     console.print(json.dumps({"ok": True, "issue": issue, "stage": stage}))
 
 
+@app.command("config-fingerprint")
+def config_fingerprint_cmd(
+    json_output: bool = typer.Option(
+        False, "--json", help='Emit {"configFingerprint": ...}.'
+    ),
+):
+    """Print a fingerprint of .datum/config.json + ~/.datum/config.json (#354).
+
+    Pass it as args.configFingerprint when launching datum-go so a resumed
+    run re-reads config when (and only when) it changed.
+    """
+    from datum.config_fingerprint import config_fingerprint
+
+    fp = config_fingerprint(Path.cwd(), Path.home())
+    if json_output:
+        print(json.dumps({"configFingerprint": fp}))
+    else:
+        print(fp)
+
+
 def _install_workflows():
     """Symlink datum workflow JS files to ~/.claude/workflows/."""
     import os

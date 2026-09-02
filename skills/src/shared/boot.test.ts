@@ -4,6 +4,9 @@
 //        (.datum/skills/<name>.js) when one exists; an out-of-repo absolute
 //        skills_dir is refused by the Workflow harness, so the resolver must
 //        flag it so the caller can log the fix hint.
+// #354 — the boot/config-read agent is replay-cached by (prompt, opts); the
+//        prompt must carry a config fingerprint so a changed config changes
+//        the cache key.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -79,9 +82,26 @@ describe('skillsDirHint (#353)', () => {
   })
 })
 
-describe('bootPrompt (#353)', () => {
+describe('bootPrompt (#353, #354)', () => {
+  it('embeds the config fingerprint so a config change changes the cache key', () => {
+    const a = bootPrompt('sha256:aaaa')
+    const b = bootPrompt('sha256:bbbb')
+    expect(a).toContain('sha256:aaaa')
+    expect(a).not.toBe(b)
+  })
+
+  it('is stable for the same fingerprint (resume still cache-hits on unchanged config)', () => {
+    expect(bootPrompt('sha256:aaaa')).toBe(bootPrompt('sha256:aaaa'))
+  })
+
+  it('still produces a usable prompt without a fingerprint', () => {
+    const p = bootPrompt('')
+    expect(p).toContain('.datum/config.json')
+    expect(p).toContain('.datum/pipeline-state.json')
+  })
+
   it('asks for the repo-local skills listing and repo root the resolver needs', () => {
-    const p = bootPrompt()
+    const p = bootPrompt('sha256:aaaa')
     expect(p).toContain('.datum/config.json')
     expect(p).toContain('.datum/pipeline-state.json')
     expect(p).toContain(LOCAL_SKILLS_DIR)
