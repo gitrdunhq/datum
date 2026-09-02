@@ -209,3 +209,29 @@ describe('path-boundary-file-ownership — AC4', () => {
     expect(bundled.startsWith('// @generated — DO NOT EDIT. Source: skills/src/')).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// #357 — RED, GREEN and REFACTOR commits must all go through the single
+// commit convention (laneCommitCommand): same author, same trailers, stage
+// subjects. No stage prompt may hand-roll its own `git commit -m`.
+// ---------------------------------------------------------------------------
+
+describe('#357 — unified commit convention across RED/GREEN/REFACTOR', () => {
+  const promptsDir = join(__dirname, 'prompts')
+  const stagePrompts = ['red.md', 'red-retry.md', 'green.md', 'green-retry.md', 'refactor.md', 'commit.md']
+
+  it('every stage prompt commits via the {{commitCmd}} placeholder, never a raw git commit', () => {
+    for (const name of stagePrompts) {
+      const text = readFileSync(join(promptsDir, name), 'utf8')
+      expect(text, name).toMatch(/\{\{commitCmd\}\}/)
+      expect(text, name).not.toMatch(/git -C "\{\{wt\}\}" commit -m/)
+    }
+  })
+
+  it('the lane runner builds the commit command with laneCommitCommand for all three stages', () => {
+    const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+    expect(laneSource).toMatch(/laneCommitCommand\(\{[^}]*stage:\s*'RED'/)
+    expect(laneSource).toMatch(/laneCommitCommand\(\{[^}]*stage:\s*'GREEN'/)
+    expect(laneSource).toMatch(/laneCommitCommand\(\{[^}]*stage:\s*'REFACTOR'/)
+  })
+})

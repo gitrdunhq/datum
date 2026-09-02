@@ -22,7 +22,8 @@ APPROACH:
 AFTER WRITING:
 5. Run {{testCommand}} — ALL tests must pass. Report tests_pass=true and the exit code.
 6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
-7. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"
+7. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
+   Use that exact commit command — it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.
 8. Report commit_sha.
 
 PACKET FIELDS:

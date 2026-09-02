@@ -14,7 +14,8 @@ Read test_signal errors carefully. Read existing implementation files first. Fix
 AFTER WRITING:
 1. Run {{testCommand}} — all tests must pass. Report tests_pass=true.
 2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
-3. Commit: git -C "{{wt}}" add {{implFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: GREEN complete"
+3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
+   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.
 4. Report commit_sha.
 
 Only write and commit implementation files: {{implFilesList}}

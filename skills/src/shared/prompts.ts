@@ -25,7 +25,7 @@ type PromptVars = { [key: string]: string }
 
 export function redPrompt(vars: {
   wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
-  testCommand: string; testFilesList: string; commitPrefix: string
+  testCommand: string; testFilesList: string; commitPrefix: string; commitCmd: string
   testFuncPattern?: string
 }): string {
   return PREAMBLE + renderPrompt(redTemplate, vars as PromptVars)
@@ -33,33 +33,33 @@ export function redPrompt(vars: {
 
 export function redRetryPrompt(vars: {
   wt: string; failureReason: string; redCtxCmd: string; redPacketStr: string
-  testCommand: string; testFilesList: string; commitPrefix: string
+  testCommand: string; testFilesList: string; commitPrefix: string; commitCmd: string
 }): string {
   return PREAMBLE + renderPrompt(redRetryTemplate, vars as PromptVars)
 }
 
 export function greenPrompt(vars: {
   greenCtxCmd: string; greenPacketStr: string
-  testCommand: string; implFilesList: string; commitPrefix: string; wt: string
+  testCommand: string; implFilesList: string; commitPrefix: string; commitCmd: string; wt: string
 }): string {
   return PREAMBLE + renderPrompt(greenTemplate, vars as PromptVars)
 }
 
 export function greenRetryPrompt(vars: {
   wt: string; failureReason: string; greenCtxCmd: string; greenRetryPacketStr: string
-  testCommand: string; implFilesList: string; commitPrefix: string
+  testCommand: string; implFilesList: string; commitPrefix: string; commitCmd: string
 }): string {
   return PREAMBLE + renderPrompt(greenRetryTemplate, vars as PromptVars)
 }
 
 export function refactorPrompt(vars: {
   wt: string; refactorCtxCmd: string; refactorPacketStr: string
-  testCommand: string; allFilesList: string; commitPrefix: string
+  testCommand: string; allFilesList: string; commitPrefix: string; commitCmd: string
 }): string {
   return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
 }
 
-export function commitPrompt(vars: { wt: string; allowedList: string; commitPrefix: string; stage: string }): string {
+export function commitPrompt(vars: { wt: string; allowedList: string; commitPrefix: string; stage: string; commitCmd: string }): string {
   return PREAMBLE + renderPrompt(commitTemplate, vars as PromptVars)
 }
 

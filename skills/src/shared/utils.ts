@@ -752,6 +752,46 @@ export function buildPacket(
 }
 
 // ---------------------------------------------------------------------------
+// laneCommitCommand — the ONE commit convention for RED/GREEN/REFACTOR (#357).
+//
+// Every stage used to hand-roll `git commit -m "<prefix>: <STAGE> complete"`
+// in its own prompt, so the identity on the commit was whatever the
+// sub-agent's environment happened to carry: RED/GREEN landed with the
+// harness's session trailer, REFACTOR landed under the user's git identity
+// with no trailer at all — and a GREEN agent verifying its worktree read that
+// as a stray concurrent writer. Pinning author + trailers here means every
+// lane commit is attributable to (run, lane, stage) by a human or an agent
+// reading `git log`, regardless of which model made it.
+//
+// Author matches datum/commit_queue.py (`datum/<run_id>` <datum@local>).
+// The subject stays `<prefix>: <STAGE> complete` so detectExistingLaneCommits
+// and verifyCommitIndependently keep matching.
+// ---------------------------------------------------------------------------
+
+export const LANE_COMMIT_AUTHOR_EMAIL = 'datum@local'
+
+export function laneCommitCommand(opts: {
+  wt: string
+  taskId: string
+  stage: TddStage
+  runId: string
+}): string {
+  const { wt, taskId, stage, runId } = opts
+  const prefix = `${stage.toLowerCase()}(${taskId})`
+  const authorName = runId ? `datum/${runId}` : 'datum'
+  const parts = [
+    `git -C "${wt}"`,
+    `-c user.name="${authorName}" -c user.email="${LANE_COMMIT_AUTHOR_EMAIL}"`,
+    'commit',
+    `-m "${prefix}: ${stage} complete"`,
+  ]
+  if (runId) parts.push(`-m "Datum-Run: ${runId}"`)
+  parts.push(`-m "Datum-Lane: ${taskId}"`)
+  parts.push(`-m "Datum-Stage: ${stage}"`)
+  return parts.join(' ')
+}
+
+// ---------------------------------------------------------------------------
 // detectExistingLaneCommits — parses `git log --format="%H %s"` output for a
 // lane branch to determine whether RED and/or GREEN stage-complete commits
 // already exist (#331). A stale lane-plan snapshot, a retried batch, or a

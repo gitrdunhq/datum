@@ -482,3 +482,54 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
     expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
   })
 })
+
+// ---------------------------------------------------------------------------
+// #357 — one commit convention for RED/GREEN/REFACTOR: same author identity,
+// same trailer scheme, subjects `red(task-NNN): ...` / `green(task-NNN): ...`
+// / `refactor(task-NNN): ...`. The REFACTOR step used to commit under the
+// user's identity with no trailer, so GREEN agents reported a "stray
+// concurrent writer".
+// ---------------------------------------------------------------------------
+
+import { laneCommitCommand, LANE_COMMIT_AUTHOR_EMAIL } from './utils'
+
+describe('laneCommitCommand — issue #357: unified lane commit convention', () => {
+  const wt = '/tmp/wt/task-022'
+  const red = laneCommitCommand({ wt, taskId: 'task-022', stage: 'RED', runId: '20260902-101500' })
+  const green = laneCommitCommand({ wt, taskId: 'task-022', stage: 'GREEN', runId: '20260902-101500' })
+  const refactor = laneCommitCommand({ wt, taskId: 'task-022', stage: 'REFACTOR', runId: '20260902-101500' })
+
+  it('uses the stage-prefixed subject for every stage', () => {
+    expect(red).toContain('-m "red(task-022): RED complete"')
+    expect(green).toContain('-m "green(task-022): GREEN complete"')
+    expect(refactor).toContain('-m "refactor(task-022): REFACTOR complete"')
+  })
+
+  it('pins the same datum author identity on all three stages', () => {
+    const author = (cmd: string) => cmd.match(/-c user\.name="([^"]+)" -c user\.email="([^"]+)"/)
+    expect(author(red)).not.toBeNull()
+    expect(author(red)![1]).toBe('datum/20260902-101500')
+    expect(author(red)![2]).toBe(LANE_COMMIT_AUTHOR_EMAIL)
+    expect(author(green)!.slice(1)).toEqual(author(red)!.slice(1))
+    expect(author(refactor)!.slice(1)).toEqual(author(red)!.slice(1))
+  })
+
+  it('carries the run/lane/stage trailers so a later reader can attribute the commit', () => {
+    for (const [cmd, stage] of [[red, 'RED'], [green, 'GREEN'], [refactor, 'REFACTOR']] as const) {
+      expect(cmd).toContain('-m "Datum-Run: 20260902-101500"')
+      expect(cmd).toContain('-m "Datum-Lane: task-022"')
+      expect(cmd).toContain(`-m "Datum-Stage: ${stage}"`)
+    }
+  })
+
+  it('targets the worktree explicitly and keeps the subject greppable by detectExistingLaneCommits', () => {
+    expect(red.startsWith(`git -C "${wt}"`)).toBe(true)
+    expect(detectExistingLaneCommits(`abc123 red(task-022): RED complete`, 'task-022').hasRed).toBe(true)
+  })
+
+  it('falls back to a plain datum identity when no runId is known', () => {
+    const cmd = laneCommitCommand({ wt, taskId: 'task-001', stage: 'GREEN', runId: '' })
+    expect(cmd).toContain('-c user.name="datum"')
+    expect(cmd).not.toContain('Datum-Run:')
+  })
+})
