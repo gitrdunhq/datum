@@ -23,7 +23,11 @@ var DEFAULT_CONFIG = {
   test_framework: "",
   test_command: "",
   skills_dir: "",
-  context_files: []
+  context_files: [],
+  /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
+  agent_types: true,
+  /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
+  hooks_installed: false
 };
 var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
@@ -213,19 +217,51 @@ function laneStateWritePrompt(vars) {
 // skills/src/prompts/util-detect-branch.md
 var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function readAgentTypeConfig(cfg) {
+  const o = cfg && typeof cfg === "object" ? cfg : {};
+  return {
+    agentTypes: o.agent_types !== false,
+    hooksInstalled: o.hooks_installed === true
+  };
+}
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function agentTypeArgs() {
+  return { ...state };
+}
+
 // skills/src/datum-tdd-act.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
-var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
+var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") })) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
 if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.models);
+configureAgentTypes(readAgentTypeConfig(repoCfg));
 var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
 var test_framework = a.test_framework || repoCfg.test_framework;
 var epicBranch = a.epicBranch;
 var runId = a.runId;
-var branchInfo = a.yolo ? await agent(util_detect_branch_default, { label: "yolo-detect", model: model("fast") }) : null;
+var branchInfo = a.yolo ? await agent(util_detect_branch_default, stageOpts("cli", { label: "yolo-detect", model: model("fast") })) : null;
 if (branchInfo) {
   const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
   epicBranch = epicBranch || info.branch;
@@ -238,14 +274,14 @@ var lanePlanPath = a.lanePlanPath || "";
 if (!lanePlanPath) {
   const resolveText = await agent(
     resolveLanePlanPrompt(epicDir),
-    { label: "resolve-lane-plan", phase: "Topology", model: model("fast") }
+    stageOpts("cli", { label: "resolve-lane-plan", phase: "Topology", model: model("fast") })
   );
   lanePlanPath = resolveLanePlanPath(epicDir, resolveText);
 }
 phase("Topology");
 var planText = await agent(
   `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
-  { label: "read-plan", phase: "Topology", model: model("fast") }
+  stageOpts("reader", { label: "read-plan", phase: "Topology", model: model("fast") })
 );
 var lanePlan = typeof planText === "string" ? JSON.parse(planText.replace(/```[a-z]*\n?/g, "").trim()) : planText;
 var waves = buildWaves(lanePlan);
@@ -259,7 +295,7 @@ for (let i = 0; i < waves.length; i++) {
 var slug = epicSlug(epicBranch);
 var markerText = await agent(
   laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(" ") }),
-  { label: "lane-state-read", phase: "Topology", model: model("fast") }
+  stageOpts("cli", { label: "lane-state-read", phase: "Topology", model: model("fast") })
 );
 var priorMarkers = parseAgentJson(markerText, {});
 var alreadyMerged = lanePlan.topological_order.filter((id) => {
@@ -317,7 +353,7 @@ ${"=".repeat(60)}`);
   log("\u2500\u2500 Setup \u2500\u2500");
   const setup = await workflow(
     { scriptPath: sk("datum-tdd-act-setup") },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() }
   );
   log("\u2500\u2500 Act \u2500\u2500");
   const act = await workflow(
@@ -327,7 +363,7 @@ ${"=".repeat(60)}`);
       lanePlan,
       worktreePaths: setup.worktreePaths,
       batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs() },
       priorFailures: failures,
       priorCompleted: completedLanes
     }
@@ -366,21 +402,22 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       results,
       batchRunId,
       topoOrder: lanePlan.topological_order,
-      batchTag
+      batchTag,
+      agentTypes: agentTypeArgs()
     }
   );
   if (mergedIds.length > 0) {
     const entriesJson = JSON.stringify(mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })));
     await agent(
       laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
-      { label: `lane-state-write${batchTag}`, phase: "Act", model: model("fast") }
+      stageOpts("cli", { label: `lane-state-write${batchTag}`, phase: "Act", model: model("fast") })
     );
   }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
 await workflow(
   { scriptPath: sk("datum-tdd-act-docs") },
-  { completedLanes, lanePlan, runId }
+  { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs() }
 );
 var skippedLanes = Object.keys(results).filter((id) => results[id]?.status === "skipped");
 var blockedLanes = Object.keys(results).filter((id) => results[id]?.status === "blocked");
@@ -408,7 +445,7 @@ if (failures.length > 0) {
   log("\u2500\u2500 Triage \u2500\u2500");
   await workflow(
     { scriptPath: sk("datum-tdd-act-triage") },
-    { failures, blocked: blockedLanes.map((id) => results[id]), results, lanePlan, runId, epicBranch }
+    { failures, blocked: blockedLanes.map((id) => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
   );
 }
 return {

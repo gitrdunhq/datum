@@ -97,13 +97,45 @@ var DEFAULT_CONFIG = {
   test_framework: "",
   test_command: "",
   skills_dir: "",
-  context_files: []
+  context_files: [],
+  /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
+  agent_types: true,
+  /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
+  hooks_installed: false
 };
 var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
 2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
 Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
 Return the merged JSON. Output raw JSON only.`;
+
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function readAgentTypeConfig(cfg) {
+  const o = cfg && typeof cfg === "object" ? cfg : {};
+  return {
+    agentTypes: o.agent_types !== false,
+    hooksInstalled: o.hooks_installed === true
+  };
+}
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
 
 // skills/src/prompts/validate-check.md
 var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
@@ -115,11 +147,12 @@ var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON
 var a = parseValidateArgs(args);
 var yolo = a.yolo;
 var noMergeMain = a.noMergeMain;
-var cfgText = !a.testCommand ? await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") }) : null;
+var cfgText = !a.testCommand ? await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") })) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : readAgentTypeConfig(repoCfg));
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 phase("Validate");
-var syncRaw = await agent(mainSyncPrompt(noMergeMain), { label: "main-sync", model: model("fast") });
+var syncRaw = await agent(mainSyncPrompt(noMergeMain), stageOpts("cli", { label: "main-sync", model: model("fast") }));
 var syncResult = typeof syncRaw === "string" ? parseAgentJson(syncRaw, null) : syncRaw;
 var mainSync = evaluateMainSync(syncResult, noMergeMain);
 if (!mainSync.ok) {
@@ -152,7 +185,7 @@ if (!mainSync.ok) {
 } else {
   const gateResult = await agent(
     renderPrompt(util_run_gate_default, { phase: "validate", flags: yolo ? " --approve" : "" }),
-    { label: "gate", model: model("fast") }
+    stageOpts("cli", { label: "gate", model: model("fast") })
   );
   const gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
   gatePassed = !!gate?.passed;

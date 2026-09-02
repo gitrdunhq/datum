@@ -2,6 +2,7 @@ import { model } from './shared/models'
 import { runCommandPrompt } from './shared/boot'
 import type { SetupArgs } from './shared/types'
 import { parseAgentJson } from './shared/utils'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-tdd-act-setup',
@@ -10,6 +11,7 @@ export const meta = {
 }
 
 const a = args as SetupArgs
+configureAgentTypes(a.agentTypes || {})
 phase('Setup')
 
 const rootWtText = await agent(
@@ -17,7 +19,7 @@ const rootWtText = await agent(
     `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && ` +
     `echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`,
   ),
-  { label: `root-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
+  stageOpts('cli', { label: `root-wt${a.batchTag}`, phase: 'Setup', model: model('fast') })
 )
 const rootWtInfo = parseAgentJson(rootWtText, {}) as { root?: string }
 const rootWt = rootWtInfo.root
@@ -28,7 +30,7 @@ const setupText = await agent(
   runCommandPrompt(
     `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(',')}`,
   ) + '\nThe stdout is JSON — return it verbatim.',
-  { label: `setup-wt${a.batchTag}`, phase: 'Setup', model: model('fast') }
+  stageOpts('cli', { label: `setup-wt${a.batchTag}`, phase: 'Setup', model: model('fast') })
 )
 const rawPaths = (typeof setupText === 'string'
   ? parseAgentJson(setupText, null)
@@ -66,7 +68,7 @@ const planSource = `${rootWt}/${a.lanePlanPath}`
 const distributeTargets = [rootWt, ...validPaths].map(p => `--target "${p}/.datum"`).join(' ')
 await agent(
   `Run: datum lane-plan-distribute "${planSource}" ${distributeTargets}`,
-  { label: `distribute-plan${a.batchTag}`, phase: 'Setup', model: model('fast') }
+  stageOpts('cli', { label: `distribute-plan${a.batchTag}`, phase: 'Setup', model: model('fast') })
 )
 
 log(`Setup${a.batchTag}: ${a.batchLaneIds.length} lane worktrees`)

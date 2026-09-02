@@ -2,6 +2,7 @@ import { renderPrompt, parseAgentJson } from './shared/utils'
 import { model } from './shared/models'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import readContextTemplate from './prompts/util-read-context.md'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-closeout',
@@ -28,6 +29,7 @@ const collectResult = await agent(
 4. "base_sha": output of \`git merge-base HEAD origin/main\`
 5. "run_id": "${runId}" if non-empty, else generate from \`date +%Y%m%d-%H%M%S\`
 6. "closeout_data_exists": whether .datum/runs/<run_id>/closeout-data.json exists
+7. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)
 
 ADDITIONAL: If closeout_data_exists is false, also run these collectors (skip failures):
 mkdir -p .datum/runs/<run_id>
@@ -43,6 +45,9 @@ Include "collected": true in the response if you ran collectors.`,
 const ctx = typeof collectResult === 'string'
   ? parseAgentJson(collectResult as string, {} as Record<string, unknown>)
   : collectResult
+
+// #368: args (from datum-go) win, else the agent_types field the collect agent pulled from config.
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
 
 const rid: string = ctx.run_id || runId
 log(`Branch: ${ctx.branch}, run: ${rid}`)
@@ -76,7 +81,7 @@ log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)
 // Housekeep: delete merged lane/worktree branches and pipeline-state (deterministic, no LLM)
 await agent(
   `Run: datum housekeep-epic ${ctx.branch}`,
-  { label: 'housekeep', model: model('fast') },
+  stageOpts('cli', { label: 'housekeep', model: model('fast') }),
 )
 
 export const __workflowResult = {

@@ -98,6 +98,27 @@ Hand-escaping large files reliably produces invalid JSON (stray backslashes, une
 // skills/src/prompts/util-run-gate.md
 var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -109,11 +130,13 @@ var readResult = await agent(
 4. "ticket_content": if ticket_exists, read the full file contents, else null
 5. "spec_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md exists (true/false)
 6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
-7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\``
+7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\`
+8. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`
   }),
   { label: "read-context", model: model("fast") }
 );
 var ctx = typeof readResult === "string" ? parseAgentJson(readResult, {}) : readResult;
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
 var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 var ticketPath = `${epicDir}/TICKET.md`;
 var ticketContent = ctx.ticket_content || "";
@@ -189,7 +212,7 @@ git add "${epicDir}/SPEC.md" "${epicDir}/QUESTIONS.md" && git commit -m "refine:
 log(`SPEC.md + QUESTIONS.md written to ${epicDir}`);
 var gateResult = await agent(
   renderPrompt(util_run_gate_default, { phase: "refine", flags: yolo ? " --approve" : "" }),
-  { label: "gate", model: model("fast") }
+  stageOpts("cli", { label: "gate", model: model("fast") })
 );
 var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
 if (gate?.passed) log("Refine gate PASSED");

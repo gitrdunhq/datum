@@ -7,6 +7,7 @@ import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-refine',
@@ -37,7 +38,8 @@ const readResult = await agent(
 4. "ticket_content": if ticket_exists, read the full file contents, else null
 5. "spec_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md exists (true/false)
 6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
-7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\``,
+7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\`
+8. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`,
   }),
   { label: 'read-context', model: model('fast') },
 )
@@ -45,6 +47,9 @@ const readResult = await agent(
 const ctx = typeof readResult === 'string'
   ? parseAgentJson(readResult as string, {} as Record<string, unknown>)
   : readResult
+
+// #368: args (from datum-go) win, else the agent_types field read-context pulled from config.
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
 
 const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
 const ticketPath: string = `${epicDir}/TICKET.md`
@@ -163,7 +168,7 @@ log(`SPEC.md + QUESTIONS.md written to ${epicDir}`)
 // Agent 2: run gate (collapsed gate-refine — still needs an agent since we can't run bash directly)
 const gateResult = await agent(
   renderPrompt(runGateTemplate, { phase: 'refine', flags: yolo ? ' --approve' : '' }),
-  { label: 'gate', model: model('fast') },
+  stageOpts('cli', { label: 'gate', model: model('fast') }),
 )
 
 const gate = typeof gateResult === 'string'

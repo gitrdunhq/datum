@@ -56,6 +56,27 @@ Hand-escaping large files reliably produces invalid JSON (stray backslashes, une
 // skills/src/prompts/util-run-gate.md
 var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/datum-properties.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -64,11 +85,13 @@ phase("Read");
 var context = await agent(
   renderPrompt(util_read_context_default, {
     extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md`
+4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md
+5. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`
   }),
   { label: "read-context", model: model("fast") }
 );
 var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
 if (!ctx.spec_content) throw new Error("SPEC.md not found. Run datum-refine first.");
 if (!ctx.tasks_content) throw new Error("TASKS.md not found. Run datum-plan first.");
 log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split("\n").length} lines`);
@@ -84,7 +107,7 @@ AFTER WRITING THE PROPERTIES CONTENT:
 log("PROPERTIES.md written and committed");
 var gateResult = await agent(
   renderPrompt(util_run_gate_default, { phase: "properties", flags: yolo ? " --approve" : "" }),
-  { label: "gate", model: model("fast") }
+  stageOpts("cli", { label: "gate", model: model("fast") })
 );
 var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
 if (gate?.passed) log("Properties gate PASSED");

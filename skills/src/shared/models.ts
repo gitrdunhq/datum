@@ -59,6 +59,10 @@ export const DEFAULT_CONFIG = {
   test_command: '',
   skills_dir: '',
   context_files: [] as string[],
+  /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
+  agent_types: true,
+  /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
+  hooks_installed: false,
 }
 
 export const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):

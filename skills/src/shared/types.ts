@@ -1,4 +1,5 @@
 import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel } from './models'
+import type { AgentTypeConfig } from './agent-types'
 
 // Cross-workflow arg/result contracts
 
@@ -9,6 +10,8 @@ export interface SetupArgs {
   lanePlan: LanePlan
   lanePlanPath: string
   batchTag: string
+  /** #368: agent_types / hooks_installed switches from the parent's config. */
+  agentTypes?: AgentTypeConfig
 }
 export interface SetupResult {
   worktreePaths: Record<string, string>
@@ -34,6 +37,7 @@ export interface MergeArgs {
   batchRunId: string
   topoOrder: string[]
   batchTag: string
+  agentTypes?: AgentTypeConfig
 }
 export interface MergeResult {
   merged: boolean
@@ -43,6 +47,7 @@ export interface DocsArgs {
   completedLanes: string[]
   lanePlan: LanePlan
   runId: string
+  agentTypes?: AgentTypeConfig
 }
 export interface DocsResult {
   synced: boolean
@@ -56,6 +61,7 @@ export interface TriageArgs {
   lanePlan: LanePlan
   runId: string
   epicBranch: string
+  agentTypes?: AgentTypeConfig
 }
 export interface TriageResult {
   filed: number
@@ -97,6 +103,10 @@ export interface PipelineConfig {
   /** yolo mode (#356): a blocked GREEN auto-widens allowed_write_files for
    *  src/ paths and re-runs once instead of stopping for lead approval. */
   yolo?: boolean
+  /** #368: agent_types / hooks_installed switches, passed from the parent
+   *  so the lane bundle (its own copy of the agent-types state) can
+   *  configure itself. */
+  agentTypes?: AgentTypeConfig
 }
 
 export interface LaneOutcome {

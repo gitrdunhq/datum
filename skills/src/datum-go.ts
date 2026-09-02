@@ -4,6 +4,7 @@ import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
+import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-go',
@@ -85,6 +86,13 @@ const boot = parseAgentJson(bootText as string, { config: {}, state: null, local
   config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string
 }
 const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string, any>
+// #368: agent_types (default true) / hooks_installed (default false) switches.
+// Every child workflow gets them via args — each bundle has its own copy.
+configureAgentTypes(readAgentTypeConfig(globalCfg))
+log(`Agent types: ${agentTypeArgs().agentTypes ? 'on' : 'off'}, hooks_installed: ${agentTypeArgs().hooksInstalled}`)
+// Phase workflows take either the bare 'yolo' string or an object; pass an
+// object so the switches ride along with the yolo flag.
+const phaseArgs = { yolo, agentTypes: agentTypeArgs() }
 // Sub-workflow scriptPaths (#353): prefer the repo-local .datum/skills copy
 // written by `datum init`; an out-of-repo absolute skills_dir is refused by
 // the Workflow harness, so log the fix once instead of dying on a stack trace.
@@ -127,7 +135,7 @@ const toolCheckText = await agent(
   `EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && ` +
   `if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
   ),
-  { label: 'preflight-tool-check', model: model('fast') },
+  stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }),
 )
 const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }
 if (!toolCheck.ok) {
@@ -157,7 +165,7 @@ async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
   const testsFlag = p === 'validate' ? (testsPass ? ' --tests-pass' : ' --tests-fail') : ''
   await agent(
     `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
-    { label: `save-state:${p}`, model: model('fast') },
+    stageOpts('cli', { label: `save-state:${p}`, model: model('fast') }),
   )
 }
 
@@ -210,7 +218,7 @@ log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
 // Refine
 if (shouldRun('refine', 0)) {
   log('── Refine ──')
-  lastResult = await workflow({ scriptPath: sk('datum-refine') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-refine') }, phaseArgs) as PhaseResult
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = 'refine'
     log(`Refine gate held: ${lastResult.gateMessage || 'needs review'}. Address QUESTIONS.md, then: datum go --start-from plan`)
@@ -223,7 +231,7 @@ if (shouldRun('refine', 0)) {
 // Plan
 if (shouldRun('plan', 1)) {
   log('── Plan ──')
-  lastResult = await workflow({ scriptPath: sk('datum-plan') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-plan') }, phaseArgs) as PhaseResult
   if (!yolo && !lastResult.gatePassed) {
     haltedAt = 'plan'
     log(`Plan gate held: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
@@ -236,7 +244,7 @@ if (shouldRun('plan', 1)) {
 // Properties
 if (shouldRun('properties', 2)) {
   log('── Properties ──')
-  lastResult = await workflow({ scriptPath: sk('datum-properties') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-properties') }, phaseArgs) as PhaseResult
   log('Properties complete')
   await markPhaseComplete('properties')
 }
@@ -261,7 +269,7 @@ if (shouldRun('act', 3)) {
     `Run this EXACT command and capture its raw stdout: datum init --json
 Then run: date +%Y%m%d-%H%M%S
 Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
-    { label: 'act-bootstrap', model: model('fast') },
+    stageOpts('cli', { label: 'act-bootstrap', model: model('fast') }),
   )
   const info = parseAgentJson(bootstrapInfo, { epicBranch: '', timestamp: '' }) as { epicBranch: string; timestamp: string; lanePlanPath?: string; adopted?: boolean }
   const epicBranch = info.epicBranch
@@ -277,12 +285,12 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   const epicDir = `docs/epics/${epicBranch}`
   const resolveText = await agent(
     resolveLanePlanPrompt(epicDir),
-    { label: 'resolve-lane-plan', phase: 'Act', model: model('fast') }
+    stageOpts('cli', { label: 'resolve-lane-plan', phase: 'Act', model: model('fast') })
   )
   const lanePlanPath = resolveLanePlanPath(epicDir, resolveText)
   const planText = await agent(
     `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
-    { label: 'read-plan', model: model('fast') },
+    stageOpts('reader', { label: 'read-plan', model: model('fast') }),
   )
   const lanePlan = (typeof planText === 'string'
     ? parseAgentJson<LanePlan | null>(planText, null)
@@ -301,7 +309,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   const slug = epicSlug(epicBranch)
   const markerText = await agent(
     laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(' ') }),
-    { label: 'lane-state-read', phase: 'Act', model: model('fast') },
+    stageOpts('cli', { label: 'lane-state-read', phase: 'Act', model: model('fast') }),
   )
   const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
   const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
@@ -365,7 +373,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() },
     ) as SetupResult
 
     // Lane execution — direct child workflow
@@ -375,7 +383,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir, yolo },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir, yolo, agentTypes: agentTypeArgs() },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
@@ -406,6 +414,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
         batchRunId,
         topoOrder: lanePlan.topological_order,
         batchTag,
+        agentTypes: agentTypeArgs(),
       },
     )
 
@@ -414,7 +423,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
       const entriesJson = JSON.stringify(mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })))
       await agent(
         laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
-        { label: `lane-state-write${batchTag}`, phase: 'Act', model: model('fast') },
+        stageOpts('cli', { label: `lane-state-write${batchTag}`, phase: 'Act', model: model('fast') }),
       )
     }
   }
@@ -422,7 +431,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   // Docs — direct child workflow
   await workflow(
     { scriptPath: sk('datum-tdd-act-docs') },
-    { completedLanes: actCompleted, lanePlan, runId },
+    { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs() },
   )
 
   const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
@@ -432,7 +441,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   if (actFailures.length > 0) {
     await workflow(
       { scriptPath: sk('datum-tdd-act-triage') },
-      { failures: actFailures, blocked: actBlocked.map(id => actResults[id]), results: actResults, lanePlan, runId, epicBranch },
+      { failures: actFailures, blocked: actBlocked.map(id => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
     )
   }
 
@@ -454,7 +463,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
 // Validate
 if (shouldRun('validate', 4)) {
   log('── Validate ──')
-  lastResult = await workflow({ scriptPath: sk('datum-validate') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-validate') }, phaseArgs) as PhaseResult
   if (!yolo && !lastResult.testsPassed) {
     haltedAt = 'validate'
     log('Validate FAILED — tests are red. Pipeline halted.')
@@ -467,7 +476,7 @@ if (shouldRun('validate', 4)) {
 // Review
 if (shouldRun('review', 5)) {
   log('── Review ──')
-  lastResult = await workflow({ scriptPath: sk('datum-review') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-review') }, phaseArgs) as PhaseResult
   if (!yolo && !lastResult.canMerge) {
     haltedAt = 'review'
     log(`Review: ${lastResult.criticalFindings || '?'} critical issues. Fix, then: datum go --start-from validate`)
@@ -480,7 +489,7 @@ if (shouldRun('review', 5)) {
 // Closeout
 if (shouldRun('closeout', 6)) {
   log('── Closeout ──')
-  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, yolo ? 'yolo' : {}) as PhaseResult
+  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, phaseArgs) as PhaseResult
   log('Closeout complete')
   await markPhaseComplete('closeout')
 }

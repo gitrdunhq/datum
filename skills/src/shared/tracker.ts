@@ -6,6 +6,8 @@
  * The pipeline calls these functions; it never imports gh/jira/linear directly.
  */
 
+import { stageOpts } from './agent-types'
+
 export type TrackerStage = 'queued' | 'red' | 'green' | 'done' | 'failed' | 'skipped'
 
 export interface PublishResult {
@@ -21,7 +23,7 @@ export async function publishLanePlan(
     `Run: datum plan-issues --lane-plan "${lanePlanPath}" --title "${epicTitle}"
 Return the JSON output. If the command fails, return {"error": "<message>"}.
 Output raw JSON only.`,
-    { label: 'publish-issues', model: 'haiku' },
+    stageOpts('cli', { label: 'publish-issues', model: 'haiku' }),
   )
   if (!result) return null
   const parsed = typeof result === 'string'
@@ -50,7 +52,7 @@ export async function updateStage(
     `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
 If the command doesn't exist or fails, silently continue.
 Output nothing.`,
-    { label: `tracker:${issueId}:${stage}`, model: 'haiku' },
+    stageOpts('cli', { label: `tracker:${issueId}:${stage}`, model: 'haiku' }),
   )
 }
 

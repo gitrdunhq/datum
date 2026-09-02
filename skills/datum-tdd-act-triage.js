@@ -65,8 +65,16 @@ function groupBlockedByRoot(lanePlan, failures, blockedIds) {
   return out;
 }
 
+// skills/src/shared/agent-types.ts
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+
 // skills/src/datum-tdd-act-triage.ts
 var a = args;
+configureAgentTypes(a.agentTypes || {});
 phase("Triage");
 var filed = 0;
 if (a.failures.length === 0) {

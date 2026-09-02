@@ -3,6 +3,7 @@ import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-properties',
@@ -26,7 +27,8 @@ phase('Read')
 const context = await agent(
   renderPrompt(readContextTemplate, {
     extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md`,
+4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md
+5. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`,
   }),
   { label: 'read-context', model: model('fast') },
 )
@@ -34,6 +36,9 @@ const context = await agent(
 const ctx = typeof context === 'string'
   ? parseAgentJson(context as string, {} as Record<string, unknown>)
   : context
+
+// #368: args (from datum-go) win, else the agent_types field read-context pulled from config.
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
 
 if (!ctx.spec_content) throw new Error('SPEC.md not found. Run datum-refine first.')
 if (!ctx.tasks_content) throw new Error('TASKS.md not found. Run datum-plan first.')
@@ -58,7 +63,7 @@ log('PROPERTIES.md written and committed')
 // Gate
 const gateResult = await agent(
   renderPrompt(runGateTemplate, { phase: 'properties', flags: yolo ? ' --approve' : '' }),
-  { label: 'gate', model: model('fast') },
+  stageOpts('cli', { label: 'gate', model: model('fast') }),
 )
 const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
 
