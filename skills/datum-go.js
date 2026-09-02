@@ -224,6 +224,33 @@ function detectStartFrom(state) {
   return null;
 }
 
+// skills/src/shared/boot.ts
+var LOCAL_SKILLS_DIR = ".datum/skills";
+function isUnder(path, root) {
+  const r = root.replace(/\/+$/, "");
+  return path === r || path.startsWith(r + "/");
+}
+function resolveSkillPath(opts) {
+  const file = `${opts.name}.js`;
+  if ((opts.localSkills || []).includes(file)) {
+    return { path: `${LOCAL_SKILLS_DIR}/${file}`, outsideRepo: false };
+  }
+  const path = skillPath(opts.skillsDir || "", opts.name);
+  const outsideRepo = path.startsWith("/") && !!opts.repoRoot && !isUnder(path, opts.repoRoot);
+  return { path, outsideRepo };
+}
+function skillsDirHint(skillsDir) {
+  return `skills_dir "${skillsDir}" is outside this repo and the Workflow harness will refuse it \u2014 run \`datum init --refresh-skills\` to copy the skills into ${LOCAL_SKILLS_DIR}/, or run \`/add-dir ${skillsDir}\` before launching.`;
+}
+function bootPrompt() {
+  return `Return a JSON object with four fields:
+1. "config": contents of .datum/config.json (or {} if missing)
+2. "state": contents of .datum/pipeline-state.json (or null if missing)
+3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
+4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
+Output raw JSON only.`;
+}
+
 // skills/src/datum-go.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 function parseArgs(raw) {
@@ -256,15 +283,25 @@ if (startIdx === -1) {
   throw new Error(`Unknown phase: ${startFrom}. Valid: ${PHASES.join(", ")}`);
 }
 var bootText = await agent(
-  `Return a JSON object with two fields:
-1. "config": contents of .datum/config.json (or {} if missing)
-2. "state": contents of .datum/pipeline-state.json (or null if missing)
-Output raw JSON only.`,
+  bootPrompt(),
   { label: "read-config+state", model: model("fast") }
 );
-var boot = parseAgentJson(bootText, { config: {}, state: null });
+var boot = parseAgentJson(bootText, { config: {}, state: null, localSkills: [], repoRoot: "" });
 var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
-var sk = (name) => skillPath(globalCfg.skills_dir || "", name);
+var skillsDirHinted = false;
+var sk = (name) => {
+  const r = resolveSkillPath({
+    name,
+    skillsDir: globalCfg.skills_dir || "",
+    localSkills: boot.localSkills || [],
+    repoRoot: boot.repoRoot || ""
+  });
+  if (r.outsideRepo && !skillsDirHinted) {
+    skillsDirHinted = true;
+    log(skillsDirHint(globalCfg.skills_dir));
+  }
+  return r.path;
+};
 if (globalCfg.models && typeof globalCfg.models === "object") {
   setModelTiers(globalCfg.models);
   log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);

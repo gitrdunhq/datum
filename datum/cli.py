@@ -316,6 +316,14 @@ def init(
         "--json",
         help="Emit machine-readable JSON (epicBranch/lanePlanPath/adopted) instead of rich text.",
     ),
+    refresh_skills: bool = typer.Option(
+        False,
+        "--refresh-skills",
+        help=(
+            "Only re-copy the workflow skills into .datum/skills/ and point "
+            "skills_dir there (#353). No branch/epic bootstrap."
+        ),
+    ),
 ):
     """Bootstrap the repository for DATUM execution."""
     import subprocess
@@ -323,7 +331,26 @@ def init(
 
     from datum.bootstrap import seed_state_docs
     from datum.detect import detect_repo
+    from datum.skills_materialize import resolve_skills_dir
     from datum.state import PROTECTED_BRANCHES, current_branch, ensure_feature_branch
+
+    # The Workflow harness refuses scriptPaths outside the working directory
+    # (symlinks resolved first), so skills are COPIED into the repo (#353).
+    package_skills = Path(__file__).resolve().parent.parent / "skills"
+    config_path = Path(".datum/config.json")
+
+    if refresh_skills:
+        existing = json.loads(config_path.read_text()) if config_path.exists() else {}
+        resolved = resolve_skills_dir(Path.cwd(), package_skills, force=True)
+        existing["skills_dir"] = str(resolved)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(existing, indent=2) + "\n")
+        if json_output:
+            print(json.dumps({"skillsDir": str(resolved), "refreshed": True}))
+        else:
+            console.print(f"[dim]Skills refreshed → {resolved}[/dim]")
+            console.print(f"[dim]skills_dir written to {config_path}[/dim]")
+        return
 
     # In --json mode, downstream helpers still write their own human status
     # lines to stdout — see _quiet_stdout_ctx() for why this is centralized.
@@ -348,7 +375,6 @@ def init(
 
     # Auto-detect repo configuration
     config = detect_repo(".")
-    config_path = Path(".datum/config.json")
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     if config_path.exists():
@@ -360,6 +386,10 @@ def init(
         for k, v in config.items():
             existing.setdefault(k, v)
         config = existing
+
+    # Always re-resolved (never preserved from an existing config): a stale
+    # out-of-repo skills_dir is exactly the failure mode in #353.
+    config["skills_dir"] = str(resolve_skills_dir(Path.cwd(), package_skills))
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     if not json_output:

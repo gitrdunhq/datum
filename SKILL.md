@@ -18,7 +18,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum <phase>     Run one phase: refine, plan, act, validate, review, closeout, etc.
 /datum resume      Resume from .datum/state.json after interruption.
 /datum status      Print phase, RUN_ID, lane progress, last failure.
-/datum init        Bootstrap repo: hooks, linter, AGENTS.md, CURRENT_STATE.md, ROADMAP.md.
+/datum init        Bootstrap repo: hooks, linter, AGENTS.md, CURRENT_STATE.md, ROADMAP.md. Copies skills/*.js into .datum/skills/ (--refresh-skills re-copies only).
 /datum classify    Auto-classify epic complexity (Patch/Feature/System)
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
 /datum mermaid     Generate Mermaid diagrams
