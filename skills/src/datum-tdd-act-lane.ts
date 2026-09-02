@@ -2,7 +2,7 @@ import { model, type ModelName } from './shared/models'
 import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, verifyCommitIndependently } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
-import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import {
   laneIntakeSteps,
@@ -12,6 +12,8 @@ import {
   sumCounts,
   scopeContentsFromSteps,
   scopeGapsFromSteps,
+  postGreenSteps,
+  ownershipFromStdout,
 } from './shared/lane-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -210,7 +212,12 @@ async function runLane(
   const completionPath = runId
     ? `.datum/runs/${runId}/lane-state/${taskId}.json`
     : null
-  if (completionPath) {
+  // #368 item D: with agent_types on AND the datum-* PreToolUse hooks
+  // installed, the ownership / cross-run completion checks are plain
+  // commands inside the batched datum-cli calls, evaluated in this script.
+  // Otherwise the standalone LLM checks below stay exactly as they were.
+  const deterministic: boolean = deterministicChecks()
+  if (completionPath && !deterministic) {
     const completionExist: string | null = await agent(
       `Read the file at "${completionPath}" with the Read tool.
 If the file exists, return ONLY its raw contents (valid JSON).
@@ -253,7 +260,7 @@ No markdown fences, no explanation.`,
     : ''
 
   const intakeSteps = laneIntakeSteps({
-    wt, completionPath: null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
+    wt, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
   })
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
@@ -261,6 +268,18 @@ No markdown fences, no explanation.`,
   )
   const intake = parseBatchResult(intakeRaw, intakeSteps)
   if (intake.missing) log(`[${taskId}] ${describeFailure(intake, 'lane intake')} — continuing with empty history`)
+
+  // Cross-run completion (deterministic mode): the marker was read by the intake batch.
+  if (deterministic && completionPath) {
+    const completionExist = stepStdout(intake, 'completion')
+    if (!isMissing(completionExist)) {
+      const compData = parseAgentJson<{ task_id?: string }>(completionExist || '', {})
+      if (compData.task_id === taskId) {
+        log(`[${taskId}] lane already completed in a prior run — skipping`)
+        return { task_id: taskId, status: 'skipped', stage: 'SKIPPED', error: 'cross-run completion: lane was completed in a previous run' }
+      }
+    }
+  }
 
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
@@ -502,7 +521,7 @@ No markdown fences, no explanation.`,
         { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
       ]
   const postRed = postRedSteps({
-    wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: false,
+    wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: deterministic,
   })
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),
@@ -565,7 +584,11 @@ No markdown fences, no explanation.`,
   log(`[${taskId}] RED verified — tests fail as expected (committed: ${red.commit_sha || 'n/a'})`)
   await updateStage(issueId, 'red', red.commit_sha)
 
-  const redOwnership = await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles)
+  // Ownership (#368 item D): deterministic mode evaluates the diff the
+  // post-RED batch already read; otherwise the standalone LLM check runs.
+  const redOwnership = deterministic
+    ? ownershipFromStdout(stepStdout(postRedResult, 'ownership'), testFiles, implFiles)
+    : await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles)
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(', ')}`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
@@ -804,7 +827,19 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     }
   }
 
-  const greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+  // Post-GREEN ownership (#368 item D): one datum-cli diff evaluated here,
+  // or the standalone LLM check when the hooks are not installed.
+  let greenOwnership: { ok: boolean; violations: string[] }
+  if (deterministic) {
+    const postGreen = postGreenSteps({ wt })
+    const postGreenRaw = await agent(
+      batchCommandPrompt(postGreen),
+      stageOpts('cli', { label: `post-green:${taskId}`, phase: 'Act', model: model('fast') }),
+    )
+    greenOwnership = ownershipFromStdout(stepStdout(parseBatchResult(postGreenRaw, postGreen), 'ownership'), implFiles, testFiles)
+  } else {
+    greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+  }
   if (!greenOwnership.ok) {
     log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(', ')}`)
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `file_ownership_violation: ${greenOwnership.violations.join(', ')}` }

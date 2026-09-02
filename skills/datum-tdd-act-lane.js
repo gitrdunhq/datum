@@ -92,6 +92,9 @@ function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
 }
+function deterministicChecks() {
+  return state.agentTypes && state.hooksInstalled;
+}
 function stageOpts(stage, extra = {}) {
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
@@ -649,6 +652,11 @@ cat "$GREPPATFILE"`,
 function ownershipCommand(wt) {
   return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`;
 }
+function ownershipFromStdout(raw, allowedFiles, forbiddenFiles) {
+  if (raw === null || raw === void 0) return { ok: true, violations: [] };
+  const changed = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
+}
 function sumCounts(raw) {
   if (!raw) return 0;
   return raw.split("\n").map((l) => parseInt(l.trim(), 10)).filter((n) => !isNaN(n)).reduce((a2, b) => a2 + b, 0);
@@ -688,6 +696,9 @@ function scopeGapsFromSteps(scopeGaps, exitOf) {
     else missing.push(f);
   });
   return { existing, missing };
+}
+function postGreenSteps(o) {
+  return [{ name: "ownership", command: ownershipCommand(o.wt), tolerant: true }];
 }
 
 // skills/src/prompts/agent-preamble.md
@@ -869,7 +880,8 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
   const testFuncBodyRegex = laneLanguage === "swift" ? "func test" : laneLanguage === "go" ? "func Test" : "def test_";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
-  if (completionPath) {
+  const deterministic = deterministicChecks();
+  if (completionPath && !deterministic) {
     const completionExist = await agent(
       `Read the file at "${completionPath}" with the Read tool.
 If the file exists, return ONLY its raw contents (valid JSON).
@@ -893,7 +905,7 @@ No markdown fences, no explanation.`,
   const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   const intakeSteps = laneIntakeSteps({
     wt,
-    completionPath: null,
+    completionPath: deterministic ? completionPath : null,
     structural: isStructural,
     cleanupCmd,
     planSkeletonPath,
@@ -906,6 +918,16 @@ No markdown fences, no explanation.`,
   );
   const intake = parseBatchResult(intakeRaw, intakeSteps);
   if (intake.missing) log(`[${taskId}] ${describeFailure(intake, "lane intake")} \u2014 continuing with empty history`);
+  if (deterministic && completionPath) {
+    const completionExist = stepStdout(intake, "completion");
+    if (!isMissing(completionExist)) {
+      const compData = parseAgentJson(completionExist || "", {});
+      if (compData.task_id === taskId) {
+        log(`[${taskId}] lane already completed in a prior run \u2014 skipping`);
+        return { task_id: taskId, status: "skipped", stage: "SKIPPED", error: "cross-run completion: lane was completed in a previous run" };
+      }
+    }
+  }
   const laneHistoryRaw = stepStdout(intake, "history");
   const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   if (isStructural) {
@@ -1078,7 +1100,7 @@ No markdown fences, no explanation.`,
     sgPatterns,
     testFuncBodyRegex,
     testFuncGrepRegex,
-    ownership: false
+    ownership: deterministic
   });
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),
@@ -1128,7 +1150,7 @@ No markdown fences, no explanation.`,
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   await updateStage(issueId, "red", red.commit_sha);
-  const redOwnership = await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
+  const redOwnership = deterministic ? ownershipFromStdout(stepStdout(postRedResult, "ownership"), testFiles, implFiles) : await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
   if (!redOwnership.ok) {
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
@@ -1301,7 +1323,17 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
     }
   }
-  const greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
+  let greenOwnership;
+  if (deterministic) {
+    const postGreen = postGreenSteps({ wt });
+    const postGreenRaw = await agent(
+      batchCommandPrompt(postGreen),
+      stageOpts("cli", { label: `post-green:${taskId}`, phase: "Act", model: model("fast") })
+    );
+    greenOwnership = ownershipFromStdout(stepStdout(parseBatchResult(postGreenRaw, postGreen), "ownership"), implFiles, testFiles);
+  } else {
+    greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
+  }
   if (!greenOwnership.ok) {
     log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };

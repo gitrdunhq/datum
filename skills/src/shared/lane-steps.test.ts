@@ -22,6 +22,7 @@ import {
   completionMarkerCommand,
   isMissing,
   fencedScript,
+  ownershipFromStdout,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -196,6 +197,24 @@ describe('scopeContractSteps', () => {
   it('scopeGapsFromSteps splits by exit code, treating a missing step as missing', () => {
     const r = scopeGapsFromSteps(['a', 'b', 'c'], (n) => (n === 'scope-exists-0' ? 0 : n === 'scope-exists-1' ? 1 : null))
     expect(r).toEqual({ existing: ['a'], missing: ['b', 'c'] })
+  })
+})
+
+describe('ownershipFromStdout (#368 item D — script-evaluated ownership)', () => {
+  it('fails open when the diff step did not run (same as a null agent result)', () => {
+    expect(ownershipFromStdout(null, ['tests/test_a.py'], ['src/a.py'])).toEqual({ ok: true, violations: [] })
+  })
+  it('accepts a commit that only touched allowed files', () => {
+    expect(ownershipFromStdout('tests/test_a.py\n', ['tests/test_a.py'], ['src/a.py']).ok).toBe(true)
+  })
+  it('flags forbidden and unlisted files from the diff output', () => {
+    const r = ownershipFromStdout('tests/test_a.py\nsrc/a.py\nREADME.md\n', ['tests/test_a.py'], ['src/a.py'])
+    expect(r.ok).toBe(false)
+    expect(r.violations.join(' ')).toMatch(/src\/a\.py/)
+    expect(r.violations.join(' ')).toMatch(/README\.md/)
+  })
+  it('ignores blank lines and surrounding whitespace', () => {
+    expect(ownershipFromStdout('\n  tests/test_a.py  \n\n', ['tests/test_a.py'], []).ok).toBe(true)
   })
 })
 
