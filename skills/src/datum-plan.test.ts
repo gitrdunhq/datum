@@ -198,3 +198,52 @@ describe('datum-plan-buildorder-and-context — AC6: plan-decompose.md build-ord
     expect(section).toMatch(/precedence/i)
   })
 })
+
+// ---------------------------------------------------------------------------
+// #352 — the decompose prompt must ask for `task-NNN` ids (the schemas
+// require ^task-\d+$) plus a descriptive `slug`, and the plan gate must run
+// right after `datum lane-plan` — before the skeleton/deepen phases commit.
+// ---------------------------------------------------------------------------
+
+const decomposePrompt = readFileSync(join(__dirname, 'prompts', 'plan-decompose.md'), 'utf8')
+
+describe('#352 — decompose prompt id/slug contract', () => {
+  it('asks for zero-padded task-NNN ids and a slug, not descriptive ids', () => {
+    expect(decomposePrompt).not.toMatch(/DESCRIPTIVE task IDs/)
+    expect(decomposePrompt).toMatch(/task-001/)
+    expect(decomposePrompt).toMatch(/"slug"/)
+    expect(decomposePrompt).toMatch(/\^\[a-z0-9\]\[a-z0-9-\]\{2,60\}\$/)
+    // The example object must model the contract it describes.
+    expect(decomposePrompt).toMatch(/"id":\s*"task-001"/)
+    expect(decomposePrompt).not.toMatch(/"id":\s*"descriptive-task-id"/)
+  })
+})
+
+describe('#352 — plan gate ordering', () => {
+  // The gate is rendered from prompts/util-run-gate.md with phase 'plan';
+  // the FIRST such call must be the early one.
+  const gateIdx = datumPlanSrc.indexOf("renderPrompt(runGateTemplate, { phase: 'plan'")
+  const lanePlanIdx = datumPlanSrc.indexOf('datum lane-plan --input')
+  const skeletonIdx = datumPlanSrc.indexOf('datum skeleton --batch')
+  const triageIdx = datumPlanSrc.indexOf("phase('Triage')")
+
+  it('runs a plan gate after datum lane-plan and before the skeleton batch', () => {
+    expect(lanePlanIdx).toBeGreaterThan(-1)
+    expect(gateIdx).toBeGreaterThan(lanePlanIdx)
+    expect(gateIdx).toBeLessThan(skeletonIdx)
+    expect(gateIdx).toBeLessThan(triageIdx)
+  })
+
+  it('does not commit the plan artifacts until the early gate has passed', () => {
+    const commitIdx = datumPlanSrc.indexOf('git commit -m "plan: tasks.json')
+    expect(commitIdx).toBeGreaterThan(-1)
+    expect(commitIdx).toBeGreaterThan(gateIdx)
+    expect(commitIdx).toBeLessThan(skeletonIdx)
+  })
+
+  it('halts (throws) when the early gate reports a hard failure', () => {
+    // A failing schema gate must abort the run before anything is committed.
+    const earlyGateBlock = datumPlanSrc.slice(gateIdx, skeletonIdx)
+    expect(earlyGateBlock).toMatch(/throw new Error\(/)
+  })
+})
