@@ -242,14 +242,17 @@ function resolveSkillPath(opts) {
 function skillsDirHint(skillsDir) {
   return `skills_dir "${skillsDir}" is outside this repo and the Workflow harness will refuse it \u2014 run \`datum init --refresh-skills\` to copy the skills into ${LOCAL_SKILLS_DIR}/, or run \`/add-dir ${skillsDir}\` before launching.`;
 }
-function bootPrompt() {
+function bootPrompt(configFingerprint2 = "") {
+  const stamp = configFingerprint2 ? `
+(config fingerprint: ${configFingerprint2})` : "";
   return `Return a JSON object with four fields:
 1. "config": contents of .datum/config.json (or {} if missing)
 2. "state": contents of .datum/pipeline-state.json (or null if missing)
 3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
 4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
-Output raw JSON only.`;
+Output raw JSON only.${stamp}`;
 }
+var NO_FINGERPRINT_WARNING = 'args.configFingerprint not set \u2014 on Workflow resume the cached config read is replayed and a config edit is NOT picked up (#354). Launch with args: { ..., configFingerprint: "<output of `datum config-fingerprint`>" }.';
 
 // skills/src/datum-go.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -282,8 +285,10 @@ var startIdx = PHASES.indexOf(startFrom);
 if (startIdx === -1) {
   throw new Error(`Unknown phase: ${startFrom}. Valid: ${PHASES.join(", ")}`);
 }
+var configFingerprint = typeof a.configFingerprint === "string" ? a.configFingerprint : "";
+if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
 var bootText = await agent(
-  bootPrompt(),
+  bootPrompt(configFingerprint),
   { label: "read-config+state", model: model("fast") }
 );
 var boot = parseAgentJson(bootText, { config: {}, state: null, localSkills: [], repoRoot: "" });

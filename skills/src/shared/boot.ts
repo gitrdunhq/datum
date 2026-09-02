@@ -51,12 +51,28 @@ export function skillsDirHint(skillsDir: string): string {
   )
 }
 
-/** Prompt for the single boot agent that reads config + pipeline state. */
-export function bootPrompt(): string {
+/**
+ * Prompt for the single boot agent that reads config + pipeline state.
+ *
+ * `configFingerprint` (#354) is the output of `datum config-fingerprint`,
+ * passed by the launcher via args. Workflow resume replays any agent()
+ * call whose (prompt, opts) is unchanged, so embedding the fingerprint is
+ * what makes an edited config invalidate the cached read — scripts have no
+ * filesystem access and Date.now() is unavailable, so it cannot be derived
+ * in here.
+ */
+export function bootPrompt(configFingerprint: string = ''): string {
+  const stamp = configFingerprint ? `\n(config fingerprint: ${configFingerprint})` : ''
   return `Return a JSON object with four fields:
 1. "config": contents of .datum/config.json (or {} if missing)
 2. "state": contents of .datum/pipeline-state.json (or null if missing)
 3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
 4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
-Output raw JSON only.`
+Output raw JSON only.${stamp}`
 }
+
+/** Logged once when the launcher did not pass args.configFingerprint. */
+export const NO_FINGERPRINT_WARNING =
+  'args.configFingerprint not set — on Workflow resume the cached config read is replayed and a config ' +
+  'edit is NOT picked up (#354). Launch with args: { ..., configFingerprint: "<output of `datum config-fingerprint`>" }.'
+
