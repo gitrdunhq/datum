@@ -38,6 +38,9 @@ export interface MergeArgs {
   topoOrder: string[]
   batchTag: string
   agentTypes?: AgentTypeConfig
+  /** #368: epic-scoped completion markers to record after a successful
+   *  merge (folded into the merge batch; was a separate agent call). */
+  laneState?: { epicSlug: string; entries: Array<{ task_id: string; spec_hash: string }> } | null
 }
 export interface MergeResult {
   merged: boolean

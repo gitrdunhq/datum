@@ -3,6 +3,16 @@ import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, verifyCommitIndependently } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { batchCommandPrompt, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import {
+  laneIntakeSteps,
+  postRedSteps,
+  scopeContractSteps,
+  isMissing,
+  sumCounts,
+  scopeContentsFromSteps,
+  scopeGapsFromSteps,
+} from './shared/lane-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -219,6 +229,39 @@ No markdown fences, no explanation.`,
 
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? 'structural' : 'behavioral'}, ${testFiles.length} test, ${implFiles.length} impl)`)
 
+  // ── Lane intake — ONE datum-cli call (#368) ────────────────────────────────
+  // Lane history (#331), pre-RED cleanup and the skeleton read/generate used
+  // to be three or four separate command-runner agents, each paying ~30K
+  // tokens of context for a 300-char prompt. They have no LLM judgement
+  // between them, so they run as one script; the results are evaluated here
+  // in the same order as before. For a lane that turns out to already have
+  // RED+GREEN commits the cleanup/skeleton steps run needlessly — both are
+  // idempotent (untracked stray files, a preflight JSON under .datum/runs).
+  //
+  // Deletion decisions in the cleanup step are made by datum's own
+  // `lane-cleanup` command (plain Python, no LLM in the loop) — not by handing
+  // a sub-agent a "find files matching a pattern, then rm each one" prompt.
+  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/
+  const cleanupCmd: string | null = testFiles.some(f => scriptTestPattern.test(f))
+    ? `datum lane-cleanup "${wt}" ${testFiles.map(f => `--allowed "${f.replace(/"/g, '\\"')}"`).join(' ')}`
+    : null
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  const preflightPath = `.datum/runs/${cfg.runId}/preflight-${taskId}.json`
+  // Pre-generated skeletons from the Plan phase are preferred over generating one now.
+  const planSkeletonPath = cfg.skeletonDir
+    ? `${cfg.skeletonDir}/preflight-${taskId}.json`
+    : ''
+
+  const intakeSteps = laneIntakeSteps({
+    wt, completionPath: null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
+  })
+  const intakeRaw = await agent(
+    batchCommandPrompt(intakeSteps),
+    stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }),
+  )
+  const intake = parseBatchResult(intakeRaw, intakeSteps)
+  if (intake.missing) log(`[${taskId}] ${describeFailure(intake, 'lane intake')} — continuing with empty history`)
+
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
   // partial-run interruption can re-dispatch a lane whose branch already has
@@ -229,29 +272,18 @@ No markdown fences, no explanation.`,
   // search the full log the same way verifyCommitIndependently does for #274,
   // since later stages may have already landed and the target commit is not
   // necessarily HEAD.
-  const laneHistoryRaw: string | null = await agent(
-    `Run: git -C "${wt}" log --format="%H %s"\nReturn ONLY the raw output, no explanation, no markdown fences.`,
-    stageOpts('cli', { label: `lane-history-check:${taskId}`, phase: 'Act', model: 'haiku' }),
-  )
+  const laneHistoryRaw: string | null = stepStdout(intake, 'history')
   const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
     detectExistingLaneCommits(laneHistoryRaw || '', taskId)
 
-  // ── File-based completion write helper ──
-  async function writeCompletion(): Promise<void> {
-    if (!runId) return
-    const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`
-    const dir = cp.split('/').slice(0, -1).join('/')
-    await agent(
-      runCommandPrompt(`mkdir -p ./${dir} && printf '%s\n' '{"task_id": "${taskId}", "status": "completed"}' > ./${cp} && cat ./${cp}`),
-      stageOpts('cli', { label: `completion-write:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-  }
+  // Cross-run completion markers (.datum/runs/<runId>/lane-state/<task>.json)
+  // are written by datum-tdd-act-merge for every completed lane, in the same
+  // datum-cli call as the squash merge (#368) — not by a per-lane agent here.
 
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
-    await writeCompletion()
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
 
@@ -264,29 +296,14 @@ No markdown fences, no explanation.`,
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
     if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
     await updateStage(issueId, 'done')
-    await writeCompletion()
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
 
-  // ── Pre-RED cleanup: remove stray untracked test files from prior skeleton runs ──
+  // ── Pre-RED cleanup: stray untracked test files from prior skeleton runs ──
   // Stray files from pre-preflight skeleton writes or abandoned tasks pollute
-  // test collectors (pytest/vitest).  Remove any test file that is untracked
-  // but not listed in the lane plan's files[].
-  //
-  // Deletion decisions are made by datum's own `lane-cleanup` command (plain
-  // Python, no LLM in the loop) — not by handing a sub-agent a "find files
-  // matching a pattern, then rm each one" prompt. The latter is indistinguishable
-  // from an arbitrary shell deletion to any permission classifier watching the
-  // sub-agent's tool calls, because it is one.
-  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/
-  if (testFiles.some(f => scriptTestPattern.test(f))) {
-    const allowedArgs = testFiles.map(f => `--allowed "${f.replace(/"/g, '\\"')}"`).join(' ')
-    const cleanupCmd = `datum lane-cleanup "${wt}" ${allowedArgs}`
-    await agent(`Run: ${cleanupCmd}`, stageOpts('cli', {
-      label: `pre-red-cleanup:${taskId}`,
-      phase: 'Act',
-      model: model('fast'),
-    }))
+  // test collectors (pytest/vitest); the intake batch removed any test file
+  // that is untracked but not listed in the lane plan's files[].
+  if (cleanupCmd) {
     log(`[${taskId}] Pre-RED cleanup completed`)
   } else {
     log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`)
@@ -294,40 +311,22 @@ No markdown fences, no explanation.`,
 
   // ── RED (writes tests + verifies they fail + commits) ──
   log(`[${taskId}] RED: writing failing tests`)
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg.lanePlanPath} --output .datum/runs/${cfg.runId}/preflight-${taskId}.json`
-  const preflightPath = `.datum/runs/${cfg.runId}/preflight-${taskId}.json`
-
-  // Check for pre-generated skeletons from Plan phase first
-  const planSkeletonPath = cfg.skeletonDir
-    ? `${cfg.skeletonDir}/preflight-${taskId}.json`
-    : ''
 
   let targetContext: Record<string, string[]> | undefined
   let preflightRaw: string | null = null
 
   if (planSkeletonPath) {
-    preflightRaw = await agent(
-      `Read the file at "${planSkeletonPath}" with the Read tool.
-If the file exists, return ONLY its raw JSON contents.
-If the file does not exist or is empty, return exactly: MISSING
-No markdown fences, no explanation.`,
-      stageOpts('reader', { label: `skeleton-read:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-    if (preflightRaw && preflightRaw.trim() !== 'MISSING') {
+    const fromPlan = stepStdout(intake, 'skeleton-plan')
+    if (!isMissing(fromPlan)) {
+      preflightRaw = fromPlan
       log(`[${taskId}] using pre-generated skeleton from Plan phase`)
-    } else {
-      preflightRaw = null
     }
   }
 
-  // Fall back to generating skeleton if Plan didn't provide one
+  // Fall back to the skeleton the intake batch generated when Plan didn't provide one
   if (!preflightRaw) {
-    preflightRaw = await agent(
-      `Run: ${skeletonCmd}
-Then read the output file: cat "${wt}/${preflightPath}" 2>/dev/null || echo "{}"
-Return ONLY the raw JSON contents of the file. No markdown fences, no explanation.`,
-      stageOpts('cli', { label: `preflight:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
+    const generated = stepStdout(intake, 'skeleton-gen')
+    preflightRaw = generated && generated.trim() && generated.trim() !== 'SKIPPED_PLAN_SKELETON' ? generated : null
   }
 
   let preflightFramework: string | undefined
@@ -473,69 +472,15 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     return { task_id: taskId, status: 'failed', stage: 'RED', error: red?.failure_reason || 'RED failed' }
   }
 
-  // ── New-test-function count gate — deterministic script execution, no LLM mediation (#253) ──
-  // NOTE: We tried replacing this with direct child_process.execSync(), but the build
-  // script strips require() calls and TypeScript has no @types/node. The architecture
-  // fundamentally routes all shell through the agent() API. The fix attempted here was to
-  // harden the error path (fail loudly on script error rather than silently defaulting to 0)
-  // while keeping the agent call. See git commit for details.
+  // ── Post-RED checks — ONE datum-cli call (#368) ───────────────────────────
+  // The count gate (#253), placeholder scan, scope-repair read (#325/#334/#335)
+  // and the before/after test-function count were four separate command
+  // runners. All are read-only, so they run as one script and are evaluated
+  // below in the original order — a later check that "would not have run"
+  // after an earlier failure has no side effects. Patterns still go through
+  // quoted heredocs (#288/#289); the deterministic script, not the fast
+  // agent, now writes the JSON the checks are parsed from.
   const acCount = (lane.acceptance_criteria || []).length
-  if (acCount > 0) {
-    let newTestCount = 0
-    let gatePassed = false
-    const countRaw: string | null = await agent(
-      `Run this EXACT sequence of two commands verbatim:
-1. Write the pattern to a temp file (the quoted heredoc delimiter means the shell does no interpretation of its contents — copy the line between the markers exactly as-is):
-PATFILE=$(mktemp)
-cat > "$PATFILE" <<'PATTERN_EOF'
-${testFuncDiffRegex}
-PATTERN_EOF
-2. Run the gate script against that file:
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map(f => `"${f}"`).join(' ')} --pattern-file "$PATFILE" --required ${acCount}
-Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
-      stageOpts('cli', {
-        label: `test-count-check:${taskId}`, phase: 'Act', model: model('fast'),
-      }),
-    )
-    // Parse the JSON output from the script
-    if (countRaw === null || countRaw === undefined) {
-      // agent() genuinely returned nothing — this is an infrastructure failure of the
-      // count-gate script call itself, not "0 tests found". Do NOT silently default to
-      // newTestCount=0/gatePassed=false here; that would misreport a tooling failure as
-      // a real gate failure and mask the fact the check never ran (#315).
-      log(`[${taskId}] RED FAILED: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`)
-      return {
-        task_id: taskId,
-        status: 'failed',
-        stage: 'RED',
-        error: `count_gate_no_output: test-count-check agent returned null — cannot verify ${acCount} new test functions were committed`,
-      }
-    } else if (typeof countRaw === 'object') {
-      const obj = countRaw as { new_test_count?: number; passed?: boolean }
-      newTestCount = obj.new_test_count || 0
-      gatePassed = obj.passed !== undefined ? Boolean(obj.passed) : newTestCount >= acCount
-    } else {
-      const text = (countRaw as string).trim()
-      const match = text.match(/\{"new_test_count":\s*(\d+)/)
-      if (match) {
-        newTestCount = parseInt(match[1], 10)
-        const passedMatch = text.match(/"passed":\s*(true|false)/)
-        gatePassed = passedMatch ? passedMatch[1] === 'true' : newTestCount >= acCount
-      } else {
-        // Hard fallback — try to extract any number of grep matches from the text
-        const digits = text.replace(/[^0-9]/g, '')
-        newTestCount = digits ? parseInt(digits, 10) : 0
-        gatePassed = newTestCount >= acCount
-      }
-    }
-    if (!gatePassed) {
-      log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`)
-      return { task_id: taskId, status: 'failed', stage: 'RED', error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` }
-    }
-    log(`[${taskId}] RED: ${newTestCount} new test functions confirmed (>= ${acCount} ACs)`)
-  }
-
-  // Structural assertion check — deterministic ast-grep scan, no LLM needed
   const sgPatterns: { pattern: string; name: string }[] = laneLanguage === 'swift'
     ? [
         { pattern: 'XCTFail', name: 'XCTFail' },
@@ -556,33 +501,60 @@ Return ONLY the raw stdout of the second command. Do not reformat, summarize, or
         { pattern: 'assert 1', name: 'assert 1' },
         { pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' },
       ]
-  const sgResult = await agent(
-    `Run these ast-grep commands on the test files and report what was found.
-For each command, capture the output. If ast-grep is not available, fall back to grep.
-
-${testFiles.map((f) => sgPatterns.map((p) =>
-    `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
-  ).join('\n')).join('\n')}
-
-Also check for pass-only test bodies. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
-BODYPATFILE=$(mktemp)
-cat > "$BODYPATFILE" <<'PATTERN_EOF'
-${testFuncBodyRegex}
-PATTERN_EOF
-Then run:
-${testFiles.map((f) =>
-    `grep -A1 -f "$BODYPATFILE" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
-  ).join('\n')}
-
-Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
-Output raw JSON only.`,
-    stageOpts('cli', { label: `assert-check:${taskId}`, phase: 'Act', model: model('fast') }),
+  const postRed = postRedSteps({
+    wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: false,
+  })
+  const postRedRaw = await agent(
+    batchCommandPrompt(postRed),
+    stageOpts('cli', { label: `post-red:${taskId}`, phase: 'Act', model: model('fast') }),
   )
+  const postRedResult = parseBatchResult(postRedRaw, postRed)
 
-  const assertParsed = parseAgentJson<{ has_placeholders?: boolean; detail?: string }>(sgResult as string, {})
-  if (assertParsed.has_placeholders) {
-    log(`[${taskId}] RED: placeholder assertions found — ${assertParsed.detail}`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${assertParsed.detail}` }
+  // ── New-test-function count gate — deterministic script execution, no LLM mediation (#253) ──
+  if (acCount > 0) {
+    let newTestCount = 0
+    let gatePassed = false
+    const countRaw: string | null = postRedResult.missing ? null : stepStdout(postRedResult, 'count-gate')
+    // Parse the JSON output from the script
+    if (countRaw === null || countRaw === undefined) {
+      // The batch returned nothing for the count gate — this is an infrastructure
+      // failure of the count-gate script call itself, not "0 tests found". Do NOT
+      // silently default to newTestCount=0/gatePassed=false here; that would
+      // misreport a tooling failure as a real gate failure and mask the fact the
+      // check never ran (#315).
+      log(`[${taskId}] RED FAILED: test-count-check returned null (${describeFailure(postRedResult, 'post-red batch')}) — cannot verify ${acCount} new test functions were committed`)
+      return {
+        task_id: taskId,
+        status: 'failed',
+        stage: 'RED',
+        error: `count_gate_no_output: test-count-check returned null — cannot verify ${acCount} new test functions were committed`,
+      }
+    } else {
+      const text = countRaw.trim()
+      const match = text.match(/\{"new_test_count":\s*(\d+)/)
+      if (match) {
+        newTestCount = parseInt(match[1], 10)
+        const passedMatch = text.match(/"passed":\s*(true|false)/)
+        gatePassed = passedMatch ? passedMatch[1] === 'true' : newTestCount >= acCount
+      } else {
+        // Hard fallback — try to extract any number of grep matches from the text
+        const digits = text.replace(/[^0-9]/g, '')
+        newTestCount = digits ? parseInt(digits, 10) : 0
+        gatePassed = newTestCount >= acCount
+      }
+    }
+    if (!gatePassed) {
+      log(`[${taskId}] RED FAILED: only ${newTestCount} new test functions found, need >= ${acCount} (one per AC)`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `no_new_test_functions_committed: found ${newTestCount}, need >= ${acCount}` }
+    }
+    log(`[${taskId}] RED: ${newTestCount} new test functions confirmed (>= ${acCount} ACs)`)
+  }
+
+  // Structural assertion check — deterministic ast-grep/grep scan; any output means a placeholder was found
+  const assertDetail = (stepStdout(postRedResult, 'assert-check') || '').trim()
+  if (assertDetail.length > 0) {
+    log(`[${taskId}] RED: placeholder assertions found — ${assertDetail}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${assertDetail}` }
   }
 
   if (red.tests_pass) {
@@ -604,16 +576,11 @@ Output raw JSON only.`,
   // never granted write access to (allowed_write_files == testFiles+implFiles
   // here). Left unchecked, GREEN deadlocks at scope_exceeded: no change
   // confined to implFiles can satisfy an AC whose target lives elsewhere.
-  // Parse the actual RED test content for required files and either
-  // auto-add unambiguous, existing targets to implFiles, or fail loud now —
-  // before GREEN burns an attempt on a lane that structurally cannot pass.
-  const scopeTestContentsRaw = await agent(
-    `Read the contents of these RED test file(s) in the worktree:
-${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join('\n')}
-Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || 'path'}": "contents..."}. No markdown fences, no explanation.`,
-    stageOpts('cli', { label: `scope-repair-read:${taskId}`, phase: 'Act', model: model('fast') }),
-  )
-  const scopeTestContents = parseAgentJson<Record<string, string>>(scopeTestContentsRaw as string, {})
+  // Parse the actual RED test content (read by the post-RED batch) for
+  // required files and either auto-add unambiguous, existing targets to
+  // implFiles, or fail loud now — before GREEN burns an attempt on a lane
+  // that structurally cannot pass.
+  const scopeTestContents = scopeContentsFromSteps(testFiles, (n) => stepStdout(postRedResult, n))
 
   const requiredScopeFiles = new Set<string>()
   for (const tf of testFiles) {
@@ -625,29 +592,6 @@ Return ONLY a JSON object mapping each path (as given after "===FILE:") to its f
   }
 
   const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles])
-  if (scopeGaps.length > 0) {
-    const scopeExistsRaw = await agent(
-      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
-${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join('\n')}
-Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
-      stageOpts('cli', { label: `scope-repair-check:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-    const scopeExistsParsed = parseAgentJson<{ existing?: string[]; missing?: string[] }>(scopeExistsRaw as string, {})
-    const existingGaps = scopeExistsParsed.existing || []
-    const missingGaps = scopeExistsParsed.missing || []
-
-    for (const f of existingGaps) {
-      if (!implFiles.includes(f)) {
-        implFiles.push(f)
-        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files — required by RED test import/assertion, was missing from lane.files`)
-      }
-    }
-    if (missingGaps.length > 0) {
-      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(', ')} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`
-      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`)
-      return { task_id: taskId, status: 'failed', stage: 'RED', error: `scope_gap: ${msg}` }
-    }
-  }
 
   // ── Contract preflight (#356) ─────────────────────────────────────────────
   // Run the committed RED test once against the current tree (deterministic
@@ -667,11 +611,47 @@ The command exits 1 when it finds a conflict — that is expected, not an error;
 Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`
   const isPytestLane: boolean = laneLanguage === 'python' && /pytest/.test(scopedTestCmd)
 
+  // Scope-gap existence checks and the contract preflight share ONE datum-cli
+  // call (#368): the script widens the preflight's --allowed list with the
+  // gaps that exist, exactly as the two sequential agents used to.
+  const scopeContract = scopeContractSteps({
+    wt,
+    scopeGaps,
+    contractPreflight: isPytestLane ? { testFiles, implFiles, scopedTestCmd } : null,
+  })
+  const scopeContractResult = scopeContract.length > 0
+    ? parseBatchResult(
+        await agent(
+          batchCommandPrompt(scopeContract),
+          stageOpts('cli', { label: `scope-contract:${taskId}`, phase: 'Act', model: model('fast') }),
+        ),
+        scopeContract,
+      )
+    : null
+
+  if (scopeGaps.length > 0) {
+    const { existing: existingGaps, missing: missingGaps } = scopeGapsFromSteps(
+      scopeGaps,
+      (n) => (scopeContractResult ? stepResult(scopeContractResult, n)?.exit_code ?? null : null),
+    )
+
+    for (const f of existingGaps) {
+      if (!implFiles.includes(f)) {
+        implFiles.push(f)
+        log(`[${taskId}] scope-repair: auto-adding '${f}' to allowed_write_files — required by RED test import/assertion, was missing from lane.files`)
+      }
+    }
+    if (missingGaps.length > 0) {
+      const msg = `lane ${taskId}: RED test requires ${missingGaps.join(', ')} but allowed_write_files does not include it (and the file does not exist in the repo, so it cannot be safely auto-added)`
+      log(`[${taskId}] SCOPE GAP (fail-loud): ${msg}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `scope_gap: ${msg}` }
+    }
+  }
+
   if (isPytestLane) {
-    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), stageOpts('cli', {
-      label: `contract-preflight:${taskId}`, phase: 'Act', model: model('fast'),
-    }))
-    const redPreflight: ContractPreflight = parseContractPreflight(redPreflightRaw as string)
+    const redPreflight: ContractPreflight = parseContractPreflight(
+      scopeContractResult ? stepStdout(scopeContractResult, 'contract-preflight') : null,
+    )
     if (redPreflight.status === 'contract_conflict') {
       log(`[${taskId}] RED FAILED: contract conflict — ${redPreflight.reason}`)
       return { task_id: taskId, status: 'failed', stage: 'RED', error: `contract_conflict: ${redPreflight.reason}`, needs_write: redPreflight.needs_write }
@@ -682,30 +662,8 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
   }
 
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
-  const rawCounts = await agent(
-    `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation — copy the line between the markers exactly as-is):
-GREPPATFILE=$(mktemp)
-cat > "$GREPPATFILE" <<'PATTERN_EOF'
-${testFuncGrepRegex}
-PATTERN_EOF
-Then run:
-After-counts (current worktree):
-${testFiles.map(f => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null || echo 0`).join('\n')}
-Before-counts (parent commit — 0 for first commit):
-${testFiles.map(f => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join('\n')}
-Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
-    stageOpts('cli', {
-      label: `test-count:${taskId}`, phase: 'Act', model: model('fast'),
-    }),
-  )
-
-  let afterCount = 0
-  let beforeCount = 0
-  const numbers = String(rawCounts).replace(/[^0-9\n]/g, '').trim().split('\n').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-  if (numbers.length >= 2) {
-    afterCount = numbers.slice(0, numbers.length / 2).reduce((a, b) => a + b, 0)
-    beforeCount = numbers.slice(numbers.length / 2).reduce((a, b) => a + b, 0)
-  }
+  const afterCount = sumCounts(stepStdout(postRedResult, 'test-count-after'))
+  const beforeCount = sumCounts(stepStdout(postRedResult, 'test-count-before'))
   const newTestCount = afterCount - beforeCount
   if (newTestCount <= 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${beforeCount}, after=${afterCount})`)
@@ -889,7 +847,6 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
 
   log(`[${taskId}] === LANE COMPLETE ===`)
   await updateStage(issueId, 'done')
-  await writeCompletion()
   return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
 }
 

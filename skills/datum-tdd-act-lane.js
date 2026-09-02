@@ -497,6 +497,199 @@ function renderPrompt(template, vars) {
   );
 }
 
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results2 = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results2, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function catOrMissing(path) {
+  return `cat ${q(path)} 2>/dev/null || echo MISSING`;
+}
+function isMissing(raw) {
+  return !raw || raw.trim() === "" || raw.trim() === "MISSING";
+}
+function laneIntakeSteps(o) {
+  const steps = [];
+  if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
+  steps.push({ name: "history", command: `git -C ${q(o.wt)} log --format="%H %s"`, tolerant: true });
+  if (o.structural) return steps;
+  if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
+  if (o.planSkeletonPath) {
+    steps.push({ name: "skeleton-plan", command: catOrMissing(o.planSkeletonPath), tolerant: true });
+  }
+  const gen = `${o.skeletonCmd}
+cat ${q(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q(o.preflightPath)} 2>/dev/null || echo "{}"`;
+  steps.push({
+    name: "skeleton-gen",
+    command: o.planSkeletonPath ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else
+${gen}
+fi` : gen,
+    tolerant: true
+  });
+  return steps;
+}
+function postRedSteps(o) {
+  const steps = [];
+  if (o.acCount > 0) {
+    steps.push({
+      name: "count-gate",
+      command: `PATFILE=$(mktemp)
+cat > "$PATFILE" <<'PATTERN_EOF'
+${o.testFuncDiffRegex}
+PATTERN_EOF
+bash scripts/test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}`,
+      tolerant: true
+    });
+  }
+  steps.push({
+    name: "assert-check",
+    command: o.testFiles.map((f) => o.sgPatterns.map(
+      (p) => `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -n '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null`
+    ).join("\n")).join("\n") + `
+BODYPATFILE=$(mktemp)
+cat > "$BODYPATFILE" <<'PATTERN_EOF'
+${o.testFuncBodyRegex}
+PATTERN_EOF
+` + o.testFiles.map(
+      (f) => `grep -A1 -f "$BODYPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+    ).join("\n"),
+    tolerant: true
+  });
+  if (o.ownership) steps.push({ name: "ownership", command: ownershipCommand(o.wt), tolerant: true });
+  o.testFiles.forEach((f, i) => {
+    steps.push({ name: `scope-read-${i}`, command: `cat ${q(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true });
+  });
+  steps.push({
+    name: "test-count-pattern",
+    command: `GREPPATFILE=$(mktemp)
+cat > "$GREPPATFILE" <<'PATTERN_EOF'
+${o.testFuncGrepRegex}
+PATTERN_EOF
+cat "$GREPPATFILE"`,
+    tolerant: true
+  });
+  steps.push({
+    name: "test-count-after",
+    command: o.testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null || echo 0`).join("\n"),
+    tolerant: true
+  });
+  steps.push({
+    name: "test-count-before",
+    command: o.testFiles.map(
+      (f) => `git -C ${q(o.wt)} rev-parse HEAD~1 >/dev/null 2>&1 && git -C ${q(o.wt)} show HEAD~1:${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`
+    ).join("\n"),
+    tolerant: true
+  });
+  return steps;
+}
+function ownershipCommand(wt) {
+  return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`;
+}
+function sumCounts(raw) {
+  if (!raw) return 0;
+  return raw.split("\n").map((l) => parseInt(l.trim(), 10)).filter((n) => !isNaN(n)).reduce((a2, b) => a2 + b, 0);
+}
+function scopeContentsFromSteps(testFiles, stdoutOf) {
+  const out = {};
+  testFiles.forEach((f, i) => {
+    const s = stdoutOf(`scope-read-${i}`);
+    if (s) out[f] = s;
+  });
+  return out;
+}
+function scopeContractSteps(o) {
+  const steps = [];
+  o.scopeGaps.forEach((f, i) => {
+    steps.push({ name: `scope-exists-${i}`, command: `test -f ${q(`${o.wt}/${f}`)}`, tolerant: true });
+  });
+  if (o.contractPreflight) {
+    const c = o.contractPreflight;
+    const gapLoop = o.scopeGaps.length > 0 ? `for __f in ${o.scopeGaps.map(q).join(" ")}; do [ -f ${q(o.wt)}/"$__f" ] && __extra+=(--allowed "$__f"); done
+` : "";
+    steps.push({
+      name: "contract-preflight",
+      command: `__extra=()
+${gapLoop}datum contract-preflight --repo ${q(o.wt)} --test-command ${JSON.stringify(c.scopedTestCmd)} ` + c.testFiles.map((f) => `--test-file ${q(f)}`).join(" ") + (c.implFiles.length > 0 ? " " + c.implFiles.map((f) => `--allowed ${q(f)}`).join(" ") : "") + ' "${__extra[@]}"',
+      tolerant: true
+    });
+  }
+  return steps;
+}
+function scopeGapsFromSteps(scopeGaps, exitOf) {
+  const existing = [];
+  const missing = [];
+  scopeGaps.forEach((f, i) => {
+    const code = exitOf(`scope-exists-${i}`);
+    if (code === 0) existing.push(f);
+    else missing.push(f);
+  });
+  return { existing, missing };
+}
+
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
@@ -693,27 +886,32 @@ No markdown fences, no explanation.`,
     }
   }
   log(`[${taskId}] Starting: ${lane.title} (${isStructural ? "structural" : "behavioral"}, ${testFiles.length} test, ${implFiles.length} impl)`);
-  const laneHistoryRaw = await agent(
-    `Run: git -C "${wt}" log --format="%H %s"
-Return ONLY the raw output, no explanation, no markdown fences.`,
-    stageOpts("cli", { label: `lane-history-check:${taskId}`, phase: "Act", model: "haiku" })
+  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/;
+  const cleanupCmd = testFiles.some((f) => scriptTestPattern.test(f)) ? `datum lane-cleanup "${wt}" ${testFiles.map((f) => `--allowed "${f.replace(/"/g, '\\"')}"`).join(" ")}` : null;
+  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
+  const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
+  const intakeSteps = laneIntakeSteps({
+    wt,
+    completionPath: null,
+    structural: isStructural,
+    cleanupCmd,
+    planSkeletonPath,
+    skeletonCmd,
+    preflightPath
+  });
+  const intakeRaw = await agent(
+    batchCommandPrompt(intakeSteps),
+    stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") })
   );
+  const intake = parseBatchResult(intakeRaw, intakeSteps);
+  if (intake.missing) log(`[${taskId}] ${describeFailure(intake, "lane intake")} \u2014 continuing with empty history`);
+  const laneHistoryRaw = stepStdout(intake, "history");
   const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
-  async function writeCompletion() {
-    if (!runId) return;
-    const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`;
-    const dir = cp.split("/").slice(0, -1).join("/");
-    await agent(
-      runCommandPrompt(`mkdir -p ./${dir} && printf '%s
-' '{"task_id": "${taskId}", "status": "completed"}' > ./${cp} && cat ./${cp}`),
-      stageOpts("cli", { label: `completion-write:${taskId}`, phase: "Act", model: model("fast") })
-    );
-  }
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
-    await writeCompletion();
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
   if (redAlreadyCommitted && greenAlreadyCommitted) {
@@ -721,49 +919,26 @@ Return ONLY the raw output, no explanation, no markdown fences.`,
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
     await updateStage(issueId, "done");
-    await writeCompletion();
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
-  const scriptTestPattern = /\.(test|spec)\.(ts|js|tsx|jsx)$|(^|\/)test_.*\.py$/;
-  if (testFiles.some((f) => scriptTestPattern.test(f))) {
-    const allowedArgs = testFiles.map((f) => `--allowed "${f.replace(/"/g, '\\"')}"`).join(" ");
-    const cleanupCmd = `datum lane-cleanup "${wt}" ${allowedArgs}`;
-    await agent(`Run: ${cleanupCmd}`, stageOpts("cli", {
-      label: `pre-red-cleanup:${taskId}`,
-      phase: "Act",
-      model: model("fast")
-    }));
+  if (cleanupCmd) {
     log(`[${taskId}] Pre-RED cleanup completed`);
   } else {
     log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`);
   }
   log(`[${taskId}] RED: writing failing tests`);
-  const skeletonCmd = `datum skeleton --task-id ${taskId} --language ${laneLanguage} --tasks ${cfg2.lanePlanPath} --output .datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
-  const preflightPath = `.datum/runs/${cfg2.runId}/preflight-${taskId}.json`;
-  const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   let targetContext;
   let preflightRaw = null;
   if (planSkeletonPath) {
-    preflightRaw = await agent(
-      `Read the file at "${planSkeletonPath}" with the Read tool.
-If the file exists, return ONLY its raw JSON contents.
-If the file does not exist or is empty, return exactly: MISSING
-No markdown fences, no explanation.`,
-      stageOpts("reader", { label: `skeleton-read:${taskId}`, phase: "Act", model: model("fast") })
-    );
-    if (preflightRaw && preflightRaw.trim() !== "MISSING") {
+    const fromPlan = stepStdout(intake, "skeleton-plan");
+    if (!isMissing(fromPlan)) {
+      preflightRaw = fromPlan;
       log(`[${taskId}] using pre-generated skeleton from Plan phase`);
-    } else {
-      preflightRaw = null;
     }
   }
   if (!preflightRaw) {
-    preflightRaw = await agent(
-      `Run: ${skeletonCmd}
-Then read the output file: cat "${wt}/${preflightPath}" 2>/dev/null || echo "{}"
-Return ONLY the raw JSON contents of the file. No markdown fences, no explanation.`,
-      stageOpts("cli", { label: `preflight:${taskId}`, phase: "Act", model: model("fast") })
-    );
+    const generated = stepStdout(intake, "skeleton-gen");
+    preflightRaw = generated && generated.trim() && generated.trim() !== "SKIPPED_PLAN_SKELETON" ? generated : null;
   }
   let preflightFramework;
   let preflightTestPaths = [];
@@ -881,37 +1056,47 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     return { task_id: taskId, status: "failed", stage: "RED", error: red?.failure_reason || "RED failed" };
   }
   const acCount = (lane.acceptance_criteria || []).length;
+  const sgPatterns = laneLanguage === "swift" ? [
+    { pattern: "XCTFail", name: "XCTFail" },
+    { pattern: "fatalError", name: "fatalError" }
+  ] : laneLanguage === "go" ? [
+    { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
+    { pattern: 'panic("not implemented")', name: "panic placeholder" }
+  ] : laneLanguage === "typescript" || laneLanguage === "javascript" ? [
+    { pattern: "throw new Error", name: "throw placeholder" },
+    { pattern: "expect(true).toBe(false)", name: "forced failure" }
+  ] : [
+    { pattern: "assert True", name: "assert True" },
+    { pattern: "assert 1", name: "assert 1" },
+    { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
+  ];
+  const postRed = postRedSteps({
+    wt,
+    testFiles,
+    acCount,
+    testFuncDiffRegex,
+    sgPatterns,
+    testFuncBodyRegex,
+    testFuncGrepRegex,
+    ownership: false
+  });
+  const postRedRaw = await agent(
+    batchCommandPrompt(postRed),
+    stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") })
+  );
+  const postRedResult = parseBatchResult(postRedRaw, postRed);
   if (acCount > 0) {
     let newTestCount2 = 0;
     let gatePassed = false;
-    const countRaw = await agent(
-      `Run this EXACT sequence of two commands verbatim:
-1. Write the pattern to a temp file (the quoted heredoc delimiter means the shell does no interpretation of its contents \u2014 copy the line between the markers exactly as-is):
-PATFILE=$(mktemp)
-cat > "$PATFILE" <<'PATTERN_EOF'
-${testFuncDiffRegex}
-PATTERN_EOF
-2. Run the gate script against that file:
-bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map((f) => `"${f}"`).join(" ")} --pattern-file "$PATFILE" --required ${acCount}
-Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
-      stageOpts("cli", {
-        label: `test-count-check:${taskId}`,
-        phase: "Act",
-        model: model("fast")
-      })
-    );
+    const countRaw = postRedResult.missing ? null : stepStdout(postRedResult, "count-gate");
     if (countRaw === null || countRaw === void 0) {
-      log(`[${taskId}] RED FAILED: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`);
+      log(`[${taskId}] RED FAILED: test-count-check returned null (${describeFailure(postRedResult, "post-red batch")}) \u2014 cannot verify ${acCount} new test functions were committed`);
       return {
         task_id: taskId,
         status: "failed",
         stage: "RED",
-        error: `count_gate_no_output: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`
+        error: `count_gate_no_output: test-count-check returned null \u2014 cannot verify ${acCount} new test functions were committed`
       };
-    } else if (typeof countRaw === "object") {
-      const obj = countRaw;
-      newTestCount2 = obj.new_test_count || 0;
-      gatePassed = obj.passed !== void 0 ? Boolean(obj.passed) : newTestCount2 >= acCount;
     } else {
       const text = countRaw.trim();
       const match = text.match(/\{"new_test_count":\s*(\d+)/);
@@ -931,46 +1116,10 @@ Return ONLY the raw stdout of the second command. Do not reformat, summarize, or
     }
     log(`[${taskId}] RED: ${newTestCount2} new test functions confirmed (>= ${acCount} ACs)`);
   }
-  const sgPatterns = laneLanguage === "swift" ? [
-    { pattern: "XCTFail", name: "XCTFail" },
-    { pattern: "fatalError", name: "fatalError" }
-  ] : laneLanguage === "go" ? [
-    { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
-    { pattern: 'panic("not implemented")', name: "panic placeholder" }
-  ] : laneLanguage === "typescript" || laneLanguage === "javascript" ? [
-    { pattern: "throw new Error", name: "throw placeholder" },
-    { pattern: "expect(true).toBe(false)", name: "forced failure" }
-  ] : [
-    { pattern: "assert True", name: "assert True" },
-    { pattern: "assert 1", name: "assert 1" },
-    { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
-  ];
-  const sgResult = await agent(
-    `Run these ast-grep commands on the test files and report what was found.
-For each command, capture the output. If ast-grep is not available, fall back to grep.
-
-${testFiles.map((f) => sgPatterns.map(
-      (p) => `ast-grep --pattern '${p.pattern}' "${wt}/${f}" 2>/dev/null || grep -n '${p.pattern}' "${wt}/${f}" 2>/dev/null`
-    ).join("\n")).join("\n")}
-
-Also check for pass-only test bodies. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):
-BODYPATFILE=$(mktemp)
-cat > "$BODYPATFILE" <<'PATTERN_EOF'
-${testFuncBodyRegex}
-PATTERN_EOF
-Then run:
-${testFiles.map(
-      (f) => `grep -A1 -f "$BODYPATFILE" "${wt}/${f}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
-    ).join("\n")}
-
-Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
-Output raw JSON only.`,
-    stageOpts("cli", { label: `assert-check:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  const assertParsed = parseAgentJson(sgResult, {});
-  if (assertParsed.has_placeholders) {
-    log(`[${taskId}] RED: placeholder assertions found \u2014 ${assertParsed.detail}`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${assertParsed.detail}` };
+  const assertDetail = (stepStdout(postRedResult, "assert-check") || "").trim();
+  if (assertDetail.length > 0) {
+    log(`[${taskId}] RED: placeholder assertions found \u2014 ${assertDetail}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${assertDetail}` };
   }
   if (red.tests_pass) {
     const diag = red.test_output || red.test_errors?.join("; ") || "no test output captured";
@@ -984,13 +1133,7 @@ Output raw JSON only.`,
     log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
   }
-  const scopeTestContentsRaw = await agent(
-    `Read the contents of these RED test file(s) in the worktree:
-${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join("\n")}
-Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || "path"}": "contents..."}. No markdown fences, no explanation.`,
-    stageOpts("cli", { label: `scope-repair-read:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  const scopeTestContents = parseAgentJson(scopeTestContentsRaw, {});
+  const scopeTestContents = scopeContentsFromSteps(testFiles, (n) => stepStdout(postRedResult, n));
   const requiredScopeFiles = /* @__PURE__ */ new Set();
   for (const tf of testFiles) {
     const tContent = scopeTestContents[tf] || "";
@@ -1000,16 +1143,28 @@ Return ONLY a JSON object mapping each path (as given after "===FILE:") to its f
     }
   }
   const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles]);
+  const contractPreflightCmd = (allowed) => `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` + testFiles.map((f) => `--test-file "${f}"`).join(" ") + (allowed.length > 0 ? " " + allowed.map((f) => `--allowed "${f}"`).join(" ") : "");
+  const contractPreflightPrompt = (allowed) => `Run: ${contractPreflightCmd(allowed)}
+The command exits 1 when it finds a conflict \u2014 that is expected, not an error; still return its output.
+Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`;
+  const isPytestLane = laneLanguage === "python" && /pytest/.test(scopedTestCmd);
+  const scopeContract = scopeContractSteps({
+    wt,
+    scopeGaps,
+    contractPreflight: isPytestLane ? { testFiles, implFiles, scopedTestCmd } : null
+  });
+  const scopeContractResult = scopeContract.length > 0 ? parseBatchResult(
+    await agent(
+      batchCommandPrompt(scopeContract),
+      stageOpts("cli", { label: `scope-contract:${taskId}`, phase: "Act", model: model("fast") })
+    ),
+    scopeContract
+  ) : null;
   if (scopeGaps.length > 0) {
-    const scopeExistsRaw = await agent(
-      `For each of these paths, report whether it exists as a file in the repo at "${wt}":
-${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join("\n")}
-Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
-      stageOpts("cli", { label: `scope-repair-check:${taskId}`, phase: "Act", model: model("fast") })
+    const { existing: existingGaps, missing: missingGaps } = scopeGapsFromSteps(
+      scopeGaps,
+      (n) => scopeContractResult ? stepResult(scopeContractResult, n)?.exit_code ?? null : null
     );
-    const scopeExistsParsed = parseAgentJson(scopeExistsRaw, {});
-    const existingGaps = scopeExistsParsed.existing || [];
-    const missingGaps = scopeExistsParsed.missing || [];
     for (const f of existingGaps) {
       if (!implFiles.includes(f)) {
         implFiles.push(f);
@@ -1022,18 +1177,10 @@ Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...
       return { task_id: taskId, status: "failed", stage: "RED", error: `scope_gap: ${msg}` };
     }
   }
-  const contractPreflightCmd = (allowed) => `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` + testFiles.map((f) => `--test-file "${f}"`).join(" ") + (allowed.length > 0 ? " " + allowed.map((f) => `--allowed "${f}"`).join(" ") : "");
-  const contractPreflightPrompt = (allowed) => `Run: ${contractPreflightCmd(allowed)}
-The command exits 1 when it finds a conflict \u2014 that is expected, not an error; still return its output.
-Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`;
-  const isPytestLane = laneLanguage === "python" && /pytest/.test(scopedTestCmd);
   if (isPytestLane) {
-    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), stageOpts("cli", {
-      label: `contract-preflight:${taskId}`,
-      phase: "Act",
-      model: model("fast")
-    }));
-    const redPreflight = parseContractPreflight(redPreflightRaw);
+    const redPreflight = parseContractPreflight(
+      scopeContractResult ? stepStdout(scopeContractResult, "contract-preflight") : null
+    );
     if (redPreflight.status === "contract_conflict") {
       log(`[${taskId}] RED FAILED: contract conflict \u2014 ${redPreflight.reason}`);
       return { task_id: taskId, status: "failed", stage: "RED", error: `contract_conflict: ${redPreflight.reason}`, needs_write: redPreflight.needs_write };
@@ -1042,31 +1189,8 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
   } else {
     log(`[${taskId}] contract preflight skipped (not a pytest lane)`);
   }
-  const rawCounts = await agent(
-    `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):
-GREPPATFILE=$(mktemp)
-cat > "$GREPPATFILE" <<'PATTERN_EOF'
-${testFuncGrepRegex}
-PATTERN_EOF
-Then run:
-After-counts (current worktree):
-${testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null || echo 0`).join("\n")}
-Before-counts (parent commit \u2014 0 for first commit):
-${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join("\n")}
-Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
-    stageOpts("cli", {
-      label: `test-count:${taskId}`,
-      phase: "Act",
-      model: model("fast")
-    })
-  );
-  let afterCount = 0;
-  let beforeCount = 0;
-  const numbers = String(rawCounts).replace(/[^0-9\n]/g, "").trim().split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-  if (numbers.length >= 2) {
-    afterCount = numbers.slice(0, numbers.length / 2).reduce((a2, b) => a2 + b, 0);
-    beforeCount = numbers.slice(numbers.length / 2).reduce((a2, b) => a2 + b, 0);
-  }
+  const afterCount = sumCounts(stepStdout(postRedResult, "test-count-after"));
+  const beforeCount = sumCounts(stepStdout(postRedResult, "test-count-before"));
   const newTestCount = afterCount - beforeCount;
   if (newTestCount <= 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${beforeCount}, after=${afterCount})`);
@@ -1220,7 +1344,6 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   }
   log(`[${taskId}] === LANE COMPLETE ===`);
   await updateStage(issueId, "done");
-  await writeCompletion();
   return { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {

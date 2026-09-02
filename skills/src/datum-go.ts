@@ -1,6 +1,8 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
-import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
+import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { laneStateReadScript } from './shared/prompts'
+import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { actStartSteps } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
@@ -263,39 +265,38 @@ if (shouldRun('act', 3)) {
   // Bootstrap: resolve branch + generate runId via the CLI adopt path
   // (`datum init --json`, #213) instead of an inline-only agent prompt.
   // The CLI detects/adopts an existing feature branch (epicBranch) and
-  // guards against unsafe branch state; we still ask the agent for a
-  // fresh timestamp to use as this run's runId.
-  const bootstrapInfo = await agent(
-    `Run this EXACT command and capture its raw stdout: datum init --json
-Then run: date +%Y%m%d-%H%M%S
-Return ONLY a single JSON object merging the fields from the datum init --json output (epicBranch, lanePlanPath, adopted) plus a "timestamp" field set to the date command's output. No markdown fences, no explanation.`,
-    stageOpts('cli', { label: 'act-bootstrap', model: model('fast') }),
+  // guards against unsafe branch state; the same script also stamps this
+  // run's runId, resolves lane-plan-final.json over stale lane-plan.json
+  // (#232/#237), reads the plan and the epic-scoped completion markers —
+  // ONE datum-cli call (#368) where there were four.
+  const actStart = actStartSteps({
+    branch: 'init',
+    initCmd: 'datum init --json',
+    lanePlanPath: null,
+    laneStateReadScript: laneStateReadScript({
+      epicBranch: '$__eb', epicSlug: '', taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`,
+    }),
+  })
+  const actStartRaw = await agent(
+    batchCommandPrompt(actStart),
+    stageOpts('cli', { label: 'act-start', phase: 'Act', model: model('fast') }),
   )
-  const info = parseAgentJson(bootstrapInfo, { epicBranch: '', timestamp: '' }) as { epicBranch: string; timestamp: string; lanePlanPath?: string; adopted?: boolean }
+  const actStartResult = parseBatchResult(actStartRaw, actStart)
+  const info = parseAgentJson(stepStdout(actStartResult, 'bootstrap') || '', { epicBranch: '' }) as { epicBranch: string; lanePlanPath?: string; adopted?: boolean }
   const epicBranch = info.epicBranch
-  const runId = info.timestamp
+  const runId = (stepStdout(actStartResult, 'timestamp') || '').trim()
   resolvedBranch = epicBranch
   resolvedRunId = runId
-  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)}`)
+  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)} (${describeFailure(actStartResult, 'act-start')})`)
 
   // Skeleton dir from Plan phase (pre-generated test contracts)
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`
 
   // Read lane plan — prefer lane-plan-final.json over stale lane-plan.json
   const epicDir = `docs/epics/${epicBranch}`
-  const resolveText = await agent(
-    resolveLanePlanPrompt(epicDir),
-    stageOpts('cli', { label: 'resolve-lane-plan', phase: 'Act', model: model('fast') })
-  )
-  const lanePlanPath = resolveLanePlanPath(epicDir, resolveText)
-  const planText = await agent(
-    `Read ${lanePlanPath} and return its contents as raw JSON text. Output ONLY the JSON, no markdown fences, no explanation.`,
-    stageOpts('reader', { label: 'read-plan', model: model('fast') }),
-  )
-  const lanePlan = (typeof planText === 'string'
-    ? parseAgentJson<LanePlan | null>(planText, null)
-    : planText) as LanePlan
-  if (!lanePlan || !lanePlan.lanes) throw new Error('Failed to parse lane-plan.json — agent returned unparseable output')
+  const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, 'resolve') || '')
+  const lanePlan = parseAgentJson<LanePlan | null>(stepStdout(actStartResult, 'read-plan') || '', null) as LanePlan
+  if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
 
   const waves = buildWaves(lanePlan)
   if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
@@ -307,11 +308,7 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
   // A marker counts only if status=completed, its spec_hash matches the current lane
   // plan entry, and its merge_commit is an ancestor of the epic branch tip.
   const slug = epicSlug(epicBranch)
-  const markerText = await agent(
-    laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(' ') }),
-    stageOpts('cli', { label: 'lane-state-read', phase: 'Act', model: model('fast') }),
-  )
-  const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
+  const priorMarkers = parseAgentJson(stepStdout(actStartResult, 'lane-state-read') || '', {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
   const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
     const m = priorMarkers[id]
     return !!m && m.status === 'completed' && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {})
@@ -403,7 +400,9 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
     }
     log(`Act${batchTag} done: ${batchLaneIds.filter(id => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`)
 
-    // Merge + Cleanup — direct child workflow
+    // Merge + Cleanup — direct child workflow. The epic-scoped completion
+    // markers (so future runs/sessions skip these lanes) are written by the
+    // merge workflow in the same datum-cli call as the squash merge (#368).
     const mergedIds = batchLaneIds.filter(id => actCompleted.includes(id))
     await workflow(
       { scriptPath: sk('datum-tdd-act-merge') },
@@ -415,17 +414,11 @@ Return ONLY a single JSON object merging the fields from the datum init --json o
         topoOrder: lanePlan.topological_order,
         batchTag,
         agentTypes: agentTypeArgs(),
+        laneState: mergedIds.length > 0
+          ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
+          : null,
       },
     )
-
-    // Persist epic-scoped completion markers so future runs/sessions skip these lanes
-    if (mergedIds.length > 0) {
-      const entriesJson = JSON.stringify(mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })))
-      await agent(
-        laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
-        stageOpts('cli', { label: `lane-state-write${batchTag}`, phase: 'Act', model: model('fast') }),
-      )
-    }
   }
 
   // Docs — direct child workflow
