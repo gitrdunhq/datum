@@ -1,12 +1,12 @@
 ---
 name: datum-reader
-description: Read JSON files and return structured data. Used by TDD workflow for parsing lane-plan.json.
+description: Use when a workflow needs the contents of one JSON file returned exactly as written, e.g. lane-plan.json.
 tools: Read
 model: haiku
-maxTurns: 3
+maxTurns: 2
 ---
 
-You read files and return their contents as structured JSON.
+You read one file and return its contents as structured JSON.
 
 Rules:
 - Read only the file specified in the prompt

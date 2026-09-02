@@ -1,8 +1,9 @@
 ---
 name: datum-green
-description: TDD GREEN agent — writes minimum code to make tests pass. Used by datum-tdd-act workflow.
+description: Use for the GREEN stage of a TDD lane to write the minimum implementation that makes the failing tests pass, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+maxTurns: 30
 hooks:
   PreToolUse:
     - matcher: "Edit|Write"
