@@ -299,6 +299,24 @@ def _unsafe_branch_state_message() -> str | None:
     return None
 
 
+def _print_agent_install(installed) -> None:
+    """Human-readable summary of the agent/hook materialisation (#368)."""
+    console.print(
+        f"[dim]Agent types → {installed.agents_dir} "
+        f"({len(installed.agents_written)} written)[/dim]"
+    )
+    console.print(
+        f"[dim]Agent hooks → {installed.hooks_dir} "
+        f"({len(installed.hooks_written)} written)[/dim]"
+    )
+    for name in installed.skipped:
+        console.print(
+            f"[yellow]skipped {name}: not a datum-materialised file, left untouched[/yellow]"
+        )
+    for err in installed.errors:
+        console.print(f"[bold red]agent install: {err}[/bold red]")
+
+
 def _quiet_stdout_ctx(json_output: bool):
     """Context manager that swallows stdout when ``json_output`` is set.
 
@@ -336,19 +354,31 @@ def init(
         "--json",
         help="Emit machine-readable JSON (epicBranch/lanePlanPath/adopted) instead of rich text.",
     ),
-    refresh_skills: bool = typer.Option(
+    refresh: bool = typer.Option(
         False,
+        "--refresh",
         "--refresh-skills",
         help=(
-            "Only re-copy the workflow skills into .datum/skills/ and point "
-            "skills_dir there (#353). No branch/epic bootstrap."
+            "Only re-copy the workflow skills (.datum/skills/), agent types "
+            "(.claude/agents/datum-*.md) and their hooks (.datum/hooks/) from "
+            "the installed datum, then update .datum/config.json (#353, #368). "
+            "No branch/epic bootstrap. --refresh-skills is the old alias."
         ),
     ),
 ):
-    """Bootstrap the repository for DATUM execution."""
+    """Bootstrap the repository for DATUM execution.
+
+    Besides the branch/epic bootstrap this materialises three things a
+    consumer repo needs from the installed datum package: the compiled
+    workflow skills (.datum/skills/), the agent-type definitions
+    (.claude/agents/datum-*.md — committed-safe) and the PreToolUse/
+    PostToolUse hooks they reference (.datum/hooks/, gitignored). Records
+    ``hooks_installed`` / ``agent_types`` in .datum/config.json.
+    """
     import subprocess
     import sys
 
+    from datum.agents_materialize import install_agent_types
     from datum.bootstrap import seed_state_docs
     from datum.detect import detect_repo
     from datum.skills_materialize import resolve_skills_dir
@@ -356,20 +386,36 @@ def init(
 
     # The Workflow harness refuses scriptPaths outside the working directory
     # (symlinks resolved first), so skills are COPIED into the repo (#353).
-    package_skills = Path(__file__).resolve().parent.parent / "skills"
+    package_root = Path(__file__).resolve().parent.parent
+    package_skills = package_root / "skills"
     config_path = Path(".datum/config.json")
 
-    if refresh_skills:
+    if refresh:
         existing = json.loads(config_path.read_text()) if config_path.exists() else {}
         resolved = resolve_skills_dir(Path.cwd(), package_skills, force=True)
         existing["skills_dir"] = str(resolved)
+        installed = install_agent_types(Path.cwd(), package_root, force=True)
+        existing.update(installed.as_config())
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(existing, indent=2) + "\n")
         if json_output:
-            print(json.dumps({"skillsDir": str(resolved), "refreshed": True}))
+            print(
+                json.dumps(
+                    {
+                        "skillsDir": str(resolved),
+                        "agentsDir": str(installed.agents_dir),
+                        "hooksDir": str(installed.hooks_dir),
+                        "refreshed": True,
+                        **installed.as_config(),
+                        "skipped": installed.skipped,
+                        "errors": installed.errors,
+                    }
+                )
+            )
         else:
             console.print(f"[dim]Skills refreshed → {resolved}[/dim]")
-            console.print(f"[dim]skills_dir written to {config_path}[/dim]")
+            _print_agent_install(installed)
+            console.print(f"[dim]config updated at {config_path}[/dim]")
         return
 
     # In --json mode, downstream helpers still write their own human status
@@ -410,6 +456,10 @@ def init(
     # Always re-resolved (never preserved from an existing config): a stale
     # out-of-repo skills_dir is exactly the failure mode in #353.
     config["skills_dir"] = str(resolve_skills_dir(Path.cwd(), package_skills))
+    # Same story for agent types + hooks (#368): always re-materialised so a
+    # moved checkout or an upgraded datum never leaves stale hook paths.
+    installed = install_agent_types(Path.cwd(), package_root)
+    config.update(installed.as_config())
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     if not json_output:
@@ -417,6 +467,7 @@ def init(
             f"[bold]Detected:[/bold] {config['language']}/{config['test_framework']}"
         )
         console.print(f"[bold]Test cmd:[/bold] {config['test_command']}")
+        _print_agent_install(installed)
         console.print(f"[dim]Config written to {config_path}[/dim]")
 
     with quiet_stdout:
