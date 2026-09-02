@@ -28,7 +28,11 @@ var STAGE_RESULT_SCHEMA = {
     test_output: { type: "string" },
     committed: { type: "boolean" },
     commit_sha: { type: "string" },
-    failure_reason: { type: "string" }
+    failure_reason: { type: "string" },
+    // #356: structured GREEN block — {status:"blocked", needs_write:[paths], reason}
+    status: { type: "string", enum: ["ok", "blocked"] },
+    needs_write: { type: "array", items: { type: "string" } },
+    reason: { type: "string" }
   },
   required: ["success", "tests_pass", "committed"]
 };
@@ -379,6 +383,58 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras
     ...extras
   };
 }
+var SKIPPED_PREFLIGHT = { status: "skipped", conflicts: [], needs_write: [], reason: "no preflight result" };
+function parseContractPreflight(raw) {
+  if (!raw) return SKIPPED_PREFLIGHT;
+  const parsed = parseAgentJson(raw, {});
+  if (!parsed || typeof parsed !== "object" || !parsed.status) return SKIPPED_PREFLIGHT;
+  if (parsed.status !== "ok" && parsed.status !== "contract_conflict" && parsed.status !== "skipped") return SKIPPED_PREFLIGHT;
+  return {
+    status: parsed.status,
+    conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
+    needs_write: Array.isArray(parsed.needs_write) ? parsed.needs_write.filter((p) => typeof p === "string") : [],
+    reason: typeof parsed.reason === "string" ? parsed.reason : "",
+    pytest_exit_code: parsed.pytest_exit_code ?? null
+  };
+}
+var SCOPE_EXCEEDED_RE = /scope_exceeded:\s*(.+)$/i;
+function decideGreenBlock(green, preflight) {
+  const notBlocked = { blocked: false, needsWrite: [], reason: "" };
+  if (!green) return notBlocked;
+  if (green.success && green.tests_pass) return notBlocked;
+  if (green.status === "blocked") {
+    return {
+      blocked: true,
+      needsWrite: (green.needs_write || []).filter(Boolean),
+      reason: green.reason || green.failure_reason || "GREEN agent reported status=blocked"
+    };
+  }
+  const scope = (green.failure_reason || "").match(SCOPE_EXCEEDED_RE);
+  if (scope) {
+    const files = scope[1].split(/[,\s]+/).map((f) => f.trim()).filter(Boolean);
+    return { blocked: true, needsWrite: files, reason: green.failure_reason || "scope_exceeded" };
+  }
+  if (preflight && preflight.status === "contract_conflict") {
+    const detail = preflight.conflicts.map((c) => `${c.test}: ${c.error_type}: ${c.message} (${c.kind}${c.symbol ? `, symbol ${c.symbol}` : ""}, defined in ${c.defined_in.join(", ")})`).join("; ");
+    return {
+      blocked: true,
+      needsWrite: preflight.needs_write,
+      reason: `contract_conflict: RED test contradicts a contract GREEN cannot write \u2014 ${detail || preflight.reason}. Re-running GREEN with an unchanged allowed_write_files cannot pass.`
+    };
+  }
+  return notBlocked;
+}
+var AUTO_WIDEN_PREFIXES = ["src/"];
+function autoWidenTargets(needsWrite, prefixes = AUTO_WIDEN_PREFIXES) {
+  const widen = [];
+  const rejected = [];
+  for (const p of needsWrite) {
+    const safe = !p.split("/").includes("..") && !p.startsWith("/");
+    if (safe && prefixes.some((pre) => p.startsWith(pre))) widen.push(p);
+    else rejected.push(p);
+  }
+  return { widen, rejected };
+}
 var LANE_COMMIT_AUTHOR_EMAIL = "datum@local";
 function laneCommitCommand(opts) {
   const { wt, taskId, stage, runId } = opts;
@@ -475,13 +531,13 @@ PACKET FIELDS:
 
 CONSTRAINTS:
 - Only write and commit implementation files: {{implFilesList}}
-- If making tests pass requires modifying files outside {{implFilesList}}, report success=false with failure_reason='scope_exceeded: <list-of-files>'. Do NOT write files outside allowed scope.
+- If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) \u2014 one honest blocked result beats three blind attempts.
 - Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
 - For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
 `;
 
 // skills/src/prompts/green-retry.md
-var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 all tests must pass. Report tests_pass=true.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n';
+var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 all tests must pass. Report tests_pass=true.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\nIf the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.\n';
 
 // skills/src/prompts/refactor.md
 var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run {{testCommand}} \u2014 every test must still pass. Report tests_pass=true.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
@@ -934,6 +990,26 @@ Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...
       return { task_id: taskId, status: "failed", stage: "RED", error: `scope_gap: ${msg}` };
     }
   }
+  const contractPreflightCmd = (allowed) => `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` + testFiles.map((f) => `--test-file "${f}"`).join(" ") + (allowed.length > 0 ? " " + allowed.map((f) => `--allowed "${f}"`).join(" ") : "");
+  const contractPreflightPrompt = (allowed) => `Run: ${contractPreflightCmd(allowed)}
+The command exits 1 when it finds a conflict \u2014 that is expected, not an error; still return its output.
+Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`;
+  const isPytestLane = laneLanguage === "python" && /pytest/.test(scopedTestCmd);
+  if (isPytestLane) {
+    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), {
+      label: `contract-preflight:${taskId}`,
+      phase: "Act",
+      model: model("fast")
+    });
+    const redPreflight = parseContractPreflight(redPreflightRaw);
+    if (redPreflight.status === "contract_conflict") {
+      log(`[${taskId}] RED FAILED: contract conflict \u2014 ${redPreflight.reason}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `contract_conflict: ${redPreflight.reason}`, needs_write: redPreflight.needs_write };
+    }
+    log(`[${taskId}] contract preflight: ${redPreflight.status}${redPreflight.status === "skipped" ? ` (${redPreflight.reason})` : ""}`);
+  } else {
+    log(`[${taskId}] contract preflight skipped (not a pytest lane)`);
+  }
   const rawCounts = await agent(
     `Count test functions in these files. First write the pattern to a temp file (quoted heredoc delimiter means the shell does no interpretation \u2014 copy the line between the markers exactly as-is):
 GREPPATFILE=$(mktemp)
@@ -1005,15 +1081,50 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ")}`);
   }
   if (!green || !green.success || !green.tests_pass) {
-    log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || "unknown"}, escalating to opus`);
-    green = await resilientAgent(
-      greenRetryPrompt({
-        ...greenVars,
-        failureReason: green?.failure_reason || "unknown",
-        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason })
-      }),
-      { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
-    );
+    let greenPreflight = null;
+    const selfReportedBlock = !!green && (green.status === "blocked" || /scope_exceeded/i.test(green.failure_reason || ""));
+    if (green && isPytestLane && !selfReportedBlock) {
+      const raw = await agent(contractPreflightPrompt(implFiles), {
+        label: `contract-check:${taskId}`,
+        phase: "Act",
+        model: model("fast")
+      });
+      greenPreflight = parseContractPreflight(raw);
+    }
+    const decision = decideGreenBlock(green, greenPreflight);
+    if (decision.blocked) {
+      const { widen, rejected } = cfg2.yolo ? autoWidenTargets(decision.needsWrite) : { widen: [], rejected: decision.needsWrite };
+      if (cfg2.yolo && widen.length > 0 && rejected.length === 0) {
+        for (const f of widen) if (!implFiles.includes(f)) implFiles.push(f);
+        log(`[${taskId}] GREEN blocked \u2014 yolo auto-widened allowed_write_files with [${widen.join(", ")}] (all inside src/); re-running GREEN once`);
+        const widenedPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
+        green = await resilientAgent(
+          greenRetryPrompt({
+            ...greenVars,
+            greenCtxCmd: laneCtxCmd(widenedPacket, wt),
+            implFilesList: implFiles.join(" "),
+            failureReason: `blocked: ${decision.reason} \u2014 allowed_write_files now also includes ${widen.join(", ")}`,
+            greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason })
+          }),
+          { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+        );
+      } else {
+        const refusal = cfg2.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(", ")}] not inside src/)` : "";
+        const err = `needs_approval: GREEN blocked \u2014 needs write access to [${decision.needsWrite.join(", ") || "unspecified"}]: ${decision.reason}${refusal}`;
+        log(`[${taskId}] ${err}`);
+        return { task_id: taskId, status: "blocked", stage: "GREEN", error: err, needs_write: decision.needsWrite };
+      }
+    } else {
+      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || "unknown"}, escalating to opus`);
+      green = await resilientAgent(
+        greenRetryPrompt({
+          ...greenVars,
+          failureReason: green?.failure_reason || "unknown",
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason })
+        }),
+        { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      );
+    }
   }
   if (!green || !green.success || !green.tests_pass) {
     const reason = !green ? "GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) \u2014 check the subagent transcript for this run to recover the actual failure cause" : green.failure_reason || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? "n/a"})`;

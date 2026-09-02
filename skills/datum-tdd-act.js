@@ -327,7 +327,7 @@ ${"=".repeat(60)}`);
       lanePlan,
       worktreePaths: setup.worktreePaths,
       batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo },
       priorFailures: failures,
       priorCompleted: completedLanes
     }
@@ -344,6 +344,18 @@ ${"=".repeat(60)}`);
     }
   }
   log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
+  const approvals = Object.values(act.results || {}).filter(
+    (r) => !!r && r.status === "blocked" && r.stage === "GREEN" && Array.isArray(r.needs_write)
+  );
+  if (approvals.length > 0) {
+    log(`
+LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed_write_files:`);
+    for (const r of approvals) {
+      log(`  ${r.task_id}: needs_write=[${(r.needs_write || []).join(", ")}]`);
+      log(`    ${r.error}`);
+    }
+    log("  To approve: add the listed paths to that lane's `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.");
+  }
   log("\u2500\u2500 Merge \u2500\u2500");
   const mergedIds = batchLaneIds.filter((id) => completedLanes.includes(id));
   await workflow(

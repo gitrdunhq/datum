@@ -533,3 +533,92 @@ describe('laneCommitCommand — issue #357: unified lane commit convention', () 
     expect(cmd).not.toContain('Datum-Run:')
   })
 })
+
+// ---------------------------------------------------------------------------
+// #356 — GREEN cannot pass when the RED test contradicts an existing
+// contract. The orchestrator must (b) turn a structured blocked result into
+// one lead-approval question (or auto-widen in yolo mode), and (c) never
+// re-run GREEN with an unchanged allowed_write_files when the previous
+// failure was a TypeError/AttributeError originating in a forbidden file.
+// ---------------------------------------------------------------------------
+
+import { decideGreenBlock, autoWidenTargets, parseContractPreflight } from './utils'
+import type { StageResult, ContractPreflight } from './types'
+
+describe('decideGreenBlock — issue #356', () => {
+  const okPreflight: ContractPreflight = { status: 'ok', conflicts: [], needs_write: [], reason: '' }
+
+  it('honours a structured blocked result from the GREEN agent', () => {
+    const green: StageResult = {
+      success: false, tests_pass: false, committed: false,
+      status: 'blocked', needs_write: ['datum/tool.py'], reason: 'ToolResult needs stderr default',
+    }
+    const d = decideGreenBlock(green, null)
+    expect(d.blocked).toBe(true)
+    expect(d.needsWrite).toEqual(['datum/tool.py'])
+    expect(d.reason).toContain('ToolResult needs stderr default')
+  })
+
+  it('parses the legacy scope_exceeded failure_reason into needs_write', () => {
+    const green: StageResult = {
+      success: false, tests_pass: false, committed: false,
+      failure_reason: 'scope_exceeded: datum/tool.py, datum/other.py',
+    }
+    const d = decideGreenBlock(green, null)
+    expect(d.blocked).toBe(true)
+    expect(d.needsWrite).toEqual(['datum/tool.py', 'datum/other.py'])
+  })
+
+  it('blocks (never retries) when the contract preflight found a TypeError/AttributeError in an unwritable file', () => {
+    const green: StageResult = { success: false, tests_pass: false, committed: false, failure_reason: '2 tests still failing' }
+    const preflight: ContractPreflight = {
+      status: 'contract_conflict',
+      conflicts: [{ test: 'test_construct', kind: 'signature_mismatch', error_type: 'TypeError', message: 'ToolResult.__init__() missing 1 required positional argument: \'stderr\'', origin_file: 'tests/test_tool.py', symbol: 'ToolResult', defined_in: ['datum/tool.py'] }],
+      needs_write: ['datum/tool.py'],
+      reason: 'RED test contradicts an existing contract',
+    }
+    const d = decideGreenBlock(green, preflight)
+    expect(d.blocked).toBe(true)
+    expect(d.needsWrite).toEqual(['datum/tool.py'])
+    expect(d.reason).toMatch(/ToolResult/)
+    expect(d.reason).toMatch(/contract/i)
+  })
+
+  it('does not block an ordinary GREEN failure — the normal retry path still applies', () => {
+    const green: StageResult = { success: false, tests_pass: false, committed: false, failure_reason: 'assertion mismatch in test_x' }
+    expect(decideGreenBlock(green, okPreflight).blocked).toBe(false)
+    expect(decideGreenBlock(green, { status: 'skipped', conflicts: [], needs_write: [], reason: 'not a pytest lane' }).blocked).toBe(false)
+    expect(decideGreenBlock(null, null).blocked).toBe(false)
+  })
+
+  it('never blocks a successful GREEN', () => {
+    const green: StageResult = { success: true, tests_pass: true, committed: true }
+    expect(decideGreenBlock(green, { status: 'contract_conflict', conflicts: [], needs_write: ['x.py'], reason: 'r' }).blocked).toBe(false)
+  })
+})
+
+describe('autoWidenTargets — issue #356 yolo auto-widen', () => {
+  it('accepts only paths inside src/ and rejects the rest', () => {
+    const r = autoWidenTargets(['src/pkg/tool.py', 'datum/tool.py', 'src/../etc/passwd', 'tests/test_x.py'])
+    expect(r.widen).toEqual(['src/pkg/tool.py'])
+    expect(r.rejected).toEqual(['datum/tool.py', 'src/../etc/passwd', 'tests/test_x.py'])
+  })
+
+  it('is empty for an empty request', () => {
+    expect(autoWidenTargets([])).toEqual({ widen: [], rejected: [] })
+  })
+})
+
+describe('parseContractPreflight — issue #356', () => {
+  it('falls back to skipped on unparseable agent output', () => {
+    const p = parseContractPreflight('the agent said nothing useful')
+    expect(p.status).toBe('skipped')
+    expect(p.needs_write).toEqual([])
+  })
+
+  it('reads the module JSON as-is', () => {
+    const p = parseContractPreflight('{"status":"contract_conflict","conflicts":[],"needs_write":["a.py"],"reason":"r"}')
+    expect(p.status).toBe('contract_conflict')
+    expect(p.needs_write).toEqual(['a.py'])
+  })
+})

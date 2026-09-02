@@ -19,3 +19,4 @@ AFTER WRITING:
 4. Report commit_sha.
 
 Only write and commit implementation files: {{implFilesList}}
+If the tests cannot pass without writing a file outside that list, do NOT write it — return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.
