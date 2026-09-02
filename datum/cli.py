@@ -636,6 +636,19 @@ def skeleton(ctx: typer.Context):
 
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    name="contract-preflight",
+)
+def contract_preflight(ctx: typer.Context):
+    """Run the RED/GREEN contract preflight (#356, internal)."""
+    import subprocess
+    import sys
+
+    res = subprocess.run([sys.executable, "-m", "datum.contract_preflight"] + ctx.args)
+    raise typer.Exit(res.returncode)
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     name="commit-queue",
 )
 def commit_queue(ctx: typer.Context):
