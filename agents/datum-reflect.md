@@ -1,6 +1,6 @@
 ---
 name: datum-reflect
-description: Score test quality 0-10 after RED phase. Used by datum-tdd-act workflow to gate progression to GREEN.
+description: Use after the RED stage to score the new tests 0-10 for quality and gate progression to GREEN.
 tools: Read, Bash
 model: haiku
 maxTurns: 3

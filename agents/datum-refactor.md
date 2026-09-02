@@ -1,8 +1,9 @@
 ---
 name: datum-refactor
-description: TDD REFACTOR agent — cleans up implementation without changing behavior. Used by datum-tdd-act workflow.
+description: Use for the REFACTOR stage of a TDD lane to clean up the implementation without changing behaviour or touching tests, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+maxTurns: 30
 hooks:
   PreToolUse:
     - matcher: "Write"

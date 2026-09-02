@@ -1,6 +1,6 @@
 ---
 name: datum-skeptic
-description: Adversarial verification after GREEN — tries to break the implementation. Used by datum-tdd-act workflow.
+description: Use after GREEN to adversarially verify the implementation read-only and return an evidence-backed PASS/FRAGILE/BROKEN verdict.
 tools: Read, Bash, Grep
 model: sonnet
 hooks:

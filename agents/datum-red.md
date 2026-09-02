@@ -1,8 +1,9 @@
 ---
 name: datum-red
-description: TDD RED agent — writes failing tests for acceptance criteria. Used by datum-tdd-act workflow.
+description: Use for the RED stage of a TDD lane to append failing tests for the acceptance criteria, verify they fail, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+maxTurns: 30
 hooks:
   PreToolUse:
     - matcher: "Write"

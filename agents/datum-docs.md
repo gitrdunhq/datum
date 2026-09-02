@@ -1,6 +1,6 @@
 ---
 name: datum-docs
-description: Documentation sync agent — two modes (update/new) to keep docs in sync with code. Used by datum-tdd-act workflow post-merge.
+description: Use post-merge to sync documentation with code changes in update mode (fix stale docs) or new mode (document new public APIs).
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 hooks:
