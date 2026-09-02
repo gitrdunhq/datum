@@ -80,6 +80,21 @@ Workflow({ name: "datum-go", args: { yolo: true, configFingerprint: "<FP>" } })
 
 Without `configFingerprint` the script logs a warning and a resumed run replays the stale config read.
 
+### Agent types and batched command runners (#368)
+
+Two `.datum/config.json` keys control how the lane pipeline spawns subagents. `datum-go` reads them once at boot and passes them to every child workflow; the standalone phase workflows read them from config themselves.
+
+| Key | Default | Effect |
+|---|---|---|
+| `agent_types` | `true` | Every mapped `agent()` call passes `agentType`: RED/GREEN/REFACTOR/skeptic/reflect/docs use `agents/datum-{red,green,refactor,skeptic,reflect,docs}.md`, pure JSON/file reads use `datum-reader`, command runners use `datum-cli`. Set to `false` for a runtime without `agentType` support (the OpenAI-compatible runtime) — no call then carries one. |
+| `hooks_installed` | `false` | Written by `datum init` once the `datum-red/green/refactor` PreToolUse hooks (lane-file-guard, protect-tests) are materialised in the repo. When `agent_types && hooks_installed`, the per-stage ownership check and the cross-run completion read become plain commands inside the batched `datum-cli` calls, evaluated by the script; otherwise the standalone LLM checks run as before. |
+
+The mapping lives in one table, `AGENT_TYPE_TABLE` in `skills/src/shared/agent-types.ts` (`stageOpts(stage, opts)` at every call site). A vitest drift guard requires an `agents/<name>.md` for every entry.
+
+Consecutive command runners with no LLM judgement between them run as **one** `datum-cli` call whose script lists the commands in order and prints one JSON array of per-step `exit_code`/`stdout`/`stderr` (fail-fast on the first non-tolerant non-zero exit; step lists in `skills/src/shared/lane-steps.ts`). Per lane on the happy path that is 3 calls (`lane-intake`, `post-red`, `post-green`; plus `scope-contract` for pytest lanes) with hooks installed, 5–6 without. Setup, merge (which now also writes the per-lane completion markers and the epic-scoped `datum lane-state` entries — skipped when the merge step failed) and the act-start bootstrap are one call each. The scripts need `jq` and `bash` on the PATH, same as the lane-state markers already did.
+
+Because a custom agent definition replaces the default subagent system prompt and tool set but the CLAUDE.md hierarchy still loads, keep the consumer repo's CLAUDE.md lean; the `datum-cli` runner is `tools: Bash`, `maxTurns: 3`, so every batched script is written to run in a single Bash invocation.
+
 ## Act Phase — TDD Workflow Pipeline
 
 Act is handled by the `datum-tdd-act` TypeScript workflow (`skills/src/datum-tdd-act.ts`).
@@ -94,12 +109,12 @@ Workflow({ name: "datum-tdd-act", args: { epicBranch: "datum/epic-17", runId: "2
 ```
 
 **Pipeline stages per lane:**
-1. **RED** — write failing tests (sonnet), structural assertion check (haiku)
+1. **RED** — write failing tests (`datum-red`, sonnet); count gate + placeholder scan + scope read run as one batched `datum-cli` call
 2. **REFLECT** — score test quality 0-10 (haiku), gate at <4
 3. **GREEN** — make tests pass (sonnet, escalates to opus on retry)
 4. **SKEPTIC** — adversarial verification panel (3 lenses: edge/error/contract)
 5. **REFACTOR** — optional cleanup if haiku pre-check finds improvements
-6. **File ownership** — verify each commit only touches allowed files
+6. **File ownership** — verify each commit only touches allowed files (`git diff --name-only` evaluated by the script when `agent_types && hooks_installed`, an LLM check otherwise)
 
 **Source:** `skills/src/` (TypeScript) -> `skills/*.js` (generated via `bash scripts/build-workflows.sh`)
 
