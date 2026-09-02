@@ -10,18 +10,21 @@ from pydantic import BaseModel, Field, conint, constr
 
 
 class TaskComplexity(Enum):
-    behavioral = 'behavioral'
-    structural = 'structural'
+    behavioral = "behavioral"
+    structural = "structural"
 
 
 class DatumTask(BaseModel):
-    id: constr(pattern=r'^task-\d+$')
+    id: constr(pattern=r"^task-\d+$")
+    # Descriptive name (#352): ids stay task-NNN for the schema/skeleton
+    # contract; the human-readable handle lives here.
+    slug: constr(pattern=r"^[a-z0-9][a-z0-9-]{2,60}$") | None = None
     title: constr(min_length=1)
     description: str | None = None
     acceptance_criteria: list[str] = Field(..., min_length=1)
     files: list[str] = Field(..., min_length=1)
-    depends_on: list[constr(pattern=r'^task-\d+$')] | None = []
+    depends_on: list[constr(pattern=r"^task-\d+$")] | None = []
     introduces_stubs: bool | None = False
     red_note: constr(min_length=1)
     estimated_loc: conint(ge=0) | None = 0
-    task_complexity: TaskComplexity | None = 'behavioral'
+    task_complexity: TaskComplexity | None = "behavioral"

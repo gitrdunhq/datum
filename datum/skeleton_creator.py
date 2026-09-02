@@ -588,6 +588,7 @@ def run_preflight(
                     existing_api[f] = extract_skeleton_from_file(p)
         result = {
             "task_id": task_id,
+            "slug": task_data.get("slug"),
             "language": language,
             "framework": KIND_MAP.get(language, ""),
             "outputs": outputs,

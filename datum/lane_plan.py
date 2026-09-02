@@ -194,6 +194,8 @@ def _render_task_block(task: dict, heading_level: str = "###") -> list[str]:
     """Render a single task as markdown lines."""
     lines: list[str] = []
     lines.append(f"{heading_level} {task['id']}: {task['title']}")
+    if task.get("slug"):
+        lines.append(f"- **Slug**: {task['slug']}")
     if task.get("description"):
         lines.append(f"{task['description']}")
         lines.append("")
@@ -448,6 +450,8 @@ def build_lane_plan(
             "file_conflict_with": write_conflicts,
             "stage": "queued",
         }
+        if task.get("slug"):
+            lanes[tid]["slug"] = task["slug"]
 
         # Explicit per-task test_command always wins; otherwise auto-detect
         # from the lane's own files when they disagree with the epic-level

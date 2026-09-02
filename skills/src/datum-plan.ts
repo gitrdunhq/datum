@@ -120,19 +120,52 @@ for (const task of tasks) {
   log(`  ${task.id}: ${task.title}${deps}`)
 }
 
-// Build (collapsed write-tasks-json + build-lane-plan into one agent)
-await agent(
+// Build: write tasks.json + run `datum lane-plan` — but do NOT commit yet.
+// `datum lane-plan` validates tasks.json against task.schema.json (id/slug
+// patterns, required fields) and refuses to write on failure; the plan gate
+// below checks the resulting lane-plan.json. Both run before anything is
+// committed so a plan that fails the schema never lands three commits first (#352).
+const buildRaw = await agent(
   `Do these steps in order:
 1. mkdir -p "${epicDir}"
 2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
 3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-4. Commit: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
-If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
+Do NOT git add or git commit anything in this step.
+If step 2 or step 3 fails (non-zero exit), return JSON: {"exit_code": <the exit code>, "error": "<the stdout+stderr of the failing step>"}
 Otherwise return: {"exit_code": 0}
 Output raw JSON only.`,
   { label: 'build-lane-plan', model: model('fast') },
 )
-log('Lane plan built and committed')
+const build = typeof buildRaw === 'string'
+  ? parseAgentJson(buildRaw as string, { exit_code: 1, error: 'build-lane-plan agent returned unparseable output' } as { exit_code: number; error?: string })
+  : (buildRaw as { exit_code: number; error?: string })
+if (!build || build.exit_code !== 0) {
+  throw new Error(`datum lane-plan failed (exit ${build?.exit_code ?? '?'}) — plan NOT committed: ${build?.error || 'no error output'}`)
+}
+
+// ── Early plan gate: schema + structure, right after lane-plan and BEFORE the
+// skeleton/deepen phases (#352). `--approve` skips only the human-approval
+// hold; every structural check (lane-plan schema, topological order, file
+// overlap, assumption audit) still runs. The human hold is re-checked by the
+// final gate at the end of Triage.
+const earlyGateResult = await agent(
+  renderPrompt(runGateTemplate, { phase: 'plan', flags: ' --approve' }),
+  { label: 'gate-early', model: model('fast') },
+)
+const earlyGate = typeof earlyGateResult === 'string'
+  ? parseAgentJson(earlyGateResult as string, { passed: false, message: 'early gate returned unparseable output' } as { passed: boolean; message?: string })
+  : (earlyGateResult as { passed: boolean; message?: string })
+if (!earlyGate?.passed) {
+  throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate?.message || 'no message'}`)
+}
+log('Early plan gate PASSED (schema + structure)')
+
+await agent(
+  `Commit the plan artifacts: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
+Return JSON: {"exit_code": 0} on success, or {"exit_code": 1, "error": "the stderr"} on failure. Output raw JSON only.`,
+  { label: 'commit-lane-plan', model: model('fast') },
+)
+log('Lane plan built, gated, and committed')
 
 // ── Skeleton batch — generate test contracts while Claude still has full spec context ──
 const skeletonDir = `${epicDir}/skeletons`

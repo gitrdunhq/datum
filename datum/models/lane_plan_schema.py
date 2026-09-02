@@ -9,15 +9,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
-class TopologicalOrderItem(RootModel[constr(pattern=r'^task-\d+$')]):
-    root: constr(pattern=r'^task-\d+$')
+class TopologicalOrderItem(RootModel[constr(pattern=r"^task-\d+$")]):
+    root: constr(pattern=r"^task-\d+$")
 
 
 class Lanes(BaseModel):
     model_config = ConfigDict(
-        extra='allow',
+        extra="allow",
     )
-    id: constr(pattern=r'^task-\d+$')
+    id: constr(pattern=r"^task-\d+$")
+    slug: constr(pattern=r"^[a-z0-9][a-z0-9-]{2,60}$") | None = None
     title: constr(min_length=1)
     files: list[str] = Field(..., min_length=1)
     acceptance_criteria: list[str] = Field(..., min_length=1)
@@ -27,11 +28,11 @@ class Lanes(BaseModel):
 
 class DatumLanePlan(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     schema_version: str
     total_lanes: conint(ge=1)
     topological_order: list[TopologicalOrderItem] = Field(..., min_length=1)
-    file_ownership: dict[str, constr(pattern=r'^task-\d+$')]
+    file_ownership: dict[str, constr(pattern=r"^task-\d+$")]
     lanes: dict[str, Lanes]
     units: dict[str, Any] | None = None

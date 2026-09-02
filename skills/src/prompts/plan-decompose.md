@@ -24,7 +24,7 @@ The context_files section above (when present) lists project documentation that 
 
 RULES:
 - Each task maps to one lane in the TDD pipeline
-- Use DESCRIPTIVE task IDs (e.g. "add-cycle-detection", "validate-input-schema") not "task-001"
+- Task ids MUST be `task-NNN` — zero-padded to three digits, numbered in the order you list them (task-001, task-002, ...). The schema gate rejects any other id shape. Put the descriptive name in the required `slug` field instead (lowercase letters, digits, hyphens; 3-61 chars; pattern `^[a-z0-9][a-z0-9-]{2,60}$`, e.g. "add-cycle-detection", "validate-input-schema"). `depends_on` references use the `task-NNN` ids, never slugs.
 - No task touches more than 5 files
 - The 'files' array MUST list EVERY file the implementation agent will need to create or modify — not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.
 - PROTOCOL COMPLETENESS CHECK (do this for every task before finalizing its `files`): read each acceptance_criteria and ask "does satisfying this AC require adding or changing a method, property, or signature declared on a protocol, an abstract contract, a trait, or a base class?" (e.g. an AC like "use case calls repository.newMethod(...)" implies `newMethod` must be added to wherever the repository's contract is declared, not just its concrete implementation). If yes, search the repo (grep/ast-grep) for the declaration site of that contract/type — the keywords to search for vary by language ("protocol", "trait", "abstract", or the equivalent construct that declares a contract rather than an implementation) — and add that declaring file to `files` alongside the implementation file, since the lane's implementer needs to edit both in the same commit. Do not add it to `reads` in this case; `reads` is for files this task depends on but does not modify, and a contract gaining a new required member IS a modification. If no declaring file exists yet (the contract itself is new), say so in `red_note` instead of inventing a path.
@@ -33,7 +33,7 @@ RULES:
 - BASELINE SYNC CHECK (same pass as the parity check above, unification epics only): before finalizing the flip lane, check whether the fork's target files as they exist on the epic branch actually match `main` for those same files — i.e. whether `main` has newer fixes to the fork that this plan doesn't yet account for. If a divergence is found, emit a dedicated sync-from-main task/lane scoped to only the diverging files, and add it to the flip lane's `depends_on` ahead of any parity-check port lanes. If this can't be determined confidently, note it in the flip lane's `red_note` rather than guessing — do not invent a sync lane speculatively.
 - Tasks sharing files must have a dependency edge or be in the same lane
 - Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.
-- Every task needs: title, acceptance_criteria, files, reads, depends_on, red_note
+- Every task needs: id, slug, title, acceptance_criteria, files, reads, depends_on, red_note
 - ACs must be specific enough to write a failing test from — function names, expected values, exception types
 - red_note tells the RED agent what the failing test should prove — use the project's language and test framework, not Python/pytest unless that IS the project language
 - depends_on lists task IDs this task requires to be completed first
@@ -42,7 +42,8 @@ RULES:
 Return JSON matching this schema:
 [
   {
-    "id": "descriptive-task-id",
+    "id": "task-001",
+    "slug": "descriptive-task-name",
     "title": "Human-readable title",
     "description": "What this task implements",
     "acceptance_criteria": [
