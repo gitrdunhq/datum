@@ -3,6 +3,7 @@ import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
+import { configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-review',
@@ -18,6 +19,10 @@ const a = (typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})
 const yolo: boolean = !!a.yolo
+// #368: review-domain agents and the report writer stay on the runtime default —
+// no datum-* definition fits them — but honour the switch for parity with the
+// other phases (a later mapping only has to add stageOpts at the call site).
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : {})
 
 const DOMAINS = [
   { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: model('balanced') },

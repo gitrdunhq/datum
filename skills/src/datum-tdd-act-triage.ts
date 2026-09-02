@@ -2,6 +2,7 @@ import { model } from './shared/models'
 import type { TriageArgs, TriageAnalysis } from './shared/types'
 import { TRIAGE_SCHEMA } from './shared/schemas'
 import { groupBlockedByRoot } from './shared/utils'
+import { configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-tdd-act-triage',
@@ -10,6 +11,7 @@ export const meta = {
 }
 
 const a = args as TriageArgs
+configureAgentTypes(a.agentTypes || {})
 phase('Triage')
 
 let filed = 0

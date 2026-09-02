@@ -53,6 +53,27 @@ If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2
 Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
 `;
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/datum-closeout.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -64,6 +85,7 @@ var collectResult = await agent(
 4. "base_sha": output of \`git merge-base HEAD origin/main\`
 5. "run_id": "${runId}" if non-empty, else generate from \`date +%Y%m%d-%H%M%S\`
 6. "closeout_data_exists": whether .datum/runs/<run_id>/closeout-data.json exists
+7. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)
 
 ADDITIONAL: If closeout_data_exists is false, also run these collectors (skip failures):
 mkdir -p .datum/runs/<run_id>
@@ -76,6 +98,7 @@ Include "collected": true in the response if you ran collectors.`
   { label: "collect", model: model("fast") }
 );
 var ctx = typeof collectResult === "string" ? parseAgentJson(collectResult, {}) : collectResult;
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
 var rid = ctx.run_id || runId;
 log(`Branch: ${ctx.branch}, run: ${rid}`);
 phase("Synthesize");
@@ -99,7 +122,7 @@ var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { arti
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
 await agent(
   `Run: datum housekeep-epic ${ctx.branch}`,
-  { label: "housekeep", model: model("fast") }
+  stageOpts("cli", { label: "housekeep", model: model("fast") })
 );
 return {
   branch: ctx.branch,

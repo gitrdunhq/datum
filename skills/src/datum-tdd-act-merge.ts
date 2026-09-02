@@ -2,6 +2,7 @@ import { model } from './shared/models'
 import { runCommandPrompt } from './shared/boot'
 import type { MergeArgs } from './shared/types'
 import { filterGreenLanes } from './shared/utils'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-tdd-act-merge',
@@ -10,6 +11,7 @@ export const meta = {
 }
 
 const a = args as MergeArgs
+configureAgentTypes(a.agentTypes || {})
 
 // ── Merge ──
 phase('Merge')
@@ -32,7 +34,7 @@ if (greenIds.length === 0) {
       `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(',')} ` +
       `--commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`,
     ),
-    { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }
+    stageOpts('cli', { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') })
   )
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(' → ')}]`)
 }
@@ -42,7 +44,7 @@ phase('Cleanup')
 
 await agent(
   runCommandPrompt(`datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`),
-  { label: `cleanup${a.batchTag}`, phase: 'Cleanup', model: model('fast') }
+  stageOpts('cli', { label: `cleanup${a.batchTag}`, phase: 'Cleanup', model: model('fast') })
 )
 
 export const __workflowResult = { merged: a.completedIds.length > 0 }

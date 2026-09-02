@@ -3,6 +3,7 @@ import type { DocsArgs, WriteResult } from './shared/types'
 import { WRITE_RESULT_SCHEMA, COMMIT_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
 import { commitStage } from './shared/agents'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
+import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-tdd-act-docs',
@@ -11,6 +12,7 @@ export const meta = {
 }
 
 const a = args as DocsArgs
+configureAgentTypes(a.agentTypes || {})
 phase('Docs')
 
 let synced = false
@@ -40,7 +42,7 @@ if (a.completedLanes.length === 0) {
 
     const docs = await agent(
       docsSyncPrompt({ docsPacket }),
-      { label: 'docs-sync', phase: 'Docs', model: model('balanced'), schema: WRITE_RESULT_SCHEMA }
+      stageOpts('docs', { label: 'docs-sync', phase: 'Docs', model: model('balanced'), schema: WRITE_RESULT_SCHEMA })
     ) as WriteResult | null
 
     if (docs?.success) {

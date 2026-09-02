@@ -36,14 +36,36 @@ function parseAgentJson(text, fallback) {
   }
 }
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/datum-tdd-act-setup.ts
 var a = args;
+configureAgentTypes(a.agentTypes || {});
 phase("Setup");
 var rootWtText = await agent(
   runCommandPrompt(
     `git worktree add --detach ".datum/worktrees/${a.batchRunId}-root" "${a.epicBranch}" 2>&1 && echo '{"root": "'$(cd ".datum/worktrees/${a.batchRunId}-root" && pwd)'"}'`
   ),
-  { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
+  stageOpts("cli", { label: `root-wt${a.batchTag}`, phase: "Setup", model: model("fast") })
 );
 var rootWtInfo = parseAgentJson(rootWtText, {});
 var rootWt = rootWtInfo.root;
@@ -53,7 +75,7 @@ var setupText = await agent(
   runCommandPrompt(
     `cd "${rootWt}" && datum worktrees setup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}" --lane-ids ${a.batchLaneIds.join(",")}`
   ) + "\nThe stdout is JSON \u2014 return it verbatim.",
-  { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") }
+  stageOpts("cli", { label: `setup-wt${a.batchTag}`, phase: "Setup", model: model("fast") })
 );
 var rawPaths = typeof setupText === "string" ? parseAgentJson(setupText, null) : setupText;
 if (!rawPaths || typeof rawPaths !== "object") {
@@ -76,7 +98,7 @@ var planSource = `${rootWt}/${a.lanePlanPath}`;
 var distributeTargets = [rootWt, ...validPaths].map((p) => `--target "${p}/.datum"`).join(" ");
 await agent(
   `Run: datum lane-plan-distribute "${planSource}" ${distributeTargets}`,
-  { label: `distribute-plan${a.batchTag}`, phase: "Setup", model: model("fast") }
+  stageOpts("cli", { label: `distribute-plan${a.batchTag}`, phase: "Setup", model: model("fast") })
 );
 log(`Setup${a.batchTag}: ${a.batchLaneIds.length} lane worktrees`);
 return { worktreePaths };

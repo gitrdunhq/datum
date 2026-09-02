@@ -2,6 +2,7 @@ import { model } from './models'
 import type { TddStage } from './models'
 import { CommitResult } from './types'
 import { COMMIT_RESULT_SCHEMA } from './schemas'
+import { stageOpts } from './agent-types'
 
 // ── Rate-limit resilient agent wrapper ──────────────────────────────────────
 
@@ -39,7 +40,7 @@ export async function verifyCommitIndependently(
       `git -C "${wt}" log --format="%H %s"\n` +
       `git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(' ')}\n` +
       `Return ONLY the raw output, no explanation, no markdown fences.`,
-    { label: `verify-commit:${taskId}:${stage}`, model: 'haiku' },
+    stageOpts('cli', { label: `verify-commit:${taskId}:${stage}`, model: 'haiku' }),
   )
   if (!raw) return { committed: false, detail: 'independent check returned no result' }
 
@@ -112,7 +113,7 @@ export async function resilientAgent(
     if (attempt < maxRetries && opts?.worktree) {
       const dirty = await agentFn(
         `Run: git -C "${opts.worktree}" status --porcelain\nReturn ONLY the raw output, no explanation.`,
-        { label: 'retry-guard', model: 'haiku' },
+        stageOpts('cli', { label: 'retry-guard', model: 'haiku' }),
       )
       if (dirty && dirty.trim().length > 0) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} but worktree is dirty — aborting retry to prevent duplicate writes`)
@@ -156,12 +157,12 @@ export async function commitStage(
     `- If there are no changes to commit, return committed=false\n` +
     `- Use git -C "${wt}" for ALL git commands to enforce directory`
 
-  let result = await agent(basePrompt, {
+  let result = await agent(basePrompt, stageOpts('cli', {
     label: `git-${stage.toLowerCase()}:${taskId}`,
     phase: 'Act',
     model: model('fast'),
     schema: COMMIT_RESULT_SCHEMA,
-  })
+  }))
 
   if (result && result.violations && result.violations.length > 0) {
     log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(', ')}`)
@@ -175,12 +176,12 @@ export async function commitStage(
         `Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.\n` +
         `Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.\n` +
         `If the worktree is in a broken state, report failure_reason with details.`,
-      {
+      stageOpts('cli', {
         label: `git-${stage.toLowerCase()}-fix:${taskId}`,
         phase: 'Act',
         model: model('balanced'),
         schema: COMMIT_RESULT_SCHEMA,
-      },
+      }),
     )
   }
 

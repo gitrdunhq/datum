@@ -101,7 +101,11 @@ var DEFAULT_CONFIG = {
   test_framework: "",
   test_command: "",
   skills_dir: "",
-  context_files: []
+  context_files: [],
+  /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
+  agent_types: true,
+  /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
+  hooks_installed: false
 };
 var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
 1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
@@ -109,13 +113,41 @@ var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults,
 Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
 Return the merged JSON. Output raw JSON only.`;
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function readAgentTypeConfig(cfg) {
+  const o = cfg && typeof cfg === "object" ? cfg : {};
+  return {
+    agentTypes: o.agent_types !== false,
+    hooksInstalled: o.hooks_installed === true
+  };
+}
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/shared/tracker.ts
 async function publishLanePlan(lanePlanPath, epicTitle) {
   const result = await agent(
     `Run: datum plan-issues --lane-plan "${lanePlanPath}" --title "${epicTitle}"
 Return the JSON output. If the command fails, return {"error": "<message>"}.
 Output raw JSON only.`,
-    { label: "publish-issues", model: "haiku" }
+    stageOpts("cli", { label: "publish-issues", model: "haiku" })
   );
   if (!result) return null;
   const parsed = typeof result === "string" ? JSON.parse(result.replace(/```[a-z]*\n?/g, "").trim()) : result;
@@ -179,8 +211,9 @@ var specContent = ctx.spec_content || "";
 if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`);
 log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
 var priorFailures = [ctx.prior_defects || "", ctx.error_history || ""].filter(Boolean).join("\n") || "(no prior failure data)";
-var cfgText = await agent(READ_CONFIG_PROMPT, { label: "read-config", model: model("fast") });
+var cfgText = await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") }));
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : { ...DEFAULT_CONFIG };
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : readAgentTypeConfig(repoCfg));
 var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
 var contextFilesList = repoCfg.context_files || [];
@@ -188,7 +221,7 @@ var contextFileContents = {};
 for (const relPath of contextFilesList) {
   const raw = await agent(
     `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
-    { label: `read-context-file:${relPath}`, model: model("fast") }
+    stageOpts("reader", { label: `read-context-file:${relPath}`, model: model("fast") })
   );
   const content = typeof raw === "string" ? raw : JSON.stringify(raw);
   contextFileContents[relPath] = content.trim() === "NOT_FOUND" ? null : content;
@@ -247,7 +280,7 @@ if (!build || build.exit_code !== 0) {
 }
 var earlyGateResult = await agent(
   renderPrompt(util_run_gate_default, { phase: "plan", flags: " --approve" }),
-  { label: "gate-early", model: model("fast") }
+  stageOpts("cli", { label: "gate-early", model: model("fast") })
 );
 var earlyGate = typeof earlyGateResult === "string" ? parseAgentJson(earlyGateResult, { passed: false, message: "early gate returned unparseable output" }) : earlyGateResult;
 if (!earlyGate?.passed) {
@@ -257,7 +290,7 @@ log("Early plan gate PASSED (schema + structure)");
 await agent(
   `Commit the plan artifacts: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
 Return JSON: {"exit_code": 0} on success, or {"exit_code": 1, "error": "the stderr"} on failure. Output raw JSON only.`,
-  { label: "commit-lane-plan", model: model("fast") }
+  stageOpts("cli", { label: "commit-lane-plan", model: model("fast") })
 );
 log("Lane plan built, gated, and committed");
 var skeletonDir = `${epicDir}/skeletons`;
@@ -269,7 +302,7 @@ await agent(
 If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
 Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
 Output raw JSON only.`,
-  { label: "skeleton-batch", model: model("fast") }
+  stageOpts("cli", { label: "skeleton-batch", model: model("fast") })
 );
 log(`Skeletons pre-generated in ${skeletonDir}`);
 phase("Triage");
@@ -299,7 +332,7 @@ Return JSON: {"tasks_researched": N, "findings_count": N}`,
 }
 var gateResult = await agent(
   renderPrompt(util_run_gate_default, { phase: "plan", flags: yolo ? " --approve" : "" }),
-  { label: "gate", model: model("fast") }
+  stageOpts("cli", { label: "gate", model: model("fast") })
 );
 var gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
 if (gate?.passed) log("Plan gate PASSED");

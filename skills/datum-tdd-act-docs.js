@@ -46,6 +46,27 @@ var REFACTOR_CHECK_SCHEMA = {
   required: ["should_refactor"]
 };
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/shared/agents.ts
 async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
   const allowedList = allowedFiles.join(", ");
@@ -63,12 +84,12 @@ CONSTRAINTS:
 - NEVER edit, create, or delete source files \u2014 only git operations
 - If there are no changes to commit, return committed=false
 - Use git -C "${wt}" for ALL git commands to enforce directory`;
-  let result = await agent(basePrompt, {
+  let result = await agent(basePrompt, stageOpts("cli", {
     label: `git-${stage.toLowerCase()}:${taskId}`,
     phase: "Act",
     model: model("fast"),
     schema: COMMIT_RESULT_SCHEMA
-  });
+  }));
   if (result && result.violations && result.violations.length > 0) {
     log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(", ")}`);
   }
@@ -81,12 +102,12 @@ RETRY CONTEXT: Previous commit attempt failed: ${result && result.failure_reason
 Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.
 Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.
 If the worktree is in a broken state, report failure_reason with details.`,
-      {
+      stageOpts("cli", {
         label: `git-${stage.toLowerCase()}-fix:${taskId}`,
         phase: "Act",
         model: model("balanced"),
         schema: COMMIT_RESULT_SCHEMA
-      }
+      })
     );
   }
   if (result && result.committed) {
@@ -126,6 +147,7 @@ function docsSyncPrompt(vars) {
 
 // skills/src/datum-tdd-act-docs.ts
 var a = args;
+configureAgentTypes(a.agentTypes || {});
 phase("Docs");
 var synced = false;
 var syncedFiles;
@@ -150,7 +172,7 @@ if (a.completedLanes.length === 0) {
     });
     const docs = await agent(
       docsSyncPrompt({ docsPacket }),
-      { label: "docs-sync", phase: "Docs", model: model("balanced"), schema: WRITE_RESULT_SCHEMA }
+      stageOpts("docs", { label: "docs-sync", phase: "Docs", model: model("balanced"), schema: WRITE_RESULT_SCHEMA })
     );
     if (docs?.success) {
       const docsWritten = docs.files_written || [];

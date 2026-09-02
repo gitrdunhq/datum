@@ -76,6 +76,27 @@ var REFACTOR_CHECK_SCHEMA = {
   required: ["should_refactor"]
 };
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/shared/agents.ts
 var RATE_LIMIT_MAX_RETRIES = 4;
 var RATE_LIMIT_BASE_DELAY_MS = 5e3;
@@ -89,7 +110,7 @@ async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage)
 git -C "${wt}" log --format="%H %s"
 git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(" ")}
 Return ONLY the raw output, no explanation, no markdown fences.`,
-    { label: `verify-commit:${taskId}:${stage}`, model: "haiku" }
+    stageOpts("cli", { label: `verify-commit:${taskId}:${stage}`, model: "haiku" })
   );
   if (!raw) return { committed: false, detail: "independent check returned no result" };
   const lines = String(raw).trim().split("\n").filter(Boolean);
@@ -129,7 +150,7 @@ async function resilientAgent(prompt, opts, deps) {
       const dirty = await agentFn(
         `Run: git -C "${opts.worktree}" status --porcelain
 Return ONLY the raw output, no explanation.`,
-        { label: "retry-guard", model: "haiku" }
+        stageOpts("cli", { label: "retry-guard", model: "haiku" })
       );
       if (dirty && dirty.trim().length > 0) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
@@ -154,7 +175,7 @@ async function updateStage(issueId, stage, commitSha) {
     `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
 If the command doesn't exist or fails, silently continue.
 Output nothing.`,
-    { label: `tracker:${issueId}:${stage}`, model: "haiku" }
+    stageOpts("cli", { label: `tracker:${issueId}:${stage}`, model: "haiku" })
   );
 }
 function getIssueId(lanePlan2, taskId) {
@@ -611,7 +632,7 @@ async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFi
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
 No markdown fences, no explanation.`,
-    { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }
+    stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") })
   );
   if (!result) return { ok: true, violations: [] };
   const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
@@ -657,11 +678,11 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   if (completionPath) {
     const completionExist = await agent(
-      `Read the file: cat "${completionPath}" 2>/dev/null || echo ""
+      `Read the file at "${completionPath}" with the Read tool.
 If the file exists, return ONLY its raw contents (valid JSON).
 If the file does not exist or is empty, return exactly: MISSING
 No markdown fences, no explanation.`,
-      { label: `completion-check:${taskId}`, phase: "Act", model: model("fast") }
+      stageOpts("reader", { label: `completion-check:${taskId}`, phase: "Act", model: model("fast") })
     );
     if (completionExist && completionExist.trim() !== "MISSING") {
       const compData = parseAgentJson(completionExist, {});
@@ -675,7 +696,7 @@ No markdown fences, no explanation.`,
   const laneHistoryRaw = await agent(
     `Run: git -C "${wt}" log --format="%H %s"
 Return ONLY the raw output, no explanation, no markdown fences.`,
-    { label: `lane-history-check:${taskId}`, phase: "Act", model: "haiku" }
+    stageOpts("cli", { label: `lane-history-check:${taskId}`, phase: "Act", model: "haiku" })
   );
   const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   async function writeCompletion() {
@@ -683,11 +704,9 @@ Return ONLY the raw output, no explanation, no markdown fences.`,
     const cp = `.datum/runs/${runId}/lane-state/${taskId}.json`;
     const dir = cp.split("/").slice(0, -1).join("/");
     await agent(
-      `Run: mkdir -p ./${dir}
-Write to file: ./${cp}
-Write: {"task_id": "${taskId}", "status": "completed"}
-List the files changed.`,
-      { label: `completion-write:${taskId}`, phase: "Act", model: model("fast") }
+      runCommandPrompt(`mkdir -p ./${dir} && printf '%s
+' '{"task_id": "${taskId}", "status": "completed"}' > ./${cp} && cat ./${cp}`),
+      stageOpts("cli", { label: `completion-write:${taskId}`, phase: "Act", model: model("fast") })
     );
   }
   if (isStructural) {
@@ -709,11 +728,11 @@ List the files changed.`,
   if (testFiles.some((f) => scriptTestPattern.test(f))) {
     const allowedArgs = testFiles.map((f) => `--allowed "${f.replace(/"/g, '\\"')}"`).join(" ");
     const cleanupCmd = `datum lane-cleanup "${wt}" ${allowedArgs}`;
-    await agent(`Run: ${cleanupCmd}`, {
+    await agent(`Run: ${cleanupCmd}`, stageOpts("cli", {
       label: `pre-red-cleanup:${taskId}`,
       phase: "Act",
       model: model("fast")
-    });
+    }));
     log(`[${taskId}] Pre-RED cleanup completed`);
   } else {
     log(`[${taskId}] Pre-RED cleanup skipped (lane has no JS/TS/Py test files)`);
@@ -726,11 +745,11 @@ List the files changed.`,
   let preflightRaw = null;
   if (planSkeletonPath) {
     preflightRaw = await agent(
-      `Read the file: cat "${planSkeletonPath}" 2>/dev/null || echo ""
+      `Read the file at "${planSkeletonPath}" with the Read tool.
 If the file exists, return ONLY its raw JSON contents.
 If the file does not exist or is empty, return exactly: MISSING
 No markdown fences, no explanation.`,
-      { label: `skeleton-read:${taskId}`, phase: "Act", model: model("fast") }
+      stageOpts("reader", { label: `skeleton-read:${taskId}`, phase: "Act", model: model("fast") })
     );
     if (preflightRaw && preflightRaw.trim() !== "MISSING") {
       log(`[${taskId}] using pre-generated skeleton from Plan phase`);
@@ -743,7 +762,7 @@ No markdown fences, no explanation.`,
       `Run: ${skeletonCmd}
 Then read the output file: cat "${wt}/${preflightPath}" 2>/dev/null || echo "{}"
 Return ONLY the raw JSON contents of the file. No markdown fences, no explanation.`,
-      { label: `preflight:${taskId}`, phase: "Act", model: model("fast") }
+      stageOpts("cli", { label: `preflight:${taskId}`, phase: "Act", model: model("fast") })
     );
   }
   let preflightFramework;
@@ -807,7 +826,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
   } else {
     red = await resilientAgent(
       redPrompt(promptVars),
-      { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+      stageOpts("red", { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
     );
     if (red?.success) {
       log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
@@ -828,7 +847,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
         log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
         red = await resilientAgent(
           redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
-          { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+          stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
         );
         if (!red || !red.committed) {
           const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
@@ -853,7 +872,7 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
       log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
       red = await resilientAgent(
         redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
-        { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+        stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
       );
     }
   }
@@ -875,11 +894,11 @@ PATTERN_EOF
 2. Run the gate script against that file:
 bash scripts/test-count-gate --repo "${wt}" --files ${testFiles.map((f) => `"${f}"`).join(" ")} --pattern-file "$PATFILE" --required ${acCount}
 Return ONLY the raw stdout of the second command. Do not reformat, summarize, or add any text. No markdown fences, no explanation.`,
-      {
+      stageOpts("cli", {
         label: `test-count-check:${taskId}`,
         phase: "Act",
         model: model("fast")
-      }
+      })
     );
     if (countRaw === null || countRaw === void 0) {
       log(`[${taskId}] RED FAILED: test-count-check agent returned null \u2014 cannot verify ${acCount} new test functions were committed`);
@@ -946,7 +965,7 @@ ${testFiles.map(
 
 Return JSON: {"has_placeholders": true/false, "detail": "which files:lines and what pattern, or empty if clean"}
 Output raw JSON only.`,
-    { label: `assert-check:${taskId}`, phase: "Act", model: model("fast") }
+    stageOpts("cli", { label: `assert-check:${taskId}`, phase: "Act", model: model("fast") })
   );
   const assertParsed = parseAgentJson(sgResult, {});
   if (assertParsed.has_placeholders) {
@@ -969,7 +988,7 @@ Output raw JSON only.`,
     `Read the contents of these RED test file(s) in the worktree:
 ${testFiles.map((f) => `echo "===FILE:${f}==="; cat "${wt}/${f}" 2>/dev/null`).join("\n")}
 Return ONLY a JSON object mapping each path (as given after "===FILE:") to its full text content, e.g. {"${testFiles[0] || "path"}": "contents..."}. No markdown fences, no explanation.`,
-    { label: `scope-repair-read:${taskId}`, phase: "Act", model: model("fast") }
+    stageOpts("cli", { label: `scope-repair-read:${taskId}`, phase: "Act", model: model("fast") })
   );
   const scopeTestContents = parseAgentJson(scopeTestContentsRaw, {});
   const requiredScopeFiles = /* @__PURE__ */ new Set();
@@ -986,7 +1005,7 @@ Return ONLY a JSON object mapping each path (as given after "===FILE:") to its f
       `For each of these paths, report whether it exists as a file in the repo at "${wt}":
 ${scopeGaps.map((f) => `test -f "${wt}/${f}" && echo "EXISTS ${f}" || echo "MISSING ${f}"`).join("\n")}
 Return ONLY a JSON object: {"existing": ["path1", ...], "missing": ["path2", ...]}. No markdown fences, no explanation.`,
-      { label: `scope-repair-check:${taskId}`, phase: "Act", model: model("fast") }
+      stageOpts("cli", { label: `scope-repair-check:${taskId}`, phase: "Act", model: model("fast") })
     );
     const scopeExistsParsed = parseAgentJson(scopeExistsRaw, {});
     const existingGaps = scopeExistsParsed.existing || [];
@@ -1009,11 +1028,11 @@ The command exits 1 when it finds a conflict \u2014 that is expected, not an err
 Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`;
   const isPytestLane = laneLanguage === "python" && /pytest/.test(scopedTestCmd);
   if (isPytestLane) {
-    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), {
+    const redPreflightRaw = await agent(contractPreflightPrompt(implFiles), stageOpts("cli", {
       label: `contract-preflight:${taskId}`,
       phase: "Act",
       model: model("fast")
-    });
+    }));
     const redPreflight = parseContractPreflight(redPreflightRaw);
     if (redPreflight.status === "contract_conflict") {
       log(`[${taskId}] RED FAILED: contract conflict \u2014 ${redPreflight.reason}`);
@@ -1035,11 +1054,11 @@ ${testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" "${wt}/${f}" 2>/dev/null ||
 Before-counts (parent commit \u2014 0 for first commit):
 ${testFiles.map((f) => `git -C "${wt}" rev-parse HEAD~1 >/dev/null 2>&1 && git -C "${wt}" show HEAD~1:"${f}" 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`).join("\n")}
 Output ONLY raw numbers, one per line: after-counts first, then before-counts. No other text.`,
-    {
+    stageOpts("cli", {
       label: `test-count:${taskId}`,
       phase: "Act",
       model: model("fast")
-    }
+    })
   );
   let afterCount = 0;
   let beforeCount = 0;
@@ -1056,7 +1075,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   log(`[${taskId}] RED: ${newTestCount} new test functions verified (${beforeCount} \u2192 ${afterCount})`);
   const reflectResult = await agent(
     reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
-    { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA }
+    stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA })
   );
   const reflectScore = reflectResult?.score || 0;
   log(`[${taskId}] Test quality: ${reflectScore}/10 \u2014 ${reflectResult?.reasoning || "no reasoning"}`);
@@ -1089,7 +1108,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   };
   let green = await resilientAgent(
     greenPrompt(greenVars),
-    { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }
+    stageOpts("green", { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt })
   );
   if (green?.success) {
     log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ")}`);
@@ -1098,11 +1117,11 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     let greenPreflight = null;
     const selfReportedBlock = !!green && (green.status === "blocked" || /scope_exceeded/i.test(green.failure_reason || ""));
     if (green && isPytestLane && !selfReportedBlock) {
-      const raw = await agent(contractPreflightPrompt(implFiles), {
+      const raw = await agent(contractPreflightPrompt(implFiles), stageOpts("cli", {
         label: `contract-check:${taskId}`,
         phase: "Act",
         model: model("fast")
-      });
+      }));
       greenPreflight = parseContractPreflight(raw);
     }
     const decision = decideGreenBlock(green, greenPreflight);
@@ -1120,7 +1139,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
             failureReason: `blocked: ${decision.reason} \u2014 allowed_write_files now also includes ${widen.join(", ")}`,
             greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason })
           }),
-          { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+          stageOpts("green", { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
         );
       } else {
         const refusal = cfg2.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(", ")}] not inside src/)` : "";
@@ -1136,7 +1155,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
           failureReason: green?.failure_reason || "unknown",
           greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason })
         }),
-        { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+        stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
       );
     }
   }
@@ -1175,7 +1194,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
   const lenses = skepticLenses();
   const skepticResults = await parallel(
     lenses.map(
-      (lens) => () => agent(base + lens.prompt, { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA })
+      (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }))
     )
   );
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses);
@@ -1208,7 +1227,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
   log(`[${taskId}] REFACTOR: checking if needed`);
   const preCheck = await agent(
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(", ") }),
-    { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA }
+    stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA })
   );
   if (!preCheck?.should_refactor) {
     log(`[${taskId}] REFACTOR: skipped (${preCheck?.reason || "nothing to improve"})`);
@@ -1230,7 +1249,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
       // under the user's identity was being read as a stray concurrent writer.
       commitCmd: laneCommitCommand({ wt, taskId, stage: "REFACTOR", runId: cfg2.runId })
     }),
-    { label: `refactor:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }
+    stageOpts("refactor", { label: `refactor:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
   );
   if (!refactor?.success) {
     if (refactor?.failure_reason?.toLowerCase().includes("nothing to")) {
@@ -1245,7 +1264,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
     if (refactor.committed) {
       await agent(
         runCommandPrompt(`git -C "${wt}" revert --no-edit HEAD`),
-        { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") }
+        stageOpts("cli", { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") })
       );
     }
     return { verified: true };
@@ -1256,6 +1275,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
 var a = args;
 phase("Act");
 var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a;
+configureAgentTypes(cfg.agentTypes || {});
 var lanes = lanePlan.lanes;
 var depResolvers = {};
 var depPromises = {};
@@ -1300,7 +1320,7 @@ var dagResults = await parallel(
         const mergeOut = await resilientAgent(
           `Run these commands in order in "${wt}". If any command fails, stop and return its full output including stderr. Otherwise return ONLY the raw combined output, no explanation, no markdown fences.
 ` + depBranches.map((b) => `git -C "${wt}" merge --no-edit "${b}"`).join("\n"),
-          { label: `dep-merge:${taskId}`, model: "haiku" }
+          stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })
         );
         if (mergeOut === null || /CONFLICT|Automatic merge failed|error:|fatal:/i.test(String(mergeOut))) {
           const err = `dep_merge_failed: could not merge [${depBranches.join(", ")}] into ${taskId} worktree \u2014 ${String(mergeOut).slice(0, 300)}`;

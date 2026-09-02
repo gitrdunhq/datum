@@ -28,8 +28,30 @@ function filterGreenLanes(completedIds, results) {
   return { greenIds: greenIds2, redOnlyIds: redOnlyIds2 };
 }
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+}
+function stageOpts(stage, extra = {}) {
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
 // skills/src/datum-tdd-act-merge.ts
 var a = args;
+configureAgentTypes(a.agentTypes || {});
 phase("Merge");
 var { greenIds, redOnlyIds } = filterGreenLanes(a.completedIds, a.results);
 for (const id of redOnlyIds) {
@@ -43,13 +65,13 @@ if (greenIds.length === 0) {
     runCommandPrompt(
       `datum worktrees merge --epic-branch "${a.epicBranch}" --lane-order ${mergeOrder.join(",")} --commit-message "act(${a.batchRunId}): merge ${greenIds.length} lanes"`
     ),
-    { label: `merge${a.batchTag}`, phase: "Merge", model: model("fast") }
+    stageOpts("cli", { label: `merge${a.batchTag}`, phase: "Merge", model: model("fast") })
   );
   log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
 }
 phase("Cleanup");
 await agent(
   runCommandPrompt(`datum worktrees cleanup --run-id "${a.batchRunId}" --epic-branch "${a.epicBranch}"`),
-  { label: `cleanup${a.batchTag}`, phase: "Cleanup", model: model("fast") }
+  stageOpts("cli", { label: `cleanup${a.batchTag}`, phase: "Cleanup", model: model("fast") })
 );
 return { merged: a.completedIds.length > 0 };

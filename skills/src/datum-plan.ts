@@ -1,6 +1,7 @@
 import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
 import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
+import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
@@ -50,8 +51,10 @@ log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 
 const priorFailures: string = [ctx.prior_defects || '', ctx.error_history || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
-const cfgText = await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+const cfgText = await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, unknown> : { ...DEFAULT_CONFIG }
+// #368: args (from datum-go) win, else the repo config, else the defaults.
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : readAgentTypeConfig(repoCfg))
 const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
 const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
 
@@ -60,7 +63,7 @@ const contextFileContents: Record<string, string | null> = {}
 for (const relPath of contextFilesList) {
   const raw = await agent(
     `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
-    { label: `read-context-file:${relPath}`, model: model('fast') },
+    stageOpts('reader', { label: `read-context-file:${relPath}`, model: model('fast') }),
   )
   const content = typeof raw === 'string' ? raw : JSON.stringify(raw)
   contextFileContents[relPath] = content.trim() === 'NOT_FOUND' ? null : content
@@ -150,7 +153,7 @@ if (!build || build.exit_code !== 0) {
 // final gate at the end of Triage.
 const earlyGateResult = await agent(
   renderPrompt(runGateTemplate, { phase: 'plan', flags: ' --approve' }),
-  { label: 'gate-early', model: model('fast') },
+  stageOpts('cli', { label: 'gate-early', model: model('fast') }),
 )
 const earlyGate = typeof earlyGateResult === 'string'
   ? parseAgentJson(earlyGateResult as string, { passed: false, message: 'early gate returned unparseable output' } as { passed: boolean; message?: string })
@@ -163,7 +166,7 @@ log('Early plan gate PASSED (schema + structure)')
 await agent(
   `Commit the plan artifacts: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
 Return JSON: {"exit_code": 0} on success, or {"exit_code": 1, "error": "the stderr"} on failure. Output raw JSON only.`,
-  { label: 'commit-lane-plan', model: model('fast') },
+  stageOpts('cli', { label: 'commit-lane-plan', model: model('fast') }),
 )
 log('Lane plan built, gated, and committed')
 
@@ -177,7 +180,7 @@ await agent(
 If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
 Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
 Output raw JSON only.`,
-  { label: 'skeleton-batch', model: model('fast') },
+  stageOpts('cli', { label: 'skeleton-batch', model: model('fast') }),
 )
 log(`Skeletons pre-generated in ${skeletonDir}`)
 
@@ -218,7 +221,7 @@ Return JSON: {"tasks_researched": N, "findings_count": N}`,
 // Gate
 const gateResult = await agent(
   renderPrompt(runGateTemplate, { phase: 'plan', flags: yolo ? ' --approve' : '' }),
-  { label: 'gate', model: model('fast') },
+  stageOpts('cli', { label: 'gate', model: model('fast') }),
 )
 const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
 

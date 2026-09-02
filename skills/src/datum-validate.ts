@@ -1,6 +1,7 @@
 import { renderPrompt, parseAgentJson, parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
 import type { MainSyncResult } from './shared/utils'
 import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
+import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
@@ -22,9 +23,11 @@ const yolo: boolean = a.yolo
 const noMergeMain: boolean = a.noMergeMain
 
 const cfgText = !a.testCommand
-  ? await agent(READ_CONFIG_PROMPT, { label: 'read-config', model: model('fast') })
+  ? await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
   : null
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as unknown as Record<string, string> : {}
+// #368: args (from datum-go) win, else the repo config, else the defaults.
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes as Record<string, boolean> : readAgentTypeConfig(repoCfg))
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──
@@ -36,7 +39,7 @@ phase('Validate')
 // the epic branch itself — a bug introduced on the epic and already fixed on
 // main was never seen. Fetch main and merge it in (default), or fail loudly
 // when --no-merge-main is set and the epic is behind.
-const syncRaw = await agent(mainSyncPrompt(noMergeMain), { label: 'main-sync', model: model('fast') })
+const syncRaw = await agent(mainSyncPrompt(noMergeMain), stageOpts('cli', { label: 'main-sync', model: model('fast') }))
 const syncResult = typeof syncRaw === 'string'
   ? parseAgentJson<MainSyncResult | null>(syncRaw as string, null)
   : (syncRaw as MainSyncResult | null)
@@ -79,7 +82,7 @@ if (!mainSync.ok) {
 } else {
   const gateResult = await agent(
     renderPrompt(runGateTemplate, { phase: 'validate', flags: yolo ? ' --approve' : '' }),
-    { label: 'gate', model: model('fast') },
+    stageOpts('cli', { label: 'gate', model: model('fast') }),
   )
   const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
   gatePassed = !!gate?.passed
