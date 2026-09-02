@@ -39,7 +39,8 @@ SELF-CHECK (mandatory before running tests):
 - Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"
 
 AFTER WRITING:
-5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).
+5. Run the suite with exactly this command: {{testRunCmd}}
+   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>` — that code is the real exit status. Never run {{testCommand}} through a pipe into tail or grep: a pipe masks the exit code. Report the printed output in test_output (last 50 lines max) and TEST_EXIT in test_exit_code.
 6. Your new tests MUST fail. Report tests_pass=false and the exit code.
 7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
    Use that exact commit command — it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.
