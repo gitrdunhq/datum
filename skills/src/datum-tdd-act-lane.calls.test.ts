@@ -141,6 +141,56 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(runnerLabels(calls)).toEqual(['completion-check', 'lane-intake', 'post-red', 'ownership-check', 'ownership-check'])
   })
 
+  it('hooks installed (deterministic checks): 4 command-runner calls for a pytest lane, none of them LLM checks', async () => {
+    const { calls, result } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: true })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'scope-contract', 'post-green'])
+    expect(calls.some((c) => c.label.startsWith('ownership-check:'))).toBe(false)
+    expect(calls.some((c) => c.label.startsWith('completion-check:'))).toBe(false)
+    // the ownership read rides inside the post-RED / post-GREEN batches
+    expect(calls.find((c) => c.label.startsWith('post-red:'))!.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+    expect(calls.find((c) => c.label.startsWith('post-green:'))!.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+    // the cross-run completion read rides inside the intake batch
+    expect(calls.find((c) => c.label.startsWith('lane-intake:'))!.prompt).toContain('.datum/runs/r1/lane-state/T1.json')
+  })
+
+  it('hooks installed: a TypeScript lane needs only 3 command-runner calls', async () => {
+    const { calls, result } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'post-green'])
+  })
+
+  it('hooks installed but agent_types off: the LLM checks stay (the hooks only fire through agentType)', async () => {
+    const { calls } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: false, hooksInstalled: true }, pytest: false })
+    const labels = calls.map((c) => c.label.split(':')[0])
+    expect(labels).toContain('completion-check')
+    expect(labels.filter((l) => l === 'ownership-check')).toHaveLength(2)
+    expect(labels).not.toContain('post-green')
+  })
+
+  it('deterministic ownership: a GREEN commit touching a test file fails the lane with file_ownership_violation', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (label.startsWith('post-green:') ? batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' }) : base(label, prompt))
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/file_ownership_violation: .*src\/a\.test\.ts/)
+    expect(calls.some((c) => c.label.startsWith('skeptic-'))).toBe(false)
+  })
+
+  it('deterministic completion: a marker from a prior run skips the lane after the intake batch', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (
+      label.startsWith('lane-intake:')
+        ? batch({ completion: '{"task_id": "T1", "status": "completed"}', history: '', cleanup: '', 'skeleton-gen': '{}' })
+        : base(label, prompt)
+    )
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('skipped')
+    expect(result.results.T1.error).toMatch(/cross-run completion/)
+    expect(calls.map((c) => c.label.split(':')[0])).toEqual(['lane-intake'])
+  })
+
   it('every LLM stage carries its datum-* agentType', async () => {
     const { calls } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: true })
     const byLabel = (prefix: string) => calls.filter((c) => c.label.startsWith(prefix)).map((c) => c.agentType)

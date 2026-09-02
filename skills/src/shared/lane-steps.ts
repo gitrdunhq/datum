@@ -6,6 +6,7 @@
 // tested-by: skills/src/shared/lane-steps.test.ts
 
 import type { BatchStep } from './batch'
+import { verifyFileOwnership } from './utils'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
 
@@ -129,6 +130,21 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
 /** The deterministic ownership read: files touched by the stage commit. */
 export function ownershipCommand(wt: string): string {
   return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`
+}
+
+/**
+ * Ownership decision from the `git diff --name-only HEAD~1 HEAD` step (#368
+ * item D): evaluated here, never by an LLM. A step that did not run fails
+ * open, exactly like the legacy agent returning null.
+ */
+export function ownershipFromStdout(
+  raw: string | null | undefined,
+  allowedFiles: string[],
+  forbiddenFiles: string[],
+): { ok: boolean; violations: string[] } {
+  if (raw === null || raw === undefined) return { ok: true, violations: [] }
+  const changed = raw.split('\n').map((l) => l.trim()).filter(Boolean)
+  return verifyFileOwnership(changed, allowedFiles, forbiddenFiles)
 }
 
 /** Sum every integer on its own line (grep -c output, `|| echo 0` fallbacks included). */
