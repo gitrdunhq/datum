@@ -33,6 +33,7 @@ import {
   extractRequiredScopeFiles,
   findScopeGaps,
   detectExistingLaneCommits,
+  laneCommitCommand,
 } from './shared/utils'
 import {
   redPrompt,
@@ -376,6 +377,8 @@ Return ONLY the raw JSON contents of the file. No markdown fences, no explanatio
     testCommand: scopedTestCmd,
     testFilesList: testFiles.join(' '),
     commitPrefix: redPacket.commit_prefix,
+    // One commit convention for every stage (#357): datum author + Datum-* trailers.
+    commitCmd: laneCommitCommand({ wt, taskId, stage: 'RED', runId }),
     taskId,
     testFuncPattern: testFuncLabel,
   }
@@ -708,6 +711,7 @@ Output ONLY raw numbers, one per line: after-counts first, then before-counts. N
     testCommand: scopedTestCmd,
     implFilesList: implFiles.join(' '),
     commitPrefix: greenPacket.commit_prefix,
+    commitCmd: laneCommitCommand({ wt, taskId, stage: 'GREEN', runId }),
   }
 
   let green: StageResult | null = await resilientAgent(
@@ -843,6 +847,9 @@ async function runRefactor(
       testCommand: cfg.testCommand,
       allFilesList: [...testFiles, ...implFiles].join(' '),
       commitPrefix: refactorPacket.commit_prefix,
+      // Same author/trailer scheme as RED and GREEN (#357) — a REFACTOR commit
+      // under the user's identity was being read as a stray concurrent writer.
+      commitCmd: laneCommitCommand({ wt, taskId, stage: 'REFACTOR', runId: cfg.runId }),
     }),
     { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt },
   )

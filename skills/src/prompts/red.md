@@ -41,7 +41,8 @@ SELF-CHECK (mandatory before running tests):
 AFTER WRITING:
 5. Run {{testCommand}} and capture the FULL output. Report it in test_output (last 50 lines max).
 6. Your new tests MUST fail. Report tests_pass=false and the exit code.
-7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && git -C "{{wt}}" commit -m "{{commitPrefix}}: RED complete"
+7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
+   Use that exact commit command — it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.
 8. Report the commit SHA in commit_sha.
 
 CONSTRAINTS:
