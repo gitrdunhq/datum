@@ -18,6 +18,7 @@ import laneStateReadTemplate from '../prompts/lane-state-read.md'
 import laneStateWriteTemplate from '../prompts/lane-state-write.md'
 import { renderPrompt } from './utils'
 import type { SkepticLens } from './types'
+import { fencedScript } from './lane-steps'
 
 const PREAMBLE = preambleTemplate + '\n\n---\n\n'
 
@@ -98,4 +99,19 @@ export function laneStateReadPrompt(vars: { epicBranch: string; epicSlug: string
 
 export function laneStateWritePrompt(vars: { epicBranch: string; epicSlug: string; runId: string; entriesJson: string }): string {
   return renderPrompt(laneStateWriteTemplate, vars as PromptVars)
+}
+
+// ── Script-only variants for batched datum-cli calls (#368) ─────────────────
+// The lane-state templates wrap a bash script in a fenced block plus prose for
+// a standalone agent. Batched calls embed just the script as one step.
+
+
+/** The `datum lane-state read` loop; `epicBranch`/`taskIdsSpace` may be shell expressions. */
+export function laneStateReadScript(vars: { epicBranch: string; epicSlug: string; taskIdsSpace: string }): string {
+  return fencedScript(laneStateReadPrompt(vars))
+}
+
+/** The `datum lane-state write` loop for the given entries. */
+export function laneStateWriteScript(vars: { epicBranch: string; epicSlug: string; runId: string; entriesJson: string }): string {
+  return fencedScript(laneStateWritePrompt(vars))
 }

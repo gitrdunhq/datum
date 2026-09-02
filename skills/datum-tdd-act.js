@@ -165,11 +165,6 @@ function laneSpecHash(lane) {
   };
   return fnv1a64(JSON.stringify(spec));
 }
-function resolveLanePlanPrompt(epicDir2) {
-  return `[${epicDir2}]
-ls "${epicDir2}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"
-Return ONLY: "final" if lane-plan-final.json exists, "default" if only lane-plan.json exists, or "none" if neither exists.`;
-}
 function resolveLanePlanPath(epicDir2, agentResult) {
   const resolved = agentResult.trim();
   if (resolved === "final") return `${epicDir2}/lane-plan-final.json`;
@@ -202,20 +197,114 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-read.md
 var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
-// skills/src/prompts/lane-state-write.md
-var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function fencedScript(rendered) {
+  const m = rendered.match(/```[a-z]*\n([\s\S]*?)\n```/);
+  if (!m) throw new Error("template has no fenced script block");
+  return m[1];
+}
+function actStartSteps(o) {
+  const steps = [];
+  if (o.branch === "init") {
+    steps.push({ name: "bootstrap", command: `__boot=$(${o.initCmd || "datum init --json"}) && printf '%s' "$__boot"` });
+    steps.push({ name: "branch", command: `__eb=$(printf '%s' "$__boot" | jq -r '.epicBranch // empty') && [ -n "$__eb" ] && printf '%s' "$__eb"` });
+  } else if (o.branch === "detect") {
+    steps.push({ name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"` });
+  } else {
+    steps.push({ name: "branch", command: `__eb=${q(o.branch)} && printf '%s' "$__eb"` });
+  }
+  steps.push({ name: "timestamp", command: "date +%Y%m%d-%H%M%S" });
+  if (o.lanePlanPath) {
+    steps.push({ name: "resolve", command: `__plan=${q(o.lanePlanPath)} && echo given` });
+  } else {
+    steps.push({
+      name: "resolve",
+      command: `__epic="docs/epics/$__eb"
+if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.json"; echo final; elif [ -f "$__epic/lane-plan.json" ]; then __plan="$__epic/lane-plan.json"; echo default; else __plan=""; echo none; fi`,
+      tolerant: true
+    });
+  }
+  steps.push({ name: "read-plan", command: `[ -n "$__plan" ] && cat "$__plan"` });
+  steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
+  return steps;
+}
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
 function laneStateReadPrompt(vars) {
   return renderPrompt(lane_state_read_default, vars);
 }
-function laneStateWritePrompt(vars) {
-  return renderPrompt(lane_state_write_default, vars);
+function laneStateReadScript(vars) {
+  return fencedScript(laneStateReadPrompt(vars));
 }
 
-// skills/src/prompts/util-detect-branch.md
-var util_detect_branch_default = 'Run these two commands and return ONLY a JSON object with two fields:\n1. "branch": output of `git rev-parse --abbrev-ref HEAD`\n2. "timestamp": output of `date +%Y%m%d-%H%M%S`\nOutput raw JSON only. No markdown fences, no explanation.';
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results2 = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results2, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -261,29 +350,30 @@ var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
 var test_framework = a.test_framework || repoCfg.test_framework;
 var epicBranch = a.epicBranch;
 var runId = a.runId;
-var branchInfo = a.yolo ? await agent(util_detect_branch_default, stageOpts("cli", { label: "yolo-detect", model: model("fast") })) : null;
-if (branchInfo) {
-  const info = parseAgentJson(branchInfo, { branch: "", timestamp: "" });
-  epicBranch = epicBranch || info.branch;
-  runId = runId || info.timestamp;
-}
-if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
-if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
-var epicDir = `docs/epics/${epicBranch}`;
-var lanePlanPath = a.lanePlanPath || "";
-if (!lanePlanPath) {
-  const resolveText = await agent(
-    resolveLanePlanPrompt(epicDir),
-    stageOpts("cli", { label: "resolve-lane-plan", phase: "Topology", model: model("fast") })
-  );
-  lanePlanPath = resolveLanePlanPath(epicDir, resolveText);
-}
-phase("Topology");
-var planText = await agent(
-  `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth \u2014 do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
-  stageOpts("reader", { label: "read-plan", phase: "Topology", model: model("fast") })
+var actStart = actStartSteps({
+  branch: epicBranch ? epicBranch : a.yolo ? "detect" : "",
+  lanePlanPath: a.lanePlanPath || null,
+  laneStateReadScript: laneStateReadScript({
+    epicBranch: "$__eb",
+    epicSlug: "",
+    taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`
+  })
+});
+if (!epicBranch && !a.yolo) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
+var actStartRaw = await agent(
+  batchCommandPrompt(actStart),
+  stageOpts("cli", { label: "act-start", phase: "Topology", model: model("fast") })
 );
-var lanePlan = typeof planText === "string" ? JSON.parse(planText.replace(/```[a-z]*\n?/g, "").trim()) : planText;
+var actStartResult = parseBatchResult(actStartRaw, actStart);
+epicBranch = epicBranch || (stepStdout(actStartResult, "branch") || "").trim();
+runId = runId || (stepStdout(actStartResult, "timestamp") || "").trim();
+if (!epicBranch) throw new Error(`args.epicBranch is required and auto-detect failed (${describeFailure(actStartResult, "act-start")}). Pass {epicBranch, runId} or "yolo" to auto-detect.`);
+if (!runId) throw new Error(`args.runId is required and auto-detect failed (${describeFailure(actStartResult, "act-start")}). Pass {epicBranch, runId} or "yolo" to auto-detect.`);
+var epicDir = `docs/epics/${epicBranch}`;
+var lanePlanPath = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
+phase("Topology");
+var lanePlan = parseAgentJson(stepStdout(actStartResult, "read-plan") || "", null);
+if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
 var waves = buildWaves(lanePlan);
 if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
   throw new Error("Lane plan has 0 tasks \u2014 nothing to execute");
@@ -293,11 +383,7 @@ for (let i = 0; i < waves.length; i++) {
   log(`  Wave ${i}: [${waves[i].join(", ")}]`);
 }
 var slug = epicSlug(epicBranch);
-var markerText = await agent(
-  laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(" ") }),
-  stageOpts("cli", { label: "lane-state-read", phase: "Topology", model: model("fast") })
-);
-var priorMarkers = parseAgentJson(markerText, {});
+var priorMarkers = parseAgentJson(stepStdout(actStartResult, "lane-state-read") || "", {});
 var alreadyMerged = lanePlan.topological_order.filter((id) => {
   const m = priorMarkers[id];
   return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {});
@@ -403,16 +489,10 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       batchRunId,
       topoOrder: lanePlan.topological_order,
       batchTag,
-      agentTypes: agentTypeArgs()
+      agentTypes: agentTypeArgs(),
+      laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
     }
   );
-  if (mergedIds.length > 0) {
-    const entriesJson = JSON.stringify(mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })));
-    await agent(
-      laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
-      stageOpts("cli", { label: `lane-state-write${batchTag}`, phase: "Act", model: model("fast") })
-    );
-  }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
 await workflow(

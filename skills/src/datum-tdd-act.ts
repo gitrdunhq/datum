@@ -1,9 +1,10 @@
 import { model, setModelTiers } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
-import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPrompt, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
-import { laneStateReadPrompt, laneStateWritePrompt } from './shared/prompts'
+import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { laneStateReadScript } from './shared/prompts'
+import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { actStartSteps } from './shared/lane-steps'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
-import detectBranchPrompt from './prompts/util-detect-branch.md'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
@@ -36,42 +37,37 @@ const test_framework: string | undefined = a.test_framework || repoCfg.test_fram
 let epicBranch: string = a.epicBranch
 let runId: string = a.runId
 
-// yolo mode: auto-detect branch and generate runId via agent
-const branchInfo = a.yolo
-  ? await agent(detectBranchPrompt, stageOpts('cli', { label: 'yolo-detect', model: model('fast') }))
-  : null
+// yolo mode: auto-detect branch and generate runId; then resolve + read the
+// lane plan (lane-plan-final.json first, #232/#237) and the epic-scoped
+// completion markers — ONE datum-cli call (#368) where there were four.
+const actStart = actStartSteps({
+  branch: epicBranch ? epicBranch : (a.yolo ? 'detect' : ''),
+  lanePlanPath: a.lanePlanPath || null,
+  laneStateReadScript: laneStateReadScript({
+    epicBranch: '$__eb', epicSlug: '', taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`,
+  }),
+})
+if (!epicBranch && !a.yolo) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
+const actStartRaw = await agent(
+  batchCommandPrompt(actStart),
+  stageOpts('cli', { label: 'act-start', phase: 'Topology', model: model('fast') }),
+)
+const actStartResult = parseBatchResult(actStartRaw, actStart)
+epicBranch = epicBranch || (stepStdout(actStartResult, 'branch') || '').trim()
+runId = runId || (stepStdout(actStartResult, 'timestamp') || '').trim()
 
-if (branchInfo) {
-  const info = parseAgentJson(branchInfo, { branch: '', timestamp: '' }) as { branch: string; timestamp: string }
-  epicBranch = epicBranch || info.branch
-  runId = runId || info.timestamp
-}
-
-if (!epicBranch) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
-if (!runId) throw new Error('args.runId is required. Pass {epicBranch, runId} or "yolo" to auto-detect.')
+if (!epicBranch) throw new Error(`args.epicBranch is required and auto-detect failed (${describeFailure(actStartResult, 'act-start')}). Pass {epicBranch, runId} or "yolo" to auto-detect.`)
+if (!runId) throw new Error(`args.runId is required and auto-detect failed (${describeFailure(actStartResult, 'act-start')}). Pass {epicBranch, runId} or "yolo" to auto-detect.`)
 
 const epicDir: string = `docs/epics/${epicBranch}`
-// ── Lane-plan resolution: check lane-plan-final.json first (version drift #232/#237) ──
-let lanePlanPath: string = a.lanePlanPath || ''
-if (!lanePlanPath) {
-  const resolveText = await agent(
-    resolveLanePlanPrompt(epicDir),
-    stageOpts('cli', { label: 'resolve-lane-plan', phase: 'Topology', model: model('fast') })
-  )
-  lanePlanPath = resolveLanePlanPath(epicDir, resolveText)
-}
+const lanePlanPath: string = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, 'resolve') || '')
 
 // ── Topology ──
 
 phase('Topology')
 
-const planText = await agent(
-  `Read ${lanePlanPath} and return its contents as raw JSON text. This is the SOLE source of truth — do NOT read tasks.json or any other file. Output ONLY the JSON, no markdown fences, no explanation.`,
-  stageOpts('reader', { label: 'read-plan', phase: 'Topology', model: model('fast') })
-)
-const lanePlan: LanePlan = typeof planText === 'string'
-  ? JSON.parse(planText.replace(/```[a-z]*\n?/g, '').trim())
-  : planText
+const lanePlan = parseAgentJson<LanePlan | null>(stepStdout(actStartResult, 'read-plan') || '', null) as LanePlan
+if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
 
 const waves = buildWaves(lanePlan)
 if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
@@ -88,11 +84,7 @@ for (let i = 0; i < waves.length; i++) {
 // is an ancestor of the epic branch tip.
 
 const slug = epicSlug(epicBranch)
-const markerText = await agent(
-  laneStateReadPrompt({ epicBranch, epicSlug: slug, taskIdsSpace: lanePlan.topological_order.join(' ') }),
-  stageOpts('cli', { label: 'lane-state-read', phase: 'Topology', model: model('fast') }),
-)
-const priorMarkers = parseAgentJson(markerText, {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
+const priorMarkers = parseAgentJson(stepStdout(actStartResult, 'lane-state-read') || '', {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
 const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
   const m = priorMarkers[id]
   return !!m && m.status === 'completed' && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {})
@@ -204,7 +196,9 @@ for (let bi = 0; bi < batches.length; bi++) {
     log('  To approve: add the listed paths to that lane\'s `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.')
   }
 
-  // Merge + Cleanup
+  // Merge + Cleanup. The epic-scoped completion markers (so future runs/
+  // sessions skip these lanes) are written by the merge workflow in the same
+  // datum-cli call as the squash merge (#368).
   log('── Merge ──')
   const mergedIds = batchLaneIds.filter(id => completedLanes.includes(id))
   await workflow(
@@ -217,17 +211,11 @@ for (let bi = 0; bi < batches.length; bi++) {
       topoOrder: lanePlan.topological_order,
       batchTag,
       agentTypes: agentTypeArgs(),
+      laneState: mergedIds.length > 0
+        ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
+        : null,
     }
   )
-
-  // Persist epic-scoped completion markers so future runs/sessions skip these lanes
-  if (mergedIds.length > 0) {
-    const entriesJson = JSON.stringify(mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })))
-    await agent(
-      laneStateWritePrompt({ epicBranch, epicSlug: slug, runId: batchRunId, entriesJson }),
-      stageOpts('cli', { label: `lane-state-write${batchTag}`, phase: 'Act', model: model('fast') }),
-    )
-  }
 }
 
 // ── Docs ──

@@ -32,8 +32,8 @@ const PARTIALLY_MAPPED: Record<string, number> = {
   'datum-refine.ts': 1,
   'datum-properties.ts': 1,
   'datum-closeout.ts': 1,
-  'datum-go.ts': 7,
-  'datum-tdd-act.ts': 5,
+  'datum-go.ts': 3,
+  'datum-tdd-act.ts': 2,
 }
 
 interface CallSite { file: string; line: number; args: string }
