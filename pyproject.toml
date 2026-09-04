@@ -42,6 +42,11 @@ rag = [
 # Not declared as a dependency since caliper is not on PyPI.
 # The import is wrapped in try/except ImportError (graceful degradation).
 
+# `datum floor` (Factory Floor TUI dashboard, datum-tui/app.py).
+tui = [
+    "textual>=0.60",
+]
+
 [project.scripts]
 datum = "datum.cli:app"
 
