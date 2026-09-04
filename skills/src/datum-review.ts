@@ -1,6 +1,7 @@
 import { model, type ReviewDomain, type Severity, type ModelName } from './shared/models'
 import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
+import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
 import { configureAgentTypes } from './shared/agent-types'
@@ -42,7 +43,9 @@ interface DomainResult { domain: string; findings: Finding[] }
 const reviewResults = await parallel<DomainResult>(
   DOMAINS.map((d) => () =>
     agent(
-      renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus }),
+      d.domain === 'Correctness'
+        ? reviewCorrectnessSpecVerifyTemplate
+        : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus }),
       { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model },
     ),
   ),
