@@ -56,12 +56,36 @@ FIXTURE_CASES = [
 ]
 
 
+def _validate_against_raw_schema_file(schema_name: str, payload: Any) -> list[str]:
+    """Fall back to a real assets/schemas/<name> JSON-Schema file for
+    contracts that have no Pydantic model registered in SCHEMA_MAP (e.g.
+    unified.schema.json) — mirrors the pattern lane_plan.py already uses."""
+    schema_file = assets_dir() / "schemas" / schema_name
+    if not schema_file.exists():
+        return [f"Unknown schema: {schema_name}"]
+
+    try:
+        import jsonschema
+    except ImportError:
+        return [f"Unknown schema: {schema_name} (jsonschema not installed)"]
+
+    schema = json.loads(schema_file.read_text())
+    try:
+        jsonschema.validate(instance=payload, schema=schema)
+        return []
+    except jsonschema.ValidationError as exc:
+        loc = ".".join(str(p) for p in exc.absolute_path) or "<root>"
+        return [f"{loc}: {exc.message}"]
+    except jsonschema.SchemaError as exc:
+        return [f"invalid schema {schema_name}: {exc}"]
+
+
 def validate_value(schema_path: Path | str, payload: Any) -> list[str]:
     """Validate a python dictionary against a model."""
     schema_name = Path(schema_path).name
     model = SCHEMA_MAP.get(schema_name)
     if not model:
-        return [f"Unknown schema: {schema_name}"]
+        return _validate_against_raw_schema_file(schema_name, payload)
 
     try:
         model.model_validate(payload)
