@@ -20,18 +20,57 @@ function model(tier) {
 }
 
 // skills/src/shared/utils.ts
+function findMatchingBracketEnd(text, start) {
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
 function parseAgentJson(text, fallback) {
   if (!text || typeof text !== "string") return fallback;
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
-  const start = cleaned.search(/[{[]/);
-  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (start === -1 || end === -1) return fallback;
   try {
-    return JSON.parse(cleaned.slice(start, end + 1));
+    return JSON.parse(cleaned);
   } catch {
-    return fallback;
   }
+  const openRe = /[{[]/g;
+  let match;
+  let best;
+  let found = false;
+  while ((match = openRe.exec(cleaned)) !== null) {
+    const start = match.index;
+    const end = findMatchingBracketEnd(cleaned, start);
+    if (end === -1) continue;
+    try {
+      best = JSON.parse(cleaned.slice(start, end + 1));
+      found = true;
+      openRe.lastIndex = end + 1;
+    } catch {
+      openRe.lastIndex = start + 1;
+    }
+  }
+  return found ? best : fallback;
 }
 function renderPrompt(template, vars) {
   return template.replace(
