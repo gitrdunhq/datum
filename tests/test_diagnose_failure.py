@@ -57,3 +57,40 @@ def test_log_unknown_survives_concurrent_writes_from_parallel_lanes(
     out = Path(f".datum/runs/{run_id}/unknown-failures.json")
     entries = json.loads(out.read_text())
     assert len(entries) == n_threads * n_per_thread
+
+
+def test_append_errors_md_survives_concurrent_writes_from_parallel_lanes(
+    tmp_path, monkeypatch
+):
+    """Same race as log_unknown(): parallel lanes can each classify a
+    REASONING/UNKNOWN failure around the same time and both append to the
+    shared .datum/ERRORS.md — a lost-update race must not drop entries."""
+    from datum.diagnose_failure import append_errors_md
+
+    monkeypatch.chdir(tmp_path)
+    n_threads = 8
+    n_per_thread = 10
+    errors: list[Exception] = []
+
+    def worker(idx: int):
+        try:
+            for i in range(n_per_thread):
+                result = {
+                    "classification": "UNKNOWN",
+                    "cause": "unrecognized_pattern",
+                    "message": "Unknown failure.",
+                }
+                append_errors_md(result, f"log {idx}-{i}", f"run-{idx}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], f"append_errors_md raised under concurrency: {errors}"
+
+    content = Path(".datum/ERRORS.md").read_text()
+    assert content.count("## [") == n_threads * n_per_thread

@@ -235,6 +235,7 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
         return
 
     import datetime
+    import fcntl
 
     timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
     errors_path = Path(".datum/ERRORS.md")
@@ -243,7 +244,6 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
     header = (
         "# DATUM Error Log\n\nCross-epic failure memory. Read by Plan phase step 0.\n\n"
     )
-    existing = errors_path.read_text() if errors_path.exists() else header
 
     entry_lines = [
         f"## [{timestamp}] {result['classification']} — {result['cause']}",
@@ -256,7 +256,19 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
     entry_lines.append(f"**Log excerpt:**\n```\n{log_text[:400].strip()}\n```")
     entry_lines.append("")
 
-    errors_path.write_text(existing + "\n".join(entry_lines) + "\n")
+    # Locked + atomic-replace for the same reason as log_unknown(): parallel
+    # lanes can each hit a REASONING/UNKNOWN failure around the same time
+    # and both append to this shared cross-epic log.
+    lock_path = errors_path.with_suffix(".md.lock")
+    with open(lock_path, "w") as lock_fd:  # noqa: SIM115
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            existing = errors_path.read_text() if errors_path.exists() else header
+            tmp = errors_path.with_suffix(".md.tmp")
+            tmp.write_text(existing + "\n".join(entry_lines) + "\n")
+            tmp.replace(errors_path)
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def main() -> None:
