@@ -105,6 +105,16 @@ def floor():
 
     from datum.path_utils import skill_root
 
+    try:
+        import textual  # noqa: F401
+    except ImportError:
+        console.print(
+            "[bold red]The Factory Floor TUI requires the 'textual' package, "
+            "which is not installed.[/bold red]\n"
+            "Run: [bold]pip install datum\\[tui][/bold]"
+        )
+        raise typer.Exit(1) from None
+
     tui_app = skill_root() / "datum-tui" / "app.py"
     if not tui_app.exists():
         console.print(f"[red]TUI not found at {tui_app}[/red]")
