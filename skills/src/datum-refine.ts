@@ -65,7 +65,7 @@ const ticketContent: string = ctx.ticket_content || ''
 
 if (!ctx.ticket_exists || !ticketContent) {
   const ignoredInputHint = issueNumber
-    ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically — that input was ignored. Run \`datum init --name <slug>\` yourself (a slug derived from issue #${issueNumber}'s title), fill in TICKET.md from the issue body, commit it, then re-run \`datum go\` with no args.`
+    ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically — that input was ignored. Run \`datum ticket-from-issue ${issueNumber}\` to fetch the issue and bootstrap TICKET.md from it, then re-run \`datum go\` with no args.`
     : freeText
       ? ` You passed a brief ("${freeText.slice(0, 80)}${freeText.length > 80 ? '…' : ''}"), but datum-go only uses freeText to detect a NEW epic when one is already in progress on this branch — it does not bootstrap a brand-new epic from freeText when nothing exists yet, so that input was ignored. Run \`datum init --name <slug>\` yourself, fill in TICKET.md with your brief, commit it, then re-run \`datum go\` with no args.`
       : ' Run `datum init` first.'
