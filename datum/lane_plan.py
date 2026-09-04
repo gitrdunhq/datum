@@ -177,15 +177,19 @@ def inject_read_dependency_edges(tasks: list[dict]) -> list[str]:
     """
     ownership, _ = build_file_ownership(tasks)
     warnings: list[str] = []
+    # Build once: setdefault ensures every task has a real depends_on list
+    # object (not a throwaway t.get(..., []) default), so `current`'s
+    # values are the SAME list objects `deps.append(owner)` mutates below —
+    # no need to rebuild this dict on every `reads` entry (#524 code review).
+    current = {t["id"]: t.setdefault("depends_on", []) for t in tasks}
     for task in tasks:
         for f in task.get("reads", []):
             owner = ownership.get(f)
             if owner is None or owner == task["id"]:
                 continue
-            deps = task.setdefault("depends_on", [])
+            deps = current[task["id"]]
             if owner in deps:
                 continue
-            current = {t["id"]: t.get("depends_on", []) for t in tasks}
             if _reaches(current, owner, task["id"]):
                 warnings.append(
                     f"Skipped read-dependency edge {task['id']} -> {owner} (via {f!r}): "
