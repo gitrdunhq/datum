@@ -141,7 +141,22 @@ def inject_conflict_edges(tasks: list[dict]) -> None:
                     break
 
 
-def inject_read_dependency_edges(tasks: list[dict]) -> None:
+def _reaches(deps: dict[str, list[str]], start: str, target: str) -> bool:
+    """True if `target` is reachable from `start` by following depends_on edges."""
+    seen: set[str] = set()
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node == target:
+            return True
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(deps.get(node, []))
+    return False
+
+
+def inject_read_dependency_edges(tasks: list[dict]) -> list[str]:
     """Add depends_on edges for lanes that read (but don't write) another
     lane's file (#280).
 
@@ -150,16 +165,36 @@ def inject_read_dependency_edges(tasks: list[dict]) -> None:
     writing to it) gets no dependency edge and can be dispatched before its
     prerequisite lands. Each task may declare an optional `reads` list of
     file paths it depends on without owning. Mutates in place.
+
+    A `reads` reference is an inherently softer signal than a declared
+    `depends_on`: two lanes commonly cross-reference each other's owned
+    files just to see their current shape, with no real ordering
+    requirement either way. Injecting both directions unconditionally would
+    close a cycle and hard-fail the whole plan at topological_sort with no
+    recovery short of hand-editing tasks.json (#524 dogfooding). When
+    adding an edge would close a cycle, skip it and return a warning
+    instead — the plan keeps whichever direction was injected first.
     """
     ownership, _ = build_file_ownership(tasks)
+    warnings: list[str] = []
     for task in tasks:
         for f in task.get("reads", []):
             owner = ownership.get(f)
             if owner is None or owner == task["id"]:
                 continue
             deps = task.setdefault("depends_on", [])
-            if owner not in deps:
-                deps.append(owner)
+            if owner in deps:
+                continue
+            current = {t["id"]: t.get("depends_on", []) for t in tasks}
+            if _reaches(current, owner, task["id"]):
+                warnings.append(
+                    f"Skipped read-dependency edge {task['id']} -> {owner} (via {f!r}): "
+                    f"{owner} already depends on {task['id']}, so adding this edge would "
+                    "close a dependency cycle. Treating the read as informational only."
+                )
+                continue
+            deps.append(owner)
+    return warnings
 
 
 def topological_sort(tasks: list[dict]) -> list[str]:
@@ -526,16 +561,19 @@ def main() -> None:
     if args.validate:
         try:
             inject_conflict_edges(tasks)
-            inject_read_dependency_edges(tasks)
+            read_edge_warnings = inject_read_dependency_edges(tasks)
             topological_sort(tasks)
-            print(json.dumps({"valid": True, "task_count": len(tasks)}))
+            result = {"valid": True, "task_count": len(tasks)}
+            if read_edge_warnings:
+                result["warnings"] = read_edge_warnings
+            print(json.dumps(result))
         except ValueError as e:
             print(json.dumps({"valid": False, "error": str(e)}))
             sys.exit(1)
         return
 
     inject_conflict_edges(tasks)
-    inject_read_dependency_edges(tasks)
+    read_edge_warnings = inject_read_dependency_edges(tasks)
 
     try:
         sorted_ids = topological_sort(tasks)
@@ -584,16 +622,15 @@ def main() -> None:
     md_content = render_tasks_md(tasks, sorted_ids, units if units else None)
     Path(args.md_output).write_text(md_content)
 
-    print(
-        json.dumps(
-            {
-                "ok": True,
-                "lane_plan": args.output,
-                "tasks_md": args.md_output,
-                "total_lanes": lane_plan["total_lanes"],
-            }
-        )
-    )
+    result = {
+        "ok": True,
+        "lane_plan": args.output,
+        "tasks_md": args.md_output,
+        "total_lanes": lane_plan["total_lanes"],
+    }
+    if read_edge_warnings:
+        result["warnings"] = read_edge_warnings
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":
