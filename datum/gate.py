@@ -209,6 +209,147 @@ def check_open_questions(spec_content: str) -> list[str]:
     return []
 
 
+# Ported from the spec-write skill's scan_terms.py / banned_terms.json —
+# a criterion using an unmeasurable term is unreviewable regardless of
+# wording; conditional terms are fine once a measure is attached.
+_BANNED_TERMS_BLOCKING: dict[str, list[str]] = {
+    "subjective": [
+        "appropriate",
+        "adequate",
+        "sufficient",
+        "reasonable",
+        "user-friendly",
+        "user friendly",
+        "clean",
+        "robust",
+        "efficient",
+        "simple",
+        "intuitive",
+        "seamless",
+        "proper",
+    ],
+    "open_ended": [
+        "etc.",
+        "etc",
+        "and so on",
+        "including but not limited to",
+        "as needed",
+        "if required",
+        "where applicable",
+        "as appropriate",
+    ],
+    "superlative": [
+        "best",
+        "optimal",
+        "maximum",
+        "better",
+        "faster",
+        "improved",
+        "minimal",
+        "at least as good as",
+    ],
+    "loophole": [
+        "if possible",
+        "as far as practical",
+        "when convenient",
+        "should ideally",
+    ],
+}
+_BANNED_TERMS_CONDITIONAL: dict[str, list[str]] = {
+    "non_verifiable": [
+        "fast",
+        "quick",
+        "performant",
+        "scalable",
+        "secure",
+        "reliable",
+        "maintainable",
+    ],
+}
+_MEASURE_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"\b\d+(\.\d+)?\s*(ms|milliseconds?|s|seconds?|m|minutes?|h|hours?|days?|%|percent|bytes?|kb|mb|gb|requests?|rps|qps|items?|rows?|calls?|characters?|tokens?)\b",
+        r"\bas measured by\b",
+        r"\bat most\b",
+        r"\bno more than\b",
+        r"\bwithin\b\s+\d+",
+    ]
+]
+
+
+def _term_re(term: str) -> re.Pattern:
+    if term.endswith("."):
+        return re.compile(r"(?<!\w)" + re.escape(term), re.IGNORECASE)
+    return re.compile(
+        r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b", re.IGNORECASE
+    )
+
+
+_BLOCKING_PATTERNS = [
+    (cat, term, _term_re(term))
+    for cat, terms in _BANNED_TERMS_BLOCKING.items()
+    for term in terms
+]
+_CONDITIONAL_PATTERNS = [
+    (cat, term, _term_re(term))
+    for cat, terms in _BANNED_TERMS_CONDITIONAL.items()
+    for term in terms
+]
+
+
+def _extract_section(spec_content: str, heading_name: str) -> str | None:
+    """Return the body text of a '## <n>. <heading_name>' section, or None if absent."""
+    heading = re.search(
+        rf"^(#{{2,6}})\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b.*$",
+        spec_content,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if not heading:
+        return None
+    level = len(heading.group(1))
+    body_start = heading.end()
+    next_heading = re.search(
+        rf"^#{{2,{level}}}\s", spec_content[body_start:], re.MULTILINE
+    )
+    return (
+        spec_content[body_start : body_start + next_heading.start()]
+        if next_heading
+        else spec_content[body_start:]
+    )
+
+
+def check_banned_terms(spec_content: str) -> list[str]:
+    """Scan the Requirements section for unreviewable vague/subjective terms.
+
+    Ported from the spec-write skill's scan_terms.py. Scoped to the
+    Requirements section only, so prose elsewhere in the SPEC (Context,
+    Summary) doesn't trip the refine gate. Returns a list of error strings.
+    """
+    body = _extract_section(spec_content, "Requirements")
+    if not body:
+        return []
+
+    errors: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        has_measure = any(rx.search(stripped) for rx in _MEASURE_PATTERNS)
+        for _cat, term, rx in _BLOCKING_PATTERNS:
+            if rx.search(stripped):
+                errors.append(
+                    f"SPEC.md Requirements uses unreviewable term {term!r}: {stripped[:80]!r}"
+                )
+        if not has_measure:
+            for _cat, term, rx in _CONDITIONAL_PATTERNS:
+                if rx.search(stripped):
+                    errors.append(
+                        f"SPEC.md Requirements uses {term!r} with no stated measure: {stripped[:80]!r}"
+                    )
+    return errors
+
+
 def check_assumption_audit(
     spec_content: str,
     questions_content: str | None,
@@ -446,6 +587,13 @@ def gate_refine(yolo: bool, config: dict) -> None:
     oq_errors = check_open_questions(content)
     if oq_errors:
         fail(oq_errors[0])
+
+    # spec-write integration: reject unreviewable vague/subjective terms in
+    # acceptance criteria (e.g. "handles errors appropriately" can't be
+    # checked against a diff; "responds within 200ms" can).
+    term_errors = check_banned_terms(content)
+    if term_errors:
+        fail(term_errors[0])
 
     # Check QUESTIONS.md for unanswered entries
     questions_path = resolve_artifact("QUESTIONS.md")
