@@ -354,3 +354,42 @@ def test_delete_chunks_rejects_path_traversal_reviewer_id(tmp_path):
     with pytest.raises(ValueError):
         engine.delete_chunks(["chunk1"], reviewer_id="../../../../../../tmp/evil")
 
+
+# ---------------------------------------------------------------------------
+# Performance: index_all() must skip reviewers whose KNOWLEDGE.md is
+# unchanged since the last index (needs_reindex() exists for exactly this).
+# ---------------------------------------------------------------------------
+
+
+class CountingEmbeddings(FakeEmbeddings):
+    """Same as FakeEmbeddings but tracks how many times embed() is called."""
+
+    def __init__(self) -> None:
+        self.embed_calls = 0
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.embed_calls += 1
+        return super().embed(texts)
+
+
+def test_index_all_skips_unchanged_reviewers_on_second_call(tmp_path):
+    """index_all() must not re-embed a reviewer whose KNOWLEDGE.md is unchanged."""
+    reviewers_dir = tmp_path / "reviewers"
+    _make_knowledge_md(
+        "## Patterns Found\n- [2026-01-01] Some fact. (Source: x)\n",
+        reviewers_dir / "security",
+    )
+
+    provider = CountingEmbeddings()
+    engine = RAGEngine(store_dir=tmp_path / "store", embedding_provider=provider)
+
+    first = engine.index_all(reviewers_dir=reviewers_dir)
+    assert first["security"] > 0
+    calls_after_first = provider.embed_calls
+    assert calls_after_first > 0
+
+    second = engine.index_all(reviewers_dir=reviewers_dir)
+    assert second["security"] == 0, "unchanged reviewer must report 0 newly indexed"
+    assert (
+        provider.embed_calls == calls_after_first
+    ), "must not re-embed unchanged content"

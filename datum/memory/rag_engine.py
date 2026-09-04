@@ -143,8 +143,10 @@ class RAGEngine:
             knowledge_path = reviewer_dir / "KNOWLEDGE.md"
             if knowledge_path.is_file():
                 reviewer_id = reviewer_dir.name
-                count = self.index(reviewer_id, knowledge_path)
-                results[reviewer_id] = count
+                if self.needs_reindex(reviewer_id, knowledge_path):
+                    results[reviewer_id] = self.index(reviewer_id, knowledge_path)
+                else:
+                    results[reviewer_id] = 0
 
         return results
 
