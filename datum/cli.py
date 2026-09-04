@@ -763,8 +763,10 @@ def classify(
         )
         raise typer.Exit(1)
 
+    from datum.gate import load_config
+
     metadata = parse_classification_metadata(spec_text)
-    config = {}  # TODO: load [classification] from config.toml
+    config = load_config().get("classification", {})
     result = do_classify(metadata, config)
     console.print(json.dumps(result, indent=2))
 
