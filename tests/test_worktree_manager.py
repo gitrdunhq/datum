@@ -35,6 +35,14 @@ def repo(tmp_path: Path) -> Path:
     _git(["init", "-q"], cwd=repo_root)
     _git(["config", "user.email", "test@example.com"], cwd=repo_root)
     _git(["config", "user.name", "Test"], cwd=repo_root)
+    # Neutralize any machine-global git hooks (core.hooksPath) for this
+    # fixture repo: a global post-checkout/post-commit hook that writes
+    # into every new worktree (e.g. an indexing tool) leaves untracked
+    # files behind, which makes git worktree remove's non-force safety
+    # check correctly-but-spuriously refuse to clean up a stale worktree
+    # in tests — unrelated to any real uncommitted work. Root cause of the
+    # flaky failures tracked in issue #381.
+    _git(["config", "core.hooksPath", "/dev/null"], cwd=repo_root)
     (repo_root / "README.md").write_text("hello\n")
     _git(["add", "README.md"], cwd=repo_root)
     _git(["commit", "-q", "-m", "initial commit"], cwd=repo_root)
@@ -247,3 +255,132 @@ class TestPathTraversalValidation:
 
         with pytest.raises(ValueError):
             worktree_path_for_lane("../../../../tmp/evil", "run1", repo_root=repo)
+
+
+class TestCreateLaneWorktree:
+    """Coverage gap: create_lane_worktree() had zero direct tests despite
+    complex resume/branch-collision/stale-worktree-reclaim logic that
+    creates real worktrees and branches."""
+
+    def test_creates_worktree_and_branch(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        wt_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        assert wt_path.is_dir()
+        branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=wt_path).stdout.strip()
+        assert branch == "epic/test--lane-a"
+
+    def test_resume_is_idempotent_for_an_already_registered_worktree(self, repo: Path):
+        """Calling create_lane_worktree twice with the same args must not
+        error — it should detect the already-registered worktree and reuse
+        it (the 'Resume' branch in the source)."""
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        first = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        second = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        assert first == second
+        assert second.is_dir()
+
+    def test_reclaims_lane_branch_from_a_stale_orphaned_worktree(self, repo: Path):
+        """Real scenario the source comments describe: an earlier incomplete
+        run left lane_branch checked out in a now-orphaned worktree dir (its
+        run finished/errored without cleanup). A new run for the SAME lane_id
+        under a DIFFERENT run_id must reclaim the branch by deregistering the
+        stale worktree, not fail outright — since lane_branch has no run_id
+        in its name (only the worktree PATH does), this collision is real."""
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        stale_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        assert stale_path.is_dir()
+
+        # A second run, different run_id, same lane_id — same lane_branch name.
+        new_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-2", base_sha, repo_root=repo
+        )
+        assert new_path != stale_path
+        assert new_path.is_dir()
+        branch = _git(
+            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=new_path
+        ).stdout.strip()
+        assert branch == "epic/test--lane-a"
+        # The stale worktree's registration must have been cleaned up, not
+        # left dangling.
+        registered = _git(["worktree", "list", "--porcelain"], cwd=repo).stdout
+        assert str(stale_path) not in registered
+
+
+class TestMergeLaneBranches:
+    """Coverage gap: merge_lane_branches() had zero tests despite being the
+    function that rewrites the epic branch's real history via squash-merge."""
+
+    def test_squash_merges_lanes_in_order_into_one_commit(self, repo: Path):
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        _add_lane_commit(repo, lane_b, "b.txt")
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+
+        sha = merge_lane_branches(
+            "epic/test", ["lane-a", "lane-b"], "merge: lanes a+b", repo_root=repo
+        )
+
+        assert sha
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        # Exactly one new commit landed on the epic branch (squashed).
+        assert len(after_log) == len(before_log) + 1
+        assert (repo / "a.txt").exists()
+        assert (repo / "b.txt").exists()
+        head_msg = _git(["log", "-1", "--format=%s"], cwd=repo).stdout.strip()
+        assert head_msg == "merge: lanes a+b"
+
+    def test_empty_lane_order_raises_instead_of_silently_no_op(self, repo: Path):
+        """Zero completed lanes must fail clearly (nothing to commit), not
+        silently succeed and return a misleading 'merge' SHA that is really
+        just the epic branch's unchanged HEAD."""
+        from datum.worktree_manager import merge_lane_branches
+
+        with pytest.raises(RuntimeError):
+            merge_lane_branches("epic/test", [], "merge: nothing", repo_root=repo)
+
+    def test_conflicting_lane_merge_raises_naming_the_lane(self, repo: Path):
+        """Two lane branches editing the same file in conflicting ways must
+        raise RuntimeError naming the failing lane, not silently pick one
+        side or corrupt the epic branch."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        wt_a = repo.parent / "wt-conflict-a"
+        _git(["worktree", "add", str(wt_a), lane_a], cwd=repo)
+        (wt_a / "shared.txt").write_text("from lane a\n")
+        _git(["add", "shared.txt"], cwd=wt_a)
+        _git(["commit", "-q", "-m", "lane a edits shared.txt"], cwd=wt_a)
+        _git(["worktree", "remove", "--force", str(wt_a)], cwd=repo)
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-conflict-b"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "shared.txt").write_text("from lane b\n")
+        _git(["add", "shared.txt"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b edits shared.txt"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        with pytest.raises(RuntimeError, match="lane-b"):
+            merge_lane_branches(
+                "epic/test", ["lane-a", "lane-b"], "merge: conflict", repo_root=repo
+            )
