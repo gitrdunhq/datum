@@ -559,6 +559,7 @@ if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
   const language = globalCfg.language || DEFAULT_CONFIG.language;
+  const testFramework = globalCfg.test_framework;
   const actStart = actStartSteps({
     branch: "init",
     initCmd: "datum init --json",
@@ -656,7 +657,7 @@ if (shouldRun("act", 3)) {
         batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir, yolo, agentTypes: agentTypeArgs() },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs() },
         priorFailures: actFailures,
         priorCompleted: actCompleted
       }

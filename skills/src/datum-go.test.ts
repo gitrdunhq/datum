@@ -324,6 +324,23 @@ describe('Closeout receives the real Act runId, not an empty phaseArgs default (
   })
 })
 
+// #524 dogfooding (state-flow audit) — datum-go.ts's inline Act block
+// exists to mirror datum-tdd-act.ts exactly, but its cfg literal for the
+// act-lane call had drifted: it omitted test_framework, which
+// datum-tdd-act.ts's equivalent cfg includes. Unread by
+// datum-tdd-act-lane.ts today (latent, not an active bug) — closing the
+// drift before something starts reading it on only one of the two paths.
+describe('act-lane cfg includes test_framework, matching datum-tdd-act.ts (#524)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('the cfg object passed to the act-lane workflow call includes test_framework', () => {
+    const cfgIdx = src.indexOf('cfg: { lanePlanPath')
+    expect(cfgIdx).toBeGreaterThan(-1)
+    const cfgLiteral = src.slice(cfgIdx, cfgIdx + 250)
+    expect(cfgLiteral).toMatch(/test_framework/)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)
