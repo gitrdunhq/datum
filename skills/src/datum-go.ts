@@ -120,8 +120,9 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 }
 
 // Preflight: the globally installed `datum` CLI is a `uv tool install --editable`
-// pointing at whatever path was on disk (dist-info/direct_url.json) the last time
-// it was installed. If a prior pipeline step ran an install command with cwd
+// pointing at whatever path was on disk the last time it was installed (see
+// scripts/preflight-tool-check.sh for the install-metadata inspection). If a
+// prior pipeline step ran an install command with cwd
 // inside a lane worktree instead of the repo root, that link silently gets
 // repointed at a throwaway worktree — every subsequent `datum ...` invocation
 // across the whole pipeline then runs a frozen, stale copy of the code with no
@@ -132,18 +133,22 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 // This invariant only holds when datum-go is self-hosted (invoked from inside
 // the datum repo itself). datum-go is also legitimately used as an external
 // orchestrator against a different target repo (#378) — in that case the
-// invoking repo's toplevel is the target repo, not datum, so the check is
-// skipped rather than false-positiving on an expected mismatch.
+// invoking repo's toplevel is the target repo, not datum, and
+// scripts/preflight-tool-check.sh (which only ships inside the datum repo)
+// won't exist there, so the check is skipped rather than false-positiving on
+// an expected mismatch.
+//
+// The check itself lives in that script file, not an inline one-liner: this
+// step runs through an LLM `cli` agent told to execute the command and
+// report its stdout, and a long, heavily quote-escaped one-liner proved
+// unreliable for the agent to reproduce faithfully (#378 follow-up — a
+// semantically-correct inline script still misbehaved when actually run by
+// the agent). A short, plain command gives it far less to mangle.
 const toolCheckText = await agent(
   runCommandPrompt(
-  `REPO_ROOT=$(git rev-parse --show-toplevel) && ` +
-  `if [ ! -f "$REPO_ROOT/pyproject.toml" ] || ! grep -q '^name = "datum"' "$REPO_ROOT/pyproject.toml"; then ` +
-  `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; exit 0; fi && ` +
-  `DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && ` +
-  `if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && ` +
-  `INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && ` +
-  `EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && ` +
-  `if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`,
+    `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && ` +
+    `if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else ` +
+    `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; fi`,
   ),
   stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }),
 )
