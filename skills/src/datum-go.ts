@@ -4,7 +4,7 @@ import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
-import { parseState, detectStartFrom, type PipelineState } from './shared/pipeline-state'
+import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
@@ -84,8 +84,8 @@ const bootText = await agent(
   bootPrompt(configFingerprint),
   { label: 'read-config+state', model: model('fast') },
 )
-const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '' }) as {
-  config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string
+const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '', currentBranch: '' }) as {
+  config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string; currentBranch?: string
 }
 const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string, any>
 // #368: agent_types (default true) / hooks_installed (default false) switches.
@@ -165,7 +165,22 @@ if (!toolCheck.ok) {
 }
 
 // Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
-const priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
+let priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
+
+// #524 dogfooding: .datum/pipeline-state.json is a single global file, not
+// scoped per branch. Leftover state from a prior, unrelated epic must never
+// be trusted just because it's still on disk — that silently sent a fresh
+// epic straight to Act (startFrom=act from priorState.completedPhases) with
+// no TICKET.md/SPEC.md/lane-plan.json ever written for the epic actually on
+// this branch, and Act crashed looking for a lane-plan.json that could never
+// exist. This check is independent of freeText: a bare `datum go` with no
+// brief and stale leftover state deserves the same protection as one with a
+// brief that describes different work.
+const currentBranch = typeof boot.currentBranch === 'string' ? boot.currentBranch : ''
+if (priorState && isStaleState(priorState, currentBranch)) {
+  log(`Ignoring pipeline state for branch "${priorState.branch}" — currently checked out on "${currentBranch}". Treating as a fresh run instead of trusting stale completedPhases.`)
+  priorState = null
+}
 
 let lastResult: PhaseResult = {}
 let haltedAt = ''

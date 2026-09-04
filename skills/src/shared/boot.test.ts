@@ -112,6 +112,17 @@ describe('bootPrompt (#353, #354)', () => {
     expect(p).toContain('"localSkills"')
     expect(p).toContain('"repoRoot"')
   })
+
+  // #524 dogfooding: leftover .datum/pipeline-state.json from an unrelated
+  // epic was silently trusted by datum-go's auto-resume, jumping straight to
+  // Act with no SPEC/lane-plan ever written for the actual current branch.
+  // The boot agent must report the real checked-out branch so the caller can
+  // compare it against state.branch before trusting completedPhases.
+  it('asks for the currently checked-out git branch (#524 stale-state guard)', () => {
+    const p = bootPrompt('sha256:aaaa')
+    expect(p).toContain('"currentBranch"')
+    expect(p).toMatch(/git branch --show-current/)
+  })
 })
 
 describe('bootPrompt (#355)', () => {

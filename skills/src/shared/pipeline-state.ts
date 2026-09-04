@@ -29,6 +29,23 @@ export function serializeState(state: PipelineState): string {
   return JSON.stringify(state, null, 2)
 }
 
+/**
+ * True when `state` belongs to a branch other than the one currently
+ * checked out. `.datum/pipeline-state.json` is a single global file, not
+ * scoped per branch — leftover state from a prior, unrelated epic must never
+ * be trusted to skip phases for a different one just because it happens to
+ * still be on disk (#524 dogfooding: this silently sent a fresh epic
+ * straight to Act with no SPEC/lane-plan ever written).
+ *
+ * Deliberately conservative: an unknown current branch (empty string) never
+ * counts as stale — the caller should only call this once it actually knows
+ * the checked-out branch, not treat "couldn't tell" as "definitely stale".
+ */
+export function isStaleState(state: PipelineState | null, currentBranch: string): boolean {
+  if (!state || !currentBranch) return false
+  return state.branch !== currentBranch
+}
+
 export function detectStartFrom(state: PipelineState | null): Phase | null {
   if (!state || !state.completedPhases?.length) return null
   const ORDER: Phase[] = ['refine', 'plan', 'properties', 'act', 'validate', 'review', 'closeout']

@@ -311,6 +311,10 @@ function parseState(raw) {
     return null;
   }
 }
+function isStaleState(state2, currentBranch2) {
+  if (!state2 || !currentBranch2) return false;
+  return state2.branch !== currentBranch2;
+}
 function detectStartFrom(state2) {
   if (!state2 || !state2.completedPhases?.length) return null;
   const ORDER = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
@@ -341,11 +345,12 @@ function skillsDirHint(skillsDir) {
 function bootPrompt(configFingerprint2 = "") {
   const stamp = configFingerprint2 ? `
 (config fingerprint: ${configFingerprint2})` : "";
-  return `Your task: read files with the Read tool and run commands with the Bash tool, then return a JSON object with four fields:
+  return `Your task: read files with the Read tool and run commands with the Bash tool, then return a JSON object with five fields:
 1. "config": contents of .datum/config.json (or {} if missing)
 2. "state": contents of .datum/pipeline-state.json (or null if missing)
 3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
 4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
+5. "currentBranch": the output of \`git branch --show-current\` (or "" if not a git repo / detached HEAD)
 Do not ask for clarification and do not message anyone \u2014 this prompt is the whole task. Output raw JSON only.${stamp}`;
 }
 function runCommandPrompt(command) {
@@ -421,7 +426,7 @@ var bootText = await agent(
   bootPrompt(configFingerprint),
   { label: "read-config+state", model: model("fast") }
 );
-var boot = parseAgentJson(bootText, { config: {}, state: null, localSkills: [], repoRoot: "" });
+var boot = parseAgentJson(bootText, { config: {}, state: null, localSkills: [], repoRoot: "", currentBranch: "" });
 var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
 configureAgentTypes(readAgentTypeConfig(globalCfg));
 log(`Agent types: ${agentTypeArgs().agentTypes ? "on" : "off"}, hooks_installed: ${agentTypeArgs().hooksInstalled}`);
@@ -459,6 +464,11 @@ if (!toolCheck.ok) {
   );
 }
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
+var currentBranch = typeof boot.currentBranch === "string" ? boot.currentBranch : "";
+if (priorState && isStaleState(priorState, currentBranch)) {
+  log(`Ignoring pipeline state for branch "${priorState.branch}" \u2014 currently checked out on "${currentBranch}". Treating as a fresh run instead of trusting stale completedPhases.`);
+  priorState = null;
+}
 var lastResult = {};
 var haltedAt = "";
 var resolvedBranch = priorState?.branch || "";
