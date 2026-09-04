@@ -233,7 +233,11 @@ def install_agent_types(
     hook_names = referenced_hooks(source_agents)
 
     if package_root == repo_root or repo_root in package_root.parents:
-        agents_dest = (repo_root / AGENTS_SUBDIR).resolve()
+        # Not .resolve() — repo_root is already absolute/resolved, and
+        # resolving the *combined* path would follow an existing symlink at
+        # AGENTS_SUBDIR to wherever it points (including a broken symlink's
+        # dangling target), silently operating on the wrong path entirely.
+        agents_dest = repo_root / AGENTS_SUBDIR
         result = AgentInstallResult(
             agents_dir=agents_dest,
             hooks_dir=source_hooks,
@@ -246,6 +250,12 @@ def install_agent_types(
         # install.sh creates it too, but a checkout may never have run
         # install.sh, so datum init must not assume it already exists.
         if source_agents.is_dir() and not agents_dest.exists():
+            # A dangling symlink (target moved/deleted, e.g. a relocated
+            # checkout) also fails .exists(), but symlink_to() then raises
+            # FileExistsError on the stale link node itself — repair it
+            # rather than reporting a false hard failure (#524 code review).
+            if agents_dest.is_symlink():
+                agents_dest.unlink()
             try:
                 agents_dest.parent.mkdir(parents=True, exist_ok=True)
                 agents_dest.symlink_to(
