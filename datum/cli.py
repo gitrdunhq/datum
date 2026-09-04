@@ -214,6 +214,34 @@ def issue_stage_cmd(
     console.print(json.dumps({"ok": True, "issue": issue, "stage": stage}))
 
 
+@app.command(name="lane-plan-from-epic")
+def lane_plan_from_epic_cmd(
+    epic_number: int = typer.Argument(..., help="GitHub epic issue number"),
+    output: str = typer.Option(
+        ".datum/lane-plan.json", "--output", help="Path to write lane-plan.json"
+    ),
+):
+    """Rebuild lane-plan.json from a GitHub epic issue's sub-issues.
+
+    Reverse of `plan-issues`: reads each sub-issue's datum:metadata comment
+    block (files/acceptance_criteria/depends_on/stage) and resyncs a local
+    lane-plan.json from GitHub's current state of those issues.
+    """
+    from datum.github_issues import build_lane_plan_from_epic
+
+    try:
+        result = build_lane_plan_from_epic(epic_number)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold red]lane-plan-from-epic failed: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, indent=2) + "\n")
+
+    console.print(json.dumps(result, indent=2))
+
+
 @app.command("config-fingerprint")
 def config_fingerprint_cmd(
     json_output: bool = typer.Option(
