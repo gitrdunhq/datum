@@ -86,6 +86,31 @@ def _build_issue_body(
     )
 
 
+def fetch_issue(issue_number: int) -> dict:
+    """Fetch a single GitHub issue's title/body/number.
+
+    Used to bootstrap a brand-new epic + TICKET.md from one bare issue with
+    no prior datum decomposition — distinct from list_sub_issues()/
+    build_lane_plan_from_epic(), which assume an epic issue already has
+    datum:metadata-tagged sub-issues.
+    """
+    raw = _gh_check(
+        "issue",
+        "view",
+        str(issue_number),
+        "--repo",
+        REPO,
+        "--json",
+        "number,title,body",
+    )
+    data = json.loads(raw)
+    return {
+        "number": data["number"],
+        "title": data["title"],
+        "body": data.get("body") or "",
+    }
+
+
 def parse_metadata(body: str) -> dict | None:
     m = METADATA_PATTERN.search(body or "")
     if not m:
