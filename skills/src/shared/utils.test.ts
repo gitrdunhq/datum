@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles } from './utils'
 import type { Lane, LanePlan, LaneOutcome } from './types'
 
 // ---------------------------------------------------------------------------
@@ -620,5 +620,41 @@ describe('parseContractPreflight — issue #356', () => {
     const p = parseContractPreflight('{"status":"contract_conflict","conflicts":[],"needs_write":["a.py"],"reason":"r"}')
     expect(p.status).toBe('contract_conflict')
     expect(p.needs_write).toEqual(['a.py'])
+  })
+})
+
+// #524 dogfooding — isTest()'s directory check was `f.includes('/tests/')`,
+// requiring a slash BEFORE "tests" — so a repo-root-relative path like
+// "tests/unit/test_part_score.py" (no leading slash) never matched via the
+// directory check, only via the "test_" basename convention. Currently
+// masked whenever every test file also happens to follow a recognized
+// basename convention (test_*.py, *.spec.ts, etc.) — but it's dead code
+// for the common root-relative case, and would silently misclassify a test
+// file whose basename doesn't match any convention (e.g. a Kotlin/Java
+// suite like tests/integration/SomeSuite.kt).
+describe('classifyFiles — root-relative tests/ directory (#524)', () => {
+  it('classifies a root-relative tests/ path as a test file via the directory check alone', () => {
+    // "SomeSuite.kt" matches no basename convention — only the directory
+    // check can classify it, and only if it accounts for a path that
+    // starts with "tests/" rather than requiring a leading slash.
+    const { testFiles, implFiles } = classifyFiles(['tests/integration/SomeSuite.kt'])
+    expect(testFiles).toEqual(['tests/integration/SomeSuite.kt'])
+    expect(implFiles).toEqual([])
+  })
+
+  it('still classifies a nested tests/ path (with a leading slash) as a test file', () => {
+    const { testFiles } = classifyFiles(['src/module/tests/SomeSuite.kt'])
+    expect(testFiles).toEqual(['src/module/tests/SomeSuite.kt'])
+  })
+
+  it('still classifies a root-relative Tests/ (capitalized) path as a test file', () => {
+    const { testFiles } = classifyFiles(['Tests/IntegrationSuite.swift'])
+    expect(testFiles).toEqual(['Tests/IntegrationSuite.swift'])
+  })
+
+  it('does not misclassify an implementation file merely containing "test" in its name', () => {
+    const { testFiles, implFiles } = classifyFiles(['src/caliper/core/latest_config.py'])
+    expect(testFiles).toEqual([])
+    expect(implFiles).toEqual(['src/caliper/core/latest_config.py'])
   })
 })

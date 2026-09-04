@@ -416,7 +416,9 @@ export function classifyFiles(files: string[]): {
       base.endsWith('.spec.js') ||
       base.endsWith('_test.go') ||
       base.endsWith('Tests.swift') ||
+      f.startsWith('tests/') ||
       f.includes('/tests/') ||
+      f.startsWith('Tests/') ||
       f.includes('/Tests/') ||
       base === 'conftest.py'
     )
