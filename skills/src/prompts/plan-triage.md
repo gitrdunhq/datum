@@ -1,6 +1,6 @@
 Triage agent. Read the plan and decide if deep codebase research is needed before Act.
 
-Read TASKS.md in the working directory.
+Read docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md.
 
 EVALUATE against this rubric:
 1. Does the plan modify security, authentication, or core data models?

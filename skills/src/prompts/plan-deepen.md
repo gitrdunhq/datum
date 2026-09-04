@@ -1,6 +1,6 @@
 Evidence gatherer. Ground the plan in codebase reality by researching each complex task.
 
-Read TASKS.md, then for each task that touches non-trivial logic:
+Read docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md, then for each task that touches non-trivial logic:
 
 1. Search the codebase for existing implementations of similar logic
 2. Identify project conventions (how this pattern is usually handled here)
@@ -16,7 +16,7 @@ TOOLS (use in preference order):
 
 Use headroom_compress on large files. Query-retrieve specific sections as needed.
 
-APPEND a single section to the end of TASKS.md titled exactly `## Research Findings`.
+APPEND a single section to the end of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md titled exactly `## Research Findings`.
 Group findings by task ID. Keep it concise — patterns and pitfalls, not full file dumps.
 
 Format:
@@ -32,7 +32,7 @@ Format:
 
 CRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.
 
-After appending, commit: git add TASKS.md && git commit -m "plan: deepen — research findings"
+After appending, commit: git add docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md && git commit -m "plan: deepen — research findings"
 
 Return JSON: {"tasks_researched": N, "findings_count": N}
 Output raw JSON only. No markdown fences.
