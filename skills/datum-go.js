@@ -734,7 +734,7 @@ if (shouldRun("review", 5)) {
 }
 if (shouldRun("closeout", 6)) {
   log("\u2500\u2500 Closeout \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-closeout") }, phaseArgs);
+  lastResult = await workflow({ scriptPath: sk("datum-closeout") }, { ...phaseArgs, runId: resolvedRunId });
   log("Closeout complete");
   await markPhaseComplete("closeout");
 }
