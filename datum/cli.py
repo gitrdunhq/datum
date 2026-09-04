@@ -1840,6 +1840,22 @@ def worktrees_cleanup(
     typer.echo(json.dumps({"cleaned": result}))
 
 
+@worktrees_app.command("list")
+def worktrees_list_cmd(
+    run_id: str = typer.Option(
+        None, "--run-id", help="Only show worktrees for this pipeline run"
+    ),
+):
+    """List every registered worktree (path, sha, branch)."""
+    from datum.worktree_manager import WORKTREE_ROOT, list_worktrees
+
+    worktrees = list_worktrees()
+    if run_id:
+        prefix = f"{WORKTREE_ROOT}/{run_id}/"
+        worktrees = [w for w in worktrees if prefix in w["path"].replace("\\", "/")]
+    typer.echo(json.dumps(worktrees, indent=2))
+
+
 @app.command(name="housekeep-epic")
 def housekeep_epic_cmd(
     epic_branch: str = typer.Argument(
