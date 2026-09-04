@@ -133,14 +133,15 @@ var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
 configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
 if (!ctx.spec_content) throw new Error("SPEC.md not found. Run datum-refine first.");
 if (!ctx.tasks_content) throw new Error("TASKS.md not found. Run datum-plan first.");
+var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split("\n").length} lines`);
 phase("Derive");
 await agent(
   renderPrompt(properties_derive_default, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content }) + `
 
 AFTER WRITING THE PROPERTIES CONTENT:
-1. Write the output to "${ctx.epic_dir}/PROPERTIES.md" (create dirs if needed)
-2. Commit: git add "${ctx.epic_dir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
+1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)
+2. Commit: git add "${epicDir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
   { label: "derive-and-commit", model: model("balanced") }
 );
 log("PROPERTIES.md written and committed");
