@@ -207,3 +207,43 @@ class TestHousekeepEpic:
         )
         assert merged_check.returncode != 0
         assert unmerged_check.returncode == 0
+
+
+class TestPathTraversalValidation:
+    """Security: run_id/lane_id must not escape WORKTREE_ROOT via '..' segments."""
+
+    def test_create_lane_worktree_rejects_traversal_run_id(self, repo, tmp_path):
+        from datum.worktree_manager import create_lane_worktree
+
+        with pytest.raises(ValueError):
+            create_lane_worktree(
+                "epic/test",
+                "lane-a",
+                "../../../../tmp/evil",
+                "HEAD",
+                repo_root=repo,
+            )
+
+    def test_create_lane_worktree_rejects_traversal_lane_id(self, repo, tmp_path):
+        from datum.worktree_manager import create_lane_worktree
+
+        with pytest.raises(ValueError):
+            create_lane_worktree(
+                "epic/test",
+                "../../../../tmp/evil",
+                "run1",
+                "HEAD",
+                repo_root=repo,
+            )
+
+    def test_cleanup_run_worktrees_rejects_traversal_run_id(self, repo):
+        from datum.worktree_manager import cleanup_run_worktrees
+
+        with pytest.raises(ValueError):
+            cleanup_run_worktrees("../../../../tmp/evil", "epic/test", repo_root=repo)
+
+    def test_worktree_path_for_lane_rejects_traversal(self, repo):
+        from datum.worktree_manager import worktree_path_for_lane
+
+        with pytest.raises(ValueError):
+            worktree_path_for_lane("../../../../tmp/evil", "run1", repo_root=repo)

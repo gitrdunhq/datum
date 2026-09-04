@@ -248,3 +248,65 @@ def test_lane_state_epic_branch_slugification(tmp_path, monkeypatch):
     assert slug_dir.is_dir()
     assert not (tmp_path / ".datum" / "epics" / "datum" / "epic-287").exists()
     assert os.path.sep not in "datum-epic-287"
+
+
+def _lane_state_dir_for(tmp_path, epic_slug):
+    return tmp_path / ".datum" / "epics" / epic_slug / "lane-state"
+
+
+def test_lane_state_write_rejects_path_traversal_task(tmp_path, monkeypatch):
+    """Security: a `--task` with `../` segments must not write outside lane-state/."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+
+    outside_target = tmp_path.parent / "pwned.json"
+    lane_state_dir = _lane_state_dir_for(tmp_path, "datum-epic-1")
+    rel = os.path.relpath(outside_target, lane_state_dir)
+    traversal_task = rel[: -len(".json")] if rel.endswith(".json") else rel
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "lane-state",
+            "write",
+            "--epic",
+            "datum/epic-1",
+            "--task",
+            traversal_task,
+            "--status",
+            "completed",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "no such command" not in result.output.lower()
+    assert not outside_target.exists()
+
+
+def test_lane_state_read_rejects_path_traversal_task(tmp_path, monkeypatch):
+    """Security: a `--task` with `../` segments must not disclose files outside lane-state/."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    secret = tmp_path.parent / "secret.json"
+    secret.write_text('{"leaked": true}')
+
+    lane_state_dir = _lane_state_dir_for(tmp_path, "datum-epic-1")
+    rel = os.path.relpath(secret, lane_state_dir)
+    traversal_task = rel[: -len(".json")] if rel.endswith(".json") else rel
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "lane-state",
+            "read",
+            "--epic",
+            "datum/epic-1",
+            "--task",
+            traversal_task,
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "leaked" not in result.output

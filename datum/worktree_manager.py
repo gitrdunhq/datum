@@ -21,6 +21,15 @@ from pathlib import Path
 
 WORKTREE_ROOT = ".datum/worktrees"
 
+_PATH_COMPONENT_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def _validate_path_component(value: str, label: str) -> None:
+    """Reject values that could escape WORKTREE_ROOT via '..'/'/' segments
+    when interpolated into a `WORKTREE_ROOT / value / ...` path."""
+    if not value or not _PATH_COMPONENT_RE.match(value) or ".." in value:
+        raise ValueError(f"{label} must be a safe path component: {value!r}")
+
 
 def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -49,6 +58,8 @@ def create_lane_worktree(
     The worktree starts at base_sha (the epic branch tip at pipeline start),
     so all lanes share a common ancestor and cherry-picks / merges are clean.
     """
+    _validate_path_component(run_id, "run_id")
+    _validate_path_component(lane_id, "lane_id")
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
     lane_branch = f"{epic_branch}--{lane_id}"
@@ -148,6 +159,14 @@ def remove_lane_worktree(
     Returns:
         {"lane_id": ..., "branch": lane_branch, "deleted": bool, "preserved": bool}
     """
+    try:
+        _validate_path_component(run_id, "run_id")
+        _validate_path_component(lane_id, "lane_id")
+    except ValueError:
+        # Fails open (see docstring): refuse to touch anything rather than
+        # raise, but never resolve a traversal-crafted path.
+        return {"lane_id": lane_id, "branch": "", "deleted": False, "preserved": False}
+
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
     lane_branch = f"{epic_branch}--{lane_id}"
@@ -332,6 +351,7 @@ def cleanup_run_worktrees(
                                         commits and was NOT deleted],
         }
     """
+    _validate_path_component(run_id, "run_id")
     repo_root = (repo_root or Path(".")).resolve()
     run_dir = repo_root / WORKTREE_ROOT / run_id
 
@@ -409,6 +429,8 @@ def worktree_path_for_lane(
     repo_root: Path | None = None,
 ) -> Path:
     """Return the expected worktree path for a lane (may or may not exist yet)."""
+    _validate_path_component(lane_id, "lane_id")
+    _validate_path_component(run_id, "run_id")
     repo_root = (repo_root or Path(".")).resolve()
     return repo_root / WORKTREE_ROOT / run_id / lane_id
 
