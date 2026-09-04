@@ -93,3 +93,24 @@ def test_valid_followup_item_with_local_tracker_is_retained(repo):
     output = json.loads(result.stdout)
     assert output.get("invalid", 0) == 0
     assert output.get("retained", 0) == 1
+
+
+def test_malformed_followup_item_is_preserved_on_disk_not_deleted(repo):
+    """Bug (Copilot review, PR #385): invalid items were excluded from filing
+    (correct) but ALSO dropped from the write-back to follow-ups.json
+    (data loss) — `followups = valid_followups` before the final
+    `all_items = filed + retained` write silently deleted them from disk,
+    even though they were only supposed to be skipped, not erased."""
+    (repo / "follow-ups.json").write_text(
+        json.dumps([{"severity": "high"}])  # missing dedup_key/title/body/source
+    )
+
+    result = _run_file_followups(repo, "run-003")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = json.loads(result.stdout)
+    assert output.get("invalid", 0) == 1
+
+    on_disk = json.loads((repo / "follow-ups.json").read_text())
+    assert len(on_disk) == 1, "invalid item must survive on disk, not be deleted"
+    assert on_disk[0].get("severity") == "high"

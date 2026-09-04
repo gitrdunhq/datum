@@ -35,12 +35,14 @@ def main() -> None:
         followups = followups.get("items", [])
 
     invalid: list[dict] = []
+    invalid_items: list[dict] = []
     valid_followups: list[dict] = []
     for item in followups:
         try:
             FollowUpIssue(**item)
         except ValidationError as exc:
             invalid.append({"item": item, "errors": exc.errors(include_url=False)})
+            invalid_items.append(item)
         else:
             valid_followups.append(item)
     followups = valid_followups
@@ -100,7 +102,7 @@ def main() -> None:
             retained.append(item)
 
     # Write back with filed URLs populated
-    all_items = filed + retained
+    all_items = filed + retained + invalid_items
     followups_path.write_text(json.dumps(all_items, indent=2))
 
     marker.write_text("done")
