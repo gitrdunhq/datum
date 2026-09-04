@@ -93,7 +93,10 @@ def write_pipeline_state(
     }
     target_dir = datum_dir or Path(".datum")
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "pipeline-state.json").write_text(json.dumps(state, indent=2))
+    final_path = target_dir / "pipeline-state.json"
+    tmp_path = target_dir / "pipeline-state.json.tmp"
+    tmp_path.write_text(json.dumps(state, indent=2))
+    tmp_path.replace(final_path)
     return state
 
 
