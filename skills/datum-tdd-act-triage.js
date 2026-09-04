@@ -121,15 +121,19 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
       const safeTitle = issue.title.slice(0, 80).replace(/'/g, "'\\''");
       const safeSearch = issue.title.slice(0, 50).replace(/'/g, "'\\''");
       const safeBody = issue.body.replace(/'/g, "'\\''");
-      await agent(
+      const fileResult = await agent(
         `unset GITHUB_TOKEN && gh issue list --repo gitrdunhq/datum --state open --search '${safeSearch}' --json number,title --limit 3 | head -5
 If no duplicate exists, create the issue:
 unset GITHUB_TOKEN && gh issue create --repo gitrdunhq/datum --title '${safeTitle}' --label '${labels}' --body '${safeBody}'
 If a duplicate exists, skip and say "duplicate found".`,
         { label: `file-issue:${issue.lane || "global"}`, phase: "Triage", model: model("fast") }
       );
-      log(`[triage] Filed: ${issue.title} [${issue.category}/${issue.severity}]`);
-      filed++;
+      if (!(fileResult || "").toLowerCase().includes("duplicate")) {
+        log(`[triage] Filed: ${issue.title} [${issue.category}/${issue.severity}]`);
+        filed++;
+      } else {
+        log(`[triage] Duplicate found, skipped: ${issue.title}`);
+      }
     }
   } else {
     log("[triage] No actionable issues identified");
