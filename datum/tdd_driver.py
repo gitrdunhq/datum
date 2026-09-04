@@ -188,6 +188,19 @@ def verify_red_stage(repo_path: Path, test_command: list[str] | None = None) -> 
             f"Output:\n{result.stdout}\n{result.stderr}"
         )
 
+    # pytest exit 5 means zero tests were collected (typo'd test name, empty
+    # test file, or a file that matched no collector) — not a genuine
+    # assertion failure. Treating this as RED-confirmed would defeat the
+    # whole green-blindness guard: an agent could write a no-op test file
+    # and have it silently waved through as a "failing" RED test.
+    if result.returncode == 5:
+        raise GreenBlindnessError(
+            f"green_blindness_violation: No tests were collected (exit 5) — "
+            f"this is not a valid RED failure. Write a test that actually "
+            f"runs and genuinely fails.\n\n"
+            f"Output:\n{result.stdout}\n{result.stderr}"
+        )
+
     return _extract_test_signal(result)
 
 
