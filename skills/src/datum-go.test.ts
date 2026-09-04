@@ -224,6 +224,24 @@ describe('preflight tool-install check (#327)', () => {
     expect(firstPhaseIdx).toBeGreaterThan(-1)
     expect(preflightIdx).toBeLessThan(firstPhaseIdx)
   })
+
+  // #378 — the check must not false-positive when datum-go orchestrates a
+  // target repo other than datum itself (e.g. run from inside a different
+  // project to plan/build a feature there). It should only enforce the
+  // editable-install-matches-repo-root invariant when the invoking repo is
+  // the datum repo itself.
+  it('skips the self-hosted install check when the invoking repo is not the datum repo itself (#378)', () => {
+    expect(src).toMatch(/name = "datum"/)
+    expect(src).toMatch(/not the datum repo itself/)
+  })
+
+  // #378 — the thrown error must never surface literal "undefined" for the
+  // installed/expected paths; if the check agent didn't return clean JSON
+  // with those fields, fall back to a readable placeholder instead.
+  it('never interpolates literal undefined into the misdirected-install error message', () => {
+    expect(src).not.toMatch(/points at "\$\{toolCheck\.installed\}"/)
+    expect(src).not.toMatch(/repo root is "\$\{toolCheck\.expected\}"/)
+  })
 })
 
 describe('adopt-existing-feature-branch — AC4', () => {
