@@ -67,6 +67,29 @@ def pass_gate(message: str = "gate passed") -> None:
 # ── Helper functions ────────────────────────────────────────────────────────
 
 
+def _transitive_closure(deps: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Expand each id's direct dependency set to include indirect deps.
+
+    Mutates and returns `deps` in place. Used by gate_plan()'s file-overlap
+    check for both units and tasks (#524 dogfooding) — a direct-only check
+    false-fails whenever ordering between two lanes sharing a file is
+    established through an intermediate lane (a -> b -> c) rather than a
+    single direct edge, which is a normal pattern for lanes that touch the
+    same core file across several sequential steps.
+    """
+    changed = True
+    while changed:
+        changed = False
+        for _id, d in deps.items():
+            old_len = len(d)
+            for dep in list(d):
+                if dep in deps:
+                    d.update(deps[dep])
+            if len(d) > old_len:
+                changed = True
+    return deps
+
+
 def resolve_epic_dir() -> Path:
     """Return docs/epics/<branch>/ based on current git branch."""
     try:
@@ -500,17 +523,14 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 task_to_unit[tid] = uid
             unit_deps[uid] = set(u.get("depends_on", []))
 
-        # compute transitive dependencies for units
-        changed = True
-        while changed:
-            changed = False
-            for _uid, deps in unit_deps.items():
-                old_len = len(deps)
-                for dep in list(deps):
-                    if dep in unit_deps:
-                        deps.update(unit_deps[dep])
-                if len(deps) > old_len:
-                    changed = True
+        _transitive_closure(unit_deps)
+
+    # Transitive task-level dependencies (#524 dogfooding): a chain like
+    # task-009 -> task-007 -> task-006 has no direct edge between task-009
+    # and task-006, but task-009 is still guaranteed to run after task-006
+    # in any correct topological schedule.
+    task_deps = {lid: set(lane.get("depends_on", [])) for lid, lane in lanes.items()}
+    _transitive_closure(task_deps)
 
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
@@ -522,10 +542,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 t1 = owners_list[i]
                 t2 = owners_list[j]
 
-                # Check task-level dependency
-                if t2 in lanes[t1].get("depends_on", []) or t1 in lanes[t2].get(
-                    "depends_on", []
-                ):
+                # Check task-level dependency (direct or transitive)
+                if t2 in task_deps.get(t1, set()) or t1 in task_deps.get(t2, set()):
                     continue
 
                 # Check unit-level dependency
