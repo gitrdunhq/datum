@@ -446,7 +446,7 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
 }
 var toolCheckText = await agent(
   runCommandPrompt(
-    `REPO_ROOT=$(git rev-parse --show-toplevel) && if [ ! -f "$REPO_ROOT/pyproject.toml" ] || ! grep -q '^name = "datum"' "$REPO_ROOT/pyproject.toml"; then echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; exit 0; fi && DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && EXPECTED=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$REPO_ROOT") && if [ "$INSTALLED" != "$EXPECTED" ]; then echo "{\\"ok\\":false,\\"installed\\":\\"$INSTALLED\\",\\"expected\\":\\"$EXPECTED\\"}"; else echo '{"ok":true}'; fi`
+    `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
   ),
   stageOpts("cli", { label: "preflight-tool-check", model: model("fast") })
 );

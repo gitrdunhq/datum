@@ -206,9 +206,11 @@ describe('parseArgs — non-JSON free-text args (#319)', () => {
 
 describe('preflight tool-install check (#327)', () => {
   const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  const checkScript = readFileSync(join(__dirname, '..', '..', 'scripts', 'preflight-tool-check.sh'), 'utf8')
 
   it('checks the uv tool editable install direct_url.json against the repo root before running any phase', () => {
-    expect(src).toMatch(/direct_url\.json/)
+    expect(checkScript).toMatch(/direct_url\.json/)
+    expect(checkScript).toMatch(/git rev-parse --show-toplevel/)
     expect(src).toMatch(/git rev-parse --show-toplevel/)
   })
 
@@ -227,12 +229,23 @@ describe('preflight tool-install check (#327)', () => {
 
   // #378 — the check must not false-positive when datum-go orchestrates a
   // target repo other than datum itself (e.g. run from inside a different
-  // project to plan/build a feature there). It should only enforce the
-  // editable-install-matches-repo-root invariant when the invoking repo is
-  // the datum repo itself.
+  // project to plan/build a feature there). scripts/preflight-tool-check.sh
+  // only ships inside the datum repo, so its call site in datum-go.ts must
+  // gate on the script actually existing at the invoking repo's toplevel
+  // before running it, and skip (rather than fail) when it's absent.
   it('skips the self-hosted install check when the invoking repo is not the datum repo itself (#378)', () => {
-    expect(src).toMatch(/name = "datum"/)
+    expect(src).toMatch(/preflight-tool-check\.sh/)
+    expect(src).toMatch(/if \[ -f "\$SCRIPT" \]/)
     expect(src).toMatch(/not the datum repo itself/)
+  })
+
+  // #378 follow-up — the original inline one-liner (assembled by string
+  // concatenation with nested, backslash-escaped JSON quoting) proved
+  // unreliable for the LLM `cli` agent running it to reproduce faithfully.
+  // The check must be a real script file the agent just invokes by path.
+  it('delegates the check to a real script file instead of an inline one-liner (#378 follow-up)', () => {
+    expect(src).not.toMatch(/direct_url\.json/)
+    expect(checkScript).toMatch(/^#!\/usr\/bin\/env bash/)
   })
 
   // #378 — the thrown error must never surface literal "undefined" for the
