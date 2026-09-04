@@ -291,6 +291,21 @@ describe('stale pipeline-state guard (#524)', () => {
   })
 })
 
+// #524 dogfooding — `Workflow({ name: "datum-go", args: "521" })` parses into
+// a.issueNumber via parseArgs, but phaseArgs (what Refine/Plan/Properties
+// actually receive) only carried yolo/agentTypes — issueNumber and freeText
+// were silently dropped before ever reaching Refine, which then threw a
+// generic "TICKET.md not found" with no trace either was passed.
+describe('phaseArgs forwards freeText/issueNumber to child phases (#524)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('phaseArgs includes freeText and issueNumber alongside yolo/agentTypes', () => {
+    const phaseArgsLine = src.slice(src.indexOf('const phaseArgs ='), src.indexOf('const phaseArgs =') + 400)
+    expect(phaseArgsLine).toMatch(/freeText/)
+    expect(phaseArgsLine).toMatch(/issueNumber/)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)

@@ -123,6 +123,8 @@ function stageOpts(stage, extra = {}) {
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
+var issueNumber = typeof a.issueNumber === "number" ? a.issueNumber : null;
+var freeText = typeof a.freeText === "string" ? a.freeText : "";
 phase("Read");
 var readResult = await agent(
   renderPrompt(util_read_context_default, {
@@ -141,7 +143,8 @@ var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
 var ticketPath = `${epicDir}/TICKET.md`;
 var ticketContent = ctx.ticket_content || "";
 if (!ctx.ticket_exists || !ticketContent) {
-  throw new Error(`TICKET.md not found at ${ticketPath}. Run \`datum init\` first.`);
+  const ignoredInputHint = issueNumber ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically \u2014 that input was ignored. Run \`datum init --name <slug>\` yourself (a slug derived from issue #${issueNumber}'s title), fill in TICKET.md from the issue body, commit it, then re-run \`datum go\` with no args.` : freeText ? ` You passed a brief ("${freeText.slice(0, 80)}${freeText.length > 80 ? "\u2026" : ""}"), but datum-go only uses freeText to detect a NEW epic when one is already in progress on this branch \u2014 it does not bootstrap a brand-new epic from freeText when nothing exists yet, so that input was ignored. Run \`datum init --name <slug>\` yourself, fill in TICKET.md with your brief, commit it, then re-run \`datum go\` with no args.` : " Run `datum init` first.";
+  throw new Error(`TICKET.md not found at ${ticketPath}.${ignoredInputHint}`);
 }
 log(`Branch: ${ctx.branch}, TICKET: ${ticketContent.split("\n").length} lines`);
 phase("Analyze");
