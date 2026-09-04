@@ -1706,6 +1706,81 @@ def memory_search(
         console.print(f"  {preview}")
 
 
+@memory_app.command("reindex")
+def memory_reindex(
+    reviewers_dir: str = typer.Option(
+        None,
+        "--reviewers-dir",
+        help="Directory containing <reviewer_id>/KNOWLEDGE.md files (default: <repo>/reviewers)",
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Rebuild reviewer-knowledge embeddings: drop all collections, then re-index.
+
+    Fixes the gap where RAGEngine's own error messages ("Run `datum memory
+    reindex` to rebuild all embeddings") pointed at a command that didn't
+    exist. Wires reindex_all() (drop) + index_all() (repopulate) together.
+    """
+    from pathlib import Path as _Path
+
+    from datum.memory.embeddings import get_embedding_provider
+    from datum.memory.rag_engine import RAGEngine
+
+    repo_root = _Path(repo).resolve()
+    store_dir = _Path.home() / ".datum" / "projects" / repo_root.name / "knowledge"
+
+    try:
+        provider = get_embedding_provider(persist_dir=store_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=provider)
+    dropped = engine.reindex_all()
+    reviewers_path = (
+        _Path(reviewers_dir).resolve() if reviewers_dir else repo_root / "reviewers"
+    )
+    indexed = engine.index_all(reviewers_dir=reviewers_path)
+
+    console.print(
+        f"[bold green]Reindex complete:[/bold green] {dropped} collection(s) dropped, "
+        f"{len(indexed)} reviewer(s) re-indexed"
+    )
+    typer.echo(json.dumps({"dropped_collections": dropped, "indexed": indexed}))
+
+
+@memory_app.command("delete-chunks")
+def memory_delete_chunks(
+    reviewer_id: str = typer.Option(
+        ..., "--reviewer-id", help="Reviewer whose collection to delete chunks from"
+    ),
+    chunk_id: list[str] = typer.Option(  # noqa: B008
+        ..., "--chunk-id", help="Chunk id to delete (repeatable)"
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Delete specific chunk ids from a reviewer's embedding collection."""
+    from pathlib import Path as _Path
+
+    from datum.memory.embeddings import get_embedding_provider
+    from datum.memory.rag_engine import RAGEngine
+
+    repo_root = _Path(repo).resolve()
+    store_dir = _Path.home() / ".datum" / "projects" / repo_root.name / "knowledge"
+
+    try:
+        provider = get_embedding_provider(persist_dir=store_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=provider)
+    deleted = engine.delete_chunks(list(chunk_id), reviewer_id=reviewer_id)
+
+    console.print(f"[bold green]Deleted {deleted} chunk(s)[/bold green]")
+    typer.echo(json.dumps({"deleted": deleted}))
+
+
 @app.command()
 def retrospect(
     run_id: str = typer.Option(
