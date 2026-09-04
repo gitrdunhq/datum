@@ -112,6 +112,7 @@ The skill accepts as input any of:
 - An existing `SPEC.md` (Plan entry point)
 - An existing `TASKS.md` + `PROPERTIES.md` (Act entry point)
 - An open PR URL (PR Comments entry point)
+- A GitHub issue number — `datum ticket-from-issue <n>` bootstraps a new epic branch and `TICKET.md` from the issue's title/body, then hands off to the Refine entry point above
 - Nothing — skill reads `.datum/state.json` to resume
 
 The skill detects the correct entry point from artifacts present.
