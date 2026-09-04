@@ -322,3 +322,35 @@ class TestRAGEngineProviderMetadata:
         """Missing metadata file → providers considered matching (graceful degradation)."""
         engine = RAGEngine(store_dir=tmp_path, embedding_provider=FakeEmbeddings())
         assert engine._validate_provider_match() is True
+
+
+# ---------------------------------------------------------------------------
+# Security: reviewer_id must not enable path traversal (collection-name
+# escaping the store_dir sandbox via '../' segments).
+# ---------------------------------------------------------------------------
+
+
+def test_index_rejects_path_traversal_reviewer_id(tmp_path):
+    """A malicious reviewer_id must not let index() write outside store_dir."""
+    store_dir = tmp_path / "store"
+    knowledge_path = tmp_path / "KNOWLEDGE.md"
+    knowledge_path.write_text(
+        "## Patterns Found\n- [2026-01-01] Some fact. (Source: x)\n"
+    )
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=FakeEmbeddings())
+
+    with pytest.raises(ValueError):
+        engine.index("../../../../../../tmp/evil", knowledge_path)
+
+    outside = tmp_path.parent / "tmp" / "evil.npz"
+    assert not outside.exists()
+
+
+def test_delete_chunks_rejects_path_traversal_reviewer_id(tmp_path):
+    """A malicious reviewer_id must not let delete_chunks() touch files outside store_dir."""
+    store_dir = tmp_path / "store"
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=FakeEmbeddings())
+
+    with pytest.raises(ValueError):
+        engine.delete_chunks(["chunk1"], reviewer_id="../../../../../../tmp/evil")
+

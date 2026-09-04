@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -22,6 +23,17 @@ from datum.memory.vector_store import NumpyVectorStore
 from datum.shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+_REVIEWER_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_reviewer_id(reviewer_id: str) -> None:
+    """Reject reviewer_ids that could escape the store_dir sandbox via the
+    `f"reviewer_{reviewer_id}"` collection-name -> filename construction."""
+    if not _REVIEWER_ID_RE.match(reviewer_id):
+        raise ValueError(
+            f"reviewer_id must match {_REVIEWER_ID_RE.pattern!r}: {reviewer_id!r}"
+        )
 
 
 @dataclass
@@ -81,6 +93,7 @@ class RAGEngine:
         Returns:
             Number of chunks indexed.
         """
+        _validate_reviewer_id(reviewer_id)
         chunks = self._chunker.parse_file(knowledge_path, reviewer_id)
         if not chunks:
             return 0
@@ -166,6 +179,7 @@ class RAGEngine:
         Returns:
             List of RetrievalResult sorted by relevance (descending).
         """
+        _validate_reviewer_id(reviewer_id)
         if not self._validate_provider_match():
             stored = json.loads(self._provider_meta_file.read_text(encoding="utf-8"))
             old_provider = stored.get("provider", "unknown")
@@ -315,6 +329,8 @@ class RAGEngine:
         """Delete vectors by chunk_id. Returns count of deleted entries."""
         if not chunk_ids:
             return 0
+        if reviewer_id:
+            _validate_reviewer_id(reviewer_id)
         collection_name = f"reviewer_{reviewer_id}" if reviewer_id else ""
         if collection_name:
             return self._store.delete(collection_name, chunk_ids)

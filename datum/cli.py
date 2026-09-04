@@ -2054,6 +2054,31 @@ def _resolve_lane_state_dir_or_exit(epic: str) -> Path:
         raise typer.Exit(1) from None
 
 
+def _resolve_lane_state_marker_path_or_exit(lane_dir: Path, task: str) -> Path:
+    """Resolve the marker path for a task within lane_dir, or exit(1) on traversal."""
+    if (
+        "/" in task
+        or "\\" in task
+        or ".." in task
+        or task in ("", ".", "..")
+        or task.startswith(".")
+    ):
+        console_err.print(
+            f"[bold red]task ID must not contain path separators or '..': {task!r}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    marker_path = (lane_dir / f"{task}.json").resolve()
+    resolved_lane_dir = lane_dir.resolve()
+    if resolved_lane_dir not in marker_path.parents:
+        console_err.print(
+            f"[bold red]resolved marker path escapes lane-state directory: {task!r}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    return marker_path
+
+
 @lane_state_app.command("write")
 def lane_state_write(
     epic: str = typer.Option(
@@ -2070,6 +2095,7 @@ def lane_state_write(
 ):
     """Write a deterministic lane-state marker for a task."""
     lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
     lane_dir.mkdir(parents=True, exist_ok=True)
 
     resolved_completed_at = completed_at or datetime.now(UTC).isoformat()
@@ -2083,7 +2109,6 @@ def lane_state_write(
         "completed_at": resolved_completed_at,
     }
 
-    marker_path = lane_dir / f"{task}.json"
     marker_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
 
     typer.echo(json.dumps(marker, indent=2, sort_keys=True))
@@ -2098,7 +2123,7 @@ def lane_state_read(
 ):
     """Read a lane-state marker for a task, printing {"status": "not_found"} if absent."""
     lane_dir = _resolve_lane_state_dir_or_exit(epic)
-    marker_path = lane_dir / f"{task}.json"
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
     if not marker_path.exists():
         typer.echo(json.dumps({"status": "not_found"}))
         return
