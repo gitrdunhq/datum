@@ -155,3 +155,48 @@ def test_pipeline_state_save_inherits_completed_phases_from_the_same_branch(
     state = _invoke_save(monkeypatch, tmp_path, branch="datum/new-epic", phase="plan")
     assert state["branch"] == "datum/new-epic"
     assert state["completedPhases"] == ["refine", "plan"]
+
+
+def test_write_pipeline_state_is_atomic_no_leftover_tmp_file(tmp_path: Path) -> None:
+    """After a successful write, no temp file is left behind on disk."""
+    write_pipeline_state(
+        branch="datum/epic-1",
+        run_id="run-1",
+        route="feature",
+        completed_phases=["refine"],
+        datum_dir=tmp_path,
+    )
+    leftovers = [p for p in tmp_path.iterdir() if p.name != "pipeline-state.json"]
+    assert leftovers == [], f"unexpected leftover files: {leftovers}"
+
+
+def test_write_pipeline_state_failed_write_does_not_corrupt_existing_state(
+    tmp_path: Path,
+) -> None:
+    """A crash mid-write must leave the PREVIOUS valid state intact, not a
+    truncated/corrupt file — write to a temp file first, then atomically
+    replace, so a failure can never leave a half-written file at the real
+    path."""
+    write_pipeline_state(
+        branch="datum/epic-1",
+        run_id="run-1",
+        route="feature",
+        completed_phases=["refine"],
+        datum_dir=tmp_path,
+    )
+    original = read_pipeline_state(tmp_path)
+
+    with patch("pathlib.Path.replace", side_effect=OSError("simulated crash")):
+        try:
+            write_pipeline_state(
+                branch="datum/epic-1",
+                run_id="run-1",
+                route="feature",
+                completed_phases=["refine", "plan"],
+                datum_dir=tmp_path,
+            )
+        except OSError:
+            pass
+
+    survived = read_pipeline_state(tmp_path)
+    assert survived == original, "a failed write must not corrupt the prior state"
