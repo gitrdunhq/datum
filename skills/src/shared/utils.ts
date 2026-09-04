@@ -534,20 +534,69 @@ export function resolveLanePlanPath(epicDir: string, agentResult: string): strin
 // parseAgentJson — extracts JSON from agent text output
 // ---------------------------------------------------------------------------
 
+// Scans forward from an opening bracket at `start`, tracking nesting depth
+// and string/escape state, to find the index of its matching closing
+// bracket — rather than naively pairing the first opener with the LAST
+// closer anywhere in the text (which overshoots into trailing prose, or
+// undershoots into an illustrative JSON example that precedes the real
+// answer).
+function findMatchingBracketEnd(text: string, start: number): number {
+  const open = text[start]
+  const close = open === '{' ? '}' : ']'
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; continue }
+    if (ch === open) depth++
+    else if (ch === close) { depth--; if (depth === 0) return i }
+  }
+  return -1
+}
+
 export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
   if (!text || typeof text !== 'string') return fallback
   // Only strip a fence that wraps the WHOLE response — stripping every ``` occurrence
   // would corrupt embedded code fences (e.g. ```mermaid) inside file-content string values.
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/)
   const cleaned = (fenced ? fenced[1] : text).trim()
-  const start = cleaned.search(/[{[]/)
-  const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
-  if (start === -1 || end === -1) return fallback
+
+  // Fast path: the whole (trimmed/unfenced) response is valid JSON on its own.
   try {
-    return JSON.parse(cleaned.slice(start, end + 1)) as T
+    return JSON.parse(cleaned) as T
   } catch {
-    return fallback
+    // fall through to bracket-scanning below
   }
+
+  // Try every candidate opening bracket, using a balanced scan to find its
+  // true matching close, and keep the LAST one that parses. Agent prompts
+  // put the actual answer last (an illustrative example, if any, comes
+  // first); this also avoids overshooting into trailing prose after the
+  // real object, since a balanced scan never runs past its own close.
+  const openRe = /[{[]/g
+  let match: RegExpExecArray | null
+  let best: T | undefined
+  let found = false
+  while ((match = openRe.exec(cleaned)) !== null) {
+    const start = match.index
+    const end = findMatchingBracketEnd(cleaned, start)
+    if (end === -1) continue
+    try {
+      best = JSON.parse(cleaned.slice(start, end + 1)) as T
+      found = true
+      openRe.lastIndex = end + 1
+    } catch {
+      openRe.lastIndex = start + 1
+    }
+  }
+  return found ? (best as T) : fallback
 }
 
 // ---------------------------------------------------------------------------

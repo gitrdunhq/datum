@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson } from './utils'
 import type { Lane, LanePlan, LaneOutcome } from './types'
 
 // ---------------------------------------------------------------------------
@@ -656,5 +656,41 @@ describe('classifyFiles — root-relative tests/ directory (#524)', () => {
     const { testFiles, implFiles } = classifyFiles(['src/caliper/core/latest_config.py'])
     expect(testFiles).toEqual([])
     expect(implFiles).toEqual(['src/caliper/core/latest_config.py'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseAgentJson — bracket-matching robustness
+// ---------------------------------------------------------------------------
+
+describe('parseAgentJson', () => {
+  it('parses a clean JSON object response', () => {
+    const result = parseAgentJson('{"ok": true}', { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('does not overshoot into a stray closing bracket in trailing prose', () => {
+    // Real response: a valid JSON object followed by prose mentioning a
+    // filename that happens to contain a ']' character.
+    const text = '{"ok": true}\n\nSee the example output in results].txt for details.'
+    const result = parseAgentJson(text, { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('does not anchor on an illustrative JSON example that precedes the real answer', () => {
+    const text = 'For example: {"example": true}\n\nActual answer:\n{"ok": true, "value": 42}'
+    const result = parseAgentJson(text, { ok: false, value: 0 })
+    expect(result).toEqual({ ok: true, value: 42 })
+  })
+
+  it('falls back to bracket-scanning when the whole string is not valid JSON on its own', () => {
+    const text = 'Here is the result:\n{"ok": true}\nThanks!'
+    const result = parseAgentJson(text, { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('returns the fallback when no JSON is present at all', () => {
+    const result = parseAgentJson('no json here', { ok: false })
+    expect(result).toEqual({ ok: false })
   })
 })
