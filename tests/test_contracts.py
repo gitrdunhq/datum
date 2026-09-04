@@ -49,3 +49,13 @@ def test_unified_schema_rejects_a_payload_missing_required_field(
     errors = validate_payload("unified.schema.json", payload_path)
     assert errors != []
     assert not any("Unknown schema" in e for e in errors)
+
+
+def test_self_test_validates_all_bundled_fixtures_without_drift() -> None:
+    """assets/fixtures/contracts/*.valid.json fixtures must stay in sync
+    with their schemas. self_test() checks this but was previously only
+    reachable via `python -m datum.contracts self-test` — never wired into
+    the automated test suite, so schema/fixture drift would go unnoticed."""
+    from datum.contracts import self_test
+
+    assert self_test() == 0
