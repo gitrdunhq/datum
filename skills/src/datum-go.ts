@@ -301,6 +301,12 @@ if (shouldRun('act', 3)) {
 
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
   const language = globalCfg.language || DEFAULT_CONFIG.language
+  // Mirrors datum-tdd-act.ts's cfg exactly (#524 dogfooding audit) — this
+  // inline Act block exists specifically to replicate that standalone
+  // workflow, and test_framework had drifted out of it. Unread by
+  // datum-tdd-act-lane.ts today, so this was latent, not an active bug —
+  // closing the drift before something starts reading it only on one path.
+  const testFramework: string | undefined = globalCfg.test_framework
 
   // Bootstrap: resolve branch + generate runId via the CLI adopt path
   // (`datum init --json`, #213) instead of an inline-only agent prompt.
@@ -429,7 +435,7 @@ if (shouldRun('act', 3)) {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, skeletonDir, yolo, agentTypes: agentTypeArgs() },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs() },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
