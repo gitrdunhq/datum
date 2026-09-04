@@ -200,3 +200,106 @@ def test_write_pipeline_state_failed_write_does_not_corrupt_existing_state(
 
     survived = read_pipeline_state(tmp_path)
     assert survived == original, "a failed write must not corrupt the prior state"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap: verify_phase() — the core "never trust a bare claim" check
+# this module exists for — was only ever mocked in other tests, never
+# exercised directly against real git log evidence.
+# ---------------------------------------------------------------------------
+
+import subprocess  # noqa: E402
+
+from datum.pipeline_state import verify_phase  # noqa: E402
+
+
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git"] + args, cwd=cwd, capture_output=True, text=True, check=True
+    )
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-q"], cwd=repo)
+    _git(["config", "user.email", "t@t.com"], cwd=repo)
+    _git(["config", "user.name", "T"], cwd=repo)
+    _git(["config", "core.hooksPath", "/dev/null"], cwd=repo)
+    (repo / "f.txt").write_text("x\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "init"], cwd=repo)
+    return repo
+
+
+def test_verify_phase_act_finds_matching_commit(tmp_path, monkeypatch):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "g.txt").write_text("y\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "act(run-1): merge lanes"], cwd=repo)
+
+    found, reason = verify_phase("act", run_id="run-1")
+    assert found is True
+    assert reason == ""
+
+
+def test_verify_phase_act_no_matching_commit_gives_a_reason(tmp_path, monkeypatch):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    found, reason = verify_phase("act", run_id="run-1")
+    assert found is False
+    assert "run-1" in reason or "act" in reason
+
+
+def test_verify_phase_validate_false_tests_pass_fails_with_reason(
+    tmp_path, monkeypatch
+):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    found, reason = verify_phase("validate", tests_pass=False)
+    assert found is False
+    assert "did not actually pass" in reason
+
+
+def test_verify_phase_validate_true_tests_pass_succeeds(tmp_path, monkeypatch):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    found, reason = verify_phase("validate", tests_pass=True)
+    assert found is True
+    assert reason == ""
+
+
+def test_verify_phase_refine_finds_prefixed_commit(tmp_path, monkeypatch):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "SPEC.md").write_text("spec\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "refine: write SPEC.md"], cwd=repo)
+
+    found, reason = verify_phase("refine")
+    assert found is True
+    assert reason == ""
+
+
+def test_verify_phase_refine_no_prefixed_commit_fails_with_reason(
+    tmp_path, monkeypatch
+):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    found, reason = verify_phase("refine")
+    assert found is False
+    assert "refine:" in reason
+
+
+def test_verify_phase_unknown_phase_fails_with_reason(tmp_path, monkeypatch):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    found, reason = verify_phase("not-a-real-phase")
+    assert found is False
+    assert "unknown phase" in reason
