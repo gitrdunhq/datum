@@ -415,3 +415,48 @@ describe('new-epic detection from freeText brief (#213 follow-up)', () => {
     expect(src).toMatch(/explicitStart: boolean = !!a\.startFrom/)
   })
 })
+
+// shouldRun() gates whether EVERY phase in the pipeline executes, combining
+// three conditions (halt state, start index, active-phase membership) — it
+// had a call-site check ("is shouldRun('refine', 0) called") but its actual
+// boolean logic was never unit-tested directly. A wrong operator or an
+// off-by-one on startIdx here would silently skip or wrongly run phases in
+// production with nothing to catch it.
+describe('shouldRun — phase gating logic', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  function loadShouldRun(haltedAt: string | null, startIdx: number, activePhases: string[]): (p: string, idx: number) => boolean {
+    const match = src.match(/function shouldRun\(p: Phase, idx: number\): boolean \{[\s\S]*?\n\}\n/)
+    expect(match).not.toBeNull()
+    const fnSrc = match![0]
+      .replace('function shouldRun(p: Phase, idx: number): boolean {', 'function shouldRun(p, idx) {')
+    const factory = new Function('haltedAt', 'startIdx', 'activePhases', `${fnSrc}\nreturn shouldRun;`)
+    return factory(haltedAt, startIdx, activePhases) as (p: string, idx: number) => boolean
+  }
+
+  it('runs a phase at or after startIdx that is in activePhases, when nothing has halted', () => {
+    const shouldRun = loadShouldRun(null, 0, ['refine', 'plan', 'act'])
+    expect(shouldRun('refine', 0)).toBe(true)
+    expect(shouldRun('act', 2)).toBe(true)
+  })
+
+  it('does not run a phase before startIdx, even if active and nothing halted', () => {
+    const shouldRun = loadShouldRun(null, 2, ['refine', 'plan', 'act'])
+    expect(shouldRun('refine', 0)).toBe(false)
+    expect(shouldRun('plan', 1)).toBe(false)
+    expect(shouldRun('act', 2)).toBe(true)
+  })
+
+  it('does not run ANY phase once haltedAt is set, regardless of index or active-phase membership', () => {
+    const shouldRun = loadShouldRun('review', 0, ['refine', 'plan', 'act', 'review', 'closeout'])
+    expect(shouldRun('refine', 0)).toBe(false)
+    expect(shouldRun('review', 3)).toBe(false)
+    expect(shouldRun('closeout', 4)).toBe(false)
+  })
+
+  it('does not run a phase absent from activePhases, even at/after startIdx with nothing halted', () => {
+    const shouldRun = loadShouldRun(null, 0, ['refine', 'act'])
+    expect(shouldRun('plan', 1)).toBe(false)
+    expect(shouldRun('act', 1)).toBe(true)
+  })
+})
