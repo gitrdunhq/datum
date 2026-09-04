@@ -617,3 +617,38 @@ class TestLimitBoundary:
             repo_root=corpus_root,
         )
         assert "rejected" not in result.lower()
+
+
+# ── floor_runs view: directory names must not be interpolated unescaped ──────
+
+
+class TestFloorRunsDirNameEscaping:
+    def test_floor_run_dir_containing_single_quote_does_not_break_view_setup(
+        self, tmp_path
+    ):
+        """_setup_views builds the floor_runs table via an f-string VALUES
+        list of directory names with no escaping — a directory name
+        containing a single quote breaks out of the SQL string literal.
+        Must not raise, and the malicious content must not corrupt the
+        query (query should still succeed and floor_runs should be queryable)."""
+        floor_runs_dir = tmp_path / ".temp" / "floor-runs"
+        evil_name = "evil'); DROP TABLE floor_runs; --"
+        (floor_runs_dir / evil_name).mkdir(parents=True)
+
+        result = run_corpus_query("SELECT * FROM floor_runs", repo_root=tmp_path)
+
+        assert "query error" not in result
+        assert "evil" in result
+
+    def test_floor_run_dir_normal_name_is_actually_queryable(self, tmp_path):
+        """Pre-existing, independent bug this test also catches: DuckDB
+        names unaliased VALUES columns 'col0' not 'column0' (1.5.2+), so
+        floor_runs silently returned empty for ANY input, not just
+        malicious ones, masked by the same broad except. Fixed via an
+        explicit column alias."""
+        floor_runs_dir = tmp_path / ".temp" / "floor-runs"
+        (floor_runs_dir / "run-2026-01-01").mkdir(parents=True)
+
+        result = run_corpus_query("SELECT * FROM floor_runs", repo_root=tmp_path)
+
+        assert "run-2026-01-01" in result
