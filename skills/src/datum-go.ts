@@ -2,7 +2,7 @@ import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/ty
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { actStartSteps } from './shared/lane-steps'
+import { actStartSteps, readLanePlanPrompt } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
@@ -335,7 +335,16 @@ if (shouldRun('act', 3)) {
   // Read lane plan — prefer lane-plan-final.json over stale lane-plan.json
   const epicDir = `docs/epics/${epicBranch}`
   const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, 'resolve') || '')
-  const lanePlan = parseAgentJson<LanePlan | null>(stepStdout(actStartResult, 'read-plan') || '', null) as LanePlan
+  // Read as its own dedicated agent call, not folded into the actStart
+  // batch (#524 dogfooding) — a large lane-plan.json embedded in that
+  // batch's combined stdout could exceed the harness's inline-output
+  // truncation threshold, leaving the truncated agent with no way to
+  // relay content it never received.
+  const lanePlanText = await agent(
+    readLanePlanPrompt(lanePlanPath),
+    stageOpts('reader', { label: 'read-lane-plan', phase: 'Act', model: model('fast') }),
+  )
+  const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
   if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
 
   const waves = buildWaves(lanePlan)

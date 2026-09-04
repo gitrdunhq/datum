@@ -340,7 +340,28 @@ export function actStartSteps(o: ActStartOpts): BatchStep[] {
       tolerant: true,
     })
   }
-  steps.push({ name: 'read-plan', command: `[ -n "$__plan" ] && cat "$__plan"` })
   steps.push({ name: 'lane-state-read', command: o.laneStateReadScript.trim(), tolerant: true })
   return steps
+}
+
+/**
+ * Prompt for a dedicated read-only agent call that fetches the lane plan's
+ * exact JSON content (#524 dogfooding).
+ *
+ * Previously actStartSteps() folded a `cat "$__plan"` step into the same
+ * batched datum-cli call as bootstrap/branch/resolve/lane-state-read, so
+ * the whole batch's combined stdout grew with the lane plan's size (one
+ * entry per lane — tens of KB on a plan with several lanes). That pushed
+ * the batch's own Bash-tool output past the harness's inline-output
+ * truncation threshold, and the truncated agent had no way to relay
+ * content it never received in its own context, exhausting its remaining
+ * turns trying to recover instead of returning an answer.
+ *
+ * A single-file Read (this prompt, run through the `reader` agent type) is
+ * not subject to the same combined-multi-step-output growth and gives the
+ * read its own dedicated turn budget, independent of everything else in
+ * the bootstrap batch.
+ */
+export function readLanePlanPrompt(lanePlanPath: string): string {
+  return `Read the file at "${lanePlanPath}" and return its exact JSON contents — unmodified, unsummarised, not merged or interpreted. Output raw JSON only, no markdown fences, no explanation.`
 }

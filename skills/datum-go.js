@@ -221,9 +221,11 @@ if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.j
       tolerant: true
     });
   }
-  steps.push({ name: "read-plan", command: `[ -n "$__plan" ] && cat "$__plan"` });
   steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
   return steps;
+}
+function readLanePlanPrompt(lanePlanPath) {
+  return `Read the file at "${lanePlanPath}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. Output raw JSON only, no markdown fences, no explanation.`;
 }
 
 // skills/src/shared/prompts.ts
@@ -581,7 +583,11 @@ if (shouldRun("act", 3)) {
   const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
   const epicDir = `docs/epics/${epicBranch}`;
   const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
-  const lanePlan = parseAgentJson(stepStdout(actStartResult, "read-plan") || "", null);
+  const lanePlanText = await agent(
+    readLanePlanPrompt(lanePlanPath),
+    stageOpts("reader", { label: "read-lane-plan", phase: "Act", model: model("fast") })
+  );
+  const lanePlan = parseAgentJson(lanePlanText, null);
   if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
   const waves = buildWaves(lanePlan);
   if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
