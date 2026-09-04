@@ -23,6 +23,7 @@ import {
   isMissing,
   fencedScript,
   ownershipFromStdout,
+  readLanePlanPrompt,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -270,21 +271,30 @@ describe('mergeSteps', () => {
 describe('actStartSteps', () => {
   const read = laneStateReadScript({ epicBranch: '$__eb', epicSlug: 'x', taskIdsSpace: '$(jq -r \'.topological_order[]\' "$__plan")' })
 
-  it('datum-go: init, branch, timestamp, resolve, read-plan, lane-state-read', () => {
+  // #524 dogfooding: `cat "$__plan"` embedded the full lane-plan.json
+  // (potentially tens of KB, one entry per lane) inside the SAME combined
+  // JSON blob as every other batched step. On a large plan (9 lanes,
+  // ~30KB) this pushed the batch's own Bash-tool output past the harness's
+  // inline-output truncation threshold — the agent then had no way to
+  // relay content it never received in its own context, and burned its
+  // remaining maxTurns trying to recover, producing no final answer at
+  // all. The lane-plan is now read by a separate, dedicated Read-based
+  // agent call (readLanePlanPrompt) instead of being folded into this
+  // batch, so this batch's own output stays small regardless of plan size.
+  it('datum-go: init, branch, timestamp, resolve, lane-state-read — no read-plan step', () => {
     const steps = actStartSteps({ branch: 'init', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'read-plan', 'lane-state-read'])
+    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'lane-state-read'])
     expect(steps[0].command).toContain('datum init --json')
     expect(steps[0].tolerant).toBeFalsy()
     expect(steps[3].command).toContain('lane-plan-final.json')
     expect(steps[3].command).toContain('echo none')
-    expect(steps[4].command).toBe('[ -n "$__plan" ] && cat "$__plan"')
-    expect(steps[5].command).toContain('datum lane-state read --epic "$__eb"')
-    expect(steps[5].command).toContain('.topological_order[]')
+    expect(steps[4].command).toContain('datum lane-state read --epic "$__eb"')
+    expect(steps[4].command).toContain('.topological_order[]')
   })
 
   it('datum-tdd-act yolo: detects the branch instead of running init; explicit branch/plan skip both', () => {
     const detect = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'read-plan', 'lane-state-read'])
+    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'lane-state-read'])
     expect(detect[0].command).toContain('git rev-parse --abbrev-ref HEAD')
     const given = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
     expect(given[0].command).toContain('__eb="datum/e"')
@@ -300,7 +310,7 @@ describe('actStartSteps', () => {
     expect(write).not.toContain('```')
   })
 
-  it('runs under bash for an explicit branch + plan and reads the plan verbatim', () => {
+  it('runs under bash for an explicit branch + plan', () => {
     const dir = mkdtempSync(join(tmpdir(), 'datum-actstart-'))
     try {
       writeFileSync(join(dir, 'plan.json'), '{"lanes":{},"topological_order":[]}')
@@ -309,10 +319,18 @@ describe('actStartSteps', () => {
       expect(r.failed).toBeNull()
       expect(stepStdout(r, 'branch')).toBe('datum/e')
       expect(stepStdout(r, 'timestamp')).toMatch(/^\d{8}-\d{6}\n$/)
-      expect(stepStdout(r, 'read-plan')).toBe('{"lanes":{},"topological_order":[]}')
       expect(stepResult(r, 'lane-state-read')?.stdout).toBe('{}\n')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('readLanePlanPrompt', () => {
+  it('asks a dedicated agent to read one file and return its exact contents', () => {
+    const p = readLanePlanPrompt('docs/epics/datum/e/lane-plan.json')
+    expect(p).toContain('docs/epics/datum/e/lane-plan.json')
+    expect(p).toMatch(/exact/i)
+    expect(p).toMatch(/raw JSON only/i)
   })
 })
