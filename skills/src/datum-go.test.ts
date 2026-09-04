@@ -257,6 +257,40 @@ describe('preflight tool-install check (#327)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// #524 dogfooding — leftover .datum/pipeline-state.json from an unrelated,
+// no-longer-checked-out epic must never be trusted by auto-resume: it
+// previously set startFrom=act from a stale branch's completedPhases,
+// skipping Refine/Plan/Properties for what was actually a brand new epic on
+// the current branch, so Act crashed looking for a lane-plan.json that had
+// never been written.
+// ---------------------------------------------------------------------------
+
+describe('stale pipeline-state guard (#524)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('asks the boot agent for the currently checked-out branch and compares it against the stored state before trusting it', () => {
+    expect(src).toMatch(/isStaleState/)
+    expect(src).toMatch(/currentBranch/)
+  })
+
+  it('drops the stale state entirely rather than gating only the resume block, so completedPhases/resolvedBranch/the freeText new-epic check all fall back to a fresh run', () => {
+    const staleCheckIdx = src.indexOf('isStaleState(priorState')
+    const completedPhasesIdx = src.indexOf('const completedPhases')
+    const resumeBlockIdx = src.indexOf("if (priorState && !explicitStart && !newEpicBranch)")
+    expect(staleCheckIdx).toBeGreaterThan(-1)
+    expect(completedPhasesIdx).toBeGreaterThan(-1)
+    expect(resumeBlockIdx).toBeGreaterThan(-1)
+    expect(staleCheckIdx).toBeLessThan(completedPhasesIdx)
+    expect(staleCheckIdx).toBeLessThan(resumeBlockIdx)
+  })
+
+  it('protects a bare `datum go` with no freeText the same as one with a brief — the guard does not depend on a.freeText', () => {
+    const staleBlock = src.slice(src.indexOf('isStaleState(priorState') - 200, src.indexOf('isStaleState(priorState') + 200)
+    expect(staleBlock).not.toMatch(/a\.freeText/)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)
