@@ -155,7 +155,7 @@ async function resilientAgent(prompt, opts, deps) {
 Return ONLY the raw output, no explanation.`,
         stageOpts("cli", { label: "retry-guard", model: "haiku" })
       );
-      if (dirty && dirty.trim().length > 0) {
+      if (dirty && String(dirty).trim().length > 0) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
         return lastResult;
       }

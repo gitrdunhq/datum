@@ -4,6 +4,7 @@ import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import type { PhaseArgs } from './shared/types'
 
 export const meta = {
   name: 'datum-properties',
@@ -15,9 +16,9 @@ export const meta = {
 }
 
 const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g, '').trim() : ''
-const a = (typeof args === 'string')
+const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
-  : (args || {})
+  : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
 
 // ── Read ──

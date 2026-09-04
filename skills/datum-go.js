@@ -448,7 +448,7 @@ var sk = (name) => {
   });
   if (r.outsideRepo && !skillsDirHinted) {
     skillsDirHinted = true;
-    log(skillsDirHint(globalCfg.skills_dir));
+    log(skillsDirHint(globalCfg.skills_dir || ""));
   }
   return r.path;
 };

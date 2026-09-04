@@ -1,4 +1,4 @@
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -41,7 +41,7 @@ function parseArgs(raw: string): Record<string, unknown> {
     return result
   }
 }
-const a = (typeof args === 'string') ? parseArgs(rawArgs) : (args || {})
+const a = ((typeof args === 'string') ? parseArgs(rawArgs) : (args || {})) as GoArgs
 
 const yolo: boolean = !!a.yolo
 let startFrom = (a.startFrom || 'refine').toLowerCase() as Phase
@@ -87,7 +87,7 @@ const bootText = await agent(
 const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '', currentBranch: '' }) as {
   config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string; currentBranch?: string
 }
-const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string, any>
+const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as RepoConfig
 // #368: agent_types (default true) / hooks_installed (default false) switches.
 // Every child workflow gets them via args — each bundle has its own copy.
 configureAgentTypes(readAgentTypeConfig(globalCfg))
@@ -118,7 +118,7 @@ const sk = (name: string): string => {
   })
   if (r.outsideRepo && !skillsDirHinted) {
     skillsDirHinted = true
-    log(skillsDirHint(globalCfg.skills_dir))
+    log(skillsDirHint(globalCfg.skills_dir || ''))
   }
   return r.path
 }

@@ -69,20 +69,20 @@ export async function verifyCommitIndependently(
 // exercised in unit tests without the sandbox's ambient `agent`/`log`
 // globals. Production callers never pass this — it defaults to the real
 // globals, so behavior is unchanged for every existing call site.
-export interface ResilientAgentDeps {
-  agentFn?: (prompt: string, opts?: AgentOpts) => Promise<any>
+export interface ResilientAgentDeps<T = unknown> {
+  agentFn?: (prompt: string, opts?: AgentOpts) => Promise<T>
   logFn?: (message: string) => void
 }
 
-export async function resilientAgent(
+export async function resilientAgent<T = unknown>(
   prompt: string,
   opts?: AgentOpts & { maxRetries?: number; worktree?: string },
-  deps?: ResilientAgentDeps,
-): Promise<any> {
+  deps?: ResilientAgentDeps<T>,
+): Promise<T | null> {
   const agentFn = deps?.agentFn ?? agent
   const logFn = deps?.logFn ?? log
   const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES
-  let lastResult: any = null
+  let lastResult: T | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // A subagent that stalls mid-conversation and never calls
@@ -115,7 +115,7 @@ export async function resilientAgent(
         `Run: git -C "${opts.worktree}" status --porcelain\nReturn ONLY the raw output, no explanation.`,
         stageOpts('cli', { label: 'retry-guard', model: 'haiku' }),
       )
-      if (dirty && dirty.trim().length > 0) {
+      if (dirty && String(dirty).trim().length > 0) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} but worktree is dirty — aborting retry to prevent duplicate writes`)
         return lastResult
       }
@@ -157,7 +157,7 @@ export async function commitStage(
     `- If there are no changes to commit, return committed=false\n` +
     `- Use git -C "${wt}" for ALL git commands to enforce directory`
 
-  let result = await agent(basePrompt, stageOpts('cli', {
+  let result: CommitResult | null = await agent(basePrompt, stageOpts('cli', {
     label: `git-${stage.toLowerCase()}:${taskId}`,
     phase: 'Act',
     model: model('fast'),

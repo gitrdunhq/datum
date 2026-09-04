@@ -350,8 +350,8 @@ var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
 var test_framework = a.test_framework || repoCfg.test_framework;
-var epicBranch = a.epicBranch;
-var runId = a.runId;
+var epicBranch = a.epicBranch || "";
+var runId = a.runId || "";
 var actStart = actStartSteps({
   branch: epicBranch ? epicBranch : a.yolo ? "detect" : "",
   lanePlanPath: a.lanePlanPath || null,

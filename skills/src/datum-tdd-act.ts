@@ -1,5 +1,5 @@
 import { model, setModelTiers } from './shared/models'
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -17,15 +17,15 @@ export const meta = {
 // "yolo" mode: auto-detect epicBranch from current git branch, generate runId from timestamp
 
 const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g, '').trim() : ''
-const a = (typeof args === 'string')
+const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
-  : (args || {})
+  : (args || {})) as TddActArgs
 
 // Read config from .datum/config.json if not passed as args
 const cfgText = (!a.testCommand || !a.language)
   ? await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
   : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, any> : {}
+const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as RepoConfig : {} as RepoConfig
 if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.models)
 // #368: agent_types / hooks_installed switches for this and every child workflow.
 configureAgentTypes(readAgentTypeConfig(repoCfg))
@@ -34,8 +34,8 @@ const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CON
 const language: string = a.language || repoCfg.language || DEFAULT_CONFIG.language
 const test_framework: string | undefined = a.test_framework || repoCfg.test_framework
 
-let epicBranch: string = a.epicBranch
-let runId: string = a.runId
+let epicBranch: string = a.epicBranch || ''
+let runId: string = a.runId || ''
 
 // yolo mode: auto-detect branch and generate runId; then resolve + read the
 // lane plan (lane-plan-final.json first, #232/#237) and the epic-scoped
