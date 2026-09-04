@@ -634,6 +634,12 @@ fi` : gen,
   });
   return steps;
 }
+function testExitCode(stdout) {
+  if (!stdout) return null;
+  const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)];
+  if (matches.length === 0) return null;
+  return Number(matches[matches.length - 1][1]);
+}
 function postRedSteps(o) {
   const steps = [];
   if (o.acCount > 0) {
@@ -686,6 +692,9 @@ cat "$GREPPATFILE"`,
     ).join("\n"),
     tolerant: true
   });
+  if (o.verifyTestCmd) {
+    steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "red-verify"), tolerant: true });
+  }
   return steps;
 }
 function ownershipCommand(wt) {
@@ -1139,7 +1148,8 @@ No markdown fences, no explanation.`,
     sgPatterns,
     testFuncBodyRegex,
     testFuncGrepRegex,
-    ownership: deterministic
+    ownership: deterministic,
+    verifyTestCmd: scopedTestCmd
   });
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),
@@ -1181,6 +1191,11 @@ No markdown fences, no explanation.`,
   if (assertDetail.length > 0) {
     log(`[${taskId}] RED: placeholder assertions found \u2014 ${assertDetail}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${assertDetail}` };
+  }
+  const redVerifyExit = testExitCode(stepStdout(postRedResult, "test-verify"));
+  if (redVerifyExit === 0) {
+    log(`[${taskId}] RED VERIFY FAILED: independent re-run of the test suite exited 0 (green blindness), regardless of agent self-report (tests_pass=${red.tests_pass})`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: "green_blindness_violation: independent test-verify step confirms tests passed after RED" };
   }
   if (red.tests_pass) {
     const diag = red.test_output || red.test_errors?.join("; ") || "no test output captured";

@@ -272,3 +272,29 @@ describe('#356 — RED-time contract preflight and GREEN block routing', () => {
     expect(green).toMatch(/needs_write/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Deterministic RED green-blindness gate: the RED agent's tests_pass is
+// self-reported from a run it performed itself. The script must
+// independently re-run the same test command and trust that result over the
+// agent's self-report — a hallucinated "tests_pass: false" must not sail
+// through the gate undetected.
+// ---------------------------------------------------------------------------
+
+describe('deterministic RED green-blindness gate', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('passes verifyTestCmd to postRedSteps so the independent test-verify step runs', () => {
+    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,200}verifyTestCmd:\s*scopedTestCmd/)
+  })
+
+  it('fails RED on the independently re-run exit code, not only on the agent self-report', () => {
+    const exitCheckIdx = laneSource.indexOf('redVerifyExit === 0')
+    const selfReportIdx = laneSource.indexOf('if (red.tests_pass)')
+    expect(exitCheckIdx).toBeGreaterThan(-1)
+    expect(selfReportIdx).toBeGreaterThan(-1)
+    // The deterministic check must run BEFORE the self-report is trusted,
+    // so a false self-report cannot short-circuit past it.
+    expect(exitCheckIdx).toBeLessThan(selfReportIdx)
+  })
+})

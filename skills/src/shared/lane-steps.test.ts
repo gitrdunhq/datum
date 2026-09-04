@@ -24,6 +24,7 @@ import {
   fencedScript,
   ownershipFromStdout,
   readLanePlanPrompt,
+  testExitCode,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -99,6 +100,7 @@ describe('postRedSteps', () => {
     testFuncBodyRegex: 'def test_',
     testFuncGrepRegex: 'def test_|async def test_',
     ownership: true,
+    verifyTestCmd: null,
   }
 
   it('orders count gate, placeholder scan, ownership, per-file scope reads, then test counts — all tolerant', () => {
@@ -139,6 +141,59 @@ describe('postRedSteps', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Deterministic RED-stage test-run verification: the RED agent self-reports
+// tests_pass/test_exit_code from a command IT runs and IT reads the exit
+// status from — a hallucinated or mistaken "tests_pass: false" self-report
+// currently sails through undetected (green blindness silently defeated).
+// The script must independently re-run the same test command itself and
+// read the real TEST_EXIT line, never trusting the agent's self-report alone.
+// ---------------------------------------------------------------------------
+
+describe('postRedSteps — deterministic test-verify step', () => {
+  const opts = {
+    wt: '/wt/T1',
+    testFiles: ['tests/test_a.py'],
+    acCount: 1,
+    testFuncDiffRegex: '[+][[:space:]]*def test_',
+    sgPatterns: [{ pattern: 'assert True', name: 'assert True' }],
+    testFuncBodyRegex: 'def test_',
+    testFuncGrepRegex: 'def test_|async def test_',
+    ownership: true,
+  }
+
+  it('appends a test-verify step, independently re-running the test command, when verifyTestCmd is given', () => {
+    const steps = postRedSteps({ ...opts, verifyTestCmd: 'pytest -q' })
+    expect(names(steps)).toContain('test-verify')
+    const step = steps.find((s) => s.name === 'test-verify')!
+    expect(step.tolerant).toBe(true)
+    expect(step.command).toContain('pytest -q')
+    expect(step.command).toContain('TEST_EXIT=$?')
+    expect(step.command).toContain('/wt/T1')
+  })
+
+  it('omits the test-verify step when verifyTestCmd is not given', () => {
+    const steps = postRedSteps({ ...opts, verifyTestCmd: null })
+    expect(names(steps)).not.toContain('test-verify')
+  })
+})
+
+describe('testExitCode', () => {
+  it('parses the TEST_EXIT line printed by testRunCommand-style output', () => {
+    expect(testExitCode('some output\nmore output\nTEST_EXIT=1\n')).toBe(1)
+    expect(testExitCode('TEST_EXIT=0')).toBe(0)
+  })
+
+  it('returns null when no TEST_EXIT line is present (step did not run)', () => {
+    expect(testExitCode('no exit line here')).toBeNull()
+    expect(testExitCode(null)).toBeNull()
+  })
+
+  it('reads the LAST TEST_EXIT line when output contains more than one', () => {
+    expect(testExitCode('TEST_EXIT=1\nsome retry noise\nTEST_EXIT=0')).toBe(0)
+  })
+})
+
 describe('postRedSteps — executed against a real git worktree', () => {
   it('counts the new test functions and lists the files the RED commit touched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'datum-postred-'))
@@ -159,6 +214,7 @@ describe('postRedSteps — executed against a real git worktree', () => {
         testFuncDiffRegex: '[+][[:space:]]*def test_',
         sgPatterns: [{ pattern: 'assert True', name: 'assert True' }],
         testFuncBodyRegex: 'def test_', testFuncGrepRegex: 'def test_|async def test_', ownership: true,
+        verifyTestCmd: null,
       })
       const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' })
       const r = parseBatchResult(out, steps)

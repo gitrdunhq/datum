@@ -6,7 +6,7 @@
 // tested-by: skills/src/shared/lane-steps.test.ts
 
 import type { BatchStep } from './batch'
-import { verifyFileOwnership } from './utils'
+import { verifyFileOwnership, testRunCommand } from './utils'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
 
@@ -78,6 +78,25 @@ export interface PostRedOpts {
   testFuncGrepRegex: string
   /** Include the `git diff --name-only` ownership read (deterministic-checks mode). */
   ownership: boolean
+  /**
+   * When given, independently re-run this exact test command against `wt`
+   * (never trusting the RED agent's self-reported tests_pass/test_exit_code,
+   * which comes from a run the agent itself performed and read the exit
+   * status from). Null skips the step entirely.
+   */
+  verifyTestCmd: string | null
+}
+
+/**
+ * Parse the LAST `TEST_EXIT=<n>` line out of a test-verify step's stdout —
+ * the same idiom testRunCommand() prints. Returns null when no such line is
+ * present (the step did not run, e.g. verifyTestCmd was null).
+ */
+export function testExitCode(stdout: string | null | undefined): number | null {
+  if (!stdout) return null
+  const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)]
+  if (matches.length === 0) return null
+  return Number(matches[matches.length - 1][1])
 }
 
 export function postRedSteps(o: PostRedOpts): BatchStep[] {
@@ -124,6 +143,9 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
     ).join('\n'),
     tolerant: true,
   })
+  if (o.verifyTestCmd) {
+    steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'red-verify'), tolerant: true })
+  }
   return steps
 }
 

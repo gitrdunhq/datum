@@ -14,6 +14,7 @@ import {
   scopeGapsFromSteps,
   postGreenSteps,
   ownershipFromStdout,
+  testExitCode,
 } from './shared/lane-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -522,6 +523,7 @@ No markdown fences, no explanation.`,
       ]
   const postRed = postRedSteps({
     wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: deterministic,
+    verifyTestCmd: scopedTestCmd,
   })
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),
@@ -576,6 +578,16 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${assertDetail}` }
   }
 
+  // Deterministic green-blindness gate (#audit-1): the RED agent's tests_pass
+  // is self-reported from a run IT performed and read the exit status from —
+  // a hallucinated or mistaken "tests_pass: false" would sail through
+  // undetected. Re-run the exact same test command independently here and
+  // trust that result over the agent's self-report whenever the step ran.
+  const redVerifyExit = testExitCode(stepStdout(postRedResult, 'test-verify'))
+  if (redVerifyExit === 0) {
+    log(`[${taskId}] RED VERIFY FAILED: independent re-run of the test suite exited 0 (green blindness), regardless of agent self-report (tests_pass=${red.tests_pass})`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: 'green_blindness_violation: independent test-verify step confirms tests passed after RED' }
+  }
   if (red.tests_pass) {
     const diag = red.test_output || red.test_errors?.join('; ') || 'no test output captured'
     log(`[${taskId}] RED VERIFY FAILED: tests passed (green blindness). Output: ${diag}`)
