@@ -27,6 +27,13 @@ const a = (typeof args === 'string')
   : (args || {})
 
 const yolo: boolean = !!a.yolo
+// #524 dogfooding: forwarded from datum-go so a missing-TICKET.md error can
+// tell the caller their issueNumber/freeText was received and ignored,
+// rather than throwing a generic "run datum init first" with no trace of
+// it. Neither actually bootstraps an epic yet — that's a real gap, not
+// something this read implements.
+const issueNumber: number | null = typeof a.issueNumber === 'number' ? a.issueNumber : null
+const freeText: string = typeof a.freeText === 'string' ? a.freeText : ''
 
 // ── Read (collapsed: read-context + read-ticket into one agent) ──
 
@@ -56,7 +63,12 @@ const ticketPath: string = `${epicDir}/TICKET.md`
 const ticketContent: string = ctx.ticket_content || ''
 
 if (!ctx.ticket_exists || !ticketContent) {
-  throw new Error(`TICKET.md not found at ${ticketPath}. Run \`datum init\` first.`)
+  const ignoredInputHint = issueNumber
+    ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically — that input was ignored. Run \`datum init --name <slug>\` yourself (a slug derived from issue #${issueNumber}'s title), fill in TICKET.md from the issue body, commit it, then re-run \`datum go\` with no args.`
+    : freeText
+      ? ` You passed a brief ("${freeText.slice(0, 80)}${freeText.length > 80 ? '…' : ''}"), but datum-go only uses freeText to detect a NEW epic when one is already in progress on this branch — it does not bootstrap a brand-new epic from freeText when nothing exists yet, so that input was ignored. Run \`datum init --name <slug>\` yourself, fill in TICKET.md with your brief, commit it, then re-run \`datum go\` with no args.`
+      : ' Run `datum init` first.'
+  throw new Error(`TICKET.md not found at ${ticketPath}.${ignoredInputHint}`)
 }
 
 log(`Branch: ${ctx.branch}, TICKET: ${ticketContent.split('\n').length} lines`)

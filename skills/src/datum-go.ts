@@ -93,8 +93,18 @@ const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as Record<string
 configureAgentTypes(readAgentTypeConfig(globalCfg))
 log(`Agent types: ${agentTypeArgs().agentTypes ? 'on' : 'off'}, hooks_installed: ${agentTypeArgs().hooksInstalled}`)
 // Phase workflows take either the bare 'yolo' string or an object; pass an
-// object so the switches ride along with the yolo flag.
-const phaseArgs = { yolo, agentTypes: agentTypeArgs() }
+// object so the switches ride along with the yolo flag. freeText/issueNumber
+// ride along too (#524 dogfooding) — datum-go itself doesn't bootstrap a
+// brand-new epic from either one when nothing exists yet (that's a real gap,
+// tracked separately), but Refine needs them forwarded at minimum to tell
+// the caller their input was received and ignored, rather than throwing a
+// generic "TICKET.md not found" with no trace of what was actually passed.
+const phaseArgs = {
+  yolo,
+  agentTypes: agentTypeArgs(),
+  freeText: typeof a.freeText === 'string' ? a.freeText : '',
+  issueNumber: typeof a.issueNumber === 'number' ? a.issueNumber : null,
+}
 // Sub-workflow scriptPaths (#353): prefer the repo-local .datum/skills copy
 // written by `datum init`; an out-of-repo absolute skills_dir is refused by
 // the Workflow harness, so log the fix once instead of dying on a stack trace.

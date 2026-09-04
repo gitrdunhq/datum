@@ -430,7 +430,12 @@ var boot = parseAgentJson(bootText, { config: {}, state: null, localSkills: [], 
 var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
 configureAgentTypes(readAgentTypeConfig(globalCfg));
 log(`Agent types: ${agentTypeArgs().agentTypes ? "on" : "off"}, hooks_installed: ${agentTypeArgs().hooksInstalled}`);
-var phaseArgs = { yolo, agentTypes: agentTypeArgs() };
+var phaseArgs = {
+  yolo,
+  agentTypes: agentTypeArgs(),
+  freeText: typeof a.freeText === "string" ? a.freeText : "",
+  issueNumber: typeof a.issueNumber === "number" ? a.issueNumber : null
+};
 var skillsDirHinted = false;
 var sk = (name) => {
   const r = resolveSkillPath({
