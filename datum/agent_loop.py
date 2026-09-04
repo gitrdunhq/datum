@@ -513,6 +513,17 @@ def _lint_python(content: str) -> list[str]:
                         f"line {node.lineno} uses os.system — banned "
                         f"(SEC-001). Use subprocess.run with a list argv."
                     )
+                if (
+                    isinstance(func, _ast.Attribute)
+                    and func.attr == "popen"
+                    and isinstance(func.value, _ast.Name)
+                    and func.value.id == "os"
+                ):
+                    warnings.append(
+                        f"line {node.lineno} uses os.popen — banned "
+                        f"(SEC-001). It spawns a shell exactly like "
+                        f"os.system. Use subprocess.run with a list argv."
+                    )
                 for kw in node.keywords:
                     if (
                         kw.arg == "shell"

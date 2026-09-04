@@ -1117,6 +1117,15 @@ def test_lint_flags_shell_true(tmp_path, monkeypatch):
     assert "shell=True" in obs and "WARNING" in obs
 
 
+def test_lint_flags_os_popen(tmp_path, monkeypatch):
+    """Bug: os.popen() spawns a shell exactly like os.system(), but the
+    banned-pattern checker (SEC-001) only checked os.system — os.popen was a
+    completely unguarded equivalent."""
+    monkeypatch.chdir(tmp_path)
+    obs = _write_and_run("import os\nos.popen('ls')")
+    assert "os.popen" in obs and "WARNING" in obs
+
+
 def test_lint_flags_bare_except_pass(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     obs = _write_and_run("try:\n    f()\nexcept:\n    pass")
