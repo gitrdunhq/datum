@@ -4,6 +4,7 @@ from datum.lane_plan import (
     build_file_ownership,
     inject_conflict_edges,
     inject_read_dependency_edges,
+    topological_sort,
 )
 
 
@@ -157,6 +158,59 @@ class TestInjectReadDependencyEdges:
         ]
         inject_read_dependency_edges(tasks)
         assert tasks[1]["depends_on"] == []
+
+    # #524 dogfooding: two lanes cross-referencing each other's owned files
+    # in `reads` (a normal "let me see the current shape of a sibling file"
+    # pattern, not a real ordering requirement) previously deadlocked the
+    # whole plan — inject_read_dependency_edges had no cycle awareness, so
+    # it happily created both task-001->task-002 and task-002->task-001
+    # edges, and topological_sort then hard-failed the entire `datum
+    # lane-plan` run with no way to recover short of hand-editing tasks.json.
+
+    def test_mutual_read_skips_the_edge_that_would_close_a_cycle_and_warns(self):
+        tasks = [
+            {
+                "id": "task-001",
+                "files": ["part_stock.py", "part_facts.py"],
+                "reads": ["repo_config.py"],
+                "depends_on": [],
+            },
+            {
+                "id": "task-002",
+                "files": ["repo_config.py"],
+                "reads": ["part_stock.py"],
+                "depends_on": [],
+            },
+        ]
+        warnings = inject_read_dependency_edges(tasks)
+
+        edges = [(t["id"], dep) for t in tasks for dep in t["depends_on"]]
+        assert len(edges) == 1  # only one direction was injected
+        assert len(warnings) == 1
+        assert "cycle" in warnings[0].lower()
+        assert "task-001" in warnings[0] and "task-002" in warnings[0]
+
+        # the whole point: this no longer hard-fails lane-plan
+        order = topological_sort(tasks)
+        assert set(order) == {"task-001", "task-002"}
+
+    def test_non_cyclic_read_edges_produce_no_warnings(self):
+        tasks = [
+            {
+                "id": "task-writer",
+                "files": ["Domain/Protocol.swift"],
+                "reads": [],
+                "depends_on": [],
+            },
+            {
+                "id": "task-reader",
+                "files": ["UseCase.swift"],
+                "reads": ["Domain/Protocol.swift"],
+                "depends_on": [],
+            },
+        ]
+        warnings = inject_read_dependency_edges(tasks)
+        assert warnings == []
 
     def test_preserves_existing_deps(self):
         tasks = [
