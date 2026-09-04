@@ -242,6 +242,70 @@ def lane_plan_from_epic_cmd(
     console.print(json.dumps(result, indent=2))
 
 
+@app.command(name="ticket-from-issue")
+def ticket_from_issue_cmd(
+    issue_number: int = typer.Argument(
+        ..., help="GitHub issue number to bootstrap TICKET.md from"
+    ),
+):
+    """Bootstrap a brand-new epic + TICKET.md from a single GitHub issue.
+
+    Closes the issueNumber gap datum-go.ts/datum-refine.ts previously
+    documented as unimplemented: fetches the issue's title/body, derives a
+    slug from the title, runs the real `init()` bootstrap (branch, epic
+    dir, skills), then overwrites the placeholder TICKET.md with the
+    issue's own content and commits it.
+    """
+    import subprocess
+
+    from datum.github_issues import fetch_issue
+    from datum.slug import slugify
+    from datum.state import current_branch
+
+    try:
+        issue = fetch_issue(issue_number)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold red]ticket-from-issue failed: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    slug = slugify(issue["title"]) or f"issue-{issue_number}"
+
+    # init() is a typer command but a plain function underneath — call it
+    # directly (all params explicit, avoiding the typer.Option-sentinel
+    # default trap) rather than shelling out to `datum init` again.
+    init(name=slug, json_output=True, refresh=False)
+
+    from datum.gate import resolve_epic_dir
+
+    epic_dir = resolve_epic_dir()
+    ticket_path = epic_dir / "TICKET.md"
+    ticket_path.parent.mkdir(parents=True, exist_ok=True)
+    ticket_path.write_text(f"# {issue['title']}\n\n{issue['body']}\n")
+
+    subprocess.run(["git", "add", str(ticket_path)], check=False)
+    subprocess.run(
+        [
+            "git",
+            "commit",
+            "-q",
+            "-m",
+            f"ticket: bootstrap TICKET.md from issue #{issue_number}",
+        ],
+        check=False,
+    )
+
+    branch = current_branch()
+    typer.echo(
+        json.dumps(
+            {
+                "epicBranch": branch,
+                "ticketPath": str(ticket_path),
+                "issueNumber": issue_number,
+            }
+        )
+    )
+
+
 @app.command("config-fingerprint")
 def config_fingerprint_cmd(
     json_output: bool = typer.Option(
