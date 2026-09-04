@@ -619,6 +619,18 @@ def gate_refine(yolo: bool, config: dict) -> None:
     pass_gate("Refine gate passed")
 
 
+def check_zero_lanes(lane_plan: dict) -> list[str]:
+    """A lane-plan.json with zero lanes must fail the gate explicitly.
+
+    Without this, set(topological_order) != lane_ids is False when both are
+    empty, so the lane-validation loop in gate_plan() never runs and a
+    trivial/no-op decomposition proceeds silently into Act with nothing to do.
+    """
+    if not lane_plan.get("lanes"):
+        return ["lane-plan.json has zero lanes"]
+    return []
+
+
 def gate_plan(yolo: bool, config: dict) -> None:
     tasks_path = resolve_artifact("TASKS.md")
     lane_plan_path = resolve_artifact("lane-plan.json")
@@ -636,6 +648,10 @@ def gate_plan(yolo: bool, config: dict) -> None:
     schema_errors = validate_payload("lane-plan.schema.json", lane_plan_path)
     if schema_errors:
         fail(f"lane-plan.json schema validation failed: {schema_errors}", hard=True)
+
+    zero_lane_errors = check_zero_lanes(lane_plan)
+    if zero_lane_errors:
+        fail(zero_lane_errors[0])
 
     lanes = lane_plan.get("lanes", {})
     lane_ids = set(lanes)
