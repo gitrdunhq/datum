@@ -770,7 +770,7 @@ def gate_prior_art(yolo: bool, config: dict) -> None:
 
     content = prior_art_path.read_text()
 
-    tasks_path = Path("tasks.json")
+    tasks_path = resolve_artifact("tasks.json")
     if tasks_path.exists():
         tasks = json.loads(tasks_path.read_text())
         task_list = tasks if isinstance(tasks, list) else tasks.get("tasks", [])
