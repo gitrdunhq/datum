@@ -95,4 +95,17 @@ describe('detectCycles', () => {
       makeTasks({ A: ['B'], B: ['C'], C: ['A'], D: [] })
     )
   })
+
+  it('detects a 1-node self-dependency cycle', () => {
+    const tasks = makeTasks({ a: ['a'] })
+    const cycles = detectCycles(tasks)
+    expect(cycles).toHaveLength(1)
+    expect(cycles[0]).toEqual(['a'])
+  })
+
+  it('ignores a dependency on an id that is not in the task list, without crashing', () => {
+    const tasks = makeTasks({ a: ['ghost'] })
+    expect(() => detectCycles(tasks)).not.toThrow()
+    expect(detectCycles(tasks)).toEqual([])
+  })
 })
