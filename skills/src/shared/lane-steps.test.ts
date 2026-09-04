@@ -333,4 +333,16 @@ describe('readLanePlanPrompt', () => {
     expect(p).toMatch(/exact/i)
     expect(p).toMatch(/raw JSON only/i)
   })
+
+  // #524 code review follow-up: the Read tool has its own line-count window,
+  // independent of the Bash-output truncation this whole fix was written to
+  // avoid — a large enough lane plan could still get cut off on read, and
+  // without explicit guidance the agent might fabricate a plausible-looking
+  // summary instead of the real content (exactly what happened with the old
+  // batched `cat` step under truncation pressure).
+  it('tells the agent to page through with offset rather than fabricate a partial answer', () => {
+    const p = readLanePlanPrompt('docs/epics/datum/e/lane-plan.json')
+    expect(p).toMatch(/offset/i)
+    expect(p).toMatch(/never answer with a partial|fabricat/i)
+  })
 })
