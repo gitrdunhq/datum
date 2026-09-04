@@ -1,5 +1,57 @@
-import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel } from './models'
+import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel, ModelTier, Phase, Route } from './models'
 import type { AgentTypeConfig } from './agent-types'
+
+// .datum/config.json, read via READ_CONFIG_PROMPT and merged onto DEFAULT_CONFIG.
+// Named fields are the ones every script reads directly; anything else the repo
+// puts in config.json still round-trips (index signature) without a compile error.
+export interface RepoConfig {
+  language?: string
+  test_framework?: string
+  test_command?: string
+  skills_dir?: string
+  context_files?: string[]
+  agent_types?: boolean
+  hooks_installed?: boolean
+  models?: Partial<Record<ModelTier, string>>
+  [key: string]: unknown
+}
+
+// Top-level `args` shapes each datum-*.ts entrypoint parses out of the sandbox's
+// ambient `args` (string | object, hence still loosely typed at the source —
+// see sandbox.d.ts). Casting the parsed value to one of these right after parsing
+// is what makes `a.someField` a compile error when the field doesn't exist,
+// instead of silently resolving to `undefined` at runtime (#368 postmortem).
+export interface GoArgs {
+  yolo?: boolean
+  startFrom?: string
+  route?: string
+  phases?: Phase[]
+  configFingerprint?: string
+  freeText?: string
+  issueNumber?: number
+}
+
+export interface PhaseArgs {
+  yolo?: boolean
+  agentTypes?: AgentTypeConfig
+  freeText?: string
+  issueNumber?: number | null
+}
+
+export interface CloseoutArgs extends PhaseArgs {
+  runId?: string
+}
+
+export interface TddActArgs {
+  yolo?: boolean
+  testCommand?: string
+  language?: string
+  test_framework?: string
+  lanePlanPath?: string
+  epicBranch?: string
+  runId?: string
+  agentTypes?: AgentTypeConfig
+}
 
 // Cross-workflow arg/result contracts
 
@@ -93,6 +145,8 @@ export interface Lane {
    *  scoping. Excluded from laneSpecHash: changing it never invalidates a
    *  completed lane marker. */
   test_command?: string
+  /** GitHub sub-issue number, written back by `datum plan-issues` (datum/github_issues.py). */
+  github_issue?: number
 }
 
 export interface PipelineConfig {

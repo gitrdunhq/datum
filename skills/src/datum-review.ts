@@ -4,6 +4,7 @@ import reviewDomainTemplate from './prompts/review-domain.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
 import { configureAgentTypes } from './shared/agent-types'
+import type { PhaseArgs } from './shared/types'
 
 export const meta = {
   name: 'datum-review',
@@ -15,9 +16,9 @@ export const meta = {
 }
 
 const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g, '').trim() : ''
-const a = (typeof args === 'string')
+const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
-  : (args || {})
+  : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
 // #368: review-domain agents and the report writer stay on the runtime default —
 // no datum-* definition fits them — but honour the switch for parity with the

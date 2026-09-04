@@ -118,8 +118,8 @@ async function runLane(
       error: `no worktree path for ${taskId} (setup returned ${JSON.stringify(wt)}) — refusing to run outside an isolated worktree`,
     }
   }
-  const issueId: string = getIssueId(lanePlan as any, taskId)
-  const runId: string = (cfg as any).runId
+  const issueId: string = getIssueId(lanePlan, taskId)
+  const runId: string = cfg.runId
   const isStructural: boolean = lane.stage === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
   const acStr: string = (lane.acceptance_criteria || []).join('\n')
