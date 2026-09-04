@@ -128,9 +128,17 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 // indication anything is wrong (#327). Verify the editable install still
 // resolves to this repo root before running anything else, and fail loud
 // rather than silently continuing on a stale binary.
+//
+// This invariant only holds when datum-go is self-hosted (invoked from inside
+// the datum repo itself). datum-go is also legitimately used as an external
+// orchestrator against a different target repo (#378) — in that case the
+// invoking repo's toplevel is the target repo, not datum, so the check is
+// skipped rather than false-positiving on an expected mismatch.
 const toolCheckText = await agent(
   runCommandPrompt(
   `REPO_ROOT=$(git rev-parse --show-toplevel) && ` +
+  `if [ ! -f "$REPO_ROOT/pyproject.toml" ] || ! grep -q '^name = "datum"' "$REPO_ROOT/pyproject.toml"; then ` +
+  `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; exit 0; fi && ` +
   `DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1) && ` +
   `if [ -z "$DIRECT_URL" ]; then echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'; exit 0; fi && ` +
   `INSTALLED=$(python3 -c "import json,os,sys; d=json.load(open(sys.argv[1])); print(os.path.realpath(d.get('url','').replace('file://','')))" "$DIRECT_URL") && ` +
@@ -141,11 +149,13 @@ const toolCheckText = await agent(
 )
 const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }
 if (!toolCheck.ok) {
+  const installedPath = toolCheck.installed ?? '(unknown — preflight check did not return valid JSON, see raw output above)'
+  const expectedPath = toolCheck.expected ?? '(unknown — preflight check did not return valid JSON, see raw output above)'
   throw new Error(
     `datum CLI tool install is stale/misdirected (#327): the globally installed editable ` +
-    `\`datum\` points at "${toolCheck.installed}" but this repo root is "${toolCheck.expected}". ` +
+    `\`datum\` points at "${installedPath}" but this repo root is "${expectedPath}". ` +
     `Every "datum ..." command this pipeline runs would silently execute code from the wrong ` +
-    `location. Fix: run \`uv tool install --editable . --force\` from "${toolCheck.expected}", then re-run.`
+    `location. Fix: run \`uv tool install --editable . --force\` from "${expectedPath}", then re-run.`
   )
 }
 
