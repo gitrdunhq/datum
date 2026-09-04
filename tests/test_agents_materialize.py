@@ -317,17 +317,49 @@ def test_install_agent_types_swallows_exceptions_into_errors(tmp_path, monkeypat
     assert any("disk on fire" in e for e in res.errors)
 
 
-def test_install_agent_types_uses_package_dirs_in_place_inside_datum_repo(tmp_path):
+def test_install_agent_types_links_claude_agents_inside_datum_repo(tmp_path):
+    # A self-hosted checkout (repo_root == package_root) needs
+    # <repo>/.claude/agents -> ../agents so Claude Code's own agent-type
+    # resolution (which reads .claude/agents/*.md, not agents/*.md) can see
+    # the datum-* agents. install.sh creates this symlink, but nothing
+    # guaranteed it had ever been run — a checkout that skipped install.sh
+    # previously got a lying `agent_types: true` even though
+    # .claude/agents didn't exist and every agentType lookup would fail.
     pkg = _make_package(tmp_path)
+    assert not (pkg / AGENTS_SUBDIR).exists()
 
     res = install_agent_types(pkg, pkg)
 
-    assert res.agents_dir == (pkg / "agents").resolve()
+    assert res.agents_dir == pkg / AGENTS_SUBDIR
     assert res.hooks_dir == (pkg / "assets" / "hooks").resolve()
-    assert res.agents_written == [] and res.hooks_written == []
+    assert (pkg / AGENTS_SUBDIR).is_symlink()
+    assert (pkg / AGENTS_SUBDIR / "datum-red.md").is_file()
     assert res.agent_types is True and res.hooks_installed is True
-    assert not (pkg / AGENTS_SUBDIR).exists()
     assert not (pkg / LOCAL_HOOKS_SUBDIR).exists()
+
+    # second run: symlink already present, left alone, still reported installed
+    again = install_agent_types(pkg, pkg)
+    assert (pkg / AGENTS_SUBDIR).is_symlink()
+    assert again.agent_types is True and again.hooks_installed is True
+
+
+def test_install_agent_types_leaves_an_existing_claude_agents_dir_alone_inside_datum_repo(
+    tmp_path,
+):
+    # If .claude/agents already exists (e.g. a real directory rather than
+    # the install.sh symlink) it must never be clobbered.
+    pkg = _make_package(tmp_path)
+    dest = pkg / AGENTS_SUBDIR
+    dest.mkdir(parents=True)
+    (dest / "hand-written.md").write_text("---\nname: hand-written\n---\nmine\n")
+
+    res = install_agent_types(pkg, pkg)
+
+    assert not (pkg / AGENTS_SUBDIR).is_symlink()
+    assert (dest / "hand-written.md").is_file()
+    # the datum-* agents were never actually placed here, so agent_types
+    # must honestly report false rather than claim success
+    assert res.agent_types is False
 
 
 # ── the real hooks run from the materialised path ──

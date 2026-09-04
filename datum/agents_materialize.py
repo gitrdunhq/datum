@@ -34,6 +34,7 @@ Pure filesystem logic — ``datum init`` is the caller.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import stat
@@ -232,12 +233,28 @@ def install_agent_types(
     hook_names = referenced_hooks(source_agents)
 
     if package_root == repo_root or repo_root in package_root.parents:
-        return AgentInstallResult(
-            agents_dir=source_agents,
+        agents_dest = (repo_root / AGENTS_SUBDIR).resolve()
+        result = AgentInstallResult(
+            agents_dir=agents_dest,
             hooks_dir=source_hooks,
             _agents_expected=agent_names,
             _hooks_expected=hook_names,
         )
+        # Claude Code resolves agent types from <repo>/.claude/agents, not
+        # from <repo>/agents — without this symlink `agent_types: true`
+        # would be a lie and every agentType lookup would fail at runtime.
+        # install.sh creates it too, but a checkout may never have run
+        # install.sh, so datum init must not assume it already exists.
+        if source_agents.is_dir() and not agents_dest.exists():
+            try:
+                agents_dest.parent.mkdir(parents=True, exist_ok=True)
+                agents_dest.symlink_to(
+                    os.path.relpath(source_agents, agents_dest.parent),
+                    target_is_directory=True,
+                )
+            except OSError as exc:
+                result.errors.append(f"agents symlink: {exc}")
+        return result
 
     result = AgentInstallResult(
         agents_dir=(repo_root / AGENTS_SUBDIR).resolve(),
