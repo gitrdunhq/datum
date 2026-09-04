@@ -362,6 +362,34 @@ def test_install_agent_types_leaves_an_existing_claude_agents_dir_alone_inside_d
     assert res.agent_types is False
 
 
+def test_install_agent_types_repairs_a_broken_claude_agents_symlink_inside_datum_repo(
+    tmp_path,
+):
+    # A stale symlink whose target has since moved/been deleted (e.g. the
+    # repo was relocated) is dangling: Path.exists() follows symlinks and
+    # returns False for it, so the "not agents_dest.exists()" guard tried
+    # to create a fresh symlink at that path and got a real FileExistsError
+    # from the OS — recorded as an error, making hooks_installed/
+    # agent_types report false even though hooks and agents are otherwise
+    # fully functional once the dangling link is replaced (#524 code review).
+    pkg = _make_package(tmp_path)
+    dest = pkg / AGENTS_SUBDIR
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to(tmp_path / "nonexistent-old-location", target_is_directory=True)
+    assert dest.is_symlink() and not dest.exists()
+
+    res = install_agent_types(pkg, pkg)
+
+    assert res.errors == []
+    assert res.agents_dir == dest
+    assert dest.is_symlink() and dest.exists()
+    assert (dest / "datum-red.md").is_file()
+    # the repaired symlink must point back into pkg/agents, not somewhere
+    # resolved through the stale broken target
+    assert dest.resolve() == (pkg / "agents").resolve()
+    assert res.agent_types is True and res.hooks_installed is True
+
+
 # ── the real hooks run from the materialised path ──
 
 
