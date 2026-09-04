@@ -44,6 +44,8 @@ configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTy
 if (!ctx.spec_content) throw new Error('SPEC.md not found. Run datum-refine first.')
 if (!ctx.tasks_content) throw new Error('TASKS.md not found. Run datum-plan first.')
 
+const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
+
 log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split('\n').length} lines`)
 
 // ── Derive + commit + gate (collapsed: derive writes + commits + gates in 2 agents) ──
@@ -54,8 +56,8 @@ phase('Derive')
 await agent(
   renderPrompt(propertiesDeriveTemplate, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content })
   + `\n\nAFTER WRITING THE PROPERTIES CONTENT:
-1. Write the output to "${ctx.epic_dir}/PROPERTIES.md" (create dirs if needed)
-2. Commit: git add "${ctx.epic_dir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
+1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)
+2. Commit: git add "${epicDir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
   { label: 'derive-and-commit', model: model('balanced') },
 )
 
