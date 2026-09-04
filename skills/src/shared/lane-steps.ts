@@ -360,8 +360,12 @@ export function actStartSteps(o: ActStartOpts): BatchStep[] {
  * A single-file Read (this prompt, run through the `reader` agent type) is
  * not subject to the same combined-multi-step-output growth and gives the
  * read its own dedicated turn budget, independent of everything else in
- * the bootstrap batch.
+ * the bootstrap batch. A large enough lane plan can still exceed the Read
+ * tool's own line-count window though (code review, #524 follow-up) — the
+ * prompt tells the agent explicitly to page through with `offset` rather
+ * than silently fabricating a plausible-looking summary when it can't
+ * reproduce the whole file in one read.
  */
 export function readLanePlanPrompt(lanePlanPath: string): string {
-  return `Read the file at "${lanePlanPath}" and return its exact JSON contents — unmodified, unsummarised, not merged or interpreted. Output raw JSON only, no markdown fences, no explanation.`
+  return `Read the file at "${lanePlanPath}" and return its exact JSON contents — unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering — never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`
 }

@@ -229,7 +229,7 @@ if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.j
   return steps;
 }
 function readLanePlanPrompt(lanePlanPath2) {
-  return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. Output raw JSON only, no markdown fences, no explanation.`;
+  return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
 }
 
 // skills/src/shared/prompts.ts

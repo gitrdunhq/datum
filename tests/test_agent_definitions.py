@@ -18,7 +18,11 @@ AGENT_FILES = sorted(AGENTS_DIR.glob("*.md"))
 
 CHEAP_AGENTS = {
     "datum-cli": {"tools": ["Bash"], "model": "haiku", "maxTurns": 3},
-    "datum-reader": {"tools": ["Read"], "model": "haiku", "maxTurns": 2},
+    # 4, not the tighter 2: datum-reader's flagship documented use is
+    # lane-plan.json, which can exceed the Read tool's own line-count
+    # window on a large plan — it needs headroom for one offset-based
+    # continuation read plus the final answer (#524 code review).
+    "datum-reader": {"tools": ["Read"], "model": "haiku", "maxTurns": 4},
     "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 3},
 }
 STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
@@ -62,24 +66,30 @@ def test_description_is_one_line_and_starts_with_when_to_use(md: Path):
     data, _ = _split(md)
     desc = str(data["description"]).strip()
     assert "\n" not in desc, f"{md.name}: description must be one line"
-    assert desc.lower().startswith("use "), (
-        f"{md.name}: description must start with when to use it ('Use when ...'): {desc!r}"
-    )
+    assert desc.lower().startswith(
+        "use "
+    ), f"{md.name}: description must start with when to use it ('Use when ...'): {desc!r}"
 
 
 @pytest.mark.parametrize("md", AGENT_FILES, ids=lambda p: p.name)
 def test_no_skills_preload(md: Path):
     data, _ = _split(md)
-    assert "skills" not in data, f"{md.name}: skills: preload adds fixed context per call"
+    assert (
+        "skills" not in data
+    ), f"{md.name}: skills: preload adds fixed context per call"
 
 
 @pytest.mark.parametrize("name", sorted(CHEAP_AGENTS), ids=str)
 def test_cheap_agents_are_tightly_capped(name: str):
     data, body = _split(AGENTS_DIR / f"{name}.md")
     want = CHEAP_AGENTS[name]
-    assert _tools(data) == want["tools"], f"{name}: tools {_tools(data)} != {want['tools']}"
+    assert (
+        _tools(data) == want["tools"]
+    ), f"{name}: tools {_tools(data)} != {want['tools']}"
     assert data["model"] == want["model"]
-    assert data.get("maxTurns") == want["maxTurns"], f"{name}: maxTurns {data.get('maxTurns')}"
+    assert (
+        data.get("maxTurns") == want["maxTurns"]
+    ), f"{name}: maxTurns {data.get('maxTurns')}"
 
 
 def test_cli_body_is_at_most_15_lines_and_says_run_exactly_and_return_json():
@@ -94,10 +104,14 @@ def test_cli_body_is_at_most_15_lines_and_says_run_exactly_and_return_json():
 @pytest.mark.parametrize("name", sorted(STAGE_AGENTS), ids=str)
 def test_stage_agents_keep_tools_and_get_max_turns(name: str):
     data, _ = _split(AGENTS_DIR / f"{name}.md")
-    assert data.get("maxTurns") == STAGE_MAX_TURNS, f"{name}: maxTurns {data.get('maxTurns')}"
+    assert (
+        data.get("maxTurns") == STAGE_MAX_TURNS
+    ), f"{name}: maxTurns {data.get('maxTurns')}"
     for tool in ("Read", "Write", "Edit", "Bash"):
         assert tool in _tools(data), f"{name}: lost {tool}"
-    assert "hooks" in data and data["hooks"].get("PreToolUse"), f"{name}: lost PreToolUse hooks"
+    assert "hooks" in data and data["hooks"].get(
+        "PreToolUse"
+    ), f"{name}: lost PreToolUse hooks"
 
 
 def test_skeptic_keeps_read_only_hook():
