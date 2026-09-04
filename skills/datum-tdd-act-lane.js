@@ -209,7 +209,7 @@ function classifyFiles(files) {
   const isTest = (f) => {
     if (isImplAdjacent(f)) return false;
     const base = f.split("/").pop() || "";
-    return base.startsWith("test_") || base.endsWith("_test.py") || base.endsWith(".test.ts") || base.endsWith(".test.js") || base.endsWith(".spec.ts") || base.endsWith(".spec.js") || base.endsWith("_test.go") || base.endsWith("Tests.swift") || f.includes("/tests/") || f.includes("/Tests/") || base === "conftest.py";
+    return base.startsWith("test_") || base.endsWith("_test.py") || base.endsWith(".test.ts") || base.endsWith(".test.js") || base.endsWith(".spec.ts") || base.endsWith(".spec.js") || base.endsWith("_test.go") || base.endsWith("Tests.swift") || f.startsWith("tests/") || f.includes("/tests/") || f.startsWith("Tests/") || f.includes("/Tests/") || base === "conftest.py";
   };
   const testFiles = (files || []).filter(isTest);
   const implFiles = (files || []).filter((f) => !isTest(f));
