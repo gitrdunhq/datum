@@ -306,6 +306,24 @@ describe('phaseArgs forwards freeText/issueNumber to child phases (#524)', () =>
   })
 })
 
+// #524 dogfooding (state-flow audit) — phaseArgs never carries a runId, so
+// the Closeout call — `workflow({scriptPath: sk('datum-closeout')}, phaseArgs)`
+// — sent datum-closeout.ts an object with no runId. datum-closeout.ts reads
+// `a.runId || ''`, so it always fell back to generating a brand-new,
+// unrelated run id instead of reusing the one Act actually produced —
+// closeout then looked for `.datum/runs/<bogus-id>/closeout-data.json`,
+// which never exists, silently skipping the real collected data.
+describe('Closeout receives the real Act runId, not an empty phaseArgs default (#524)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('the datum-closeout workflow call includes runId: resolvedRunId, not bare phaseArgs', () => {
+    const closeoutCallIdx = src.indexOf("sk('datum-closeout')")
+    expect(closeoutCallIdx).toBeGreaterThan(-1)
+    const closeoutCall = src.slice(closeoutCallIdx, closeoutCallIdx + 200)
+    expect(closeoutCall).toMatch(/runId:\s*resolvedRunId/)
+  })
+})
+
 describe('adopt-existing-feature-branch — AC4', () => {
   it('datum init --json on the default branch does not report adoption', () => {
     const result = run('datum', ['init', '--json'], repoDir)

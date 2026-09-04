@@ -531,7 +531,11 @@ if (shouldRun('review', 5)) {
 // Closeout
 if (shouldRun('closeout', 6)) {
   log('── Closeout ──')
-  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, phaseArgs) as PhaseResult
+  // phaseArgs never carries a runId (Refine/Plan/Properties/Validate/Review
+  // don't need one) — Closeout does: without it, datum-closeout.ts's
+  // `a.runId || ''` falls back and generates a brand-new, unrelated run id
+  // instead of reusing the one Act actually produced (#524 dogfooding).
+  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, { ...phaseArgs, runId: resolvedRunId }) as PhaseResult
   log('Closeout complete')
   await markPhaseComplete('closeout')
 }
