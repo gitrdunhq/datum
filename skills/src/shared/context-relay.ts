@@ -20,7 +20,8 @@
 // tested-by: skills/src/shared/context-relay.test.ts
 
 import { stepStdout, type BatchResult, type BatchStep } from './batch'
-import { utf8ByteLength } from './utf8'
+import { utf8ByteLength, utf8Encode } from './utf8'
+import { gitBlobSha } from './sha1'
 
 /** Total bytes one inline batch may relay — well under the ~25 KB spill. */
 export const CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024
@@ -168,11 +169,22 @@ export function contextFromRelay(probe: BatchResult, inline: BatchResult | null,
       throw new Error(`context_relay_mismatch: ${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`)
     }
     const expected = plan.bytes[relPath]
-    const actual = utf8ByteLength(raw)
+    let content = raw
+    let actual = utf8ByteLength(raw)
+    // The runner trimmed the LAST cat step's trailing newline (caliper eedom
+    // wf_4f739141-c8c: 3695 of 3696 bytes, otherwise byte-identical). The
+    // probe recorded the blob sha, which proves the bytes where a count only
+    // measures them: a read one byte short is restored when content + "\n"
+    // hashes to that sha, and rejected otherwise.
+    if (actual === expected - 1 && plan.sha[relPath] && gitBlobSha(utf8Encode(raw + '\n')) === plan.sha[relPath]) {
+      content = raw + '\n'
+      actual = expected
+      warnings.push(`context file ${relPath}: trailing newline restored (runner returned ${expected - 1} of ${expected} bytes; blob sha verified)`)
+    }
     if (actual !== expected || (Number.isFinite(declared) && declared !== expected)) {
       throw new Error(`context_relay_mismatch: ${relPath} expected ${expected} bytes, got ${actual} bytes`)
     }
-    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha: plan.sha[relPath], content: raw }
+    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha: plan.sha[relPath], content }
   })
   return { branch, epicDir, files, warnings }
 }

@@ -35,6 +35,7 @@ import {
   type ContextFile,
 } from './context-relay'
 import { gitBlobSha } from './sha1'
+import { utf8Encode } from './utf8'
 
 const names = (steps: BatchStep[]) => steps.map((s) => s.name)
 
@@ -125,6 +126,33 @@ describe('contextInlineSteps', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// caliper eedom wf_4f739141-c8c: the runner returned the LAST ctx-cat step's
+// stdout with its trailing newline trimmed (3695 of 3696 bytes; the file on
+// disk was byte-identical otherwise) and refine halted with
+// context_relay_mismatch. The probe recorded the file's git blob sha, so a
+// read one byte short is restored when content + "\n" hashes to that sha,
+// and rejected otherwise — a hash proves the bytes; a count only measures them.
+describe('contextFromRelay restores a trimmed trailing newline by blob sha', () => {
+  const content = '# questions\n\n[Answer]: yes, the shadowing case.\n'
+  const bytes = utf8Encode(content)
+  const sha = gitBlobSha(bytes)
+  const probe = fake({ branch: 'b', 'epic-dir': 'docs/epics/b', 'ctx-wc-0': String(bytes.length), 'ctx-sha-0': sha })
+  const plan = contextRelayPlan(probe, ['QUESTIONS.md'])
+
+  it('accepts content that is short by exactly the final newline when the restored bytes match the probe sha, and says so', () => {
+    const inline = fake({ 'ctx-cat-0': content.slice(0, -1), 'ctx-wc-0': String(bytes.length) })
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.files['QUESTIONS.md'].content).toBe(content)
+    expect(ctx.files['QUESTIONS.md'].bytes).toBe(bytes.length)
+    expect(ctx.warnings.some((w) => /QUESTIONS\.md.*trailing newline restored/.test(w))).toBe(true)
+  })
+
+  it('still rejects a one-byte-short read whose restored bytes do not match the sha', () => {
+    const inline = fake({ 'ctx-cat-0': content.slice(0, -1).replace('yes', 'no,'), 'ctx-wc-0': String(bytes.length) })
+    expect(() => contextFromRelay(probe, inline, plan)).toThrow(/context_relay_mismatch: QUESTIONS\.md expected \d+ bytes, got \d+ bytes/)
   })
 })
 
