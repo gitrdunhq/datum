@@ -590,10 +590,6 @@ class TestDetectSolutions:
         assert output2.get("ok") is True
         assert output2.get("skipped") is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG: git log returncode not checked; bad SHA reports ok: True and writes marker, preventing recovery",
-    )
     def test_detect_solutions_bad_sha_doesnt_report_success(self, env_with_repo):
         """BUG: detect_solutions with bad SHA reports ok: True and writes marker.
 
@@ -798,16 +794,13 @@ class TestCommitCloseout:
         assert output.get("ok") is True
         assert output.get("skipped") is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG: git add returncode not checked; staged list can include files that failed to stage",
-    )
     def test_commit_closeout_git_add_failure_reported(self, env_with_repo):
         """BUG: commit_closeout doesn't check git add returncode."""
         repo = env_with_repo
 
-        # Create a synthesis file that will fail to stage (simulate by making it a directory)
-        (repo["repo_dir"] / "CURRENT_STATE.md").mkdir()
+        # Create a synthesis file that will fail to stage (gitignore'd file)
+        (repo["repo_dir"] / ".gitignore").write_text("CURRENT_STATE.md\n")
+        (repo["repo_dir"] / "CURRENT_STATE.md").write_text("# Current State\n")
         (repo["repo_dir"] / "ROADMAP.md").write_text("# Roadmap\n")
 
         result = subprocess.run(
@@ -824,9 +817,16 @@ class TestCommitCloseout:
         )
 
         output = json.loads(result.stdout)
-        # The staged list should not include files that failed to stage
-        if "files" in output:
-            assert "CURRENT_STATE.md" not in output["files"]
+        # Should fail due to git add failure
+        assert (
+            result.returncode != 0
+        ), f"Should exit with error, got returncode={result.returncode}"
+        assert output.get("ok") is False, "Should report ok: False"
+        assert "error" in output, "Should include error field"
+
+        # Marker should NOT be written on failure
+        marker = repo["runs_dir"] / ".commit-closeout.done"
+        assert not marker.exists(), "Marker should not be written on failure"
 
     def test_commit_closeout_json_output_purity(self, env_with_repo):
         """commit_closeout always outputs valid JSON to stdout."""
@@ -854,6 +854,178 @@ class TestCommitCloseout:
             assert isinstance(output, dict)
         except json.JSONDecodeError as e:
             pytest.fail(f"commit_closeout output is not valid JSON: {e}")
+
+    def test_commit_closeout_git_push_failure_reported(self, env_with_repo):
+        """BUG: commit_closeout doesn't check git push returncode."""
+        repo = env_with_repo
+
+        # Create a hook that blocks commits to main but allows chore/* branches
+        hooks_dir = repo["repo_dir"] / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        hook_script = hooks_dir / "pre-commit"
+        hook_script.write_text(
+            "#!/bin/sh\n"
+            "b=$(git symbolic-ref --short HEAD)\n"
+            'case "$b" in\n'
+            "  chore/*) exit 0;;\n"
+            "esac\n"
+            "echo 'Direct commits blocked: guard-main-commit' >&2\n"
+            "exit 1\n"
+        )
+        hook_script.chmod(0o755)
+
+        # Configure git to use this hooks directory
+        subprocess.run(
+            ["git", "config", "core.hooksPath", str(hooks_dir)],
+            cwd=repo["repo_dir"],
+            check=True,
+        )
+
+        # Add a nonexistent origin so push fails
+        subprocess.run(
+            ["git", "remote", "add", "origin", "/nonexistent/path"],
+            cwd=repo["repo_dir"],
+            check=True,
+        )
+
+        # Create synthesis files
+        (repo["repo_dir"] / "CURRENT_STATE.md").write_text("# Current State\n")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.commit_closeout",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        output = json.loads(result.stdout)
+        # Should fail due to git push failure
+        assert (
+            result.returncode != 0
+        ), f"Should exit with error, got returncode={result.returncode}"
+        assert output.get("ok") is False, "Should report ok: False"
+        assert "error" in output, "Should include error field"
+        # If commit succeeded, sha should be present
+        if "sha" in output:
+            assert output["sha"], "SHA should not be empty if present"
+
+        # Marker should NOT be written on failure
+        marker = repo["runs_dir"] / ".commit-closeout.done"
+        assert not marker.exists(), "Marker should not be written on failure"
+
+    def test_commit_closeout_idempotency_grep_anchored(self, env_with_repo):
+        """BUG: commit_closeout's idempotency grep is unanchored (run-1 matches run-10)."""
+        repo = env_with_repo
+
+        # First, run closeout for run-10
+        run_10_dir = repo["repo_dir"] / ".datum" / "runs" / "run-10"
+        run_10_dir.mkdir(parents=True, exist_ok=True)
+
+        (repo["repo_dir"] / "CURRENT_STATE.md").write_text(
+            "# Current State for run-10\n"
+        )
+
+        result1 = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.commit_closeout",
+                "--run-id",
+                "run-10",
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result1.returncode == 0, f"run-10 failed: {result1.stdout}"
+        output1 = json.loads(result1.stdout)
+        assert output1.get("ok") is True
+
+        # Verify run-10 commit was created
+        log_run10 = subprocess.run(
+            ["git", "log", "--oneline", "--grep", "closeout: run-10"],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert "closeout: run-10" in log_run10, "run-10 closeout commit should exist"
+
+        # Now run closeout for run-1 (should NOT be skipped)
+        run_1_dir = repo["repo_dir"] / ".datum" / "runs" / "run-1"
+        run_1_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a different file for run-1 to ensure there are new changes to commit
+        (repo["repo_dir"] / "ROADMAP.md").write_text("# Roadmap for run-1\n")
+
+        # Remove the marker so we can rerun
+        marker = (
+            repo["repo_dir"] / ".datum" / "runs" / "run-10" / ".commit-closeout.done"
+        )
+        if marker.exists():
+            marker.unlink()
+
+        result2 = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.commit_closeout",
+                "--run-id",
+                "run-1",
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result2.returncode == 0
+        output2 = json.loads(result2.stdout)
+
+        # BUG: With unanchored grep, run-1 is incorrectly matched to run-10
+        # and reported as skipped. With the fix, run-1 should either:
+        # 1. Create a new commit (not skipped), OR
+        # 2. Only skip if an actual "closeout: run-1" commit exists
+        if output2.get("skipped"):
+            # If skipped, verify it's only because an actual run-1 commit exists
+            # (not because it incorrectly matched run-10)
+            log_all = (
+                subprocess.run(
+                    ["git", "log", "--format=%s"],
+                    cwd=repo["repo_dir"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                .stdout.strip()
+                .split("\n")
+            )
+            lines = [line for line in log_all if line == "closeout: run-1"]
+            assert (
+                len(lines) > 0
+            ), "If skipped, closeout: run-1 commit should exist (not matched to run-10)"
+        else:
+            # If not skipped, verify run-1 commit was created
+            log_all = (
+                subprocess.run(
+                    ["git", "log", "--format=%s"],
+                    cwd=repo["repo_dir"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                .stdout.strip()
+                .split("\n")
+            )
+            lines = [line for line in log_all if line == "closeout: run-1"]
+            assert len(lines) > 0, "run-1 closeout commit should have been created"
 
 
 class TestGitnexusReindex:
@@ -914,8 +1086,7 @@ class TestGitnexusReindex:
         # If exit code is 0 but ok is False, that's a contract violation
         # (the TS side likely only checks exit code)
         if result.returncode == 0:
-            # For now, just verify JSON is valid
-            pass
+            assert output.get("ok") is True
 
 
 class TestCloseoutArchiveCommand:
