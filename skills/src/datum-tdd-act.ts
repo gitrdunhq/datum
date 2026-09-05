@@ -3,7 +3,8 @@ import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult,
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash } from './shared/lane-steps'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
+import { runBatch } from './shared/agents'
 import { DEFAULT_CONFIG, skillPath } from './shared/models'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
@@ -270,6 +271,17 @@ for (let bi = 0; bi < batches.length; bi++) {
       if (results[id] && results[id].status === 'completed') continue
       results[id] = { task_id: id, status: 'failed', stage: 'CRASH', error: `act_batch_failed: ${message}` }
       if (!failures.includes(id)) failures.push(id)
+    }
+    // The merge child (where cleanup lives) never ran: deregister this
+    // batch's root and lane worktrees so the next run's setup does not die
+    // on "already used by worktree" (caliper BUG O). Lane branches with
+    // commits are preserved by the CLI. Fail-soft: a cleanup failure is
+    // logged, never a second crash.
+    try {
+      const cleanup = await runBatch(cleanupSteps(batchRunId, epicBranch), stageOpts('cli', { label: `cleanup-after-crash${batchTag}`, phase: 'Act', model: model('fast') }))
+      log(`  cleanup${batchTag}: ${stepStdout(cleanup, 'cleanup') || describeFailure(cleanup, 'cleanup')}`)
+    } catch (cleanupExc) {
+      log(`[warn] cleanup_after_crash_failed${batchTag}: ${(cleanupExc as Error).message}`)
     }
   }
 }

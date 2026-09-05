@@ -596,12 +596,23 @@ export function mergeSteps(o: MergeStepsOpts): BatchStep[] {
       tolerant: true,
     })
   }
-  steps.push({
-    name: 'cleanup',
-    command: `datum worktrees cleanup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)}`,
-    tolerant: true,
-  })
+  steps.push(...cleanupSteps(o.batchRunId, o.epicBranch))
   return steps
+}
+
+/**
+ * The batch's worktree cleanup on its own. The merge batch ends with it;
+ * the orchestrators also run it from their act catch block, because a
+ * throw in setup or the lane workflow skipped the merge child and left the
+ * root and lane worktrees registered for the next run to trip over
+ * (caliper BUG O).
+ */
+export function cleanupSteps(batchRunId: string, epicBranch: string): BatchStep[] {
+  return [{
+    name: 'cleanup',
+    command: `datum worktrees cleanup --run-id ${q(batchRunId)} --epic-branch ${q(epicBranch)}`,
+    tolerant: true,
+  }]
 }
 
 // ── Act start: bootstrap/detect, timestamp, lane-plan resolve + read, lane-state read ──

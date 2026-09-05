@@ -19,6 +19,7 @@ import {
   housekeepFromSteps,
   setupSteps,
   laneWorktreePathsFromSteps,
+  cleanupSteps,
   mergeSteps,
   actStartSteps,
   ownershipCommand,
@@ -759,6 +760,17 @@ describe('housekeepSteps / housekeepFromSteps (closeout)', () => {
     expect(failed.ok).toBe(false)
     expect(failed.error).toMatch(/^housekeep_failed: datum housekeep-epic exited 1.*not fully merged/)
     expect(housekeepFromSteps(parseBatchResult(null, housekeepSteps('x'))).error).toMatch(/^housekeep_failed: /)
+  })
+})
+
+describe('cleanupSteps', () => {
+  it('is the single tolerant cleanup step the merge batch ends with, usable alone after a crash', () => {
+    const steps = cleanupSteps('r1-b0', 'datum/e')
+    expect(names(steps)).toEqual(['cleanup'])
+    expect(steps[0].tolerant).toBe(true)
+    expect(steps[0].command).toBe('datum worktrees cleanup --run-id "r1-b0" --epic-branch "datum/e"')
+    const merge = mergeSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', completedIds: [], mergeOrder: [], laneStateWriteScript: null })
+    expect(merge).toEqual(steps)
   })
 })
 

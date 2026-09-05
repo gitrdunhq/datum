@@ -2,7 +2,8 @@ import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult,
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash } from './shared/lane-steps'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
+import { runBatch } from './shared/agents'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, pipelineStateSaveSteps, pipelineStateSaveFromSteps, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING, newEpicBootstrapSteps, newEpicBootstrapFromSteps } from './shared/boot'
@@ -400,6 +401,7 @@ log(`[debug] shouldRun act=${shouldRun('act', 3)} startIdx=${startIdx} haltedAt=
 
 if (shouldRun('act', 3)) {
   log('── Act ──')
+  let inFlightBatch: { batchRunId: string; batchTag: string; epicBranch: string } | null = null
   try {
 
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
@@ -507,6 +509,9 @@ if (shouldRun('act', 3)) {
     const batchLaneIds = batches[bi]
     const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : ''
     const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId
+    // Read by the act catch block: a throw between setup and merge leaves
+    // this batch's worktrees registered unless it cleans them up itself.
+    inFlightBatch = { batchRunId, batchTag, epicBranch }
 
     if (batches.length > 1) log(`\n=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(', ')}] ===`)
 
@@ -585,6 +590,8 @@ if (shouldRun('act', 3)) {
           : null,
       },
     ) as MergeResult | null
+    // The merge child ran its own cleanup step; nothing for the catch to do.
+    inFlightBatch = null
 
     // A lane the runner completed but whose squash-merge did not land has
     // shipped nothing. Demote it to failed so the halt below fires and a
@@ -700,6 +707,19 @@ if (shouldRun('act', 3)) {
     log(`[warn] act_phase_failed: ${message}`)
     haltedAt = 'act'
     lastResult = { failed: 1, failedLanes: [], error: message }
+    // The merge child (where cleanup lives) never ran for the batch in
+    // flight: deregister its root and lane worktrees so the next run's setup
+    // does not die on "already used by worktree" (caliper BUG O). Lane
+    // branches with commits are preserved by the CLI. Fail-soft.
+    if (inFlightBatch) {
+      const { batchRunId, batchTag, epicBranch } = inFlightBatch
+      try {
+        const cleanup = await runBatch(cleanupSteps(batchRunId, epicBranch), stageOpts('cli', { label: `cleanup-after-crash${batchTag}`, phase: 'Act', model: model('fast') }))
+        log(`  cleanup${batchTag}: ${stepStdout(cleanup, 'cleanup') || describeFailure(cleanup, 'cleanup')}`)
+      } catch (cleanupExc) {
+        log(`[warn] cleanup_after_crash_failed${batchTag}: ${(cleanupExc as Error).message}`)
+      }
+    }
   }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)

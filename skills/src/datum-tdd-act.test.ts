@@ -157,6 +157,23 @@ describe('datum-tdd-act — a batch failure is contained and the Plan skeletons 
   })
 })
 
+// caliper BUG O: a throw in setup or the lane workflow skipped the merge
+// child, and the merge child is where `datum worktrees cleanup` ran — so a
+// crashed batch left its root worktree and every lane worktree registered,
+// and the next run's setup died on "already used by worktree".
+describe('a crashed batch still cleans up its worktrees', () => {
+  for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
+    it(`${f} runs cleanupSteps for the in-flight batch from the act catch block, fail-soft`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/import \{[^}]*\bcleanupSteps\b[^}]*\} from '\.\/shared\/lane-steps'/)
+      expect(src).toMatch(/import \{[^}]*\brunBatch\b[^}]*\} from '\.\/shared\/agents'/)
+      // The catch that names act_batch_failed / act_phase_failed runs the cleanup batch.
+      expect(src).toMatch(/act_(batch|phase)_failed[\s\S]{0,1500}runBatch\(cleanupSteps\(/)
+      expect(src).toMatch(/cleanup_after_crash_failed/)
+    })
+  }
+})
+
 describe('the Act result reports needs-write lanes apart from dependency blocks', () => {
   for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
     it(`${f} exposes approvalLanes/needsApproval and excludes them from the blocked count`, () => {
