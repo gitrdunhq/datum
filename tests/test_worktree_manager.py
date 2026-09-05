@@ -159,6 +159,59 @@ class TestCleanupRunWorktreesReportsPreservedBranches:
         assert busy_check.returncode == 0
 
 
+class TestCleanupRunWorktreesDiscoversPreservedBranchesWithoutDirs:
+    """BUG D: cleanup_run_worktrees() derived its entire report from
+    sorted(run_dir.iterdir()) — a lane whose worktree DIRECTORY is already
+    gone (removed by a prior partial cleanup, an agent tidying up after
+    itself, or a crash right after `git worktree remove`) was invisible to
+    that scan. Its branch survived untouched (correctly preserved) but the
+    report named it in neither list, so `preserved_with_commits` under-
+    reported real preserved branches."""
+
+    def test_lane_with_commits_and_no_worktree_dir_is_still_reported_preserved(
+        self, repo: Path
+    ):
+        epic_branch = "epic/test"
+        run_id = "run-mixed"
+
+        present_lane = "task-present"
+        vanished_lane = "task-vanished"
+
+        present_branch = _make_lane_branch(repo, epic_branch, present_lane)
+        _add_lane_commit(repo, present_branch, "present_work.py")
+        vanished_branch = _make_lane_branch(repo, epic_branch, vanished_lane)
+        _add_lane_commit(repo, vanished_branch, "vanished_work.py")
+
+        run_dir = repo / ".datum" / "worktrees" / run_id
+        for lane_id, branch in (
+            (present_lane, present_branch),
+            (vanished_lane, vanished_branch),
+        ):
+            lane_path = run_dir / lane_id
+            _git(["worktree", "add", str(lane_path), branch], cwd=repo)
+
+        # Simulate the vanished lane's worktree directory already having
+        # been removed (its branch is untouched — real commits survive).
+        vanished_path = run_dir / vanished_lane
+        _git(["worktree", "remove", "--force", str(vanished_path)], cwd=repo)
+        assert not vanished_path.exists()
+
+        result = cleanup_run_worktrees(run_id, epic_branch, repo_root=repo)
+
+        assert sorted(result["preserved_with_commits"]) == sorted(
+            [present_lane, vanished_lane]
+        )
+
+        for branch in (present_branch, vanished_branch):
+            check = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", branch],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+            )
+            assert check.returncode == 0, f"{branch} must survive"
+
+
 class TestHousekeepEpic:
     def test_batches_branch_deletion_for_multiple_merged_lanes(self, repo: Path):
         epic_branch = "epic/test"
@@ -378,3 +431,69 @@ class TestMergeLaneBranches:
             merge_lane_branches(
                 "epic/test", ["lane-a", "lane-b"], "merge: conflict", repo_root=repo
             )
+
+    def test_conflicting_lane_merge_reports_which_lanes_already_merged(
+        self, repo: Path
+    ):
+        """When a later lane fails, the error must say which earlier lanes
+        were already squash-merged (staged) so the operator knows the repo
+        state, not just which lane failed."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-conflict-b2"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "a.txt").write_text("conflicting content\n")
+        _git(["add", "a.txt"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b conflicts with lane a's a.txt"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        with pytest.raises(RuntimeError, match="lane-b") as excinfo:
+            merge_lane_branches(
+                "epic/test", ["lane-a", "lane-b"], "merge: conflict", repo_root=repo
+            )
+        assert "lane-a" in str(excinfo.value)
+
+    def test_untracked_file_at_lane_added_path_blocks_merge_precondition(
+        self, repo: Path
+    ):
+        """BUG A2: an untracked file in the root checkout at a path a lane
+        branch adds must be caught by an explicit precondition BEFORE any
+        merging starts, not surface as a mid-merge git RuntimeError after
+        earlier lanes have already been squash-merged."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-untracked-b"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "skeleton.py").write_text("stub\n")
+        _git(["add", "skeleton.py"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b adds skeleton.py"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        (repo / "skeleton.py").write_text("untracked stub, not committed\n")
+
+        before_head = _git(["rev-parse", "epic/test"], cwd=repo).stdout.strip()
+
+        with pytest.raises(RuntimeError, match="skeleton.py"):
+            merge_lane_branches(
+                "epic/test", ["lane-a", "lane-b"], "merge: untracked", repo_root=repo
+            )
+
+        after_head = _git(["rev-parse", "epic/test"], cwd=repo).stdout.strip()
+        assert after_head == before_head, "no merge should have happened"
+
+        # Nothing staged either — not even lane-a, whose changes don't
+        # conflict with anything. The precondition must run before ANY lane
+        # is merged.
+        status = _git(["status", "--porcelain"], cwd=repo).stdout
+        assert "a.txt" not in status
+        assert "A  a.txt" not in status

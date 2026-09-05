@@ -291,6 +291,14 @@ def merge_lane_branches(
     Merges in lane_order (dependency order: depended-on lanes first).
     All accumulated changes land in one commit, satisfying the squash-before-push rule.
 
+    Before merging anything, checks every lane branch in lane_order for
+    paths it adds/modifies that collide with an untracked file already
+    sitting in the root checkout. If any lane would collide, raises
+    RuntimeError naming every conflicting path (across all lanes) WITHOUT
+    merging any lane — otherwise a mid-order untracked-file collision would
+    leave earlier lanes squash-merged (staged, uncommitted) while later
+    ones never ran, a hard-to-diagnose half-merged state.
+
     Returns the SHA of the resulting merge commit.
     Raises RuntimeError on any git failure.
     """
@@ -302,6 +310,48 @@ def merge_lane_branches(
             f"Cannot checkout '{epic_branch}': {checkout.stderr.strip()}"
         )
 
+    untracked_paths = set(
+        _git(
+            ["ls-files", "--others", "--exclude-standard"], cwd=repo_root, check=False
+        ).stdout.splitlines()
+    )
+
+    if untracked_paths:
+        conflicts: dict[str, list[str]] = {}
+        for lane_id in lane_order:
+            lane_branch = f"{epic_branch}--{lane_id}"
+            diff_result = _git(
+                [
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=ACMR",
+                    f"{epic_branch}...{lane_branch}",
+                ],
+                cwd=repo_root,
+                check=False,
+            )
+            if diff_result.returncode != 0:
+                raise RuntimeError(
+                    f"Cannot compute changed paths for lane '{lane_id}' "
+                    f"(branch '{lane_branch}'): {diff_result.stderr.strip()}"
+                )
+            lane_paths = set(diff_result.stdout.splitlines())
+            hit = sorted(lane_paths & untracked_paths)
+            if hit:
+                conflicts[lane_id] = hit
+
+        if conflicts:
+            details = "; ".join(
+                f"lane '{lane_id}' would overwrite: {', '.join(paths)}"
+                for lane_id, paths in conflicts.items()
+            )
+            raise RuntimeError(
+                "Untracked working tree files would be overwritten by merge — "
+                f"{details}. Move or delete these untracked files, or `git add` "
+                "them, before merging. No lane has been merged."
+            )
+
+    merged: list[str] = []
     for lane_id in lane_order:
         lane_branch = f"{epic_branch}--{lane_id}"
         result = _git(
@@ -310,9 +360,16 @@ def merge_lane_branches(
             check=False,
         )
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Squash-merge of lane '{lane_id}' failed: {result.stderr.strip()}"
+            merged_note = (
+                f" Lanes already merged (staged, uncommitted): {', '.join(merged)}."
+                if merged
+                else " No lanes were merged before this failure."
             )
+            raise RuntimeError(
+                f"Squash-merge of lane '{lane_id}' failed: "
+                f"{result.stderr.strip()}.{merged_note}"
+            )
+        merged.append(lane_id)
 
     commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
     if commit.returncode != 0:
@@ -342,6 +399,18 @@ def cleanup_run_worktrees(
     (see remove_lane_worktree()); branches with real RED/GREEN commits are
     preserved and reported so nothing is silently discarded.
 
+    The directory scan under run_dir is the sole authority for what gets
+    *deleted* — only lanes with a worktree directory are ever touched here.
+    But a lane's worktree directory can already be gone by the time cleanup
+    runs (a prior partial cleanup, an agent removing its own worktree, a
+    crash right after `git worktree remove`) while its branch — with real
+    commits — survives untouched. Such a lane is invisible to the directory
+    scan alone, so reporting also cross-checks `<epic_branch>--*` branches
+    that still exist: any that already carry real commits (and weren't
+    already accounted for by the directory scan) are added to
+    preserved_with_commits too, purely for visibility — nothing extra is
+    deleted.
+
     Returns:
         {
             "removed": [lane_ids (plus "<run_id>-root" if present) whose
@@ -356,10 +425,12 @@ def cleanup_run_worktrees(
 
     removed: list[str] = []
     preserved_with_commits: list[str] = []
+    accounted_for: set[str] = set()
     if run_dir.exists():
         for lane_dir in sorted(run_dir.iterdir()):
             if lane_dir.is_dir():
                 lane_id = lane_dir.name
+                accounted_for.add(lane_id)
                 result = remove_lane_worktree(
                     lane_id, run_id, epic_branch, repo_root=repo_root
                 )
@@ -378,6 +449,33 @@ def cleanup_run_worktrees(
             ["worktree", "remove", str(root_dir), "--force"], cwd=repo_root, check=False
         )
         removed.append(f"{run_id}-root")
+
+    # Reporting-only cross-check: lane branches still alive with real
+    # commits, whose worktree directory was already gone before this call.
+    prefix = f"{epic_branch}--"
+    branch_list = _git(
+        ["for-each-ref", "--format=%(refname:short)", f"refs/heads/{prefix}*"],
+        cwd=repo_root,
+        check=False,
+    ).stdout
+    for line in branch_list.splitlines():
+        lane_branch = line.strip()
+        if not lane_branch.startswith(prefix):
+            continue
+        lane_id = lane_branch[len(prefix) :]
+        if lane_id in accounted_for:
+            continue
+        merge_base = _git(
+            ["merge-base", lane_branch, epic_branch], cwd=repo_root, check=False
+        )
+        lane_sha = _git(["rev-parse", lane_branch], cwd=repo_root, check=False)
+        has_new_commits = not (
+            merge_base.returncode == 0
+            and lane_sha.returncode == 0
+            and merge_base.stdout.strip() == lane_sha.stdout.strip()
+        )
+        if has_new_commits:
+            preserved_with_commits.append(lane_id)
 
     prune_stale_worktrees(repo_root=repo_root)
 
