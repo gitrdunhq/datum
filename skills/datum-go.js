@@ -898,191 +898,198 @@ if (shouldRun("properties", 2)) {
 log(`[debug] shouldRun act=${shouldRun("act", 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`);
 if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
-  const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
-  const language = globalCfg.language || DEFAULT_CONFIG.language;
-  const testFramework = globalCfg.test_framework;
-  const actStart = actStartSteps({
-    branch: "init",
-    initCmd: "datum init --json",
-    lanePlanPath: null,
-    laneStateReadScript: laneStateReadScript({
-      epicBranch: "$__eb",
-      epicSlug: "",
-      taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`
-    })
-  });
-  const actStartRaw = await agent(
-    batchCommandPrompt(actStart),
-    stageOpts("cli", { label: "act-start", phase: "Act", model: model("fast") })
-  );
-  const actStartResult = parseBatchResult(actStartRaw, actStart);
-  const info = parseAgentJson(stepStdout(actStartResult, "bootstrap") || "", { epicBranch: "" });
-  const epicBranch = info.epicBranch;
-  const runId = (stepStdout(actStartResult, "timestamp") || "").trim();
-  resolvedBranch = epicBranch;
-  resolvedRunId = runId;
-  if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)} (${describeFailure(actStartResult, "act-start")})`);
-  const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
-  const epicDir = `docs/epics/${epicBranch}`;
-  const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
-  const planBytes = parseInt((stepStdout(actStartResult, "plan-bytes") || "").trim(), 10);
-  const planSha = (stepStdout(actStartResult, "plan-sha") || "").trim();
-  if (!Number.isFinite(planBytes) || planBytes < 0) {
-    throw new Error(`lane_plan_relay_mismatch: could not determine the byte size of ${lanePlanPath} (${describeFailure(actStartResult, "act-start")})`);
-  }
-  const lanePlanChunkPlan = contextChunkPlan(planBytes);
-  const lanePlanChunkResults = [];
-  for (let i = 0; i < lanePlanChunkPlan.length; i++) {
-    const chunkSteps = contextChunkSteps(lanePlanPath, lanePlanChunkPlan[i], i);
-    const chunkRaw = await agent(
-      batchCommandPrompt(chunkSteps),
-      stageOpts("cli", { label: `lane-plan-chunk-${i}`, phase: "Act", model: model("fast") })
-    );
-    lanePlanChunkResults.push(parseBatchResult(chunkRaw, chunkSteps));
-  }
-  const lanePlanText = contextAssembleChunks(lanePlanPath, planBytes, planSha, lanePlanChunkResults, lanePlanChunkPlan);
-  const lanePlan = parseAgentJson(lanePlanText, null);
-  if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
-  const planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, "plan-shape"));
-  if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) \u2014 refusing to execute a plan that differs from the file`);
-  const waves = buildWaves(lanePlan);
-  if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
-    throw new Error("Lane plan has 0 tasks \u2014 nothing to execute");
-  }
-  log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
-  const slug = epicSlug(epicBranch);
-  const priorMarkers = parseAgentJson(stepStdout(actStartResult, "lane-state-read") || "", {});
-  const alreadyMerged = lanePlan.topological_order.filter((id) => {
-    const m = priorMarkers[id];
-    return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {});
-  });
-  const actResults = {};
-  const actFailures = [];
-  const actCompleted = [];
-  for (const id of alreadyMerged) {
-    actResults[id] = { task_id: id, status: "completed" };
-    actCompleted.push(id);
-  }
-  if (alreadyMerged.length > 0) {
-    log(`Epic-scoped state: ${alreadyMerged.length} lane(s) already merged, skipping: [${alreadyMerged.join(", ")}]`);
-  }
-  const MAX_BATCH = 5;
-  const allLaneIds = lanePlan.topological_order.filter((id) => !alreadyMerged.includes(id));
-  const remainingWaves = waves.map((wave) => wave.filter((id) => allLaneIds.includes(id))).filter((wave) => wave.length > 0);
-  const batches = packWaves(remainingWaves, MAX_BATCH, lanePlan);
-  log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`);
-  if (batches.length > 1) {
-    log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches`);
-  }
-  for (let bi = 0; bi < batches.length; bi++) {
-    const batchLaneIds = batches[bi];
-    const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : "";
-    const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId;
-    if (batches.length > 1) log(`
-=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===`);
-    for (const lid of batchLaneIds) {
-      const deps = lanePlan.lanes[lid]?.depends_on || [];
-      const unmet = deps.filter((d) => !batchLaneIds.includes(d) && !actCompleted.includes(d));
-      if (unmet.length === 0) continue;
-      const failedDeps = unmet.filter((d) => actFailures.includes(d) || actResults[d]?.status === "blocked");
-      const neverRan = unmet.filter((d) => !failedDeps.includes(d));
-      const rootCauses = failedDeps.map((d) => `${d}@${actResults[d]?.stage || "?"}`);
-      const detail = [
-        rootCauses.length > 0 ? `dep(s) failed/blocked: [${rootCauses.join(", ")}]` : "",
-        neverRan.length > 0 ? `dep(s) never ran: [${neverRan.join(", ")}]` : ""
-      ].filter(Boolean).join("; ");
-      actResults[lid] = { task_id: lid, status: "blocked", stage: "SKIPPED", error: `blocked \u2014 ${detail}` };
-      log(`  BLOCKED ${lid}: ${detail}`);
-    }
-    const runnableBatchIds = batchLaneIds.filter((id) => !actResults[id]);
-    if (runnableBatchIds.length === 0) {
-      log(`Batch ${bi} fully skipped \u2014 all lanes have unmet deps`);
-      continue;
-    }
-    const setup = await workflow(
-      { scriptPath: sk("datum-tdd-act-setup") },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint }
-    );
-    const act = await workflow(
-      { scriptPath: sk("datum-tdd-act-lane") },
-      {
-        batchLaneIds: runnableBatchIds,
-        lanePlan,
-        worktreePaths: setup.worktreePaths,
-        batchTag,
-        // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
-        // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
-        priorFailures: actFailures,
-        priorCompleted: actCompleted
-      }
-    );
-    for (const [id, r] of Object.entries(act.results || {})) {
-      actResults[id] = r;
-      if (!r || r.status === "failed") {
-        actFailures.push(id);
-        log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
-      } else if (r.status === "skipped" || r.status === "blocked") {
-        log(`  ${r.status.toUpperCase()} ${id}: ${r.error || "dependency failed"}`);
-      } else {
-        actCompleted.push(id);
-      }
-    }
-    log(`Act${batchTag} done: ${batchLaneIds.filter((id) => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`);
-    const mergedIds = batchLaneIds.filter((id) => actCompleted.includes(id));
-    const mergeResult = await workflow(
-      { scriptPath: sk("datum-tdd-act-merge") },
-      {
-        epicBranch,
-        completedIds: mergedIds,
-        results: actResults,
-        batchRunId,
-        topoOrder: lanePlan.topological_order,
-        batchTag,
-        agentTypes: agentTypeArgs(),
-        configFingerprint,
-        laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
-      }
-    );
-    if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
-      const why = mergeResult ? "squash-merge step exited non-zero" : "merge workflow returned null";
-      for (const id of mergedIds) {
-        const i = actCompleted.indexOf(id);
-        if (i >= 0) actCompleted.splice(i, 1);
-        actFailures.push(id);
-        actResults[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
-      }
-      log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
-    }
-  }
-  let docsResult = null;
   try {
-    docsResult = await workflow(
-      { scriptPath: sk("datum-tdd-act-docs") },
-      { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint }
+    const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
+    const language = globalCfg.language || DEFAULT_CONFIG.language;
+    const testFramework = globalCfg.test_framework;
+    const actStart = actStartSteps({
+      branch: "init",
+      initCmd: "datum init --json",
+      lanePlanPath: null,
+      laneStateReadScript: laneStateReadScript({
+        epicBranch: "$__eb",
+        epicSlug: "",
+        taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`
+      })
+    });
+    const actStartRaw = await agent(
+      batchCommandPrompt(actStart),
+      stageOpts("cli", { label: "act-start", phase: "Act", model: model("fast") })
     );
+    const actStartResult = parseBatchResult(actStartRaw, actStart);
+    const info = parseAgentJson(stepStdout(actStartResult, "bootstrap") || "", { epicBranch: "" });
+    const epicBranch = info.epicBranch;
+    const runId = (stepStdout(actStartResult, "timestamp") || "").trim();
+    resolvedBranch = epicBranch;
+    resolvedRunId = runId;
+    if (!epicBranch || !runId) throw new Error(`Failed to resolve branch/timestamp via datum init --json: ${JSON.stringify(info)} (${describeFailure(actStartResult, "act-start")})`);
+    const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
+    const epicDir = `docs/epics/${epicBranch}`;
+    const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
+    const planBytes = parseInt((stepStdout(actStartResult, "plan-bytes") || "").trim(), 10);
+    const planSha = (stepStdout(actStartResult, "plan-sha") || "").trim();
+    if (!Number.isFinite(planBytes) || planBytes < 0) {
+      throw new Error(`lane_plan_relay_mismatch: could not determine the byte size of ${lanePlanPath} (${describeFailure(actStartResult, "act-start")})`);
+    }
+    const lanePlanChunkPlan = contextChunkPlan(planBytes);
+    const lanePlanChunkResults = [];
+    for (let i = 0; i < lanePlanChunkPlan.length; i++) {
+      const chunkSteps = contextChunkSteps(lanePlanPath, lanePlanChunkPlan[i], i);
+      const chunkRaw = await agent(
+        batchCommandPrompt(chunkSteps),
+        stageOpts("cli", { label: `lane-plan-chunk-${i}`, phase: "Act", model: model("fast") })
+      );
+      lanePlanChunkResults.push(parseBatchResult(chunkRaw, chunkSteps));
+    }
+    const lanePlanText = contextAssembleChunks(lanePlanPath, planBytes, planSha, lanePlanChunkResults, lanePlanChunkPlan);
+    const lanePlan = parseAgentJson(lanePlanText, null);
+    if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
+    const planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, "plan-shape"));
+    if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) \u2014 refusing to execute a plan that differs from the file`);
+    const waves = buildWaves(lanePlan);
+    if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
+      throw new Error("Lane plan has 0 tasks \u2014 nothing to execute");
+    }
+    log(`Topology: ${lanePlan.total_lanes} lanes in ${waves.length} waves`);
+    const slug = epicSlug(epicBranch);
+    const priorMarkers = parseAgentJson(stepStdout(actStartResult, "lane-state-read") || "", {});
+    const alreadyMerged = lanePlan.topological_order.filter((id) => {
+      const m = priorMarkers[id];
+      return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {});
+    });
+    const actResults = {};
+    const actFailures = [];
+    const actCompleted = [];
+    for (const id of alreadyMerged) {
+      actResults[id] = { task_id: id, status: "completed" };
+      actCompleted.push(id);
+    }
+    if (alreadyMerged.length > 0) {
+      log(`Epic-scoped state: ${alreadyMerged.length} lane(s) already merged, skipping: [${alreadyMerged.join(", ")}]`);
+    }
+    const MAX_BATCH = 5;
+    const allLaneIds = lanePlan.topological_order.filter((id) => !alreadyMerged.includes(id));
+    const remainingWaves = waves.map((wave) => wave.filter((id) => allLaneIds.includes(id))).filter((wave) => wave.length > 0);
+    const batches = packWaves(remainingWaves, MAX_BATCH, lanePlan);
+    log(`Wave-packed ${allLaneIds.length} tasks into ${batches.length} batches`);
+    if (batches.length > 1) {
+      log(`Auto-partitioned ${allLaneIds.length} tasks into ${batches.length} batches`);
+    }
+    for (let bi = 0; bi < batches.length; bi++) {
+      const batchLaneIds = batches[bi];
+      const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : "";
+      const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId;
+      if (batches.length > 1) log(`
+=== Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===`);
+      for (const lid of batchLaneIds) {
+        const deps = lanePlan.lanes[lid]?.depends_on || [];
+        const unmet = deps.filter((d) => !batchLaneIds.includes(d) && !actCompleted.includes(d));
+        if (unmet.length === 0) continue;
+        const failedDeps = unmet.filter((d) => actFailures.includes(d) || actResults[d]?.status === "blocked");
+        const neverRan = unmet.filter((d) => !failedDeps.includes(d));
+        const rootCauses = failedDeps.map((d) => `${d}@${actResults[d]?.stage || "?"}`);
+        const detail = [
+          rootCauses.length > 0 ? `dep(s) failed/blocked: [${rootCauses.join(", ")}]` : "",
+          neverRan.length > 0 ? `dep(s) never ran: [${neverRan.join(", ")}]` : ""
+        ].filter(Boolean).join("; ");
+        actResults[lid] = { task_id: lid, status: "blocked", stage: "SKIPPED", error: `blocked \u2014 ${detail}` };
+        log(`  BLOCKED ${lid}: ${detail}`);
+      }
+      const runnableBatchIds = batchLaneIds.filter((id) => !actResults[id]);
+      if (runnableBatchIds.length === 0) {
+        log(`Batch ${bi} fully skipped \u2014 all lanes have unmet deps`);
+        continue;
+      }
+      const setup = await workflow(
+        { scriptPath: sk("datum-tdd-act-setup") },
+        { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint }
+      );
+      const act = await workflow(
+        { scriptPath: sk("datum-tdd-act-lane") },
+        {
+          batchLaneIds: runnableBatchIds,
+          lanePlan,
+          worktreePaths: setup.worktreePaths,
+          batchTag,
+          // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
+          // in the lane runner, same as datum-tdd-act passes it.
+          cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
+          priorFailures: actFailures,
+          priorCompleted: actCompleted
+        }
+      );
+      for (const [id, r] of Object.entries(act.results || {})) {
+        actResults[id] = r;
+        if (!r || r.status === "failed") {
+          actFailures.push(id);
+          log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
+        } else if (r.status === "skipped" || r.status === "blocked") {
+          log(`  ${r.status.toUpperCase()} ${id}: ${r.error || "dependency failed"}`);
+        } else {
+          actCompleted.push(id);
+        }
+      }
+      log(`Act${batchTag} done: ${batchLaneIds.filter((id) => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`);
+      const mergedIds = batchLaneIds.filter((id) => actCompleted.includes(id));
+      const mergeResult = await workflow(
+        { scriptPath: sk("datum-tdd-act-merge") },
+        {
+          epicBranch,
+          completedIds: mergedIds,
+          results: actResults,
+          batchRunId,
+          topoOrder: lanePlan.topological_order,
+          batchTag,
+          agentTypes: agentTypeArgs(),
+          configFingerprint,
+          laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
+        }
+      );
+      if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+        const why = mergeResult ? "squash-merge step exited non-zero" : "merge workflow returned null";
+        for (const id of mergedIds) {
+          const i = actCompleted.indexOf(id);
+          if (i >= 0) actCompleted.splice(i, 1);
+          actFailures.push(id);
+          actResults[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+        }
+        log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
+      }
+    }
+    let docsResult = null;
+    try {
+      docsResult = await workflow(
+        { scriptPath: sk("datum-tdd-act-docs") },
+        { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint }
+      );
+    } catch (exc) {
+      log(`[warn] docs_workflow_failed: ${exc.message} \u2014 continuing; docs may be stale or left uncommitted`);
+      docsResult = { synced: false, committed: false, failure_reason: `docs_workflow_failed: ${exc.message}` };
+    }
+    if (docsResult && docsResult.committed === false) {
+      log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
+    }
+    const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
+    const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
+    if (actFailures.length > 0) {
+      await workflow(
+        { scriptPath: sk("datum-tdd-act-triage") },
+        { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
+      );
+    }
+    log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? "finished with failures" : "complete"} \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
+    lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
+    if (actCompleted.length === 0 && lanePlan.total_lanes > 0 || actFailures.length > 0 || actBlocked.length > 0) {
+      haltedAt = "act";
+      log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged \u2014 not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`);
+    } else {
+      await markPhaseComplete("act");
+    }
   } catch (exc) {
-    log(`[warn] docs_workflow_failed: ${exc.message} \u2014 continuing; docs may be stale or left uncommitted`);
-    docsResult = { synced: false, committed: false, failure_reason: `docs_workflow_failed: ${exc.message}` };
-  }
-  if (docsResult && docsResult.committed === false) {
-    log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
-  }
-  const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
-  const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
-  if (actFailures.length > 0) {
-    await workflow(
-      { scriptPath: sk("datum-tdd-act-triage") },
-      { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
-    );
-  }
-  log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? "finished with failures" : "complete"} \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
-  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
-  if (actCompleted.length === 0 && lanePlan.total_lanes > 0 || actFailures.length > 0 || actBlocked.length > 0) {
+    const message = exc.message;
+    log(`[warn] act_phase_failed: ${message}`);
     haltedAt = "act";
-    log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged \u2014 not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`);
-  } else {
-    await markPhaseComplete("act");
+    lastResult = { failed: 1, failedLanes: [], error: message };
   }
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);
