@@ -998,7 +998,8 @@ function verifyReadWitness(files, parsed) {
   const missing = [];
   const mismatched = [];
   const tooShort = [];
-  const hexValues = Object.values(witness).filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
+  const candidates = [...Object.values(witness), ...Object.keys(witness)];
+  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
   const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
   for (const f of deferred) {
     const sha = f.sha.toLowerCase();
@@ -2002,7 +2003,23 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
       (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }))
     )
   );
-  for (const r of skepticResults) if (r !== null) assertStageWitness(specFile, r, "GREEN");
+  let verifiedLenses = 0;
+  for (let i = 0; i < skepticResults.length; i++) {
+    const r = skepticResults[i];
+    if (r === null) continue;
+    const w = verifyReadWitness([specFile], r);
+    if (w.ok) {
+      verifiedLenses++;
+      continue;
+    }
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} \u2014 lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? "prefix too short" : w.mismatched.length ? "wrong prefix" : "no witness"}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`);
+    skepticResults[i] = null;
+  }
+  if (verifiedLenses === 0) {
+    const err = new Error(`context_read_unverified: ${specFile.path} \u2014 no skeptic lens evidenced reading the lane spec; the panel is void`);
+    err.stage = "GREEN";
+    throw err;
+  }
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses);
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i];

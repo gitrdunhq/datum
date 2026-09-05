@@ -364,7 +364,8 @@ function verifyReadWitness(files, parsed) {
   const missing = [];
   const mismatched = [];
   const tooShort = [];
-  const hexValues = Object.values(witness).filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
+  const candidates = [...Object.values(witness), ...Object.keys(witness)];
+  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
   const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
   for (const f of deferred) {
     const sha = f.sha.toLowerCase();
