@@ -1,4 +1,4 @@
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, GoArgs, RepoConfig } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -500,11 +500,15 @@ if (shouldRun('act', 3)) {
     }
   }
 
-  // Docs — direct child workflow
-  await workflow(
+  // Docs — direct child workflow. Its outcome is surfaced here: a docs-sync
+  // that was written but refused at commit used to vanish from the run.
+  const docsResult = await workflow(
     { scriptPath: sk('datum-tdd-act-docs') },
     { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs() },
-  )
+  ) as DocsResult | null
+  if (docsResult && docsResult.committed === false) {
+    log(`[warn] Docs sync wrote [${(docsResult.files || []).join(', ')}] but the commit was refused: ${docsResult.failure_reason || 'unknown'} — the files are left modified in the checkout`)
+  }
 
   const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')
   const actBlocked = Object.keys(actResults).filter(id => actResults[id]?.status === 'blocked')

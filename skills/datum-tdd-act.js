@@ -550,10 +550,13 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
   }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
-await workflow(
+var docsResult = await workflow(
   { scriptPath: sk("datum-tdd-act-docs") },
   { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs() }
 );
+if (docsResult && docsResult.committed === false) {
+  log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
+}
 var skippedLanes = Object.keys(results).filter((id) => results[id]?.status === "skipped");
 var blockedLanes = Object.keys(results).filter((id) => results[id]?.status === "blocked");
 log(`

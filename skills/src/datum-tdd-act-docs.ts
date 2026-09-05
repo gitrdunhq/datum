@@ -17,6 +17,9 @@ phase('Docs')
 
 let synced = false
 let syncedFiles: string[] | undefined
+let committed: boolean | undefined
+let commitSha: string | undefined
+let failureReason: string | undefined
 
 if (a.completedLanes.length === 0) {
   log('No completed lanes — skipping docs')
@@ -49,12 +52,24 @@ if (a.completedLanes.length === 0) {
       const docsWritten = docs.files_written || []
       if (docsWritten.length === 0) {
         log('Docs: agent reported success but no files_written — skipping commit')
+        failureReason = 'docs agent reported success but wrote no files'
       } else {
-        await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS')
+        // Root checkout: commit only the docs files, ignore the operator's
+        // unrelated WIP (allowed-only scope). The outcome is surfaced, not
+        // assumed — a refused commit used to be reported as "synced".
+        const commit = await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS', { scope: 'allowed-only' })
+        committed = !!commit?.committed
+        commitSha = commit?.commit_sha
+        if (committed) {
+          log(`Docs synced and committed (${commitSha || 'no sha'}): ${docsWritten.join(', ')}`)
+          synced = true
+          syncedFiles = docsWritten
+        } else {
+          failureReason = commit?.failure_reason || (commit?.violations?.length ? `violations: ${commit.violations.join(', ')}` : 'commit agent returned no result')
+          log(`Docs written but NOT committed — ${failureReason}. Files left modified in the checkout: ${docsWritten.join(', ')}`)
+          syncedFiles = docsWritten
+        }
       }
-      log(`Docs synced: ${docsWritten.join(', ')}`)
-      synced = true
-      syncedFiles = docsWritten
     } else {
       log(`Docs: ${docs?.failure_reason || 'nothing to update'}`)
     }
@@ -63,4 +78,4 @@ if (a.completedLanes.length === 0) {
   }
 }
 
-export const __workflowResult = { synced, files: syncedFiles }
+export const __workflowResult = { synced, files: syncedFiles, committed, commit_sha: commitSha, failure_reason: failureReason }

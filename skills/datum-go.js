@@ -742,10 +742,13 @@ if (shouldRun("act", 3)) {
       log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
     }
   }
-  await workflow(
+  const docsResult = await workflow(
     { scriptPath: sk("datum-tdd-act-docs") },
     { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs() }
   );
+  if (docsResult && docsResult.committed === false) {
+    log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
+  }
   const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
   const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
   if (actFailures.length > 0) {

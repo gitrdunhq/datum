@@ -135,20 +135,39 @@ export async function resilientAgent<T = unknown>(
 
 // ── Git agents (single-writer pattern) ──────────────────────────────────────
 
+export interface CommitStageOptions {
+  /**
+   * 'strict' (default): any modified file outside allowedFiles is a violation
+   * and nothing is committed — right for lane worktrees, where no one but the
+   * agent writes. 'allowed-only': stage and commit only allowedFiles and
+   * ignore every other modified file — right for the ROOT checkout, which
+   * carries the operator's unrelated work in progress (policy chosen with the
+   * eedom dogfooding user after docs-sync commits were refused over WIP in
+   * AGENTS.md/CLAUDE.md).
+   */
+  scope?: 'strict' | 'allowed-only'
+}
+
 export async function commitStage(
   taskId: string,
   wt: string,
   commitPrefix: string,
   allowedFiles: string[],
   stage: TddStage | string,
+  opts: CommitStageOptions = {},
 ): Promise<CommitResult | null> {
   const allowedList = allowedFiles.join(', ')
+  const scope = opts.scope ?? 'strict'
+  const verifySteps = scope === 'allowed-only'
+    ? `2. This commit runs in the ROOT checkout, which may carry the operator's unrelated work in progress. IGNORE other modified files entirely — they are NOT violations and must NOT be staged.\n` +
+      `3. Only these files are yours to commit: ${allowedList}. If none of them is modified, return committed=false.\n`
+    : `2. Verify ONLY these files were modified: ${allowedList}\n` +
+      `3. If files outside that list were changed, report them as violations and do NOT commit\n`
   const basePrompt =
     `You are a GIT COMMIT agent. You ONLY handle git operations — never edit source files.\n\n` +
     `TASK:\n` +
     `1. Run: git -C "${wt}" status --porcelain\n` +
-    `2. Verify ONLY these files were modified: ${allowedList}\n` +
-    `3. If files outside that list were changed, report them as violations and do NOT commit\n` +
+    verifySteps +
     `4. Stage the allowed files: git -C "${wt}" add <files>\n` +
     `5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"\n` +
     `6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD\n\n` +

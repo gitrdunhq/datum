@@ -68,15 +68,19 @@ function stageOpts(stage, extra = {}) {
 }
 
 // skills/src/shared/agents.ts
-async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
+async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage, opts = {}) {
   const allowedList = allowedFiles.join(", ");
+  const scope = opts.scope ?? "strict";
+  const verifySteps = scope === "allowed-only" ? `2. This commit runs in the ROOT checkout, which may carry the operator's unrelated work in progress. IGNORE other modified files entirely \u2014 they are NOT violations and must NOT be staged.
+3. Only these files are yours to commit: ${allowedList}. If none of them is modified, return committed=false.
+` : `2. Verify ONLY these files were modified: ${allowedList}
+3. If files outside that list were changed, report them as violations and do NOT commit
+`;
   const basePrompt = `You are a GIT COMMIT agent. You ONLY handle git operations \u2014 never edit source files.
 
 TASK:
 1. Run: git -C "${wt}" status --porcelain
-2. Verify ONLY these files were modified: ${allowedList}
-3. If files outside that list were changed, report them as violations and do NOT commit
-4. Stage the allowed files: git -C "${wt}" add <files>
+` + verifySteps + `4. Stage the allowed files: git -C "${wt}" add <files>
 5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"
 6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD
 
@@ -151,6 +155,9 @@ configureAgentTypes(a.agentTypes || {});
 phase("Docs");
 var synced = false;
 var syncedFiles;
+var committed;
+var commitSha;
+var failureReason;
 if (a.completedLanes.length === 0) {
   log("No completed lanes \u2014 skipping docs");
 } else {
@@ -178,12 +185,21 @@ if (a.completedLanes.length === 0) {
       const docsWritten = docs.files_written || [];
       if (docsWritten.length === 0) {
         log("Docs: agent reported success but no files_written \u2014 skipping commit");
+        failureReason = "docs agent reported success but wrote no files";
       } else {
-        await commitStage("docs", ".", `docs(${a.runId})`, docsWritten, "DOCS");
+        const commit = await commitStage("docs", ".", `docs(${a.runId})`, docsWritten, "DOCS", { scope: "allowed-only" });
+        committed = !!commit?.committed;
+        commitSha = commit?.commit_sha;
+        if (committed) {
+          log(`Docs synced and committed (${commitSha || "no sha"}): ${docsWritten.join(", ")}`);
+          synced = true;
+          syncedFiles = docsWritten;
+        } else {
+          failureReason = commit?.failure_reason || (commit?.violations?.length ? `violations: ${commit.violations.join(", ")}` : "commit agent returned no result");
+          log(`Docs written but NOT committed \u2014 ${failureReason}. Files left modified in the checkout: ${docsWritten.join(", ")}`);
+          syncedFiles = docsWritten;
+        }
       }
-      log(`Docs synced: ${docsWritten.join(", ")}`);
-      synced = true;
-      syncedFiles = docsWritten;
     } else {
       log(`Docs: ${docs?.failure_reason || "nothing to update"}`);
     }
@@ -191,4 +207,4 @@ if (a.completedLanes.length === 0) {
     log("Docs: no stale references found, skipping");
   }
 }
-return { synced, files: syncedFiles };
+return { synced, files: syncedFiles, committed, commit_sha: commitSha, failure_reason: failureReason };

@@ -516,3 +516,12 @@ describe('markPhaseComplete honours pipeline-state-save refusals', () => {
     expect(pushIdx).toBeGreaterThan(agentIdx)
   })
 })
+
+describe('docs workflow result is consumed, not discarded', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('captures the datum-tdd-act-docs result and surfaces a refused docs commit', () => {
+    expect(goSource).toMatch(/const docs\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-docs'\) \}/)
+    expect(goSource).toMatch(/docs[^\n]*committed === false|docs[^\n]*failure_reason/)
+  })
+})

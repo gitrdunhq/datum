@@ -1,5 +1,5 @@
 import { model, setModelTiers } from './shared/models'
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, TddActArgs, RepoConfig } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -240,10 +240,13 @@ for (let bi = 0; bi < batches.length; bi++) {
 // ── Docs ──
 
 log('── Docs ──')
-await workflow(
+const docsResult = await workflow(
   { scriptPath: sk('datum-tdd-act-docs') },
   { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs() }
-)
+) as DocsResult | null
+if (docsResult && docsResult.committed === false) {
+  log(`[warn] Docs sync wrote [${(docsResult.files || []).join(', ')}] but the commit was refused: ${docsResult.failure_reason || 'unknown'} — the files are left modified in the checkout`)
+}
 
 // ── Summary ──
 

@@ -112,6 +112,11 @@ export interface DocsArgs {
 export interface DocsResult {
   synced: boolean
   files?: string[]
+  /** Set when a commit was attempted: did it land? */
+  committed?: boolean
+  commit_sha?: string
+  /** Why docs were written but not committed (or not written). */
+  failure_reason?: string
 }
 
 export interface TriageArgs {
