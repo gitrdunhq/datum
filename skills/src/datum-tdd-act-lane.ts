@@ -267,6 +267,9 @@ No markdown fences, no explanation.`,
       stageOpts('reader', { label: `completion-check:${taskId}`, phase: 'Act', model: model('fast') }),
     )
     if (completionExist && completionExist.trim() !== 'MISSING') {
+      // Safe: an unparseable result yields {} — task_id won't match taskId,
+      // so the lane falls through to running RED/GREEN again rather than
+      // being wrongly skipped as already-completed. Conservative direction.
       const compData = parseAgentJson<{ task_id?: string }>(completionExist, {})
       if (compData.task_id === taskId) {
         log(`[${taskId}] lane already completed in a prior run — skipping`)
@@ -321,6 +324,9 @@ No markdown fences, no explanation.`,
   if (deterministic && completionPath) {
     const completionExist = stepStdout(intake, 'completion')
     if (!isMissing(completionExist)) {
+      // Safe: an unparseable result yields {} — task_id won't match taskId,
+      // so the lane falls through to running RED/GREEN again rather than
+      // being wrongly skipped as already-completed. Conservative direction.
       const compData = parseAgentJson<{ task_id?: string }>(completionExist || '', {})
       if (compData.task_id === taskId) {
         log(`[${taskId}] lane already completed in a prior run — skipping`)
@@ -399,6 +405,10 @@ No markdown fences, no explanation.`,
   let preflightFramework: string | undefined
   let preflightTestPaths: string[] = []
   if (preflightRaw) {
+    // Safe: preflight is optional enrichment (pre-generated skeleton hints) —
+    // an unparseable result yields {}, so targetContext/preflightFramework
+    // stay undefined and no test paths get registered from it. RED still
+    // runs against testFiles as already classified from the lane plan below.
     const preflightData = parseAgentJson<{ target_context?: Record<string, string[]>; framework?: string; outputs?: Array<{ path?: string }> }>(preflightRaw, {})
     if (preflightData.target_context) {
       targetContext = preflightData.target_context

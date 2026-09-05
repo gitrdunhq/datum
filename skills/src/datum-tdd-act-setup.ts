@@ -42,11 +42,15 @@ const setupRaw = await agent(
 )
 const setup = parseBatchResult(setupRaw, steps)
 
+// Safe: an unparseable result yields {} — rootWt stays undefined, which the
+// throw immediately below already catches.
 const rootWtInfo = parseAgentJson(stepStdout(setup, 'root-wt') || '', {}) as { root?: string }
 const rootWt = rootWtInfo.root
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId} (${describeFailure(setup, 'setup')})`)
 log(`Root worktree${a.batchTag}: ${rootWt}`)
 
+// Safe: an unparseable result yields null, which the throw immediately
+// below already catches.
 const setupText = stepStdout(setup, 'setup-wt')
 const rawPaths = setupText ? parseAgentJson(setupText, null) as Record<string, string> | null : null
 if (!rawPaths || typeof rawPaths !== 'object') {

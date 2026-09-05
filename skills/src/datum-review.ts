@@ -1,5 +1,5 @@
 import { model, type ReviewDomain, type Severity, type ModelName } from './shared/models'
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
@@ -57,9 +57,17 @@ const reviewResults = await parallel<DomainResult>(
 const allFindings: Finding[] = []
 for (let i = 0; i < DOMAINS.length; i++) {
   const result = reviewResults[i]
-  if (!result) { log(`${DOMAINS[i].domain}: (null)`); continue }
+  // Strict: a null result or unparseable JSON here used to silently become
+  // `findings: []` — exactly the "[] means no findings, phase completes"
+  // silent fallback FLOW.md's design principle 2 warns about. A domain
+  // reviewer that crashed or returned garbage must not be indistinguishable
+  // from one that genuinely found nothing; committing a falsely-clean
+  // REVIEW-REPORT.md would let `datum gate review` pass on missing coverage.
+  if (!result) {
+    throw new Error(`agent_output_unparseable: review-${DOMAINS[i].domain.toLowerCase()} — (no result)`)
+  }
   const parsed: DomainResult = typeof result === 'string'
-    ? parseAgentJson(result as string, { domain: DOMAINS[i].domain, findings: [] } as DomainResult)
+    ? parseAgentJsonStrict<DomainResult>(result as string, `review-${DOMAINS[i].domain.toLowerCase()}`)
     : result as DomainResult
   log(`${parsed.domain}: ${parsed.findings.length} findings`)
   for (const f of parsed.findings) {

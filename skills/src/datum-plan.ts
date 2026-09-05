@@ -1,4 +1,4 @@
-import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
+import { renderPrompt, parseAgentJson, parseAgentJsonStrict, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
@@ -161,7 +161,12 @@ const approachesRaw = await agent(
 interface Approach { name: string; description: string; tradeoffs: string; modules_touched: string[]; estimated_tasks: number; blast_radius: string }
 interface ApproachResult { approaches: Approach[]; recommended: number; recommendation_reason: string }
 
-const approaches: ApproachResult = parseAgentJson(approachesRaw as string, { approaches: [], recommended: 0, recommendation_reason: '' } as ApproachResult)
+// Strict: a silent {approaches: []} fallback leaves `chosen` undefined below,
+// which then silently feeds "undefined" into the decompose prompt's
+// chosenApproach — the task decomposition would proceed against a
+// nonexistent approach with no trace the propose-approaches agent ever
+// failed to produce parseable output.
+const approaches: ApproachResult = parseAgentJsonStrict<ApproachResult>(approachesRaw as string, 'propose-approaches')
 assertReadWitness([specFile], approaches)
 const chosen: Approach = approaches.approaches[approaches.recommended] || approaches.approaches[0]
 log(`Selected: ${chosen?.name || 'default'} — ${approaches.recommendation_reason}`)
@@ -193,6 +198,9 @@ const tasksRaw = await agent(
   { label: 'decompose-tasks', model: decomposeModel },
 )
 
+// Safe: an unparseable result yields [], which the throw immediately below
+// already catches (0 tasks is refused regardless of whether it came from a
+// real empty decomposition or a parse failure).
 const tasks = typeof tasksRaw === 'string' ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[]) : tasksRaw
 if (!Array.isArray(tasks) || tasks.length === 0) {
   throw new Error(`Task decomposition returned 0 tasks — refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`)
@@ -221,6 +229,9 @@ Otherwise return: {"exit_code": 0}
 Output raw JSON only.`,
   { label: 'build-lane-plan', model: model('fast') },
 )
+// Safe: the fallback defaults to exit_code 1 (failure), the opposite
+// direction of a silent pass — an unparseable result is treated as the plan
+// build having failed, not succeeded, and the throw below already catches it.
 const build = typeof buildRaw === 'string'
   ? parseAgentJson(buildRaw as string, { exit_code: 1, error: 'build-lane-plan agent returned unparseable output' } as { exit_code: number; error?: string })
   : (buildRaw as { exit_code: number; error?: string })
@@ -278,6 +289,12 @@ git add .datum/routing.json && git commit -m "plan: triage decision"`,
 )
 
 interface TriageDecision { decision: string; reason: string; triggers: string[] }
+// Safe: the lane plan itself already passed the early structural gate above;
+// triage only decides whether an OPTIONAL extra research pass ('deepen')
+// runs before the final gate. Defaulting to 'properties' (skip deepen) on an
+// unparseable response withholds that optional enrichment rather than
+// enabling a skipped check, and the fallback's own reason field
+// ('parse failure') makes the degraded path visible in the log below.
 const triage: TriageDecision = parseAgentJson(triageRaw as string, { decision: 'properties', reason: 'parse failure', triggers: [] } as TriageDecision)
 log(`Triage: ${triage.decision} — ${triage.reason}`)
 
@@ -292,6 +309,9 @@ ADDITIONAL TASK after appending Research Findings:
 Return JSON: {"tasks_researched": N, "findings_count": N}`,
     { label: 'deepen-research', model: model('balanced') },
   )
+  // Safe: pure telemetry — these counts are only logged, never used to
+  // decide anything (the lane-plan rebuild and commit already ran inside
+  // the agent's own prompt above, independent of this parse).
   const deepen = parseAgentJson(deepenRaw as string, { tasks_researched: 0, findings_count: 0 })
   log(`Deepen: ${deepen.tasks_researched} tasks, ${deepen.findings_count} findings`)
 } else {

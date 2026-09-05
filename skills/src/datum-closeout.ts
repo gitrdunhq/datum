@@ -1,4 +1,4 @@
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt, parseAgentJson, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
@@ -60,6 +60,10 @@ for (const name of COLLECTOR_STEPS) {
 }
 
 const branch = (stepStdout(collectResult, 'branch') || '').trim()
+// Safe: this is a deterministic `cat .datum/config.json` batch step, not an
+// LLM judgement — an unparseable result only affects the agent_types
+// default below (readAgentTypeConfig-style toggle), never closeout's actual
+// deliverables (CURRENT_STATE/CHANGELOG/RETRO, archive).
 const cfg = parseAgentJson<Record<string, unknown>>(stepStdout(collectResult, 'config') || '{}', {})
 
 // #368: standalone run (no parent args) — the agent_types key read straight out of .datum/config.json.
@@ -89,8 +93,15 @@ const synthResult = await agent(
   { label: 'synthesize', model: model('balanced') },
 )
 
+// Strict: `artifacts_written: []` is exactly the "[] means nothing happened,
+// let the phase complete" silent fallback FLOW.md's design principle 2 warns
+// about — a crashed or garbled synthesis agent must not be reported as a
+// closeout that legitimately wrote zero artifacts.
+if (!synthResult) {
+  throw new Error('agent_output_unparseable: synthesize — (no result)')
+}
 const synth = typeof synthResult === 'string'
-  ? parseAgentJson(synthResult as string, { artifacts_written: [], follow_up_count: 0 })
+  ? parseAgentJsonStrict<{ artifacts_written: string[]; follow_up_count: number }>(synthResult as string, 'synthesize')
   : synthResult
 
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)

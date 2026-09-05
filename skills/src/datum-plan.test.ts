@@ -405,3 +405,19 @@ describe('datum-plan — read-witness gate on propose-approaches (FLOW.md open g
     expect(relaySrc).toMatch(/context_read_unverified/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md design principle 2 — an unparseable propose-approaches response
+// must not silently become {approaches: []}: `chosen` would end up undefined
+// and decompose-tasks would run against a nonexistent approach with no trace.
+// ---------------------------------------------------------------------------
+
+describe('datum-plan — propose-approaches uses the strict parser', () => {
+  it('imports parseAgentJsonStrict', () => {
+    expect(datumPlanSrc).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)
+  })
+
+  it('approaches is parsed with parseAgentJsonStrict labelled "propose-approaches"', () => {
+    expect(datumPlanSrc).toMatch(/const approaches: ApproachResult = parseAgentJsonStrict<ApproachResult>\(approachesRaw as string, 'propose-approaches'\)/)
+  })
+})

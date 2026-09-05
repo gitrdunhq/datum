@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, extractContractSummary, crossValidateBugs, buildPacket } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, extractContractSummary, crossValidateBugs, buildPacket } from './utils'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
 // ---------------------------------------------------------------------------
@@ -692,6 +692,64 @@ describe('parseAgentJson', () => {
   it('returns the fallback when no JSON is present at all', () => {
     const result = parseAgentJson('no json here', { ok: false })
     expect(result).toEqual({ ok: false })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseAgentJsonStrict — throws a named error instead of returning a default
+// ---------------------------------------------------------------------------
+
+describe('parseAgentJsonStrict', () => {
+  it('parses a clean JSON object response', () => {
+    expect(parseAgentJsonStrict('{"ok": true}', 'my-label')).toEqual({ ok: true })
+  })
+
+  it('returns a real empty array rather than treating it as "not found"', () => {
+    // A naive `if (!value) throw` would wrongly reject this — an agent
+    // legitimately reporting "no findings" must come through as [].
+    expect(parseAgentJsonStrict('[]', 'my-label')).toEqual([])
+  })
+
+  it('returns a real 0 rather than treating it as "not found"', () => {
+    expect(parseAgentJsonStrict('0', 'my-label')).toBe(0)
+  })
+
+  it('extracts JSON from prose via bracket-scanning like parseAgentJson', () => {
+    const text = 'Here is the result:\n{"ok": true}\nThanks!'
+    expect(parseAgentJsonStrict(text, 'my-label')).toEqual({ ok: true })
+  })
+
+  it('throws a named agent_output_unparseable error with the label and truncated text when no JSON is present', () => {
+    expect(() => parseAgentJsonStrict('no json here', 'my-label')).toThrow(
+      /^agent_output_unparseable: my-label — no json here$/,
+    )
+  })
+
+  it('throws for null input', () => {
+    expect(() => parseAgentJsonStrict(null as unknown as string, 'my-label')).toThrow(
+      /^agent_output_unparseable: my-label/,
+    )
+  })
+
+  it('throws for empty string input', () => {
+    expect(() => parseAgentJsonStrict('', 'my-label')).toThrow(/^agent_output_unparseable: my-label/)
+  })
+
+  it('truncates the raw text in the error message to 200 characters', () => {
+    const longText = 'x'.repeat(500)
+    try {
+      parseAgentJsonStrict(longText, 'my-label')
+      throw new Error('expected parseAgentJsonStrict to throw')
+    } catch (e) {
+      const msg = (e as Error).message
+      expect(msg.startsWith('agent_output_unparseable: my-label — ' + 'x'.repeat(200))).toBe(true)
+      expect(msg.length).toBeLessThan(500)
+    }
+  })
+
+  it('throws for truncated/unbalanced JSON', () => {
+    const text = 'Result: {"incomplete": true'
+    expect(() => parseAgentJsonStrict(text, 'my-label')).toThrow(/^agent_output_unparseable: my-label/)
   })
 })
 

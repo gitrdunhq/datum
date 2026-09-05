@@ -94,3 +94,27 @@ describe('datum-closeout — deterministic archive (#368 follow-up)', () => {
     expect(src).toMatch(/find\(\(s\) => s\.name === 'commit'\)/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md design principle 2 — a null/unparseable synthesize result used to
+// silently become `{artifacts_written: [], follow_up_count: 0}`, exactly the
+// "[] means nothing happened, let the phase complete" silent fallback that a
+// crashed or garbled synthesis agent must not be indistinguishable from.
+// ---------------------------------------------------------------------------
+
+describe('datum-closeout — synthesize result uses the strict parser and rejects a null result', () => {
+  it('imports parseAgentJsonStrict', () => {
+    expect(src).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)
+  })
+
+  it('a null synthResult throws a named agent_output_unparseable error before parsing', () => {
+    const synthIdx = src.indexOf('const synthResult = await agent(')
+    const block = src.slice(synthIdx, synthIdx + 700)
+    expect(block).toMatch(/if \(!synthResult\) \{/)
+    expect(block).toMatch(/agent_output_unparseable/)
+  })
+
+  it('string results are parsed with parseAgentJsonStrict labelled "synthesize"', () => {
+    expect(src).toMatch(/parseAgentJsonStrict<\{ artifacts_written: string\[\]; follow_up_count: number \}>\(synthResult as string, 'synthesize'\)/)
+  })
+})

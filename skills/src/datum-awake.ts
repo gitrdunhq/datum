@@ -1,4 +1,4 @@
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import awakeScanTemplate from './prompts/awake-scan.md'
 import awakeDistillTemplate from './prompts/awake-distill.md'
@@ -22,7 +22,18 @@ const scanRaw = await agent(
   { label: 'scan-repo', model: model('balanced') },
 )
 
-const scan = parseAgentJson(scanRaw as string, { language: 'unknown', rules: [], test_conventions: {}, code_patterns: {}, file_conventions: {} })
+// Strict: a silent {language:'unknown', rules:[], ...} fallback would feed
+// straight into Distill and get committed to agent-preamble.md as though it
+// were a real scan — every future agent call would then load a bogus/empty
+// preamble with no trace the scan itself ever failed to parse.
+interface ScanResult {
+  language: string
+  rules: unknown[]
+  test_conventions: Record<string, unknown>
+  code_patterns: Record<string, unknown>
+  file_conventions: Record<string, unknown>
+}
+const scan = parseAgentJsonStrict<ScanResult>(scanRaw as string, 'scan-repo')
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`)
 
 // ── Distill ──
@@ -40,11 +51,11 @@ interface DistillResult {
   token_estimate: { preamble: number; full: number }
 }
 
-const distill: DistillResult = parseAgentJson(distillRaw as string, {
-  preamble: '# Project\n\n> No rules extracted.\n',
-  preamble_full: '# Project — Full Context\n\n> No rules extracted.\n',
-  token_estimate: { preamble: 0, full: 0 },
-})
+// Strict: same reasoning as `scan` above — a placeholder "No rules
+// extracted." preamble would be written to disk and committed as though it
+// were the real distilled result, silently degrading every subsequent
+// agent's preamble with no trace of the failure.
+const distill: DistillResult = parseAgentJsonStrict<DistillResult>(distillRaw as string, 'distill-preamble')
 
 log(`Preamble: ~${distill.token_estimate.preamble} tokens, Full: ~${distill.token_estimate.full} tokens`)
 

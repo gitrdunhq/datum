@@ -121,3 +121,28 @@ describe('determinism fix — dead util-read-context.md / util-commit-artifact.m
     expect(datumReviewSrc).not.toMatch(/from '\.\/prompts\/util-commit-artifact\.md'/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md design principle 2 — a null/unparseable domain-reviewer result used
+// to silently become `findings: []`, letting a crashed or garbled reviewer
+// look indistinguishable from one that genuinely found nothing, and letting
+// `datum gate review` pass on a falsely-clean REVIEW-REPORT.md.
+// ---------------------------------------------------------------------------
+
+describe('datum-review — domain findings use the strict parser and reject a null result', () => {
+  it('imports parseAgentJsonStrict', () => {
+    expect(datumReviewSrc).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)
+  })
+
+  it('a null domain result throws a named agent_output_unparseable error instead of "(null)" + continue', () => {
+    const loopIdx = datumReviewSrc.indexOf('for (let i = 0; i < DOMAINS.length; i++)')
+    const block = datumReviewSrc.slice(loopIdx, loopIdx + 600)
+    expect(block).toMatch(/if \(!result\) \{/)
+    expect(block).toMatch(/agent_output_unparseable/)
+    expect(block).not.toMatch(/\(null\)`\); continue/)
+  })
+
+  it('string results are parsed with parseAgentJsonStrict labelled per domain', () => {
+    expect(datumReviewSrc).toMatch(/parseAgentJsonStrict<DomainResult>\(result as string, `review-\$\{DOMAINS\[i\]\.domain\.toLowerCase\(\)\}`\)/)
+  })
+})

@@ -133,3 +133,31 @@ describe('datum-refine — deterministic gate verdict', () => {
     expect(src).toMatch(/parseGateResult\(/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md design principle 2 ("an LLM proposes, it never asserts pass/fail")
+// — the addenda-triage and ambiguity-classify results feed SPEC.md/QUESTIONS.md
+// content directly; a silent fallback on unparseable output would drop real
+// addenda or fabricate an ambiguity level with no trace. Both must throw a
+// named agent_output_unparseable failure instead of defaulting.
+// ---------------------------------------------------------------------------
+
+describe('datum-refine — triage-addenda and classify-ambiguity use the strict parser', () => {
+  const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
+
+  it('imports parseAgentJsonStrict', () => {
+    expect(src).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)
+  })
+
+  it('triageResult is parsed with parseAgentJsonStrict labelled "triage-addenda"', () => {
+    expect(src).toMatch(/triageResult = parseAgentJsonStrict<TriageResult>\(triageRaw as string, 'triage-addenda'\)/)
+  })
+
+  it('classify is parsed with parseAgentJsonStrict labelled "classify-ambiguity"', () => {
+    expect(src).toMatch(/const classify: ClassifyResult = parseAgentJsonStrict<ClassifyResult>\(classifyRaw as string, 'classify-ambiguity'\)/)
+  })
+
+  it('no longer imports the lenient parseAgentJson (unused after both call sites went strict)', () => {
+    expect(src).not.toMatch(/\bparseAgentJson\b/)
+  })
+})

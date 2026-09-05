@@ -1,4 +1,4 @@
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import refineTriageTemplate from './prompts/refine-triage.md'
 import refineClassifyTemplate from './prompts/refine-classify.md'
@@ -138,7 +138,12 @@ ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), al
 3. Commit: git add ROADMAP.md && git commit -m "roadmap: triage items from refine"`,
     { label: 'triage-addenda', model: model('balanced') },
   )
-  triageResult = parseAgentJson(triageRaw as string, triageResult)
+  // Strict: hasAddenda is true here, so a silent fallback to "no addenda"
+  // would drop real TICKET.md addenda from SPEC.md without any trace —
+  // merged_requirements falls back to the raw ticketContent below, under-
+  // scoping the spec with no warning. An unparseable response must halt the
+  // phase instead.
+  triageResult = parseAgentJsonStrict<TriageResult>(triageRaw as string, 'triage-addenda')
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`)
 } else {
   log('No addenda — single-scope TICKET')
@@ -162,7 +167,11 @@ interface ClassifyResult {
   assumptions: string[]
 }
 
-const classify: ClassifyResult = parseAgentJson(classifyRaw as string, { level: 'medium', reasoning: '', gaps: [], assumptions: [] })
+// Strict: silently defaulting to a 'medium' ambiguity classification on an
+// unparseable response is exactly the "an LLM proposes; it never asserts"
+// violation FLOW.md warns about — SPEC.md/QUESTIONS.md would be written from
+// a fabricated classification with no trace it was never actually assessed.
+const classify: ClassifyResult = parseAgentJsonStrict<ClassifyResult>(classifyRaw as string, 'classify-ambiguity')
 assertReadWitness([ticketFile], classify)
 log(`Ambiguity: ${classify.level} — ${classify.reasoning}`)
 

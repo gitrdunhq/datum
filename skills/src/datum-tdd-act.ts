@@ -78,6 +78,9 @@ const lanePlanText = await agent(
   readLanePlanPrompt(lanePlanPath),
   stageOpts('reader', { label: 'read-lane-plan', phase: 'Topology', model: model('fast') }),
 )
+// Safe: an unparseable result yields null, which the throw immediately
+// below already catches — a `null` default is never mistaken for a real
+// (if empty) lane plan.
 const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
 if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
 // The reader agent can silently abridge a large plan; check its copy
@@ -100,6 +103,11 @@ for (let i = 0; i < waves.length; i++) {
 // is an ancestor of the epic branch tip.
 
 const slug = epicSlug(epicBranch)
+// Safe: an unparseable result yields {} — no lane matches any prior marker,
+// so every lane is treated as NOT already merged. That's the conservative
+// direction (a lane redundantly re-runs instead of a real completed lane
+// being wrongly skipped), never the direction that would silently let a
+// phase "pass" on missing evidence.
 const priorMarkers = parseAgentJson(stepStdout(actStartResult, 'lane-state-read') || '', {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
 const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
   const m = priorMarkers[id]

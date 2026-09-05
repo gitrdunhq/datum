@@ -83,6 +83,10 @@ ${renderPrompt(validateCheckTemplate, {
   { label: 'validate-check', model: model('balanced') },
 )
 
+// Safe: gatePassed/testsPassed below never read `check.tests_pass` — they
+// come from the independent `testExit` re-run — so an unparseable
+// validate-check result only degrades the lint/AC-gap telemetry logged and
+// returned in __workflowResult, never the pass/fail verdict itself.
 const check = typeof checkResult === 'string'
   ? parseAgentJson(checkResult as string, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] })
   : checkResult

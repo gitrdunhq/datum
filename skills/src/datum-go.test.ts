@@ -646,3 +646,66 @@ describe('Review block — gatePassed and canMerge both gate markPhaseComplete (
     expect(markIdx).toBeGreaterThan(canMergeIdx)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md design principle 2 — the preflight-tool-check and
+// preflight-gitignore agent responses used to default to {ok: true} on an
+// unparseable result, silently treating a garbled response as "the check
+// passed" for exactly the two preflights that exist to catch a stale/
+// misdirected `datum` binary (#327) and a scratch-path .gitignore gap. Both
+// must throw instead of defaulting to ok:true.
+// ---------------------------------------------------------------------------
+
+describe('datum-go — preflight checks use the strict parser', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('imports parseAgentJsonStrict', () => {
+    expect(src).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)
+  })
+
+  it('preflight-tool-check is parsed with parseAgentJsonStrict, not a lenient {ok:true} default', () => {
+    expect(src).toMatch(/const toolCheck = parseAgentJsonStrict\(toolCheckText as string, 'preflight-tool-check'\)/)
+  })
+
+  it('preflight-gitignore is parsed with parseAgentJsonStrict, not a lenient {ok:true} default', () => {
+    expect(src).toMatch(/const gitignoreCheck = parseAgentJsonStrict\(gitignoreText as string, 'preflight-gitignore'\)/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A thrown child workflow (e.g. a parseAgentJsonStrict failure inside
+// Refine/Plan/Review/Closeout) must not crash datum-go with no halt record
+// and no summary — the exact regression already hit once for the docs child
+// (wf_b1c88e09-036). Refine/Plan/Review route through the shared
+// runPhaseWorkflow helper, which folds a thrown error into the existing
+// gate-halt path; Closeout has no gate field so it gets its own try/catch.
+// ---------------------------------------------------------------------------
+
+describe('datum-go — child phase workflow failures are caught and halted, not left to crash the pipeline', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('defines runPhaseWorkflow wrapping workflow() in try/catch', () => {
+    const fnIdx = src.indexOf('async function runPhaseWorkflow')
+    expect(fnIdx).toBeGreaterThan(-1)
+    const fnBody = src.slice(fnIdx, fnIdx + 500)
+    expect(fnBody).toMatch(/try \{/)
+    expect(fnBody).toMatch(/await workflow\(/)
+    expect(fnBody).toMatch(/catch \(exc\)/)
+    expect(fnBody).toMatch(/gatePassed: false/)
+  })
+
+  it('Refine, Plan and Review all call runPhaseWorkflow instead of a bare workflow() await', () => {
+    expect(src).toMatch(/lastResult = await runPhaseWorkflow\(sk\('datum-refine'\), phaseArgs, 'refine'\)/)
+    expect(src).toMatch(/lastResult = await runPhaseWorkflow\(sk\('datum-plan'\), phaseArgs, 'plan'\)/)
+    expect(src).toMatch(/lastResult = await runPhaseWorkflow\(sk\('datum-review'\), phaseArgs, 'review'\)/)
+  })
+
+  it('Closeout has no gate field to fold into, so it wraps its own workflow() call in try/catch and halts explicitly', () => {
+    const closeoutIdx = src.indexOf("shouldRun('closeout', 6)")
+    const block = src.slice(closeoutIdx, closeoutIdx + 900)
+    expect(block).toMatch(/try \{/)
+    expect(block).toMatch(/await workflow\(\s*\{ scriptPath: sk\('datum-closeout'\) \}/)
+    expect(block).toMatch(/\} catch \(exc\) \{/)
+    expect(block).toMatch(/haltedAt = 'closeout'/)
+  })
+})

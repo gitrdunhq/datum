@@ -566,8 +566,13 @@ function findMatchingBracketEnd(text: string, start: number): number {
   return -1
 }
 
-export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
-  if (!text || typeof text !== 'string') return fallback
+// Shared scan used by both parseAgentJson (returns a caller-supplied
+// fallback) and parseAgentJsonStrict (throws) — `found` distinguishes "the
+// text really did contain no parseable JSON" from "the parsed value happens
+// to equal whatever the fallback would have been" (e.g. a genuine `[]` or
+// `0` result), which a naive equality check against the fallback could not.
+function scanForAgentJson<T>(text: string): { found: boolean; value?: T } {
+  if (!text || typeof text !== 'string') return { found: false }
   // Only strip a fence that wraps the WHOLE response — stripping every ``` occurrence
   // would corrupt embedded code fences (e.g. ```mermaid) inside file-content string values.
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/)
@@ -575,7 +580,7 @@ export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
 
   // Fast path: the whole (trimmed/unfenced) response is valid JSON on its own.
   try {
-    return JSON.parse(cleaned) as T
+    return { found: true, value: JSON.parse(cleaned) as T }
   } catch {
     // fall through to bracket-scanning below
   }
@@ -604,7 +609,27 @@ export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
       openRe.lastIndex = start + 1
     }
   }
-  return found ? (best as T) : fallback
+  return found ? { found: true, value: best } : { found: false }
+}
+
+export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
+  const r = scanForAgentJson<T>(text)
+  return r.found ? (r.value as T) : fallback
+}
+
+// FLOW.md design principle 2: an LLM proposes, it never asserts pass/fail —
+// so a call site that would ACT on an unparseable agent response as though
+// it were a real (if empty/negative) result must not get a fallback at all.
+// Throws a named `agent_output_unparseable: <label> — <first 200 chars>` so
+// a catch at the phase/lane boundary can record this as that phase's own
+// failure (see datum-go.ts's phase-halt wiring) instead of the pipeline
+// silently believing the fallback was the agent's real answer.
+export function parseAgentJsonStrict<T = unknown>(text: string, label: string): T {
+  const r = scanForAgentJson<T>(text)
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} — ${String(text ?? '').slice(0, 200)}`)
+  }
+  return r.value as T
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
-import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
+import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
@@ -172,7 +172,11 @@ const toolCheckText = await agent(
   ),
   stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }),
 )
-const toolCheck = parseAgentJson(toolCheckText as string, { ok: true }) as { ok: boolean; installed?: string; expected?: string; note?: string }
+// Strict: {ok:true} would silently treat a garbled/missing preflight
+// response as "the stale-binary check passed" — the exact failure mode this
+// preflight exists to catch (#327) — so an unparseable result must throw,
+// not default to ok:true.
+const toolCheck = parseAgentJsonStrict(toolCheckText as string, 'preflight-tool-check') as { ok: boolean; installed?: string; expected?: string; note?: string }
 if (!toolCheck.ok) {
   const installedPath = toolCheck.installed ?? '(unknown — preflight check did not return valid JSON, see raw output above)'
   const expectedPath = toolCheck.expected ?? '(unknown — preflight check did not return valid JSON, see raw output above)'
@@ -194,7 +198,11 @@ const gitignoreText = await agent(
   runCommandPrompt(`datum gitignore-check${yolo ? ' --fix' : ''}`),
   stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }),
 )
-const gitignoreCheck = parseAgentJson(gitignoreText as string, { ok: true, missing: [] as string[], added: [] as string[] }) as { ok: boolean; missing: string[]; added: string[] }
+// Strict: {ok:true} would silently treat a garbled/missing gitignore-check
+// response as "the scratch-path guard passed", letting generated files land
+// in `git add .` undetected — an unparseable result must throw, not default
+// to ok:true.
+const gitignoreCheck = parseAgentJsonStrict(gitignoreText as string, 'preflight-gitignore') as { ok: boolean; missing: string[]; added: string[] }
 if (gitignoreCheck.added?.length) {
   log(`[preflight] .gitignore was missing datum scratch paths — appended (yolo): ${gitignoreCheck.added.join(', ')}`)
 }
@@ -276,6 +284,12 @@ Decide: does the brief describe the SAME piece of work as the existing TICKET.md
 Output ONLY raw JSON, no markdown fences, no explanation.`,
     { label: 'new-epic-check', model: model('balanced') },
   )
+  // Safe: {newEpic:false} is the prompt's own contracted answer for "SAME, or
+  // you cannot confidently tell they differ" — an unparseable response is
+  // exactly that "cannot confidently tell" case, so falling back here
+  // withholds the extra new-epic bootstrap rather than enabling a check
+  // skip; it never fires a spurious bootstrap since that also requires a
+  // non-empty epicBranch below.
   const newEpicInfo = parseAgentJson(newEpicText as string, { newEpic: false }) as { newEpic: boolean; epicBranch?: string; reason?: string }
   if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
     log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`)
@@ -298,10 +312,27 @@ if (priorState && !explicitStart && !newEpicBranch) {
 
 log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
 
+// A thrown child workflow (e.g. a parseAgentJsonStrict failure from an
+// unparseable agent response) must not crash datum-go with no halt record
+// and no summary — that's the exact regression already hit once for the
+// docs child (wf_b1c88e09-036, see the try/catch further down). Fold it
+// into the existing gate-halt path instead: the phase is recorded as failed
+// (gatePassed: false, gateMessage: the thrown message) and a resume
+// re-enters it, same as a real gate failure would.
+async function runPhaseWorkflow(scriptPath: string, args: unknown, phaseName: string): Promise<PhaseResult> {
+  try {
+    return await workflow({ scriptPath }, args) as PhaseResult
+  } catch (exc) {
+    const message = (exc as Error).message
+    log(`[warn] ${phaseName}_workflow_failed: ${message}`)
+    return { gatePassed: false, gateMessage: message }
+  }
+}
+
 // Refine
 if (shouldRun('refine', 0)) {
   log('── Refine ──')
-  lastResult = await workflow({ scriptPath: sk('datum-refine') }, phaseArgs) as PhaseResult
+  lastResult = await runPhaseWorkflow(sk('datum-refine'), phaseArgs, 'refine')
   // yolo already passes --approve (skips only the human hold); a gate that
   // still fails is a real structural failure and halts in every mode.
   if (!lastResult.gatePassed) {
@@ -316,7 +347,7 @@ if (shouldRun('refine', 0)) {
 // Plan
 if (shouldRun('plan', 1)) {
   log('── Plan ──')
-  lastResult = await workflow({ scriptPath: sk('datum-plan') }, phaseArgs) as PhaseResult
+  lastResult = await runPhaseWorkflow(sk('datum-plan'), phaseArgs, 'plan')
   if (!lastResult.gatePassed) {
     haltedAt = 'plan'
     log(`Plan gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
@@ -329,7 +360,7 @@ if (shouldRun('plan', 1)) {
 // Properties
 if (shouldRun('properties', 2)) {
   log('── Properties ──')
-  lastResult = await workflow({ scriptPath: sk('datum-properties') }, phaseArgs) as PhaseResult
+  lastResult = await runPhaseWorkflow(sk('datum-properties'), phaseArgs, 'properties')
   // Properties' gate verdict used to be ignored here entirely.
   if (!lastResult.gatePassed) {
     haltedAt = 'properties'
@@ -377,6 +408,9 @@ if (shouldRun('act', 3)) {
     stageOpts('cli', { label: 'act-start', phase: 'Act', model: model('fast') }),
   )
   const actStartResult = parseBatchResult(actStartRaw, actStart)
+  // Safe: an unparseable result leaves epicBranch === '', which the throw
+  // immediately below already catches — the {epicBranch:''} default never
+  // gets acted on as though it were a real, resolved branch.
   const info = parseAgentJson(stepStdout(actStartResult, 'bootstrap') || '', { epicBranch: '' }) as { epicBranch: string; lanePlanPath?: string; adopted?: boolean }
   const epicBranch = info.epicBranch
   const runId = (stepStdout(actStartResult, 'timestamp') || '').trim()
@@ -399,6 +433,9 @@ if (shouldRun('act', 3)) {
     readLanePlanPrompt(lanePlanPath),
     stageOpts('reader', { label: 'read-lane-plan', phase: 'Act', model: model('fast') }),
   )
+  // Safe: an unparseable result yields null, which the throw immediately
+  // below already catches — a `null` default is never mistaken for a real
+  // (if empty) lane plan.
   const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
   if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
   // The reader agent can silently abridge a large plan; check its copy
@@ -416,6 +453,11 @@ if (shouldRun('act', 3)) {
   // A marker counts only if status=completed, its spec_hash matches the current lane
   // plan entry, and its merge_commit is an ancestor of the epic branch tip.
   const slug = epicSlug(epicBranch)
+  // Safe: an unparseable result yields {} — no lane matches any prior marker,
+  // so every lane is treated as NOT already merged. That's the conservative
+  // direction (a lane redundantly re-runs instead of a real completed lane
+  // being wrongly skipped), never the direction that would silently let a
+  // phase "pass" on missing evidence.
   const priorMarkers = parseAgentJson(stepStdout(actStartResult, 'lane-state-read') || '', {}) as Record<string, { status: string; spec_hash: string; ancestor: boolean }>
   const alreadyMerged = lanePlan.topological_order.filter((id: string) => {
     const m = priorMarkers[id]
@@ -597,7 +639,7 @@ if (shouldRun('act', 3)) {
 // Validate
 if (shouldRun('validate', 4)) {
   log('── Validate ──')
-  lastResult = await workflow({ scriptPath: sk('datum-validate') }, phaseArgs) as PhaseResult
+  lastResult = await runPhaseWorkflow(sk('datum-validate'), phaseArgs, 'validate')
   // testsPassed is the independent test run's real exit (b321e89) and
   // gatePassed is `datum gate validate`'s exit code — both halt in every mode.
   if (!lastResult.testsPassed || !lastResult.gatePassed) {
@@ -612,7 +654,7 @@ if (shouldRun('validate', 4)) {
 // Review
 if (shouldRun('review', 5)) {
   log('── Review ──')
-  lastResult = await workflow({ scriptPath: sk('datum-review') }, phaseArgs) as PhaseResult
+  lastResult = await runPhaseWorkflow(sk('datum-review'), phaseArgs, 'review')
   // gatePassed is `datum gate review`'s exit code (#368) — halts in every
   // mode, same as Refine/Plan/Properties/Validate. canMerge is the review
   // swarm's own high/critical-findings verdict, which yolo may bypass.
@@ -635,9 +677,18 @@ if (shouldRun('closeout', 6)) {
   // don't need one) — Closeout does: without it, datum-closeout.ts's
   // `a.runId || ''` falls back and generates a brand-new, unrelated run id
   // instead of reusing the one Act actually produced (#524 dogfooding).
-  lastResult = await workflow({ scriptPath: sk('datum-closeout') }, { ...phaseArgs, runId: resolvedRunId }) as PhaseResult
-  log('Closeout complete')
-  await markPhaseComplete('closeout')
+  try {
+    lastResult = await workflow({ scriptPath: sk('datum-closeout') }, { ...phaseArgs, runId: resolvedRunId }) as PhaseResult
+    log('Closeout complete')
+    await markPhaseComplete('closeout')
+  } catch (exc) {
+    // Closeout has no gate field to fold a thrown failure into (unlike
+    // Refine/Plan/Review) — halt explicitly instead of letting it crash
+    // datum-go with no halt record and no summary.
+    const message = (exc as Error).message
+    haltedAt = 'closeout'
+    log(`[warn] closeout_workflow_failed: ${message}. Fix, then: datum go --start-from closeout`)
+  }
 }
 
 if (haltedAt) {
