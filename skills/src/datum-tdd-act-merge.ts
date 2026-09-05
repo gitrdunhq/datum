@@ -98,6 +98,15 @@ phase('Cleanup')
 
 const cleanup = stepResult(merge, 'cleanup')
 log(`Cleanup${a.batchTag}: ${cleanup ? (cleanup.exit_code === 0 ? 'done' : `exited ${cleanup.exit_code}`) : 'step did not run'}`)
+// `worktrees cleanup` prints {"cleaned": {..., "preserved_with_commits": [...]}} —
+// lane branches it refused to delete because they carry real commits. Say so.
+const cleaned = cleanup && cleanup.exit_code === 0
+  ? parseAgentJson<{ cleaned?: { preserved_with_commits?: string[] } } | null>(cleanup.stdout, null)
+  : null
+const preserved = cleaned && cleaned.cleaned && Array.isArray(cleaned.cleaned.preserved_with_commits) ? cleaned.cleaned.preserved_with_commits : []
+if (preserved.length > 0) {
+  log(`Cleanup${a.batchTag}: preserved lane branch(es) with real commits (not deleted): ${preserved.join(', ')}`)
+}
 
 export const __workflowResult = {
   merged: mergeOrder.length > 0 && mergeOk,

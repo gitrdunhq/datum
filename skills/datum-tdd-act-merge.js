@@ -51,21 +51,21 @@ function findMatchingBracketEnd(text, start) {
 function scanForAgentJson(text) {
   if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
-  const cleaned = (fenced ? fenced[1] : text).trim();
+  const cleaned2 = (fenced ? fenced[1] : text).trim();
   try {
-    return { found: true, value: JSON.parse(cleaned) };
+    return { found: true, value: JSON.parse(cleaned2) };
   } catch {
   }
   const openRe = /[{[]/g;
   let match;
   let best;
   let found = false;
-  while ((match = openRe.exec(cleaned)) !== null) {
+  while ((match = openRe.exec(cleaned2)) !== null) {
     const start = match.index;
-    const end = findMatchingBracketEnd(cleaned, start);
+    const end = findMatchingBracketEnd(cleaned2, start);
     if (end === -1) continue;
     try {
-      best = JSON.parse(cleaned.slice(start, end + 1));
+      best = JSON.parse(cleaned2.slice(start, end + 1));
       found = true;
       openRe.lastIndex = end + 1;
     } catch {
@@ -321,6 +321,11 @@ if (laneState) {
 phase("Cleanup");
 var cleanup = stepResult(merge, "cleanup");
 log(`Cleanup${a.batchTag}: ${cleanup ? cleanup.exit_code === 0 ? "done" : `exited ${cleanup.exit_code}` : "step did not run"}`);
+var cleaned = cleanup && cleanup.exit_code === 0 ? parseAgentJson(cleanup.stdout, null) : null;
+var preserved = cleaned && cleaned.cleaned && Array.isArray(cleaned.cleaned.preserved_with_commits) ? cleaned.cleaned.preserved_with_commits : [];
+if (preserved.length > 0) {
+  log(`Cleanup${a.batchTag}: preserved lane branch(es) with real commits (not deleted): ${preserved.join(", ")}`);
+}
 return {
   merged: mergeOrder.length > 0 && mergeOk,
   failed: mergeOrder.length > 0 && !mergeOk,

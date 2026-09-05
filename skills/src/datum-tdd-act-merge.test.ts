@@ -41,3 +41,15 @@ describe('datum-tdd-act-merge — partial merge reporting', () => {
     expect(src).toMatch(/partial merge/)
   })
 })
+
+// The cleanup step's JSON carries preserved_with_commits — lane branches that
+// were NOT deleted because they hold real commits. The script logged only
+// the exit code, so that signal never reached the run log (CLI shape audit).
+describe('datum-tdd-act-merge — cleanup surfaces preserved lane branches', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-merge.ts'), 'utf8')
+  it('parses the cleanup step stdout and logs preserved_with_commits by name', () => {
+    expect(src).toMatch(/parseAgentJson<[^>]*>\(cleanup\.stdout/)
+    expect(src).toMatch(/preserved_with_commits/)
+    expect(src).toMatch(/log\(`Cleanup\$\{a\.batchTag\}: preserved lane branch\(es\) with real commits/)
+  })
+})
