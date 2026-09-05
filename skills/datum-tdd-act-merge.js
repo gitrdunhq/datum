@@ -209,14 +209,15 @@ function mergeSteps(o) {
   if (o.mergeOrder.length > 0) {
     steps2.push({
       name: "merge",
-      command: `datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"; __merge_rc=$?; [ "$__merge_rc" -eq 0 ]`,
+      command: `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
       tolerant: true
     });
   }
   if (o.laneStateWriteScript) {
     steps2.push({
       name: "lane-state-write",
-      command: `if [ "\${__merge_rc:-0}" -ne 0 ]; then echo SKIPPED_MERGE_FAILED; else
+      command: `__merged_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '.merged[]?' 2>/dev/null | tr '\\n' ' ')"
+if [ "$__merged_ids" = " " ]; then echo SKIPPED_MERGE_FAILED; else
 ${o.laneStateWriteScript.trim()}
 fi`,
       tolerant: true
@@ -234,7 +235,7 @@ fi`,
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/lane-state-write.md
-var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
+var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  case "${__merged_ids:- $TID }" in *" $TID "*) ;; *) continue;; esac\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
@@ -277,9 +278,14 @@ var merge = parseBatchResult(mergeRaw, steps);
 if (merge.missing) log(`Merge${a.batchTag}: ${describeFailure(merge, "merge batch")}`);
 var mergeStep = mergeOrder.length > 0 ? stepResult(merge, "merge") : null;
 var mergeOk = mergeOrder.length === 0 || !!mergeStep && mergeStep.exit_code === 0;
+var mergeJson = parseAgentJson(mergeStep ? mergeStep.stdout : "", null);
+var landedIds = mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : mergeOk ? mergeOrder : [];
+var failedLane = mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : "";
 if (mergeOrder.length > 0) {
   if (mergeOk) {
     log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
+  } else if (failedLane) {
+    log(`Merge${a.batchTag} FAILED \u2014 partial merge: ${failedLane} did not land (${mergeJson?.error || "no error text"}); landed and committed: [${landedIds.join(", ") || "none"}]`);
   } else {
     log(`Merge${a.batchTag} FAILED: ${mergeStep ? (mergeStep.stderr || mergeStep.stdout).trim().split("\n").slice(-5).join("\n") : "step did not run"}`);
   }
@@ -287,9 +293,9 @@ if (mergeOrder.length > 0) {
 if (laneState) {
   const out = stepStdout(merge, "lane-state-write") || "";
   if (out.includes("SKIPPED_MERGE_FAILED")) {
-    log(`Lane-state markers${a.batchTag} NOT recorded \u2014 merge failed`);
+    log(`Lane-state markers${a.batchTag} NOT recorded \u2014 no lane landed`);
   } else if (out.includes("DONE")) {
-    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map((e) => e.task_id).join(", ")}]`);
+    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map((e) => e.task_id).filter((id) => landedIds.includes(id)).join(", ")}]`);
   } else {
     log(`Lane-state markers${a.batchTag}: ${describeFailure(merge, "lane-state-write")}`);
   }
@@ -300,5 +306,6 @@ log(`Cleanup${a.batchTag}: ${cleanup ? cleanup.exit_code === 0 ? "done" : `exite
 return {
   merged: mergeOrder.length > 0 && mergeOk,
   failed: mergeOrder.length > 0 && !mergeOk,
-  mergedIds: mergeOk ? mergeOrder : []
+  mergedIds: mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : mergeOk ? mergeOrder : [],
+  failedLane: mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : ""
 };
