@@ -29,8 +29,23 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--merge-sha", required=True)
-    parser.add_argument("--epic-number", type=int, required=True)
+    # Optional: the closeout batch (skills/src/shared/lane-steps.ts) never
+    # passed it, so `required=True` made every run exit 2 with a usage message
+    # and closeout-data.json was never written. Resolve it the way `datum
+    # closeout` does — from the branch, else the UNKNOWN sentinel.
+    parser.add_argument("--epic-number", type=int, default=None)
     args = parser.parse_args()
+    epic_number = args.epic_number
+    if epic_number is None:
+        from datum.closeout_cmd import UNKNOWN_EPIC_NUMBER, _detect_epic_number
+
+        branch_res = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
+        )
+        branch = branch_res.stdout.strip() if branch_res.returncode == 0 else ""
+        epic_number = _detect_epic_number(branch)
+        if epic_number is None:
+            epic_number = UNKNOWN_EPIC_NUMBER
 
     raw_dir = Path(f".datum/runs/{args.run_id}/closeout-raw")
     if not raw_dir.exists():
@@ -55,7 +70,7 @@ def main() -> None:
 
     data: dict = {
         "run_id": args.run_id,
-        "epic_number": args.epic_number,
+        "epic_number": epic_number,
         "merge_sha": args.merge_sha,
         "merge_timestamp": merge_timestamp.isoformat() if merge_timestamp else None,
     }

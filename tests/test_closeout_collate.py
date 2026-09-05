@@ -121,3 +121,37 @@ def test_collate_fails_loudly_on_missing_required_collectors(repo):
     assert result.returncode != 0
     out_path = repo / ".datum" / "runs" / run_id / "closeout-data.json"
     assert not out_path.exists(), "must not write a malformed artifact"
+
+
+def test_collate_resolves_the_epic_number_from_the_branch_when_the_flag_is_absent(repo):
+    """The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps)
+    never passed --epic-number, so argparse exited 2 with a usage message and
+    closeout-data.json was never written on ANY run. Without the flag, collate
+    resolves the number the way `datum closeout` does: from the branch
+    (datum/epic-23 -> 23), else the UNKNOWN sentinel, never a crash."""
+    _git(["checkout", "-q", "-b", "datum/epic-23"], cwd=repo)
+    run_id = "r-nb"
+    _write_collector_outputs(repo, run_id)
+    res = subprocess.run(
+        [sys.executable, "-m", "datum.closeout.collate", "--run-id", run_id, "--merge-sha", _merge_sha(repo)],
+        cwd=repo, capture_output=True, text=True,
+    )
+    assert res.returncode == 0, res.stderr + res.stdout
+    assert json.loads(res.stdout)["ok"] is True
+    data = json.loads((repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text())
+    assert data["epic_number"] == 23
+
+
+def test_collate_without_a_parseable_branch_uses_the_unknown_sentinel(repo):
+    from datum.closeout_cmd import UNKNOWN_EPIC_NUMBER
+
+    _git(["checkout", "-q", "-b", "feature/no-number-here"], cwd=repo)
+    run_id = "r-nb2"
+    _write_collector_outputs(repo, run_id)
+    res = subprocess.run(
+        [sys.executable, "-m", "datum.closeout.collate", "--run-id", run_id, "--merge-sha", _merge_sha(repo)],
+        cwd=repo, capture_output=True, text=True,
+    )
+    assert res.returncode == 0, res.stderr + res.stdout
+    data = json.loads((repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text())
+    assert data["epic_number"] == UNKNOWN_EPIC_NUMBER
