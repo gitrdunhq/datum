@@ -104,36 +104,7 @@ var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API
 var refine_spec_default = "SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.\n\nTICKET content:\n{{ticketContent}}\n\nCodebase scan results:\n{{scanResults}}\n\nAmbiguity classification: {{ambiguityLevel}}\nDetected gaps: {{gaps}}\nAssumptions: {{assumptions}}\n\nWrite a SPEC.md following this structure exactly:\n\n1. **Summary** \u2014 2-3 sentences: what changes and why\n2. **Context** \u2014 how this connects to the existing system (use scan results)\n3. **Requirements** \u2014 numbered, each with testable acceptance criteria. Base these on the TICKET requirements, refined with codebase knowledge.\n4. **Failure Modes** \u2014 table: what can go wrong + handling\n5. **Non-Functional Requirements** \u2014 table: requirement + target\n6. **Out of Scope** \u2014 from TICKET's \"Not This\" section + any additional exclusions\n7. **Open Questions** \u2014 gaps that need human answers (empty if trivial/low ambiguity)\n8. **Assumption Audit** \u2014 table: #, Assumption, Justification, Status (confirmed/decided/guess), Resolves (Q# or n/a). Use `decided` for intentional product/design decisions, `confirmed` for code-verified facts, `guess` for technical unknowns that need a QUESTIONS.md entry\n9. **Classification Metadata** \u2014 YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions\n\nRULES:\n- Every AC must be testable \u2014 if it can't become a test assertion, rewrite it\n- Use the scan results to ground requirements in real file paths and function names\n- Flag any symbols from the TICKET that don't exist in the codebase\n- If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions\n- If ambiguity is LOW/TRIVIAL, Open Questions should be empty\n\nOutput the full SPEC.md content as markdown. No JSON wrapping.\n";
 
 // skills/src/prompts/refine-questions.md
-var refine_questions_default = `QUESTIONS writer. Generate clarifying questions from detected gaps.
-
-Gaps to address:
-{{gaps}}
-
-Assumptions to validate:
-{{assumptions}}
-
-Ambiguity level: {{ambiguityLevel}}
-
-Write a QUESTIONS.md following this format:
-
-## Refine \u2014 {{date}}
-
-### Q1: [Category] Question text?
-> Context explaining why this matters and what depends on the answer.
-
-[Answer]:
-
-### Q2: [Category] ...
-
-RULES:
-- Each question addresses one specific gap or assumption
-- Categories: Scope, Architecture, Behavior, NFR, Integration, Security
-- The context block must explain what decision hinges on the answer
-- Anchor assumptions: "I'm assuming X \u2014 is that right, or Y?"
-- If there are no gaps (trivial/low ambiguity), write: "No clarifying questions needed \u2014 intent is clear."
-
-Output the full QUESTIONS.md content as markdown. No JSON wrapping.
-`;
+var refine_questions_default = 'QUESTIONS writer. Generate clarifying questions from detected gaps.\n\nGaps to address:\n{{gaps}}\n\nAssumptions to validate:\n{{assumptions}}\n\nAmbiguity level: {{ambiguityLevel}}\n\nExisting QUESTIONS.md (empty if none):\n{{existingQuestions}}\n\nCARRY-FORWARD RULE \u2014 answered questions are operator decisions:\n- Keep every existing section, question, context block and `[Answer]:` line VERBATIM, in place. Never rewrite, renumber or drop an answered question.\n- Do not ask again anything an existing answer already settles; treat those answers as facts.\n- Add only genuinely new questions, under a new `## Refine \u2014 {{date}}` heading appended after the existing content, numbered after the highest existing Qn.\n- The workflow verifies every previously answered line still exists before committing; a dropped answer fails the phase.\n\nWrite a QUESTIONS.md following this format:\n\n## Refine \u2014 {{date}}\n\n### Q1: [Category] Question text?\n> Context explaining why this matters and what depends on the answer.\n\n[Answer]:\n\n### Q2: [Category] ...\n\nRULES:\n- Each question addresses one specific gap or assumption\n- Categories: Scope, Architecture, Behavior, NFR, Integration, Security\n- The context block must explain what decision hinges on the answer\n- Anchor assumptions: "I\'m assuming X \u2014 is that right, or Y?"\n- If there are no gaps (trivial/low ambiguity), write: "No clarifying questions needed \u2014 intent is clear."\n\nOutput the full QUESTIONS.md content as markdown. No JSON wrapping.\n';
 
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -534,6 +505,59 @@ function assertReadWitness(files, parsed) {
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
 
+// skills/src/shared/questions-steps.ts
+var QUESTION_RE = /^###\s+Q\d+\s*:/;
+var ANSWER_RE = /^\[Answer\]:\s*(.*)$/;
+function answeredQuestions(content) {
+  const out = [];
+  let current = null;
+  for (const raw of (content || "").split("\n")) {
+    const line = raw.trimEnd();
+    if (QUESTION_RE.test(line)) {
+      current = line;
+      continue;
+    }
+    const m = ANSWER_RE.exec(line);
+    if (m && current && m[1].trim()) {
+      out.push({ question: current, answer: line });
+      current = null;
+    }
+  }
+  return out;
+}
+function q3(p) {
+  return `"${p.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+function answersKeptSteps(questionsPath, answered) {
+  return answered.map((a2, i) => ({
+    name: `answer-kept-${i}`,
+    command: `ANSWER=$(mktemp)
+cat > "$ANSWER" <<'ANSWER_EOF'
+${a2.answer}
+ANSWER_EOF
+grep -c -F -x -f "$ANSWER" ${q3(questionsPath)} 2>/dev/null || echo 0`,
+    tolerant: true
+  }));
+}
+function answersKeptFromSteps(result, answered) {
+  if (answered.length === 0) return { ok: true, error: "", dropped: [] };
+  if (result.missing) {
+    return { ok: false, error: `refine_answers_dropped: ${describeFailure(result, "answers-kept batch")} \u2014 cannot confirm the ${answered.length} answered question(s) survived the rewrite`, dropped: answered.map((a2) => a2.question) };
+  }
+  const dropped = [];
+  answered.forEach((a2, i) => {
+    const rec = stepResult(result, `answer-kept-${i}`);
+    const count = rec ? parseInt(rec.stdout.trim(), 10) : NaN;
+    if (!Number.isFinite(count) || count < 1) dropped.push(a2.question);
+  });
+  if (dropped.length === 0) return { ok: true, error: "", dropped: [] };
+  return {
+    ok: false,
+    error: `refine_answers_dropped: ${dropped.length} of ${answered.length} answered questions missing from the rewritten QUESTIONS.md: ${dropped.join(" | ")}`,
+    dropped
+  };
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -544,8 +568,9 @@ if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agen
 setBatchCacheKey(a.configFingerprint || "");
 phase("Read");
 var TICKET_REL = "docs/epics/$__eb/TICKET.md";
+var QUESTIONS_REL = "docs/epics/$__eb/QUESTIONS.md";
 var probeSteps = contextProbeSteps({
-  files: [TICKET_REL],
+  files: [TICKET_REL, QUESTIONS_REL],
   extraCommands: [
     { name: "timestamp", command: "date +%Y-%m-%dT%H:%M:%S" },
     { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` },
@@ -557,7 +582,7 @@ var readBatch = parseBatchResult(
   await agent(batchCommandPrompt(probeSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
   probeSteps
 );
-var relayPlan = contextRelayPlan(readBatch, [TICKET_REL]);
+var relayPlan = contextRelayPlan(readBatch, [TICKET_REL, QUESTIONS_REL]);
 if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
   configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
@@ -581,102 +606,124 @@ if (!ticketFile.exists) {
 }
 var ticketContent = contextSlot(ticketFile);
 log(`Branch: ${ctx.branch}, TICKET: ${ticketFile.bytes} bytes${ticketFile.inlined ? "" : " (over relay budget \u2014 agents read it themselves)"}`);
-phase("Analyze");
-var hasAddenda = parseInt((stepStdout(readBatch, "has-addenda") || "0").trim(), 10) > 0;
-var triageResult = {
-  original_scope: "",
-  addenda: [],
-  roadmap_items: [],
-  merged_requirements: []
-};
-async function commitRefineFiles(files, message, label, opts = { allowUnchanged: true }) {
-  const commitStepList = commitFilesSteps({ wt: ".", files, message });
-  const commit = commitFilesFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
-    commitStepList
-  ));
-  if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`);
-  if (commit.nothingToCommit) {
-    if (!opts.allowUnchanged) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);
-    log(`${label}: ${files.join(", ")} unchanged since the last run \u2014 already committed`);
-    return "unchanged";
-  }
-  return commit.sha;
+var questionsFile = ctx.files[QUESTIONS_REL];
+var earlyGateSteps = gateSteps("refine", " --approve");
+var earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts("cli", { label: "gate-early", model: model("fast") })));
+var alreadyComplete = earlyGate.passed;
+if (alreadyComplete) {
+  log(`refine_already_complete: SPEC.md and QUESTIONS.md in ${epicDir} pass the refine gate \u2014 not regenerating (answered questions are operator decisions)`);
 }
-if (hasAddenda) {
-  const triageRaw = await agent(
-    renderPrompt(refine_triage_default, { ticketPath }) + `
+async function refineFromTicket() {
+  phase("Analyze");
+  const hasAddenda = parseInt((stepStdout(readBatch, "has-addenda") || "0").trim(), 10) > 0;
+  let triageResult = {
+    original_scope: "",
+    addenda: [],
+    roadmap_items: [],
+    merged_requirements: []
+  };
+  async function commitRefineFiles(files, message, label, opts = { allowUnchanged: true }) {
+    const commitStepList = commitFilesSteps({ wt: ".", files, message });
+    const commit = commitFilesFromSteps(parseBatchResult(
+      await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
+      commitStepList
+    ));
+    if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`);
+    if (commit.nothingToCommit) {
+      if (!opts.allowUnchanged) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);
+      log(`${label}: ${files.join(", ")} unchanged since the last run \u2014 already committed`);
+      return "unchanged";
+    }
+    return commit.sha;
+  }
+  if (hasAddenda) {
+    const triageRaw = await agent(
+      renderPrompt(refine_triage_default, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
 Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`,
-    { label: "triage-addenda", model: model("balanced") }
-  );
-  triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
-  log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
-  if (triageResult.roadmap_items.length > 0) {
-    const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap", { allowUnchanged: false });
-    log(`ROADMAP.md committed (${roadmapCommit})`);
+      { label: "triage-addenda", model: model("balanced") }
+    );
+    triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
+    log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
+    if (triageResult.roadmap_items.length > 0) {
+      const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap", { allowUnchanged: false });
+      log(`ROADMAP.md committed (${roadmapCommit})`);
+    }
+  } else {
+    log("No addenda \u2014 single-scope TICKET");
   }
-} else {
-  log("No addenda \u2014 single-scope TICKET");
-}
-var classifyRaw = await agent(
-  renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
-  { label: "classify-ambiguity", model: model("fast") }
-);
-var classify = parseAgentJsonStrict(classifyRaw, "classify-ambiguity");
-assertReadWitness([ticketFile], classify);
-log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
-var requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
-var scanRaw = await agent(
-  renderPrompt(refine_scan_default, { wt: ".", requirements }),
-  { label: "scan-codebase", model: model("balanced") }
-);
-var scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
-phase("Write");
-var timestamp = stepStdout(readBatch, "timestamp") || "";
-var today = timestamp ? timestamp.slice(0, 10) : "(date unavailable)";
-var specPath = `${epicDir}/SPEC.md`;
-var questionsPath = `${epicDir}/QUESTIONS.md`;
-var specRaw = await agent(
-  `You have TWO tasks. Do them in order.
+  const classifyRaw = await agent(
+    renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
+    { label: "classify-ambiguity", model: model("fast") }
+  );
+  const classify = parseAgentJsonStrict(classifyRaw, "classify-ambiguity");
+  assertReadWitness([ticketFile], classify);
+  log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
+  const requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
+  const scanRaw = await agent(
+    renderPrompt(refine_scan_default, { wt: ".", requirements }),
+    { label: "scan-codebase", model: model("balanced") }
+  );
+  const scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
+  phase("Write");
+  const timestamp = stepStdout(readBatch, "timestamp") || "";
+  const today = timestamp ? timestamp.slice(0, 10) : "(date unavailable)";
+  const specPath = `${epicDir}/SPEC.md`;
+  const questionsPath = `${epicDir}/QUESTIONS.md`;
+  const specRaw = await agent(
+    `You have TWO tasks. Do them in order.
 
 TASK 1 \u2014 Write SPEC.md:
 ${renderPrompt(refine_spec_default, {
-    ticketContent,
-    scanResults,
-    ambiguityLevel: classify.level,
-    gaps: classify.gaps.join("\n"),
-    assumptions: classify.assumptions.join("\n")
-  })}
+      ticketContent,
+      scanResults,
+      ambiguityLevel: classify.level,
+      gaps: classify.gaps.join("\n"),
+      assumptions: classify.assumptions.join("\n")
+    })}
 
 Write the SPEC to "${specPath}" (create dirs if needed).
 
 TASK 2 \u2014 Write QUESTIONS.md:
 ${renderPrompt(refine_questions_default, {
-    gaps: classify.gaps.join("\n"),
-    assumptions: classify.assumptions.join("\n"),
-    ambiguityLevel: classify.level,
-    date: today
-  })}
+      gaps: classify.gaps.join("\n"),
+      assumptions: classify.assumptions.join("\n"),
+      ambiguityLevel: classify.level,
+      date: today,
+      existingQuestions: questionsFile.exists ? contextSlot(questionsFile) : "(none)"
+    })}
 
 Write the QUESTIONS to "${questionsPath}".
 
 Do NOT git add or git commit anything \u2014 the workflow commits both files after you return.
 Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile]),
-  { label: "write-spec-and-questions", model: model("balanced") }
-);
-var spec = parseAgentJsonStrict(specRaw, "write-spec-and-questions");
-assertReadWitness([ticketFile], spec);
-for (const p of [specPath, questionsPath]) {
-  if (!Array.isArray(spec.written) || !spec.written.includes(p)) {
-    throw new Error(`refine_write_failed: agent did not report writing ${p} (reported: ${JSON.stringify(spec.written)})`);
+    { label: "write-spec-and-questions", model: model("balanced") }
+  );
+  const spec = parseAgentJsonStrict(specRaw, "write-spec-and-questions");
+  assertReadWitness([ticketFile], spec);
+  for (const p of [specPath, questionsPath]) {
+    if (!Array.isArray(spec.written) || !spec.written.includes(p)) {
+      throw new Error(`refine_write_failed: agent did not report writing ${p} (reported: ${JSON.stringify(spec.written)})`);
+    }
   }
+  if (questionsFile.exists && !questionsFile.inlined) {
+    log(`refine_answers_unchecked: ${questionsPath} (${questionsFile.bytes} bytes) was over the relay budget \u2014 answered questions could not be verified against the rewrite`);
+  }
+  const answered = questionsFile.exists && questionsFile.inlined ? answeredQuestions(questionsFile.content || "") : [];
+  if (answered.length > 0) {
+    const keptSteps = answersKeptSteps(questionsPath, answered);
+    const kept = answersKeptFromSteps(await runBatch(keptSteps, stageOpts("cli", { label: "answers-kept", model: model("fast") })), answered);
+    if (!kept.ok) throw new Error(kept.error);
+    log(`${answered.length} previously answered question(s) carried forward verbatim`);
+  }
+  const specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], "refine: write SPEC.md + QUESTIONS.md", "commit-spec");
+  log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`);
+  return { classify, triageResult };
 }
-var specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], "refine: write SPEC.md + QUESTIONS.md", "commit-spec");
-log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`);
+var outcome = alreadyComplete ? null : await refineFromTicket();
 var gateStepList = gateSteps("refine", yolo ? " --approve" : "");
 var gate = parseGateResult(await runBatch(gateStepList, stageOpts("cli", { label: "gate", model: model("fast") })));
 if (gate.passed) log("Refine gate PASSED");
@@ -684,9 +731,10 @@ else log(`Refine gate: ${gate.message || "needs review"}${gate.needsHuman ? " (n
 return {
   branch: ctx.branch,
   epicDir,
-  ambiguity: classify.level,
-  gaps: classify.gaps,
-  roadmapItems: triageResult.roadmap_items,
+  ambiguity: outcome ? outcome.classify.level : "unchanged",
+  gaps: outcome ? outcome.classify.gaps : [],
+  roadmapItems: outcome ? outcome.triageResult.roadmap_items : [],
+  alreadyComplete,
   gatePassed: gate.passed,
   gateMessage: gate.message,
   gateNeedsHuman: gate.needsHuman
