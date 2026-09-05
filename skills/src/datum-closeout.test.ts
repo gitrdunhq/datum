@@ -170,3 +170,18 @@ describe('datum-closeout — synthesize result uses the strict parser and reject
     expect(src).toMatch(/parseAgentJsonStrict<\{ artifacts_written: string\[\]; follow_up_count: number \}>\(synthResult as string, 'synthesize'\)/)
   })
 })
+
+// caliper BUG S (3): every collector step is tolerant, so describeFailure()
+// said "closeout-collect: ok" while collect-tasks and collate had exited 1
+// — the error named the symptom (missing file), not the cause that was
+// right there in the batch result.
+describe('datum-closeout — the missing-data error names the collectors that failed', () => {
+  const src = readFileSync(join(__dirname, 'datum-closeout.ts'), 'utf8')
+  it('collects failed collector steps with their exit codes and tails into the thrown message', () => {
+    expect(src).toMatch(/const failedCollectors: string\[\] = \[\]/)
+    expect(src).toMatch(/failedCollectors\.push\(`\$\{name\} exited \$\{step\.exit_code\}/)
+    expect(src).toMatch(/Failed collectors: \$\{failedCollectors\.join\(' \| '\)\}/)
+    expect(src).toMatch(/closeout-data\.json is missing after collect[^\n]*\$\{cause\}/)
+    expect(src).not.toMatch(/missing after collect[^\n]*describeFailure\(collectResult, 'closeout-collect'\)\}`/)
+  })
+})
