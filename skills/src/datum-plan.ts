@@ -323,7 +323,11 @@ const routingWritten = writeFileFromSteps(parseBatchResult(
   routingSteps,
 ), { path: '.datum/routing.json', expectedSha: writeFileBlobSha(routingJson), prefix: 'routing' })
 if (!routingWritten.ok) throw new Error(routingWritten.error)
-await commitPlanFiles(['.datum/routing.json'], 'plan: triage decision', 'commit-routing')
+// Not committed: routing.json is run state under .datum, which datum's own
+// gitignore-check ignores and a consumer's global excludes may ignore
+// outright (`git add exited 1: .datum | hint: Use -f`, elonchesd
+// wf_1b098b4d-33c). `datum gate triage` reads it from disk; nothing reads
+// it from git. The decision itself lands in TASKS.md/lane-plan.json.
 const triageGateSteps = gateSteps('triage', '')
 const triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts('cli', { label: 'gate-triage', model: model('fast') })))
 if (!triageGate.passed) throw new Error(`Triage gate failed — routing.json rejected: ${triageGate.message || 'no message'}`)

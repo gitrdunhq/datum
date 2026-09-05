@@ -274,18 +274,30 @@ describe('datum-plan — triage decision is written, committed and gated by the 
     expect(block).not.toMatch(/git commit/)
   })
 
-  it('writes .datum/routing.json from the parsed decision through writeFileSteps, commits it, then runs gateSteps("triage")', () => {
+  // elonchesd wf_1b098b4d-33c: the routing commit failed `git add exited 1:
+  // .datum | hint: Use -f` — datum's own gitignore-check ignores .datum run
+  // state, and a consumer's global excludes can ignore the whole directory.
+  // routing.json is run state read from disk by `datum gate triage`; no
+  // consumer reads it from git, so it is written and gated, never committed.
+  it('writes .datum/routing.json from the parsed decision through writeFileSteps, runs gateSteps("triage") on it, and never commits it', () => {
     const triageIdx = datumPlanSrc.indexOf('const triage: TriageDecision')
     const writeIdx = datumPlanSrc.indexOf("writeFileSteps({ path: '.datum/routing.json', content: routingJson })")
-    const commitIdx = datumPlanSrc.indexOf("commitPlanFiles(['.datum/routing.json'], 'plan: triage decision'")
     const gateIdx = datumPlanSrc.indexOf("gateSteps('triage', '')")
     const deepenIdx = datumPlanSrc.indexOf("if (triage.decision === 'deepen')")
     expect(triageIdx).toBeGreaterThan(-1)
     expect(writeIdx).toBeGreaterThan(triageIdx)
-    expect(commitIdx).toBeGreaterThan(writeIdx)
-    expect(gateIdx).toBeGreaterThan(commitIdx)
+    expect(gateIdx).toBeGreaterThan(writeIdx)
     expect(deepenIdx).toBeGreaterThan(gateIdx)
+    expect(datumPlanSrc).not.toMatch(/commitPlanFiles\(\['\.datum\//)
     expect(datumPlanSrc).toMatch(/throw new Error\(`Triage gate failed/)
+  })
+
+  it('no commit batch in any phase script adds a path under .datum (run state, ignored in consumer repos)', () => {
+    for (const f of ['datum-refine.ts', 'datum-plan.ts', 'datum-properties.ts', 'datum-validate.ts', 'datum-review.ts', 'datum-closeout.ts', 'datum-tdd-act-docs.ts']) {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src, f).not.toMatch(/commit\w*\(\[[^\]]*'\.datum\//)
+      expect(src, f).not.toMatch(/files: \[[^\]]*'\.datum\//)
+    }
   })
 })
 
