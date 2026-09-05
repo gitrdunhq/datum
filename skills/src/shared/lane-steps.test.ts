@@ -282,6 +282,47 @@ describe('postRedSteps — executed against a real git worktree', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  // elonchesd run wf_1763c81d-94c: the RED agent made TWO commits on the lane
+  // (a skeleton, then the real tests). test-count-before read `HEAD~1`, so
+  // before == after, newTestCount = 0, and the lane failed
+  // no_new_tests_written — a false negative that blocked 17 lanes and had
+  // triage file a wrong-root-cause issue — while count-gate (diffing from
+  // the epic merge-base) had already passed. "Before" must be the lane's
+  // base, not the previous commit.
+  it('reads the before-count from the epic merge-base when baseRef is given, so a two-commit RED still counts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-postred2-'))
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      git('init', '-q', '-b', 'epic')
+      git('config', 'core.hooksPath', '/dev/null')
+      git('config', 'user.email', 't@t')
+      git('config', 'user.name', 't')
+      mkdirSync(join(dir, 'tests'))
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'base')
+      git('checkout', '-q', '-b', 'epic--T1')
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n\ndef test_new():\n    assert 2 == 2\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'red(T1): RED complete')
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n\ndef test_new():\n    assert 2 == 2\n\ndef test_newer():\n    assert 3 == 3\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'red(T1): more tests')
+
+      const steps = postRedSteps({
+        wt: dir, testFiles: ['tests/test_a.py'], acCount: 2,
+        testFuncDiffRegex: '[+][[:space:]]*def test_',
+        sgPatterns: [{ pattern: 'assert True', name: 'assert True' }],
+        testFuncBodyRegex: 'def test_', testFuncGrepRegex: 'def test_|async def test_', ownership: true,
+        verifyTestCmd: null, baseRef: 'epic',
+      })
+      expect(steps.find((s) => s.name === 'test-count-before')!.command).toContain('merge-base HEAD "epic"')
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' }), steps)
+      expect(sumCounts(stepStdout(r, 'test-count-after'))).toBe(3)
+      expect(sumCounts(stepStdout(r, 'test-count-before'))).toBe(1)
+      expect(stepStdout(r, 'count-gate')).toMatch(/"new_test_count":\s*2/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('scopeContractSteps', () => {

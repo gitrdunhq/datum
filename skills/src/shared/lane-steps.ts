@@ -153,10 +153,19 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
     command: o.testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null || echo 0`).join('\n'),
     tolerant: true,
   })
+  // "Before" is the lane's BASE (merge-base with the epic), not the previous
+  // commit: a RED agent that commits twice (skeleton, then tests) made
+  // HEAD~1 == HEAD's test count, newTestCount = 0, and the lane failed
+  // no_new_tests_written while count-gate — which already diffs from the
+  // merge-base — had passed (elonchesd run wf_1763c81d-94c). HEAD~1 stays
+  // only for callers that pass no baseRef.
+  const beforeRef = o.baseRef
+    ? `$(git -C ${q(o.wt)} merge-base HEAD ${q(o.baseRef)})`
+    : 'HEAD~1'
   steps.push({
     name: 'test-count-before',
     command: o.testFiles.map((f) =>
-      `git -C ${q(o.wt)} rev-parse HEAD~1 >/dev/null 2>&1 && git -C ${q(o.wt)} show HEAD~1:${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`,
+      `__before=${beforeRef}; git -C ${q(o.wt)} rev-parse "$__before" >/dev/null 2>&1 && git -C ${q(o.wt)} show "$__before":${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`,
     ).join('\n'),
     tolerant: true,
   })
