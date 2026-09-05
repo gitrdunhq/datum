@@ -229,6 +229,10 @@ Output raw JSON only.`,
     log(`[tracker] publish failed: ${parsed.error}`);
     return null;
   }
+  if (parsed.skipped) {
+    log(`[tracker] publish skipped: ${parsed.reason || parsed.skipped}`);
+    return null;
+  }
   return {
     epicId: String(parsed.epic_number || ""),
     taskIds: Object.fromEntries(
