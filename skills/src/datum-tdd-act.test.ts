@@ -82,6 +82,37 @@ describe('lane-plan relay integrity', () => {
 // datum-validate.ts.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// CHUNKED lane-plan relay — replaces the datum-reader echo of lane-plan.json
+// (elonchesd run wf_6bfbd9f2-510: the reader silently normalised "§4" to
+// "§ 4" inside 5 of 18 lanes' acceptance_criteria, which changed
+// laneSpecHash() for those lanes and re-scheduled already-completed work).
+// The plan is now read in byte-verified base64 chunks and assembled here —
+// never echoed by an LLM turn.
+// ---------------------------------------------------------------------------
+
+describe('lane-plan relay is byte-chunked, not an LLM echo', () => {
+  it('no longer imports or calls readLanePlanPrompt', () => {
+    expect(src).not.toMatch(/readLanePlanPrompt/)
+  })
+
+  it('no longer dispatches a reader-type agent call for the plan', () => {
+    expect(src).not.toMatch(/stageOpts\('reader'/)
+  })
+
+  it('imports and calls the chunked context-relay helpers', () => {
+    expect(src).toMatch(/import\s*\{[^}]*contextChunkPlan[^}]*contextChunkSteps[^}]*contextAssembleChunks[^}]*\}\s*from\s*'\.\/shared\/context-relay'/)
+    expect(src).toMatch(/contextChunkPlan\(/)
+    expect(src).toMatch(/contextChunkSteps\(/)
+    expect(src).toMatch(/contextAssembleChunks\(/)
+  })
+
+  it('reads plan-bytes/plan-sha from the act-start batch to drive the chunk plan', () => {
+    expect(src).toMatch(/stepStdout\(actStartResult,\s*'plan-bytes'\)/)
+    expect(src).toMatch(/stepStdout\(actStartResult,\s*'plan-sha'\)/)
+  })
+})
+
 describe('determinism fix — config read is a deterministic batch, not an LLM relay', () => {
   it('no longer imports or calls agent(READ_CONFIG_PROMPT ...)', () => {
     expect(src).not.toMatch(/READ_CONFIG_PROMPT/)

@@ -407,10 +407,30 @@ export function actStartSteps(o: ActStartOpts): BatchStep[] {
       tolerant: true,
     })
   }
-  // The plan itself is relayed by a separate reader agent (see
-  // readLanePlanPrompt) and can be silently abridged on the way back. Emit
-  // its SHAPE here — sorted lane ids, topo length, total — which is tiny and
-  // safe to relay, so the script can verify the reader's copy is complete.
+  // The plan itself is relayed byte-faithfully via the CHUNKED context relay
+  // (shared/context-relay.ts contextChunkPlan/contextChunkSteps/contextAssembleChunks) —
+  // never by an LLM echo (elonchesd run wf_6bfbd9f2-510: a datum-reader
+  // agent silently normalised "§4" to "§ 4" inside 5 of 18 lanes'
+  // acceptance_criteria, which changed laneSpecHash() for those lanes and
+  // re-scheduled already-completed work; the shape check below passed
+  // because the shape was intact — only bytes inside a field had moved).
+  // These two steps give the caller the byte count and blob hash needed to
+  // drive that chunked relay without a second probe batch, since this batch
+  // already has $__plan resolved.
+  steps.push({
+    name: 'plan-bytes',
+    command: `if [ -n "$__plan" ]; then wc -c < "$__plan" | tr -d ' '; else printf -- '-1'; fi`,
+    tolerant: true,
+  })
+  steps.push({
+    name: 'plan-sha',
+    command: `if [ -n "$__plan" ]; then git hash-object "$__plan"; else printf ''; fi`,
+    tolerant: true,
+  })
+  // A second, tiny, independent witness: sorted lane ids, topo length, total
+  // — cheap enough to relay even by an LLM turn, so the script can also
+  // sanity-check the chunked plan's shape against a completely separate read
+  // path (verifyLanePlanShape stays as an extra guard, not the only one).
   steps.push({
     name: 'plan-shape',
     command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
@@ -571,28 +591,3 @@ export function closeoutArchiveSteps(o: CloseoutArchiveOpts): BatchStep[] {
   return steps
 }
 
-/**
- * Prompt for a dedicated read-only agent call that fetches the lane plan's
- * exact JSON content (#524 dogfooding).
- *
- * Previously actStartSteps() folded a `cat "$__plan"` step into the same
- * batched datum-cli call as bootstrap/branch/resolve/lane-state-read, so
- * the whole batch's combined stdout grew with the lane plan's size (one
- * entry per lane — tens of KB on a plan with several lanes). That pushed
- * the batch's own Bash-tool output past the harness's inline-output
- * truncation threshold, and the truncated agent had no way to relay
- * content it never received in its own context, exhausting its remaining
- * turns trying to recover instead of returning an answer.
- *
- * A single-file Read (this prompt, run through the `reader` agent type) is
- * not subject to the same combined-multi-step-output growth and gives the
- * read its own dedicated turn budget, independent of everything else in
- * the bootstrap batch. A large enough lane plan can still exceed the Read
- * tool's own line-count window though (code review, #524 follow-up) — the
- * prompt tells the agent explicitly to page through with `offset` rather
- * than silently fabricating a plausible-looking summary when it can't
- * reproduce the whole file in one read.
- */
-export function readLanePlanPrompt(lanePlanPath: string): string {
-  return `Read the file at "${lanePlanPath}" and return its exact JSON contents — unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering — never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`
-}

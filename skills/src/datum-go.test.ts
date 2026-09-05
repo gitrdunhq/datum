@@ -587,6 +587,39 @@ describe('lane-plan relay integrity', () => {
 })
 
 // ---------------------------------------------------------------------------
+// CHUNKED lane-plan relay — replaces the datum-reader echo of lane-plan.json
+// (elonchesd run wf_6bfbd9f2-510: the reader silently normalised "§4" to
+// "§ 4" inside 5 of 18 lanes' acceptance_criteria, which changed
+// laneSpecHash() for those lanes and re-scheduled already-completed work).
+// The plan is now read in byte-verified base64 chunks and assembled here —
+// never echoed by an LLM turn.
+// ---------------------------------------------------------------------------
+
+describe('lane-plan relay is byte-chunked, not an LLM echo', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('no longer imports or calls readLanePlanPrompt', () => {
+    expect(goSource).not.toMatch(/readLanePlanPrompt/)
+  })
+
+  it('no longer dispatches a reader-type agent call for the plan', () => {
+    expect(goSource).not.toMatch(/stageOpts\('reader'/)
+  })
+
+  it('imports and calls the chunked context-relay helpers', () => {
+    expect(goSource).toMatch(/import\s*\{[^}]*contextChunkPlan[^}]*contextChunkSteps[^}]*contextAssembleChunks[^}]*\}\s*from\s*'\.\/shared\/context-relay'/)
+    expect(goSource).toMatch(/contextChunkPlan\(/)
+    expect(goSource).toMatch(/contextChunkSteps\(/)
+    expect(goSource).toMatch(/contextAssembleChunks\(/)
+  })
+
+  it('reads plan-bytes/plan-sha from the act-start batch to drive the chunk plan', () => {
+    expect(goSource).toMatch(/stepStdout\(actStartResult,\s*'plan-bytes'\)/)
+    expect(goSource).toMatch(/stepStdout\(actStartResult,\s*'plan-sha'\)/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Gate failures halt in yolo too. yolo already passes --approve to every
 // gate (skips only the human hold), so a gate that still fails is a real
 // structural failure (schema, zero lanes, missing artifact) — continuing

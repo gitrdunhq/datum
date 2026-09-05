@@ -23,7 +23,6 @@ import {
   isMissing,
   fencedScript,
   ownershipFromStdout,
-  readLanePlanPrompt,
   testExitCode,
   closeoutCollectSteps,
   closeoutArchiveSteps,
@@ -446,22 +445,26 @@ describe('actStartSteps', () => {
   // all. The lane-plan is now read by a separate, dedicated Read-based
   // agent call (readLanePlanPrompt) instead of being folded into this
   // batch, so this batch's own output stays small regardless of plan size.
-  it('datum-go: init, branch, timestamp, resolve, lane-state-read — no read-plan step', () => {
+  it('datum-go: init, branch, timestamp, resolve, plan-bytes, plan-sha, plan-shape, lane-state-read — no read-plan step', () => {
     const steps = actStartSteps({ branch: 'init', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'plan-shape', 'lane-state-read'])
+    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'plan-bytes', 'plan-sha', 'plan-shape', 'lane-state-read'])
     expect(steps[0].command).toContain('datum init --json')
     expect(steps[0].tolerant).toBeFalsy()
     expect(steps[3].command).toContain('lane-plan-final.json')
     expect(steps[3].command).toContain('echo none')
-    expect(steps[4].command).toContain('jq -c') // plan-shape: shape only, never the whole plan
-    expect(steps[4].command).not.toContain('cat "$__plan"')
-    expect(steps[5].command).toContain('datum lane-state read --epic "$__eb"')
-    expect(steps[5].command).toContain('.topological_order[]')
+    expect(steps[4].command).toContain('wc -c') // plan-bytes
+    expect(steps[4].command).toContain('$__plan')
+    expect(steps[5].command).toContain('git hash-object') // plan-sha
+    expect(steps[5].command).toContain('$__plan')
+    expect(steps[6].command).toContain('jq -c') // plan-shape: shape only, never the whole plan
+    expect(steps[6].command).not.toContain('cat "$__plan"')
+    expect(steps[7].command).toContain('datum lane-state read --epic "$__eb"')
+    expect(steps[7].command).toContain('.topological_order[]')
   })
 
   it('datum-tdd-act yolo: detects the branch instead of running init; explicit branch/plan skip both', () => {
     const detect = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'plan-shape', 'lane-state-read'])
+    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'plan-bytes', 'plan-sha', 'plan-shape', 'lane-state-read'])
     expect(detect[0].command).toContain('git rev-parse --abbrev-ref HEAD')
     const given = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
     expect(given[0].command).toContain('__eb="datum/e"')
@@ -635,24 +638,55 @@ describe('closeoutArchiveSteps', () => {
   })
 })
 
-describe('readLanePlanPrompt', () => {
-  it('asks a dedicated agent to read one file and return its exact contents', () => {
-    const p = readLanePlanPrompt('docs/epics/datum/e/lane-plan.json')
-    expect(p).toContain('docs/epics/datum/e/lane-plan.json')
-    expect(p).toMatch(/exact/i)
-    expect(p).toMatch(/raw JSON only/i)
+// ---------------------------------------------------------------------------
+// The lane plan is now relayed byte-faithfully via the CHUNKED context relay
+// (shared/context-relay.ts), never by an LLM `reader` agent echo — see the
+// elonchesd wf_6bfbd9f2-510 write-up on actStartSteps' plan-bytes/plan-sha
+// steps above. These two steps carry the byte count and git blob hash the
+// chunked relay needs, using the batch's own $__plan (no second probe).
+// ---------------------------------------------------------------------------
+
+describe('actStartSteps — plan-bytes / plan-sha steps', () => {
+  const read = laneStateReadScript({ epicBranch: '$__eb', epicSlug: 'x', taskIdsSpace: '$(jq -r \'.topological_order[]\' "$__plan")' })
+
+  it('emits plan-bytes (wc -c) and plan-sha (git hash-object) against $__plan, both tolerant, after resolve and before plan-shape', () => {
+    const steps = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
+    const n = names(steps)
+    expect(n.indexOf('plan-bytes')).toBeGreaterThan(n.indexOf('resolve'))
+    expect(n.indexOf('plan-sha')).toBeGreaterThan(n.indexOf('plan-bytes'))
+    expect(n.indexOf('plan-shape')).toBeGreaterThan(n.indexOf('plan-sha'))
+    const bytesStep = steps.find((s) => s.name === 'plan-bytes')!
+    const shaStep = steps.find((s) => s.name === 'plan-sha')!
+    expect(bytesStep.tolerant).toBe(true)
+    expect(shaStep.tolerant).toBe(true)
+    expect(bytesStep.command).toContain('wc -c')
+    expect(bytesStep.command).toContain('$__plan')
+    expect(shaStep.command).toContain('git hash-object')
+    expect(shaStep.command).toContain('$__plan')
   })
 
-  // #524 code review follow-up: the Read tool has its own line-count window,
-  // independent of the Bash-output truncation this whole fix was written to
-  // avoid — a large enough lane plan could still get cut off on read, and
-  // without explicit guidance the agent might fabricate a plausible-looking
-  // summary instead of the real content (exactly what happened with the old
-  // batched `cat` step under truncation pressure).
-  it('tells the agent to page through with offset rather than fabricate a partial answer', () => {
-    const p = readLanePlanPrompt('docs/epics/datum/e/lane-plan.json')
-    expect(p).toMatch(/offset/i)
-    expect(p).toMatch(/never answer with a partial|fabricat/i)
+  it('reports -1 bytes and an empty sha when no plan was resolved, rather than failing the batch', () => {
+    const steps = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
+    const bytesStep = steps.find((s) => s.name === 'plan-bytes')!
+    const shaStep = steps.find((s) => s.name === 'plan-sha')!
+    expect(bytesStep.command).toContain("printf -- '-1'")
+    expect(shaStep.command).toContain("printf ''")
+  })
+
+  it('runs under bash and reports the real byte count and a 40-hex git blob sha for a written plan file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-actstart-planbytes-'))
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: dir })
+      const content = '{"lanes":{"a":{}},"topological_order":["a"],"total_lanes":1}'
+      writeFileSync(join(dir, 'plan.json'), content)
+      const steps = actStartSteps({ branch: 'datum/e', lanePlanPath: join(dir, 'plan.json'), laneStateReadScript: 'echo "{}"' })
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(r.failed).toBeNull()
+      expect(stepStdout(r, 'plan-bytes')?.trim()).toBe(String(content.length))
+      expect(stepStdout(r, 'plan-sha')?.trim()).toMatch(/^[0-9a-f]{40}$/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

@@ -1,8 +1,9 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
+import { actStartSteps, verifyLanePlanShape } from './shared/lane-steps'
+import { contextChunkPlan, contextChunkSteps, contextAssembleChunks } from './shared/context-relay'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
@@ -424,22 +425,39 @@ if (shouldRun('act', 3)) {
   // Read lane plan — prefer lane-plan-final.json over stale lane-plan.json
   const epicDir = `docs/epics/${epicBranch}`
   const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, 'resolve') || '')
-  // Read as its own dedicated agent call, not folded into the actStart
-  // batch (#524 dogfooding) — a large lane-plan.json embedded in that
-  // batch's combined stdout could exceed the harness's inline-output
-  // truncation threshold, leaving the truncated agent with no way to
-  // relay content it never received.
-  const lanePlanText = await agent(
-    readLanePlanPrompt(lanePlanPath),
-    stageOpts('reader', { label: 'read-lane-plan', phase: 'Act', model: model('fast') }),
-  )
+  // Relayed byte-faithfully via the CHUNKED context relay, never by an LLM
+  // echo (#524 dogfooding, elonchesd run wf_6bfbd9f2-510 — a datum-reader
+  // agent silently normalised "§4" to "§ 4" inside 5 of 18 lanes'
+  // acceptance_criteria, which changed laneSpecHash() for those lanes and
+  // re-scheduled, re-ran and re-merged already-completed work). The plan
+  // cannot be deferred to an agent like a SPEC/TASKS doc — the script needs
+  // its exact JSON to schedule lanes — so it is read in fixed-size byte
+  // windows, each base64-encoded before it reaches any LLM turn, and
+  // reassembled here from raw bytes.
+  const planBytes = parseInt((stepStdout(actStartResult, 'plan-bytes') || '').trim(), 10)
+  const planSha = (stepStdout(actStartResult, 'plan-sha') || '').trim()
+  if (!Number.isFinite(planBytes) || planBytes < 0) {
+    throw new Error(`lane_plan_relay_mismatch: could not determine the byte size of ${lanePlanPath} (${describeFailure(actStartResult, 'act-start')})`)
+  }
+  const lanePlanChunkPlan = contextChunkPlan(planBytes)
+  const lanePlanChunkResults: BatchResult[] = []
+  for (let i = 0; i < lanePlanChunkPlan.length; i++) {
+    const chunkSteps = contextChunkSteps(lanePlanPath, lanePlanChunkPlan[i], i)
+    const chunkRaw = await agent(
+      batchCommandPrompt(chunkSteps),
+      stageOpts('cli', { label: `lane-plan-chunk-${i}`, phase: 'Act', model: model('fast') }),
+    )
+    lanePlanChunkResults.push(parseBatchResult(chunkRaw, chunkSteps))
+  }
+  const lanePlanText = contextAssembleChunks(lanePlanPath, planBytes, planSha, lanePlanChunkResults, lanePlanChunkPlan)
   // Safe: an unparseable result yields null, which the throw immediately
   // below already catches — a `null` default is never mistaken for a real
   // (if empty) lane plan.
-  const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
+  const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText, null) as LanePlan
   if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
-  // The reader agent can silently abridge a large plan; check its copy
-  // against the shape the act-start batch read straight from the file.
+  // Extra guard, independent of the chunked relay's byte checks: the plan's
+  // SHAPE (lane ids, topo length, total) read straight from the file by the
+  // act-start batch must agree with what got assembled.
   const planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, 'plan-shape'))
   if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) — refusing to execute a plan that differs from the file`)
 

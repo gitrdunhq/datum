@@ -22,6 +22,7 @@ import { join } from 'node:path'
 import { batchScript, parseBatchResult, type BatchResult, type BatchStep } from './batch'
 import {
   CONTEXT_RELAY_BUDGET_BYTES,
+  CONTEXT_CHUNK_BYTES,
   contextProbeSteps,
   contextRelayPlan,
   contextInlineSteps,
@@ -30,8 +31,12 @@ import {
   contextWitnessInstruction,
   verifyReadWitness,
   assertReadWitness,
+  contextChunkPlan,
+  contextChunkSteps,
+  contextAssembleChunks,
   type ContextFile,
 } from './context-relay'
+import { base64Encode } from './base64'
 
 const names = (steps: BatchStep[]) => steps.map((s) => s.name)
 
@@ -257,6 +262,156 @@ describe('assertReadWitness', () => {
 
   it('throws naming "missing" when the field is absent entirely', () => {
     expect(() => assertReadWitness([deferredA], {})).toThrow(/context_read_unverified: A\.md .*got missing/)
+  })
+})
+
+describe('contextChunkPlan', () => {
+  it('splits an exact multiple of the budget into equal chunks with no zero-length remainder', () => {
+    const plan = contextChunkPlan(32768, 16384)
+    expect(plan).toEqual([{ offset: 0, length: 16384 }, { offset: 16384, length: 16384 }])
+  })
+
+  it('leaves a final, shorter chunk for a remainder', () => {
+    const plan = contextChunkPlan(40000, 16384)
+    expect(plan).toEqual([
+      { offset: 0, length: 16384 },
+      { offset: 16384, length: 16384 },
+      { offset: 32768, length: 7232 },
+    ])
+  })
+
+  it('a file smaller than the budget is a single chunk covering the whole file', () => {
+    expect(contextChunkPlan(500, 16384)).toEqual([{ offset: 0, length: 500 }])
+  })
+
+  it('defaults to CONTEXT_CHUNK_BYTES (12 KB raw → 16 KB base64 on stdout, under the spill threshold)', () => {
+    expect(CONTEXT_CHUNK_BYTES).toBe(12 * 1024)
+    expect(Math.ceil((CONTEXT_CHUNK_BYTES * 4) / 3)).toBeLessThanOrEqual(CONTEXT_RELAY_BUDGET_BYTES)
+    const plan = contextChunkPlan(CONTEXT_CHUNK_BYTES + 1)
+    expect(plan).toEqual([
+      { offset: 0, length: CONTEXT_CHUNK_BYTES },
+      { offset: CONTEXT_CHUNK_BYTES, length: 1 },
+    ])
+  })
+
+  it('a zero or negative byte count is a single empty chunk, not an error', () => {
+    expect(contextChunkPlan(0)).toEqual([{ offset: 0, length: 0 }])
+    expect(contextChunkPlan(-1)).toEqual([{ offset: 0, length: 0 }])
+  })
+})
+
+describe('contextChunkSteps', () => {
+  it('emits a base64 payload step and a wc -c witness step over the same tail|head window', () => {
+    const steps = contextChunkSteps('docs/epics/x/lane-plan.json', { offset: 16384, length: 100 }, 2)
+    expect(names(steps)).toEqual(['ctx-chunk-2', 'ctx-chunk-wc-2'])
+    expect(steps.every((s) => s.tolerant)).toBe(true)
+    expect(steps[0].command).toContain('tail -c +16385')
+    expect(steps[0].command).toContain('head -c 100')
+    expect(steps[0].command).toContain('| base64')
+    expect(steps[1].command).toContain('tail -c +16385')
+    expect(steps[1].command).toContain('head -c 100')
+    expect(steps[1].command).toContain('wc -c')
+    expect(steps[1].command).not.toContain('base64')
+  })
+})
+
+describe('contextAssembleChunks', () => {
+  function chunkResult(i: number, text: string): BatchResult {
+    const bytes = Array.from(Buffer.from(text, 'utf8'))
+    return fake({ [`ctx-chunk-${i}`]: base64Encode(bytes), [`ctx-chunk-wc-${i}`]: String(bytes.length) })
+  }
+
+  it('assembles chunks in order, decoding base64 and verifying every byte count', () => {
+    const plan = [{ offset: 0, length: 5 }, { offset: 5, length: 6 }]
+    const results = [chunkResult(0, 'hello'), chunkResult(1, ' world')]
+    const out = contextAssembleChunks('SPEC.md', 11, 'deadbeef', results, plan)
+    expect(out).toBe('hello world')
+  })
+
+  it('reassembles a chunk boundary that splits a multibyte character (§4) without corrupting it', () => {
+    const text = 'acceptance criteria: §4 applies'
+    const bytes = Array.from(Buffer.from(text, 'utf8'))
+    const splitAt = bytes.indexOf(0xc2) + 1 // splits the 2-byte § sequence in half
+    const chunkABytes = bytes.slice(0, splitAt)
+    const chunkBBytes = bytes.slice(splitAt)
+    const plan = [{ offset: 0, length: chunkABytes.length }, { offset: chunkABytes.length, length: chunkBBytes.length }]
+    const results = [
+      fake({ 'ctx-chunk-0': base64Encode(chunkABytes), 'ctx-chunk-wc-0': String(chunkABytes.length) }),
+      fake({ 'ctx-chunk-1': base64Encode(chunkBBytes), 'ctx-chunk-wc-1': String(chunkBBytes.length) }),
+    ]
+    const out = contextAssembleChunks('SPEC.md', bytes.length, 'deadbeef', results, plan)
+    expect(out).toBe(text)
+  })
+
+  it('accepts chunk results spread across several BatchResult objects (one agent() call per chunk)', () => {
+    const plan = [{ offset: 0, length: 3 }, { offset: 3, length: 3 }]
+    const results = [chunkResult(0, 'abc'), chunkResult(1, 'def')]
+    expect(contextAssembleChunks('X.json', 6, 's', results, plan)).toBe('abcdef')
+  })
+
+  it('throws context_relay_mismatch naming the path and chunk index when a chunk is missing', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    expect(() => contextAssembleChunks('SPEC.md', 5, 's', [], plan)).toThrow(/context_relay_mismatch: SPEC\.md chunk 0/)
+  })
+
+  it('throws when a chunk\'s decoded bytes disagree with its own wc -c witness (tampered stdout)', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    const tampered = [fake({ 'ctx-chunk-0': base64Encode(Array.from(Buffer.from('hello'))), 'ctx-chunk-wc-0': '4' })]
+    expect(() => contextAssembleChunks('SPEC.md', 5, 's', tampered, plan)).toThrow(/context_relay_mismatch: SPEC\.md chunk 0 expected 4 bytes/)
+  })
+
+  it('throws when a chunk decodes to more/fewer bytes than its planned length', () => {
+    const plan = [{ offset: 0, length: 999 }]
+    const wrong = [fake({ 'ctx-chunk-0': base64Encode(Array.from(Buffer.from('hello'))), 'ctx-chunk-wc-0': '5' })]
+    expect(() => contextAssembleChunks('SPEC.md', 5, 's', wrong, plan)).toThrow(/context_relay_mismatch: SPEC\.md chunk 0 expected planned length 999/)
+  })
+
+  it('throws a total mismatch when every chunk verifies individually but the sum disagrees with the probe', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    const results = [chunkResult(0, 'hello')]
+    expect(() => contextAssembleChunks('SPEC.md', 999, 's', results, plan)).toThrow(/context_relay_mismatch: SPEC\.md total expected 999 bytes, got 5 bytes/)
+  })
+
+  it('throws on invalid base64 rather than assembling garbage', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    const bad = [fake({ 'ctx-chunk-0': '!!!not-base64!!!', 'ctx-chunk-wc-0': '5' })]
+    expect(() => contextAssembleChunks('SPEC.md', 5, 's', bad, plan)).toThrow(/context_relay_mismatch: SPEC\.md chunk 0 was not valid base64/)
+  })
+})
+
+describe('CHUNKED mode end-to-end under real bash', () => {
+  it('a 40 KB JSON file with multibyte (§4-style) text round-trips byte-for-byte through tail|head|base64 chunks and JSON.parses', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-chunk-'))
+    try {
+      const acceptance = 'acceptance_criteria §4, §12, naïve café 日本語 😀 '
+      const lanes: Record<string, { acceptance_criteria: string; pad: string }> = {}
+      for (let i = 0; i < 400; i++) {
+        lanes[`task-${i}`] = { acceptance_criteria: acceptance, pad: 'x'.repeat(80) }
+      }
+      const content = JSON.stringify({ lanes, topological_order: Object.keys(lanes), total_lanes: 400 })
+      writeFileSync(join(dir, 'lane-plan.json'), content, 'utf8')
+      const bytes = Buffer.byteLength(content, 'utf8')
+      expect(bytes).toBeGreaterThan(40 * 1024)
+
+      const plan = contextChunkPlan(bytes, CONTEXT_RELAY_BUDGET_BYTES)
+      expect(plan.length).toBeGreaterThan(1)
+      const results = plan.map((chunk, i) => {
+        const steps = contextChunkSteps('lane-plan.json', chunk, i)
+        return parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      })
+      const assembled = contextAssembleChunks('lane-plan.json', bytes, 'irrelevant-for-this-check', results, plan)
+      expect(assembled).toBe(content)
+      const parsed = JSON.parse(assembled)
+      expect(parsed.total_lanes).toBe(400)
+      expect(parsed.lanes['task-0'].acceptance_criteria).toBe(acceptance)
+
+      // Tamper with one chunk's stdout the way a normalising runner would —
+      // must throw, never silently assemble the corrupted version.
+      const tamperedResults = results.map((r, i) => (i === 0 ? { ...r, steps: r.steps.map((s) => (s.name === 'ctx-chunk-0' ? { ...s, stdout: base64Encode([1, 2, 3]) } : s)) } : r))
+      expect(() => contextAssembleChunks('lane-plan.json', bytes, 'irrelevant-for-this-check', tamperedResults, plan)).toThrow(/context_relay_mismatch/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
