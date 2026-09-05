@@ -441,7 +441,7 @@ describe('ownership check fails closed, not open (agent-based verifyFileOwnershi
     // batches, same evaluator (ownershipFromStdout), so both modes agree.
     const body = ownershipFnBody()
     expect(body).toMatch(/ownershipCheckSteps\(wt\)/)
-    expect(body).toMatch(/batchCommandPrompt\(/)
+    expect(body).toMatch(/await runBatch\(steps, /)
     expect(body).toMatch(/ownershipFromStdout\(stepStdout\(/)
     expect(body).not.toMatch(/files_changed/)
   })
@@ -903,7 +903,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     // context_read_unverified on a missing/forged witness.
     const runLaneOnly = body.slice(0, body.indexOf('async function runSkepticPanel'))
     expect(runLaneOnly.match(/await resilientAgent\(/g) || []).toEqual([])
-    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(9)
+    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(10)
     expect(laneSource).toMatch(/assertReadWitness\(\[?specFile\]?, /)
   })
 
@@ -911,7 +911,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(laneSource).toMatch(/error: e instanceof Error \? e\.message : String\(e\)/)
     expect(laneSource).toMatch(/stage: staged \|\| 'CRASH'/)
     // Every witnessed call names its stage; skeptic lenses are GREEN-stage evidence.
-    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(9)
+    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(10)
     expect(laneSource).toMatch(/assertStageWitness\(specFile, r, 'GREEN'\)/)
   })
 })

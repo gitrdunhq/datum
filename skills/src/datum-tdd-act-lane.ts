@@ -1,6 +1,6 @@
 import { model, type ModelName } from './shared/models'
 import { runCommandPrompt } from './shared/boot'
-import { resilientAgent, verifyCommitIndependently, parseCommitVerification } from './shared/agents'
+import { resilientAgent, runBatch, verifyCommitIndependently, parseCommitVerification } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
@@ -113,13 +113,7 @@ async function verifyFileOwnership(
   // be told to run the diff and RETURN a JSON list of the changed paths — a
   // typed-back list that could drop a path and hide a real violation.
   const steps = ownershipCheckSteps(wt)
-  const result = parseBatchResult(
-    await agent(
-      batchCommandPrompt(steps),
-      stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }),
-    ),
-    steps,
-  )
+  const result = await runBatch(steps, stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }))
 
   // A missing result is a named tooling failure, never a clean check — the
   // ownership-check agent crashed, was skipped, or returned nothing parseable.
@@ -346,11 +340,8 @@ No markdown fences, no explanation.`,
     wt, epicBranch: cfg.epicBranch, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
     laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan, taskId) },
   })
-  const intakeRaw = await agent(
-    batchCommandPrompt(intakeSteps),
-    stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }),
-  )
-  const intakeResult = parseBatchResult(intakeRaw, intakeSteps)
+  const intakeRaw = await runBatch(intakeSteps, stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }))
+  const intakeResult = intakeRaw
   const intake = intakeResult
   // A missing intake result is an infrastructure failure, not a fresh lane:
   // treating it as empty history is what re-dispatched RED onto a lane that
@@ -433,11 +424,8 @@ No markdown fences, no explanation.`,
       cleanupCmd: null, planSkeletonPath: '', skeletonCmd: '', preflightPath: '',
       verifyTestCmd: scopedTestCmd,
     })
-    const intakeVerifyRaw = await agent(
-      batchCommandPrompt(intakeVerifySteps),
-      stageOpts('cli', { label: `lane-intake-verify:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-    const intakeVerify = parseBatchResult(intakeVerifyRaw, intakeVerifySteps)
+    const intakeVerifyRaw = await runBatch(intakeVerifySteps, stageOpts('cli', { label: `lane-intake-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+    const intakeVerify = intakeVerifyRaw
     const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, 'test-verify'))
 
     if (intakeVerifyExit === null) {
@@ -470,10 +458,7 @@ No markdown fences, no explanation.`,
       return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: could not find the RED commit sha in lane history to reset to (${redCommitInfo.detail})` }
     }
     const resetToRedSteps = worktreeResetToSteps(wt, redCommitInfo.commitSha)
-    const resetToRedResult = parseBatchResult(
-      await agent(batchCommandPrompt(resetToRedSteps), stageOpts('cli', { label: `reset-to-red:${taskId}`, phase: 'Act', model: model('fast') })),
-      resetToRedSteps,
-    )
+    const resetToRedResult = await runBatch(resetToRedSteps, stageOpts('cli', { label: `reset-to-red:${taskId}`, phase: 'Act', model: model('fast') }))
     // HEAD must BE the RED sha before RED is re-dispatched: a refused reset
     // still parses as a batch (elonchesd wf_2b0230c2-f41 task-016).
     const resetToRed = worktreeResetToFromSteps(resetToRedResult, redCommitInfo.commitSha)
@@ -610,10 +595,7 @@ No markdown fences, no explanation.`,
       // commit-check / success-retry paths below (mirrors GREEN's BUG F fix).
       const redFirstFailure = 'red_no_result: RED agent returned nothing (likely the maxTurns cap in agents/datum-red.md, an API error, or a skip)'
       const redResetStepList = worktreeResetSteps(wt)
-      const redResetResult = parseBatchResult(
-        await agent(batchCommandPrompt(redResetStepList), stageOpts('cli', { label: `red-reset:${taskId}`, phase: 'Act', model: model('fast') })),
-        redResetStepList,
-      )
+      const redResetResult = await runBatch(redResetStepList, stageOpts('cli', { label: `red-reset:${taskId}`, phase: 'Act', model: model('fast') }))
       const redLeftover = (stepStdout(redResetResult, 'status') || '').trim()
       log(`[${taskId}] RED attempt 1: ${redFirstFailure}; worktree reset to HEAD before retry${redLeftover ? ` (WARNING: still dirty: ${redLeftover.split('\n').length} paths)` : ''}`)
       red = await witnessedAgent(
@@ -728,11 +710,8 @@ No markdown fences, no explanation.`,
     verifyTestCmd: scopedTestCmd,
     baseRef: cfg.epicBranch,
   })
-  const postRedRaw = await agent(
-    batchCommandPrompt(postRed),
-    stageOpts('cli', { label: `post-red:${taskId}`, phase: 'Act', model: model('fast') }),
-  )
-  const postRedResult = parseBatchResult(postRedRaw, postRed)
+  const postRedRaw = await runBatch(postRed, stageOpts('cli', { label: `post-red:${taskId}`, phase: 'Act', model: model('fast') }))
+  const postRedResult = postRedRaw
 
   // ── New-test-function count gate — deterministic script execution, no LLM mediation (#253) ──
   if (acCount > 0) {
@@ -855,13 +834,7 @@ No markdown fences, no explanation.`,
     contractPreflight: isPytestLane ? { testFiles, implFiles, scopedTestCmd } : null,
   })
   const scopeContractResult = scopeContract.length > 0
-    ? parseBatchResult(
-        await agent(
-          batchCommandPrompt(scopeContract),
-          stageOpts('cli', { label: `scope-contract:${taskId}`, phase: 'Act', model: model('fast') }),
-        ),
-        scopeContract,
-      )
+    ? await runBatch(scopeContract, stageOpts('cli', { label: `scope-contract:${taskId}`, phase: 'Act', model: model('fast') }))
     : null
 
   if (scopeGaps.length > 0) {
@@ -995,12 +968,7 @@ No markdown fences, no explanation.`,
       // told to "Run:" the command and echo it — a summarised echo parsed
       // as "skipped" and turned a real contract_conflict into a blind retry.
       const checkSteps = scopeContractSteps({ wt, scopeGaps: [], contractPreflight: { testFiles, implFiles, scopedTestCmd } })
-      const checkResult = parseBatchResult(
-        await agent(batchCommandPrompt(checkSteps), stageOpts('cli', {
-          label: `contract-check:${taskId}`, phase: 'Act', model: model('fast'),
-        })),
-        checkSteps,
-      )
+      const checkResult = await runBatch(checkSteps, stageOpts('cli', { label: `contract-check:${taskId}`, phase: 'Act', model: model('fast') }))
       greenPreflight = parseContractPreflight(stepStdout(checkResult, 'contract-preflight'))
     }
     const decision = decideGreenBlock(green, greenPreflight)
@@ -1041,10 +1009,7 @@ No markdown fences, no explanation.`,
       if (!green) {
         firstFailure = 'green_no_result: GREEN agent returned nothing (likely the maxTurns cap in agents/datum-green.md, an API error, or a skip)'
         const resetStepList = worktreeResetSteps(wt)
-        const resetResult = parseBatchResult(
-          await agent(batchCommandPrompt(resetStepList), stageOpts('cli', { label: `green-reset:${taskId}`, phase: 'Act', model: model('fast') })),
-          resetStepList,
-        )
+        const resetResult = await runBatch(resetStepList, stageOpts('cli', { label: `green-reset:${taskId}`, phase: 'Act', model: model('fast') }))
         const leftover = (stepStdout(resetResult, 'status') || '').trim()
         log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''}`)
       }
@@ -1078,11 +1043,8 @@ No markdown fences, no explanation.`,
   // deterministicChecks(), unlike the ownership read below) and trust that
   // result over the agent's self-report, before ever consulting it.
   const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
-  const postGreenVerifyRaw = await agent(
-    batchCommandPrompt(postGreenVerify),
-    stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }),
-  )
-  const postGreenVerifyResult = parseBatchResult(postGreenVerifyRaw, postGreenVerify)
+  const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+  const postGreenVerifyResult = postGreenVerifyRaw
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, 'test-verify'))
   if (greenVerifyExit !== 0) {
     log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? 'null'} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`)
@@ -1126,16 +1088,51 @@ No markdown fences, no explanation.`,
 
   // Post-GREEN ownership (#368 item D): one datum-cli diff evaluated here,
   // or the standalone LLM check when the hooks are not installed.
-  let greenOwnership: OwnershipCheckResult
-  if (deterministic) {
-    const postGreen = postGreenSteps({ wt })
-    const postGreenRaw = await agent(
-      batchCommandPrompt(postGreen),
-      stageOpts('cli', { label: `post-green:${taskId}`, phase: 'Act', model: model('fast') }),
+  const checkGreenOwnership = async (labelSuffix: string): Promise<OwnershipCheckResult> => {
+    if (deterministic) {
+      const postGreen = postGreenSteps({ wt })
+      const postGreenRaw = await runBatch(postGreen, stageOpts('cli', { label: `post-green${labelSuffix}:${taskId}`, phase: 'Act', model: model('fast') }))
+      return ownershipFromStdout(stepStdout(postGreenRaw, 'ownership'), implFiles, testFiles)
+    }
+    return verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+  }
+  let greenOwnership: OwnershipCheckResult = await checkGreenOwnership('')
+  // GREEN that touched the lane's OWN test files is a TDD violation of the
+  // stage, not a foreign-file violation: name it green_edited_tests, reset the
+  // worktree to the RED commit and re-run GREEN once with that as the hint
+  // (elonchesd wf_0593c210-f04 task-011). A retry that violates again fails.
+  const ownTestsOnly = (o: OwnershipCheckResult): boolean =>
+    !o.checkFailed && o.violations.length > 0 && o.violations.every((v) => testFiles.some((t) => v.startsWith(`${t} `)))
+  if (!greenOwnership.ok && ownTestsOnly(greenOwnership) && red.commit_sha) {
+    const touched = [...new Set(greenOwnership.violations.map((v) => v.split(' ')[0]))]
+    const hint = `green_edited_tests: GREEN modified the lane's test files [${touched.join(', ')}]; write only the implementation files and never amend or rewrite the RED commit`
+    log(`[${taskId}] ${hint} — resetting to the RED commit ${red.commit_sha} and re-running GREEN once`)
+    const testsResetSteps = worktreeResetToSteps(wt, red.commit_sha)
+    const testsReset = worktreeResetToFromSteps(
+      await runBatch(testsResetSteps, stageOpts('cli', { label: `green-tests-reset:${taskId}`, phase: 'Act', model: model('fast') })),
+      red.commit_sha,
     )
-    greenOwnership = ownershipFromStdout(stepStdout(parseBatchResult(postGreenRaw, postGreen), 'ownership'), implFiles, testFiles)
-  } else {
-    greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+    if (!testsReset.ok) {
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `${hint} (could not reset for the retry: ${testsReset.error})` }
+    }
+    green = await witnessedAgent(
+      greenRetryPrompt({
+        ...greenVars,
+        failureReason: hint,
+        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: 'green_edited_tests' }),
+      }),
+      stageOpts('green', { label: `green-tests-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile, 'GREEN',
+    )
+    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts('cli', { label: `post-green-tests-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+    const retryExit = testExitCode(stepStdout(retryVerify, 'test-verify'))
+    if (!green || !green.success || retryExit !== 0) {
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `${hint} — retry ${!green ? 'returned nothing' : !green.success ? `failed: ${green.failure_reason || 'no reason'}` : `did not pass the suite (exit=${retryExit ?? 'null'})`}` }
+    }
+    greenOwnership = await checkGreenOwnership('-tests-retry')
+    if (!greenOwnership.ok && ownTestsOnly(greenOwnership)) {
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_edited_tests: GREEN modified test files again on retry [${[...new Set(greenOwnership.violations.map((v) => v.split(' ')[0]))].join(', ')}]` }
+    }
   }
   if (!greenOwnership.ok) {
     const greenPrefix = greenOwnership.checkFailed ? 'ownership_check_failed' : 'file_ownership_violation'
@@ -1172,11 +1169,8 @@ No markdown fences, no explanation.`,
     // Independent re-verification of the retry — never trust the retry
     // agent's own self-report alone (same green-blindness concern as #386).
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
-    const retryVerifyRaw = await agent(
-      batchCommandPrompt(retryVerifySteps),
-      stageOpts('cli', { label: `post-green-skeptic-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-    const retryVerifyExit = testExitCode(stepStdout(parseBatchResult(retryVerifyRaw, retryVerifySteps), 'test-verify'))
+    const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts('cli', { label: `post-green-skeptic-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+    const retryVerifyExit = testExitCode(stepStdout(retryVerifyRaw, 'test-verify'))
 
     if (retryVerifyExit !== 0 || !green || !green.success) {
       const first = confirmedBugs[0]
@@ -1329,21 +1323,15 @@ async function runRefactor(
     // treating it as "no refactor applied" — never blindly return verified:true.
     const failure = 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'
     const resetStepList = worktreeResetSteps(wt)
-    const resetResult = parseBatchResult(
-      await agent(batchCommandPrompt(resetStepList), stageOpts('cli', { label: `refactor-reset:${taskId}`, phase: 'Act', model: model('fast') })),
-      resetStepList,
-    )
+    const resetResult = await runBatch(resetStepList, stageOpts('cli', { label: `refactor-reset:${taskId}`, phase: 'Act', model: model('fast') }))
     const leftover = (stepStdout(resetResult, 'status') || '').trim()
     log(`[${taskId}] REFACTOR: ${failure}; worktree reset to HEAD${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''} — treating as no refactor applied (optional stage)`)
 
     const noRefactorVerifySteps = [
       { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
     ]
-    const noRefactorVerifyRaw = await agent(
-      batchCommandPrompt(noRefactorVerifySteps),
-      stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }),
-    )
-    const noRefactorVerifyResult = parseBatchResult(noRefactorVerifyRaw, noRefactorVerifySteps)
+    const noRefactorVerifyRaw = await runBatch(noRefactorVerifySteps, stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+    const noRefactorVerifyResult = noRefactorVerifyRaw
     if (noRefactorVerifyResult.missing) {
       return { verified: false, error: `${failure} (verify batch could not run: ${describeFailure(noRefactorVerifyResult, 'post-refactor-verify')})` }
     }
@@ -1375,11 +1363,8 @@ async function runRefactor(
   const verifySteps = [
     { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
   ]
-  const verifyRaw = await agent(
-    batchCommandPrompt(verifySteps),
-    stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }),
-  )
-  let refactorVerifyExit = testExitCode(stepStdout(parseBatchResult(verifyRaw, verifySteps), 'test-verify'))
+  const verifyRaw = await runBatch(verifySteps, stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+  let refactorVerifyExit = testExitCode(stepStdout(verifyRaw, 'test-verify'))
   if (refactorVerifyExit !== 0) {
     log(`[${taskId}] REFACTOR VERIFY FAILED: independent run exit=${refactorVerifyExit ?? 'n/a'} (agent self-reported tests_pass=${!!refactor.tests_pass}) — ${refactor.committed ? 'reverting the refactor commit' : 'agent reported no commit'}`)
     if (refactor.committed) {
@@ -1387,11 +1372,8 @@ async function runRefactor(
         { name: 'revert', command: `git -C "${wt}" revert --no-edit HEAD`, tolerant: true },
         { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-reverify'), tolerant: true },
       ]
-      const revertRaw = await agent(
-        batchCommandPrompt(revertSteps),
-        stageOpts('cli', { label: `revert-refactor:${taskId}`, phase: 'Act', model: model('fast') }),
-      )
-      const revertResult = parseBatchResult(revertRaw, revertSteps)
+      const revertRaw = await runBatch(revertSteps, stageOpts('cli', { label: `revert-refactor:${taskId}`, phase: 'Act', model: model('fast') }))
+      const revertResult = revertRaw
       refactorVerifyExit = testExitCode(stepStdout(revertResult, 'test-verify'))
       log(`[${taskId}] REFACTOR reverted (revert exit=${stepResult(revertResult, 'revert')?.exit_code ?? 'n/a'}); suite after revert exit=${refactorVerifyExit ?? 'n/a'}`)
     }

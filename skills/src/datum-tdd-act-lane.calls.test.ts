@@ -192,13 +192,24 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(labels).not.toContain('post-green')
   })
 
-  it('deterministic ownership: a GREEN commit touching a test file fails the lane with file_ownership_violation', async () => {
+  it('deterministic ownership: a GREEN commit touching a FOREIGN file fails the lane with file_ownership_violation', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (label.startsWith('post-green:') ? batch({ ownership: 'src/a.ts\nsrc/other.ts\n' }) : base(label, prompt))
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/file_ownership_violation: .*src\/other\.ts/)
+    expect(calls.some((c) => c.label.startsWith('skeptic-'))).toBe(false)
+    expect(calls.some((c) => c.label.startsWith('green-tests-retry:'))).toBe(false)
+  })
+
+  it('deterministic ownership: a GREEN commit touching its own test file is green_edited_tests, and stops there when the reset for the retry cannot be confirmed', async () => {
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => (label.startsWith('post-green:') ? batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' }) : base(label, prompt))
     const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.stage).toBe('GREEN')
-    expect(result.results.T1.error).toMatch(/file_ownership_violation: .*src\/a\.test\.ts/)
+    expect(result.results.T1.error).toMatch(/^green_edited_tests: GREEN modified the lane's test files \[src\/a\.test\.ts\].*could not reset for the retry/)
     expect(calls.some((c) => c.label.startsWith('skeptic-'))).toBe(false)
   })
 
@@ -393,6 +404,69 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(result.results.T1.stage).toBe('RED')
     expect(result.results.T1.error).toMatch(/^test_count_missing: test-count-before/)
     expect(calls.some((c) => c.label.startsWith('reflect:'))).toBe(false)
+  })
+
+  // elonchesd wf_0593c210-f04 task-011: GREEN's diff included the lane's own
+  // test file and the lane failed as "owned by another lane". That is
+  // green_edited_tests: reset to RED, re-run GREEN once with the hint.
+  it('a GREEN diff that touches the lane\'s own test file resets to RED and retries GREEN once as green_edited_tests', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let postGreenCalls = 0
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('post-green:')) { postGreenCalls++; return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' }) }
+      if (label.startsWith('green-tests-reset:')) return batch({ reset: '', clean: '', status: '', head: 'aaa111\n' })
+      if (label.startsWith('green-tests-retry:')) return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ddd444', files_written: ['src/a.ts'], test_exit_code: 0 }
+      if (label.startsWith('post-green-tests-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
+      if (label.startsWith('post-green-tests-retry:')) return batch({ ownership: 'src/a.ts\n' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    const retry = calls.find((c) => c.label.startsWith('green-tests-retry:'))!
+    expect(retry.prompt).toMatch(/green_edited_tests: GREEN modified the lane's test files \[src\/a\.test\.ts\]/)
+    expect(calls.some((c) => c.label.startsWith('green-tests-reset:'))).toBe(true)
+    expect(postGreenCalls).toBe(1)
+  })
+
+  it('a GREEN that touches its test file again on the retry fails the lane as green_edited_tests, never "owned by another lane"', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('post-green:') || label.startsWith('post-green-tests-retry:')) return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' })
+      if (label.startsWith('green-tests-reset:')) return batch({ reset: '', clean: '', status: '', head: 'aaa111\n' })
+      if (label.startsWith('green-tests-retry:')) return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ddd444', files_written: ['src/a.ts'], test_exit_code: 0 }
+      if (label.startsWith('post-green-tests-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^green_edited_tests: GREEN modified test files again on retry \[src\/a\.test\.ts\]/)
+    expect(result.results.T1.error).not.toMatch(/another lane/)
+  })
+
+  // elonchesd wf_0593c210-f04: identical batches, one allowed, two refused by
+  // the host classifier. A refused batch is re-sent once to a fresh runner.
+  it('a runner refusal on the intake batch is retried once with a fresh runner label before the lane fails', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let intakeCalls = 0
+    const respond: Responder = (label, prompt) => {
+      if (label === 'lane-intake:T1') { intakeCalls++; return 'The permission classifier blocked execution of this script.' }
+      if (label === 'lane-intake:T1:retry') { intakeCalls++; return base('lane-intake:T1', prompt) }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(intakeCalls).toBe(2)
+  })
+
+  it('two refusals in a row fail the lane as runner_permission_denied', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) return 'Bash was blocked by the auto-mode classifier due to permission restrictions.'
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/lane_intake_failed: .*runner_permission_denied/)
   })
 
   // -------------------------------------------------------------------------

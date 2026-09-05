@@ -12,12 +12,48 @@
 // real callers is unchanged.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resilientAgent } from './agents'
+import { resilientAgent, runBatch } from './agents'
+import { describeFailure } from './batch'
 import { configureAgentTypes } from './agent-types'
 
 // resilientAgent's dirty-worktree guard routes through stageOpts('cli'),
 // which refuses to run before a script has configured the switches.
 beforeEach(() => configureAgentTypes({}))
+
+describe('runBatch — one retry on a runner refusal', () => {
+  const steps = [{ name: 'reset', command: 'git reset --hard abc' }]
+  const arr = JSON.stringify([{ name: 'reset', exit_code: 0, stdout: '', stderr: '' }])
+
+  it('re-sends a refused batch once with a fresh label and a retry marker in the prompt', async () => {
+    const prompts: string[] = []
+    const labels: string[] = []
+    const logs: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'reset-to-red:T1' }, {
+      agentFn: async (prompt, opts) => { prompts.push(prompt); labels.push(opts?.label || ''); return ++n === 1 ? 'The permission classifier blocked execution of git reset --hard.' : arr },
+      logFn: (m) => logs.push(m),
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['reset-to-red:T1', 'reset-to-red:T1:retry'])
+    expect(prompts[1]).not.toBe(prompts[0])
+    expect(prompts[1]).toContain('attempt 2 of 2')
+    expect(logs.some((l) => /runner_permission_denied on attempt 1/.test(l))).toBe(true)
+  })
+
+  it('does not retry a parsed batch, a null, or a non-refusal prose reply', async () => {
+    for (const reply of [arr, null, 'Here is a summary of the output.']) {
+      let calls = 0
+      await runBatch(steps, { label: 'x' }, { agentFn: async () => { calls++; return reply }, logFn: () => undefined })
+      expect(calls).toBe(1)
+    }
+  })
+
+  it('a second refusal is returned as the refusal for the caller to name', async () => {
+    const r = await runBatch(steps, { label: 'x' }, { agentFn: async () => 'Bash was blocked by the classifier.', logFn: () => undefined })
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'x')).toMatch(/^x: runner_permission_denied/)
+  })
+})
 
 describe('resilientAgent', () => {
   // caliper task-007: the first reflect attempt returned nothing and only the
