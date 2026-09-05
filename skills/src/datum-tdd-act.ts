@@ -311,12 +311,15 @@ log(`${'═'.repeat(60)}`)
 
 // ── Triage ──
 
-if (failures.length > 0) {
+// A GREEN blocked on files outside its scope is a lane-plan defect, not a
+// dependency block: it is triaged even when no lane failed (caliper BUG L).
+const laneNeedsWrite = blockedLanes.filter(id => Array.isArray(results[id]?.needs_write))
+if (failures.length > 0 || laneNeedsWrite.length > 0) {
   log('── Triage ──')
   try {
     const triage = await workflow(
       { scriptPath: sk('datum-tdd-act-triage') },
-      { failures, blocked: blockedLanes.map(id => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
+      { failures: [...failures, ...laneNeedsWrite], blocked: blockedLanes.filter(id => !laneNeedsWrite.includes(id)).map(id => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
     ) as { filed?: number; consumer_findings?: number; skipped?: number } | null
     log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`)
   } catch (exc) {

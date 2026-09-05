@@ -37,6 +37,11 @@ interface PrefixRule {
 const PREFIX_RULES: PrefixRule[] = [
   // ── infrastructure: git/tooling/relay/gate plumbing the pipeline itself runs ──
   {
+    test: /\bgreen_blocked_needs_write\b/,
+    category: 'lane_plan',
+    reason: 'green_blocked_needs_write: GREEN stopped honestly because passing requires a file outside the lane\'s allowed_write_files — the lane plan under-scoped the lane. Fix: add the listed path(s) to the lane\'s `files` and re-run act; the partial implementation is kept as a wip commit on the lane branch.',
+  },
+  {
     test: /\bgreen_edited_tests\b/,
     category: 'agent_behavior',
     reason: 'green_edited_tests: the GREEN agent modified the lane\'s own test files (or rewrote the RED commit) — a stage discipline violation by the agent, retried once from the RED commit with the hint; the lane failed only if it did it again.',

@@ -124,3 +124,18 @@ describe('triage child workflow is guarded and its counts are logged', () => {
     })
   }
 })
+
+// caliper BUG L: a GREEN blocked on files outside its scope is not a
+// dependency block — both orchestrators name it, list it, and hand it to
+// triage even when no lane failed.
+describe('GREEN needs-write blocks are surfaced and triaged in both orchestrators', () => {
+  for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
+    it(`${f} lists needs-write lanes under LEAD APPROVAL NEEDED and runs triage for them`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/LEAD APPROVAL NEEDED/)
+      expect(src).toMatch(/const \w*[nN]eedsWrite\w* = \w+\.filter\(/)
+      expect(src).toMatch(/if \((actFailures|failures)\.length > 0 \|\| \w*[nN]eedsWrite\w*\.length > 0\)/)
+      expect(src).toMatch(/failures: \[\.\.\.(actFailures|failures), \.\.\.\w*[nN]eedsWrite\w*\]/)
+    })
+  }
+})

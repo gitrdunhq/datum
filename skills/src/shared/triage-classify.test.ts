@@ -18,6 +18,12 @@ describe('classifyLaneError — deterministic infrastructure prefixes', () => {
     ['no worktree path', 'no worktree path for task-004 (setup returned undefined) — refusing to run outside an isolated worktree'],
   ]
 
+  it('green_blocked_needs_write is a lane-plan defect (widen the lane\'s files), classified deterministically', () => {
+    const r = classifyLaneError('green_blocked_needs_write: [tests/unit/test_part_stock.py] — the RED test asserts a strict equality the red_note authorises relaxing', 'GREEN')
+    expect(r.category).toBe('lane_plan')
+    expect(r.confidence).toBe('deterministic')
+  })
+
   it.each(infraCases)('%s classifies as infrastructure with deterministic confidence', (_label, error) => {
     const result = classifyLaneError(error, 'RED')
     expect(result.category).toBe('infrastructure')
