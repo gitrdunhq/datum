@@ -527,7 +527,7 @@ function worktreeResetToSteps(wt, sha) {
 function worktreeResetToFromSteps(result, sha) {
   if (result.missing) return { ok: false, error: `worktree_reset_failed: ${describeFailure(result, "reset-to-red")}` };
   const head = stepStdout(result, "head");
-  if (head === null) return { ok: false, error: "worktree_reset_failed: the head step did not run \u2014 cannot confirm where the worktree is" };
+  if (head === null) return { ok: false, error: `worktree_reset_failed: the head step did not run \u2014 cannot confirm where the worktree is (steps returned: ${result.steps.map((st) => `${st.name}=${st.exit_code}`).join(", ") || "none"})` };
   const got = head.trim();
   const resolved = (stepStdout(result, "target") || "").trim() || sha;
   if (got !== sha && got !== resolved) {
@@ -812,6 +812,12 @@ fi` : gen,
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "intake-verify"), tolerant: true });
   }
   return steps;
+}
+function testEnvMissing(stdout) {
+  if (!stdout) return null;
+  const re = /command not found|node_modules missing|did you mean to install|No module named ['"]?pytest|Cannot find module ['"]vitest|vitest: not found|not recognized as an internal or external command/i;
+  const line = stdout.split("\n").map((l) => l.trim()).find((l) => re.test(l));
+  return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, "") : null;
 }
 function testExitCode(stdout) {
   if (!stdout) return null;
@@ -1475,6 +1481,11 @@ No markdown fences, no explanation.`,
     const intakeVerifyRaw = await runBatch(intakeVerifySteps, stageOpts("cli", { label: `lane-intake-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const intakeVerify = intakeVerifyRaw;
     const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, "test-verify"));
+    const intakeEnvMissing = testEnvMissing(stepStdout(intakeVerify, "test-verify"));
+    if (intakeEnvMissing) {
+      log(`[${taskId}] test_env_missing: ${intakeEnvMissing}`);
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `test_env_missing: ${intakeEnvMissing} \u2014 the lane worktree has no test environment (dependencies not linked/installed); no verdict on the committed GREEN` };
+    }
     if (intakeVerifyExit === null) {
       const why = describeFailure(intakeVerify, "lane intake verify");
       log(`[${taskId}] LANE INTAKE VERIFY FAILED: ${why} \u2014 cannot confirm the existing GREEN commit passes the suite; refusing to assume it does`);
@@ -1731,6 +1742,11 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${assertDetail}` };
   }
   const redVerifyExit = testExitCode(stepStdout(postRedResult, "test-verify"));
+  const redEnvMissing = testEnvMissing(stepStdout(postRedResult, "test-verify"));
+  if (redEnvMissing) {
+    log(`[${taskId}] test_env_missing: ${redEnvMissing}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: `test_env_missing: ${redEnvMissing} \u2014 the lane worktree has no test environment; RED's failure is not evidence` };
+  }
   if (redVerifyExit === 0) {
     log(`[${taskId}] RED VERIFY FAILED: independent re-run of the test suite exited 0 (green blindness), regardless of agent self-report (tests_pass=${red.tests_pass})`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "green_blindness_violation: independent test-verify step confirms tests passed after RED" };
@@ -1934,6 +1950,11 @@ No markdown fences, no explanation.`,
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") }));
   const postGreenVerifyResult = postGreenVerifyRaw;
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, "test-verify"));
+  const greenEnvMissing = testEnvMissing(stepStdout(postGreenVerifyResult, "test-verify"));
+  if (greenEnvMissing) {
+    log(`[${taskId}] test_env_missing: ${greenEnvMissing}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: `test_env_missing: ${greenEnvMissing} \u2014 the lane worktree has no test environment; GREEN's verify is not evidence` };
+  }
   if (greenVerifyExit !== 0) {
     log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? "null"} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
     return {

@@ -78,6 +78,11 @@ function configureAgentTypes(opts) {
 var PREFIX_RULES = [
   // ── infrastructure: git/tooling/relay/gate plumbing the pipeline itself runs ──
   {
+    test: /\btest_env_missing\b/,
+    category: "infrastructure",
+    reason: "test_env_missing: the lane worktree has no test environment (runner/interpreter not found) \u2014 dependencies were not linked or installed into the worktree; the suite's exit code is not evidence about the code. Fix: worktree_link_dirs in .datum/config.json / install deps in the main checkout."
+  },
+  {
     test: /\bgreen_blocked_needs_write\b/,
     category: "lane_plan",
     reason: "green_blocked_needs_write: GREEN stopped honestly because passing requires a file outside the lane's allowed_write_files \u2014 the lane plan under-scoped the lane. Fix: add the listed path(s) to the lane's `files` and re-run act; the partial implementation is kept as a wip commit on the lane branch."
