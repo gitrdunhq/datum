@@ -359,84 +359,6 @@ function utf8ByteLength(s) {
   return bytes;
 }
 
-// skills/src/shared/sha1.ts
-function rotl(x, n) {
-  return (x << n | x >>> 32 - n) >>> 0;
-}
-function sha1Hex(bytes) {
-  const msgBitsLow = bytes.length * 8 >>> 0;
-  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
-  const padded = bytes.slice();
-  padded.push(128);
-  while (padded.length % 64 !== 56) padded.push(0);
-  padded.push(
-    msgBitsHigh >>> 24 & 255,
-    msgBitsHigh >>> 16 & 255,
-    msgBitsHigh >>> 8 & 255,
-    msgBitsHigh & 255,
-    msgBitsLow >>> 24 & 255,
-    msgBitsLow >>> 16 & 255,
-    msgBitsLow >>> 8 & 255,
-    msgBitsLow & 255
-  );
-  let h0 = 1732584193;
-  let h1 = 4023233417;
-  let h2 = 2562383102;
-  let h3 = 271733878;
-  let h4 = 3285377520;
-  const w = new Array(80).fill(0);
-  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
-    for (let i = 0; i < 16; i++) {
-      const o = chunkStart + i * 4;
-      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
-    }
-    for (let i = 16; i < 80; i++) {
-      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-    }
-    let a2 = h0;
-    let b = h1;
-    let c = h2;
-    let d = h3;
-    let e = h4;
-    for (let i = 0; i < 80; i++) {
-      let f;
-      let k;
-      if (i < 20) {
-        f = b & c | ~b & d;
-        k = 1518500249;
-      } else if (i < 40) {
-        f = b ^ c ^ d;
-        k = 1859775393;
-      } else if (i < 60) {
-        f = b & c | b & d | c & d;
-        k = 2400959708;
-      } else {
-        f = b ^ c ^ d;
-        k = 3395469782;
-      }
-      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
-      e = d;
-      d = c;
-      c = rotl(b, 30);
-      b = a2;
-      a2 = temp;
-    }
-    h0 = h0 + a2 >>> 0;
-    h1 = h1 + b >>> 0;
-    h2 = h2 + c >>> 0;
-    h3 = h3 + d >>> 0;
-    h4 = h4 + e >>> 0;
-  }
-  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
-  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
-}
-function gitBlobSha(bytes) {
-  const header = `blob ${bytes.length}\0`;
-  const headerBytes = [];
-  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
-  return sha1Hex(headerBytes.concat(bytes));
-}
-
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
@@ -597,7 +519,6 @@ function unwrapWitnessedArray(parsed, key) {
   const inner = parsed[key];
   return Array.isArray(inner) ? inner : null;
 }
-var CONTEXT_CHUNK_BYTES = 12 * 1024;
 
 // skills/src/shared/config-steps.ts
 var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";
@@ -624,6 +545,84 @@ function configFromSteps(result) {
     globalCfgParsed = {};
   }
   return mergeConfig(globalCfgParsed, repoCfgParsed);
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
 }
 
 // skills/src/shared/write-steps.ts

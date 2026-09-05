@@ -65,6 +65,24 @@ function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
   }
   return { ok: violations.length === 0, violations };
 }
+function fnv1a64(input) {
+  const PRIME = 0x100000001b3n;
+  const MASK = 0xffffffffffffffffn;
+  let hash = 0xcbf29ce484222325n;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = hash * PRIME & MASK;
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
+}
+function laneSpecHash(lane) {
+  const spec = {
+    files: lane.files || [],
+    acceptance_criteria: lane.acceptance_criteria || [],
+    depends_on: lane.depends_on || []
+  };
+  return fnv1a64(JSON.stringify(spec));
+}
 function classifyFiles(files) {
   const isImplAdjacent = (f) => {
     return f.includes("/Mocks/") || f.includes("/mocks/") || f.includes("/Fakes/") || f.includes("/fakes/") || f.includes("/Stubs/") || f.includes("/stubs/") || f.includes("/Fixtures/") || f.includes("/fixtures/") || f.includes("/Helpers/") || f.includes("/helpers/");
@@ -632,6 +650,120 @@ function getIssueId(lanePlan2, taskId) {
   return issue ? String(issue) : "";
 }
 
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
+}
+
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function catOrMissing(path) {
@@ -642,6 +774,12 @@ function isMissing(raw) {
 }
 function laneIntakeSteps(o) {
   const steps = [];
+  if (o.laneSpec) {
+    const spec = laneSpecCommand(o.laneSpec.planPath, o.laneSpec.taskId);
+    steps.push({ name: "lane-spec", command: spec, tolerant: true });
+    steps.push({ name: "lane-spec-bytes", command: `${spec} | wc -c | tr -d ' '`, tolerant: true });
+    steps.push({ name: "lane-spec-sha", command: `${spec} | git hash-object --stdin`, tolerant: true });
+  }
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
   if (!o.structural) {
@@ -809,6 +947,41 @@ function postGreenSteps(o) {
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
   }
   return steps;
+}
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+function digestSpecHash(digest, taskId) {
+  const lane = digest.lanes[taskId];
+  if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
+  if (typeof lane.spec_hash !== "string" || !lane.spec_hash) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} carries no spec_hash`);
+  return lane.spec_hash;
+}
+function laneSpecCommand(planPath, taskId) {
+  return `jq -c --arg id ${q2(taskId)} '.lanes[$id]' ${q2(planPath)}`;
+}
+function laneSpecFromSteps(result, taskId, expectedSpecHash) {
+  const none = { ok: false, lane: null };
+  if (result.missing) return { ...none, error: `lane_spec_relay_failed: ${taskId} \u2014 ${describeFailure(result, "lane-spec")}` };
+  const step = stepResult(result, "lane-spec");
+  if (!step || step.exit_code !== 0) {
+    return { ...none, error: `lane_spec_relay_failed: ${taskId} \u2014 jq exited ${step ? step.exit_code : "without running"}: ${(step && (step.stderr || step.stdout) || "").trim().slice(0, 200)}` };
+  }
+  const text = step.stdout || "";
+  const bytes = parseInt((stepStdout(result, "lane-spec-bytes") || "").trim(), 10);
+  const sha = (stepStdout(result, "lane-spec-sha") || "").trim();
+  const gotBytes = utf8ByteLength(text);
+  const gotSha = gitBlobSha(utf8Encode(text));
+  if (!Number.isFinite(bytes) || gotBytes !== bytes || !sha || gotSha !== sha) {
+    return { ...none, error: `lane_spec_relay_mismatch: ${taskId} \u2014 expected ${bytes} bytes / blob ${sha}, got ${gotBytes} bytes / blob ${gotSha} \u2014 the runner did not return the lane spec verbatim` };
+  }
+  const parsed = parseAgentJson(text, null);
+  if (parsed === null || typeof parsed !== "object") {
+    return { ...none, error: `lane_spec_missing: ${taskId} is not in the worktree lane plan (jq printed ${text.trim().slice(0, 40) || "nothing"})` };
+  }
+  const got = laneSpecHash(parsed);
+  if (got !== expectedSpecHash) {
+    return { ...none, error: `lane_spec_hash_mismatch: ${taskId} \u2014 the worktree lane plan hashes to ${got} but the digest says ${expectedSpecHash}; the plan changed between digest and intake` };
+  }
+  return { ok: true, lane: parsed, error: "" };
 }
 
 // skills/src/shared/schemas.ts
@@ -1028,7 +1201,7 @@ async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFi
   return verdict.ok ? verdict : { ...verdict, checkFailed: verdict.violations.some((v) => v.startsWith("ownership_check_failed")) };
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
-  const lane = lanePlan2.lanes[taskId];
+  let lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];
   if (!wt || typeof wt !== "string" || !wt.startsWith("/")) {
     return {
@@ -1042,7 +1215,7 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const runId = cfg2.runId;
   const isStructural = lane.kind === "structural";
   const { testFiles, implFiles } = classifyFiles(lane.files);
-  const acStr = (lane.acceptance_criteria || []).join("\n");
+  let acStr = "";
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
   const laneFiles = [...testFiles, ...implFiles];
@@ -1095,13 +1268,15 @@ No markdown fences, no explanation.`,
     cleanupCmd,
     planSkeletonPath,
     skeletonCmd,
-    preflightPath
+    preflightPath,
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId }
   });
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
     stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") })
   );
-  const intake = parseBatchResult(intakeRaw, intakeSteps);
+  const intakeResult = parseBatchResult(intakeRaw, intakeSteps);
+  const intake = intakeResult;
   if (intake.missing || stepStdout(intake, "history") === null) {
     const why = describeFailure(intake, "lane intake");
     log(`[${taskId}] LANE INTAKE FAILED: ${why} \u2014 cannot read the lane's history; refusing to dispatch RED`);
@@ -1117,6 +1292,13 @@ No markdown fences, no explanation.`,
       }
     }
   }
+  const spec = laneSpecFromSteps(intakeResult, taskId, digestSpecHash(lanePlan2, taskId));
+  if (!spec.ok || !spec.lane) {
+    log(`[${taskId}] LANE SPEC FETCH FAILED: ${spec.error}`);
+    return { task_id: taskId, status: "failed", stage: "CRASH", error: spec.error };
+  }
+  lane = spec.lane;
+  acStr = (spec.lane.acceptance_criteria || []).join("\n");
   const laneHistoryRaw = stepStdout(intake, "history");
   let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   let greenStaleHint = null;

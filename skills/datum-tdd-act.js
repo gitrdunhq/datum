@@ -153,24 +153,6 @@ function packWavesStrict(waves2, maxBatch) {
 function epicSlug(branch) {
   return branch.replace(/[^A-Za-z0-9._-]/g, "-");
 }
-function fnv1a64(input) {
-  const PRIME = 0x100000001b3n;
-  const MASK = 0xffffffffffffffffn;
-  let hash = 0xcbf29ce484222325n;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= BigInt(input.charCodeAt(i));
-    hash = hash * PRIME & MASK;
-  }
-  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
-}
-function laneSpecHash(lane) {
-  const spec = {
-    files: lane.files || [],
-    acceptance_criteria: lane.acceptance_criteria || [],
-    depends_on: lane.depends_on || []
-  };
-  return fnv1a64(JSON.stringify(spec));
-}
 function resolveLanePlanPath(epicDir2, agentResult) {
   const resolved = agentResult.trim();
   if (resolved === "final") return `${epicDir2}/lane-plan-final.json`;
@@ -319,126 +301,22 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
-// skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
-function fencedScript(rendered) {
-  const m = rendered.match(/```[a-z]*\n([\s\S]*?)\n```/);
-  if (!m) throw new Error("template has no fenced script block");
-  return m[1];
-}
-function actStartSteps(o) {
-  const steps = [];
-  if (o.branch === "init") {
-    steps.push({ name: "bootstrap", command: `__boot=$(${o.initCmd || "datum init --json"}) && printf '%s' "$__boot"` });
-    steps.push({ name: "branch", command: `__eb=$(printf '%s' "$__boot" | jq -r '.epicBranch // empty') && [ -n "$__eb" ] && printf '%s' "$__eb"` });
-  } else if (o.branch === "detect") {
-    steps.push({ name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"` });
-  } else {
-    steps.push({ name: "branch", command: `__eb=${q(o.branch)} && printf '%s' "$__eb"` });
-  }
-  steps.push({ name: "timestamp", command: "date +%Y%m%d-%H%M%S" });
-  if (o.lanePlanPath) {
-    steps.push({ name: "resolve", command: `__plan=${q(o.lanePlanPath)} && echo given` });
-  } else {
-    steps.push({
-      name: "resolve",
-      command: `__epic="docs/epics/$__eb"
-if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.json"; echo final; elif [ -f "$__epic/lane-plan.json" ]; then __plan="$__epic/lane-plan.json"; echo default; else __plan=""; echo none; fi`,
-      tolerant: true
-    });
-  }
-  steps.push({
-    name: "plan-bytes",
-    command: `if [ -n "$__plan" ]; then wc -c < "$__plan" | tr -d ' '; else printf -- '-1'; fi`,
-    tolerant: true
-  });
-  steps.push({
-    name: "plan-sha",
-    command: `if [ -n "$__plan" ]; then git hash-object "$__plan"; else printf ''; fi`,
-    tolerant: true
-  });
-  steps.push({
-    name: "plan-shape",
-    command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
-    tolerant: true
-  });
-  steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
-  return steps;
-}
-function verifyLanePlanShape(plan, shapeStdout) {
-  let shape = null;
-  try {
-    shape = shapeStdout && shapeStdout.trim() ? JSON.parse(shapeStdout.trim()) : null;
-  } catch {
-    shape = null;
-  }
-  if (!shape || !Array.isArray(shape.lanes)) {
-    return { ok: false, reason: "plan-shape step produced no JSON \u2014 the relayed lane plan cannot be verified" };
-  }
-  const got = Object.keys(plan.lanes || {}).sort();
-  const want = [...shape.lanes].sort();
-  const missing = want.filter((id) => !got.includes(id));
-  const extra = got.filter((id) => !want.includes(id));
-  if (missing.length || extra.length) {
-    return {
-      ok: false,
-      reason: `relayed lane plan has ${got.length} lanes but the file has ${want.length}` + (missing.length ? `; missing: ${missing.join(", ")}` : "") + (extra.length ? `; not in file: ${extra.join(", ")}` : "")
-    };
-  }
-  if (typeof shape.topo === "number" && (plan.topological_order || []).length !== shape.topo) {
-    return { ok: false, reason: `relayed topological_order has ${(plan.topological_order || []).length} entries but the file has ${shape.topo}` };
-  }
-  if (typeof shape.total === "number" && plan.total_lanes !== shape.total) {
-    return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` };
-  }
-  return { ok: true, reason: "" };
-}
-
-// skills/src/shared/prompts.ts
-var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
-function laneStateReadPrompt(vars) {
-  return renderPrompt(lane_state_read_default, vars);
-}
-function laneStateReadScript(vars) {
-  return fencedScript(laneStateReadPrompt(vars));
-}
-
 // skills/src/shared/utf8.ts
-function utf8BytesToString(bytes) {
-  let out = "";
-  let i = 0;
-  while (i < bytes.length) {
-    const b0 = bytes[i];
-    let codepoint;
-    let len;
-    if (b0 < 128) {
-      codepoint = b0;
-      len = 1;
-    } else if ((b0 & 224) === 192) {
-      codepoint = b0 & 31;
-      len = 2;
-    } else if ((b0 & 240) === 224) {
-      codepoint = b0 & 15;
-      len = 3;
-    } else if ((b0 & 248) === 240) {
-      codepoint = b0 & 7;
-      len = 4;
-    } else {
-      throw new Error(`utf8_decode_invalid_byte: 0x${b0.toString(16)} at position ${i}`);
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
     }
-    if (i + len > bytes.length) throw new Error(`utf8_decode_truncated: sequence at position ${i} needs ${len} bytes`);
-    for (let k = 1; k < len; k++) {
-      const bk = bytes[i + k];
-      if ((bk & 192) !== 128) throw new Error(`utf8_decode_invalid_continuation: at position ${i + k}`);
-      codepoint = codepoint << 6 | bk & 63;
-    }
-    if (codepoint <= 65535) {
-      out += String.fromCharCode(codepoint);
-    } else {
-      const cp = codepoint - 65536;
-      out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
-    }
-    i += len;
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
   }
   return out;
 }
@@ -455,27 +333,6 @@ function utf8ByteLength(s) {
         i++;
       } else bytes += 3;
     } else bytes += 3;
-  }
-  return bytes;
-}
-
-// skills/src/shared/base64.ts
-var B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-function base64Decode(input) {
-  const chars = input.replace(/[\s=]/g, "");
-  const bytes = [];
-  let buffer = 0;
-  let bits = 0;
-  for (let i = 0; i < chars.length; i++) {
-    const c = chars[i];
-    const val = B64_CHARS.indexOf(c);
-    if (val === -1) throw new Error(`base64_decode_invalid_char: ${JSON.stringify(c)} at position ${i}`);
-    buffer = buffer << 6 | val;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes.push(buffer >> bits & 255);
-    }
   }
   return bytes;
 }
@@ -558,78 +415,93 @@ function gitBlobSha(bytes) {
   return sha1Hex(headerBytes.concat(bytes));
 }
 
-// skills/src/shared/context-relay.ts
-var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
-function q2(p) {
-  return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function fencedScript(rendered) {
+  const m = rendered.match(/```[a-z]*\n([\s\S]*?)\n```/);
+  if (!m) throw new Error("template has no fenced script block");
+  return m[1];
 }
-var CONTEXT_CHUNK_BYTES = 12 * 1024;
-function contextChunkPlan(bytes, budget = CONTEXT_CHUNK_BYTES) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return [{ offset: 0, length: 0 }];
-  const chunks = [];
-  let offset = 0;
-  while (offset < bytes) {
-    const length = Math.min(budget, bytes - offset);
-    chunks.push({ offset, length });
-    offset += length;
+function actStartSteps(o) {
+  const steps = [];
+  if (o.branch === "init") {
+    steps.push({ name: "bootstrap", command: `__boot=$(${o.initCmd || "datum init --json"}) && printf '%s' "$__boot"` });
+    steps.push({ name: "branch", command: `__eb=$(printf '%s' "$__boot" | jq -r '.epicBranch // empty') && [ -n "$__eb" ] && printf '%s' "$__eb"` });
+  } else if (o.branch === "detect") {
+    steps.push({ name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"` });
+  } else {
+    steps.push({ name: "branch", command: `__eb=${q(o.branch)} && printf '%s' "$__eb"` });
   }
-  return chunks;
-}
-function chunkWindowCommand(relPath, offset, length) {
-  return `tail -c +${offset + 1} ${q2(relPath)} | head -c ${length}`;
-}
-function contextChunkSteps(relPath, chunk, i) {
-  const window = chunkWindowCommand(relPath, chunk.offset, chunk.length);
-  return [
-    { name: `ctx-chunk-${i}`, command: `${window} | base64`, tolerant: true },
-    { name: `ctx-chunk-wc-${i}`, command: `${window} | wc -c | tr -d ' '`, tolerant: true }
-  ];
-}
-function stdoutAcross(results2, name) {
-  for (const r of results2) {
-    const s = stepStdout(r, name);
-    if (s !== null) return s;
+  steps.push({ name: "timestamp", command: "date +%Y%m%d-%H%M%S" });
+  if (o.lanePlanPath) {
+    steps.push({ name: "resolve", command: `__plan=${q(o.lanePlanPath)} && echo given` });
+  } else {
+    steps.push({
+      name: "resolve",
+      command: `__epic="docs/epics/$__eb"
+if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.json"; echo final; elif [ -f "$__epic/lane-plan.json" ]; then __plan="$__epic/lane-plan.json"; echo default; else __plan=""; echo none; fi`,
+      tolerant: true
+    });
   }
-  return null;
-}
-function contextAssembleChunks(relPath, probeBytes, sha, chunkResults, plan) {
-  let bytes = [];
-  plan.forEach((chunk, i) => {
-    const b64 = stdoutAcross(chunkResults, `ctx-chunk-${i}`);
-    const wcRaw = stdoutAcross(chunkResults, `ctx-chunk-wc-${i}`);
-    if (b64 === null || wcRaw === null) {
-      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} produced no result (sha ${sha || "?"})`);
-    }
-    const declared = parseInt(wcRaw.trim(), 10);
-    let decoded;
-    try {
-      decoded = base64Decode(b64.trim());
-    } catch (exc) {
-      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} was not valid base64 \u2014 ${exc.message}`);
-    }
-    if (!Number.isFinite(declared) || decoded.length !== declared) {
-      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} expected ${declared} bytes (wc -c), got ${decoded.length} bytes`);
-    }
-    if (decoded.length !== chunk.length) {
-      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} expected planned length ${chunk.length} bytes, got ${decoded.length} bytes`);
-    }
-    bytes = bytes.concat(decoded);
+  steps.push({
+    name: "digest",
+    command: `__digest=$(mktemp) && if [ -n "$__plan" ]; then datum lane-plan-digest --plan "$__plan" --out "$__digest" >/dev/null; else printf ''; fi`,
+    tolerant: true
   });
-  if (bytes.length !== probeBytes) {
-    throw new Error(`context_relay_mismatch: ${relPath} total expected ${probeBytes} bytes, got ${bytes.length} bytes (sha ${sha || "?"})`);
+  steps.push({ name: "digest-bytes", command: `if [ -n "$__plan" ]; then wc -c < "$__digest" | tr -d ' '; else printf -- '-1'; fi`, tolerant: true });
+  steps.push({ name: "digest-sha", command: `if [ -n "$__plan" ]; then git hash-object "$__digest"; else printf ''; fi`, tolerant: true });
+  steps.push({
+    name: "digest-cat",
+    command: `if [ -n "$__plan" ] && [ "$(wc -c < "$__digest" | tr -d ' ')" -le ${LANE_PLAN_DIGEST_BUDGET_BYTES} ]; then cat "$__digest"; else echo DIGEST_TOO_LARGE; fi`,
+    tolerant: true
+  });
+  steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
+  return steps;
+}
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+function lanePlanDigestFromSteps(result, planPath) {
+  const none = { ok: false, digest: null };
+  if (result.missing) return { ...none, error: `lane_plan_digest_failed: ${describeFailure(result, "digest")}` };
+  const digestStep = stepResult(result, "digest");
+  if (!digestStep) return { ...none, error: "lane_plan_digest_failed: digest step did not run" };
+  if (digestStep.exit_code !== 0) {
+    const tail = (digestStep.stderr || digestStep.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    return { ...none, error: `lane_plan_digest_failed: datum lane-plan-digest exited ${digestStep.exit_code} for ${planPath} \u2014 ${tail}` };
   }
-  if (sha) {
-    const computed = gitBlobSha(bytes);
-    if (computed !== sha) {
-      throw new Error(`context_relay_mismatch: ${relPath} blob sha ${computed} != probe ${sha}`);
-    }
+  const bytes = parseInt((stepStdout(result, "digest-bytes") || "").trim(), 10);
+  const sha = (stepStdout(result, "digest-sha") || "").trim();
+  if (!Number.isFinite(bytes) || bytes < 0 || !sha) {
+    return { ...none, error: `lane_plan_digest_failed: no digest bytes/sha for ${planPath} (${describeFailure(result, "digest-bytes")})` };
   }
-  const assembled = utf8BytesToString(bytes);
-  const actual = utf8ByteLength(assembled);
-  if (actual !== probeBytes) {
-    throw new Error(`context_relay_mismatch: ${relPath} total expected ${probeBytes} bytes, decoded string is ${actual} bytes`);
+  if (bytes > LANE_PLAN_DIGEST_BUDGET_BYTES) {
+    return { ...none, error: `lane_plan_digest_too_large: ${planPath} is ${bytes} bytes as a digest (budget ${LANE_PLAN_DIGEST_BUDGET_BYTES}) \u2014 split the epic or run Act on a smaller lane plan; the plan is never chunked through an LLM turn` };
   }
-  return assembled;
+  const text = stepStdout(result, "digest-cat") || "";
+  const gotBytes = utf8ByteLength(text);
+  const gotSha = gitBlobSha(utf8Encode(text));
+  if (gotBytes !== bytes || gotSha !== sha) {
+    return { ...none, error: `lane_plan_digest_mismatch: ${planPath} digest \u2014 expected ${bytes} bytes / blob ${sha}, got ${gotBytes} bytes / blob ${gotSha} \u2014 the runner did not return the digest verbatim` };
+  }
+  const digest = parseAgentJson(text, null);
+  if (!digest || typeof digest !== "object" || !digest.lanes || !Array.isArray(digest.topological_order)) {
+    return { ...none, error: `lane_plan_digest_unparseable: ${planPath} digest did not parse as {lanes, topological_order}` };
+  }
+  return { ok: true, digest, error: "" };
+}
+function digestSpecHash(digest, taskId) {
+  const lane = digest.lanes[taskId];
+  if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
+  if (typeof lane.spec_hash !== "string" || !lane.spec_hash) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} carries no spec_hash`);
+  return lane.spec_hash;
+}
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function laneStateReadPrompt(vars) {
+  return renderPrompt(lane_state_read_default, vars);
+}
+function laneStateReadScript(vars) {
+  return fencedScript(laneStateReadPrompt(vars));
 }
 
 // skills/src/shared/config-steps.ts
@@ -741,26 +613,9 @@ if (!runId) throw new Error(`args.runId is required and auto-detect failed (${de
 var epicDir = `docs/epics/${epicBranch}`;
 var lanePlanPath = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
 phase("Topology");
-var planBytes = parseInt((stepStdout(actStartResult, "plan-bytes") || "").trim(), 10);
-var planSha = (stepStdout(actStartResult, "plan-sha") || "").trim();
-if (!Number.isFinite(planBytes) || planBytes < 0) {
-  throw new Error(`lane_plan_relay_mismatch: could not determine the byte size of ${lanePlanPath} (${describeFailure(actStartResult, "act-start")})`);
-}
-var lanePlanChunkPlan = contextChunkPlan(planBytes);
-var lanePlanChunkResults = [];
-for (let i = 0; i < lanePlanChunkPlan.length; i++) {
-  const chunkSteps = contextChunkSteps(lanePlanPath, lanePlanChunkPlan[i], i);
-  const chunkRaw = await agent(
-    batchCommandPrompt(chunkSteps),
-    stageOpts("cli", { label: `lane-plan-chunk-${i}`, phase: "Topology", model: model("fast") })
-  );
-  lanePlanChunkResults.push(parseBatchResult(chunkRaw, chunkSteps));
-}
-var lanePlanText = contextAssembleChunks(lanePlanPath, planBytes, planSha, lanePlanChunkResults, lanePlanChunkPlan);
-var lanePlan = parseAgentJson(lanePlanText, null);
-if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
-var planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, "plan-shape"));
-if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) \u2014 refusing to execute a plan that differs from the file`);
+var digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
+if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);
+var lanePlan = digestResult.digest;
 var waves = buildWaves(lanePlan);
 if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
   throw new Error("Lane plan has 0 tasks \u2014 nothing to execute");
@@ -773,7 +628,7 @@ var slug = epicSlug(epicBranch);
 var priorMarkers = parseAgentJson(stepStdout(actStartResult, "lane-state-read") || "", {});
 var alreadyMerged = lanePlan.topological_order.filter((id) => {
   const m = priorMarkers[id];
-  return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === laneSpecHash(lanePlan.lanes[id] || {});
+  return !!m && m.status === "completed" && m.ancestor === true && m.spec_hash === digestSpecHash(lanePlan, id);
 });
 var results = {};
 var failures = [];
@@ -878,7 +733,7 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       batchTag,
       agentTypes: agentTypeArgs(),
       configFingerprint: a.configFingerprint || "",
-      laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
+      laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) } : null
     }
   );
   if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {

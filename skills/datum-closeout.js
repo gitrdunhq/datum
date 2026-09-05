@@ -213,6 +213,7 @@ function housekeepFromSteps(result) {
   }
   return { ok: true, summary: (step.stdout || "").trim(), error: "" };
 }
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 function closeoutCollectSteps(o) {
   return [
     {

@@ -196,6 +196,7 @@ datum lane-plan-distribute "$__root/${o.lanePlanPath}" "\${__targets[@]}"`
     }
   ];
 }
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/datum-tdd-act-setup.ts
 var a = args;
