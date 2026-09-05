@@ -82,19 +82,6 @@ function parseValidateArgs(raw) {
     noMergeMain: tokens.includes("--no-merge-main") || tokens.includes("no-merge-main")
   };
 }
-function mainSyncPrompt(noMergeMain2) {
-  const merge = noMergeMain2 ? `3. Do NOT merge. Return JSON: {"behind": <BEHIND>, "merged": false, "conflict": false}` : `3. If BEHIND is 0, return JSON: {"behind": 0, "merged": false, "conflict": false}
-4. Otherwise run: git merge --no-edit origin/main > .datum/main-sync.log 2>&1; MERGE_EXIT=$?
-   If MERGE_EXIT is 0, return JSON: {"behind": <BEHIND>, "merged": true, "conflict": false}
-   If it is not 0, run: git merge --abort
-   and return JSON: {"behind": <BEHIND>, "merged": false, "conflict": true, "output": "<last 20 lines of .datum/main-sync.log>"}`;
-  return `Sync the epic branch with main before validating (#358). Run these commands in order at the repo root:
-1. git fetch origin main
-   If the fetch fails (no remote, no network), return JSON: {"error": "<stderr>"}
-2. BEHIND=$(git rev-list --count HEAD..origin/main)
-${merge}
-Do not read the exit code through a pipe. Output raw JSON only, no markdown fences, no explanation.`;
-}
 function evaluateMainSync(result, noMergeMain2) {
   if (!result || typeof result !== "object" || typeof result.behind !== "number") {
     return { ok: false, message: `could not determine whether the epic is behind main: ${result?.error || "no sync result (git fetch origin main failed or returned unparseable output)"}` };
@@ -142,11 +129,17 @@ var DEFAULT_CONFIG = {
   /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
   hooks_installed: false
 };
-var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
-1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
-2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
-Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
-Return the merged JSON. Output raw JSON only.`;
+function mergeConfig(globalCfg, repoCfg2) {
+  const g = globalCfg && typeof globalCfg === "object" ? globalCfg : {};
+  const r = repoCfg2 && typeof repoCfg2 === "object" ? repoCfg2 : {};
+  const merged = { ...g, ...r };
+  const gModels = g.models && typeof g.models === "object" ? g.models : {};
+  const rModels = r.models && typeof r.models === "object" ? r.models : {};
+  if (g.models || r.models) {
+    merged.models = { ...gModels, ...rModels };
+  }
+  return merged;
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -217,8 +210,14 @@ function batchScript(steps) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -261,7 +260,6 @@ function testExitCode(stdout) {
   if (matches.length === 0) return null;
   return Number(matches[matches.length - 1][1]);
 }
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 
 // skills/src/shared/validate-steps.ts
 var TEST_SIGNAL_PATH = ".datum/last-test-signal.json";
@@ -275,6 +273,85 @@ function validateVerifySteps(testCommand2, cwd) {
       tolerant: true
     }
   ];
+}
+
+// skills/src/shared/main-sync-steps.ts
+function mainSyncSteps(noMergeMain2) {
+  const steps = [
+    { name: "fetch", command: "git fetch origin main" },
+    { name: "behind", command: 'BEHIND=$(git rev-list --count HEAD..origin/main); echo "$BEHIND"' }
+  ];
+  if (!noMergeMain2) {
+    steps.push({
+      name: "merge",
+      command: [
+        'if [ "${BEHIND:-0}" -gt 0 ]; then',
+        "  if git merge --no-edit origin/main; then",
+        "    true",
+        "  else",
+        "    git merge --abort",
+        "    false",
+        "  fi",
+        "else",
+        '  echo "not behind, nothing to merge"',
+        "fi"
+      ].join("\n"),
+      tolerant: true
+    });
+  }
+  return steps;
+}
+function mainSyncFromSteps(result, noMergeMain2) {
+  if (result.missing) {
+    throw new Error("main_sync_failed: batch agent returned no parseable result for main-sync");
+  }
+  if (result.failed) {
+    throw new Error(`main_sync_failed: ${describeFailure(result, "main-sync")}`);
+  }
+  const behindRaw = (stepStdout(result, "behind") || "").trim();
+  const behind = parseInt(behindRaw, 10);
+  if (!Number.isFinite(behind)) {
+    throw new Error(`main_sync_failed: could not parse behind-count output from \`git rev-list --count HEAD..origin/main\` ("${behindRaw}")`);
+  }
+  if (noMergeMain2 || behind === 0) {
+    return { behind, merged: false, conflict: false };
+  }
+  const mergeStep = stepResult(result, "merge");
+  if (!mergeStep) {
+    throw new Error("main_sync_failed: merge step did not run");
+  }
+  if (mergeStep.exit_code === 0) {
+    return { behind, merged: true, conflict: false };
+  }
+  const output = (mergeStep.stderr || mergeStep.stdout || "").trim().split("\n").slice(-20).join("\n");
+  return { behind, merged: false, conflict: true, output };
+}
+
+// skills/src/shared/config-steps.ts
+var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";
+function configReadSteps() {
+  return [
+    { name: "repo-config", command: "cat .datum/config.json" },
+    { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
+  ];
+}
+function configFromSteps(result) {
+  if (result.missing || result.failed) {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let repoCfgParsed;
+  try {
+    repoCfgParsed = JSON.parse(stepStdout(result, "repo-config") || "");
+  } catch {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let globalCfgParsed = {};
+  try {
+    globalCfgParsed = JSON.parse(stepStdout(result, "global-config") || "{}");
+  } catch {
+    globalCfgParsed = {};
+  }
+  return mergeConfig(globalCfgParsed, repoCfgParsed);
 }
 
 // skills/src/prompts/validate-check.md
@@ -327,14 +404,27 @@ var a = parseValidateArgs(args);
 var yolo = a.yolo;
 var noMergeMain = a.noMergeMain;
 if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
-var cfgText = !a.testCommand ? await agent(READ_CONFIG_PROMPT, bootstrapOpts("reader", { label: "read-config", model: model("fast") })) : null;
-var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+setBatchCacheKey(typeof a.configFingerprint === "string" ? a.configFingerprint : "");
+var repoCfg = {};
+if (!a.testCommand) {
+  const configReadStepList = configReadSteps();
+  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
+  repoCfg = configFromSteps(parseBatchResult(configBatchRaw, configReadStepList));
+}
 if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 phase("Validate");
-var syncRaw = await agent(mainSyncPrompt(noMergeMain), stageOpts("cli", { label: "main-sync", model: model("fast") }));
-var syncResult = typeof syncRaw === "string" ? parseAgentJson(syncRaw, null) : syncRaw;
-var mainSync = evaluateMainSync(syncResult, noMergeMain);
+var syncSteps = mainSyncSteps(noMergeMain);
+var syncBatchRaw = await agent(batchCommandPrompt(syncSteps), stageOpts("cli", { label: "main-sync", model: model("fast") }));
+var syncBatch = parseBatchResult(syncBatchRaw, syncSteps);
+var syncResult = null;
+var mainSync;
+try {
+  syncResult = mainSyncFromSteps(syncBatch, noMergeMain);
+  mainSync = evaluateMainSync(syncResult, noMergeMain);
+} catch (exc) {
+  mainSync = { ok: false, message: exc.message };
+}
 if (!mainSync.ok) {
   log(`VALIDATION FAILED \u2014 ${mainSync.message}`);
 } else {

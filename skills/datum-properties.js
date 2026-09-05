@@ -112,8 +112,14 @@ function batchScript(steps) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -209,24 +215,26 @@ function utf8ByteLength(s) {
   return bytes;
 }
 
-// skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
-var CONTEXT_FILE_NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
-function readContextSteps(o) {
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+function q(p) {
+  return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
+}
+function contextProbeSteps(o) {
   const steps = [
     { name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
     { name: "epic-dir", command: `printf 'docs/epics/%s' "$__eb"`, tolerant: true }
   ];
   o.files.forEach((relPath, i) => {
     steps.push({
-      name: `ctx-cat-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${CONTEXT_FILE_NOT_FOUND_MARKER}'; fi`,
+      name: `ctx-wc-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
     steps.push({
-      name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      name: `ctx-sha-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then git hash-object ${q(relPath)}; else printf ''; fi`,
       tolerant: true
     });
   });
@@ -235,31 +243,85 @@ function readContextSteps(o) {
   }
   return steps;
 }
-function contextFromSteps(result, files) {
-  const branch = stepStdout(result, "branch") || "";
-  const epicDir2 = stepStdout(result, "epic-dir") || `docs/epics/${branch}`;
-  const contents = {};
-  const warnings = [];
+function contextRelayPlan(probe, files, budget = CONTEXT_RELAY_BUDGET_BYTES) {
+  if (probe.missing) {
+    throw new Error("context_relay_mismatch: probe batch returned no parseable result \u2014 cannot size the context files");
+  }
+  const plan = { files, inline: [], deferred: [], missing: [], bytes: {}, sha: {}, budget };
+  let used = 0;
   files.forEach((relPath, i) => {
-    const raw = stepStdout(result, `ctx-cat-${i}`);
-    const declaredRaw = stepStdout(result, `ctx-wc-${i}`);
-    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
-    if (raw === null || raw === CONTEXT_FILE_NOT_FOUND_MARKER || declaredBytes === -1) {
-      contents[relPath] = null;
+    const wcRaw = stepStdout(probe, `ctx-wc-${i}`);
+    const bytes = wcRaw === null ? NaN : parseInt(wcRaw.trim(), 10);
+    const sha = (stepStdout(probe, `ctx-sha-${i}`) || "").trim();
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      plan.missing.push(relPath);
+      plan.bytes[relPath] = -1;
+      plan.sha[relPath] = "";
       return;
     }
-    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_FILE_RELAY_LIMIT_BYTES) {
-      warnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_FILE_RELAY_LIMIT_BYTES} bytes)`);
-      contents[relPath] = null;
-      return;
+    plan.bytes[relPath] = bytes;
+    plan.sha[relPath] = sha;
+    if (used + bytes <= budget) {
+      plan.inline.push(relPath);
+      used += bytes;
+    } else {
+      plan.deferred.push(relPath);
     }
-    const actualBytes = utf8ByteLength(raw);
-    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
-      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
-    }
-    contents[relPath] = raw;
   });
-  return { branch, epicDir: epicDir2, contents, warnings };
+  return plan;
+}
+function contextInlineSteps(inlineFiles) {
+  const steps = [];
+  inlineFiles.forEach((relPath, i) => {
+    steps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+  });
+  return steps;
+}
+function contextFromRelay(probe, inline, plan) {
+  const branch = stepStdout(probe, "branch") || "";
+  const epicDir2 = stepStdout(probe, "epic-dir") || `docs/epics/${branch}`;
+  const files = {};
+  const warnings = [];
+  if (plan.inline.length > 0 && (inline === null || inline.missing)) {
+    throw new Error(`context_relay_mismatch: inline batch returned no parseable result for ${plan.inline.join(", ")}`);
+  }
+  for (const relPath of plan.missing) {
+    files[relPath] = { path: relPath, exists: false, inlined: false, bytes: -1, sha: "", content: null };
+  }
+  for (const relPath of plan.deferred) {
+    files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null };
+    warnings.push(`context file ${relPath}: ${plan.bytes[relPath]} bytes, deferred to the consuming agent (relay budget ${plan.budget} bytes)`);
+  }
+  plan.inline.forEach((relPath, i) => {
+    const raw = stepStdout(inline, `ctx-cat-${i}`);
+    const declaredRaw = stepStdout(inline, `ctx-wc-${i}`);
+    const declared = declaredRaw === null ? NaN : parseInt(declaredRaw.trim(), 10);
+    if (raw === null || raw === NOT_FOUND_MARKER || declared === -1) {
+      throw new Error(`context_relay_mismatch: ${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`);
+    }
+    const expected = plan.bytes[relPath];
+    const actual = utf8ByteLength(raw);
+    if (actual !== expected || Number.isFinite(declared) && declared !== expected) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${expected} bytes, got ${actual} bytes`);
+    }
+    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha: plan.sha[relPath], content: raw };
+  });
+  return { branch, epicDir: epicDir2, files, warnings };
+}
+function contextSlot(f) {
+  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
+  if (f.inlined && f.content !== null) return f.content;
+  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
 
 // skills/src/shared/agent-types.ts
@@ -299,34 +361,43 @@ var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim(
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
 if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
+setBatchCacheKey(a.configFingerprint || "");
 phase("Read");
 var SPEC_REL = "docs/epics/$__eb/SPEC.md";
 var TASKS_REL = "docs/epics/$__eb/TASKS.md";
-var readSteps = readContextSteps({
+var probeSteps = contextProbeSteps({
   files: [SPEC_REL, TASKS_REL],
   extraCommands: [
     { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` }
   ]
 });
 var readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
-  readSteps
+  await agent(batchCommandPrompt(probeSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
+  probeSteps
 );
-if (readBatch.missing) {
-  throw new Error("context_relay_mismatch: batch agent returned no parseable result for read-context");
-}
-var ctx = contextFromSteps(readBatch, [SPEC_REL, TASKS_REL]);
-for (const warning of ctx.warnings) log(`read-context: ${warning}`);
+var relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL]);
 if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
   configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
 }
-var specContent = ctx.contents[SPEC_REL] || "";
-var tasksContent = ctx.contents[TASKS_REL] || "";
-if (!specContent) throw new Error("SPEC.md not found. Run datum-refine first.");
-if (!tasksContent) throw new Error("TASKS.md not found. Run datum-plan first.");
+var inlineBatch = null;
+if (relayPlan.inline.length > 0) {
+  const inlineSteps = contextInlineSteps(relayPlan.inline);
+  inlineBatch = parseBatchResult(
+    await agent(batchCommandPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") })),
+    inlineSteps
+  );
+}
+var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
+for (const warning of ctx.warnings) log(`read-context: ${warning}`);
+var specFile = ctx.files[SPEC_REL];
+var tasksFile = ctx.files[TASKS_REL];
+if (!specFile.exists) throw new Error("SPEC.md not found. Run datum-refine first.");
+if (!tasksFile.exists) throw new Error("TASKS.md not found. Run datum-plan first.");
+var specContent = contextSlot(specFile);
+var tasksContent = contextSlot(tasksFile);
 var epicDir = ctx.epicDir;
-log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
+log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? "" : " (deferred)"}, TASKS: ${tasksFile.bytes} bytes${tasksFile.inlined ? "" : " (deferred)"}`);
 phase("Derive");
 await agent(
   renderPrompt(properties_derive_default, { specContent, tasksContent }) + `

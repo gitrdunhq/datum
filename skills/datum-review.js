@@ -143,8 +143,14 @@ function batchScript(steps) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -224,6 +230,7 @@ var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: tr
 var yolo = !!a.yolo;
 if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
 else configureAgentTypes({});
+setBatchCacheKey(a.configFingerprint || "");
 var DOMAINS = [
   { domain: "Security", prefix: "SEC", focus: "OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization", model: model("balanced") },
   { domain: "Performance", prefix: "PERF", focus: "Hot paths, N+1 queries, unbounded loops, missing pagination, excessive allocations", model: model("fast") },

@@ -488,8 +488,14 @@ function batchScript(steps) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -774,7 +780,6 @@ function postGreenSteps(o) {
   }
   return steps;
 }
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
@@ -906,6 +911,10 @@ function refactorCheckPrompt(vars) {
 }
 
 // skills/src/datum-tdd-act-lane.ts
+var a = args;
+var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a;
+configureAgentTypes(cfg.agentTypes || {});
+setBatchCacheKey(cfg.configFingerprint || "");
 async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
   const result = await agent(
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
@@ -1611,10 +1620,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
   log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || "n/a"}; independent verify exit=0)`);
   return { verified: true };
 }
-var a = args;
 phase("Act");
-var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a;
-configureAgentTypes(cfg.agentTypes || {});
 var lanes = lanePlan.lanes;
 var depResolvers = {};
 var depPromises = {};

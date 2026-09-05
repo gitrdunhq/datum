@@ -128,8 +128,14 @@ function batchScript(steps2) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps2) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps2);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps2);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -186,11 +192,11 @@ datum lane-plan-distribute "$__root/${o.lanePlanPath}" "\${__targets[@]}"`
     }
   ];
 }
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 
 // skills/src/datum-tdd-act-setup.ts
 var a = args;
 configureAgentTypes(a.agentTypes || {});
+setBatchCacheKey(a.configFingerprint || "");
 phase("Setup");
 var steps = setupSteps({
   batchRunId: a.batchRunId,

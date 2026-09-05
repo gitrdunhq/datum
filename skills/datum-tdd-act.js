@@ -29,11 +29,17 @@ var DEFAULT_CONFIG = {
   /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
   hooks_installed: false
 };
-var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
-1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
-2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
-Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
-Return the merged JSON. Output raw JSON only.`;
+function mergeConfig(globalCfg, repoCfg2) {
+  const g = globalCfg && typeof globalCfg === "object" ? globalCfg : {};
+  const r = repoCfg2 && typeof repoCfg2 === "object" ? repoCfg2 : {};
+  const merged = { ...g, ...r };
+  const gModels = g.models && typeof g.models === "object" ? g.models : {};
+  const rModels = r.models && typeof r.models === "object" ? r.models : {};
+  if (g.models || r.models) {
+    merged.models = { ...gModels, ...rModels };
+  }
+  return merged;
+}
 function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
@@ -236,73 +242,6 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-read.md
 var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
-// skills/src/shared/batch.ts
-var NAME_RE = /^[a-z][a-z0-9-]*$/;
-function validateBatchSteps(steps) {
-  if (steps.length === 0) throw new Error("batch: no steps");
-  const seen = /* @__PURE__ */ new Set();
-  for (const s of steps) {
-    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
-    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
-    seen.add(s.name);
-    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
-  }
-}
-function batchScript(steps) {
-  validateBatchSteps(steps);
-  const lines = [
-    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
-    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
-    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
-  ];
-  steps.forEach((s, i) => {
-    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
-    lines.push("{");
-    lines.push(s.command.replace(/\n+$/, ""));
-    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
-    lines.push(`__rec '${s.name}' "$__c"`);
-    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
-  });
-  lines.push("__end");
-  return lines.join("\n") + "\n";
-}
-function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
-}
-function asStepResult(x) {
-  if (!x || typeof x !== "object") return null;
-  const o = x;
-  if (typeof o.name !== "string") return null;
-  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
-  return {
-    name: o.name,
-    exit_code: Number.isFinite(code) ? code : 1,
-    stdout: typeof o.stdout === "string" ? o.stdout : "",
-    stderr: typeof o.stderr === "string" ? o.stderr : ""
-  };
-}
-function parseBatchResult(raw, steps) {
-  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
-  const results2 = arr.map(asStepResult).filter((r) => r !== null);
-  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
-  const failed = results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
-  return { steps: results2, failed, missing: false };
-}
-function stepResult(r, name) {
-  return r.steps.find((s) => s.name === name) ?? null;
-}
-function stepStdout(r, name) {
-  const s = stepResult(r, name);
-  return s ? s.stdout : null;
-}
-function describeFailure(r, label) {
-  if (r.missing) return `${label}: batch agent returned no parseable result`;
-  if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
-}
-
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {
@@ -367,7 +306,6 @@ function verifyLanePlanShape(plan, shapeStdout) {
   }
   return { ok: true, reason: "" };
 }
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 function readLanePlanPrompt(lanePlanPath2) {
   return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
 }
@@ -379,6 +317,106 @@ function laneStateReadPrompt(vars) {
 }
 function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
+}
+
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results2 = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results2, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/config-steps.ts
+var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";
+function configReadSteps() {
+  return [
+    { name: "repo-config", command: "cat .datum/config.json" },
+    { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
+  ];
+}
+function configFromSteps(result) {
+  if (result.missing || result.failed) {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let repoCfgParsed;
+  try {
+    repoCfgParsed = JSON.parse(stepStdout(result, "repo-config") || "");
+  } catch {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let globalCfgParsed = {};
+  try {
+    globalCfgParsed = JSON.parse(stepStdout(result, "global-config") || "{}");
+  } catch {
+    globalCfgParsed = {};
+  }
+  return mergeConfig(globalCfgParsed, repoCfgParsed);
 }
 
 // skills/src/shared/agent-types.ts
@@ -426,8 +464,13 @@ function agentTypeArgs() {
 // skills/src/datum-tdd-act.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
-var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, bootstrapOpts("reader", { label: "read-config", model: model("fast") })) : null;
-var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
+setBatchCacheKey(a.configFingerprint || "");
+var repoCfg = {};
+if (!a.testCommand || !a.language) {
+  const configReadStepList = configReadSteps();
+  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
+  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) };
+}
 if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.models);
 configureAgentTypes(readAgentTypeConfig(repoCfg));
 var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
@@ -531,7 +574,7 @@ ${"=".repeat(60)}`);
   log("\u2500\u2500 Setup \u2500\u2500");
   const setup = await workflow(
     { scriptPath: sk("datum-tdd-act-setup") },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" }
   );
   log("\u2500\u2500 Act \u2500\u2500");
   const act = await workflow(
@@ -541,7 +584,7 @@ ${"=".repeat(60)}`);
       lanePlan,
       worktreePaths: setup.worktreePaths,
       batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs() },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" },
       priorFailures: failures,
       priorCompleted: completedLanes
     }
@@ -582,6 +625,7 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       topoOrder: lanePlan.topological_order,
       batchTag,
       agentTypes: agentTypeArgs(),
+      configFingerprint: a.configFingerprint || "",
       laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
     }
   );

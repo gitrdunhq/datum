@@ -243,73 +243,6 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-read.md
 var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
-// skills/src/shared/batch.ts
-var NAME_RE = /^[a-z][a-z0-9-]*$/;
-function validateBatchSteps(steps) {
-  if (steps.length === 0) throw new Error("batch: no steps");
-  const seen = /* @__PURE__ */ new Set();
-  for (const s of steps) {
-    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
-    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
-    seen.add(s.name);
-    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
-  }
-}
-function batchScript(steps) {
-  validateBatchSteps(steps);
-  const lines = [
-    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
-    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
-    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
-  ];
-  steps.forEach((s, i) => {
-    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
-    lines.push("{");
-    lines.push(s.command.replace(/\n+$/, ""));
-    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
-    lines.push(`__rec '${s.name}' "$__c"`);
-    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
-  });
-  lines.push("__end");
-  return lines.join("\n") + "\n";
-}
-function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
-}
-function asStepResult(x) {
-  if (!x || typeof x !== "object") return null;
-  const o = x;
-  if (typeof o.name !== "string") return null;
-  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
-  return {
-    name: o.name,
-    exit_code: Number.isFinite(code) ? code : 1,
-    stdout: typeof o.stdout === "string" ? o.stdout : "",
-    stderr: typeof o.stderr === "string" ? o.stderr : ""
-  };
-}
-function parseBatchResult(raw, steps) {
-  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
-  const results = arr.map(asStepResult).filter((r) => r !== null);
-  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
-  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
-  return { steps: results, failed, missing: false };
-}
-function stepResult(r, name) {
-  return r.steps.find((s) => s.name === name) ?? null;
-}
-function stepStdout(r, name) {
-  const s = stepResult(r, name);
-  return s ? s.stdout : null;
-}
-function describeFailure(r, label) {
-  if (r.missing) return `${label}: batch agent returned no parseable result`;
-  if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
-}
-
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {
@@ -374,7 +307,6 @@ function verifyLanePlanShape(plan, shapeStdout) {
   }
   return { ok: true, reason: "" };
 }
-var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 function readLanePlanPrompt(lanePlanPath) {
   return `Read the file at "${lanePlanPath}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
 }
@@ -386,6 +318,79 @@ function laneStateReadPrompt(vars) {
 }
 function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
+}
+
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
 // skills/src/shared/pipeline-state.ts
@@ -562,6 +567,7 @@ if (startIdx === -1) {
 }
 var configFingerprint = typeof a.configFingerprint === "string" ? a.configFingerprint : "";
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
+setBatchCacheKey(configFingerprint);
 var bootBatch = parseBatchResult(
   // bootstrapOpts: the switches live in the config this very read fetches.
   await agent(batchCommandPrompt(bootSteps()), bootstrapOpts("cli", { label: "boot", model: model("fast") })),
@@ -575,6 +581,7 @@ log(`Agent types: ${agentTypeArgs().agentTypes ? "on" : "off"}, hooks_installed:
 var phaseArgs = {
   yolo,
   agentTypes: agentTypeArgs(),
+  configFingerprint,
   freeText: typeof a.freeText === "string" ? a.freeText : "",
   issueNumber: typeof a.issueNumber === "number" ? a.issueNumber : null
 };
@@ -810,7 +817,7 @@ if (shouldRun("act", 3)) {
     }
     const setup = await workflow(
       { scriptPath: sk("datum-tdd-act-setup") },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() }
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint }
     );
     const act = await workflow(
       { scriptPath: sk("datum-tdd-act-lane") },
@@ -821,7 +828,7 @@ if (shouldRun("act", 3)) {
         batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs() },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
         priorFailures: actFailures,
         priorCompleted: actCompleted
       }
@@ -849,6 +856,7 @@ if (shouldRun("act", 3)) {
         topoOrder: lanePlan.topological_order,
         batchTag,
         agentTypes: agentTypeArgs(),
+        configFingerprint,
         laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
       }
     );
