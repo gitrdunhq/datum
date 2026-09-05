@@ -618,6 +618,10 @@ if (shouldRun('act', 3)) {
   }
   if (docsResult && docsResult.committed === false) {
     log(`[warn] Docs sync wrote [${(docsResult.files || []).join(', ')}] but the commit was refused: ${docsResult.failure_reason || 'unknown'} — the files are left modified in the checkout`)
+  } else if (docsResult && docsResult.failure_reason) {
+    // Nothing was written, but the phase did not do its job: say so by name
+    // (docs_check_no_result, "wrote no files", ...) instead of reading as synced.
+    log(`[warn] Docs sync did not complete: ${docsResult.failure_reason}`)
   }
 
   const actSkipped = Object.keys(actResults).filter(id => actResults[id]?.status === 'skipped')

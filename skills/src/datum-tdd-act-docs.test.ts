@@ -70,3 +70,12 @@ describe('datum-tdd-act-docs — a missing docs-check result is named, not "no s
     expect(src).not.toMatch(/const docsCheck = await agent\(/)
   })
 })
+
+describe('the docs result consumers surface failure_reason even when nothing was written', () => {
+  for (const f of ['datum-go.ts', 'datum-tdd-act.ts']) {
+    it(`${f} warns on docsResult.failure_reason, not only on committed === false`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/else if \(docsResult && docsResult\.failure_reason\) \{[\s\S]{0,300}Docs sync did not complete: \$\{docsResult\.failure_reason\}/)
+    })
+  }
+})
