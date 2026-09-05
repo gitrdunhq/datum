@@ -91,7 +91,7 @@ function model(tier) {
 }
 
 // skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits CURRENT_STATE.md, CHANGELOG.md and RETRO.md after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -255,6 +255,20 @@ function closeoutCollectSteps(o) {
     { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
     { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
     { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    // caliper BUG U: a CHANGELOG.md owned by release-please must not get a
+    // hand-authored section. The script reads the owner from this step.
+    {
+      name: "changelog-owner",
+      command: `if [ -f release-please-config.json ] || { [ -f CHANGELOG.md ] && grep -qi "managed by release-please" CHANGELOG.md; }; then echo release-please; else echo datum; fi`,
+      tolerant: true
+    },
+    // An UNTRACKED root CURRENT_STATE.md (a previous closeout's artifact git
+    // never had) was overwritten and lost. Moved aside first, never clobbered.
+    {
+      name: "preserve-current-state",
+      command: `if [ -f CURRENT_STATE.md ] && [ -z "$(git ls-files CURRENT_STATE.md)" ]; then mv CURRENT_STATE.md "CURRENT_STATE.$__rid.prev.md" && echo "moved-aside: CURRENT_STATE.$__rid.prev.md"; else echo ok; fi`,
+      tolerant: true
+    },
     {
       name: "collect-git",
       command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
@@ -275,7 +289,8 @@ function moveStepName(fileName) {
   return `move-${fileName.toLowerCase().replace(/\./g, "-")}`;
 }
 function moveIntoEpicDirCommand(src, epicDir2, base) {
-  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(`${epicDir2}/${base}`)}; else echo ABSENT; fi`;
+  const dest = `${epicDir2}/${base}`;
+  return `if [ -f ${q(src)} ]; then if [ -e ${q(dest)} ]; then echo "KEPT_ROOT: ${dest} exists, root ${src} is not this epic's, left in place"; else mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(dest)}; fi; else echo ABSENT; fi`;
 }
 function closeoutArchiveSteps(o) {
   const steps = [
@@ -381,8 +396,20 @@ if (!dataExists) {
 }
 phase("Synthesize");
 var epicDir = `docs/epics/${branch}`;
+var changelogOwner = (stepStdout(collectResult, "changelog-owner") || "").trim();
+var changelogManaged = changelogOwner === "release-please";
+if (changelogManaged) log("changelog_skipped: CHANGELOG.md is managed by release-please \u2014 closeout writes CURRENT_STATE.md and RETRO.md only");
+var preserved = (stepStdout(collectResult, "preserve-current-state") || "").trim();
+if (preserved.startsWith("moved-aside")) log(`current_state_preserved: an untracked root CURRENT_STATE.md was ${preserved}`);
+var changelogInstruction = changelogManaged ? "SKIP CHANGELOG.md entirely: this repository's CHANGELOG.md is managed by release-please and is generated from the conventional commits. Do not create, edit or mention it in artifacts_written." : "CHANGELOG.md \u2014 append entries for what shipped";
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
+  renderPrompt(closeout_synthesize_default, {
+    closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
+    reviewResponsePath: `${epicDir}/REVIEW-RESPONSE.md`,
+    changelogInstruction,
+    branch,
+    runId: rid
+  }),
   { label: "synthesize", model: model("balanced") }
 );
 if (!synthResult) {
@@ -390,8 +417,8 @@ if (!synthResult) {
 }
 var synth = typeof synthResult === "string" ? parseAgentJsonStrict(synthResult, "synthesize") : synthResult;
 log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(", ")}`);
-var synthFiles = ["CURRENT_STATE.md", "CHANGELOG.md", `${epicDir}/RETRO.md`];
-var synthCommitSteps = commitFilesSteps({ wt: ".", files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` });
+var synthFiles = changelogManaged ? ["CURRENT_STATE.md", `${epicDir}/RETRO.md`] : ["CURRENT_STATE.md", "CHANGELOG.md", `${epicDir}/RETRO.md`];
+var synthCommitSteps = commitFilesSteps({ wt: ".", files: synthFiles, message: `closeout(${rid}): write ${synthFiles.map((f) => f.split("/").pop()).join(" + ")}` });
 var synthCommit = commitFilesFromSteps(parseBatchResult(
   await agent(batchCommandPrompt(synthCommitSteps), stageOpts("cli", { label: "commit-synthesis", model: model("fast") })),
   synthCommitSteps
