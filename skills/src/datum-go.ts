@@ -47,8 +47,13 @@ const yolo: boolean = !!a.yolo
 let startFrom = (a.startFrom || 'refine').toLowerCase() as Phase
 const explicitStart: boolean = !!a.startFrom
 const route = (a.route || 'feature').toLowerCase() as Route
+// Validated: a typo or case mismatch used to drop the phase silently and
+// the pipeline continued as if it had run (phase review wf_9a69f891-462).
 const activePhases: Phase[] = a.phases && a.phases.length > 0
-  ? a.phases
+  ? a.phases.map((p) => String(p).toLowerCase()).map((p) => {
+      if (!(PHASES as string[]).includes(p)) throw new Error(`invalid_phase: ${JSON.stringify(p)} is not a phase. Valid: ${PHASES.join(', ')}`)
+      return p as Phase
+    })
   : [...PHASES]
 
 let startIdx = PHASES.indexOf(startFrom)
@@ -308,6 +313,10 @@ Output ONLY raw JSON, no markdown fences, no explanation.`,
     log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`)
     newEpicBranch = bootstrap.epicBranch
     resolvedBranch = bootstrap.epicBranch
+    // The prior epic's run id must not leak into this epic's closeout when
+    // Act is not in activePhases (phase review wf_9a69f891-462); '' makes
+    // the closeout phase mint its own.
+    resolvedRunId = ''
   }
 }
 
@@ -655,7 +664,12 @@ if (shouldRun('act', 3)) {
   }
 
   log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? 'finished with failures' : 'complete'} — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
-  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }
+  // approvalLanes are reported apart from dependency blocks (caliper BUG L:
+  // {"failed":0,"blocked":2} hid that one of the two was the root cause).
+  const actDepBlocked = actBlocked.filter(id => !actNeedsWrite.includes(id))
+  const needsApproval: Record<string, string> = {}
+  for (const id of actNeedsWrite) needsApproval[id] = actResults[id]?.error || 'green_blocked_needs_write'
+  lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actDepBlocked.length, approval: actNeedsWrite.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actDepBlocked, approvalLanes: actNeedsWrite, needsApproval }
 
   // Any failed, blocked, or unmerged lane means the epic is incomplete. Halt
   // here — in yolo mode too — rather than let Validate/Review/Closeout report

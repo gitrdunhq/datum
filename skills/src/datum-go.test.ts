@@ -837,3 +837,13 @@ describe('datum-go — a throw inside the inline Act phase halts like a failed l
     expect(after).not.toMatch(/\bthrow\b/)
   })
 })
+
+// Phase review wf_9a69f891-462: a typo or case mismatch in args.phases
+// silently dropped the phase and the pipeline continued as if it ran.
+describe('datum-go — args.phases is validated against the known phases', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  it('throws invalid_phase naming the unknown entry, and lower-cases the rest', () => {
+    expect(src).toMatch(/const activePhases: Phase\[\] = [\s\S]{0,400}invalid_phase:/)
+    expect(src).toMatch(/\.map\(\(p\) => String\(p\)\.toLowerCase\(\)\)/)
+  })
+})
