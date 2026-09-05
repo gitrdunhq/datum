@@ -14,6 +14,8 @@ import {
   scopeGapsFromSteps,
   postGreenSteps,
   ownershipCheckSteps,
+  depMergeSteps,
+  depMergeFromSteps,
   ownershipFromStdout,
   testExitCode,
 } from './shared/lane-steps'
@@ -1389,15 +1391,18 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
       const wt = worktreePaths[taskId]
       if (typeof wt === 'string' && wt.startsWith('/')) {
         const depBranches: string[] = inBatchDeps.map((d) => `${cfg.epicBranch}--${d}`)
-        const mergeOut = await resilientAgent(
-          `Run these commands in order in "${wt}". If any command fails, stop and return its full output including stderr. Otherwise return ONLY the raw combined output, no explanation, no markdown fences.\n` +
-            depBranches.map((b) => `git -C "${wt}" merge --no-edit "${b}"`).join('\n'),
-          stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' }),
-        )
-        if (mergeOut === null || /CONFLICT|Automatic merge failed|error:|fatal:/i.test(String(mergeOut))) {
-          const err = `dep_merge_failed: could not merge [${depBranches.join(', ')}] into ${taskId} worktree — ${String(mergeOut).slice(0, 300)}`
-          log(`[${taskId}] ${err}`)
-          const failResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'CRASH', error: err }
+        // Batch with exit codes (shared/lane-steps.ts): a failed merge is
+        // aborted in its own step, and the verdict is the step's exit code —
+        // not a regex over a runner's echo, which could say "done" after a
+        // conflict and leave the worktree mid-merge for RED to run on.
+        const depMergeStepList = depMergeSteps(wt, depBranches)
+        const depMerge = depMergeFromSteps(parseBatchResult(
+          await resilientAgent(batchCommandPrompt(depMergeStepList), stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' })),
+          depMergeStepList,
+        ), depBranches)
+        if (!depMerge.ok) {
+          log(`[${taskId}] ${depMerge.error}`)
+          const failResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'CRASH', error: depMerge.error }
           depResolvers[taskId](failResult)
           return failResult
         }

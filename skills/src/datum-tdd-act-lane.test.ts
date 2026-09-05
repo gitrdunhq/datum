@@ -538,6 +538,26 @@ describe('deterministic GREEN green-blindness gate (#386)', () => {
 // independent run is red, and fail the lane if the tree is still red.
 // ---------------------------------------------------------------------------
 
+describe('in-batch dep merge is a batch with exit codes, not an LLM echo judged by regex (#296)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const start = laneSource.indexOf('const depBranches: string[]')
+  const block = laneSource.slice(start, laneSource.indexOf('merged in-batch dep branches', start))
+
+  it('builds depMergeSteps(wt, depBranches) and reads the verdict with depMergeFromSteps', () => {
+    expect(start).toBeGreaterThan(-1)
+    expect(block).toMatch(/depMergeSteps\(wt, depBranches\)/)
+    expect(block).toMatch(/depMergeFromSteps\(parseBatchResult\(/)
+    expect(block).not.toMatch(/Run these commands in order/)
+    expect(block).not.toMatch(/CONFLICT\|Automatic merge failed/)
+  })
+
+  it('a failed dep merge still fails the lane at CRASH with the dep_merge_failed prefix triage already classifies', () => {
+    expect(block).toMatch(/if \(!depMerge\.ok\) \{/)
+    expect(block).toMatch(/error: depMerge\.error/)
+    expect(block).toMatch(/stage: 'CRASH'/)
+  })
+})
+
 describe('REFACTOR is independently verified (deterministic)', () => {
   const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
   // runRefactor is defined after runLane; slice from its start to the end of the file.

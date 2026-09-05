@@ -6,7 +6,7 @@
 // tested-by: skills/src/shared/lane-steps.test.ts
 
 import type { BatchStep, BatchResult } from './batch'
-import { stepStdout } from './batch'
+import { stepStdout, stepResult, describeFailure } from './batch'
 import { verifyFileOwnership, testRunCommand } from './utils'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
@@ -205,6 +205,39 @@ export function ownershipCommand(wt: string): string {
  */
 export function ownershipCheckSteps(wt: string): BatchStep[] {
   return [{ name: 'ownership', command: ownershipCommand(wt), tolerant: true }]
+}
+
+// ── In-batch dependency merge (#296) ──
+//
+// A lane whose dep ran in the same batch merges the dep's lane branch into
+// its own worktree before RED. This was a runner told to run `git merge` per
+// branch and echo the output, judged by a regex for CONFLICT — a runner that
+// answered "done" after a conflict left the worktree mid-merge and RED ran
+// on it. Non-tolerant steps: the exit code is the verdict, and a failed merge
+// is aborted inside the same step so the worktree is never left mid-merge.
+
+export function depMergeSteps(wt: string, branches: string[]): BatchStep[] {
+  return branches.map((b, i) => ({
+    name: `merge-${i}`,
+    command: `git -C ${q(wt)} merge --no-edit ${q(b)} || { git -C ${q(wt)} merge --abort >/dev/null 2>&1; false; }`,
+  }))
+}
+
+export function depMergeFromSteps(result: BatchResult, branches: string[]): { ok: boolean; error: string } {
+  if (result.missing) {
+    return { ok: false, error: `dep_merge_failed: could not merge [${branches.join(', ')}] — ${describeFailure(result, 'merge-0')}` }
+  }
+  for (let i = 0; i < branches.length; i++) {
+    const step = stepResult(result, `merge-${i}`)
+    if (!step) {
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} — merge step did not run` }
+    }
+    if (step.exit_code !== 0) {
+      const tail = (step.stderr || step.stdout || '').trim().split('\n').slice(-3).join(' | ')
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) — ${tail}` }
+    }
+  }
+  return { ok: true, error: '' }
 }
 
 /**

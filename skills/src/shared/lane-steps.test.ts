@@ -13,6 +13,8 @@ import {
   scopeContractSteps,
   postGreenSteps,
   ownershipCheckSteps,
+  depMergeSteps,
+  depMergeFromSteps,
   setupSteps,
   mergeSteps,
   actStartSteps,
@@ -505,6 +507,56 @@ describe('setupSteps', () => {
     expect(steps[1].command).toContain('cd "$__root" && datum worktrees setup --run-id "r1-b0" --epic-branch "datum/e" --lane-ids T1,T2')
     expect(steps[2].command).toContain('select(type=="string" and startswith("/"))')
     expect(steps[2].command).toContain('datum lane-plan-distribute "$__root/docs/epics/datum/e/lane-plan.json" "${__targets[@]}"')
+  })
+})
+
+// In-batch dependency merge (#296): a lane whose dep ran in the same batch
+// merges the dep's lane branch into its own worktree before RED. This was a
+// runner told to run `git merge` per branch and echo the output, judged by a
+// regex for CONFLICT — a runner that answered "done" after a conflict left
+// the worktree mid-merge and RED ran on it. Now: non-tolerant steps, exit
+// code is the verdict, a failed merge is aborted in the same step.
+describe('depMergeSteps', () => {
+  it('is one non-tolerant merge step per dep branch, in order, each aborting its own failed merge', () => {
+    const steps = depMergeSteps('/wt/T2', ['epic--T1', 'epic--T0'])
+    expect(names(steps)).toEqual(['merge-0', 'merge-1'])
+    expect(steps[0].tolerant).toBeFalsy()
+    expect(steps[0].command).toBe('git -C "/wt/T2" merge --no-edit "epic--T1" || { git -C "/wt/T2" merge --abort >/dev/null 2>&1; false; }')
+    expect(steps[1].command).toContain('"epic--T0"')
+  })
+})
+
+describe('depMergeFromSteps', () => {
+  const steps = depMergeSteps('/wt/T2', ['epic--T1', 'epic--T0'])
+
+  it('is ok when every merge step exited 0', () => {
+    const r = depMergeFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'merge-0', exit_code: 0, stdout: 'Merge made by the ort strategy.', stderr: '' },
+      { name: 'merge-1', exit_code: 0, stdout: 'Already up to date.', stderr: '' },
+    ]), steps), ['epic--T1', 'epic--T0'])
+    expect(r).toEqual({ ok: true, error: '' })
+  })
+
+  it('names the failed branch and the git tail on a non-zero merge, as dep_merge_failed', () => {
+    const r = depMergeFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'merge-0', exit_code: 1, stdout: 'CONFLICT (content): Merge conflict in src/a.ts\nAutomatic merge failed', stderr: '' },
+    ]), steps), ['epic--T1', 'epic--T0'])
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^dep_merge_failed: could not merge epic--T1 .*CONFLICT/)
+  })
+
+  it('a batch that returned nothing parseable is dep_merge_failed too — the worktree state is unknown', () => {
+    const r = depMergeFromSteps(parseBatchResult(null, steps), ['epic--T1'])
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^dep_merge_failed: .*no parseable result/)
+  })
+
+  it('a batch missing a later merge step (stopped early without a failed marker) is not ok', () => {
+    const r = depMergeFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'merge-0', exit_code: 0, stdout: '', stderr: '' },
+    ]), steps), ['epic--T1', 'epic--T0'])
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/epic--T0/)
   })
 })
 
