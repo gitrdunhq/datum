@@ -703,6 +703,16 @@ function ownershipFromStdout(raw, allowedFiles, forbiddenFiles) {
   const changed = raw.split("\n").map((l) => l.trim()).filter(Boolean);
   return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
 }
+function newTestCountFromSteps(result) {
+  const none = { ok: false, before: 0, after: 0, added: 0 };
+  if (result.missing) return { ...none, error: `test_count_missing: ${describeFailure(result, "post-red batch")}` };
+  for (const name of ["test-count-before", "test-count-after"]) {
+    if (!stepResult(result, name)) return { ...none, error: `test_count_missing: ${name} step absent from the post-red batch result \u2014 cannot tell whether RED wrote any tests` };
+  }
+  const before = sumCounts(stepStdout(result, "test-count-before"));
+  const after = sumCounts(stepStdout(result, "test-count-after"));
+  return { ok: true, before, after, added: after - before, error: "" };
+}
 function sumCounts(raw) {
   if (!raw) return 0;
   return raw.split("\n").map((l) => parseInt(l.trim(), 10)).filter((n) => !isNaN(n)).reduce((a2, b) => a2 + b, 0);
@@ -1581,9 +1591,12 @@ No markdown fences, no explanation.`,
   } else {
     log(`[${taskId}] contract preflight skipped (not a pytest lane)`);
   }
-  const afterCount = sumCounts(stepStdout(postRedResult, "test-count-after"));
-  const beforeCount = sumCounts(stepStdout(postRedResult, "test-count-before"));
-  const newTestCount = afterCount - beforeCount;
+  const counts = newTestCountFromSteps(postRedResult);
+  if (!counts.ok) {
+    log(`[${taskId}] RED FAILED: ${counts.error}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: counts.error };
+  }
+  const { before: beforeCount, after: afterCount, added: newTestCount } = counts;
   if (newTestCount <= 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${beforeCount}, after=${afterCount})`);
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_new_tests_written: RED agent did not append any test functions" };
