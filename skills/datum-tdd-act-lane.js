@@ -660,10 +660,11 @@ cat "$GREPPATFILE"`,
     command: o.testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null || echo 0`).join("\n"),
     tolerant: true
   });
+  const beforeRef = o.baseRef ? `$(git -C ${q(o.wt)} merge-base HEAD ${q(o.baseRef)})` : "HEAD~1";
   steps.push({
     name: "test-count-before",
     command: o.testFiles.map(
-      (f) => `git -C ${q(o.wt)} rev-parse HEAD~1 >/dev/null 2>&1 && git -C ${q(o.wt)} show HEAD~1:${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`
+      (f) => `__before=${beforeRef}; git -C ${q(o.wt)} rev-parse "$__before" >/dev/null 2>&1 && git -C ${q(o.wt)} show "$__before":${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`
     ).join("\n"),
     tolerant: true
   });
