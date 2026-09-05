@@ -2029,11 +2029,20 @@ def worktrees_merge(
         ..., "--commit-message", help="Merge commit message"
     ),
 ):
-    """Squash-merge completed lane branches into the epic branch."""
-    from datum.worktree_manager import merge_lane_branches
+    """Squash-merge completed lane branches into the epic branch.
+
+    A partial merge (a later lane conflicted after earlier lanes landed)
+    prints the same JSON shape plus ``failed_lane`` and ``error`` and exits
+    1, so the workflow can demote only the lane that did not land.
+    """
+    from datum.worktree_manager import LaneMergeError, merge_lane_branches
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
-    result = merge_lane_branches(epic_branch, order, commit_message)
+    try:
+        result = merge_lane_branches(epic_branch, order, commit_message)
+    except LaneMergeError as exc:
+        typer.echo(json.dumps(exc.payload()))
+        raise typer.Exit(code=1) from None
     typer.echo(json.dumps(result))
 
 

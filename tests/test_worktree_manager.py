@@ -460,6 +460,172 @@ class TestMergeLaneBranches:
             )
         assert "lane-a" in str(excinfo.value)
 
+    def test_two_lanes_editing_the_same_file_both_merge_into_one_commit(
+        self, repo: Path
+    ):
+        """elonchesd run wf_4f1e41dd-ab7, merge batch 3/5: lane 1 was
+        squash-merged with --no-commit and left STAGED, so lane 2's
+        `git merge --squash` refused ("Your local changes to the following
+        files would be overwritten by merge") because both lanes touched
+        src/engine/state.ts — even though the edits did not conflict. Each
+        lane's squash must land as its own temporary commit and the batch
+        must be folded into ONE commit at the end."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lines = [f"line {i}\n" for i in range(1, 13)]
+        (repo / "shared.txt").write_text("".join(lines))
+        _git(["add", "shared.txt"], cwd=repo)
+        _git(["commit", "-q", "-m", "base: shared.txt"], cwd=repo)
+
+        def edit_line(lane_id: str, index: int, text: str) -> None:
+            lane_branch = _make_lane_branch(repo, "epic/test", lane_id)
+            wt = repo.parent / f"wt-same-file-{lane_id}"
+            _git(["worktree", "add", str(wt), lane_branch], cwd=repo)
+            edited = list(lines)
+            edited[index] = text
+            (wt / "shared.txt").write_text("".join(edited))
+            _git(["add", "shared.txt"], cwd=wt)
+            _git(["commit", "-q", "-m", f"{lane_id} edits shared.txt"], cwd=wt)
+            _git(["worktree", "remove", "--force", str(wt)], cwd=repo)
+
+        edit_line("lane-a", 0, "line 1 (lane a)\n")
+        edit_line("lane-b", 11, "line 12 (lane b)\n")
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+
+        result = merge_lane_branches(
+            "epic/test", ["lane-a", "lane-b"], "merge: same file", repo_root=repo
+        )
+
+        assert result["merged"] == ["lane-a", "lane-b"]
+        assert result["already_merged"] == []
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        assert len(after_log) == len(before_log) + 1
+        assert (
+            _git(["log", "-1", "--format=%s"], cwd=repo).stdout.strip()
+            == "merge: same file"
+        )
+        content = (repo / "shared.txt").read_text()
+        assert "line 1 (lane a)\n" in content
+        assert "line 12 (lane b)\n" in content
+        assert _git(["status", "--porcelain"], cwd=repo).stdout == ""
+
+    def test_conflicting_later_lane_keeps_earlier_lanes_committed_and_names_it(
+        self, repo: Path
+    ):
+        """A real conflict in a later lane must not throw away the lanes that
+        already merged cleanly: they are folded into one commit, the checkout
+        is left clean, and the error carries the failed lane and the merged
+        lanes separately so the caller demotes only the failed one."""
+        from datum.worktree_manager import LaneMergeError, merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-partial-b"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "a.txt").write_text("conflicting content\n")
+        _git(["add", "a.txt"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b conflicts with lane a's a.txt"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+
+        with pytest.raises(LaneMergeError) as excinfo:
+            merge_lane_branches(
+                "epic/test", ["lane-a", "lane-b"], "merge: partial", repo_root=repo
+            )
+
+        err = excinfo.value
+        assert isinstance(err, RuntimeError)
+        assert err.failed_lane == "lane-b"
+        assert err.merged == ["lane-a"]
+        assert err.already_merged == []
+        head = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        assert err.sha == head
+        assert "lane-b" in str(err) and "lane-a" in str(err)
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        assert len(after_log) == len(before_log) + 1
+        assert (
+            _git(["log", "-1", "--format=%s"], cwd=repo).stdout.strip()
+            == "merge: partial"
+        )
+        assert (repo / "a.txt").read_text() == "work in progress\n"
+        assert _git(["status", "--porcelain"], cwd=repo).stdout == ""
+
+    def test_conflict_in_first_lane_leaves_epic_head_untouched(self, repo: Path):
+        from datum.worktree_manager import LaneMergeError, merge_lane_branches
+
+        (repo / "s.txt").write_text("base\n")
+        _git(["add", "s.txt"], cwd=repo)
+        _git(["commit", "-q", "-m", "base: s.txt"], cwd=repo)
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        wt_a = repo.parent / "wt-first-conflict"
+        _git(["worktree", "add", str(wt_a), lane_a], cwd=repo)
+        (wt_a / "s.txt").write_text("lane a\n")
+        _git(["add", "s.txt"], cwd=wt_a)
+        _git(["commit", "-q", "-m", "lane a edits s.txt"], cwd=wt_a)
+        _git(["worktree", "remove", "--force", str(wt_a)], cwd=repo)
+        (repo / "s.txt").write_text("epic moved on\n")
+        _git(["add", "s.txt"], cwd=repo)
+        _git(["commit", "-q", "-m", "epic edits s.txt"], cwd=repo)
+        head_before = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+
+        with pytest.raises(LaneMergeError) as excinfo:
+            merge_lane_branches("epic/test", ["lane-a"], "merge: x", repo_root=repo)
+
+        assert excinfo.value.failed_lane == "lane-a"
+        assert excinfo.value.merged == []
+        assert excinfo.value.sha == head_before
+        assert _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip() == head_before
+        assert _git(["status", "--porcelain"], cwd=repo).stdout == ""
+
+    def test_worktrees_merge_cli_reports_a_partial_merge_as_json_with_exit_1(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The TS merge workflow reads the CLI's stdout: on a partial failure it
+        needs the merged lanes and the failed lane as JSON, not a traceback."""
+        import json
+
+        from typer.testing import CliRunner
+
+        from datum.cli import app
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-cli-b"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "a.txt").write_text("conflicting content\n")
+        _git(["add", "a.txt"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b conflicts"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+        _git(["checkout", "epic/test"], cwd=repo)
+
+        monkeypatch.chdir(repo)
+        res = CliRunner().invoke(
+            app,
+            [
+                "worktrees",
+                "merge",
+                "--epic-branch",
+                "epic/test",
+                "--lane-order",
+                "lane-a,lane-b",
+                "--commit-message",
+                "merge: cli",
+            ],
+        )
+        assert res.exit_code == 1, res.output
+        payload = json.loads(res.output.strip().splitlines()[-1])
+        assert payload["failed_lane"] == "lane-b"
+        assert payload["merged"] == ["lane-a"]
+        assert payload["sha"] == _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        assert "lane-b" in payload["error"]
+
     def test_untracked_file_at_lane_added_path_blocks_merge_precondition(
         self, repo: Path
     ):

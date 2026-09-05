@@ -308,6 +308,39 @@ def setup_pipeline_worktrees(
     return mapping
 
 
+class LaneMergeError(RuntimeError):
+    """A lane's squash-merge failed after zero or more earlier lanes landed.
+
+    The lanes that merged cleanly before the failure are already folded into
+    one commit (``sha``) and the checkout is clean; ``failed_lane`` is the
+    one that did not land. Callers demote only that lane.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failed_lane: str,
+        merged: list[str],
+        already_merged: list[str],
+        sha: str,
+    ) -> None:
+        super().__init__(message)
+        self.failed_lane = failed_lane
+        self.merged = merged
+        self.already_merged = already_merged
+        self.sha = sha
+
+    def payload(self) -> dict[str, str | list[str]]:
+        return {
+            "sha": self.sha,
+            "merged": list(self.merged),
+            "already_merged": list(self.already_merged),
+            "failed_lane": self.failed_lane,
+            "error": str(self),
+        }
+
+
 def merge_lane_branches(
     epic_branch: str,
     lane_order: list[str],
@@ -319,6 +352,20 @@ def merge_lane_branches(
 
     Merges in lane_order (dependency order: depended-on lanes first).
     All accumulated changes land in one commit, satisfying the squash-before-push rule.
+
+    Each lane's squash is committed as a temporary commit as soon as it is
+    staged, and the temporary commits are folded into the single batch
+    commit at the end (``git reset --soft`` to the starting sha, then one
+    commit). Leaving lane 1 staged-but-uncommitted made lane 2's
+    ``git merge --squash`` refuse with "Your local changes to the following
+    files would be overwritten by merge" whenever both lanes touched the
+    same file, even without a content conflict (elonchesd run
+    wf_4f1e41dd-ab7, batch 3/5).
+
+    A later lane that really conflicts raises LaneMergeError: the lanes
+    that merged before it are folded into one commit and kept, the checkout
+    is left clean, and the error carries ``failed_lane`` / ``merged`` /
+    ``sha`` separately so the caller demotes only the failed lane.
 
     Before merging anything, checks every lane branch in lane_order for
     paths it adds/modifies that collide with an untracked file already
@@ -399,6 +446,23 @@ def merge_lane_branches(
     merged: list[str] = []
     already_merged: list[str] = []
     any_new_changes = False
+    start_sha = _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+
+    def fold_into_one_commit() -> str:
+        """Fold the temporary per-lane commits since start_sha into one commit."""
+        if not any_new_changes:
+            return _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+        soft = _git(["reset", "--soft", start_sha], cwd=repo_root, check=False)
+        if soft.returncode != 0:
+            raise RuntimeError(
+                f"Merge fold failed: git reset --soft {start_sha}: {soft.stderr.strip()}"
+            )
+        commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
+        if commit.returncode != 0:
+            raise RuntimeError(
+                f"Merge commit failed: {commit.stderr.strip()}\n{commit.stdout.strip()}"
+            )
+        return _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
 
     for lane_id in lane_order:
         lane_branch = f"{epic_branch}--{lane_id}"
@@ -408,11 +472,6 @@ def merge_lane_branches(
             check=False,
         )
         if result.returncode != 0:
-            merged_note = (
-                f" Lanes already merged (staged, uncommitted): {', '.join(merged)}."
-                if merged
-                else " No lanes were merged before this failure."
-            )
             # A failed `git merge --squash` (real content conflict) leaves the
             # root checkout mid-merge: SQUASH_MSG/MERGE_MSG present and AA
             # (unmerged) entries in the index/working tree. Left as-is, every
@@ -424,9 +483,22 @@ def merge_lane_branches(
             reset = _git(["reset", "--merge"], cwd=repo_root, check=False)
             if reset.returncode != 0:
                 _git(["merge", "--abort"], cwd=repo_root, check=False)
-            raise RuntimeError(
+            # The lanes that landed before this one stay landed: fold their
+            # temporary commits into the batch commit so the epic branch never
+            # carries a "tmp" commit, and report them separately.
+            sha = fold_into_one_commit()
+            merged_note = (
+                f" Lanes merged before the failure and committed as {sha[:12]}: {', '.join(merged)}."
+                if merged
+                else " No lanes were merged before this failure."
+            )
+            raise LaneMergeError(
                 f"Squash-merge of lane '{lane_id}' failed: "
-                f"{result.stderr.strip()}.{merged_note}"
+                f"{result.stderr.strip()}.{merged_note}",
+                failed_lane=lane_id,
+                merged=merged,
+                already_merged=already_merged,
+                sha=sha,
             )
 
         # Check if there are any staged changes after the squash-merge.
@@ -442,19 +514,28 @@ def merge_lane_branches(
             merged.append(lane_id)
             already_merged.append(lane_id)
         else:
-            # Staged changes — this lane has new content.
+            # Staged changes — commit them now (temporary, folded below) so
+            # the next lane's squash sees a clean index and working tree.
+            tmp = _git(
+                ["commit", "-q", "-m", f"tmp(datum): squash lane {lane_id}"],
+                cwd=repo_root,
+                check=False,
+            )
+            if tmp.returncode != 0:
+                _git(["reset", "--merge"], cwd=repo_root, check=False)
+                sha = fold_into_one_commit()
+                raise LaneMergeError(
+                    f"Temporary commit for lane '{lane_id}' failed: "
+                    f"{tmp.stderr.strip()}\n{tmp.stdout.strip()}",
+                    failed_lane=lane_id,
+                    merged=merged,
+                    already_merged=already_merged,
+                    sha=sha,
+                )
             merged.append(lane_id)
             any_new_changes = True
 
-    # Only create a commit if there are new changes to stage.
-    if any_new_changes:
-        commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
-        if commit.returncode != 0:
-            raise RuntimeError(
-                f"Merge commit failed: {commit.stderr.strip()}\n{commit.stdout.strip()}"
-            )
-
-    sha = _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+    sha = fold_into_one_commit()
     return {
         "sha": sha,
         "merged": merged,
