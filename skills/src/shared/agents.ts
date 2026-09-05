@@ -127,6 +127,10 @@ export async function resilientAgent<T = unknown>(
 
     if (threw) {
       logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} — treating as retryable`)
+    } else if (attempt < maxRetries) {
+      // Name the empty attempt: a retry that later succeeds otherwise hides
+      // that the first agent finished a tool call and stopped (caliper task-007).
+      logFn(`[resilientAgent] attempt ${attempt + 1} returned nothing (null result) — retrying`)
     }
 
     // If a worktree was provided, check for dirty state before retrying —

@@ -20,6 +20,26 @@ import { configureAgentTypes } from './agent-types'
 beforeEach(() => configureAgentTypes({}))
 
 describe('resilientAgent', () => {
+  // caliper task-007: the first reflect attempt returned nothing and only the
+  // retry's outcome was visible. A null attempt is logged by name.
+  it('logs a null attempt by name before retrying', async () => {
+    vi.useFakeTimers()
+    try {
+      const logs: string[] = []
+      let calls = 0
+      const pending = resilientAgent('p', { maxRetries: 1 }, {
+        agentFn: async () => (++calls === 1 ? null : { ok: true }),
+        logFn: (m: string) => logs.push(m),
+      })
+      await vi.runAllTimersAsync()
+      const r = await pending
+      expect(r).toEqual({ ok: true })
+      expect(logs.some((l) => /\[resilientAgent\] attempt 1 returned nothing \(null result\) — retrying/.test(l))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('recovers when agent() throws on the first attempt and succeeds on retry', async () => {
     vi.useFakeTimers()
     try {
