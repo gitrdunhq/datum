@@ -284,6 +284,156 @@ def test_lane_state_write_rejects_path_traversal_task(tmp_path, monkeypatch):
     assert not outside_target.exists()
 
 
+def _write_marker(runner, **overrides):
+    args = {
+        "epic": "datum/epic-overwrite",
+        "task": "task-001",
+        "status": "completed",
+        "merge_commit": "abc123",
+        "spec_hash": "h1",
+        "run_id": "run1",
+        "completed_at": "2026-01-01T00:00:00Z",
+    }
+    args.update(overrides)
+    force = args.pop("force", False)
+    argv = ["lane-state", "write"]
+    for key, value in args.items():
+        if value == "" or value is None:
+            continue
+        argv.extend([f"--{key.replace('_', '-')}", str(value)])
+    if force:
+        argv.append("--force")
+    return runner.invoke(app, argv)
+
+
+def test_lane_state_write_refuses_to_overwrite_completed_marker(tmp_path, monkeypatch):
+    """A second completed->completed write must not overwrite the marker."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    first = _write_marker(runner)
+    assert first.exit_code == 0, first.output
+
+    second = _write_marker(
+        runner,
+        merge_commit="different-sha",
+        spec_hash="different-hash",
+        run_id="run2",
+        completed_at="2026-02-02T00:00:00Z",
+    )
+    assert second.exit_code == 0, second.output
+
+    marker_path = (
+        tmp_path
+        / ".datum"
+        / "epics"
+        / "datum-epic-overwrite"
+        / "lane-state"
+        / "task-001.json"
+    )
+    data = json.loads(marker_path.read_text())
+    # Original fields preserved — not overwritten by the second call.
+    assert data["merge_commit"] == "abc123"
+    assert data["spec_hash"] == "h1"
+    assert data["run_id"] == "run1"
+    assert data["completed_at"] == "2026-01-01T00:00:00Z"
+
+    printed = json.loads(second.stdout)
+    assert printed["unchanged"] is True
+    assert printed["merge_commit"] == "abc123"
+    assert printed["spec_hash"] == "h1"
+
+
+def test_lane_state_write_force_overwrites_completed_marker(tmp_path, monkeypatch):
+    """--force overwrites an existing completed marker."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    first = _write_marker(runner)
+    assert first.exit_code == 0, first.output
+
+    second = _write_marker(
+        runner,
+        merge_commit="different-sha",
+        spec_hash="different-hash",
+        run_id="run2",
+        completed_at="2026-02-02T00:00:00Z",
+        force=True,
+    )
+    assert second.exit_code == 0, second.output
+
+    marker_path = (
+        tmp_path
+        / ".datum"
+        / "epics"
+        / "datum-epic-overwrite"
+        / "lane-state"
+        / "task-001.json"
+    )
+    data = json.loads(marker_path.read_text())
+    assert data["merge_commit"] == "different-sha"
+    assert data["spec_hash"] == "different-hash"
+    assert data["run_id"] == "run2"
+    assert data["completed_at"] == "2026-02-02T00:00:00Z"
+    assert "unchanged" not in json.loads(second.stdout)
+
+
+def test_lane_state_write_status_change_from_completed_still_writes(
+    tmp_path, monkeypatch
+):
+    """completed -> failed is a status change and must write (no --force needed)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    first = _write_marker(runner)
+    assert first.exit_code == 0, first.output
+
+    second = _write_marker(runner, status="failed", merge_commit="new-sha")
+    assert second.exit_code == 0, second.output
+
+    marker_path = (
+        tmp_path
+        / ".datum"
+        / "epics"
+        / "datum-epic-overwrite"
+        / "lane-state"
+        / "task-001.json"
+    )
+    data = json.loads(marker_path.read_text())
+    assert data["status"] == "failed"
+    assert data["merge_commit"] == "new-sha"
+    assert "unchanged" not in json.loads(second.stdout)
+
+
+def test_lane_state_write_non_completed_to_completed_writes(tmp_path, monkeypatch):
+    """A non-completed -> completed transition always writes, even without --force."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    first = _write_marker(runner, status="running")
+    assert first.exit_code == 0, first.output
+
+    second = _write_marker(runner, status="completed", merge_commit="new-sha")
+    assert second.exit_code == 0, second.output
+
+    marker_path = (
+        tmp_path
+        / ".datum"
+        / "epics"
+        / "datum-epic-overwrite"
+        / "lane-state"
+        / "task-001.json"
+    )
+    data = json.loads(marker_path.read_text())
+    assert data["status"] == "completed"
+    assert data["merge_commit"] == "new-sha"
+    assert "unchanged" not in json.loads(second.stdout)
+
+
 def test_lane_state_read_rejects_path_traversal_task(tmp_path, monkeypatch):
     """Security: a `--task` with `../` segments must not disclose files outside lane-state/."""
     monkeypatch.chdir(tmp_path)
@@ -310,3 +460,190 @@ def test_lane_state_read_rejects_path_traversal_task(tmp_path, monkeypatch):
 
     assert result.exit_code != 0
     assert "leaked" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# `lane-state rehash` — recompute spec_hash from the on-disk plan
+# ---------------------------------------------------------------------------
+
+
+def _write_lane_plan(path, lanes):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"lanes": lanes}))
+
+
+def _some_lane(**overrides):
+    lane = {
+        "files": ["a.py"],
+        "acceptance_criteria": ["does a thing"],
+        "depends_on": [],
+    }
+    lane.update(overrides)
+    return lane
+
+
+def test_lane_state_rehash_prefers_lane_plan_final_json(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-rehash", spec_hash="stale-hash")
+
+    epic_dir = tmp_path / "docs" / "epics" / "datum" / "epic-rehash"
+    lane = _some_lane(files=["real.py"])
+    _write_lane_plan(epic_dir / "lane-plan-final.json", {"task-001": lane})
+    _write_lane_plan(
+        epic_dir / "lane-plan.json", {"task-001": _some_lane(files=["wrong.py"])}
+    )
+
+    from datum.lane_hash import lane_spec_hash
+
+    expected_hash = lane_spec_hash(lane)
+
+    result = runner.invoke(
+        app,
+        ["lane-state", "rehash", "--epic", "datum/epic-rehash", "--task", "task-001"],
+    )
+    assert result.exit_code == 0, result.output
+
+    marker = json.loads(result.stdout)
+    assert marker["spec_hash"] == expected_hash
+    # Untouched fields preserved from the original write.
+    assert marker["merge_commit"] == "abc123"
+    assert marker["run_id"] == "run1"
+    assert marker["completed_at"] == "2026-01-01T00:00:00Z"
+
+
+def test_lane_state_rehash_falls_back_to_lane_plan_json(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-rehash2", spec_hash="stale-hash")
+
+    epic_dir = tmp_path / "docs" / "epics" / "datum" / "epic-rehash2"
+    lane = _some_lane(files=["default.py"])
+    _write_lane_plan(epic_dir / "lane-plan.json", {"task-001": lane})
+
+    from datum.lane_hash import lane_spec_hash
+
+    expected_hash = lane_spec_hash(lane)
+
+    result = runner.invoke(
+        app,
+        ["lane-state", "rehash", "--epic", "datum/epic-rehash2", "--task", "task-001"],
+    )
+    assert result.exit_code == 0, result.output
+    marker = json.loads(result.stdout)
+    assert marker["spec_hash"] == expected_hash
+
+
+def test_lane_state_rehash_falls_back_to_dot_datum_lane_plan(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-rehash3", spec_hash="stale-hash")
+
+    lane = _some_lane(files=["fallback.py"])
+    _write_lane_plan(tmp_path / ".datum" / "lane-plan.json", {"task-001": lane})
+
+    from datum.lane_hash import lane_spec_hash
+
+    expected_hash = lane_spec_hash(lane)
+
+    result = runner.invoke(
+        app,
+        ["lane-state", "rehash", "--epic", "datum/epic-rehash3", "--task", "task-001"],
+    )
+    assert result.exit_code == 0, result.output
+    marker = json.loads(result.stdout)
+    assert marker["spec_hash"] == expected_hash
+
+
+def test_lane_state_rehash_accepts_explicit_lane_plan_override(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-rehash4", spec_hash="stale-hash")
+
+    lane = _some_lane(files=["explicit.py"])
+    custom_plan = tmp_path / "somewhere" / "custom-plan.json"
+    _write_lane_plan(custom_plan, {"task-001": lane})
+
+    from datum.lane_hash import lane_spec_hash
+
+    expected_hash = lane_spec_hash(lane)
+
+    result = runner.invoke(
+        app,
+        [
+            "lane-state",
+            "rehash",
+            "--epic",
+            "datum/epic-rehash4",
+            "--task",
+            "task-001",
+            "--lane-plan",
+            str(custom_plan),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    marker = json.loads(result.stdout)
+    assert marker["spec_hash"] == expected_hash
+
+
+def test_lane_state_rehash_missing_marker_errors(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    epic_dir = tmp_path / "docs" / "epics" / "datum" / "epic-none"
+    _write_lane_plan(epic_dir / "lane-plan.json", {"task-001": _some_lane()})
+
+    result = runner.invoke(
+        app,
+        ["lane-state", "rehash", "--epic", "datum/epic-none", "--task", "task-001"],
+    )
+    assert result.exit_code != 0
+    assert "lane_state_marker_not_found" in result.output
+
+
+def test_lane_state_rehash_missing_lane_in_plan_errors(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-missing-lane", spec_hash="stale-hash")
+    epic_dir = tmp_path / "docs" / "epics" / "datum" / "epic-missing-lane"
+    _write_lane_plan(epic_dir / "lane-plan.json", {"some-other-task": _some_lane()})
+
+    result = runner.invoke(
+        app,
+        [
+            "lane-state",
+            "rehash",
+            "--epic",
+            "datum/epic-missing-lane",
+            "--task",
+            "task-001",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "lane_not_found_in_plan" in result.output
+
+
+def test_lane_state_rehash_missing_plan_errors(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    runner = CliRunner()
+
+    _write_marker(runner, epic="datum/epic-no-plan", spec_hash="stale-hash")
+
+    result = runner.invoke(
+        app,
+        ["lane-state", "rehash", "--epic", "datum/epic-no-plan", "--task", "task-001"],
+    )
+    assert result.exit_code != 0
+    assert "No lane-plan.json found" in result.output

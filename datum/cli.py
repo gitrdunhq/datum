@@ -6,6 +6,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from datum.lane_hash import lane_spec_hash
 from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 
@@ -2249,11 +2250,41 @@ def lane_state_write(
     completed_at: str = typer.Option(
         "", "--completed-at", help="ISO8601 completion timestamp (defaults to now, UTC)"
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite an existing completed marker even when the new status is also completed",
+    ),
 ):
-    """Write a deterministic lane-state marker for a task."""
+    """Write a deterministic lane-state marker for a task.
+
+    Refuses to overwrite an existing marker whose status is already
+    "completed" when the new status is also "completed" — this is the
+    re-scheduled-and-re-merged-lane guard (a merge batch re-running
+    `lane-state write` for a lane that was already merged must not stomp
+    the original merge_commit/spec_hash with values computed from the
+    in-flight re-run). Any real status change (completed -> anything,
+    or anything -> completed from a non-completed marker) still writes.
+    Pass --force to overwrite unconditionally.
+    """
     lane_dir = _resolve_lane_state_dir_or_exit(epic)
     marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
     lane_dir.mkdir(parents=True, exist_ok=True)
+
+    if not force and marker_path.exists():
+        try:
+            existing = json.loads(marker_path.read_text())
+        except (json.JSONDecodeError, ValueError):
+            existing = None
+        if (
+            isinstance(existing, dict)
+            and existing.get("status") == "completed"
+            and status == "completed"
+        ):
+            output = dict(existing)
+            output["unchanged"] = True
+            typer.echo(json.dumps(output, indent=2, sort_keys=True))
+            return
 
     resolved_completed_at = completed_at or datetime.now(UTC).isoformat()
 
@@ -2304,6 +2335,124 @@ def lane_state_read(
         raise typer.Exit(1) from None
 
     typer.echo(json.dumps(marker_data))
+
+
+def _resolve_lane_plan_path_for_rehash(epic: str, override: str | None) -> Path:
+    """Resolve the on-disk lane plan to rehash a marker's spec_hash against.
+
+    Mirrors the precedence of the TS `resolve` step in actStartSteps()
+    (skills/src/shared/lane-steps.ts): prefer
+    docs/epics/<epic>/lane-plan-final.json, else
+    docs/epics/<epic>/lane-plan.json — with one addition, a third fallback
+    to .datum/lane-plan.json (the location `datum init`/`datum lane-plan`
+    write by default when no epic-scoped plan exists yet), since a plain
+    lookup failure here would silently defeat `rehash`'s purpose.
+    """
+    if override:
+        return Path(override)
+
+    if ".." in epic:
+        raise ValueError(f"epic identifier must not contain '..': {epic!r}")
+
+    epic_dir = Path("docs") / "epics" / epic
+    final_path = epic_dir / "lane-plan-final.json"
+    if final_path.is_file():
+        return final_path
+
+    default_path = epic_dir / "lane-plan.json"
+    if default_path.is_file():
+        return default_path
+
+    dot_datum_path = Path(".datum") / "lane-plan.json"
+    if dot_datum_path.is_file():
+        return dot_datum_path
+
+    raise FileNotFoundError(
+        "No lane-plan.json found — tried: "
+        f"{final_path}, {default_path}, {dot_datum_path}"
+    )
+
+
+@lane_state_app.command("rehash")
+def lane_state_rehash(
+    epic: str = typer.Option(
+        ..., "--epic", help="Epic identifier, e.g. 'datum/epic-287'"
+    ),
+    task: str = typer.Option(..., "--task", help="Task ID, e.g. 'task-002'"),
+    lane_plan: str = typer.Option(
+        None,
+        "--lane-plan",
+        help="Explicit path to the lane plan JSON (skips final/default/.datum resolution)",
+    ),
+):
+    """Recompute a task's spec_hash from the on-disk lane plan.
+
+    Rewrites only the spec_hash field of an existing marker —
+    merge_commit/run_id/completed_at are preserved untouched. This is the
+    escape hatch for a marker whose spec_hash was computed from an
+    in-flight/in-script plan rather than the plan actually on disk (see
+    the `lane-state write` no-overwrite guard above): rehash lets an
+    operator realign spec_hash with the current plan without disturbing
+    the marker's completion identity.
+    """
+    lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
+
+    if not marker_path.exists():
+        console_err.print(
+            f"[bold red]lane_state_marker_not_found: no marker for task {task!r} "
+            f"under epic {epic!r} ({marker_path})[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        marker_text = marker_path.read_text().strip()
+        if not marker_text:
+            raise ValueError("marker file is empty")
+        marker = json.loads(marker_text)
+        if not isinstance(marker, dict):
+            raise ValueError(
+                f"marker must be a JSON object, not {type(marker).__name__}"
+            )
+    except (json.JSONDecodeError, ValueError) as exc:
+        console_err.print(
+            f"[bold red]lane_state_marker_corrupt: {marker_path}: {exc}[/bold red]"
+        )
+        raise typer.Exit(1) from None
+
+    try:
+        plan_path = _resolve_lane_plan_path_for_rehash(epic, lane_plan)
+    except (ValueError, FileNotFoundError) as exc:
+        console_err.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    try:
+        plan_text = plan_path.read_text()
+        plan = json.loads(plan_text)
+        if not isinstance(plan, dict):
+            raise ValueError(
+                f"lane plan must be a JSON object, not {type(plan).__name__}"
+            )
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        console_err.print(f"[bold red]lane_plan_corrupt: {plan_path}: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    lanes = plan.get("lanes") or {}
+    lane = lanes.get(task)
+    if lane is None:
+        console_err.print(
+            f"[bold red]lane_not_found_in_plan: task {task!r} not found in "
+            f"{plan_path}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    marker["spec_hash"] = lane_spec_hash(lane)
+    marker_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
+
+    console_err.print(
+        f"[dim]lane-state rehash: recomputed spec_hash from {plan_path}[/dim]"
+    )
+    typer.echo(json.dumps(marker, indent=2, sort_keys=True))
 
 
 # ── TDD stage verification (#133) ────────────────────────────────────────────

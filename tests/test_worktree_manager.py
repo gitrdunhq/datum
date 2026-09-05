@@ -557,6 +557,48 @@ class TestMergeLaneBranches:
         assert len(after_log) == len(before_log) + 1
         assert (repo / "new_file.txt").exists()
 
+    def test_conflicting_squash_merge_leaves_root_checkout_clean_after_raise(
+        self, repo: Path
+    ):
+        """BUG (elonchesd runs wf_93040d99-e3c, wf_c8cd6517-117): a conflicting
+        `git merge --squash` used to leave the ROOT checkout mid-merge
+        (SQUASH_MSG/MERGE_MSG present, AA conflict markers in the working
+        tree) after merge_lane_branches raised. The caller only sees the
+        RuntimeError — nothing else runs `git merge --abort`/`git reset` — so
+        every subsequent git operation in that checkout (including a later
+        retry of merge_lane_branches itself) inherits the conflicted state.
+        The fix: reset/abort the in-progress merge BEFORE raising, so the
+        checkout is exactly as clean as it was before this call started."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        wt_a = repo.parent / "wt-clean-a"
+        _git(["worktree", "add", str(wt_a), lane_a], cwd=repo)
+        (wt_a / "shared.txt").write_text("from lane a\n")
+        _git(["add", "shared.txt"], cwd=wt_a)
+        _git(["commit", "-q", "-m", "lane a edits shared.txt"], cwd=wt_a)
+        _git(["worktree", "remove", "--force", str(wt_a)], cwd=repo)
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        wt_b = repo.parent / "wt-clean-b"
+        _git(["worktree", "add", str(wt_b), lane_b], cwd=repo)
+        (wt_b / "shared.txt").write_text("from lane b\n")
+        _git(["add", "shared.txt"], cwd=wt_b)
+        _git(["commit", "-q", "-m", "lane b edits shared.txt"], cwd=wt_b)
+        _git(["worktree", "remove", "--force", str(wt_b)], cwd=repo)
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        with pytest.raises(RuntimeError, match="lane-b"):
+            merge_lane_branches(
+                "epic/test", ["lane-a", "lane-b"], "merge: conflict", repo_root=repo
+            )
+
+        assert not (repo / ".git" / "SQUASH_MSG").exists()
+        assert not (repo / ".git" / "MERGE_MSG").exists()
+        assert not (repo / ".git" / "MERGE_HEAD").exists()
+        status = _git(["status", "--porcelain"], cwd=repo).stdout
+        assert status == ""
+
     def test_mixed_order_already_merged_and_new_lanes(self, repo: Path):
         """When merge order contains both already-merged and new lanes,
         must produce exactly one commit with only the new lane's changes,

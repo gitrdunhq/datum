@@ -413,6 +413,17 @@ def merge_lane_branches(
                 if merged
                 else " No lanes were merged before this failure."
             )
+            # A failed `git merge --squash` (real content conflict) leaves the
+            # root checkout mid-merge: SQUASH_MSG/MERGE_MSG present and AA
+            # (unmerged) entries in the index/working tree. Left as-is, every
+            # subsequent git operation in this checkout — including a later
+            # retry of this same call — inherits that conflicted state
+            # (elonchesd runs wf_93040d99-e3c, wf_c8cd6517-117). Reset/abort
+            # BEFORE raising so the checkout is left exactly as clean as it
+            # was before this call started.
+            reset = _git(["reset", "--merge"], cwd=repo_root, check=False)
+            if reset.returncode != 0:
+                _git(["merge", "--abort"], cwd=repo_root, check=False)
             raise RuntimeError(
                 f"Squash-merge of lane '{lane_id}' failed: "
                 f"{result.stderr.strip()}.{merged_note}"

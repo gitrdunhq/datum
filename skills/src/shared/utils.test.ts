@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, extractContractSummary, crossValidateBugs, buildPacket } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, extractContractSummary, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
 // ---------------------------------------------------------------------------
@@ -1304,4 +1304,33 @@ describe('buildPacket', () => {
     const packet = buildPacket('task-123', [], implFiles, testLane, '/wt', cfg, 'GREEN')
     expect(packet.allowed_write_files).toEqual(implFiles)
   })
+})
+
+// ---------------------------------------------------------------------------
+// laneSpecHash — cross-language pin against tests/fixtures/lane_spec_hash_vectors.json
+//
+// tests/fixtures/lane_spec_hash_vectors.json is a static, committed fixture:
+// an array of {name, lane, hash}, one entry per interesting laneSpecHash
+// input shape (multibyte text, emoji/astral-plane characters, quotes,
+// backslashes, newlines, empty arrays, and a lane missing all three fields
+// entirely). It was generated once from this exact `laneSpecHash` by a
+// throwaway vitest run and is now pinned by BOTH sides: this test asserts
+// laneSpecHash still reproduces every vector's hash (TS regressions caught
+// here), and tests/test_lane_hash.py asserts the Python port
+// datum/lane_hash.py `lane_spec_hash` reproduces the same vectors (Python
+// regressions/divergence caught there). Neither side regenerates the
+// fixture — if either implementation's output would change, the fixture
+// (and the other side's test) makes that a loud, deliberate diff instead of
+// a silent drift that breaks `datum lane-state rehash` skip-condition
+// matching against markers written by the TS orchestrator.
+// ---------------------------------------------------------------------------
+
+import laneSpecHashVectors from '../../../tests/fixtures/lane_spec_hash_vectors.json'
+
+describe('laneSpecHash — cross-language pin (tests/fixtures/lane_spec_hash_vectors.json)', () => {
+  for (const vector of laneSpecHashVectors as Array<{ name: string; lane: Partial<Lane>; hash: string }>) {
+    it(`matches pinned vector: ${vector.name}`, () => {
+      expect(laneSpecHash(vector.lane as Pick<Lane, 'files' | 'acceptance_criteria' | 'depends_on'>)).toBe(vector.hash)
+    })
+  }
 })
