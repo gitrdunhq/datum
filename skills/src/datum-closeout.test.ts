@@ -102,6 +102,25 @@ describe('datum-closeout — deterministic archive (#368 follow-up)', () => {
 // crashed or garbled synthesis agent must not be indistinguishable from.
 // ---------------------------------------------------------------------------
 
+// housekeep-epic (delete merged lane branches + pipeline-state) was a runner
+// told to "Run: datum housekeep-epic <branch>" with its reply discarded — a
+// failed or skipped housekeep left stale lane branches and pipeline-state
+// behind with nothing in the transcript. Non-fatal, but never silent.
+describe('datum-closeout — housekeep is a batch step whose outcome is logged, not an LLM run whose reply is discarded', () => {
+  const src = readFileSync(join(__dirname, 'datum-closeout.ts'), 'utf8')
+
+  it('runs housekeepSteps(branch) through the batch and reads it with housekeepFromSteps', () => {
+    expect(src).toMatch(/housekeepSteps\(branch\)/)
+    expect(src).toMatch(/housekeepFromSteps\(parseBatchResult\(/)
+    expect(src).not.toMatch(/Run: datum housekeep-epic/)
+  })
+
+  it('logs the named housekeep_failed reason when the step fails, and exports it on the workflow result', () => {
+    expect(src).toMatch(/log\(`housekeep: \$\{housekeep\.error\}`\)/)
+    expect(src).toMatch(/housekeepError: housekeep\.error/)
+  })
+})
+
 describe('datum-closeout — synthesize result uses the strict parser and rejects a null result', () => {
   it('imports parseAgentJsonStrict', () => {
     expect(src).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)

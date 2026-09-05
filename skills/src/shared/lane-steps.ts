@@ -207,6 +207,28 @@ export function ownershipCheckSteps(wt: string): BatchStep[] {
   return [{ name: 'ownership', command: ownershipCommand(wt), tolerant: true }]
 }
 
+// ── Closeout housekeep: delete merged lane branches + pipeline-state ──
+//
+// Was a runner told to "Run: datum housekeep-epic <branch>" with its reply
+// discarded — a failed or skipped housekeep left stale lane branches and
+// pipeline-state behind with nothing in the transcript. Non-fatal, never
+// silent.
+
+export function housekeepSteps(epicBranch: string): BatchStep[] {
+  return [{ name: 'housekeep', command: `datum housekeep-epic ${q(epicBranch)}`, tolerant: true }]
+}
+
+export function housekeepFromSteps(result: BatchResult): { ok: boolean; summary: string; error: string } {
+  if (result.missing) return { ok: false, summary: '', error: `housekeep_failed: ${describeFailure(result, 'housekeep')}` }
+  const step = stepResult(result, 'housekeep')
+  if (!step) return { ok: false, summary: '', error: 'housekeep_failed: housekeep step did not run' }
+  if (step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout || '').trim().split('\n').slice(-3).join(' | ')
+    return { ok: false, summary: '', error: `housekeep_failed: datum housekeep-epic exited ${step.exit_code} — ${tail}` }
+  }
+  return { ok: true, summary: (step.stdout || '').trim(), error: '' }
+}
+
 // ── In-batch dependency merge (#296) ──
 //
 // A lane whose dep ran in the same batch merges the dep's lane branch into

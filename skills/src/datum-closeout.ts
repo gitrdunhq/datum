@@ -4,6 +4,7 @@ import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
+import { housekeepSteps, housekeepFromSteps } from './shared/lane-steps'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 
@@ -143,11 +144,17 @@ const archived = !archiveResult.missing && !!commitStep && commitStep.exit_code 
 // leaked-TypeScript grep (same note as datum-go's configFingerprint).
 const archiveCommit: string = archived ? (stepStdout(archiveResult, 'commit-sha') || '').trim() : ''
 
-// Housekeep: delete merged lane/worktree branches and pipeline-state (deterministic, no LLM)
-await agent(
-  `Run: datum housekeep-epic ${branch}`,
-  stageOpts('cli', { label: 'housekeep', model: model('fast') }),
-)
+// Housekeep: delete merged lane/worktree branches and pipeline-state — a
+// batch step whose exit code is read (shared/lane-steps.ts). Non-fatal (the
+// closeout artifacts already landed) but never silent: a failure is logged
+// by name and carried on the workflow result.
+const housekeepStepList = housekeepSteps(branch)
+const housekeep = housekeepFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(housekeepStepList), stageOpts('cli', { label: 'housekeep', model: model('fast') })),
+  housekeepStepList,
+))
+if (housekeep.ok) log(`housekeep: ${housekeep.summary || 'done'}`)
+else log(`housekeep: ${housekeep.error}`)
 
 export const __workflowResult = {
   branch, runId: rid,
@@ -156,4 +163,5 @@ export const __workflowResult = {
   archived,
   archiveCommit,
   archiveFailures,
+  housekeepError: housekeep.error,
 }

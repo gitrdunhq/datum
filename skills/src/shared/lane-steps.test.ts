@@ -15,6 +15,8 @@ import {
   ownershipCheckSteps,
   depMergeSteps,
   depMergeFromSteps,
+  housekeepSteps,
+  housekeepFromSteps,
   setupSteps,
   mergeSteps,
   actStartSteps,
@@ -557,6 +559,33 @@ describe('depMergeFromSteps', () => {
     ]), steps), ['epic--T1', 'epic--T0'])
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/epic--T0/)
+  })
+})
+
+describe('housekeepSteps / housekeepFromSteps (closeout)', () => {
+  it('is one tolerant `datum housekeep-epic <branch>` step', () => {
+    const steps = housekeepSteps('datum/epic-7')
+    expect(names(steps)).toEqual(['housekeep'])
+    expect(steps[0].command).toBe('datum housekeep-epic "datum/epic-7"')
+    expect(steps[0].tolerant).toBe(true)
+  })
+
+  it('is ok on exit 0 and surfaces the printed JSON summary', () => {
+    const r = housekeepFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'housekeep', exit_code: 0, stdout: '{"deleted_branches": ["datum/epic-7--T1"], "pipeline_state_removed": true}', stderr: '' },
+    ]), housekeepSteps('datum/epic-7')))
+    expect(r.ok).toBe(true)
+    expect(r.error).toBe('')
+    expect(r.summary).toContain('datum/epic-7--T1')
+  })
+
+  it('a non-zero exit or a missing batch is housekeep_failed with the tail', () => {
+    const failed = housekeepFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'housekeep', exit_code: 1, stdout: '', stderr: 'error: branch not fully merged' },
+    ]), housekeepSteps('datum/epic-7')))
+    expect(failed.ok).toBe(false)
+    expect(failed.error).toMatch(/^housekeep_failed: datum housekeep-epic exited 1.*not fully merged/)
+    expect(housekeepFromSteps(parseBatchResult(null, housekeepSteps('x'))).error).toMatch(/^housekeep_failed: /)
   })
 })
 
