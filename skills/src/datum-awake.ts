@@ -1,5 +1,8 @@
 import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
+import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import awakeScanTemplate from './prompts/awake-scan.md'
 import awakeDistillTemplate from './prompts/awake-distill.md'
 
@@ -12,6 +15,11 @@ export const meta = {
     { title: 'Commit', detail: 'write preamble files and commit' },
   ],
 }
+
+// Resume cache key (#354): stamped into the write/commit batches below so an
+// edited repo between runs is a cache miss. Standalone launches may pass none.
+const awakeArgs = (typeof args === 'object' && args) ? (args as { configFingerprint?: string }) : {}
+setBatchCacheKey(awakeArgs.configFingerprint || '')
 
 // ── Scan ──
 
@@ -66,21 +74,35 @@ phase('Commit')
 const preamblePath = 'skills/src/prompts/agent-preamble.md'
 const fullPath = 'skills/src/prompts/agent-preamble-full.md'
 
-await agent(
-  `Write these two files:
-
-FILE 1: "${preamblePath}"
-${distill.preamble}
-
-FILE 2: "${fullPath}"
-${distill.preamble_full}
-
-Then commit both:
-git add "${preamblePath}" "${fullPath}" && git commit -m "awake: regenerate agent preamble from repo scan"`,
-  { label: 'commit-preambles', model: model('fast') },
+// Script-held content: written through byte-verified heredoc batches and
+// committed by a commitFilesSteps batch (shared/write-steps.ts,
+// shared/commit-steps.ts) — never handed to a runner as "write these two
+// files, then commit both", whose reply was discarded.
+const PREAMBLE_NAMES = { mkdir: 'mkdir-preamble', write: 'write-preamble', sha: 'sha-preamble' }
+const FULL_NAMES = { mkdir: 'mkdir-full', write: 'write-full', sha: 'sha-full' }
+const writeSteps = [
+  ...writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES }),
+  ...writeFileSteps({ path: fullPath, content: distill.preamble_full, names: FULL_NAMES }),
+]
+const writeResult = parseBatchResult(
+  await agent(batchCommandPrompt(writeSteps), { label: 'write-preambles', model: model('fast') }),
+  writeSteps,
 )
+for (const verdict of [
+  writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: 'preamble', names: PREAMBLE_NAMES }),
+  writeFileFromSteps(writeResult, { path: fullPath, expectedSha: writeFileBlobSha(distill.preamble_full), prefix: 'preamble_full', names: FULL_NAMES }),
+]) {
+  if (!verdict.ok) throw new Error(verdict.error)
+}
 
-log(`Written: ${preamblePath} + ${fullPath}`)
+const commitStepList = commitFilesSteps({ wt: '.', files: [preamblePath, fullPath], message: 'awake: regenerate agent preamble from repo scan' })
+const commit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(commitStepList), { label: 'commit-preambles', model: model('fast') }),
+  commitStepList,
+))
+if (commit.error) throw new Error(`awake_commit_failed: ${commit.error}`)
+if (commit.nothingToCommit) log('Preambles unchanged since the last awake — nothing to commit')
+else log(`Written and committed: ${preamblePath} + ${fullPath} (${commit.sha})`)
 log('Run "bash scripts/build-workflows.sh" to rebuild with new preamble')
 
 export const __workflowResult = {

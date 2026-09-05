@@ -30,3 +30,24 @@ describe('datum-awake — scan and distill use the strict parser', () => {
     expect(src).not.toMatch(/\bparseAgentJson\b/)
   })
 })
+
+// The distilled preambles are script-held content; they were handed to a
+// runner as "Write these two files ... Then commit both" — the last
+// prompt-driven commit in skills/src. Same treatment as the review report:
+// byte-verified heredoc writes, then a commitFilesSteps batch.
+describe('datum-awake — preambles are written and committed by batches', () => {
+  it('writes both files through writeFileSteps in one batch and verifies each blob sha', () => {
+    expect(src).not.toMatch(/Write these two files/)
+    expect(src).not.toMatch(/Then commit both/)
+    expect(src).toMatch(/writeFileSteps\(\{ path: preamblePath, content: distill\.preamble, names: PREAMBLE_NAMES \}\)/)
+    expect(src).toMatch(/writeFileSteps\(\{ path: fullPath, content: distill\.preamble_full, names: FULL_NAMES \}\)/)
+    expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: preamblePath, expectedSha: writeFileBlobSha\(distill\.preamble\), prefix: 'preamble', names: PREAMBLE_NAMES \}\)/)
+    expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: fullPath, expectedSha: writeFileBlobSha\(distill\.preamble_full\), prefix: 'preamble_full', names: FULL_NAMES \}\)/)
+  })
+
+  it('commits through commitFilesSteps and halts as awake_commit_failed', () => {
+    expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[preamblePath, fullPath\], message: 'awake: regenerate agent preamble from repo scan' \}\)/)
+    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/throw new Error\(`awake_commit_failed: /)
+  })
+})
