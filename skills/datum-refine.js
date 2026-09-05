@@ -556,14 +556,18 @@ var triageResult = {
   roadmap_items: [],
   merged_requirements: []
 };
-async function commitRefineFiles(files, message, label) {
+async function commitRefineFiles(files, message, label, opts = { allowUnchanged: true }) {
   const commitStepList = commitFilesSteps({ wt: ".", files, message });
   const commit = commitFilesFromSteps(parseBatchResult(
     await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
     commitStepList
   ));
   if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`);
-  if (commit.nothingToCommit) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);
+  if (commit.nothingToCommit) {
+    if (!opts.allowUnchanged) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);
+    log(`${label}: ${files.join(", ")} unchanged since the last run \u2014 already committed`);
+    return "unchanged";
+  }
   return commit.sha;
 }
 if (hasAddenda) {
@@ -579,7 +583,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
   triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
   if (triageResult.roadmap_items.length > 0) {
-    const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap");
+    const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap", { allowUnchanged: false });
     log(`ROADMAP.md committed (${roadmapCommit})`);
   }
 } else {

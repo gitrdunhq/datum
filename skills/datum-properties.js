@@ -523,8 +523,8 @@ var commit = commitFilesFromSteps(parseBatchResult(
   commitStepList
 ));
 if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`);
-if (commit.nothingToCommit) throw new Error(`properties_commit_failed: nothing to commit at ${propertiesPath} \u2014 the derive agent did not write it`);
-log(`PROPERTIES.md written and committed (${commit.sha})`);
+if (commit.nothingToCommit) log(`PROPERTIES.md unchanged since the last run \u2014 already committed at ${propertiesPath}`);
+else log(`PROPERTIES.md written and committed (${commit.sha})`);
 var gateStepList = gateSteps("properties", yolo ? " --approve" : "");
 var gate = parseGateResult(parseBatchResult(
   await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),

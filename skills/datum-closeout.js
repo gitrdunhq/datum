@@ -378,8 +378,8 @@ var synthCommit = commitFilesFromSteps(parseBatchResult(
   synthCommitSteps
 ));
 if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`);
-if (synthCommit.nothingToCommit) throw new Error(`closeout_commit_failed: nothing to commit for ${synthFiles.join(", ")} \u2014 the synthesis agent did not write them`);
-log(`Closeout artifacts committed (${synthCommit.sha})`);
+if (synthCommit.nothingToCommit) log(`Closeout artifacts unchanged since the last run \u2014 already committed (${synthFiles.join(", ")})`);
+else log(`Closeout artifacts committed (${synthCommit.sha})`);
 var archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir });
 var archiveRaw = await agent(
   batchCommandPrompt(archiveSteps),

@@ -964,7 +964,10 @@ async function commitPlanFiles(files, message, label) {
     commitStepList
   ));
   if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`);
-  if (commit.nothingToCommit) throw new Error(`plan_commit_failed: nothing to commit for ${label} (${files.join(", ")})`);
+  if (commit.nothingToCommit) {
+    log(`${label}: ${files.join(", ")} unchanged since the last run \u2014 already committed`);
+    return "unchanged";
+  }
   return commit.sha;
 }
 var planCommit = await commitPlanFiles(
