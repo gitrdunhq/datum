@@ -314,7 +314,7 @@ def merge_lane_branches(
     commit_message: str,
     *,
     repo_root: Path | None = None,
-) -> str:
+) -> dict[str, str | list[str]]:
     """Squash-merge all completed lane branches into the epic branch.
 
     Merges in lane_order (dependency order: depended-on lanes first).
@@ -328,13 +328,26 @@ def merge_lane_branches(
     leave earlier lanes squash-merged (staged, uncommitted) while later
     ones never ran, a hard-to-diagnose half-merged state.
 
-    Returns the SHA of the resulting merge commit.
-    Raises RuntimeError on any git failure.
+    If a lane's commits are already on the epic branch (detected by no staged
+    changes after `git merge --squash`), the lane is treated as already_merged:
+    no commit is created, the epic HEAD sha is used, and the lane appears in
+    both `merged` and `already_merged` lists so the caller knows the lane was
+    processed but required no new commit.
+
+    Returns a dict with keys:
+      - "sha": the SHA of the merge commit (or epic HEAD if all lanes already merged)
+      - "merged": list of all lane IDs processed
+      - "already_merged": list of lane IDs that were already on the epic branch
+    Raises RuntimeError on any git failure or if lane_order is empty.
     """
     _validate_ref_arg(epic_branch, "epic_branch")
     for lane_id in lane_order:
         _validate_path_component(lane_id, "lane_id")
     repo_root = (repo_root or Path(".")).resolve()
+
+    # Require at least one lane to merge.
+    if not lane_order:
+        raise RuntimeError("lane_order must not be empty")
 
     checkout = _git(["checkout", epic_branch], cwd=repo_root, check=False)
     if checkout.returncode != 0:
@@ -384,6 +397,9 @@ def merge_lane_branches(
             )
 
     merged: list[str] = []
+    already_merged: list[str] = []
+    any_new_changes = False
+
     for lane_id in lane_order:
         lane_branch = f"{epic_branch}--{lane_id}"
         result = _git(
@@ -401,16 +417,38 @@ def merge_lane_branches(
                 f"Squash-merge of lane '{lane_id}' failed: "
                 f"{result.stderr.strip()}.{merged_note}"
             )
-        merged.append(lane_id)
 
-    commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
-    if commit.returncode != 0:
-        raise RuntimeError(
-            f"Merge commit failed: {commit.stderr.strip()}\n{commit.stdout.strip()}"
+        # Check if there are any staged changes after the squash-merge.
+        # Exit code 0 means no changes, exit code 1 means there are changes.
+        diff_cached = _git(
+            ["diff", "--cached", "--quiet"],
+            cwd=repo_root,
+            check=False,
         )
 
+        if diff_cached.returncode == 0:
+            # No staged changes — the lane was already merged.
+            merged.append(lane_id)
+            already_merged.append(lane_id)
+        else:
+            # Staged changes — this lane has new content.
+            merged.append(lane_id)
+            any_new_changes = True
+
+    # Only create a commit if there are new changes to stage.
+    if any_new_changes:
+        commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
+        if commit.returncode != 0:
+            raise RuntimeError(
+                f"Merge commit failed: {commit.stderr.strip()}\n{commit.stdout.strip()}"
+            )
+
     sha = _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
-    return sha
+    return {
+        "sha": sha,
+        "merged": merged,
+        "already_merged": already_merged,
+    }
 
 
 def cleanup_run_worktrees(

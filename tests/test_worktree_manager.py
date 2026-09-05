@@ -382,11 +382,13 @@ class TestMergeLaneBranches:
         _git(["checkout", "epic/test"], cwd=repo)
         before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
 
-        sha = merge_lane_branches(
+        result = merge_lane_branches(
             "epic/test", ["lane-a", "lane-b"], "merge: lanes a+b", repo_root=repo
         )
 
-        assert sha
+        assert result["sha"]
+        assert result["merged"] == ["lane-a", "lane-b"]
+        assert result["already_merged"] == []
         after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
         # Exactly one new commit landed on the epic branch (squashed).
         assert len(after_log) == len(before_log) + 1
@@ -497,6 +499,99 @@ class TestMergeLaneBranches:
         status = _git(["status", "--porcelain"], cwd=repo).stdout
         assert "a.txt" not in status
         assert "A  a.txt" not in status
+
+    def test_already_merged_lane_returns_epic_head_with_already_merged_flag(
+        self, repo: Path
+    ):
+        """BUG (elonchesd run wf_6bfbd9f2-510): when a lane's commits are
+        already squashed into the epic branch, `git merge --squash` stages
+        nothing and `git commit` fails with "nothing to commit". The fix:
+        detect this with `git diff --cached --quiet` and return the epic
+        HEAD sha with `already_merged` flag instead of raising RuntimeError."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+
+        # Squash the lane into epic via manual merge (simulating prior integration).
+        _git(["checkout", "epic/test"], cwd=repo)
+        _git(["merge", "--squash", "--no-commit", lane_a], cwd=repo)
+        _git(["commit", "-q", "-m", "prior squash of lane-a"], cwd=repo)
+
+        epic_head_before = _git(["rev-parse", "epic/test"], cwd=repo).stdout.strip()
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+
+        # Now try to merge the same lane again.
+        result = merge_lane_branches(
+            "epic/test", ["lane-a"], "merge: retry lane-a", repo_root=repo
+        )
+
+        # Should succeed with no new commit, epic HEAD as sha, and already_merged flag.
+        assert result["sha"] == epic_head_before
+        assert result["merged"] == ["lane-a"]
+        assert result["already_merged"] == ["lane-a"]
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        # No new commit created.
+        assert len(after_log) == len(before_log)
+
+    def test_new_lane_still_produces_squash_commit_as_before(self, repo: Path):
+        """Verify that new lanes (with real commits not yet on epic) still
+        produce a squash commit as the original implementation did."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "new_file.txt")
+
+        _git(["checkout", "epic/test"], cwd=repo)
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+
+        result = merge_lane_branches(
+            "epic/test", ["lane-a"], "merge: new lane", repo_root=repo
+        )
+
+        # Should produce a new commit.
+        assert result["sha"]
+        assert result["merged"] == ["lane-a"]
+        assert result["already_merged"] == []
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        assert len(after_log) == len(before_log) + 1
+        assert (repo / "new_file.txt").exists()
+
+    def test_mixed_order_already_merged_and_new_lanes(self, repo: Path):
+        """When merge order contains both already-merged and new lanes,
+        must produce exactly one commit with only the new lane's changes,
+        mark the already-merged lane, and continue to merge the new lane."""
+        from datum.worktree_manager import merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+
+        lane_b = _make_lane_branch(repo, "epic/test", "lane-b")
+        _add_lane_commit(repo, lane_b, "b.txt")
+
+        # Squash lane-a into epic (making it already-merged).
+        _git(["checkout", "epic/test"], cwd=repo)
+        _git(["merge", "--squash", "--no-commit", lane_a], cwd=repo)
+        _git(["commit", "-q", "-m", "prior squash of lane-a"], cwd=repo)
+
+        before_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        epic_head_after_a = _git(["rev-parse", "epic/test"], cwd=repo).stdout.strip()
+
+        # Merge both lanes: lane-a (already merged) then lane-b (new).
+        result = merge_lane_branches(
+            "epic/test", ["lane-a", "lane-b"], "merge: a+b", repo_root=repo
+        )
+
+        # Should produce exactly one new commit (from lane-b only).
+        assert result["merged"] == ["lane-a", "lane-b"]
+        assert result["already_merged"] == ["lane-a"]
+        after_log = _git(["log", "--oneline"], cwd=repo).stdout.splitlines()
+        assert len(after_log) == len(before_log) + 1
+        # New commit should have b.txt (from lane-b), and lane-a's a.txt should exist.
+        assert (repo / "a.txt").exists()
+        assert (repo / "b.txt").exists()
+        # The sha should be the new commit, not the epic head from before lane-b merge.
+        assert result["sha"] != epic_head_after_a
 
 
 class TestHousekeepEpicMergedRelativeToEpicNotHead:

@@ -2045,8 +2045,8 @@ def worktrees_merge(
     from datum.worktree_manager import merge_lane_branches
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
-    sha = merge_lane_branches(epic_branch, order, commit_message)
-    typer.echo(json.dumps({"sha": sha, "merged": order}))
+    result = merge_lane_branches(epic_branch, order, commit_message)
+    typer.echo(json.dumps(result))
 
 
 @worktrees_app.command("cleanup")
