@@ -49,6 +49,7 @@ function names(steps: { name: string }[]): string[] {
 describe('laneIntakeSteps', () => {
   const base = {
     wt: '/wt/T1',
+    epicBranch: 'datum/e',
     completionPath: '.datum/runs/r1/lane-state/T1.json',
     structural: false,
     cleanupCmd: 'datum lane-cleanup "/wt/T1" --allowed "tests/test_a.py"',
@@ -62,7 +63,10 @@ describe('laneIntakeSteps', () => {
     expect(names(steps)).toEqual(['completion', 'history', 'cleanup', 'skeleton-plan', 'skeleton-gen'])
     expect(steps.every((s) => s.tolerant)).toBe(true)
     expect(steps[0].command).toContain('|| echo MISSING')
-    expect(steps[1].command).toBe('git -C "/wt/T1" log --format="%H %s"')
+    // Bounded to the lane's own commits: an unbounded log was 90 KB in a real
+    // consumer repo, the relay agent truncated it to nothing, and the runner
+    // missed the lane's existing RED/GREEN commits (#331) and re-ran RED.
+    expect(steps[1].command).toBe('git -C "/wt/T1" log --format="%H %s" "datum/e"..HEAD')
     expect(steps[4].command).toContain('if [ -s "docs/epics/e/skeletons/preflight-T1.json" ]')
     expect(steps[4].command).toContain('datum skeleton --task-id T1')
     expect(steps[4].command).toContain('cat "/wt/T1/.datum/runs/r1/preflight-T1.json" 2>/dev/null || cat ".datum/runs/r1/preflight-T1.json" 2>/dev/null || echo "{}"')
@@ -101,7 +105,13 @@ describe('postRedSteps', () => {
     testFuncGrepRegex: 'def test_|async def test_',
     ownership: true,
     verifyTestCmd: null,
+    baseRef: 'datum/e',
   }
+
+  it('count gate diffs from the merge-base with the epic branch, not HEAD~1, so a resumed lane still counts its RED tests', () => {
+    const steps = postRedSteps(opts)
+    expect(steps[0].command).toContain('--base "datum/e"')
+  })
 
   it('orders count gate, placeholder scan, ownership, per-file scope reads, then test counts — all tolerant', () => {
     const steps = postRedSteps(opts)
@@ -164,6 +174,7 @@ describe('postRedSteps — deterministic test-verify step', () => {
     testFuncBodyRegex: 'def test_',
     testFuncGrepRegex: 'def test_|async def test_',
     ownership: true,
+    baseRef: null,
   }
 
   it('appends a test-verify step, independently re-running the test command, when verifyTestCmd is given', () => {
@@ -198,6 +209,37 @@ describe('testExitCode', () => {
   })
 })
 
+describe('scripts/test-count-gate --base — resumed lane whose RED commit is not HEAD~1', () => {
+  it('counts the RED tests when GREEN has since landed on top, given the epic branch as base', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-countgate-base-'))
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      git('init', '-q', '-b', 'epic')
+      git('config', 'user.email', 't@t')
+      git('config', 'user.name', 't')
+      mkdirSync(join(dir, 'tests'))
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n')
+      writeFileSync(join(dir, 'src.py'), 'x = 0\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'base')
+      git('checkout', '-q', '-b', 'epic--T1')
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n\ndef test_new1():\n    assert x\n\ndef test_new2():\n    assert x\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'red(T1): RED complete')
+      writeFileSync(join(dir, 'src.py'), 'x = 1\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'green(T1): GREEN complete')
+
+      // HEAD~1..HEAD is GREEN's diff (no tests) — the old baseline reports 0.
+      // With --base epic the diff spans the whole lane and finds both tests.
+      const out = execFileSync('bash', [
+        'scripts/test-count-gate', '--repo', dir, '--files', 'tests/test_a.py',
+        '--pattern', '[+][[:space:]]*def test_', '--required', '2', '--base', 'epic',
+      ], { cwd: repoRoot, encoding: 'utf8' })
+      expect(JSON.parse(out.trim())).toEqual({ new_test_count: 2, required: 2, passed: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('postRedSteps — executed against a real git worktree', () => {
   it('counts the new test functions and lists the files the RED commit touched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'datum-postred-'))
@@ -218,7 +260,7 @@ describe('postRedSteps — executed against a real git worktree', () => {
         testFuncDiffRegex: '[+][[:space:]]*def test_',
         sgPatterns: [{ pattern: 'assert True', name: 'assert True' }],
         testFuncBodyRegex: 'def test_', testFuncGrepRegex: 'def test_|async def test_', ownership: true,
-        verifyTestCmd: null,
+        verifyTestCmd: null, baseRef: null,
       })
       const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' })
       const r = parseBatchResult(out, steps)

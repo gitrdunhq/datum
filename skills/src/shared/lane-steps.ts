@@ -31,6 +31,11 @@ export function isMissing(raw: string | null | undefined): boolean {
 
 export interface LaneIntakeOpts {
   wt: string
+  /** Epic branch the lane was cut from — bounds the history read to the
+   *  lane's own commits (`<epic>..HEAD`). An unbounded log was 90 KB in a
+   *  real consumer repo; the relay agent truncated it to nothing and the
+   *  runner missed the lane's existing RED/GREEN commits (#331). */
+  epicBranch: string
   /** Include the cross-run completion read (deterministic-checks mode). */
   completionPath: string | null
   /** Structural lanes go straight to REFACTOR: no cleanup, no skeleton. */
@@ -47,7 +52,7 @@ export interface LaneIntakeOpts {
 export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
   const steps: BatchStep[] = []
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
-  steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s"`, tolerant: true })
+  steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true })
   if (o.structural) return steps
   if (o.cleanupCmd) steps.push({ name: 'cleanup', command: o.cleanupCmd, tolerant: true })
   if (o.planSkeletonPath) {
@@ -85,6 +90,13 @@ export interface PostRedOpts {
    * status from). Null skips the step entirely.
    */
   verifyTestCmd: string | null
+  /**
+   * Ref the count gate diffs from (via merge-base with HEAD) — the epic
+   * branch. Without it the gate diffed `HEAD~1 HEAD`, which on a lane resumed
+   * with RED+GREEN already committed is GREEN's own diff: zero tests, bogus
+   * `no_new_test_functions_committed` (#392). Null keeps the HEAD~1 diff.
+   */
+  baseRef: string | null
 }
 
 /**
@@ -109,7 +121,8 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
         // Through the installed `datum dev` wrapper (cli.py _DEV_BASH_SCRIPTS),
         // never a repo-relative `bash scripts/...`: consumer repos don't carry
         // datum's scripts/ dir, and `datum init --refresh` doesn't materialise it.
-        `datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(' ')} --pattern-file "$PATFILE" --required ${o.acCount}`,
+        `datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(' ')} --pattern-file "$PATFILE" --required ${o.acCount}` +
+        (o.baseRef ? ` --base ${q(o.baseRef)}` : ''),
       tolerant: true,
     })
   }

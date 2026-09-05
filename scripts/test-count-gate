@@ -45,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         --pattern-file) PATTERN="$(cat "$2")"; shift 2 ;;
         --regex) REGEX_TYPE="$2"; shift 2 ;;
         --required) REQUIRED="$2"; shift 2 ;;
+        --base) BASE_REF="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1" >&2; usage ;;
     esac
@@ -56,9 +57,15 @@ if [[ -z "$REPO" || -z "$PATTERN" || ${#FILES[@]} -eq 0 || "$REQUIRED" -eq 0 ]];
     usage
 fi
 
-# Compute the diff: try reduce diff HEAD~1 HEAD first, fall back to diff-tree for first commit
+# Compute the diff. With --base <ref>, diff from the merge-base of <ref> and
+# HEAD so the whole lane counts (a resumed lane's RED commit is not HEAD~1
+# once GREEN has landed on top). Otherwise HEAD~1 HEAD, falling back to
+# diff-tree for a first commit.
 DIFF=""
-if git -C "$REPO" rev-parse HEAD~1 >/dev/null 2>&1; then
+BASE_REF="${BASE_REF:-}"
+if [[ -n "$BASE_REF" ]] && MB=$(git -C "$REPO" merge-base "$BASE_REF" HEAD 2>/dev/null) && [[ -n "$MB" ]]; then
+    DIFF=$(git -C "$REPO" diff "$MB" HEAD -- "${FILES[@]}" 2>/dev/null || true)
+elif git -C "$REPO" rev-parse HEAD~1 >/dev/null 2>&1; then
     # Normal case: diff between parent and current commit
     DIFF=$(git -C "$REPO" diff HEAD~1 HEAD -- "${FILES[@]}" 2>/dev/null || true)
 elif git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then

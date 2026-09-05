@@ -311,6 +311,30 @@ describe('structural lanes are keyed on lane.kind, not the lifecycle stage field
 })
 
 // ---------------------------------------------------------------------------
+// Lane intake must fail loud, never fall back to "fresh lane". In eedom run
+// wf_70b84a20-f2a the intake batch's unbounded `git log` was 90 KB, the relay
+// agent truncated it to nothing, the runner "continued with empty history",
+// missed the lane's existing RED+GREEN commits (#331) and re-dispatched RED.
+// ---------------------------------------------------------------------------
+
+describe('lane intake: missing result is a hard failure, history is bounded', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('fails the lane with lane_intake_failed when the intake batch result is missing', () => {
+    expect(laneSource).not.toMatch(/continuing with empty history/)
+    expect(laneSource).toMatch(/lane_intake_failed/)
+  })
+
+  it('passes the epic branch to laneIntakeSteps so the history read is bounded to the lane', () => {
+    expect(laneSource).toMatch(/laneIntakeSteps\(\{[\s\S]{0,300}epicBranch/)
+  })
+
+  it('passes the epic branch to postRedSteps so the count gate diffs from the merge-base, not HEAD~1', () => {
+    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,300}baseRef/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Count-gate infrastructure failures must surface as their own error, never
 // as a test count. In the field the gate script was missing (exit 127, empty
 // stdout) and the digit-stripping fallback reported it as

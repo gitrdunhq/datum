@@ -263,14 +263,21 @@ No markdown fences, no explanation.`,
     : ''
 
   const intakeSteps = laneIntakeSteps({
-    wt, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
+    wt, epicBranch: cfg.epicBranch, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
   })
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
     stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }),
   )
   const intake = parseBatchResult(intakeRaw, intakeSteps)
-  if (intake.missing) log(`[${taskId}] ${describeFailure(intake, 'lane intake')} — continuing with empty history`)
+  // A missing intake result is an infrastructure failure, not a fresh lane:
+  // treating it as empty history is what re-dispatched RED onto a lane that
+  // already had RED+GREEN commits (#331 missed, #392 misfiled).
+  if (intake.missing || stepStdout(intake, 'history') === null) {
+    const why = describeFailure(intake, 'lane intake')
+    log(`[${taskId}] LANE INTAKE FAILED: ${why} — cannot read the lane's history; refusing to dispatch RED`)
+    return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: ${why}` }
+  }
 
   // Cross-run completion (deterministic mode): the marker was read by the intake batch.
   if (deterministic && completionPath) {
@@ -526,6 +533,7 @@ No markdown fences, no explanation.`,
   const postRed = postRedSteps({
     wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: deterministic,
     verifyTestCmd: scopedTestCmd,
+    baseRef: cfg.epicBranch,
   })
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),

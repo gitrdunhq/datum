@@ -617,7 +617,7 @@ function isMissing(raw) {
 function laneIntakeSteps(o) {
   const steps = [];
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
-  steps.push({ name: "history", command: `git -C ${q(o.wt)} log --format="%H %s"`, tolerant: true });
+  steps.push({ name: "history", command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true });
   if (o.structural) return steps;
   if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
   if (o.planSkeletonPath) {
@@ -649,7 +649,7 @@ function postRedSteps(o) {
 cat > "$PATFILE" <<'PATTERN_EOF'
 ${o.testFuncDiffRegex}
 PATTERN_EOF
-datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}`,
+datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}` + (o.baseRef ? ` --base ${q(o.baseRef)}` : ""),
       tolerant: true
     });
   }
@@ -953,6 +953,7 @@ No markdown fences, no explanation.`,
   const planSkeletonPath = cfg2.skeletonDir ? `${cfg2.skeletonDir}/preflight-${taskId}.json` : "";
   const intakeSteps = laneIntakeSteps({
     wt,
+    epicBranch: cfg2.epicBranch,
     completionPath: deterministic ? completionPath : null,
     structural: isStructural,
     cleanupCmd,
@@ -965,7 +966,11 @@ No markdown fences, no explanation.`,
     stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") })
   );
   const intake = parseBatchResult(intakeRaw, intakeSteps);
-  if (intake.missing) log(`[${taskId}] ${describeFailure(intake, "lane intake")} \u2014 continuing with empty history`);
+  if (intake.missing || stepStdout(intake, "history") === null) {
+    const why = describeFailure(intake, "lane intake");
+    log(`[${taskId}] LANE INTAKE FAILED: ${why} \u2014 cannot read the lane's history; refusing to dispatch RED`);
+    return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: ${why}` };
+  }
   if (deterministic && completionPath) {
     const completionExist = stepStdout(intake, "completion");
     if (!isMissing(completionExist)) {
@@ -1149,7 +1154,8 @@ No markdown fences, no explanation.`,
     testFuncBodyRegex,
     testFuncGrepRegex,
     ownership: deterministic,
-    verifyTestCmd: scopedTestCmd
+    verifyTestCmd: scopedTestCmd,
+    baseRef: cfg2.epicBranch
   });
   const postRedRaw = await agent(
     batchCommandPrompt(postRed),
