@@ -215,6 +215,11 @@ var PREFIX_RULES = [
     test: /\brefactor_verify_failed\b/,
     category: "agent_behavior",
     reason: "refactor_verify_failed: independent test-verify after REFACTOR disagreed with the agent's self-reported result."
+  },
+  {
+    test: /\brefactor_failed\b/,
+    category: "agent_behavior",
+    reason: `refactor_failed: the REFACTOR agent itself reported a real failure_reason (not "nothing to change"). agent_behavior, not infrastructure: by the time REFACTOR is dispatched the runner has already independently verified the suite is green at the lane's HEAD (the intake-verify gate, #331) \u2014 a suite that was already red would have been caught upstream as green_stale/lane_intake_failed before REFACTOR ever ran, so a failure here is about what the REFACTOR agent did, not stale pipeline state.`
   }
 ];
 function classifyLaneError(error, stage) {
@@ -237,6 +242,30 @@ function classifyLaneError(error, stage) {
     reason: "No known machine-generated prefix matched \u2014 the LLM must actually reason about this failure from the raw error text."
   };
 }
+var DESTINATION_BY_CATEGORY = {
+  // datum's own pipeline/tooling categories — the lane never got a fair run.
+  infrastructure: "datum",
+  workflow_bug: "datum",
+  // The lane's work or the consumer repo's code is what's actually wrong —
+  // never datum's tracker. Includes lane_plan (contract_conflict, scope_gap:
+  // the plan asked for something the lane's own scope/contracts don't
+  // support), agent_behavior (skeptic_broken, green_verify_failed,
+  // placeholder_assertions, etc.: a real finding about the implementation or
+  // tests the lane produced), and test_quality (weak/wrong assertions).
+  lane_plan: "consumer",
+  agent_behavior: "consumer",
+  test_quality: "consumer",
+  // No known pipeline prefix matched — never assume datum is at fault
+  // without positive evidence; treat as a consumer-code finding to log, not
+  // as a reason to file against datum.
+  unknown: "consumer",
+  // Already-skipped consequence of an upstream root failure — never filed
+  // anywhere on its own.
+  dependency: "none"
+};
+function triageDestination(classification, _error) {
+  return DESTINATION_BY_CATEGORY[classification.category];
+}
 
 // skills/src/datum-tdd-act-triage.ts
 var CATEGORY_LABEL = {
@@ -246,10 +275,19 @@ var CATEGORY_LABEL = {
   agent_behavior: "agent-behavior",
   test_quality: "test-quality"
 };
+var LABEL_TO_CATEGORY = {
+  infrastructure: "infrastructure",
+  "workflow-bug": "workflow_bug",
+  "lane-plan": "lane_plan",
+  "agent-behavior": "agent_behavior",
+  "test-quality": "test_quality"
+};
 var a = args;
 configureAgentTypes(a.agentTypes || {});
 phase("Triage");
 var filed = 0;
+var consumer_findings = 0;
+var skipped = 0;
 if (a.failures.length === 0) {
   log("[triage] All lanes succeeded \u2014 no issues to file");
 } else {
@@ -307,11 +345,24 @@ For each issue, write a GitHub issue title starting with [datum-bug] and a body 
       for (const issue of triage.issues) {
         if (issue.severity === "low") {
           log(`[triage] Skipping low-severity: ${issue.title}`);
+          skipped++;
           continue;
         }
         let cls = null;
         if (issue.lane) cls = classifications[issue.lane];
         const category = cls && cls.confidence === "deterministic" ? CATEGORY_LABEL[cls.category] : issue.category;
+        const effectiveClassification = cls && cls.confidence === "deterministic" ? cls : { category: LABEL_TO_CATEGORY[issue.category] || "unknown", confidence: "heuristic", reason: "derived from the LLM-assigned category label; no deterministic pipeline prefix matched this lane" };
+        const destination = triageDestination(effectiveClassification, issue.body);
+        if (destination === "consumer") {
+          log(`[triage] consumer-code finding for ${issue.lane || "unknown"} (${category}): not filed to datum's tracker \u2014 ${issue.body.slice(0, 160)}`);
+          consumer_findings++;
+          continue;
+        }
+        if (destination === "none") {
+          log(`[triage] Skipping (dependency): ${issue.title}`);
+          skipped++;
+          continue;
+        }
         const labels = `datum-bug,${category}`;
         const safeTitle = issue.title.slice(0, 80).replace(/'/g, "'\\''");
         const safeSearch = issue.title.slice(0, 50).replace(/'/g, "'\\''");
@@ -328,6 +379,7 @@ If a duplicate exists, skip and say "duplicate found".`,
           filed++;
         } else {
           log(`[triage] Duplicate found, skipped: ${issue.title}`);
+          skipped++;
         }
       }
     } else {
@@ -335,4 +387,4 @@ If a duplicate exists, skip and say "duplicate found".`,
     }
   }
 }
-return { filed };
+return { filed, consumer_findings, skipped };

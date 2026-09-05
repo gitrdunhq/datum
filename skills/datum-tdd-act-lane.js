@@ -593,20 +593,24 @@ function laneIntakeSteps(o) {
   const steps = [];
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true });
-  if (o.structural) return steps;
-  if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
-  if (o.planSkeletonPath) {
-    steps.push({ name: "skeleton-plan", command: catOrMissing(o.planSkeletonPath), tolerant: true });
-  }
-  const gen = `${o.skeletonCmd}
+  if (!o.structural) {
+    if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
+    if (o.planSkeletonPath) {
+      steps.push({ name: "skeleton-plan", command: catOrMissing(o.planSkeletonPath), tolerant: true });
+    }
+    const gen = `${o.skeletonCmd}
 cat ${q(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q(o.preflightPath)} 2>/dev/null || echo "{}"`;
-  steps.push({
-    name: "skeleton-gen",
-    command: o.planSkeletonPath ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else
+    steps.push({
+      name: "skeleton-gen",
+      command: o.planSkeletonPath ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else
 ${gen}
 fi` : gen,
-    tolerant: true
-  });
+      tolerant: true
+    });
+  }
+  if (o.verifyTestCmd) {
+    steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "intake-verify"), tolerant: true });
+  }
   return steps;
 }
 function testExitCode(stdout) {
@@ -736,6 +740,13 @@ var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 function worktreeResetSteps(wt) {
   return [
     { name: "reset", command: `git -C ${q2(wt)} reset --hard HEAD`, tolerant: true },
+    { name: "clean", command: `git -C ${q2(wt)} clean -fd`, tolerant: true },
+    { name: "status", command: `git -C ${q2(wt)} status --porcelain`, tolerant: true }
+  ];
+}
+function worktreeResetToSteps(wt, sha) {
+  return [
+    { name: "reset", command: `git -C ${q2(wt)} reset --hard ${q2(sha)}`, tolerant: true },
     { name: "clean", command: `git -C ${q2(wt)} clean -fd`, tolerant: true },
     { name: "status", command: `git -C ${q2(wt)} status --porcelain`, tolerant: true }
   ];
@@ -1045,7 +1056,8 @@ No markdown fences, no explanation.`,
     }
   }
   const laneHistoryRaw = stepStdout(intake, "history");
-  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
+  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
+  let greenStaleHint = null;
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
     if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
@@ -1053,11 +1065,51 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
   if (redAlreadyCommitted && greenAlreadyCommitted) {
-    log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
-    if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
-    await updateStage(issueId, "done");
-    return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+    const intakeVerifySteps = laneIntakeSteps({
+      wt,
+      epicBranch: cfg2.epicBranch,
+      completionPath: null,
+      structural: true,
+      cleanupCmd: null,
+      planSkeletonPath: "",
+      skeletonCmd: "",
+      preflightPath: "",
+      verifyTestCmd: scopedTestCmd
+    });
+    const intakeVerifyRaw = await agent(
+      batchCommandPrompt(intakeVerifySteps),
+      stageOpts("cli", { label: `lane-intake-verify:${taskId}`, phase: "Act", model: model("fast") })
+    );
+    const intakeVerify = parseBatchResult(intakeVerifyRaw, intakeVerifySteps);
+    const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, "test-verify"));
+    if (intakeVerifyExit === null) {
+      const why = describeFailure(intakeVerify, "lane intake verify");
+      log(`[${taskId}] LANE INTAKE VERIFY FAILED: ${why} \u2014 cannot confirm the existing GREEN commit passes the suite; refusing to assume it does`);
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: intake-verify step did not run (${why})` };
+    }
+    if (intakeVerifyExit === 0) {
+      log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+      if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
+      await updateStage(issueId, "done");
+      return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+    }
+    greenStaleHint = `green_stale: GREEN commit(s) on the lane branch do not pass the suite (independent exit=${intakeVerifyExit}) \u2014 resetting to the RED commit and resuming at GREEN`;
+    log(`[${taskId}] ${greenStaleHint}`);
+    const redCommitInfo = parseCommitVerification(laneHistoryRaw, "", `red(${taskId})`, "RED");
+    if (!redCommitInfo.commitSha) {
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not find the RED commit sha in lane history to reset to (${redCommitInfo.detail})` };
+    }
+    const resetToRedSteps = worktreeResetToSteps(wt, redCommitInfo.commitSha);
+    const resetToRedResult = parseBatchResult(
+      await agent(batchCommandPrompt(resetToRedSteps), stageOpts("cli", { label: `reset-to-red:${taskId}`, phase: "Act", model: model("fast") })),
+      resetToRedSteps
+    );
+    if (resetToRedResult.missing) {
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${describeFailure(resetToRedResult, "reset-to-red")})` };
+    }
+    redAlreadyCommitted = true;
+    greenAlreadyCommitted = false;
   }
   if (cleanupCmd) {
     log(`[${taskId}] Pre-RED cleanup completed`);
@@ -1404,7 +1456,11 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     commitCmd: laneCommitCommand({ wt, taskId, stage: "GREEN", runId })
   };
   let green = await resilientAgent(
-    greenPrompt(greenVars),
+    greenStaleHint ? greenRetryPrompt({
+      ...greenVars,
+      failureReason: greenStaleHint,
+      greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "green_stale" })
+    }) : greenPrompt(greenVars),
     stageOpts("green", { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt })
   );
   if (green?.success) {
@@ -1578,8 +1634,8 @@ ${bugSummary}`,
     log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`);
   }
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
-  if (!refResult) {
-    return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+  if (!refResult || !refResult.verified) {
+    return { task_id: taskId, status: "failed", stage: "REFACTOR", error: refResult?.error || "refactor failed" };
   }
   log(`[${taskId}] === LANE COMPLETE ===`);
   await updateStage(issueId, "done");
@@ -1677,7 +1733,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
       return { verified: true };
     }
     log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason || "unknown"}`);
-    return null;
+    return { verified: false, error: `refactor_failed: ${refactor.failure_reason || "unknown"}` };
   }
   const verifySteps = [
     { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true }
