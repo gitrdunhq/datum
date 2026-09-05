@@ -113,6 +113,7 @@ Workflow({ scriptPath: "<skills_dir>/datum-tdd-act.js", args: { epicBranch: "dat
 ```
 
 **Pipeline stages per lane:**
+0. **Intake** — one batched `datum-cli` call: `datum lane-spec-export` writes the lane's acceptance criteria, red_note and contract summary to `<worktree>/.datum/lane-spec.json` (hash-checked against the scheduler digest) and returns only its path/bytes/blob sha/ac_count. No runner turn ever carries the criteria text (an echo rewrote backticks). Every stage below reads that file and must return a `read_witness` with its blob-sha prefix, or the lane fails as `context_read_unverified`.
 1. **RED** — write failing tests (`datum-red`, sonnet); count gate + placeholder scan + scope read run as one batched `datum-cli` call
 2. **REFLECT** — score test quality 0-10 (haiku), gate at <4
 3. **GREEN** — make tests pass (sonnet, escalates to opus on retry)

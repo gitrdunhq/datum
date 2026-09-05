@@ -23,7 +23,10 @@ CHEAP_AGENTS = {
     # window on a large plan — it needs headroom for one offset-based
     # continuation read plus the final answer (#524 code review).
     "datum-reader": {"tools": ["Read"], "model": "haiku", "maxTurns": 4},
-    "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 3},
+    # 8, not 3: reflect now reads the lane-spec file, runs git hash-object on
+    # it for the read witness, then reads the test file(s) before scoring —
+    # at 3 it hit the cap on every lane and every lane went to GREEN unscored.
+    "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 8},
 }
 STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
 # wf_b1c88e09-036: a GREEN on a 555-line file spent 30 calls (7 Edits + Reads)
