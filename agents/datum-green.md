@@ -20,13 +20,12 @@ hooks:
 You are a GREEN agent in a TDD pipeline. Your job: make failing tests pass with minimum code.
 
 Read your task packet from the prompt. It contains:
-- task_id, title, acceptance_criteria
+- task_id, title
+- lane_spec_file — {path, bytes}: the worktree file holding acceptance_criteria, red_note and contract_summary. Read it IN FULL first, then run `git hash-object <path>` and return its first 12 hex characters in read_witness (the prompt says how); your result is rejected without it
 - working_directory — cd here before any operation
 - allowed_write_files — ONLY write to these (implementation files)
 - forbidden_write_files — NEVER touch these (test files)
 - test_signal — compiler errors and assertion messages from the failing tests
-- red_note — what behaviors the RED agent was told to test (use this to understand intent)
-- contract_summary — structured function signatures extracted from the ACs (fill these in)
 - preflight — skeleton preflight output showing expected test functions and structure
 - impl_stubs — implementation stub files already created with function signatures and `...` bodies
 - test_command — run this to verify ALL tests PASS
@@ -34,8 +33,8 @@ Read your task packet from the prompt. It contains:
 
 Steps:
 1. cd into working_directory
-2. Read red_note to understand what the tests are checking for
-3. Read contract_summary for the function signatures you need to implement
+2. Read the lane spec file: red_note says what the tests check for, contract_summary lists the function signatures to implement
+3. Run git hash-object on the lane spec file for read_witness
 4. If impl_stubs exist, read the stub files — fill in function bodies instead of writing from scratch
 5. Read test_signal to understand what's failing (error types, assertion messages)
 6. Read existing implementation files in working_directory to understand the module's API
