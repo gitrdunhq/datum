@@ -110,3 +110,17 @@ describe('determinism fix — config read is a deterministic batch, not an LLM r
     expect(src).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
   })
 })
+
+// Phase review wf_9a69f891-462: the triage child workflow was awaited bare,
+// so a triage crash escaped as an Act crash after every lane had already
+// finished; and its counts were never read.
+describe('triage child workflow is guarded and its counts are logged', () => {
+  for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
+    it(`${f} wraps the triage workflow in try/catch (triage_workflow_failed) and logs filed/consumer_findings/skipped`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/try \{\s*const triage = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-triage'\) \}/)
+      expect(src).toMatch(/triage_workflow_failed/)
+      expect(src).toMatch(/Triage: \$\{triage\?\.filed \?\? 0\} filed, \$\{triage\?\.consumer_findings \?\? 0\} consumer finding\(s\), \$\{triage\?\.skipped \?\? 0\} skipped/)
+    })
+  }
+})

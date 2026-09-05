@@ -313,10 +313,16 @@ log(`${'═'.repeat(60)}`)
 
 if (failures.length > 0) {
   log('── Triage ──')
-  await workflow(
-    { scriptPath: sk('datum-tdd-act-triage') },
-    { failures, blocked: blockedLanes.map(id => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
-  )
+  try {
+    const triage = await workflow(
+      { scriptPath: sk('datum-tdd-act-triage') },
+      { failures, blocked: blockedLanes.map(id => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
+    ) as { filed?: number; consumer_findings?: number; skipped?: number } | null
+    log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`)
+  } catch (exc) {
+    // Triage is reporting; a crash there must not turn finished lanes into an Act crash.
+    log(`[warn] triage_workflow_failed: ${(exc as Error).message} — lane failures are still recorded above`)
+  }
 }
 
 export const __workflowResult = {

@@ -629,10 +629,16 @@ if (shouldRun('act', 3)) {
 
   // Triage — direct child workflow
   if (actFailures.length > 0) {
-    await workflow(
-      { scriptPath: sk('datum-tdd-act-triage') },
-      { failures: actFailures, blocked: actBlocked.map(id => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
-    )
+    try {
+      const triage = await workflow(
+        { scriptPath: sk('datum-tdd-act-triage') },
+        { failures: actFailures, blocked: actBlocked.map(id => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() },
+      ) as { filed?: number; consumer_findings?: number; skipped?: number } | null
+      log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`)
+    } catch (exc) {
+      // Triage is reporting; a crash there must not turn finished lanes into an Act crash.
+      log(`[warn] triage_workflow_failed: ${(exc as Error).message} — lane failures are still recorded above`)
+    }
   }
 
   log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? 'finished with failures' : 'complete'} — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
