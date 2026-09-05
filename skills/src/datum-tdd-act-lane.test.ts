@@ -515,3 +515,34 @@ describe('deterministic GREEN green-blindness gate (#386)', () => {
     expect(precedingSlice).not.toMatch(/if \(deterministic\)/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// REFACTOR is verified independently too. runRefactor trusted the agent's
+// self-reported tests_pass; a hallucinated "true" merged a refactor that
+// broke the suite, and a self-reported "false" was followed by returning
+// verified:true anyway. The script must re-run the suite itself after
+// REFACTOR, revert the refactor commit deterministically when the
+// independent run is red, and fail the lane if the tree is still red.
+// ---------------------------------------------------------------------------
+
+describe('REFACTOR is independently verified (deterministic)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  // runRefactor is defined after runLane; slice from its start to the end of the file.
+  const fn = laneSource.slice(laneSource.indexOf('async function runRefactor'))
+
+  it('runs an independent test-verify step after the REFACTOR agent and reads the real exit code', () => {
+    expect(fn).toMatch(/refactor-verify/)
+    expect(fn).toMatch(/testExitCode\(/)
+  })
+
+  it('reverts the refactor commit deterministically when the independent run is red, and fails the lane if still red', () => {
+    expect(fn).toMatch(/reset --hard HEAD~1|revert --no-edit HEAD/)
+    expect(fn).toMatch(/refactor_verify_failed/)
+  })
+
+  it('never returns verified:true on a red independent run without reverting', () => {
+    // The old shape: `if (!refactor.tests_pass) { ... return { verified: true } }` with no
+    // independent exit consulted. The decision must be keyed on the independent exit.
+    expect(fn).toMatch(/refactorVerifyExit\s*(!==|===)\s*0/)
+  })
+})

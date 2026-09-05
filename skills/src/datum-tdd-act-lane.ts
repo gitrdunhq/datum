@@ -339,7 +339,7 @@ No markdown fences, no explanation.`,
 
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
-    if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+    if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
     await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
@@ -351,7 +351,7 @@ No markdown fences, no explanation.`,
     // fast-path above.
     log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
-    if (!r) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+    if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
     await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
@@ -1051,7 +1051,7 @@ async function runRefactor(
   implFiles: string[],
   wt: string,
   cfg: PipelineConfig,
-): Promise<{ verified: boolean } | null> {
+): Promise<{ verified: boolean; error?: string } | null> {
   log(`[${taskId}] REFACTOR: checking if needed`)
 
   const preCheck: RefactorCheck | null = await agent(
@@ -1094,18 +1094,41 @@ async function runRefactor(
     return null
   }
 
-  if (!refactor.tests_pass) {
-    log(`[${taskId}] REFACTOR broke tests — agent should not have committed`)
+  // Independent verification — never the agent's self-reported tests_pass
+  // (same rule as RED/GREEN/Validate). One batch: re-run the suite; if it is
+  // red and the agent committed, revert that commit deterministically and
+  // re-run once more. A tree that is still red after the revert is a real
+  // failure of the lane, not something to return verified:true over.
+  const verifySteps = [
+    { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
+  ]
+  const verifyRaw = await agent(
+    batchCommandPrompt(verifySteps),
+    stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }),
+  )
+  let refactorVerifyExit = testExitCode(stepStdout(parseBatchResult(verifyRaw, verifySteps), 'test-verify'))
+  if (refactorVerifyExit !== 0) {
+    log(`[${taskId}] REFACTOR VERIFY FAILED: independent run exit=${refactorVerifyExit ?? 'n/a'} (agent self-reported tests_pass=${!!refactor.tests_pass}) — ${refactor.committed ? 'reverting the refactor commit' : 'agent reported no commit'}`)
     if (refactor.committed) {
-      await agent(
-        runCommandPrompt(`git -C "${wt}" revert --no-edit HEAD`),
+      const revertSteps = [
+        { name: 'revert', command: `git -C "${wt}" revert --no-edit HEAD`, tolerant: true },
+        { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-reverify'), tolerant: true },
+      ]
+      const revertRaw = await agent(
+        batchCommandPrompt(revertSteps),
         stageOpts('cli', { label: `revert-refactor:${taskId}`, phase: 'Act', model: model('fast') }),
       )
+      const revertResult = parseBatchResult(revertRaw, revertSteps)
+      refactorVerifyExit = testExitCode(stepStdout(revertResult, 'test-verify'))
+      log(`[${taskId}] REFACTOR reverted (revert exit=${stepResult(revertResult, 'revert')?.exit_code ?? 'n/a'}); suite after revert exit=${refactorVerifyExit ?? 'n/a'}`)
+    }
+    if (refactorVerifyExit !== 0) {
+      return { verified: false, error: `refactor_verify_failed: suite red after REFACTOR (independent exit=${refactorVerifyExit ?? 'no result'})${refactor.committed ? ' even after reverting the refactor commit' : ''}` }
     }
     return { verified: true }
   }
 
-  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || 'n/a'})`)
+  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || 'n/a'}; independent verify exit=0)`)
   return { verified: true }
 }
 
