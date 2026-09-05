@@ -14,7 +14,6 @@ See: references/git-workflows.md and GitHub issue #137.
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -420,33 +419,3 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
     prune_stale_worktrees(repo_root=repo_root)
 
     return {"deleted_branches": deleted, "pipeline_state_removed": state_removed}
-
-
-def worktree_path_for_lane(
-    lane_id: str,
-    run_id: str,
-    *,
-    repo_root: Path | None = None,
-) -> Path:
-    """Return the expected worktree path for a lane (may or may not exist yet)."""
-    _validate_path_component(lane_id, "lane_id")
-    _validate_path_component(run_id, "run_id")
-    repo_root = (repo_root or Path(".")).resolve()
-    return repo_root / WORKTREE_ROOT / run_id / lane_id
-
-
-def write_lane_order(lane_order: list[str], repo_root: Path | None = None) -> None:
-    """Persist the merge order to .datum/lane-order.json for the merge step."""
-    repo_root = (repo_root or Path(".")).resolve()
-    order_file = repo_root / ".datum" / "lane-order.json"
-    order_file.parent.mkdir(parents=True, exist_ok=True)
-    order_file.write_text(json.dumps(lane_order, indent=2))
-
-
-def read_lane_order(repo_root: Path | None = None) -> list[str]:
-    """Read the persisted merge order from .datum/lane-order.json."""
-    repo_root = (repo_root or Path(".")).resolve()
-    order_file = repo_root / ".datum" / "lane-order.json"
-    if not order_file.exists():
-        return []
-    return json.loads(order_file.read_text())

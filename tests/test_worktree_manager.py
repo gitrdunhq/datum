@@ -250,12 +250,6 @@ class TestPathTraversalValidation:
         with pytest.raises(ValueError):
             cleanup_run_worktrees("../../../../tmp/evil", "epic/test", repo_root=repo)
 
-    def test_worktree_path_for_lane_rejects_traversal(self, repo):
-        from datum.worktree_manager import worktree_path_for_lane
-
-        with pytest.raises(ValueError):
-            worktree_path_for_lane("../../../../tmp/evil", "run1", repo_root=repo)
-
 
 class TestCreateLaneWorktree:
     """Coverage gap: create_lane_worktree() had zero direct tests despite
