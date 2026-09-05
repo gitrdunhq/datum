@@ -81,16 +81,22 @@ def _extract_swift_target_context(task_files: list[str]) -> str | None:
 def _detect_swift_framework(test_file: str) -> str:
     path = Path(test_file)
     test_dir = path.parent
-    # Check current dir and parents up to Tests/
-    while test_dir.exists() and test_dir.name and test_dir.name != "Tests":
+    # Scan every EXISTING ancestor from the file's directory up to Tests/.
+    # Two real cases must both work: the RED agent's new test file usually
+    # lives in a directory that does not exist yet (climb to the nearest
+    # existing ancestor), and an existing deep directory may only carry the
+    # framework import in a sibling higher up (keep climbing to Tests/).
+    while True:
+        if test_dir.exists():
+            for f in test_dir.rglob("*.swift"):
+                content = f.read_text()
+                if "import XCTest" in content:
+                    return "xctest"
+                if "import Testing" in content:
+                    return "swift-testing"
+        if not test_dir.name or test_dir.name == "Tests":
+            break
         test_dir = test_dir.parent
-    if test_dir.exists():
-        for f in test_dir.rglob("*.swift"):
-            content = f.read_text()
-            if "import XCTest" in content:
-                return "xctest"
-            if "import Testing" in content:
-                return "swift-testing"
     return "swift-testing"
 
 
