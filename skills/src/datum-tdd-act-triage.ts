@@ -3,7 +3,7 @@ import type { TriageArgs, TriageAnalysis } from './shared/types'
 import { TRIAGE_SCHEMA } from './shared/schemas'
 import { groupBlockedByRoot } from './shared/utils'
 import { configureAgentTypes } from './shared/agent-types'
-import { classifyLaneError, type TriageClassifyCategory } from './shared/triage-classify'
+import { classifyLaneError, triageDestination, type TriageClassifyCategory } from './shared/triage-classify'
 
 // classifyLaneError's underscore categories map onto the hyphenated
 // TriageCategory label the rest of the pipeline (schema, GitHub labels) uses.
@@ -13,6 +13,18 @@ const CATEGORY_LABEL: Record<Exclude<TriageClassifyCategory, 'dependency' | 'unk
   lane_plan: 'lane-plan',
   agent_behavior: 'agent-behavior',
   test_quality: 'test-quality',
+}
+
+// Inverse of CATEGORY_LABEL, for when the LLM assigns the category (no
+// deterministic classification exists for the lane) — still needed to decide
+// `triageDestination` so an LLM-assigned 'agent-behavior'/'lane-plan'/etc.
+// finding doesn't fall through to the 'datum' branch by default.
+const LABEL_TO_CATEGORY: Record<string, TriageClassifyCategory> = {
+  infrastructure: 'infrastructure',
+  'workflow-bug': 'workflow_bug',
+  'lane-plan': 'lane_plan',
+  'agent-behavior': 'agent_behavior',
+  'test-quality': 'test_quality',
 }
 
 export const meta = {
@@ -26,6 +38,8 @@ configureAgentTypes(a.agentTypes || {})
 phase('Triage')
 
 let filed = 0
+let consumer_findings = 0
+let skipped = 0
 
 if (a.failures.length === 0) {
   log('[triage] All lanes succeeded — no issues to file')
@@ -96,6 +110,7 @@ if (a.failures.length === 0) {
       for (const issue of triage.issues) {
         if (issue.severity === 'low') {
           log(`[triage] Skipping low-severity: ${issue.title}`)
+          skipped++
           continue
         }
         // The filed label's category comes from the deterministic classifier
@@ -105,6 +120,26 @@ if (a.failures.length === 0) {
         const category = (cls && cls.confidence === 'deterministic')
           ? CATEGORY_LABEL[cls.category as Exclude<TriageClassifyCategory, 'dependency' | 'unknown'>]
           : issue.category
+        // #417: a skeptic-confirmed CONSUMER-repo code bug landed in datum's
+        // own tracker because every failure used to file unconditionally.
+        // destination decides where (if anywhere) this finding may go —
+        // only 'datum' reaches the issue-filing call below.
+        const effectiveClassification = (cls && cls.confidence === 'deterministic')
+          ? cls
+          : { category: LABEL_TO_CATEGORY[issue.category] || 'unknown', confidence: 'heuristic' as const, reason: 'derived from the LLM-assigned category label; no deterministic pipeline prefix matched this lane' }
+        const destination = triageDestination(effectiveClassification, issue.body)
+
+        if (destination === 'consumer') {
+          log(`[triage] consumer-code finding for ${issue.lane || 'unknown'} (${category}): not filed to datum's tracker — ${issue.body.slice(0, 160)}`)
+          consumer_findings++
+          continue
+        }
+        if (destination === 'none') {
+          log(`[triage] Skipping (dependency): ${issue.title}`)
+          skipped++
+          continue
+        }
+
         const labels = `datum-bug,${category}`
         const safeTitle = issue.title.slice(0, 80).replace(/'/g, "'\\''")
         const safeSearch = issue.title.slice(0, 50).replace(/'/g, "'\\''")
@@ -124,6 +159,7 @@ if (a.failures.length === 0) {
           filed++
         } else {
           log(`[triage] Duplicate found, skipped: ${issue.title}`)
+          skipped++
         }
       }
     } else {
@@ -132,4 +168,4 @@ if (a.failures.length === 0) {
   }
 }
 
-export const __workflowResult = { filed }
+export const __workflowResult = { filed, consumer_findings, skipped }

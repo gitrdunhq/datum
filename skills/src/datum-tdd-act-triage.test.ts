@@ -76,3 +76,46 @@ describe('datum-tdd-act-triage — deterministic pre-classification (#387/#392)'
     expect(src).toMatch(/#387/)
   })
 })
+
+// #417 postmortem: a skeptic-confirmed CONSUMER-repo code bug ("resolveConvert
+// recomputes fog-of-war from stale board state" in Shroud Chess) was filed
+// into datum's OWN tracker because the filer hardcodes
+// `gh issue create --repo gitrdunhq/datum` for every failure regardless of
+// category. Only 'datum'-destined findings (datum's own pipeline/tooling)
+// may reach that call; 'consumer'-destined findings (agent_behavior,
+// lane_plan, test_quality, unknown — the lane's work or the consumer repo's
+// code) must never be filed to datum's tracker, and 'none' (dependency)
+// findings are already skipped upstream.
+describe('datum-tdd-act-triage — routes findings by destination, never misfiling consumer-code findings to datum (#417)', () => {
+  it('imports and calls triageDestination from the shared triage-classify module', () => {
+    expect(src).toMatch(/import\s*\{[^}]*triageDestination[^}]*\}/)
+    expect(src).toMatch(/from\s+'\.\/shared\/triage-classify'/)
+    expect(src).toMatch(/triageDestination\(/)
+  })
+
+  it('gates the `gh issue create --repo gitrdunhq/datum` call behind destination checks — only reachable when destination is \'datum\'', () => {
+    const createIdx = src.indexOf('gh issue create --repo gitrdunhq/datum')
+    expect(createIdx).toBeGreaterThan(-1)
+    const before = src.slice(0, createIdx)
+    // Non-'datum' destinations must `continue` (early-exit the loop) before
+    // reaching the create call — whether phrased as a positive
+    // `destination === 'datum'` guard or as early continues for the other
+    // two destinations, falling through to the call.
+    const guardedPositively = /destination\s*===\s*'datum'/.test(before)
+    const earlyExitsForOthers =
+      /destination\s*===\s*'consumer'[\s\S]{0,300}continue/.test(before) &&
+      /destination\s*===\s*'none'[\s\S]{0,300}continue/.test(before)
+    expect(guardedPositively || earlyExitsForOthers).toBe(true)
+  })
+
+  it('logs a distinct one-line message per lane for consumer-code findings instead of filing them', () => {
+    expect(src).toMatch(/\[triage\] consumer-code finding for/)
+    expect(src).toMatch(/not filed to datum'?s? tracker/i)
+  })
+
+  it('tracks consumer findings and skipped findings as distinct summary counters alongside filed', () => {
+    expect(src).toMatch(/consumer_findings/)
+    expect(src).toMatch(/\bskipped\b/)
+    expect(src).toMatch(/__workflowResult\s*=\s*\{[^}]*filed[^}]*consumer_findings[^}]*skipped[^}]*\}/s)
+  })
+})
