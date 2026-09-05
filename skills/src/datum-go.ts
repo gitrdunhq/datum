@@ -174,6 +174,28 @@ if (!toolCheck.ok) {
   )
 }
 
+// Preflight: demand a robust .gitignore. Every scratch path datum writes
+// (.datum/worktrees, .datum/runs, .datum/skills, .datum/hooks, .temp) must
+// be ignored, or generated files end up in `git add .`, collide with lane
+// squash-merges and get blamed on agents. yolo auto-fixes (append-only,
+// idempotent); otherwise halt with the exact gaps before any agent burns
+// tokens on a run that would fail at merge time.
+const gitignoreText = await agent(
+  runCommandPrompt(`datum gitignore-check${yolo ? ' --fix' : ''}`),
+  stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }),
+)
+const gitignoreCheck = parseAgentJson(gitignoreText as string, { ok: true, missing: [] as string[], added: [] as string[] }) as { ok: boolean; missing: string[]; added: string[] }
+if (gitignoreCheck.added?.length) {
+  log(`[preflight] .gitignore was missing datum scratch paths — appended (yolo): ${gitignoreCheck.added.join(', ')}`)
+}
+if (!gitignoreCheck.ok) {
+  throw new Error(
+    `.gitignore does not ignore datum's scratch paths — missing: ${(gitignoreCheck.missing || []).join(', ')}. ` +
+    `Generated files under those paths would land in \`git add .\` and collide with lane squash-merges. ` +
+    `Fix: run \`datum gitignore-check --fix\` (or re-run with yolo, which appends them automatically), then re-run.`
+  )
+}
+
 // Auto-resume: if no explicit startFrom and pipeline-state exists, pick up where we left off
 let priorState = parseState(boot.state ? JSON.stringify(boot.state) : null)
 

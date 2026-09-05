@@ -336,6 +336,35 @@ def config_fingerprint_cmd(
         print(fp)
 
 
+@app.command("gitignore-check")
+def gitignore_check_cmd(
+    fix: bool = typer.Option(
+        False, "--fix", help="Append the missing patterns to .gitignore."
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repository root"),
+):
+    """Preflight: every scratch path datum writes must be gitignored.
+
+    Prints {"ok", "missing", "added"[, "hint"]} and exits 1 when patterns are
+    missing and --fix was not given. Uses `git check-ignore`, so a blanket
+    `.datum/*` satisfies the `.datum/...` entries and negations are honoured.
+    """
+    from datum.gitignore_check import check_gitignore, fix_gitignore
+
+    root = Path(repo).resolve()
+    added = fix_gitignore(root) if fix else []
+    result = check_gitignore(root)
+    payload: dict = {"ok": result["ok"], "missing": result["missing"], "added": added}
+    if not result["ok"]:
+        payload["hint"] = (
+            "run `datum gitignore-check --fix` (or add the patterns to .gitignore) — "
+            "unignored scratch paths end up in `git add .` and collide with lane merges"
+        )
+    print(json.dumps(payload))
+    if not result["ok"]:
+        raise typer.Exit(code=1)
+
+
 def _install_workflows():
     """Symlink datum workflow JS files to ~/.claude/workflows/."""
     import os

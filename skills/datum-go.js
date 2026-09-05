@@ -509,6 +509,19 @@ if (!toolCheck.ok) {
     `datum CLI tool install is stale/misdirected (#327): the globally installed editable \`datum\` points at "${installedPath}" but this repo root is "${expectedPath}". Every "datum ..." command this pipeline runs would silently execute code from the wrong location. Fix: run \`uv tool install --editable . --force\` from "${expectedPath}", then re-run.`
   );
 }
+var gitignoreText = await agent(
+  runCommandPrompt(`datum gitignore-check${yolo ? " --fix" : ""}`),
+  stageOpts("cli", { label: "preflight-gitignore", model: model("fast") })
+);
+var gitignoreCheck = parseAgentJson(gitignoreText, { ok: true, missing: [], added: [] });
+if (gitignoreCheck.added?.length) {
+  log(`[preflight] .gitignore was missing datum scratch paths \u2014 appended (yolo): ${gitignoreCheck.added.join(", ")}`);
+}
+if (!gitignoreCheck.ok) {
+  throw new Error(
+    `.gitignore does not ignore datum's scratch paths \u2014 missing: ${(gitignoreCheck.missing || []).join(", ")}. Generated files under those paths would land in \`git add .\` and collide with lane squash-merges. Fix: run \`datum gitignore-check --fix\` (or re-run with yolo, which appends them automatically), then re-run.`
+  );
+}
 var priorState = parseState(boot.state ? JSON.stringify(boot.state) : null);
 var currentBranch = typeof boot.currentBranch === "string" ? boot.currentBranch : "";
 if (priorState && isStaleState(priorState, currentBranch)) {

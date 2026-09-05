@@ -529,3 +529,26 @@ describe('docs workflow result is consumed, not discarded', () => {
     expect(goSource).toMatch(/docs[^\n]*committed === false|docs[^\n]*failure_reason/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Preflight demands a robust .gitignore: every scratch path datum writes
+// (.datum/worktrees, .datum/runs, .datum/skills, .datum/hooks, .temp) must be
+// ignored, or generated files end up in `git add .`, collide with lane
+// squash-merges and get blamed on agents. yolo auto-fixes; otherwise halt
+// with the exact gaps before any agent burns tokens.
+// ---------------------------------------------------------------------------
+
+describe('preflight: gitignore check', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('runs datum gitignore-check in preflight, before auto-resume', () => {
+    const idx = goSource.indexOf('datum gitignore-check')
+    expect(idx).toBeGreaterThan(-1)
+    expect(idx).toBeLessThan(goSource.indexOf('// Auto-resume'))
+  })
+
+  it('auto-fixes in yolo mode and throws with the missing patterns otherwise', () => {
+    expect(goSource).toMatch(/gitignore-check[^\n]*--fix/)
+    expect(goSource).toMatch(/gitignore[\s\S]{0,600}throw new Error\([^)]*missing/)
+  })
+})
