@@ -585,6 +585,9 @@ export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
   // put the actual answer last (an illustrative example, if any, comes
   // first); this also avoids overshooting into trailing prose after the
   // real object, since a balanced scan never runs past its own close.
+  // Candidates inside code fences are NOT skipped: "Here you go:\n```json
+  // {...}```" is the most common reply shape, and skipping fenced JSON
+  // returned the fallback for it.
   const openRe = /[{[]/g
   let match: RegExpExecArray | null
   let best: T | undefined
@@ -695,7 +698,7 @@ export function extractContractSummary(
 ): ContractEntry[] {
   return (acceptanceCriteria || [])
     .map((ac): ContractEntry | null => {
-      const funcMatch = ac.match(/(?<!['"-])(\w+)\(([^)]*)\)/)
+      const funcMatch = ac.match(/(?<!['"-])(\w+)\s*\(([^)]*)\)/)
       const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i)
       const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/)
       if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null
@@ -746,7 +749,8 @@ export function crossValidateBugs(
     }
   }
 
-  const bugDescs = allBugs.map((b) => b.description.toLowerCase().slice(0, 60))
+  const normalize = (d: string) => d.toLowerCase().replace(/\s+/g, ' ').slice(0, 60)
+  const bugDescs = allBugs.map((b) => normalize(b.description))
   const crossValidated = allBugs.filter((_bug, idx) => {
     const myDesc = bugDescs[idx]
     return bugDescs.some((d, j) => j !== idx && d === myDesc)
@@ -769,7 +773,10 @@ export function buildPacket(
   stage: TddStage,
   extras: Record<string, unknown> = {},
 ): TaskPacket {
+  // Extras first, then core fields override to prevent callers from accidentally
+  // overriding stage, task_id, schema_version, etc.
   return {
+    ...extras,
     schema_version: '1.0',
     task_id: taskId,
     stage: stage as TaskPacket['stage'],
@@ -797,7 +804,6 @@ export function buildPacket(
           ? `green(${taskId})`
           : `refactor(${taskId})`,
     ...(cfg.test_framework ? { test_framework: cfg.test_framework } : {}),
-    ...extras,
   }
 }
 

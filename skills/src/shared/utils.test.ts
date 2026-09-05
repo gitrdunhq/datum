@@ -4,8 +4,8 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson } from './utils'
-import type { Lane, LanePlan, LaneOutcome } from './types'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, extractContractSummary, crossValidateBugs, buildPacket } from './utils'
+import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -692,5 +692,558 @@ describe('parseAgentJson', () => {
   it('returns the fallback when no JSON is present at all', () => {
     const result = parseAgentJson('no json here', { ok: false })
     expect(result).toEqual({ ok: false })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// findMatchingBracketEnd — character-level bracket matching (tested via parseAgentJson)
+// ---------------------------------------------------------------------------
+
+describe('findMatchingBracketEnd (via parseAgentJson)', () => {
+  it('extracts plain JSON object from agent prose', () => {
+    const text = 'The result is:\n{"status":"ok"}\nDone.'
+    const result = parseAgentJson(text, { status: 'unknown' })
+    expect(result).toEqual({ status: 'ok' })
+  })
+
+  it('extracts plain JSON array from agent prose', () => {
+    const text = 'Items: [1, 2, 3]'
+    const result = parseAgentJson(text, [])
+    expect(result).toEqual([1, 2, 3])
+  })
+
+  it('handles nested objects with multiple levels', () => {
+    const text = 'Result: {"a":{"b":{"c":1}}}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ a: { b: { c: 1 } } })
+  })
+
+  it('handles nested arrays inside objects', () => {
+    const text = 'Data: {"items":[1,2,[3,4]]}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ items: [1, 2, [3, 4]] })
+  })
+
+  it('preserves brackets inside string values and does not close early', () => {
+    const text = 'Result: {"message":"contains } and ] brackets"}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ message: 'contains } and ] brackets' })
+  })
+
+  it('handles escaped quotes inside strings', () => {
+    const text = 'Result: {"message":"contains \\"quotes\\""}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ message: 'contains "quotes"' })
+  })
+
+  it('handles backslash-escaped brackets inside strings', () => {
+    const text = 'Result: {"pattern":"\\\\}"}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ pattern: '\\}' })
+  })
+
+  it('finds the LAST valid JSON object when multiple candidates exist (agent answers come last)', () => {
+    const text = 'Example: {"example":true}\n\nActual: {"actual":true}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ actual: true })
+  })
+
+  it('returns fallback for truncated/unbalanced JSON', () => {
+    const text = 'Result: {"incomplete": true'
+    const result = parseAgentJson(text, { fallback: true })
+    expect(result).toEqual({ fallback: true })
+  })
+
+  it('strips ```json code fence wrapping the entire response', () => {
+    const text = '```json\n{"ok":true}\n```'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('strips ```  (no language) code fence wrapping the entire response', () => {
+    const text = '```\n{"ok":true}\n```'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('keeps the LAST parseable JSON even when it is fenced — prompts put the example first and the answer last', () => {
+    // Documented convention (commit 654ee95): the real answer comes last; an
+    // illustrative example, if any, comes first. Skipping fenced candidates
+    // would return the fallback for the most common reply shape below.
+    const text = 'Example:\n```json\n{"example":true}\n```\nAnswer: {"ok":true}'
+    expect(parseAgentJson(text, {})).toEqual({ ok: true })
+  })
+
+  it('parses a reply that is prose followed by a single fenced JSON block', () => {
+    expect(parseAgentJson('Here you go:\n```json\n{"a": 2}\n```\n', null)).toEqual({ a: 2 })
+  })
+
+  it('parses the first { or [ bracket when no full-response JSON parse succeeds', () => {
+    const text = 'Response: [1,2,3]'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual([1, 2, 3])
+  })
+
+  it('returns fallback for completely invalid input', () => {
+    const text = 'no json here at all'
+    const result = parseAgentJson(text, { fallback: 42 })
+    expect(result).toEqual({ fallback: 42 })
+  })
+
+  it('returns fallback for null/undefined input', () => {
+    expect(parseAgentJson(null as unknown as string, { ok: false })).toEqual({ ok: false })
+    expect(parseAgentJson(undefined as unknown as string, { ok: false })).toEqual({ ok: false })
+  })
+
+  it('handles JSON with empty string values', () => {
+    const text = '{"key":""}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ key: '' })
+  })
+
+  it('handles very deeply nested JSON', () => {
+    const text = '{"a":{"b":{"c":{"d":{"e":{"f":1}}}}}}'
+    const result = parseAgentJson(text, {})
+    expect((result as any).a.b.c.d.e.f).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// joinPosix — POSIX path joining with . and .. handling (via extractRequiredScopeFiles)
+// ---------------------------------------------------------------------------
+
+describe('joinPosix (via extractRequiredScopeFiles)', () => {
+  it('joins base and relative paths with /', () => {
+    const content = 'import * as x from "./utils"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/utils.ts')
+  })
+
+  it('handles ./ current-directory prefixes', () => {
+    const content = 'import * as x from "./subdir/utils"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/subdir/utils.ts')
+  })
+
+  it('handles ../ parent-directory references', () => {
+    const content = 'import * as x from "../sibling"'
+    const required = extractRequiredScopeFiles(content, 'src/deep/nested/test.ts', 'typescript')
+    expect(required).toContain('src/deep/sibling.ts')
+  })
+
+  it('handles multiple ../ to walk up multiple levels', () => {
+    const content = 'import * as x from "../../utils"'
+    const required = extractRequiredScopeFiles(content, 'src/deep/nested/test.ts', 'typescript')
+    expect(required).toContain('src/utils.ts')
+  })
+
+  it('stops at root when .. would go beyond (does not create leading /../..)', () => {
+    const content = 'import * as x from "../../../../../outside"'
+    const required = extractRequiredScopeFiles(content, 'src/test.ts', 'typescript')
+    // Should never escape the root; exact behavior depends on joinPosix
+    const result = required[0]
+    expect(result).not.toContain('../')
+  })
+
+  it('handles . (current directory, no-op)', () => {
+    const content = 'import * as x from "././nested"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/nested.ts')
+  })
+
+  it('resolves readFileSync(join(__dirname, ...)) with multiple path segments', () => {
+    const content = 'readFileSync(join(__dirname, "sub", "dir", "file.txt"))'
+    const required = extractRequiredScopeFiles(content, 'src/test.ts', 'typescript')
+    expect(required).toContain('src/sub/dir/file.txt')
+  })
+
+  it('resolves readFileSync with .. segments', () => {
+    const content = 'readFileSync(join(__dirname, "..", "sibling", "file.txt"))'
+    const required = extractRequiredScopeFiles(content, 'src/nested/test.ts', 'typescript')
+    expect(required).toContain('src/sibling/file.txt')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// extractContractSummary — function signature extraction from AC text
+// ---------------------------------------------------------------------------
+
+describe('extractContractSummary', () => {
+  it('extracts function name and arguments from a simple AC', () => {
+    const acs = ['The function frobnicate(x, y) should multiply them']
+    const result = extractContractSummary(acs)
+    expect(result).toHaveLength(1)
+    expect(result[0].function).toBe('frobnicate')
+    expect(result[0].args).toEqual(['x', 'y'])
+  })
+
+  it('trims whitespace from argument list', () => {
+    const acs = ['function  processData ( a , b , c ) does the thing']
+    const result = extractContractSummary(acs)
+    expect(result[0].args).toEqual(['a', 'b', 'c'])
+  })
+
+  it('captures return type when present', () => {
+    const acs = ['getData() returns a string']
+    const result = extractContractSummary(acs)
+    expect(result[0].returns).toBe('string')
+  })
+
+  it('captures exception type when present', () => {
+    const acs = ['risky() raises ValueError']
+    const result = extractContractSummary(acs)
+    expect(result[0].raises).toBe('ValueError')
+  })
+
+  it('filters out builtin function names (Python)', () => {
+    const acs = ['print("hello")', 'len(items)', 'myFunc(x)']
+    const result = extractContractSummary(acs)
+    // print and len are filtered; only myFunc remains
+    expect(result).toHaveLength(1)
+    expect(result[0].function).toBe('myFunc')
+  })
+
+  it('filters out builtin function names (TypeScript/JavaScript)', () => {
+    const acs = ['console.log(x)', 'JSON.stringify(o)', 'myFunc(x)']
+    const result = extractContractSummary(acs)
+    // console, JSON are filtered; only myFunc remains
+    const funcs = result.map((r) => r.function)
+    expect(funcs).toContain('myFunc')
+    expect(funcs).not.toContain('console')
+    expect(funcs).not.toContain('JSON')
+  })
+
+  it('handles empty acceptance criteria list', () => {
+    const result = extractContractSummary([])
+    expect(result).toEqual([])
+  })
+
+  it('handles null/undefined acceptance criteria', () => {
+    const result = extractContractSummary(null as any)
+    expect(result).toEqual([])
+  })
+
+  it('truncates AC text to 120 characters', () => {
+    const longAc = 'myFunction() does something very long and we need to make sure it is truncated properly so it does not take up too much space in the output'
+    const result = extractContractSummary([longAc])
+    expect(result[0].ac.length).toBeLessThanOrEqual(120)
+  })
+
+  it('does not match function names with special character immediately before (but may match partial words inside strings)', () => {
+    // The regex uses negative lookbehind (?<!['"-]) which only prevents matches
+    // if ' or " or - is immediately before the word. It will still match partial words like "unc" from "func()" text.
+    // To fully filter quoted strings would require more complex parsing.
+    const acs = ['func() should work', '"func()" in quotes', "func'() won't match"]
+    const result = extractContractSummary(acs)
+    // func() from first AC matches, and partial words might match from others
+    expect(result.length).toBeGreaterThan(0)
+    expect(result.some((e) => e.function === 'func')).toBe(true)
+  })
+
+  it('extracts multiple functions from different ACs', () => {
+    const acs = [
+      'funcA(x) returns int',
+      'funcB(y) returns string',
+    ]
+    const result = extractContractSummary(acs)
+    expect(result).toHaveLength(2)
+    expect(result[0].function).toBe('funcA')
+    expect(result[1].function).toBe('funcB')
+  })
+
+  it('handles empty argument list', () => {
+    const acs = ['noArgs() does something']
+    const result = extractContractSummary(acs)
+    expect(result[0].args).toEqual([])
+  })
+
+  it('captures "raises" with capital R', () => {
+    const acs = ['dangerous() Raises MyError']
+    const result = extractContractSummary(acs)
+    expect(result[0].raises).toBe('MyError')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// crossValidateBugs — merges skeptic results across lenses
+// ---------------------------------------------------------------------------
+
+describe('crossValidateBugs', () => {
+  it('collects bugs from all three skeptic lenses', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug2', evidence: 'e2', severity: 'low' as const }],
+        confidence: 0.8,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug3', evidence: 'e3', severity: 'medium' as const }],
+        confidence: 0.85,
+      },
+    ]
+    const lenses = [
+      { key: 'lens1', model: 'opus' as const, prompt: 'test' },
+      { key: 'lens2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'lens3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs, brokenCount, crossValidated } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(3)
+    expect(brokenCount).toBe(0)
+  })
+
+  it('counts BROKEN verdicts', () => {
+    const results = [
+      { verdict: 'BROKEN' as const, bugs_found: [], confidence: 0.5 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.9 },
+      { verdict: 'FRAGILE' as const, bugs_found: [], confidence: 0.7 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { brokenCount } = crossValidateBugs(results, lenses)
+    expect(brokenCount).toBe(1)
+  })
+
+  it('identifies cross-validated bugs (same description in multiple lenses)', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'off by one error', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'off by one error', evidence: 'e2', severity: 'high' as const }],
+        confidence: 0.85,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [],
+        confidence: 0.95,
+      },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { crossValidated } = crossValidateBugs(results, lenses)
+    expect(crossValidated).toHaveLength(2)
+    expect(crossValidated[0].description).toBe('off by one error')
+  })
+
+  it('normalizes bug descriptions to lowercase and truncates to 60 chars for comparison', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [
+          { description: 'OFF BY ONE ERROR IN LOOP', evidence: 'e1', severity: 'high' as const },
+        ],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [
+          { description: 'off  by   one   ERROR  in  LOOP', evidence: 'e2', severity: 'high' as const },
+        ],
+        confidence: 0.85,
+      },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { crossValidated } = crossValidateBugs(results, lenses)
+    expect(crossValidated).toHaveLength(2)
+  })
+
+  it('handles null entries in skepticResults', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      null,
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug2', evidence: 'e2', severity: 'low' as const }],
+        confidence: 0.8,
+      },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(2)
+  })
+
+  it('handles empty bugs_found array', () => {
+    const results = [
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.9 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.85 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs, crossValidated } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(0)
+    expect(crossValidated).toHaveLength(0)
+  })
+
+  it('preserves lens key on each bug entry', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.85 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'opus-lens', model: 'opus' as const, prompt: 'test' },
+      { key: 'sonnet-lens', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'haiku-lens', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs } = crossValidateBugs(results, lenses)
+    expect(allBugs[0].lens).toBe('opus-lens')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildPacket — constructs TaskPacket for RED/GREEN/REFACTOR agents
+// ---------------------------------------------------------------------------
+
+describe('buildPacket', () => {
+  const testLane: Lane = {
+    title: 'Test Lane',
+    files: [],
+    acceptance_criteria: ['AC1', 'AC2'],
+    red_note: 'This is tricky',
+  }
+
+  const cfg = {
+    lanePlanPath: '/path/to/lane-plan.json',
+    epicBranch: 'epic/test',
+    runId: 'test-run-123',
+    language: 'typescript',
+    testCommand: 'npm test',
+    test_framework: 'vitest',
+  } as PipelineConfig
+
+  it('builds a packet for RED stage with test files allowed and impl files forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'RED')
+    expect(packet.stage).toBe('RED')
+    expect(packet.allowed_write_files).toEqual(['tests/test.ts'])
+    expect(packet.forbidden_write_files).toEqual(['src/impl.ts'])
+    expect(packet.commit_prefix).toBe('red(task-123)')
+  })
+
+  it('builds a packet for GREEN stage with impl files allowed and test files forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'GREEN')
+    expect(packet.stage).toBe('GREEN')
+    expect(packet.allowed_write_files).toEqual(['src/impl.ts'])
+    expect(packet.forbidden_write_files).toEqual(['tests/test.ts'])
+    expect(packet.commit_prefix).toBe('green(task-123)')
+  })
+
+  it('builds a packet for REFACTOR stage with both files allowed and none forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'REFACTOR')
+    expect(packet.stage).toBe('REFACTOR')
+    expect(packet.allowed_write_files).toEqual(['tests/test.ts', 'src/impl.ts'])
+    expect(packet.forbidden_write_files).toEqual([])
+    expect(packet.commit_prefix).toBe('refactor(task-123)')
+  })
+
+  it('includes schema version and task_id', () => {
+    const packet = buildPacket('task-456', [], [], testLane, '/wt', cfg, 'RED')
+    expect(packet.schema_version).toBe('1.0')
+    expect(packet.task_id).toBe('task-456')
+  })
+
+  it('copies title and red_note from lane', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    expect(packet.title).toBe('Test Lane')
+    expect(packet.red_note).toBe('This is tricky')
+  })
+
+  it('includes acceptance criteria unchanged', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    expect(packet.acceptance_criteria).toEqual(['AC1', 'AC2'])
+  })
+
+  it('sets working_directory from wt parameter', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/my/wt', cfg, 'RED')
+    expect(packet.working_directory).toBe('/my/wt')
+  })
+
+  it('includes test_command from config', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    expect(packet.test_command).toBe('npm test')
+  })
+
+  it('includes test_framework from config when present', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    expect(packet.test_framework).toBe('vitest')
+  })
+
+  it('omits test_framework when config does not have it', () => {
+    const minCfg = { testCommand: 'npm test' }
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', minCfg as any, 'RED')
+    expect((packet as any).test_framework).toBeUndefined()
+  })
+
+  it('merges extras into the packet', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', {
+      custom_field: 'custom_value',
+      upstream_source: 'main',
+    })
+    expect((packet as any).custom_field).toBe('custom_value')
+    expect((packet as any).upstream_source).toBe('main')
+  })
+
+  it('extras do not override core fields (schema_version, task_id, stage, etc.)', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', {
+      stage: 'GREEN',
+      schema_version: '2.0',
+      task_id: 'wrong-id',
+    })
+    expect(packet.stage).toBe('RED')
+    expect(packet.schema_version).toBe('1.0')
+    expect(packet.task_id).toBe('task-123')
+  })
+
+  it('handles empty test and impl file lists', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'REFACTOR')
+    expect(packet.allowed_write_files).toEqual([])
+    expect(packet.forbidden_write_files).toEqual([])
+  })
+
+  it('preserves order of test files when allowed', () => {
+    const testFiles = ['test1.ts', 'test2.ts', 'test3.ts']
+    const packet = buildPacket('task-123', testFiles, [], testLane, '/wt', cfg, 'RED')
+    expect(packet.allowed_write_files).toEqual(testFiles)
+  })
+
+  it('preserves order of impl files when allowed', () => {
+    const implFiles = ['impl1.ts', 'impl2.ts', 'impl3.ts']
+    const packet = buildPacket('task-123', [], implFiles, testLane, '/wt', cfg, 'GREEN')
+    expect(packet.allowed_write_files).toEqual(implFiles)
   })
 })
