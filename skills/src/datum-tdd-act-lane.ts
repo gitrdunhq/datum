@@ -1214,7 +1214,7 @@ No markdown fences, no explanation.`,
   const minority = skepticMinorityFindings(skeptic.allBugs, skeptic.crossValidated)
   let followUps = 0
   if (minority.length > 0) {
-    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} — ${b.description.replace(/\s+/g, ' ').slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, ' ').slice(0, 120)})`)
+    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} — [${b.severity}] ${b.description.replace(/\s+/g, ' ').slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, ' ').slice(0, 120)})`)
     const followUpPath = `.datum/runs/${runId}/follow-ups/${taskId}.json`
     const followUpText = JSON.stringify(minorityFollowUps(taskId, green.commit_sha || '', minority), null, 2)
     const fuSteps = writeFileSteps({ path: followUpPath, content: followUpText })

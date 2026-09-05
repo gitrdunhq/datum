@@ -1257,10 +1257,12 @@ describe('skepticMinorityFindings / minorityFollowUps (caliper#564)', () => {
   const hi = { description: 'thresholds dropped on --serve path', evidence: 'part_cmd.py:345 vs 368', severity: 'high' as const, lens: 'edge' }
   const lo = { description: 'style nit', evidence: 'x', severity: 'low' as const, lens: 'error' }
   const noEv = { description: 'might break', evidence: '', severity: 'critical' as const, lens: 'contract' }
-  it('keeps critical/high single-lens bugs with evidence, drops cross-validated, low and evidence-less ones', () => {
+  it('keeps every single-lens bug with evidence at its reported severity; drops cross-validated and evidence-less ones', () => {
     const out = skepticMinorityFindings([hi, lo, noEv], [])
-    expect(out).toEqual([hi])
+    expect(out).toEqual([hi, lo])
     expect(skepticMinorityFindings([hi], [hi])).toEqual([])
+    const [, low] = minorityFollowUps('task-006', 'abc', [hi, lo])
+    expect(low.severity).toBe('low')
   })
   it('renders FollowUpIssue entries with a stable dedup key and lane/sha traceability', () => {
     const [f] = minorityFollowUps('task-007', 'bc6f34d', [hi])

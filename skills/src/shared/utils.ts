@@ -653,8 +653,8 @@ export interface CrossValidatedBug {
 }
 
 /**
- * Single-lens skeptic findings the 2-of-3 rule does not act on: critical or
- * high, with evidence, not cross-validated. Never a retry trigger (the 2-of-3
+ * Single-lens skeptic findings the 2-of-3 rule does not act on: with
+ * evidence, not cross-validated, any severity. Never a retry trigger (the 2-of-3
  * rule for retrying GREEN stands); surfaced by name and filed at Closeout so
  * a real bug one lens saw does not depend on a human reading the journal
  * (caliper: --serve dropped thresholds, caliper#564).
@@ -664,9 +664,9 @@ export function skepticMinorityFindings(
   crossValidated: CrossValidatedBug[],
 ): CrossValidatedBug[] {
   const validated = new Set(crossValidated)
-  return allBugs.filter(
-    (b) => !validated.has(b) && (b.severity === 'critical' || b.severity === 'high') && typeof b.evidence === 'string' && b.evidence.trim().length > 0,
-  )
+  // Every severity is kept (caliper: recoverable from the run dir, counted in
+  // the Act summary); the Closeout filer opens issues only for critical/high.
+  return allBugs.filter((b) => !validated.has(b) && typeof b.evidence === 'string' && b.evidence.trim().length > 0)
 }
 
 /** FollowUpIssue entries (datum/models/follow_up_schema.py) for one lane's minority findings. */
@@ -675,7 +675,7 @@ export function minorityFollowUps(taskId: string, greenSha: string, findings: Cr
     dedup_key: `skeptic-minority:${taskId}:${greenSha || 'nosha'}:${i}`,
     title: `[skeptic] ${taskId}: ${b.description.replace(/\s+/g, ' ').slice(0, 100)}`,
     body: `Lane ${taskId}, GREEN ${greenSha || '(no sha)'}, skeptic lens "${b.lens}", severity ${b.severity}.\n\n${b.description}\n\nEvidence: ${b.evidence}\n\nA single lens reported this and the other lenses did not corroborate it, so the lane was not retried (2-of-3 rule). Verify before acting.`,
-    severity: b.severity === 'critical' ? 'critical' : 'high',
+    severity: (['critical', 'high', 'medium', 'low'] as string[]).includes(String(b.severity)) ? b.severity : 'medium',
     category: 'other',
     suggested_labels: ['datum-followup', 'skeptic'],
     source: 'act.skeptic-minority',

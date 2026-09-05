@@ -149,10 +149,13 @@ const archiveResult = parseBatchResult(archiveRaw, archiveSteps)
 
 // Follow-ups (synthesis manifest + Act's skeptic minority findings): say what was filed.
 const filedRaw = stepStdout(archiveResult, 'file-followups')
-const filed = parseAgentJson<{ ok?: boolean; filed?: number; retained?: number; tracker?: string; skipped?: boolean; reason?: string } | null>(filedRaw || '', null)
+const filed = parseAgentJson<{ ok?: boolean; filed?: number; retained?: number; retained_below_threshold?: number; min_severity?: string; manifest?: string; tracker?: string; skipped?: boolean; reason?: string } | null>(filedRaw || '', null)
 if (!filed) log(`[closeout] follow-ups: filer returned no JSON (${(filedRaw || '').trim().slice(0, 120) || 'nothing'})`)
 else if (filed.skipped) log('[closeout] follow-ups: already filed for this run')
-else log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ''}${filed.reason ? ` — ${filed.reason}` : ''}`)
+else {
+  log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ''}${filed.reason ? ` — ${filed.reason}` : ''}`)
+  if ((filed.retained_below_threshold ?? 0) > 0) log(`[closeout] follow-ups: ${filed.retained_below_threshold} finding(s) below ${filed.min_severity || 'high'} retained locally, not filed — see ${filed.manifest || `.datum/runs/${rid}/follow-ups.json`}`)
+}
 
 const archiveFailures: string[] = []
 for (const step of archiveResult.steps) {
