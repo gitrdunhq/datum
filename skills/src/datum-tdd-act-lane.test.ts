@@ -142,6 +142,35 @@ describe('path-boundary-file-ownership — AC5 (directory-boundary nesting)', ()
     expect(result.violations).toEqual([])
   })
 
+  it('allows a file nested inside an allowed directory written WITH a trailing slash (#393)', () => {
+    // Lane plans legitimately list a directory as "tests/fixtures/part_corpus/"
+    // (trailing slash, per its red_note). The matcher computed
+    // `b + '/'` → "tests/fixtures/part_corpus//", which never matches, so
+    // every fixture GREEN wrote was rejected as a file_ownership_violation
+    // (eedom run wf_209d655c-095).
+    const verifyFileOwnership = getVerifyFileOwnership()
+    expect(typeof verifyFileOwnership).toBe('function')
+
+    const result = verifyFileOwnership!(
+      ['tests/fixtures/part_corpus/scenario_01_basic.json'],
+      ['tests/fixtures/part_corpus/'],
+      [],
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.violations).toEqual([])
+  })
+
+  it('a trailing-slash allowed entry still does not match a sibling-prefixed directory (#393)', () => {
+    const verifyFileOwnership = getVerifyFileOwnership()
+    const result = verifyFileOwnership!(
+      ['tests/fixtures/part_corpus_extra/x.json'],
+      ['tests/fixtures/part_corpus/'],
+      [],
+    )
+    expect(result.ok).toBe(false)
+  })
+
   it('allows a deeply nested file inside the allowed directory', () => {
     const verifyFileOwnership = getVerifyFileOwnership()
     expect(typeof verifyFileOwnership).toBe('function')

@@ -188,7 +188,9 @@ function getIssueId(lanePlan2, taskId) {
 
 // skills/src/shared/utils.ts
 function pathBoundaryMatch(a2, b) {
-  return a2 === b || a2.endsWith("/" + b) || a2.startsWith(b + "/");
+  const x = a2.replace(/\/+$/, "");
+  const y = b.replace(/\/+$/, "");
+  return x === y || x.endsWith("/" + y) || x.startsWith(y + "/");
 }
 function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
   const violations = [];

@@ -333,10 +333,15 @@ export function epicSlug(branch: string): string {
 // ---------------------------------------------------------------------------
 
 export function pathBoundaryMatch(a: string, b: string): boolean {
+  // Lane plans may list a directory with a trailing slash
+  // ("tests/fixtures/part_corpus/"); without normalising, `b + '/'` became
+  // "…/part_corpus//" and no file inside ever matched (#393).
+  const x = a.replace(/\/+$/, '')
+  const y = b.replace(/\/+$/, '')
   return (
-    a === b ||
-    a.endsWith('/' + b) ||
-    a.startsWith(b + '/')
+    x === y ||
+    x.endsWith('/' + y) ||
+    x.startsWith(y + '/')
   )
 }
 
