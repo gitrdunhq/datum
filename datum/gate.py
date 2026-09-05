@@ -658,7 +658,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
     lanes = lane_plan.get("lanes", {})
     lane_ids = set(lanes)
     topological_order = lane_plan.get("topological_order", [])
-    if set(topological_order) != lane_ids:
+    if len(topological_order) != len(lane_ids) or set(topological_order) != lane_ids:
         fail("lane-plan.json topological_order does not match lanes")
 
     file_to_lanes: dict[str, list[str]] = {}
@@ -685,6 +685,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
     unit_deps = {}
     if units:
         for uid, u in units.items():
+            if not isinstance(u, dict):
+                fail(f"Lane-plan.json unit {uid} must be an object")
             for tid in u.get("tasks", []):
                 task_to_unit[tid] = uid
             unit_deps[uid] = set(u.get("depends_on", []))
