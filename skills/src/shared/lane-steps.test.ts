@@ -616,6 +616,38 @@ describe('mergeSteps', () => {
     expect(write).toMatch(/case "\$\{__merged_ids:- \$TID \}" in \*" \$TID "\*\) ;; \*\) continue;; esac/)
   })
 
+  it('under real bash, only the lanes in $__merged_ids reach `datum lane-state write`; unset means all', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-merged-ids-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'e'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir })
+      const bin = join(dir, 'bin')
+      mkdirSync(bin)
+      const logPath = join(dir, 'calls.log')
+      writeFileSync(join(bin, 'datum'), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${logPath}"\n`, { mode: 0o755 })
+      const script = laneStateWriteScript({
+        epicBranch: 'e', epicSlug: 'e', runId: 'r1',
+        entriesJson: '[{"task_id":"T1","spec_hash":"h1"},{"task_id":"T2","spec_hash":"h2"}]',
+      })
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+
+      const partial = execFileSync('bash', ['-c', `__merged_ids=" T1 "\n${script}`], { cwd: dir, env, encoding: 'utf8' })
+      expect(partial.trim()).toBe('DONE')
+      const calls = readFileSync(logPath, 'utf8').trim().split('\n')
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toContain('--task T1')
+      expect(calls[0]).toContain('--spec-hash h1')
+
+      writeFileSync(logPath, '')
+      execFileSync('bash', ['-c', script], { cwd: dir, env, encoding: 'utf8' })
+      const all = readFileSync(logPath, 'utf8').trim().split('\n')
+      expect(all).toHaveLength(2)
+      expect(all.map((c) => (c.match(/--task (\S+)/) || [])[1])).toEqual(['T1', 'T2'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('skips the merge and lane-state when nothing is GREEN, but still cleans up', () => {
     const steps = mergeSteps({ batchRunId: 'r1', epicBranch: 'datum/e', completedIds: [], mergeOrder: [], laneStateWriteScript: null })
     expect(names(steps)).toEqual(['cleanup'])
