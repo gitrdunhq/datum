@@ -38,14 +38,21 @@ Output raw JSON only.`,
     return null
   }
   const parsed = typeof result === 'string'
-    ? parseAgentJson<{ error?: string; epic_number?: unknown; task_issues?: Record<string, unknown> } | null>(result, null)
-    : (result as { error?: string; epic_number?: unknown; task_issues?: Record<string, unknown> })
+    ? parseAgentJson<{ error?: string; skipped?: string; reason?: string; epic_number?: unknown; task_issues?: Record<string, unknown> } | null>(result, null)
+    : (result as { error?: string; skipped?: string; reason?: string; epic_number?: unknown; task_issues?: Record<string, unknown> })
   if (!parsed) {
     log(`[tracker] publish failed: unparseable output — ${String(result).slice(0, 200)}`)
     return null
   }
   if (parsed.error) {
     log(`[tracker] publish failed: ${parsed.error}`)
+    return null
+  }
+  if (parsed.skipped) {
+    // The publisher refused (e.g. github_repo_unresolved: no remote in the
+    // consumer repo) rather than file into a guessed tracker. Not a failure
+    // of the plan — the lane plan simply carries no github_issue numbers.
+    log(`[tracker] publish skipped: ${parsed.reason || parsed.skipped}`)
     return null
   }
   return {

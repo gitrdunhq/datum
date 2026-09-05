@@ -60,3 +60,55 @@ def test_list_sub_issues_surfaces_malformed_metadata_instead_of_silently_droppin
     )
     with pytest.raises(ValueError, match="metadata"):
         list_sub_issues(1)
+
+
+# ---------------------------------------------------------------------------
+# elonchesd dogfooding: the consumer repo had NO git remote, `gh repo view`
+# failed, and _detect_repo() fell back to the hardcoded "gitrdunhq/datum" —
+# the plan phase then filed 18 of another project's task issues (#396–#413)
+# in datum's own tracker, plus triage's #414. Publishing must REFUSE when the
+# target repo cannot be resolved, never default to someone else's tracker.
+# ---------------------------------------------------------------------------
+
+import subprocess as _sp
+
+from datum import github_issues as gi
+
+
+def _gh_repo_view_fails(*args, **kwargs):
+    return _sp.CompletedProcess(args, 1, stdout="", stderr="no git remotes found")
+
+
+def test_detect_repo_returns_none_when_gh_cannot_resolve_a_repo(monkeypatch):
+    monkeypatch.setattr(gi.subprocess, "run", _gh_repo_view_fails)
+    assert gi._detect_repo() is None
+
+
+def test_detect_repo_never_hardcodes_a_fallback_repo():
+    src = (gi.__file__ and open(gi.__file__).read())
+    assert 'return "gitrdunhq/datum"' not in src
+
+
+def test_publish_lane_plan_skips_with_a_named_reason_when_repo_is_unresolved(monkeypatch, tmp_path):
+    monkeypatch.setattr(gi, "REPO", None)
+
+    def _must_not_be_called(*a, **k):
+        raise AssertionError(f"gh must not be invoked without a resolved repo: {a}")
+
+    monkeypatch.setattr(gi, "_gh", _must_not_be_called)
+    monkeypatch.setattr(gi, "_gh_check", _must_not_be_called)
+    lp = tmp_path / "lane-plan.json"
+    lp.write_text(json.dumps({"lanes": {"task-001": {"title": "t", "files": [], "acceptance_criteria": []}}, "topological_order": ["task-001"], "total_lanes": 1}))
+    result = gi.publish_lane_plan(str(lp), "[epic] x")
+    assert result["skipped"] == "github_repo_unresolved"
+    # lane-plan.json must be left without github_issue fields
+    plan = json.loads(lp.read_text())
+    assert "github_issue" not in plan["lanes"]["task-001"]
+
+
+def test_issue_operations_raise_a_named_error_when_repo_is_unresolved(monkeypatch):
+    monkeypatch.setattr(gi, "REPO", None)
+    with pytest.raises(gi.GitHubRepoUnresolvedError, match="github_repo_unresolved"):
+        gi.fetch_issue(1)
+    with pytest.raises(gi.GitHubRepoUnresolvedError, match="github_repo_unresolved"):
+        gi.update_issue_stage(1, "done")

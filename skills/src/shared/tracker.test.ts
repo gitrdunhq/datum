@@ -37,3 +37,16 @@ describe('tracker.publishLanePlan tolerates non-JSON replies', () => {
     expect(src).toMatch(/model\('fast'\)/)
   })
 })
+
+// A consumer repo with no GitHub remote had `datum plan-issues` file 18 of
+// its task issues into datum's own tracker (the Python side guessed a
+// default repo). The publisher now refuses with {"skipped":
+// "github_repo_unresolved"}; the tracker must treat that as "no issue
+// numbers", logged, never as a failure of the Plan phase.
+describe('tracker.publishLanePlan honours a refused publish', () => {
+  it('logs the skipped reason and returns null instead of an empty PublishResult', () => {
+    const fn = src.slice(src.indexOf('export async function publishLanePlan'), src.indexOf('export async function updateStage'))
+    expect(fn).toMatch(/parsed\.skipped/)
+    expect(fn).toMatch(/publish skipped: \$\{parsed\.reason \|\| parsed\.skipped\}/)
+  })
+})
