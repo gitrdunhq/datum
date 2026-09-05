@@ -14,6 +14,7 @@ describe('classifyLaneError — deterministic infrastructure prefixes', () => {
     ['validate_run_failed', 'VALIDATION FAILED — validate_run_failed: independent test run did not execute (crash)'],
     ['lane_plan_relay_mismatch', 'lane_plan_relay_mismatch: shape differs (lane-plan.json) — refusing to execute a plan that differs from the file'],
     ['context_relay_mismatch', 'context_relay_mismatch: batch agent returned no parseable result for context_files'],
+    ['runner_permission_denied', 'lane_intake_failed: lane intake: runner_permission_denied — the datum-cli runner was refused by the host permission classifier: "blocked by the auto-mode classifier"'],
     ['no worktree path', 'no worktree path for task-004 (setup returned undefined) — refusing to run outside an isolated worktree'],
   ]
 

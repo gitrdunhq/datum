@@ -39,6 +39,9 @@ export interface BatchResult {
   /** True when the agent returned nothing parseable — the caller should treat
    *  this the way it treats a null agent() result today. */
   missing: boolean
+  /** The runner's prose reply when it returned text instead of the JSON
+   *  array — kept so describeFailure can name a permission refusal. */
+  refusal?: string
 }
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/
@@ -122,7 +125,10 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     : typeof raw === 'string'
       ? parseAgentJson<unknown>(raw, null)
       : null
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true }
+  if (!Array.isArray(arr)) {
+    const text = typeof raw === 'string' ? raw.trim() : ''
+    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true }
+  }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name))
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null
@@ -140,8 +146,18 @@ export function stepStdout(r: BatchResult, name: string): string | null {
 }
 
 /** One-line summary of a failed step for log/error messages. */
+/** A runner reply that reads as a host permission refusal (elonchesd wf_2bf3cc14-899). */
+const REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?)\b/i
+
 export function describeFailure(r: BatchResult, label: string): string {
-  if (r.missing) return `${label}: batch agent returned no parseable result`
+  if (r.missing) {
+    if (!r.refusal) return `${label}: batch agent returned no parseable result`
+    const excerpt = r.refusal.replace(/\s+/g, ' ').slice(0, 300)
+    if (REFUSAL_RE.test(r.refusal)) {
+      return `${label}: runner_permission_denied — the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`
+    }
+    return `${label}: runner_no_json — batch agent returned no parseable result (reply: "${excerpt}")`
+  }
   if (!r.failed) return `${label}: ok`
   const tail = (r.failed.stderr || r.failed.stdout).trim().split('\n').slice(-5).join('\n')
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` — ${tail}` : ''}`

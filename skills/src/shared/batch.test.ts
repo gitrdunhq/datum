@@ -157,6 +157,28 @@ describe('parseBatchResult', () => {
     }
   })
 
+  // elonchesd wf_2bf3cc14-899: the datum-cli runner was refused by the host's
+  // permission classifier (git reset --hard / clean -fd in a scratch worktree)
+  // and replied in prose. That is not "no parseable result": it is a named,
+  // actionable outcome the operator can fix with an allow-rule.
+  it('a prose refusal from the runner is runner_permission_denied, with the reply excerpt', () => {
+    const reply = 'I was unable to run this script: the Bash tool was blocked by the Claude Code auto-mode classifier due to permission restrictions. The script contains destructive git operations (git reset --hard and git clean -fd).'
+    const r = parseBatchResult(reply, steps)
+    expect(r.missing).toBe(true)
+    expect(r.refusal).toBe(reply)
+    const d = describeFailure(r, 'red-reset')
+    expect(d).toMatch(/^red-reset: runner_permission_denied — the datum-cli runner was refused by the host permission classifier/)
+    expect(d).toContain('git reset --hard and git clean -fd')
+    expect(d.length).toBeLessThan(500)
+  })
+
+  it('other prose replies are runner_no_json, quoting the reply; null stays "no parseable result"', () => {
+    const r = parseBatchResult('Here is a summary of what I did: everything went fine.', steps)
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'x')).toMatch(/^x: runner_no_json — batch agent returned no parseable result \(reply: "Here is a summary/)
+    expect(describeFailure(parseBatchResult(null, steps), 'x')).toBe('x: batch agent returned no parseable result')
+  })
+
   it('flags only non-tolerant non-zero exits as failed', () => {
     const r = parseBatchResult([
       { name: 'b', exit_code: 1, stdout: '', stderr: '' },
