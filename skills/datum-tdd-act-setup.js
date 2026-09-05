@@ -201,7 +201,10 @@ function setupSteps(o) {
     },
     {
       name: "setup-wt",
-      command: `__setup=$(cd "$__root" && datum worktrees setup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)} --lane-ids ${o.laneIds.join(",")}) && printf '%s' "$__setup"`
+      // Captured unconditionally: `$(...) && printf` lost the CLI's JSON
+      // error on exit 1 (the printf never ran) and the workflow died with
+      // "CLI output was not JSON — " and nothing after it (caliper BUG O).
+      command: `__setup=$(cd "$__root" && datum worktrees setup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)} --lane-ids ${o.laneIds.join(",")}); __setup_rc=$?; printf '%s' "$__setup"; [ "$__setup_rc" -eq 0 ]`
     },
     {
       name: "distribute",
@@ -210,6 +213,23 @@ while IFS= read -r __p; do [ -n "$__p" ] && __targets+=(--target "$__p/.datum");
 datum lane-plan-distribute "$__root/${o.lanePlanPath}" "\${__targets[@]}"`
     }
   ];
+}
+function laneWorktreePathsFromSteps(r) {
+  const text = stepStdout(r, "setup-wt");
+  const rec = stepResult(r, "setup-wt");
+  const parsed = text ? parseAgentJson(text, null) : null;
+  if (!parsed || typeof parsed !== "object") {
+    return { paths: {}, dropped: [], error: `setup_worktrees_failed: CLI output was not JSON \u2014 ${String(text || describeFailure(r, "setup")).slice(0, 300)}` };
+  }
+  if (typeof parsed.error === "string") return { paths: {}, dropped: [], error: `setup_worktrees_failed: ${parsed.error}` };
+  if (rec && rec.exit_code !== 0) return { paths: {}, dropped: [], error: `setup_worktrees_failed: ${describeFailure(r, "setup")}` };
+  const paths = {};
+  const dropped = [];
+  for (const [laneId, value] of Object.entries(parsed)) {
+    if (typeof value === "string" && value.startsWith("/")) paths[laneId] = value;
+    else dropped.push({ laneId, value });
+  }
+  return { paths, dropped, error: null };
 }
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
@@ -233,19 +253,12 @@ var rootWtInfo = parseAgentJson(stepStdout(setup, "root-wt") || "", {});
 var rootWt = rootWtInfo.root;
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId} (${describeFailure(setup, "setup")})`);
 log(`Root worktree${a.batchTag}: ${rootWt}`);
-var setupText = stepStdout(setup, "setup-wt");
-var rawPaths = setupText ? parseAgentJson(setupText, null) : null;
-if (!rawPaths || typeof rawPaths !== "object") {
-  throw new Error(`Setup failed for ${a.batchRunId}: CLI output was not JSON \u2014 ${String(setupText ?? describeFailure(setup, "setup")).slice(0, 300)}`);
+var setupSummary = laneWorktreePathsFromSteps(setup);
+if (setupSummary.error) throw new Error(`Setup failed for ${a.batchRunId}: ${setupSummary.error}`);
+for (const d of setupSummary.dropped) {
+  log(`  [warn] dropping ${d.laneId}: setup returned invalid worktree path ${JSON.stringify(d.value)}`);
 }
-var worktreePaths = {};
-for (const [lid, wtp] of Object.entries(rawPaths)) {
-  if (typeof wtp === "string" && wtp.startsWith("/")) {
-    worktreePaths[lid] = wtp;
-  } else {
-    log(`  [warn] dropping ${lid}: setup returned invalid worktree path ${JSON.stringify(wtp)}`);
-  }
-}
+var worktreePaths = setupSummary.paths;
 var validPaths = Object.values(worktreePaths);
 if (validPaths.length === 0) throw new Error(`Setup failed: no worktree paths for ${a.batchRunId}`);
 for (const [lid, wtp] of Object.entries(worktreePaths)) {
