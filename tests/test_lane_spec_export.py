@@ -252,3 +252,13 @@ def test_contract_summary_truncates_ac_to_120_chars_and_tolerates_none():
     assert len(contract_summary([long_ac])[0]["ac"]) == 120
     assert contract_summary(None) == []
     assert contract_summary([]) == []
+
+
+def test_export_task_id_and_spec_hash_win_over_stray_lane_keys(tmp_path: Path):
+    plan = {"lanes": {"task-001": {"title": "A", "files": [], "task_id": "bogus", "spec_hash": "bogus", "contract_summary": "bogus"}}}
+    out = tmp_path / "spec.json"
+    summary = export_lane_spec(plan, "task-001", out, expect_hash=None)
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["task_id"] == "task-001" == summary["task_id"]
+    assert written["spec_hash"] == summary["spec_hash"] != "bogus"
+    assert written["contract_summary"] == []

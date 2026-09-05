@@ -163,8 +163,9 @@ def export_lane_spec(
     criteria = lane.get("acceptance_criteria") or []
     body = {
         "schema_version": SCHEMA_VERSION,
-        "task_id": task_id,
         **lane,
+        # After the spread: the caller's id and hash win over any stray keys.
+        "task_id": task_id,
         "spec_hash": spec_hash,
         "contract_summary": contract_summary(criteria),
     }
