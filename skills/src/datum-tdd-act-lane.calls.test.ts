@@ -716,3 +716,15 @@ describe('green_edited_tests is scoped to RED-committed files and never discards
     expect(src).toMatch(/green_discarded_ref/)
   })
 })
+
+// elonchesd wf_a979f3d8-f0c task-013: any `throw new Error` in a test file
+// read as a placeholder. The TS/JS placeholder is the skeleton's literal.
+describe('the TS/JS placeholder pattern is the skeleton literal, not the bare throw token', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('names the skeleton throw and the forced failure only', () => {
+    expect(src).toContain("{ pattern: 'it($_, () => { throw new Error($_) })', name: 'skeleton placeholder', grep: SKELETON_THROW_RE }")
+    expect(src).toContain("{ pattern: 'it($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (async)', grep: SKELETON_THROW_RE }")
+    expect(src).toContain("const SKELETON_THROW_RE = 'throw new Error\\\\(.RED agent: implement this assertion.\\\\)'")
+    expect(src).not.toMatch(/pattern: 'throw new Error', name: 'throw placeholder'/)
+  })
+})

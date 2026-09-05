@@ -125,7 +125,14 @@ export interface PostRedOpts {
   testFiles: string[]
   acCount: number
   testFuncDiffRegex: string
-  sgPatterns: { pattern: string; name: string }[]
+  /**
+   * Placeholder shapes. `pattern` is the ast-grep pattern (a whole test whose
+   * body is only the skeleton throw, e.g. `it($_, () => { throw new Error($_) })`);
+   * `grep` is the ERE the fallback uses when ast-grep is absent, matched from a
+   * statement start. Without `grep`, the pattern text itself is escaped and
+   * used — right for token-shaped patterns (`assert True`), wrong for shapes.
+   */
+  sgPatterns: { pattern: string; name: string; grep?: string }[]
   testFuncBodyRegex: string
   testFuncGrepRegex: string
   /** Include the `git diff --name-only` ownership read (deterministic-checks mode). */
@@ -193,7 +200,7 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
         // a statement start: an unanchored grep matched `assert True` inside a
         // quoted fixture string of a test-detection test and failed a sound
         // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
-        `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${ereEscape(p.pattern)}' ${q(`${o.wt}/${f}`)} 2>/dev/null`,
+        `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' ${q(`${o.wt}/${f}`)} 2>/dev/null`,
       ).join('\n')).join('\n') +
       `\nBODYPATFILE=$(mktemp)\ncat > "$BODYPATFILE" <<'PATTERN_EOF'\n${o.testFuncBodyRegex}\nPATTERN_EOF\n` +
       o.testFiles.map((f) =>

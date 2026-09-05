@@ -1356,3 +1356,33 @@ describe('ownershipFromStdout fails closed when the diff step did not run', () =
   })
 })
 
+
+// elonchesd wf_a979f3d8-f0c task-013: the TS/JS placeholder pattern was the
+// bare token `throw new Error`, so a guard clause inside a real test
+// (`if (!app) throw new Error('test setup failed')`) next to expect() calls
+// failed RED as placeholder_assertions. The placeholder is the skeleton's
+// literal throw, not any throw.
+describe('postRedSteps assert-check matches the skeleton placeholder, not any throw', () => {
+  const grep = 'throw new Error\\(.RED agent: implement this assertion.\\)'
+  const sgPatterns = [
+    { pattern: 'it($_, () => { throw new Error($_) })', name: 'skeleton placeholder', grep },
+    { pattern: 'it($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (async)', grep },
+    { pattern: 'expect(true).toBe(false)', name: 'forced failure' },
+  ]
+  function run(dir: string, content: string): string {
+    writeFileSync(join(dir, 'router.test.ts'), content)
+    const steps = postRedSteps({ wt: dir, testFiles: ['router.test.ts'], acCount: 0, testFuncDiffRegex: 'x', sgPatterns, testFuncBodyRegex: 'x', testFuncGrepRegex: 'x', ownership: false, verifyTestCmd: null, baseRef: '' })
+    const step = steps.find((s) => s.name === 'assert-check')!
+    const out = execFileSync('bash', ['-c', batchScript([step])], { cwd: dir, encoding: 'utf8' })
+    return (stepStdout(parseBatchResult(out, [step]), 'assert-check') || '').trim()
+  }
+  it('a guard throw beside real expect() calls is not a placeholder; the untouched skeleton throw is', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-placeholder-'))
+    try {
+      expect(run(dir, "it('mounts', () => {\n  const app = document.querySelector('#app')\n  if (!app) throw new Error('test setup failed: #app not found')\n  expect(app.children.length).toBe(1)\n})\n")).toBe('')
+      expect(run(dir, "it('x', async () => {\n    // Assert\n    throw new Error('RED agent: implement this assertion');\n});\n")).toMatch(/RED agent: implement this assertion/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
