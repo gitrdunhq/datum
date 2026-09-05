@@ -424,6 +424,14 @@ def _install_workflows():
         link.symlink_to(js)
         installed += 1
 
+    from datum.skills_materialize import prune_dangling_workflow_links
+
+    pruned = prune_dangling_workflow_links(target_dir)
+    if pruned:
+        console.print(
+            f"[dim]Workflows: removed dangling link(s) for deleted bundle(s): {', '.join(pruned)}[/dim]"
+        )
+
     total = len(js_files)
     if installed > 0:
         console.print(
