@@ -217,7 +217,7 @@ function mergeSteps(o) {
   if (o.mergeOrder.length > 0) {
     steps2.push({
       name: "merge",
-      command: `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
+      command: `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes" --run-id ${q(o.batchRunId)}); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
       tolerant: true
     });
   }
@@ -335,5 +335,10 @@ return {
   merged: mergeOrder.length > 0 && mergeOk,
   failed: mergeOrder.length > 0 && !mergeOk,
   mergedIds: mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : mergeOk ? mergeOrder : [],
-  failedLane: mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : ""
+  failedLane: mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : "",
+  // The git-level reason and the conflicted paths, so the demoted lane's
+  // error says what happened (elonchesd wf_8769406f-b9c task-015).
+  error: mergeJson && typeof mergeJson.error === "string" ? mergeJson.error : "",
+  conflictFiles: mergeJson && Array.isArray(mergeJson.conflict_files) ? mergeJson.conflict_files : [],
+  report: mergeJson && typeof mergeJson.report === "string" ? mergeJson.report : ""
 };

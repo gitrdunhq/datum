@@ -789,11 +789,14 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : "squash-merge step exited non-zero" : "merge workflow returned null";
       const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : []);
       const unmerged = mergedIds.filter((id) => !landed.has(id));
+      const conflictFiles = mergeResult && Array.isArray(mergeResult.conflictFiles) ? mergeResult.conflictFiles : [];
+      const reason = mergeResult && typeof mergeResult.error === "string" ? mergeResult.error.slice(0, 300) : "";
+      const detail = `${conflictFiles.length > 0 ? ` \u2014 conflicted files: [${conflictFiles.join(", ")}]` : ""}${reason ? ` \u2014 ${reason}` : ""}${mergeResult && mergeResult.report ? ` (report: ${mergeResult.report})` : ""}`;
       for (const id of unmerged) {
         const i = completedLanes.indexOf(id);
         if (i >= 0) completedLanes.splice(i, 1);
         failures.push(id);
-        results[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+        results[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${detail}${batchTag}` };
       }
       log(`Merge${batchTag} FAILED \u2014 demoted [${unmerged.join(", ")}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(", ")}]` : ""}`);
     }
