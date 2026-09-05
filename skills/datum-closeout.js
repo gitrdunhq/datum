@@ -392,7 +392,10 @@ var filedRaw = stepStdout(archiveResult, "file-followups");
 var filed = parseAgentJson(filedRaw || "", null);
 if (!filed) log(`[closeout] follow-ups: filer returned no JSON (${(filedRaw || "").trim().slice(0, 120) || "nothing"})`);
 else if (filed.skipped) log("[closeout] follow-ups: already filed for this run");
-else log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ""}${filed.reason ? ` \u2014 ${filed.reason}` : ""}`);
+else {
+  log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ""}${filed.reason ? ` \u2014 ${filed.reason}` : ""}`);
+  if ((filed.retained_below_threshold ?? 0) > 0) log(`[closeout] follow-ups: ${filed.retained_below_threshold} finding(s) below ${filed.min_severity || "high"} retained locally, not filed \u2014 see ${filed.manifest || `.datum/runs/${rid}/follow-ups.json`}`);
+}
 var archiveFailures = [];
 for (const step of archiveResult.steps) {
   if (step.exit_code !== 0) {

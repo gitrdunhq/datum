@@ -205,9 +205,7 @@ function laneCtxCmd(packet, wt) {
 }
 function skepticMinorityFindings(allBugs, crossValidated) {
   const validated = new Set(crossValidated);
-  return allBugs.filter(
-    (b) => !validated.has(b) && (b.severity === "critical" || b.severity === "high") && typeof b.evidence === "string" && b.evidence.trim().length > 0
-  );
+  return allBugs.filter((b) => !validated.has(b) && typeof b.evidence === "string" && b.evidence.trim().length > 0);
 }
 function minorityFollowUps(taskId, greenSha, findings) {
   return findings.map((b, i) => ({
@@ -220,7 +218,7 @@ ${b.description}
 Evidence: ${b.evidence}
 
 A single lens reported this and the other lenses did not corroborate it, so the lane was not retried (2-of-3 rule). Verify before acting.`,
-    severity: b.severity === "critical" ? "critical" : "high",
+    severity: ["critical", "high", "medium", "low"].includes(String(b.severity)) ? b.severity : "medium",
     category: "other",
     suggested_labels: ["datum-followup", "skeptic"],
     source: "act.skeptic-minority"
@@ -1970,7 +1968,7 @@ ${bugSummary}`,
   const minority = skepticMinorityFindings(skeptic.allBugs, skeptic.crossValidated);
   let followUps = 0;
   if (minority.length > 0) {
-    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} \u2014 ${b.description.replace(/\s+/g, " ").slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, " ").slice(0, 120)})`);
+    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} \u2014 [${b.severity}] ${b.description.replace(/\s+/g, " ").slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, " ").slice(0, 120)})`);
     const followUpPath = `.datum/runs/${runId}/follow-ups/${taskId}.json`;
     const followUpText = JSON.stringify(minorityFollowUps(taskId, green.commit_sha || "", minority), null, 2);
     const fuSteps = writeFileSteps({ path: followUpPath, content: followUpText });
