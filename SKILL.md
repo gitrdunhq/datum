@@ -97,6 +97,8 @@ The mapping lives in one table, `AGENT_TYPE_TABLE` in `skills/src/shared/agent-t
 
 Consecutive command runners with no LLM judgement between them run as **one** `datum-cli` call whose script lists the commands in order and prints one JSON array of per-step `exit_code`/`stdout`/`stderr` (fail-fast on the first non-tolerant non-zero exit; step lists in `skills/src/shared/lane-steps.ts`). Per lane on the happy path that is 3 calls (`lane-intake`, `post-red`, `post-green`; plus `scope-contract` for pytest lanes) with hooks installed, 5–6 without. Setup, merge (which now also writes the per-lane completion markers and the epic-scoped `datum lane-state` entries — skipped when the merge step failed) and the act-start bootstrap are one call each. The scripts need `jq` and `bash` on the PATH, same as the lane-state markers already did.
 
+The lane batches reset datum's own scratch worktrees (`git reset --hard`, `git clean -fd` under `.datum/worktrees/`). A host permission classifier can refuse those for subagents; the runner then answers in prose and the lane fails as `runner_permission_denied` with the excerpt. That is an operator decision, not a datum bug: before the first run, grant the session an allow-rule for `git reset`/`git clean`/`git checkout` scoped to `<repo>/.datum/worktrees/`. datum will not wrap those commands in its own CLI to get past the classifier.
+
 Because a custom agent definition replaces the default subagent system prompt and tool set but the CLAUDE.md hierarchy still loads, keep the consumer repo's CLAUDE.md lean; the `datum-cli` runner is `tools: Bash`, `maxTurns: 3`, so every batched script is written to run in a single Bash invocation.
 
 ## Act Phase — TDD Workflow Pipeline
