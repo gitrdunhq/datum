@@ -184,6 +184,34 @@ def lane_plan_cmd(
         lane_plan_main()
 
 
+@app.command(name="lane-plan-digest")
+def lane_plan_digest_cmd(
+    plan: str = typer.Option(..., "--plan", help="Path to lane-plan.json"),
+    out: str = typer.Option(
+        "",
+        "--out",
+        help="Also write the digest bytes to this file (for git hash-object)",
+    ),
+):
+    """Print the compact scheduler digest of a lane plan (topology, files, spec hashes).
+
+    One JSON line: schema_version, lane_plan_sha, total_lanes,
+    topological_order, and per lane the fields the Act scheduler reads plus
+    spec_hash (the pinned laneSpecHash port). Acceptance criteria are NOT
+    included — lanes fetch their own spec at intake. Errors are JSON, exit 1.
+    """
+    from datum.lane_plan_digest import DigestError, digest_plan_file
+
+    try:
+        text = digest_plan_file(Path(plan))
+    except DigestError as exc:
+        typer.echo(json.dumps({"error": str(exc)}))
+        raise typer.Exit(code=1) from None
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
+    typer.echo(text, nl=False)
+
+
 @app.command(name="plan-issues")
 def plan_issues_cmd(
     lane_plan: str = typer.Option(
