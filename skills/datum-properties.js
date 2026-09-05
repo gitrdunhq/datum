@@ -65,6 +65,13 @@ function parseAgentJson(text, fallback) {
   const r = scanForAgentJson(text);
   return r.found ? r.value : fallback;
 }
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
+}
 function renderPrompt(template, vars) {
   return template.replace(
     /\{\{(\w+)\}\}/g,
@@ -84,7 +91,7 @@ function model(tier) {
 }
 
 // skills/src/prompts/properties-derive.md
-var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nReturn the full PROPERTIES.md content as markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n\nOutput as markdown. No JSON wrapping.\n";
+var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nThe full PROPERTIES.md content is markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n\nWrite that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.\n";
 
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -327,7 +334,90 @@ function contextSlot(f) {
   return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
 Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
+function contextWitnessInstruction(files) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  if (deferred.length === 0) return "";
+  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nYour JSON response is invalid without this field for every file listed above.";
+}
+function extractWitnessMap(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const w = parsed.read_witness;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return w;
+}
+function verifyReadWitness(files, parsed) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  const witness = extractWitnessMap(parsed);
+  const missing = [];
+  const mismatched = [];
+  for (const f of deferred) {
+    const value = witness[f.path];
+    if (typeof value !== "string" || !/^[0-9a-f]{12,}$/i.test(value)) {
+      missing.push(f.path);
+      continue;
+    }
+    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
+      mismatched.push(f.path);
+    }
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+}
+function assertReadWitness(files, parsed) {
+  const result = verifyReadWitness(files, parsed);
+  if (result.ok) return;
+  const witness = extractWitnessMap(parsed);
+  const byPath = new Map(files.map((f2) => [f2.path, f2]));
+  const badPath = result.missing[0] ?? result.mismatched[0];
+  const got = witness[badPath];
+  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
+  const f = byPath.get(badPath);
+  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
+}
 var CONTEXT_CHUNK_BYTES = 12 * 1024;
+
+// skills/src/shared/commit-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q2(o.wt);
+  const files = o.files.map(q2).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit2 = stepResult(result, "commit");
+  if (!commit2) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit2.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit2.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit2.exit_code}: ${(commit2.stderr || commit2.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -404,15 +494,29 @@ var tasksContent = contextSlot(tasksFile);
 var epicDir = ctx.epicDir;
 log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? "" : " (deferred)"}, TASKS: ${tasksFile.bytes} bytes${tasksFile.inlined ? "" : " (deferred)"}`);
 phase("Derive");
-await agent(
+var propertiesPath = `${epicDir}/PROPERTIES.md`;
+var deriveRaw = await agent(
   renderPrompt(properties_derive_default, { specContent, tasksContent }) + `
 
-AFTER WRITING THE PROPERTIES CONTENT:
-1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)
-2. Commit: git add "${epicDir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
-  { label: "derive-and-commit", model: model("balanced") }
+AFTER DERIVING THE PROPERTIES CONTENT:
+1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
+2. Do NOT git add or git commit anything in this step \u2014 the workflow commits.
+3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}` + contextWitnessInstruction([specFile, tasksFile]),
+  { label: "derive", model: model("balanced") }
 );
-log("PROPERTIES.md written and committed");
+var derive = parseAgentJsonStrict(deriveRaw, "derive");
+assertReadWitness([specFile, tasksFile], derive);
+if (derive.written !== propertiesPath) {
+  throw new Error(`properties_derive_failed: agent reported writing ${JSON.stringify(derive.written)}, expected ${propertiesPath}`);
+}
+var commitStepList = commitFilesSteps({ wt: ".", files: [`${epicDir}/PROPERTIES.md`], message: "properties: derive PROPERTIES.md" });
+var commit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label: "commit-properties", model: model("fast") })),
+  commitStepList
+));
+if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`);
+if (commit.nothingToCommit) throw new Error(`properties_commit_failed: nothing to commit at ${propertiesPath} \u2014 the derive agent did not write it`);
+log(`PROPERTIES.md written and committed (${commit.sha})`);
 var gateStepList = gateSteps("properties", yolo ? " --approve" : "");
 var gate = parseGateResult(parseBatchResult(
   await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),

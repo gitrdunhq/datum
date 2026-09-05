@@ -480,6 +480,18 @@ function assertReadWitness(files, parsed) {
   const f = byPath.get(badPath);
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
+function contextWitnessWrapInstruction(files, key) {
+  const base = contextWitnessInstruction(files);
+  if (base === "") return "";
+  return base + `
+Because this response would otherwise be a bare JSON array, return a single JSON object instead: {"read_witness": {...}, "${key}": <the array described above, unchanged>}. The array itself keeps exactly the schema above.`;
+}
+function unwrapWitnessedArray(parsed, key) {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+  const inner = parsed[key];
+  return Array.isArray(inner) ? inner : null;
+}
 var CONTEXT_CHUNK_BYTES = 12 * 1024;
 
 // skills/src/shared/config-steps.ts
@@ -617,6 +629,7 @@ var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
 var contextFilesList = repoCfg.context_files || [];
 var contextFileContents = {};
+var contextFileEntries = [];
 var contextFilesWarnings = [];
 if (contextFilesList.length > 0) {
   const cfProbeSteps = contextProbeSteps({ files: contextFilesList });
@@ -638,6 +651,7 @@ if (contextFilesList.length > 0) {
   for (const relPath of contextFilesList) {
     const f = cf.files[relPath];
     contextFileContents[relPath] = f.exists ? contextSlot(f) : null;
+    if (f.exists) contextFileEntries.push(f);
   }
 }
 var contextFilesSection = buildContextFilesSection(
@@ -662,11 +676,14 @@ var impactStr = typeof impactRaw === "string" ? impactRaw : JSON.stringify(impac
 var isComplex = chosen?.blast_radius === "high" || (chosen?.estimated_tasks || 0) > 5;
 var decomposeModel = isComplex ? model("deep") : model("balanced");
 if (isComplex) log("Complex epic \u2014 using opus for decomposition");
+var decomposeFiles = [specFile, ...contextFileEntries];
 var tasksRaw = await agent(
-  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection }),
+  renderPrompt(plan_decompose_default, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection }) + contextWitnessWrapInstruction(decomposeFiles, "tasks"),
   { label: "decompose-tasks", model: decomposeModel }
 );
-var tasks = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
+var tasksParsed = typeof tasksRaw === "string" ? parseAgentJson(tasksRaw, []) : tasksRaw;
+assertReadWitness(decomposeFiles, tasksParsed);
+var tasks = unwrapWitnessedArray(tasksParsed, "tasks");
 if (!Array.isArray(tasks) || tasks.length === 0) {
   throw new Error(`Task decomposition returned 0 tasks \u2014 refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`);
 }
@@ -674,7 +691,7 @@ assertAcyclicTasks(tasks);
 var tasksJson = JSON.stringify(tasks);
 log(`Decomposed into ${tasks.length} tasks`);
 for (const task of tasks) {
-  const deps = task.depends_on?.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
+  const deps = task.depends_on && task.depends_on.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
   log(`  ${task.id}: ${task.title}${deps}`);
 }
 var buildRaw = await agent(
