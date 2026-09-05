@@ -100,6 +100,8 @@ def resolve_epic_dir() -> Path:
             timeout=5,
         )
         branch = result.stdout.strip()
+        if result.returncode != 0 or not branch:
+            branch = "unknown"
     except (subprocess.TimeoutExpired, FileNotFoundError):
         branch = "unknown"
     return Path(f"docs/epics/{branch}")
