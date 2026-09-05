@@ -37,6 +37,15 @@ def repo(tmp_path: Path) -> Path:
     return repo_root
 
 
+def _manifest(repo_root: Path, run_id: str) -> Path:
+    """The manifest lives under the run directory, where the closeout
+    synthesis agent writes it (skills/src/prompts/closeout-synthesize.md) —
+    the filer used to read it from the cwd and so never saw it."""
+    p = repo_root / ".datum" / "runs" / run_id / "follow-ups.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _run_file_followups(repo_root: Path, run_id: str):
     return subprocess.run(
         [
@@ -58,7 +67,7 @@ def test_malformed_followup_item_is_skipped_and_reported(repo):
     """A follow-up item missing required FollowUpIssue fields (title, body,
     dedup_key, source) must be reported as invalid, not silently filed with
     empty-default placeholders."""
-    (repo / "follow-ups.json").write_text(
+    _manifest(repo, "run-001").write_text(
         json.dumps([{"severity": "high"}])  # missing dedup_key/title/body/source
     )
 
@@ -73,7 +82,7 @@ def test_malformed_followup_item_is_skipped_and_reported(repo):
 def test_valid_followup_item_with_local_tracker_is_retained(repo):
     """A well-formed FollowUpIssue-shaped item passes validation and is
     processed normally (local tracker just retains it, doesn't file to gh)."""
-    (repo / "follow-ups.json").write_text(
+    _manifest(repo, "run-002").write_text(
         json.dumps(
             [
                 {
@@ -101,7 +110,7 @@ def test_malformed_followup_item_is_preserved_on_disk_not_deleted(repo):
     (data loss) — `followups = valid_followups` before the final
     `all_items = filed + retained` write silently deleted them from disk,
     even though they were only supposed to be skipped, not erased."""
-    (repo / "follow-ups.json").write_text(
+    _manifest(repo, "run-003").write_text(
         json.dumps([{"severity": "high"}])  # missing dedup_key/title/body/source
     )
 
@@ -111,6 +120,6 @@ def test_malformed_followup_item_is_preserved_on_disk_not_deleted(repo):
     output = json.loads(result.stdout)
     assert output.get("invalid", 0) == 1
 
-    on_disk = json.loads((repo / "follow-ups.json").read_text())
+    on_disk = json.loads(_manifest(repo, "run-003").read_text())
     assert len(on_disk) == 1, "invalid item must survive on disk, not be deleted"
     assert on_disk[0].get("severity") == "high"
