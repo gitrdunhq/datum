@@ -188,6 +188,7 @@ function describeFailure(r, label) {
 
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 function setupSteps(o) {
   const rootDir = `.datum/worktrees/${o.batchRunId}-root`;
   return [

@@ -224,6 +224,7 @@ function housekeepFromSteps(result) {
   }
   return { ok: true, summary: (step.stdout || "").trim(), error: "" };
 }
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 function closeoutCollectSteps(o) {
   return [

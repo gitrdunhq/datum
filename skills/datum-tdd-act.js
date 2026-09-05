@@ -433,6 +433,7 @@ function fencedScript(rendered) {
   if (!m) throw new Error("template has no fenced script block");
   return m[1];
 }
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 function actStartSteps(o) {
   const steps = [];
   if (o.branch === "init") {

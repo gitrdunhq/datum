@@ -853,8 +853,10 @@ PATTERN_EOF
     tolerant: true
   });
   if (o.ownership) steps.push({ name: "ownership", command: ownershipCommand(o.wt), tolerant: true });
+  const cap = scopeReadCap(o.testFiles.length);
   o.testFiles.forEach((f, i) => {
-    steps.push({ name: `scope-read-${i}`, command: `cat ${q2(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true });
+    steps.push({ name: `scope-size-${i}`, command: `wc -c < ${q2(`${o.wt}/${f}`)} 2>/dev/null | tr -d ' '`, tolerant: true });
+    steps.push({ name: `scope-read-${i}`, command: `head -c ${cap} ${q2(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true });
   });
   steps.push({
     name: "test-count-pattern",
@@ -931,6 +933,18 @@ function newTestCountFromSteps(result) {
 function sumCounts(raw) {
   if (!raw) return 0;
   return raw.split("\n").map((l) => parseInt(l.trim(), 10)).filter((n) => !isNaN(n)).reduce((a2, b) => a2 + b, 0);
+}
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+function scopeReadCap(fileCount) {
+  return Math.max(2048, Math.floor(SCOPE_READ_BUDGET_BYTES / Math.max(1, fileCount)));
+}
+function scopeReadTruncations(testFiles, stdoutOf, cap) {
+  const out = [];
+  testFiles.forEach((f, i) => {
+    const bytes = parseInt((stdoutOf(`scope-size-${i}`) || "").trim(), 10);
+    if (Number.isFinite(bytes) && bytes > cap) out.push({ file: f, bytes, cap });
+  });
+  return out;
 }
 function scopeContentsFromSteps(testFiles, stdoutOf) {
   const out = {};
@@ -1735,6 +1749,9 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: `${redPrefix}: ${redOwnership.violations.join(", ")}` };
   }
   const scopeTestContents = scopeContentsFromSteps(testFiles, (n) => stepStdout(postRedResult, n));
+  for (const t of scopeReadTruncations(testFiles, (n) => stepStdout(postRedResult, n), scopeReadCap(testFiles.length))) {
+    log(`[${taskId}] scope_read_truncated: ${t.file} is ${t.bytes} bytes, scope-gap analysis used the first ${t.cap} (imports and early assertions only)`);
+  }
   const requiredScopeFiles = /* @__PURE__ */ new Set();
   for (const tf of testFiles) {
     const tContent = scopeTestContents[tf] || "";

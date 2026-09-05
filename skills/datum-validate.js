@@ -275,6 +275,7 @@ function testExitCode(stdout) {
   if (matches.length === 0) return null;
   return Number(matches[matches.length - 1][1]);
 }
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/shared/validate-steps.ts

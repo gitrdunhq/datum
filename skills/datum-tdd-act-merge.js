@@ -204,6 +204,7 @@ function fencedScript(rendered) {
   if (!m) throw new Error("template has no fenced script block");
   return m[1];
 }
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
 function completionMarkerCommand(runId, taskId) {
   if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`);
