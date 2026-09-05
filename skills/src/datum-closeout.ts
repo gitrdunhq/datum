@@ -5,6 +5,7 @@ import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-ty
 import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
 import { housekeepSteps, housekeepFromSteps } from './shared/lane-steps'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 
@@ -89,6 +90,8 @@ if (!dataExists) {
 
 phase('Synthesize')
 
+const epicDir = `docs/epics/${branch}`
+
 const synthResult = await agent(
   renderPrompt(closeoutSynthTemplate, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
   { label: 'synthesize', model: model('balanced') },
@@ -105,7 +108,23 @@ const synth = typeof synthResult === 'string'
   ? parseAgentJsonStrict<{ artifacts_written: string[]; follow_up_count: number }>(synthResult as string, 'synthesize')
   : synthResult
 
-log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)
+log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(', ')}`)
+
+// The agent only writes; the script commits the three tracked artifacts
+// through a commitFilesSteps batch (shared/commit-steps.ts). The agent
+// used to commit each file itself with its reply used only for telemetry —
+// a skipped commit, or a `git add` of follow-ups.json out of the
+// gitignored .datum/runs dir that stopped there, looked like success.
+// follow-ups.json stays under .datum/runs (untracked by design).
+const synthFiles = ['CURRENT_STATE.md', 'CHANGELOG.md', `${epicDir}/RETRO.md`]
+const synthCommitSteps = commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` })
+const synthCommit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(synthCommitSteps), stageOpts('cli', { label: 'commit-synthesis', model: model('fast') })),
+  synthCommitSteps,
+))
+if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`)
+if (synthCommit.nothingToCommit) throw new Error(`closeout_commit_failed: nothing to commit for ${synthFiles.join(', ')} — the synthesis agent did not write them`)
+log(`Closeout artifacts committed (${synthCommit.sha})`)
 
 // ── Archive: tag, datum closeout-archive, move pipeline artifacts, commit ──
 //
@@ -119,7 +138,6 @@ log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)
 // individually via `git mv`, and the script — not a model — decides
 // whether the archive succeeded.
 
-const epicDir = `docs/epics/${branch}`
 const archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir })
 const archiveRaw = await agent(
   batchCommandPrompt(archiveSteps),

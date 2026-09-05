@@ -121,6 +121,39 @@ describe('datum-closeout — housekeep is a batch step whose outcome is logged, 
   })
 })
 
+// The synthesis agent wrote CURRENT_STATE.md, CHANGELOG.md, RETRO.md and
+// follow-ups.json AND committed each one itself ("Commit: git add <file>
+// && git commit"), reply used only for telemetry. A runner that skipped a
+// commit, or tried to `git add` follow-ups.json out of the gitignored
+// .datum/runs dir and stopped there, was indistinguishable from success.
+// Now the agent only writes; the script commits the three tracked
+// artifacts through commitFilesSteps and halts by name.
+describe('datum-closeout — synthesis artifacts are committed by the script, not the agent', () => {
+  const synthPrompt = readFileSync(join(__dirname, 'prompts', 'closeout-synthesize.md'), 'utf8')
+
+  it('the synthesize prompt no longer asks the agent to commit', () => {
+    expect(synthPrompt).not.toMatch(/&& git commit/)
+    expect(synthPrompt).toMatch(/Do NOT git add or git commit/)
+  })
+
+  it('commits CURRENT_STATE.md, CHANGELOG.md and the epic RETRO.md through commitFilesSteps after synthesis', () => {
+    const synthIdx = src.indexOf("label: 'synthesize'")
+    const commitIdx = src.indexOf("commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` })")
+    expect(synthIdx).toBeGreaterThan(-1)
+    expect(commitIdx).toBeGreaterThan(synthIdx)
+    expect(src).toMatch(/const synthFiles = \['CURRENT_STATE\.md', 'CHANGELOG\.md', `\$\{epicDir\}\/RETRO\.md`\]/)
+    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/throw new Error\(`closeout_commit_failed: /)
+  })
+
+  it('epicDir is derived before synthesis so the RETRO path is known to the commit', () => {
+    const epicDirIdx = src.indexOf('const epicDir = `docs/epics/${branch}`')
+    const synthIdx = src.indexOf("label: 'synthesize'")
+    expect(epicDirIdx).toBeGreaterThan(-1)
+    expect(epicDirIdx).toBeLessThan(synthIdx)
+  })
+})
+
 describe('datum-closeout — synthesize result uses the strict parser and rejects a null result', () => {
   it('imports parseAgentJsonStrict', () => {
     expect(src).toMatch(/import \{[^}]*parseAgentJsonStrict[^}]*\} from '\.\/shared\/utils'/)

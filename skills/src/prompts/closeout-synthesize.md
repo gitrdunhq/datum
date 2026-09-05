@@ -11,9 +11,7 @@ Produce these artifacts IN ORDER (each depends on previous):
 3. RETRO.md at docs/epics/{{branch}}/RETRO.md — metrics, observations, brief defects
 4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json — gaps as machine-readable entries
 
-For each artifact:
-- Write the file
-- Commit: git add <file> && git commit -m "closeout: write <artifact>"
+For each artifact: write the file. Do NOT git add or git commit anything — the workflow commits CURRENT_STATE.md, CHANGELOG.md and RETRO.md after you return (follow-ups.json lives under the untracked .datum/runs/ directory).
 
 Return JSON:
 {
