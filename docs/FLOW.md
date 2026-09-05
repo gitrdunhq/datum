@@ -310,6 +310,8 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Closeout batch invoked commands that did not exist** — closed in ae4c6f2: `datum closeout-collect-*`, `closeout-collate`, `closeout-archive` registered, forwarding to the closeout modules.
 - **Agent replies defaulted on parse failure** — closed in c13757f: `parseAgentJsonStrict` at every site whose default would have been acted on; thrown phase children fold into the halt path.
 - **Two-commit RED failed as "no new tests"** — closed in a7abd94: the before-count reads from the epic merge-base.
+- **Issue filer defaulted to datum's own tracker** — closed in c74f2c9: an unresolved GitHub repo is `github_repo_unresolved`; `plan-issues` skips and the tracker logs it.
+- **Closeout scripts ignored git/gh exit codes** — closed in dc00821; the triage classifier learned every named lane failure with a completeness test in 3772a62.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
