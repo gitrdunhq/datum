@@ -36,6 +36,7 @@ RULES:
 - Every task needs: id, slug, title, acceptance_criteria, files, reads, depends_on, red_note
 - ACs must be specific enough to write a failing test from — function names, expected values, exception types
 - red_note tells the RED agent what the failing test should prove — use the project's language and test framework, not Python/pytest unless that IS the project language
+- kind is "behavioral" (default) for any task that changes testable behavior. Set "kind": "structural" ONLY for tasks whose deliverable has no testable behavior at all — documentation-only (ADRs, README, docs/*.md), config-only, or pure file moves. Structural tasks skip the RED/GREEN test stages and run a single commit stage, so never mark a task structural if any acceptance criterion could be checked by a test.
 - depends_on lists task IDs this task requires to be completed first
 - reads lists files this task's implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on — otherwise the reader may run before the writer produces that file.
 
@@ -54,6 +55,7 @@ Return JSON matching this schema:
     "reads": [],
     "depends_on": [],
     "introduces_stubs": false,
+    "kind": "behavioral",
     "red_note": "The failing test must call function_name with input and assert on the return value",
     "estimated_loc": 50
   }

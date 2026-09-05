@@ -137,7 +137,13 @@ export interface Lane {
   depends_on?: string[]
   acceptance_criteria?: string[]
   red_note?: string
-  stage?: 'structural' | 'behavioral'
+  /** Lifecycle status written by the producers (datum/lane_plan.py,
+   *  datum/github_issues.py): "queued" | "red" | "green" | "done" | ... —
+   *  NOT the lane kind. */
+  stage?: string
+  /** Docs-only / config-only lanes skip RED/GREEN and go straight to REFACTOR.
+   *  Produced by the planner via tasks.json `kind` (#369). Absent = behavioral. */
+  kind?: 'structural' | 'behavioral'
   green_model?: ModelName
   /** Verbatim test command override for lanes the repo-wide command can't
    *  reach (e.g. files in a sub-package with its own Package.swift). When set,

@@ -282,6 +282,35 @@ describe('#356 — RED-time contract preflight and GREEN block routing', () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Structural (docs-only / config-only) lanes: the runner's fast-path to
+// REFACTOR read `lane.stage === 'structural'`, but every producer writes the
+// lifecycle value `stage: "queued"` and nothing ever emitted 'structural' —
+// the path was dead since the TS port and docs-only lanes always failed the
+// RED count gate (#369). The flag is now a distinct `kind` field.
+// ---------------------------------------------------------------------------
+
+describe('structural lanes are keyed on lane.kind, not the lifecycle stage field', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const typesSource = readFileSync(join(__dirname, 'shared', 'types.ts'), 'utf8')
+
+  it('the runner decides structural-ness from lane.kind', () => {
+    expect(laneSource).toMatch(/lane\.kind === 'structural'/)
+    expect(laneSource).not.toMatch(/lane\.stage === 'structural'/)
+  })
+
+  it('the Lane type declares kind as structural|behavioral and stage as the lifecycle string the producer writes', () => {
+    expect(typesSource).toMatch(/kind\?: 'structural' \| 'behavioral'/)
+    expect(typesSource).not.toMatch(/stage\?: 'structural' \| 'behavioral'/)
+  })
+
+  it('the planner prompt tells the model how to set kind', () => {
+    const prompt = readFileSync(join(__dirname, 'prompts', 'plan-decompose.md'), 'utf8')
+    expect(prompt).toMatch(/"kind"/)
+    expect(prompt).toMatch(/structural/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Count-gate infrastructure failures must surface as their own error, never
 // as a test count. In the field the gate script was missing (exit 127, empty
 // stdout) and the digit-stripping fallback reported it as

@@ -121,7 +121,9 @@ async function runLane(
   }
   const issueId: string = getIssueId(lanePlan, taskId)
   const runId: string = cfg.runId
-  const isStructural: boolean = lane.stage === 'structural'
+  // `kind`, never `stage`: stage is the lifecycle status every producer writes
+  // ("queued"...), so comparing it to 'structural' made this path dead (#369).
+  const isStructural: boolean = lane.kind === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
   const acStr: string = (lane.acceptance_criteria || []).join('\n')
    const laneTestCmd: string = cfg.testCommand

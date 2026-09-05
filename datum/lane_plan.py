@@ -500,6 +500,18 @@ def build_lane_plan(
         if task.get("slug"):
             lanes[tid]["slug"] = task["slug"]
 
+        # Lane kind — the producer for the lane runner's structural fast-path
+        # (skills/src/datum-tdd-act-lane.ts skips RED/GREEN for docs-only /
+        # config-only lanes). A distinct field so it can never collide with
+        # the lifecycle `stage` above (#369). Absent means behavioral.
+        kind = task.get("kind")
+        if kind is not None:
+            if kind not in ("structural", "behavioral"):
+                raise ValueError(
+                    f"task {tid}: kind must be 'structural' or 'behavioral', got {kind!r}"
+                )
+            lanes[tid]["kind"] = kind
+
         # Explicit per-task test_command always wins; otherwise auto-detect
         # from the lane's own files when they disagree with the epic-level
         # default (#326).

@@ -904,7 +904,7 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   }
   const issueId = getIssueId(lanePlan2, taskId);
   const runId = cfg2.runId;
-  const isStructural = lane.stage === "structural";
+  const isStructural = lane.kind === "structural";
   const { testFiles, implFiles } = classifyFiles(lane.files);
   const acStr = (lane.acceptance_criteria || []).join("\n");
   const laneTestCmd = cfg2.testCommand;
