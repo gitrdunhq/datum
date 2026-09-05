@@ -26,6 +26,7 @@ import {
   readLanePlanPrompt,
   testExitCode,
   closeoutCollectSteps,
+  closeoutArchiveSteps,
   verifyLanePlanShape,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
@@ -521,6 +522,75 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Closeout archive: the old flow appended a shell block to the SYNTHESIZE
+// agent's own prompt — `2>/dev/null || true` on tag/archive swallowed
+// failures invisibly, and `git add -A && git commit` in the ROOT checkout
+// risked committing the operator's unrelated WIP (policy: root-checkout
+// commits stage only their own paths, see shared/agents.ts commitStage
+// `scope: 'allowed-only'` and commit 3bb2211). Archiving is now its own
+// deterministic batch: tag, archive, one `git mv` per pipeline artifact,
+// then a commit gated on `git diff --cached --quiet` (never `add -A`).
+// ---------------------------------------------------------------------------
+
+describe('closeoutArchiveSteps', () => {
+  const opts = { runId: 'r1', branch: 'datum/e', epicDir: 'docs/epics/datum/e' }
+
+  it('tags, archives, moves every pipeline artifact via git mv, then commits and reads the sha — all tolerant', () => {
+    const steps = closeoutArchiveSteps(opts)
+    expect(names(steps)).toEqual([
+      'tag', 'archive',
+      'move-spec-md', 'move-tasks-md', 'move-questions-md', 'move-properties-md', 'move-ticket-md',
+      'move-tasks-json', 'move-lane-plan-json',
+      'commit', 'commit-sha',
+    ])
+    expect(steps.every((s) => s.tolerant)).toBe(true)
+  })
+
+  it('tags HEAD with epic/<branch>/<runId>, no || true and no 2>/dev/null anywhere', () => {
+    const steps = closeoutArchiveSteps(opts)
+    expect(steps[0].command).toBe('git tag "epic/datum/e/r1" HEAD')
+    for (const s of steps) {
+      expect(s.command).not.toMatch(/\|\|\s*true\b/)
+      expect(s.command).not.toContain('2>/dev/null')
+    }
+  })
+
+  it('runs datum closeout-archive with the run id', () => {
+    const steps = closeoutArchiveSteps(opts)
+    expect(steps[1].command).toBe('datum closeout-archive --run-id "r1"')
+  })
+
+  it('moves each root artifact into the epic dir via git mv when present, ABSENT otherwise', () => {
+    const steps = closeoutArchiveSteps(opts)
+    const spec = steps.find((s) => s.name === 'move-spec-md')!
+    expect(spec.command).toBe(
+      'if [ -f "SPEC.md" ]; then mkdir -p "docs/epics/datum/e" && git mv "SPEC.md" "docs/epics/datum/e/SPEC.md"; else echo ABSENT; fi',
+    )
+    const tasksJson = steps.find((s) => s.name === 'move-tasks-json')!
+    expect(tasksJson.command).toContain('git mv "tasks.json" "docs/epics/datum/e/tasks.json"')
+  })
+
+  it('reads lane-plan.json from .datum, not the repo root', () => {
+    const steps = closeoutArchiveSteps(opts)
+    const lp = steps.find((s) => s.name === 'move-lane-plan-json')!
+    expect(lp.command).toContain('if [ -f ".datum/lane-plan.json" ]')
+    expect(lp.command).toContain('git mv ".datum/lane-plan.json" "docs/epics/datum/e/lane-plan.json"')
+  })
+
+  it('commits ONLY what was staged by the moves above — never git add -A', () => {
+    const steps = closeoutArchiveSteps(opts)
+    const commit = steps.find((s) => s.name === 'commit')!
+    expect(commit.command).not.toContain('add -A')
+    expect(commit.command).not.toContain('git add')
+    expect(commit.command).toBe(
+      'git diff --cached --quiet || git commit -m "closeout(r1): archive pipeline artifacts to docs/epics/datum/e"',
+    )
+    const sha = steps.find((s) => s.name === 'commit-sha')!
+    expect(sha.command).toBe('git rev-parse --short HEAD')
   })
 })
 

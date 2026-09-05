@@ -503,6 +503,64 @@ export function closeoutCollectSteps(o: CloseoutCollectOpts): BatchStep[] {
   ]
 }
 
+// ── Closeout archive: tag, datum closeout-archive, move artifacts, commit ──
+
+export interface CloseoutArchiveOpts {
+  runId: string
+  branch: string
+  /** `docs/epics/<branch>` — where pipeline artifacts land after archiving. */
+  epicDir: string
+}
+
+/** Root-checkout pipeline artifacts moved into the epic dir on closeout. */
+const ARCHIVE_ROOT_FILES = ['SPEC.md', 'TASKS.md', 'QUESTIONS.md', 'PROPERTIES.md', 'TICKET.md', 'tasks.json']
+
+function moveStepName(fileName: string): string {
+  return `move-${fileName.toLowerCase().replace(/\./g, '-')}`
+}
+
+/** `if [ -f <src> ]; then mkdir -p <epicDir> && git mv <src> <epicDir>/<base>; else echo ABSENT; fi` */
+function moveIntoEpicDirCommand(src: string, epicDir: string, base: string): string {
+  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir)} && git mv ${q(src)} ${q(`${epicDir}/${base}`)}; else echo ABSENT; fi`
+}
+
+/**
+ * Batched, deterministic replacement for the shell block the old flow
+ * appended to the SYNTHESIZE agent's own prompt (#368 follow-up). That block
+ * had two problems: `2>/dev/null || true` on the tag/archive commands
+ * swallowed failures invisibly (no repo rule permits silent fallbacks), and
+ * A wildcard git-add-everything commit ran in the ROOT checkout — which can carry the
+ * operator's unrelated work in progress, so that risked committing it
+ * (policy: root-checkout commits stage only their own paths — see
+ * shared/agents.ts commitStage `scope: 'allowed-only'`, commit 3bb2211).
+ *
+ * Every artifact move is staged individually via `git mv` (never a wildcard add),
+ * and the final commit is gated on `git diff --cached --quiet` — it commits
+ * exactly what the moves above staged, nothing else, and no-ops cleanly when
+ * every artifact was already absent.
+ */
+export function closeoutArchiveSteps(o: CloseoutArchiveOpts): BatchStep[] {
+  const steps: BatchStep[] = [
+    { name: 'tag', command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
+    { name: 'archive', command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true },
+  ]
+  for (const f of ARCHIVE_ROOT_FILES) {
+    steps.push({ name: moveStepName(f), command: moveIntoEpicDirCommand(f, o.epicDir, f), tolerant: true })
+  }
+  steps.push({
+    name: 'move-lane-plan-json',
+    command: moveIntoEpicDirCommand('.datum/lane-plan.json', o.epicDir, 'lane-plan.json'),
+    tolerant: true,
+  })
+  steps.push({
+    name: 'commit',
+    command: `git diff --cached --quiet || git commit -m ${q(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
+    tolerant: true,
+  })
+  steps.push({ name: 'commit-sha', command: 'git rev-parse --short HEAD', tolerant: true })
+  return steps
+}
+
 /**
  * Prompt for a dedicated read-only agent call that fetches the lane plan's
  * exact JSON content (#524 dogfooding).

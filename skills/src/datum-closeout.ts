@@ -3,6 +3,7 @@ import { model } from './shared/models'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import { closeoutCollectSteps } from './shared/lane-steps'
+import { closeoutArchiveSteps } from './shared/lane-steps'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 
@@ -73,24 +74,13 @@ if (!dataExists) {
   )
 }
 
-// ── Synthesize + archive (collapsed into one agent) ──
+// ── Synthesize: CURRENT_STATE, CHANGELOG, RETRO, follow-ups ──
 
 phase('Synthesize')
 
 const synthResult = await agent(
-  renderPrompt(closeoutSynthTemplate, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid })
-  + `\n\nAFTER writing artifacts, also:
-1. Tag: git tag "epic/${branch}/${rid}" HEAD 2>/dev/null || true
-2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true
-3. Clean up root pipeline artifacts — move them to the epic archive dir:
-   EPIC_DIR="docs/epics/${branch}"
-   mkdir -p "$EPIC_DIR"
-   for f in SPEC.md TASKS.md QUESTIONS.md PROPERTIES.md TICKET.md tasks.json; do
-     [ -f "$f" ] && mv "$f" "$EPIC_DIR/" && echo "archived $f → $EPIC_DIR/"
-   done
-   [ -f .datum/lane-plan.json ] && mv .datum/lane-plan.json "$EPIC_DIR/" && echo "archived lane-plan.json → $EPIC_DIR/"
-4. Commit the cleanup: git add -A && git commit -m "closeout(${rid}): archive pipeline artifacts to $EPIC_DIR"`,
-  { label: 'synthesize-and-archive', model: model('balanced') },
+  renderPrompt(closeoutSynthTemplate, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
+  { label: 'synthesize', model: model('balanced') },
 )
 
 const synth = typeof synthResult === 'string'
@@ -98,6 +88,41 @@ const synth = typeof synthResult === 'string'
   : synthResult
 
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(', ')}`)
+
+// ── Archive: tag, datum closeout-archive, move pipeline artifacts, commit ──
+//
+// #368 follow-up: this used to be a shell block appended to the synthesize
+// agent's own prompt — a swallow-errors-and-continue idiom on tag/archive
+// hid failures invisibly, and a wildcard git-add-everything commit in the ROOT checkout
+// risked committing the operator's unrelated work in progress (policy:
+// root-checkout commits stage only their own paths — see
+// shared/agents.ts commitStage `scope: 'allowed-only'`, commit 3bb2211).
+// Archiving is now its own deterministic batch: every move is staged
+// individually via `git mv`, and the script — not a model — decides
+// whether the archive succeeded.
+
+const epicDir = `docs/epics/${branch}`
+const archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir })
+const archiveRaw = await agent(
+  batchCommandPrompt(archiveSteps),
+  stageOpts('cli', { label: 'closeout-archive', model: model('fast') }),
+)
+const archiveResult = parseBatchResult(archiveRaw, archiveSteps)
+
+const archiveFailures: string[] = []
+for (const step of archiveResult.steps) {
+  if (step.exit_code !== 0) {
+    archiveFailures.push(step.name)
+    const tail = (step.stderr || step.stdout).trim().split('\n').slice(-5).join('\n')
+    log(`[closeout] archive step "${step.name}" exited ${step.exit_code}${tail ? ` — ${tail}` : ''}`)
+  }
+}
+// A failed tag/archive is surfaced above but not fatal — the closeout
+// artifacts already exist. Only a failed commit means the archive move
+// itself did not land, so only that flips archived to false.
+const commitStep = archiveResult.steps.find((s) => s.name === 'commit')
+const archived = !archiveResult.missing && !!commitStep && commitStep.exit_code === 0
+const archiveCommit = archived ? (stepStdout(archiveResult, 'commit-sha') || '').trim() || undefined : undefined
 
 // Housekeep: delete merged lane/worktree branches and pipeline-state (deterministic, no LLM)
 await agent(
@@ -109,4 +134,7 @@ export const __workflowResult = {
   branch, runId: rid,
   artifacts: synth?.artifacts_written || [],
   followUps: synth?.follow_up_count || 0,
+  archived,
+  archiveCommit,
+  archiveFailures,
 }

@@ -54,3 +54,43 @@ describe('datum-closeout — deterministic collect (#368 follow-up)', () => {
     expect(src).toMatch(/throw new Error/)
   })
 })
+
+// #368 follow-up: the synthesize agent's prompt used to have a shell block
+// appended to it — `2>/dev/null || true` on tag/archive swallowed failures,
+// and `git add -A && git commit` in the ROOT checkout risked committing the
+// operator's unrelated WIP. Archiving is now its own deterministic batch
+// built from closeoutArchiveSteps(), run AFTER synthesis, evaluated by the
+// script — never appended to an LLM prompt as free-form shell.
+describe('datum-closeout — deterministic archive (#368 follow-up)', () => {
+  it('never appends a shell block to the synthesize prompt: no add -A, no || true, no 2>/dev/null anywhere in the file', () => {
+    expect(src).not.toContain('add -A')
+    expect(src).not.toMatch(/\|\|\s*true\b/)
+    expect(src).not.toContain('2>/dev/null')
+  })
+
+  it('builds and runs the archive batch from closeoutArchiveSteps after synthesis, not before', () => {
+    expect(src).toContain("closeoutArchiveSteps } from './shared/lane-steps'")
+    const synthIdx = src.lastIndexOf('closeoutSynthTemplate')
+    const archiveStepsIdx = src.indexOf('closeoutArchiveSteps(')
+    expect(archiveStepsIdx).toBeGreaterThan(synthIdx)
+    expect(src).toMatch(/batchCommandPrompt\(archiveSteps\)/)
+    expect(src).toMatch(/parseBatchResult\(archiveRaw, archiveSteps\)/)
+  })
+
+  it('logs every archive step that exited non-zero, by name', () => {
+    const archiveSection = src.slice(src.indexOf('closeoutArchiveSteps('))
+    expect(archiveSection).toMatch(/exit_code/)
+    expect(archiveSection).toMatch(/log\(/)
+  })
+
+  it('the workflow result reports archived, archiveCommit and archiveFailures', () => {
+    const resultShape = src.slice(src.indexOf('export const __workflowResult'))
+    expect(resultShape).toMatch(/\barchived\b/)
+    expect(resultShape).toMatch(/\barchiveCommit\b/)
+    expect(resultShape).toMatch(/\barchiveFailures\b/)
+  })
+
+  it('a failed commit step (not tag/archive) is what flips archived to false', () => {
+    expect(src).toMatch(/find\(\(s\) => s\.name === 'commit'\)/)
+  })
+})
