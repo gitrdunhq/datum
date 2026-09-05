@@ -308,8 +308,10 @@ describe('scopeContractSteps', () => {
 })
 
 describe('ownershipFromStdout (#368 item D — script-evaluated ownership)', () => {
-  it('fails open when the diff step did not run (same as a null agent result)', () => {
-    expect(ownershipFromStdout(null, ['tests/test_a.py'], ['src/a.py'])).toEqual({ ok: true, violations: [] })
+  it('fails CLOSED when the diff step did not run — a missing check is not a clean one', () => {
+    const r = ownershipFromStdout(null, ['tests/test_a.py'], ['src/a.py'])
+    expect(r.ok).toBe(false)
+    expect(r.violations[0]).toMatch(/^ownership_check_failed/)
   })
   it('accepts a commit that only touched allowed files', () => {
     expect(ownershipFromStdout('tests/test_a.py\n', ['tests/test_a.py'], ['src/a.py']).ok).toBe(true)
@@ -595,5 +597,20 @@ describe('verifyLanePlanShape', () => {
     const r = verifyLanePlanShape(plan as never, '')
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/shape/i)
+  })
+})
+
+describe('ownershipFromStdout fails closed when the diff step did not run', () => {
+  it('a null/undefined step result is ownership_check_failed, never ok', () => {
+    for (const raw of [null, undefined]) {
+      const r = ownershipFromStdout(raw, ['src/a.py'], ['tests/test_a.py'])
+      expect(r.ok).toBe(false)
+      expect(r.violations.join(' ')).toMatch(/ownership_check_failed/)
+    }
+  })
+
+  it('an empty diff (step ran, nothing changed) is still a clean pass', () => {
+    const r = ownershipFromStdout('', ['src/a.py'], ['tests/test_a.py'])
+    expect(r.ok).toBe(true)
   })
 })

@@ -180,7 +180,11 @@ export function ownershipFromStdout(
   allowedFiles: string[],
   forbiddenFiles: string[],
 ): { ok: boolean; violations: string[] } {
-  if (raw === null || raw === undefined) return { ok: true, violations: [] }
+  // A step that did not run is a failed check, not a clean one (fail closed —
+  // the agent-based verifyFileOwnership in the lane runner does the same).
+  if (raw === null || raw === undefined) {
+    return { ok: false, violations: ['ownership_check_failed: ownership diff step did not run or returned no result'] }
+  }
   const changed = raw.split('\n').map((l) => l.trim()).filter(Boolean)
   return verifyFileOwnership(changed, allowedFiles, forbiddenFiles)
 }

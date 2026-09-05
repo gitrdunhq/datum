@@ -703,7 +703,9 @@ function ownershipCommand(wt) {
   return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`;
 }
 function ownershipFromStdout(raw, allowedFiles, forbiddenFiles) {
-  if (raw === null || raw === void 0) return { ok: true, violations: [] };
+  if (raw === null || raw === void 0) {
+    return { ok: false, violations: ["ownership_check_failed: ownership diff step did not run or returned no result"] };
+  }
   const changed = raw.split("\n").map((l) => l.trim()).filter(Boolean);
   return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
 }
