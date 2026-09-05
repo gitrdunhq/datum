@@ -358,11 +358,13 @@ var collectRaw = await agent(
   bootstrapOpts("cli", { label: "closeout-collect", model: model("fast") })
 );
 var collectResult = parseBatchResult(collectRaw, collectSteps);
+var failedCollectors = [];
 for (const name of COLLECTOR_STEPS) {
   const step = collectResult.steps.find((s) => s.name === name);
   if (step && step.exit_code !== 0) {
     const tail = (step.stderr || step.stdout).trim().split("\n").slice(-5).join("\n");
     log(`[closeout] collector "${name}" exited ${step.exit_code}${tail ? ` \u2014 ${tail}` : ""}`);
+    failedCollectors.push(`${name} exited ${step.exit_code}${tail ? `: ${tail.slice(0, 300)}` : ""}`);
   }
 }
 var branch = (stepStdout(collectResult, "branch") || "").trim();
@@ -372,8 +374,9 @@ var rid = runId || (stepStdout(collectResult, "timestamp") || "").trim();
 var dataExists = (stepStdout(collectResult, "data-exists") || "").trim() === "yes";
 log(`Branch: ${branch}, run: ${rid}`);
 if (!dataExists) {
+  const cause = failedCollectors.length > 0 ? `Failed collectors: ${failedCollectors.join(" | ")}` : describeFailure(collectResult, "closeout-collect");
   throw new Error(
-    `Closeout: .datum/runs/${rid}/closeout-data.json is missing after collect \u2014 refusing to hand a synthesis agent a missing file. ${describeFailure(collectResult, "closeout-collect")}`
+    `Closeout: .datum/runs/${rid}/closeout-data.json is missing after collect \u2014 refusing to hand a synthesis agent a missing file. ${cause}`
   );
 }
 phase("Synthesize");
