@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { skepticMinorityFindings, minorityFollowUps, verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
+import { skepticMinorityFindings, minorityFollowUps, verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash, preflightTestPaths } from './utils'
 import type { ContextFile } from './context-relay'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
@@ -1297,5 +1297,29 @@ describe('skepticMinorityFindings / minorityFollowUps (caliper#564)', () => {
     expect(f.body).toContain('part_cmd.py:345 vs 368')
     expect(f.source).toBe('act.skeptic-minority')
     expect(f.severity).toBe('high')
+  })
+})
+
+// caliper BUG P (wf_b5e87f27-e4b task-009): the lane runner registered EVERY
+// preflight skeleton output path as a test file — a second classifier that
+// disagreed with classifyFiles. docs/CAPABILITIES.md and a deliverable
+// fixture (tests/fixtures/part_corpus/baseline.json, impl-adjacent via
+// /fixtures/) became "the lane's test files", so a fully green GREEN that
+// wrote them failed green_edited_tests and was reset away.
+describe('preflightTestPaths', () => {
+  it('registers only outputs classifyFiles calls tests, skipping docs, fixtures and duplicates', () => {
+    const r = preflightTestPaths(
+      [
+        { path: 'tests/test_part_score.py' },
+        { path: 'docs/CAPABILITIES.md' },
+        { path: 'tests/fixtures/part_corpus/baseline.json' },
+        { path: 'tests/test_part_score.py' },
+        { path: 'tests/test_already.py' },
+        {},
+      ],
+      ['tests/test_already.py'],
+    )
+    expect(r.registered).toEqual(['tests/test_part_score.py'])
+    expect(r.skipped).toEqual(['docs/CAPABILITIES.md', 'tests/fixtures/part_corpus/baseline.json'])
   })
 })

@@ -15,6 +15,7 @@ import {
   scopeReadCap,
   scopeGapsFromSteps,
   postGreenSteps,
+  redCommittedFilesFromSteps,
   ownershipCheckSteps,
   depMergeSteps,
   depMergeFromSteps,
@@ -25,7 +26,7 @@ import {
   laneSpecContextFile,
   digestSpecHash,
 } from './shared/lane-steps'
-import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
+import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps, preserveHeadRefSteps } from './shared/commit-steps'
 import { assertReadWitness, verifyReadWitness, type ContextFile } from './shared/context-relay'
 import { writeFileSteps, writeFileBlobSha, writeFileFromSteps } from './shared/write-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
@@ -52,6 +53,7 @@ import {
 } from './shared/schemas'
 import {
   classifyFiles,
+  preflightTestPaths,
   laneCtxCmd,
   skepticMinorityFindings,
   minorityFollowUps,
@@ -531,7 +533,6 @@ No markdown fences, no explanation.`,
   }
 
   let preflightFramework: string | undefined
-  let preflightTestPaths: string[] = []
   if (preflightRaw) {
     // Safe: preflight is optional enrichment (pre-generated skeleton hints) —
     // an unparseable result yields {}, so targetContext/preflightFramework
@@ -544,14 +545,16 @@ No markdown fences, no explanation.`,
     }
     preflightFramework = preflightData.framework
     if (preflightData.outputs && preflightData.outputs.length > 0) {
-      for (const output of preflightData.outputs) {
-        if (output.path && !testFiles.includes(output.path)) {
-          testFiles.push(output.path)
-          preflightTestPaths.push(output.path)
-        }
+      // Only outputs classifyFiles calls tests: registering every output
+      // path made docs and deliverable fixtures "the lane's test files" and
+      // failed a sound GREEN as green_edited_tests (caliper BUG P).
+      const reg = preflightTestPaths(preflightData.outputs, testFiles)
+      testFiles.push(...reg.registered)
+      if (reg.registered.length > 0) {
+        log(`[${taskId}] preflight registered ${reg.registered.length} test file(s): ${reg.registered.join(', ')}`)
       }
-      if (preflightTestPaths.length > 0) {
-        log(`[${taskId}] preflight registered ${preflightTestPaths.length} test file(s): ${preflightTestPaths.join(', ')}`)
+      if (reg.skipped.length > 0) {
+        log(`[${taskId}] preflight_output_not_test: [${reg.skipped.join(', ')}] not registered as test files`)
       }
       if (testFiles.length === 0) {
         return { task_id: taskId, status: 'failed', stage: 'RED', error: 'no_test_files: classifyFiles produced empty testFiles and preflight has no registered test paths' }
@@ -1144,26 +1147,37 @@ No markdown fences, no explanation.`,
 
   // Post-GREEN ownership (#368 item D): one datum-cli diff evaluated here,
   // or the standalone LLM check when the hooks are not installed.
+  // The RED commit's own file list, read alongside the ownership diff: a
+  // GREEN that rewrote one of THOSE files edited the tests. A test-classified
+  // file RED never wrote (a fixture the ACs name, a doc) is not that.
+  let redCommitted: string[] | null = null
   const checkGreenOwnership = async (labelSuffix: string): Promise<OwnershipCheckResult> => {
     if (deterministic) {
-      const postGreen = postGreenSteps({ wt })
+      const postGreen = postGreenSteps({ wt, redSha: red.commit_sha || null })
       const postGreenRaw = await runBatch(postGreen, stageOpts('cli', { label: `post-green${labelSuffix}:${taskId}`, phase: 'Act', model: model('fast') }))
+      redCommitted = redCommittedFilesFromSteps(postGreenRaw)
       return ownershipFromStdout(stepStdout(postGreenRaw, 'ownership'), implFiles, testFiles)
     }
     return verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
   }
   let greenOwnership: OwnershipCheckResult = await checkGreenOwnership('')
-  // GREEN that touched the lane's OWN test files is a TDD violation of the
-  // stage, not a foreign-file violation: name it green_edited_tests, reset the
-  // worktree to the RED commit and re-run GREEN once with that as the hint
-  // (elonchesd wf_0593c210-f04 task-011). A retry that violates again fails.
-  const ownTestsOnly = (o: OwnershipCheckResult): boolean =>
-    !o.checkFailed && o.violations.length > 0 && o.violations.every((v) => testFiles.some((t) => v.startsWith(`${t} `)))
+  // GREEN that rewrote files the RED commit wrote is a TDD violation of the
+  // stage, not a foreign-file violation: name it green_edited_tests, pin the
+  // GREEN commit, reset the worktree to the RED commit and re-run GREEN once
+  // with that as the hint (elonchesd wf_0593c210-f04 task-011). A retry that
+  // violates again fails. Scoped to the RED commit's files (caliper BUG P):
+  // when that list is unknown, fall back to the lane's test files.
+  const ownTestsOnly = (o: OwnershipCheckResult): boolean => {
+    if (o.checkFailed || o.violations.length === 0) return false
+    const files = o.violations.map((v) => v.split(' ')[0])
+    return files.every((f) => testFiles.includes(f) && (redCommitted === null || redCommitted.includes(f)))
+  }
   if (!greenOwnership.ok && ownTestsOnly(greenOwnership) && red.commit_sha) {
     const touched = [...new Set(greenOwnership.violations.map((v) => v.split(' ')[0]))]
     const hint = `green_edited_tests: GREEN modified the lane's test files [${touched.join(', ')}]; write only the implementation files and never amend or rewrite the RED commit`
-    log(`[${taskId}] ${hint} — resetting to the RED commit ${red.commit_sha} and re-running GREEN once`)
-    const testsResetSteps = worktreeResetToSteps(wt, red.commit_sha)
+    const discardedRef = `${cfg.epicBranch}--${taskId}--discarded-green`
+    log(`[${taskId}] ${hint} — pinning the GREEN commit to ${discardedRef}, resetting to the RED commit ${red.commit_sha} and re-running GREEN once`)
+    const testsResetSteps = [...preserveHeadRefSteps(wt, discardedRef), ...worktreeResetToSteps(wt, red.commit_sha)]
     const testsReset = worktreeResetToFromSteps(
       await runBatch(testsResetSteps, stageOpts('cli', { label: `green-tests-reset:${taskId}`, phase: 'Act', model: model('fast') })),
       red.commit_sha,
@@ -1171,6 +1185,7 @@ No markdown fences, no explanation.`,
     if (!testsReset.ok) {
       return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `${hint} (could not reset for the retry: ${testsReset.error})` }
     }
+    log(`[${taskId}] green_discarded_ref: ${discardedRef} keeps the discarded GREEN commit ${green?.commit_sha || '(HEAD before reset)'}`)
     green = await witnessedAgent(
       greenRetryPrompt({
         ...greenVars,

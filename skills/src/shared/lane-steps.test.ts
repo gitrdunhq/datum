@@ -20,6 +20,7 @@ import {
   setupSteps,
   laneWorktreePathsFromSteps,
   cleanupSteps,
+  redCommittedFilesFromSteps,
   mergeSteps,
   actStartSteps,
   ownershipCommand,
@@ -586,6 +587,27 @@ describe('postGreenSteps', () => {
   it('omits the test-verify step when verifyTestCmd is null', () => {
     const steps = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: null })
     expect(names(steps)).not.toContain('test-verify')
+  })
+
+  // caliper BUG P: green_edited_tests must mean "GREEN modified a file the
+  // RED commit wrote", so the batch also lists the RED commit's files.
+  it('adds a red-files step listing the RED commit when redSha is given, and redCommittedFilesFromSteps reads it', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', redSha: 'abc123' })
+    expect(names(steps)).toEqual(['ownership', 'red-files'])
+    const step = steps.find((s) => s.name === 'red-files')!
+    expect(step.tolerant).toBe(true)
+    expect(step.command).toBe('git -C "/wt/T1" diff-tree --no-commit-id --name-only -r "abc123"')
+    expect(names(postGreenSteps({ wt: '/wt/T1' }))).not.toContain('red-files')
+
+    const listed = redCommittedFilesFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'ownership', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'red-files', exit_code: 0, stdout: 'tests/test_a.py\ntests/test_b.py\n', stderr: '' },
+    ]), steps))
+    expect(listed).toEqual(['tests/test_a.py', 'tests/test_b.py'])
+    // A step that did not run is unknown, never "RED committed nothing".
+    expect(redCommittedFilesFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'ownership', exit_code: 0, stdout: '', stderr: '' },
+    ]), steps))).toBeNull()
   })
 
   it('appends a test-verify step, independently re-running the test command, when verifyTestCmd is given', () => {

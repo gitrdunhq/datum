@@ -693,3 +693,26 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(skepticCalls).toBe(3)
   })
 })
+
+// caliper BUG P (wf_b5e87f27-e4b task-009): green_edited_tests fired on
+// docs/CAPABILITIES.md and a deliverable fixture — files the lane runner had
+// registered as "test files" from the preflight outputs — and the correct
+// GREEN commit was reset away. The rule is now "GREEN modified a file the
+// RED commit wrote", and a discarded GREEN is pinned to a branch first.
+describe('green_edited_tests is scoped to RED-committed files and never discards a GREEN unpinned', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('registers preflight outputs through preflightTestPaths, not blindly', () => {
+    expect(src).toMatch(/preflightTestPaths\(preflightData\.outputs, testFiles\)/)
+    expect(src).not.toMatch(/if \(output\.path && !testFiles\.includes\(output\.path\)\) \{\s*testFiles\.push/)
+  })
+  it('asks the post-GREEN batch for the RED commit files and scopes ownTestsOnly to them', () => {
+    expect(src).toMatch(/postGreenSteps\(\{ wt, redSha: red\.commit_sha[^}]*\}\)/)
+    expect(src).toMatch(/redCommittedFilesFromSteps\(/)
+    expect(src).toMatch(/const ownTestsOnly = [\s\S]{0,600}redCommitted/)
+  })
+  it('pins the discarded GREEN to <laneBranch>--discarded-green before the reset', () => {
+    expect(src).toMatch(/const discardedRef = `\$\{cfg\.epicBranch\}--\$\{taskId\}--discarded-green`/)
+    expect(src).toMatch(/\[\.\.\.preserveHeadRefSteps\(wt, discardedRef\), \.\.\.worktreeResetToSteps\(wt, red\.commit_sha\)\]/)
+    expect(src).toMatch(/green_discarded_ref/)
+  })
+})

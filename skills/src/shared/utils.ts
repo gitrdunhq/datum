@@ -426,6 +426,28 @@ export function classifyFiles(files: string[]): {
   return { testFiles, implFiles }
 }
 
+/**
+ * Which preflight skeleton outputs to register as the lane's test files.
+ * Only paths classifyFiles itself calls tests, and only new ones: the lane
+ * runner used to register every output path, a second classifier that
+ * turned docs and deliverable fixtures into "the lane's test files" and
+ * failed a sound GREEN as green_edited_tests (caliper BUG P).
+ */
+export function preflightTestPaths(
+  outputs: Array<{ path?: string }> | undefined,
+  testFiles: string[],
+): { registered: string[]; skipped: string[] } {
+  const registered: string[] = []
+  const skipped: string[] = []
+  for (const output of outputs || []) {
+    const p = output.path
+    if (!p || testFiles.includes(p) || registered.includes(p)) continue
+    if (classifyFiles([p]).testFiles.length > 0) registered.push(p)
+    else if (!skipped.includes(p)) skipped.push(p)
+  }
+  return { registered, skipped }
+}
+
 // ---------------------------------------------------------------------------
 // extractRequiredScopeFiles / findScopeGaps — issue #325/#334/#335: a lane's
 // allowed_write_files (lane.files) must cover every file the lane's RED test

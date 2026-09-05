@@ -448,14 +448,31 @@ export interface PostGreenOpts {
    * Null/omitted skips the step entirely. Mirrors PostRedOpts.verifyTestCmd.
    */
   verifyTestCmd?: string | null
+  /**
+   * The RED commit. When given, the batch also lists the files that commit
+   * wrote (`red-files`), so green_edited_tests means "GREEN modified a file
+   * RED committed" — not "GREEN touched anything classified as a test"
+   * (caliper BUG P: a doc and a deliverable fixture failed a sound GREEN).
+   */
+  redSha?: string | null
 }
 
 export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
   const steps: BatchStep[] = [{ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true }]
+  if (o.redSha) {
+    steps.push({ name: 'red-files', command: `git -C ${q(o.wt)} diff-tree --no-commit-id --name-only -r ${q(o.redSha)}`, tolerant: true })
+  }
   if (o.verifyTestCmd) {
     steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'green-verify'), tolerant: true })
   }
   return steps
+}
+
+/** The RED commit's file list from the red-files step, or null when the step did not run. */
+export function redCommittedFilesFromSteps(r: BatchResult): string[] | null {
+  const rec = stepResult(r, 'red-files')
+  if (!rec || rec.exit_code !== 0) return null
+  return rec.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
 // ── Setup: root worktree + lane worktrees + plan distribution ──

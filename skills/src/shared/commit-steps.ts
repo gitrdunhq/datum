@@ -125,6 +125,16 @@ export function worktreeDirtyFromSteps(result: BatchResult): WorktreeDirtyResult
  * so the worktree must go back to the RED commit (not HEAD, which IS the
  * rejected GREEN) before GREEN is re-dispatched.
  */
+/**
+ * Pin the worktree's HEAD to `ref` before a reset that would discard it.
+ * A GREEN judged green_edited_tests was `reset --hard` away and survived
+ * only in the reflog (caliper BUG P, 558b2ab was the correct final
+ * implementation); with the ref it is recoverable by name.
+ */
+export function preserveHeadRefSteps(wt: string, ref: string): BatchStep[] {
+  return [{ name: 'preserve', command: `git -C ${q(wt)} branch -f ${q(ref)} HEAD`, tolerant: true }]
+}
+
 export function worktreeResetToSteps(wt: string, sha: string): BatchStep[] {
   return [
     { name: 'reset', command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },

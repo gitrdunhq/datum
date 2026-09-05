@@ -19,7 +19,41 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { batchScript, parseBatchResult, type BatchResult } from './batch'
-import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
+import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, worktreeDirtySteps, worktreeDirtyFromSteps, preserveHeadRefSteps } from './commit-steps'
+
+// caliper BUG P: a GREEN commit judged green_edited_tests was `reset --hard`
+// away — 558b2ab was the correct final implementation and only survived in
+// the reflog. Before any reset that discards a commit, the lane pins it to
+// a branch so the work is recoverable by name.
+describe('preserveHeadRefSteps', () => {
+  it('is one tolerant `git branch -f <ref> HEAD` step', () => {
+    const steps = preserveHeadRefSteps('/wt/T1', 'datum/e--T1--discarded-green')
+    expect(steps.map((s) => s.name)).toEqual(['preserve'])
+    expect(steps[0].tolerant).toBe(true)
+    expect(steps[0].command).toBe('git -C "/wt/T1" branch -f "datum/e--T1--discarded-green" HEAD')
+  })
+
+  it('under real git, the ref points at the commit a following reset-to discards', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-preserve-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'lane'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'red'], { cwd: dir })
+      const red = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()
+      writeFileSync(join(dir, 'impl.py'), 'x = 1\n')
+      execFileSync('git', ['add', 'impl.py'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'green'], { cwd: dir })
+      const green = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()
+      const steps = [...preserveHeadRefSteps(dir, 'lane--discarded-green'), ...worktreeResetToSteps(dir, red)]
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(worktreeResetToFromSteps(r, red).ok).toBe(true)
+      expect(execFileSync('git', ['rev-parse', 'lane--discarded-green'], { cwd: dir, encoding: 'utf8' }).trim()).toBe(green)
+      expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()).toBe(red)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 function fake(stdouts: Record<string, string>, exits: Record<string, number> = {}): BatchResult {
   const steps = Object.entries(stdouts).map(([name, stdout]) => ({ name, exit_code: exits[name] ?? 0, stdout, stderr: '' }))
