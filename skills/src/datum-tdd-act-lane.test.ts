@@ -636,3 +636,55 @@ describe('REFACTOR null result — named error, worktree reset, independent re-v
     expect(nullBranch).toMatch(/refactor_no_result/)
   })
 })
+
+// elonchesd run wf_949ca712-b07 (#415): the runtime THROWS
+// `agent({schema}): subagent completed without calling StructuredOutput`
+// when a schema'd agent answers in prose. RED/GREEN/REFACTOR go through
+// resilientAgent, which turns that throw into null and the *_no_result
+// paths retry from a reset worktree — but reflect and refactor-check called
+// agent() directly, so the throw escaped to the lane's outer catch:
+// stage=CRASH, no retry, 10 dependent lanes blocked, although RED's commit
+// was fine. And a null reflect scored the tests 0/10 and FAILED the lane on
+// a fabricated number.
+describe('reflect and refactor-check never crash the lane on a prose reply', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const laneFn = laneSrc.slice(laneSrc.indexOf('async function runLane'), laneSrc.indexOf('async function runSkepticPanel'))
+  const refactorFn = laneSrc.slice(laneSrc.indexOf('async function runRefactor'), laneSrc.indexOf('// ── DAG scheduler'))
+
+  it('reflect goes through resilientAgent (throw → null, one retry), and a null result is reflect_no_result, not a 0/10 failure', () => {
+    const reflectCall = laneFn.slice(laneFn.indexOf('reflectPrompt('), laneFn.indexOf('reflectPrompt(') + 400)
+    expect(laneFn).toMatch(/await resilientAgent\(\s*reflectPrompt\(/)
+    expect(reflectCall).toMatch(/maxRetries: 1/)
+    expect(laneFn).toMatch(/reflect_no_result/)
+    // The score must only be read once a non-null result is established.
+    expect(laneFn.indexOf('reflect_no_result')).toBeLessThan(laneFn.indexOf('reflectResult?.score') === -1 ? laneFn.indexOf('reflectResult.score') : laneFn.indexOf('reflectResult?.score'))
+  })
+
+  it('refactor-check goes through resilientAgent, and a null result is refactor_check_no_result rather than "nothing to improve"', () => {
+    expect(refactorFn).toMatch(/await resilientAgent\(\s*refactorCheckPrompt\(/)
+    expect(refactorFn).toMatch(/refactor_check_no_result/)
+    expect(refactorFn).not.toMatch(/preCheck\?\.reason \|\| 'nothing to improve'/)
+  })
+
+  it('no schema call in the lane runner bypasses resilientAgent or parallel()', () => {
+    // Every `agent(` whose opts carry `schema:` must be `resilientAgent(` or
+    // sit inside a parallel() thunk (which resolves throws to null).
+    const lines = laneSrc.split('\n')
+    const offenders: string[] = []
+    lines.forEach((line, i) => {
+      if (/\bschema: [A-Z_]+/.test(line)) {
+        // Walk back to the nearest enclosing call: the first earlier line that
+        // opens an agent()/resilientAgent() call or a parallel() block.
+        let enclosing = ''
+        for (let j = i; j >= Math.max(0, i - 60); j--) {
+          // On the schema line itself only a same-line parallel() counts; the
+          // call that OWNS the schema opts sits on or above that line.
+          const m = lines[j].match(j === i ? /\bparallel/ : /\b(resilientAgent|agent)\(|\bparallel/)
+          if (m) { enclosing = m[0]; break }
+        }
+        if (enclosing !== 'resilientAgent(' && enclosing !== 'parallel') offenders.push(`${i + 1}: ${line.trim()} (enclosing: ${enclosing || 'none'})`)
+      }
+    })
+    expect(offenders).toEqual([])
+  })
+})

@@ -798,19 +798,33 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
   log(`[${taskId}] RED: ${newTestCount} new test functions verified (${beforeCount} → ${afterCount})`)
 
   // ── Reflect (independent evaluator — stays separate) ──
-  const reflectResult: ReflectResult | null = await agent(
+  // Through resilientAgent, not agent(): a schema'd agent that answers in
+  // prose makes the runtime THROW ("completed without calling
+  // StructuredOutput"); resilientAgent turns that into null and retries once
+  // with a fresh agent. Left bare, that throw escaped to the lane's outer
+  // catch as stage=CRASH and blocked every dependent lane although RED's
+  // commit was fine (elonchesd run wf_949ca712-b07, #415).
+  const reflectResult: ReflectResult | null = await resilientAgent(
     reflectPrompt({ wt, testFiles: testFiles.join(', '), acStr }),
-    stageOpts('reflect', { label: `reflect:${taskId}`, phase: 'Act', model: model('fast'), schema: REFLECT_SCHEMA }),
+    stageOpts('reflect', { label: `reflect:${taskId}`, phase: 'Act', model: model('fast'), schema: REFLECT_SCHEMA, maxRetries: 1 }),
   )
 
-  const reflectScore: number = reflectResult?.score || 0
-  log(`[${taskId}] Test quality: ${reflectScore}/10 — ${reflectResult?.reasoning || 'no reasoning'}`)
-  if (reflectResult?.gaps?.length) {
-    log(`[${taskId}]   gaps: ${reflectResult.gaps.join('; ')}`)
-  }
-  if (reflectScore < 4) {
-    log(`[${taskId}] RED FAILED: test quality too low (${reflectScore}/10)`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: `test quality ${reflectScore}/10` }
+  if (!reflectResult) {
+    // The evaluator produced nothing — that is NOT a score of 0. Failing the
+    // lane on a fabricated number would punish the RED work for the
+    // evaluator's turn cap; the deterministic post-RED gates (count gate,
+    // placeholder scan, green-blindness) already held, so continue and say so.
+    log(`[${taskId}] reflect_no_result: reflect agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-reflect.md) — proceeding to GREEN without a quality score`)
+  } else {
+    const reflectScore: number = reflectResult.score || 0
+    log(`[${taskId}] Test quality: ${reflectScore}/10 — ${reflectResult.reasoning || 'no reasoning'}`)
+    if (reflectResult.gaps?.length) {
+      log(`[${taskId}]   gaps: ${reflectResult.gaps.join('; ')}`)
+    }
+    if (reflectScore < 4) {
+      log(`[${taskId}] RED FAILED: test quality too low (${reflectScore}/10)`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `test quality ${reflectScore}/10` }
+    }
   }
 
   // ── GREEN (writes implementation + verifies tests pass + commits) ──
@@ -1128,13 +1142,21 @@ async function runRefactor(
 ): Promise<{ verified: boolean; error?: string } | null> {
   log(`[${taskId}] REFACTOR: checking if needed`)
 
-  const preCheck: RefactorCheck | null = await agent(
+  // resilientAgent, not agent(): a prose reply to a schema'd call makes the
+  // runtime throw, which used to escape as a lane CRASH (see reflect above).
+  const preCheck: RefactorCheck | null = await resilientAgent(
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(', ') }),
-    stageOpts('reader', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA }),
+    stageOpts('reader', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
   )
 
-  if (!preCheck?.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${preCheck?.reason || 'nothing to improve'})`)
+  if (!preCheck) {
+    // Nothing came back — not the same as "nothing to improve". REFACTOR is
+    // optional, so skip it, but by its real name.
+    log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts — skipping the optional REFACTOR stage`)
+    return { verified: true }
+  }
+  if (!preCheck.should_refactor) {
+    log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || 'nothing to improve'})`)
     return { verified: true }
   }
 
