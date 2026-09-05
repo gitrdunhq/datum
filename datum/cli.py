@@ -140,7 +140,7 @@ def status(json_output: bool = typer.Option(False, "--json", help="Output raw JS
     """Show the live pipeline status for the active run."""
     state = load_state()
     if json_output:
-        console.print(json.dumps(state, indent=2))
+        typer.echo(json.dumps(state, indent=2))
     else:
         console.print(render(state))
 
@@ -155,7 +155,7 @@ def language_detect_cmd(path: str = typer.Option(".", help="Path to the reposito
 
     root = Path(path).resolve()
     result = detect(root)
-    console.print(json.dumps(result))
+    typer.echo(json.dumps(result))
 
 
 @app.command(name="lane-plan")
@@ -210,7 +210,7 @@ def plan_issues_cmd(
         title = f"[epic] {branch}"
 
     result = publish_lane_plan(str(lp_path), title)
-    console.print(json.dumps(result, indent=2))
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command(name="issue-stage")
@@ -225,7 +225,7 @@ def issue_stage_cmd(
     from datum.github_issues import update_issue_stage
 
     update_issue_stage(issue, stage, commit or None)
-    console.print(json.dumps({"ok": True, "issue": issue, "stage": stage}))
+    typer.echo(json.dumps({"ok": True, "issue": issue, "stage": stage}))
 
 
 @app.command(name="lane-plan-from-epic")
@@ -253,7 +253,7 @@ def lane_plan_from_epic_cmd(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, indent=2) + "\n")
 
-    console.print(json.dumps(result, indent=2))
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command(name="ticket-from-issue")
@@ -827,7 +827,7 @@ def classify(
     metadata = parse_classification_metadata(spec_text)
     config = load_config().get("classification", {})
     result = do_classify(metadata, config)
-    console.print(json.dumps(result, indent=2))
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command()
@@ -1151,7 +1151,7 @@ def local_llm_cmd(
                 turn_num = t.get("turn", "?")
                 if turn_type == "plan":
                     console.print(f"\n[bold cyan]Turn {turn_num} (plan):[/bold cyan]")
-                    console.print(json.dumps(t.get("data", {}), indent=2))
+                    typer.echo(json.dumps(t.get("data", {}), indent=2))
                 elif turn_type == "step":
                     data = t.get("data", {})
                     agreement = t.get("agreement", data.get("confidence", 0))
@@ -1259,7 +1259,7 @@ def dream(
         console.print("  ✓ No stale memories")
 
     if audit_only:
-        console.print(json.dumps(stale, indent=2))
+        typer.echo(json.dumps(stale, indent=2))
         return
 
     transcripts_dir = mem_path.parent
@@ -1947,7 +1947,7 @@ def retrospect(
     result = run_retrospect(cfg)
 
     if json_output:
-        console.print(json.dumps(result.to_dict(), indent=2))
+        typer.echo(json.dumps(result.to_dict(), indent=2))
         return
 
     console.print(
@@ -2014,7 +2014,13 @@ def worktrees_setup(
     from datum.worktree_manager import setup_pipeline_worktrees
 
     ids = [lid.strip() for lid in lane_ids.split(",") if lid.strip()]
-    mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    try:
+        mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    except RuntimeError as exc:
+        # A missing epic branch or a failed worktree add is JSON on stdout
+        # with exit 1 — the setup batch parses stdout, never a traceback.
+        typer.echo(json.dumps({"error": str(exc)}))
+        raise typer.Exit(code=1) from None
     result = {k: str(v) for k, v in mapping.items()}
     typer.echo(json.dumps(result, indent=2))
 
