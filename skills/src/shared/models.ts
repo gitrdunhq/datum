@@ -17,10 +17,6 @@ export function model(tier: ModelTier): string {
   return activeTiers[tier]
 }
 
-export function getModelTiers(): Record<ModelTier, string> {
-  return { ...activeTiers }
-}
-
 export const ROUTE_PHASES = {
   feature:       ['refine', 'plan', 'properties', 'act', 'validate', 'review', 'closeout'],
   hotfix:        ['act', 'validate', 'review'],

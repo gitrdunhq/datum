@@ -25,10 +25,6 @@ export function parseState(raw: string | null): PipelineState | null {
   }
 }
 
-export function serializeState(state: PipelineState): string {
-  return JSON.stringify(state, null, 2)
-}
-
 /**
  * True when `state` belongs to a branch other than the one currently
  * checked out. `.datum/pipeline-state.json` is a single global file, not

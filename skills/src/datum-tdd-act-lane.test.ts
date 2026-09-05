@@ -247,7 +247,7 @@ describe('path-boundary-file-ownership — AC4', () => {
 
 describe('#357 — unified commit convention across RED/GREEN/REFACTOR', () => {
   const promptsDir = join(__dirname, 'prompts')
-  const stagePrompts = ['red.md', 'red-retry.md', 'green.md', 'green-retry.md', 'refactor.md', 'commit.md']
+  const stagePrompts = ['red.md', 'red-retry.md', 'green.md', 'green-retry.md', 'refactor.md']
 
   it('every stage prompt commits via the {{commitCmd}} placeholder, never a raw git commit', () => {
     for (const name of stagePrompts) {

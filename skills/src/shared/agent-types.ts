@@ -71,10 +71,6 @@ export function configureAgentTypes(opts: Partial<AgentTypeConfig>): void {
   configured = true
 }
 
-export function agentTypesEnabled(): boolean {
-  return state.agentTypes
-}
-
 export function hooksInstalled(): boolean {
   return state.hooksInstalled
 }

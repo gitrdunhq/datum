@@ -5,7 +5,6 @@ import redRetryTemplate from '../prompts/red-retry.md'
 import greenTemplate from '../prompts/green.md'
 import greenRetryTemplate from '../prompts/green-retry.md'
 import refactorTemplate from '../prompts/refactor.md'
-import commitTemplate from '../prompts/commit.md'
 import reflectTemplate from '../prompts/reflect.md'
 import skepticBaseTemplate from '../prompts/skeptic-base.md'
 import skepticEdgeTemplate from '../prompts/skeptic-edge.md'
@@ -58,10 +57,6 @@ export function refactorPrompt(vars: {
   testCommand: string; testRunCmd: string; allFilesList: string; commitPrefix: string; commitCmd: string
 }): string {
   return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
-}
-
-export function commitPrompt(vars: { wt: string; allowedList: string; commitPrefix: string; stage: string; commitCmd: string }): string {
-  return PREAMBLE + renderPrompt(commitTemplate, vars as PromptVars)
 }
 
 export function reflectPrompt(vars: { wt: string; testFiles: string; acStr: string }): string {

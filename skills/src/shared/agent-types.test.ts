@@ -11,7 +11,6 @@ import { join } from 'node:path'
 import {
   AGENT_TYPE_TABLE,
   configureAgentTypes,
-  agentTypesEnabled,
   hooksInstalled,
   deterministicChecks,
   stageOpts,
@@ -125,7 +124,7 @@ describe('readAgentTypeConfig', () => {
 
 describe('deterministicChecks gate', () => {
   it('is off by default (hooks not reported installed)', () => {
-    expect(agentTypesEnabled()).toBe(true)
+    expect(agentTypeArgs().agentTypes).toBe(true)
     expect(hooksInstalled()).toBe(false)
     expect(deterministicChecks()).toBe(false)
   })
@@ -144,7 +143,7 @@ describe('deterministicChecks gate', () => {
     const passed = agentTypeArgs()
     configureAgentTypes({ agentTypes: true, hooksInstalled: false })
     configureAgentTypes(passed)
-    expect(agentTypesEnabled()).toBe(false)
+    expect(agentTypeArgs().agentTypes).toBe(false)
     expect(hooksInstalled()).toBe(true)
   })
 })
