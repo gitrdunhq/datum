@@ -54,3 +54,51 @@ describe('datum-review — Correctness domain uses spec-verify methodology', () 
     expect(correctnessPromptSrc).toMatch(/"severity"/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// #368 producer/consumer fix — `datum gate review` (datum/gate.py) is never
+// invoked by the pipeline, and it could not pass if it were: it read
+// REVIEW-REPORT.md from the repo root while this workflow writes it to
+// docs/epics/<branch>/REVIEW-REPORT.md, and it required review-packets/
+// unified.json, an artifact nothing produces. datum-review.ts now runs the
+// gate deterministically (shared/gate.ts) after committing the report, the
+// same pattern Refine/Plan/Properties/Validate already use, and exposes the
+// verdict in __workflowResult so datum-go.ts can halt on it.
+// ---------------------------------------------------------------------------
+
+describe('datum-review — deterministic gate verdict (#368)', () => {
+  it('runs the gate through gateSteps/parseGateResult, not an LLM echo', () => {
+    expect(datumReviewSrc).toMatch(/import\s*\{\s*gateSteps,\s*parseGateResult\s*\}\s*from\s*'\.\/shared\/gate'/)
+    expect(datumReviewSrc).toMatch(/gateSteps\('review', yolo \? ' --approve' : ''\)/)
+    expect(datumReviewSrc).toMatch(/parseGateResult\(/)
+  })
+
+  it('runs the gate after the report commit step, not before', () => {
+    const commitIdx = datumReviewSrc.indexOf("label: 'commit-report'")
+    const gateIdx = datumReviewSrc.indexOf("gateSteps('review'")
+    expect(commitIdx).toBeGreaterThan(-1)
+    expect(gateIdx).toBeGreaterThan(commitIdx)
+  })
+
+  it('exposes gatePassed/gateMessage/gateNeedsHuman in __workflowResult alongside canMerge/criticalFindings', () => {
+    const resultIdx = datumReviewSrc.indexOf('export const __workflowResult')
+    const resultBlock = datumReviewSrc.slice(resultIdx)
+    expect(resultBlock).toMatch(/canMerge:\s*critical\.length === 0/)
+    expect(resultBlock).toMatch(/criticalFindings:\s*critical\.length/)
+    expect(resultBlock).toMatch(/gatePassed:\s*gate\.passed/)
+    expect(resultBlock).toMatch(/gateMessage:\s*gate\.message/)
+    expect(resultBlock).toMatch(/gateNeedsHuman:\s*gate\.needsHuman/)
+  })
+
+  it('renders each finding severity bolded (**severity**), matching gate_review\'s "**high**"/"**critical**" detection', () => {
+    expect(datumReviewSrc).toMatch(/\*\*\$\{f\.severity\}\*\*/)
+  })
+
+  it('the severity a report renders agrees with the same high/critical bar used for canMerge', () => {
+    // `critical` (used for canMerge) already treats 'critical' and 'high' as
+    // the same threshold; the report must render exactly those findings the
+    // same way the gate is documented to detect.
+    const criticalIdx = datumReviewSrc.indexOf("f.severity === 'critical' || f.severity === 'high'")
+    expect(criticalIdx).toBeGreaterThan(-1)
+  })
+})

@@ -946,28 +946,23 @@ def gate_validate(yolo: bool, config: dict) -> None:
 
 
 def gate_review(yolo: bool, config: dict) -> None:
-    report_path = Path("REVIEW-REPORT.md")
-    packets_dir = existing_review_packets_dir()
+    # #368 producer/consumer fix: review-packets/unified.json (and its
+    # unified.schema.json validation) is dropped from this gate. No phase in
+    # the pipeline ever produces it — datum-review.ts writes
+    # docs/epics/<branch>/REVIEW-REPORT.md directly, and datum/dedupe.py /
+    # datum/render.py (the scripts that would build review-packets/unified.json)
+    # are standalone tools nothing calls. A gate requiring an artifact nothing
+    # produces can never pass, so the check below is against the report
+    # content only. REVIEW-REPORT.md is resolved the same epic-scoped way
+    # every other gate resolves its artifact (resolve_artifact), so it finds
+    # docs/epics/<branch>/REVIEW-REPORT.md instead of a repo-root copy that
+    # datum-review.ts never writes.
+    report_path = resolve_artifact("REVIEW-REPORT.md")
 
     if not report_path.exists():
         fail("REVIEW-REPORT.md not found")
-    if not packets_dir.exists():
-        fail(f"review-packets/ directory not found: {packets_dir}")
 
-    unified_json = packets_dir / "unified.json"
-    if not unified_json.exists():
-        fail(f"review-packets/unified.json not found in {packets_dir}")
-
-    validate_payload, _ = _contracts()
-    unified_errors = validate_payload("unified.schema.json", unified_json)
-    if unified_errors:
-        fail(
-            "unified.json is malformed according to unified.schema.json:\n"
-            + "\n".join(unified_errors)
-        )
-
-    # Check for high-severity findings
-    content = report_path.read_text() if report_path.exists() else ""
+    content = report_path.read_text()
     if (
         "severity: high" in content.lower()
         or "**high**" in content.lower()
@@ -978,8 +973,6 @@ def gate_review(yolo: bool, config: dict) -> None:
         state_path = Path(".datum/state.json")
         run_id = "default"
         if state_path.exists():
-            import json
-
             run_id = json.loads(state_path.read_text()).get("run_id", "default")
 
         iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
@@ -994,26 +987,45 @@ def gate_review(yolo: bool, config: dict) -> None:
                 hard=True,
             )
         else:
-            import subprocess
-
             print(
                 f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package..."
             )
-            subprocess.run(
-                [
-                    "python3",
-                    "scripts/remediate.py",
-                    "--run-id",
-                    run_id,
-                    "--findings",
-                    f".datum/runs/{run_id}/review-packets/unified.json",
-                ]
-            )
+            # No producer writes review-packets/unified.json (see note above),
+            # so only attempt remediation when both the real script (it lives
+            # at datum/remediate.py, not the scripts/remediate.py the old code
+            # referenced) and a findings file actually exist.
+            remediate_script = Path("datum/remediate.py")
+            findings_path = Path(f".datum/runs/{run_id}/review-packets/unified.json")
+            if remediate_script.exists() and findings_path.exists():
+                subprocess.run(
+                    [
+                        sys.executable,
+                        str(remediate_script),
+                        "--run-id",
+                        run_id,
+                        "--findings",
+                        str(findings_path),
+                    ]
+                )
             iter_file.parent.mkdir(parents=True, exist_ok=True)
             iter_file.write_text(str(iteration + 1))
             fail(
                 f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry."
             )
+
+    policy = gate_policy(config, "review_human_approval")
+    if policy != "skipped" and not yolo:
+        print(
+            json.dumps(
+                {
+                    "passed": False,
+                    "needs_human": True,
+                    "message": "REVIEW-REPORT.md ready for human approval. Re-run with --approve to approve.",
+                    "artifact": str(report_path),
+                }
+            )
+        )
+        sys.exit(1)
 
     pass_gate("Review gate passed")
 

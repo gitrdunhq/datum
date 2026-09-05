@@ -593,7 +593,13 @@ if (shouldRun('validate', 4)) {
 if (shouldRun('review', 5)) {
   log('── Review ──')
   lastResult = await workflow({ scriptPath: sk('datum-review') }, phaseArgs) as PhaseResult
-  if (!yolo && !lastResult.canMerge) {
+  // gatePassed is `datum gate review`'s exit code (#368) — halts in every
+  // mode, same as Refine/Plan/Properties/Validate. canMerge is the review
+  // swarm's own high/critical-findings verdict, which yolo may bypass.
+  if (!lastResult.gatePassed) {
+    haltedAt = 'review'
+    log(`Review gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Fix, then: datum go --start-from validate`)
+  } else if (!yolo && !lastResult.canMerge) {
     haltedAt = 'review'
     log(`Review: ${lastResult.criticalFindings || '?'} critical issues. Fix, then: datum go --start-from validate`)
   } else {

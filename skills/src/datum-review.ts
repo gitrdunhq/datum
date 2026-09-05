@@ -4,7 +4,9 @@ import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import commitArtifactTemplate from './prompts/util-commit-artifact.md'
-import { configureAgentTypes } from './shared/agent-types'
+import { configureAgentTypes, stageOpts } from './shared/agent-types'
+import { batchCommandPrompt, parseBatchResult } from './shared/batch'
+import { gateSteps, parseGateResult } from './shared/gate'
 import type { PhaseArgs } from './shared/types'
 
 export const meta = {
@@ -79,13 +81,18 @@ for (const f of allFindings) {
 const critical = deduped.filter((f) => f.severity === 'critical' || f.severity === 'high')
 log(`Findings: ${deduped.length} unique (${critical.length} high/critical)`)
 
+// `datum gate review` (datum/gate.py) detects high/critical findings by
+// scanning the report content for "severity: high"/"**high**" (or
+// critical). Bolding the severity cell here — rather than a bare word —
+// keeps that detection deterministic and in lockstep with `critical` above,
+// which already treats 'high' and 'critical' as the same bar for canMerge.
 const reportLines = [
   '# Review Report\n',
   `**Findings:** ${deduped.length} unique (${critical.length} high/critical)\n`,
   '## Findings\n',
   '| ID | Severity | File | Line | Description | Suggestion |',
   '|---|---|---|---|---|---|',
-  ...deduped.map((f) => `| ${f.id} | ${f.severity} | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} |`),
+  ...deduped.map((f) => `| ${f.id} | **${f.severity}** | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} |`),
   '',
 ]
 
@@ -101,6 +108,19 @@ ${reportLines.join('\n')}`,
 
 if (critical.length > 0) log(`${critical.length} high/critical — remediation needed`)
 
+// Deterministic: the verdict is `datum gate review`'s exit code read from a
+// batch step (shared/gate.ts), not an LLM's echo of its JSON — same pattern
+// as Refine/Plan/Properties/Validate (#368). Runs after the report is
+// committed so the gate can resolve docs/epics/<branch>/REVIEW-REPORT.md.
+const gateStepList = gateSteps('review', yolo ? ' --approve' : '')
+const gate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
+  gateStepList,
+))
+if (gate.passed) log('Review gate PASSED')
+else log(`Review gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
+
 export const __workflowResult = {
   totalFindings: deduped.length, criticalFindings: critical.length, canMerge: critical.length === 0,
+  gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman,
 }

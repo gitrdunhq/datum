@@ -573,12 +573,51 @@ describe('lane-plan relay integrity', () => {
 describe('gate failures halt datum-go regardless of yolo', () => {
   const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
 
-  it('refine, plan, properties and validate halt on !gatePassed without a !yolo guard', () => {
-    for (const phase of ['refine', 'plan', 'properties', 'validate']) {
+  it('refine, plan, properties, validate and review halt on !gatePassed without a !yolo guard', () => {
+    for (const phase of ['refine', 'plan', 'properties', 'validate', 'review']) {
       const block = goSource.slice(goSource.indexOf(`if (shouldRun('${phase}'`), goSource.indexOf(`haltedAt = '${phase}'`) + 40)
       expect(block, phase).not.toMatch(/!yolo && !lastResult\.gatePassed/)
       expect(block, phase).toMatch(/!lastResult\.gatePassed/)
       expect(block, phase).toMatch(new RegExp(`haltedAt = '${phase}'`))
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #368 — `datum gate review` (datum/gate.py) is now a real, passable gate
+// (epic-scoped REVIEW-REPORT.md, no review-packets/unified.json
+// requirement). The Review block must halt in every mode when the gate
+// itself fails, keep its own separate canMerge check (which yolo may
+// bypass), and only mark the phase complete when BOTH hold.
+// ---------------------------------------------------------------------------
+
+describe('Review block — gatePassed and canMerge both gate markPhaseComplete (#368)', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  const reviewBlock = goSource.slice(
+    goSource.indexOf("if (shouldRun('review'"),
+    goSource.indexOf("// Closeout"),
+  )
+
+  it('halts on !gatePassed unconditionally (no !yolo guard), same as the other phases', () => {
+    expect(reviewBlock).not.toMatch(/!yolo && !lastResult\.gatePassed/)
+    expect(reviewBlock).toMatch(/!lastResult\.gatePassed/)
+    expect(reviewBlock).toMatch(/haltedAt = 'review'/)
+  })
+
+  it('keeps the existing canMerge log, still guarded by !yolo', () => {
+    expect(reviewBlock).toMatch(/!yolo && !lastResult\.canMerge/)
+    expect(reviewBlock).toMatch(/critical issues/)
+  })
+
+  it('only calls markPhaseComplete when both gatePassed and canMerge hold', () => {
+    const markIdx = reviewBlock.indexOf("markPhaseComplete('review')")
+    expect(markIdx).toBeGreaterThan(-1)
+    // markPhaseComplete must sit in the final `else` branch, after both the
+    // !gatePassed and the !yolo && !canMerge halt checks.
+    const gatePassedIdx = reviewBlock.indexOf('!lastResult.gatePassed')
+    const canMergeIdx = reviewBlock.indexOf('!yolo && !lastResult.canMerge')
+    expect(gatePassedIdx).toBeGreaterThan(-1)
+    expect(canMergeIdx).toBeGreaterThan(gatePassedIdx)
+    expect(markIdx).toBeGreaterThan(canMergeIdx)
   })
 })
