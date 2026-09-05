@@ -122,7 +122,9 @@ for (const step of archiveResult.steps) {
 // itself did not land, so only that flips archived to false.
 const commitStep = archiveResult.steps.find((s) => s.name === 'commit')
 const archived = !archiveResult.missing && !!commitStep && commitStep.exit_code === 0
-const archiveCommit = archived ? (stepStdout(archiveResult, 'commit-sha') || '').trim() || undefined : undefined
+// '' rather than undefined: esbuild emits `void 0`, which trips the build's
+// leaked-TypeScript grep (same note as datum-go's configFingerprint).
+const archiveCommit: string = archived ? (stepStdout(archiveResult, 'commit-sha') || '').trim() : ''
 
 // Housekeep: delete merged lane/worktree branches and pipeline-state (deterministic, no LLM)
 await agent(
