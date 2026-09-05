@@ -244,7 +244,11 @@ function closeoutCollectSteps(o) {
       // local main|master — a repo with no remote still gets a merge-base.
       name: "base-sha",
       command: [
-        'BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>&1); case "$BASE" in fatal*) BASE="";; esac',
+        // The epic's recorded parent first (a chained epic's "what changed"
+        // is its own commits, not its parent epic's); the shell chain only
+        // when the CLI is unavailable.
+        'BASE=$(datum epic-base 2>&1) || BASE=""',
+        'if [ -z "$BASE" ]; then BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>&1); case "$BASE" in fatal*) BASE="";; esac; fi',
         'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then BASE="origin/$b"; break; fi; done; fi',
         'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/heads/$b"; then BASE="$b"; break; fi; done; fi',
         '[ -n "$BASE" ] || BASE=main',
