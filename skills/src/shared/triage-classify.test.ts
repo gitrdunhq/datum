@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { classifyLaneError } from './triage-classify'
 
 describe('classifyLaneError — deterministic infrastructure prefixes', () => {
@@ -55,6 +57,58 @@ describe('classifyLaneError — deterministic agent_behavior prefixes', () => {
   })
 })
 
+describe('classifyLaneError — deterministic *_no_result prefixes (stage agent returned nothing)', () => {
+  const noResultCases: Array<[string, string]> = [
+    ['green_no_result', 'green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md — the lane may need a smaller scope, or the cap raised)'],
+    ['red_no_result', 'red_no_result: RED agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-red.md — the lane may need a smaller scope, or the cap raised)'],
+    ['refactor_no_result', 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'],
+  ]
+
+  it.each(noResultCases)('%s classifies as infrastructure with deterministic confidence', (_label, error) => {
+    const result = classifyLaneError(error, 'RED')
+    expect(result.category).toBe('infrastructure')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — no_new_tests_written (post-RED count from epic merge-base)', () => {
+  it('classifies as agent_behavior with deterministic confidence, same as no_new_test_functions_committed', () => {
+    const result = classifyLaneError('no_new_tests_written: RED agent did not append any test functions', 'RED')
+    expect(result.category).toBe('agent_behavior')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — context_read_unverified (assertReadWitness)', () => {
+  it('classifies as agent_behavior with deterministic confidence', () => {
+    const result = classifyLaneError(
+      "context_read_unverified: docs/big-file.md — agent did not evidence reading the deferred file (expected blob abc123, got ?)",
+      'RED',
+    )
+    expect(result.category).toBe('agent_behavior')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — agent_output_unparseable (parseAgentJsonStrict)', () => {
+  it('classifies as agent_behavior with deterministic confidence', () => {
+    const result = classifyLaneError('agent_output_unparseable: green:task-004 — (no result)', 'GREEN')
+    expect(result.category).toBe('agent_behavior')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — agent_types_unconfigured (stageOpts called before configureAgentTypes)', () => {
+  it('classifies as infrastructure with deterministic confidence', () => {
+    const result = classifyLaneError(
+      "Error: agent_types_unconfigured: stageOpts('red', red:task-004) called before configureAgentTypes() — configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration",
+      'CRASH',
+    )
+    expect(result.category).toBe('infrastructure')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
 describe('classifyLaneError — dependency (blocked/SKIPPED)', () => {
   it('classifies stage=SKIPPED as dependency regardless of error text', () => {
     const result = classifyLaneError('anything at all', 'SKIPPED')
@@ -73,6 +127,48 @@ describe('classifyLaneError — dependency (blocked/SKIPPED)', () => {
     expect(result.category).toBe('dependency')
     expect(result.confidence).toBe('deterministic')
   })
+})
+
+describe('classifyLaneError — table completeness vs datum-tdd-act-lane.ts', () => {
+  // Source-text heuristic, not a parser: pulls the leading `snake_case:`
+  // prefix (the `"<prefix>: <human detail>"` convention every producer in
+  // this file follows) out of any `error: <literal>` object-property value or
+  // `throw new Error(<literal>)` call whose literal is inlined at that call
+  // site. Known limits:
+  //   - misses a prefix built via an intermediate variable first, e.g.
+  //     `const failure = 'refactor_no_result: ...'; ...; error: failure` —
+  //     refactor_no_result is one such case and is added to the table by
+  //     hand rather than caught here.
+  //   - only scans datum-tdd-act-lane.ts, not the other pipeline scripts
+  //     (datum-validate.ts, datum-go.ts, datum-plan.ts, datum-refine.ts,
+  //     shared/*.ts) that also produce prefixes this module classifies.
+  // The point of this test is not full coverage — it's a tripwire so the
+  // *next* new inlined lane-error prefix added to datum-tdd-act-lane.ts
+  // fails CI until someone teaches classifyLaneError about it (the #387 /
+  // #392 / #414 failure mode this module exists to prevent).
+  const laneSrc = readFileSync(join(__dirname, '../datum-tdd-act-lane.ts'), 'utf8')
+  const PREFIX_LITERAL_RE = /(?:error:\s*|throw new Error\()\s*[`'"]([a-z]+(?:_[a-z]+)+):/g
+
+  const foundPrefixes = new Set<string>()
+  let m: RegExpExecArray | null
+  while ((m = PREFIX_LITERAL_RE.exec(laneSrc))) {
+    foundPrefixes.add(m[1])
+  }
+
+  it('regex sanity check: found a non-trivial number of known prefixes', () => {
+    // Guards against the regex silently matching nothing after a refactor
+    // (e.g. if the file moves or the `error:`/`throw new Error(` convention
+    // changes) and this whole describe block going quietly green.
+    expect(foundPrefixes.size).toBeGreaterThanOrEqual(10)
+  })
+
+  it.each([...foundPrefixes].sort().map((p): [string] => [p]))(
+    'inlined lane-error prefix %s is classified deterministically',
+    (prefix) => {
+      const result = classifyLaneError(`${prefix}: something happened`, 'RED')
+      expect(result.confidence).toBe('deterministic')
+    },
+  )
 })
 
 describe('classifyLaneError — unknown fallback', () => {
