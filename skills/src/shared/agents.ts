@@ -147,8 +147,11 @@ export async function resilientAgent<T = unknown>(
     }
 
     if (attempt < maxRetries) {
+      // Deterministic jitter: the Workflow runtime throws on Math.random()
+      // (it would break resume), which would have killed the run on the
+      // very retry meant to recover it. Spread by attempt index instead.
       const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt)
-        + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS)
+        + ((attempt + 1) * 7919) % RATE_LIMIT_JITTER_MS
       const reason = threw ? `threw: ${caughtMessage}` : 'returned null'
       logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1000)}s before retry ${attempt + 2}/${maxRetries + 1}`)
       await sleepMs(delay)
