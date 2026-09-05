@@ -452,7 +452,10 @@ def make_function_name(ac_id: str, ac_text: str, language: str) -> str:
 
 
 def make_struct_name(task_id: str, ac_id: str) -> str:
-    return f"{task_id.replace('-', '_').replace('task', 'Task')}_{ac_id}"
+    """CapWords, no underscores: `Task001AC1`. The old `Task_001_AC1` failed
+    pep8-naming (ruff N801) on every skeleton-derived test in a repo with
+    the N rules on (caliper BUG Q, 27 of 29 Validate lint errors)."""
+    return f"{task_id.replace('-', '').replace('task', 'Task')}{ac_id}"
 
 
 def build_skeleton(
