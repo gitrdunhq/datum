@@ -22,22 +22,27 @@ def main() -> None:
     db_path = Path(f".datum/runs/{args.run_id}/state.db")
     if not db_path.exists():
         db_path = Path(".datum/state.db")
-        
+
     model_log = []
+    db_error = None
     if db_path.exists():
         with sqlite3.connect(db_path) as conn:
             # Handle backward compatibility if token_metrics doesn't exist in older DBs
             try:
-                cur = conn.execute("SELECT phase, model, input_tokens, output_tokens FROM token_metrics")
+                cur = conn.execute(
+                    "SELECT phase, model, input_tokens, output_tokens FROM token_metrics"
+                )
                 for row in cur.fetchall():
-                    model_log.append({
-                        "phase": row[0],
-                        "model": row[1],
-                        "input_tokens": row[2],
-                        "output_tokens": row[3]
-                    })
-            except sqlite3.OperationalError:
-                pass
+                    model_log.append(
+                        {
+                            "phase": row[0],
+                            "model": row[1],
+                            "input_tokens": row[2],
+                            "output_tokens": row[3],
+                        }
+                    )
+            except sqlite3.OperationalError as e:
+                db_error = f"token_metrics table not found or database error: {e}"
 
     per_phase: dict[str, dict] = {}
     per_model: dict[str, dict] = {}
@@ -48,15 +53,15 @@ def main() -> None:
         model = entry.get("model", "unknown")
         inp = entry.get("input_tokens", 0)
         out = entry.get("output_tokens", 0)
-        
+
         total_input += inp
         total_output += out
-        
+
         if phase not in per_phase:
             per_phase[phase] = {"input": 0, "output": 0, "models": {}}
         per_phase[phase]["input"] += inp
         per_phase[phase]["output"] += out
-        
+
         if model not in per_phase[phase]["models"]:
             per_phase[phase]["models"][model] = {"input": 0, "output": 0}
         per_phase[phase]["models"][model]["input"] += inp
@@ -79,7 +84,11 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2))
     marker.write_text("done")
-    print(json.dumps({"ok": True, "total_tokens": data["total"]}))
+    result = {"ok": True, "total_tokens": data["total"]}
+    if db_error:
+        result["skipped"] = True
+        result["reason"] = db_error
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

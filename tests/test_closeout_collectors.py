@@ -1005,3 +1005,48 @@ class TestCollate:
             output = json.loads(result.stdout)
             # Collate failed due to schema validation — this is OK too
             assert "error" in output
+
+    def test_collect_token_metrics_with_missing_table_should_not_silently_report_zero(
+        self, env_with_repo
+    ):
+        """collect_token_metrics should not silently report 0 tokens when table is missing.
+
+        If the token_metrics table doesn't exist (e.g., old DB schema or corrupted DB),
+        the function currently silently continues with empty model_log and reports
+        "ok": True with total_tokens: 0. This test verifies that this is reported as
+        an error or skipped condition, not silently as success.
+        """
+        repo = env_with_repo
+
+        # Create a valid but minimal SQLite DB with no token_metrics table
+        state_db = repo["runs_dir"] / "state.db"
+        conn = sqlite3.connect(state_db)
+        conn.execute("CREATE TABLE other_table (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_token_metrics",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        # The collector should report the problem, not silently return 0
+        assert result.returncode == 0, (
+            f"collect_token_metrics should exit cleanly, got {result.returncode}: "
+            f"{result.stderr}"
+        )
+        output = json.loads(result.stdout)
+
+        # Should explicitly report an error or skip, not pretend it found 0 tokens
+        assert output.get("error") or output.get("skipped"), (
+            f"collect_token_metrics silently reported 0 tokens instead of "
+            f"reporting that the token_metrics table was missing: {output}"
+        )
