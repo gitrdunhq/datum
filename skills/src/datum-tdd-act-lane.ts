@@ -75,13 +75,22 @@ export const meta = {
 
 // ── File ownership verification ─────────────────────────────────────────────
 
+interface OwnershipCheckResult {
+  ok: boolean
+  violations: string[]
+  /** True when the check itself failed to run/parse (fail-closed), as
+   *  opposed to a real file_ownership_violation. Callers must report these
+   *  distinctly so triage can tell tooling failure from a real violation. */
+  checkFailed?: boolean
+}
+
 async function verifyFileOwnership(
   taskId: string,
   wt: string,
   stage: string,
   allowedFiles: string[],
   forbiddenFiles: string[],
-): Promise<{ ok: boolean; violations: string[] }> {
+): Promise<OwnershipCheckResult> {
   const result: string | null = await agent(
     `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
 Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
@@ -89,14 +98,33 @@ No markdown fences, no explanation.`,
     stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }),
   )
 
-  if (!result) return { ok: true, violations: [] }
+  // A missing result is a named tooling failure, never a clean check — the
+  // ownership-check agent crashed, was skipped, or returned nothing. Failing
+  // OPEN here would let a real ownership violation sail through undetected.
+  if (!result) {
+    return {
+      ok: false,
+      checkFailed: true,
+      violations: [`ownership_check_failed: ownership-check agent returned no result for ${stage} on ${taskId}`],
+    }
+  }
 
   const parsed = typeof result === 'string'
     ? parseAgentJson<{ files_changed?: string[] }>(result, {})
     : result as { files_changed?: string[] }
 
-  const changed = parsed.files_changed || []
-  return verifyFileOwnershipMatch(changed, allowedFiles, forbiddenFiles)
+  // An unparseable result (garbage text, missing files_changed) must not
+  // silently become an empty [] that trivially passes — that is the same
+  // fail-open failure mode as the null case above, just later in the pipeline.
+  if (!parsed || !Array.isArray(parsed.files_changed)) {
+    return {
+      ok: false,
+      checkFailed: true,
+      violations: [`ownership_check_failed: could not parse files_changed from ownership-check result for ${stage} on ${taskId} (raw: ${String(result).slice(0, 200)})`],
+    }
+  }
+
+  return verifyFileOwnershipMatch(parsed.files_changed, allowedFiles, forbiddenFiles)
 }
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────
@@ -612,12 +640,13 @@ No markdown fences, no explanation.`,
 
   // Ownership (#368 item D): deterministic mode evaluates the diff the
   // post-RED batch already read; otherwise the standalone LLM check runs.
-  const redOwnership = deterministic
+  const redOwnership: OwnershipCheckResult = deterministic
     ? ownershipFromStdout(stepStdout(postRedResult, 'ownership'), testFiles, implFiles)
     : await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles)
   if (!redOwnership.ok) {
-    log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(', ')}`)
-    return { task_id: taskId, status: 'failed', stage: 'RED', error: `file_ownership_violation: ${redOwnership.violations.join(', ')}` }
+    const redPrefix = redOwnership.checkFailed ? 'ownership_check_failed' : 'file_ownership_violation'
+    log(`[${taskId}] RED ${redPrefix.toUpperCase()}: ${redOwnership.violations.join(', ')}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `${redPrefix}: ${redOwnership.violations.join(', ')}` }
   }
 
   // ── Scope repair (#325/#334/#335) ──────────────────────────────────────────
@@ -879,7 +908,7 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
 
   // Post-GREEN ownership (#368 item D): one datum-cli diff evaluated here,
   // or the standalone LLM check when the hooks are not installed.
-  let greenOwnership: { ok: boolean; violations: string[] }
+  let greenOwnership: OwnershipCheckResult
   if (deterministic) {
     const postGreen = postGreenSteps({ wt })
     const postGreenRaw = await agent(
@@ -891,13 +920,105 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     greenOwnership = await verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
   }
   if (!greenOwnership.ok) {
-    log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(', ')}`)
-    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `file_ownership_violation: ${greenOwnership.violations.join(', ')}` }
+    const greenPrefix = greenOwnership.checkFailed ? 'ownership_check_failed' : 'file_ownership_violation'
+    log(`[${taskId}] GREEN ${greenPrefix.toUpperCase()}: ${greenOwnership.violations.join(', ')}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `${greenPrefix}: ${greenOwnership.violations.join(', ')}` }
   }
   log(`[${taskId}] GREEN verified — all tests pass (committed: ${green.commit_sha || 'n/a'})`)
   await updateStage(issueId, 'green', green.commit_sha)
 
   // ── Adversarial skeptic panel (independent evaluators — stay separate) ──
+  // A BROKEN cross-validated verdict must not be logged and silently ignored:
+  // the confirmed bugs are fed into ONE GREEN retry (reusing the existing
+  // green-retry path), and the retry is independently re-verified (test-verify
+  // + a second skeptic pass) before the lane is allowed into REFACTOR as if
+  // GREEN were sound. FRAGILE stays log-only, unchanged.
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr)
+
+  if (skeptic.brokenCount >= 2) {
+    const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
+    const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join('\n') || 'no bug detail available'
+    log(`[${taskId}] SKEPTIC VERDICT: ${skeptic.brokenCount}/3 BROKEN — retrying GREEN once with ${confirmedBugs.length} confirmed bug(s)`)
+
+    const skepticRetryPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
+    green = await resilientAgent(
+      greenRetryPrompt({
+        ...greenVars,
+        failureReason: `The skeptic panel found confirmed bugs in the GREEN implementation. Fix them without breaking the tests.\nSKEPTIC FINDINGS:\n${bugSummary}`,
+        greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: 'skeptic_broken', skeptic_bugs: confirmedBugs }),
+      }),
+      stageOpts('green', { label: `green-skeptic-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+    )
+
+    // Independent re-verification of the retry — never trust the retry
+    // agent's own self-report alone (same green-blindness concern as #386).
+    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
+    const retryVerifyRaw = await agent(
+      batchCommandPrompt(retryVerifySteps),
+      stageOpts('cli', { label: `post-green-skeptic-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }),
+    )
+    const retryVerifyExit = testExitCode(stepStdout(parseBatchResult(retryVerifyRaw, retryVerifySteps), 'test-verify'))
+
+    if (retryVerifyExit !== 0 || !green || !green.success) {
+      const first = confirmedBugs[0]
+      const summary = first ? first.description : 'GREEN retry did not produce a passing, committed fix'
+      log(`[${taskId}] SKEPTIC RETRY FAILED: independent test-verify exit=${retryVerifyExit ?? 'null'}`)
+      return {
+        task_id: taskId,
+        status: 'failed',
+        stage: 'GREEN',
+        error: `skeptic_broken: ${confirmedBugs.length} confirmed bugs — ${summary}`,
+      }
+    }
+
+    // A second, independent skeptic pass over the retried implementation.
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr)
+    if (skeptic.brokenCount >= 2) {
+      const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
+      const first = stillConfirmed[0]
+      const summary = first ? first.description : 'implementation still broken after retry'
+      log(`[${taskId}] SKEPTIC VERDICT after retry: ${skeptic.brokenCount}/3 still BROKEN`)
+      return {
+        task_id: taskId,
+        status: 'failed',
+        stage: 'GREEN',
+        error: `skeptic_broken: ${stillConfirmed.length} confirmed bugs — ${summary}`,
+      }
+    }
+    log(`[${taskId}] SKEPTIC VERDICT after retry: PASS (${skeptic.crossValidated.length} cross-validated)`)
+  } else {
+    log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`)
+  }
+
+  // ── REFACTOR (writes + verifies + commits in one agent) ──
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+  if (!refResult) {
+    return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+  }
+
+  log(`[${taskId}] === LANE COMPLETE ===`)
+  await updateStage(issueId, 'done')
+  return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+}
+
+// ── Adversarial skeptic panel ────────────────────────────────────────────────
+// Extracted so the BROKEN-verdict retry path in runLane() can run it a second
+// time, independently, over the retried implementation.
+
+interface SkepticPanelResult {
+  allBugs: ReturnType<typeof crossValidateBugs>['allBugs']
+  brokenCount: number
+  crossValidated: ReturnType<typeof crossValidateBugs>['crossValidated']
+}
+
+async function runSkepticPanel(
+  taskId: string,
+  wt: string,
+  implFiles: string[],
+  testFiles: string[],
+  scopedTestCmd: string,
+  acStr: string,
+): Promise<SkepticPanelResult> {
   const base: string = skepticBasePrompt({
     wt, implFiles: implFiles.join(', '), testFiles: testFiles.join(', '),
     testCommand: scopedTestCmd, acStr,
@@ -918,21 +1039,7 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
       log(`[${taskId}]   - [${bug.severity}] ${bug.description}`)
     }
   }
-  if (brokenCount >= 2) {
-    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN`)
-  } else {
-    log(`[${taskId}] SKEPTIC VERDICT: PASS (${crossValidated.length} cross-validated)`)
-  }
-
-  // ── REFACTOR (writes + verifies + commits in one agent) ──
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
-  if (!refResult) {
-    return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
-  }
-
-  log(`[${taskId}] === LANE COMPLETE ===`)
-  await updateStage(issueId, 'done')
-  return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+  return { allBugs, brokenCount, crossValidated }
 }
 
 // ── Refactor sub-saga ──────────────────────────────────────────────────────

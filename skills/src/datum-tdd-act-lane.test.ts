@@ -401,6 +401,84 @@ describe('deterministic RED green-blindness gate', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Ownership check must fail CLOSED, not open. verifyFileOwnership() (the
+// agent-based LLM check used when hooks are not installed) asked a `cli`
+// agent to run `git diff --name-only HEAD~1 HEAD` and, on a null/empty/
+// unparseable result, returned { ok: true, violations: [] } — a failed check
+// reported as a clean one. A missing result is a named tooling failure, never
+// "ok". Every caller must also be able to tell a tooling failure
+// (ownership_check_failed) apart from a real violation (file_ownership_violation).
+// ---------------------------------------------------------------------------
+
+describe('ownership check fails closed, not open (agent-based verifyFileOwnership)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  function ownershipFnBody(): string {
+    const start = laneSource.indexOf('async function verifyFileOwnership(')
+    expect(start).toBeGreaterThan(-1)
+    const end = laneSource.indexOf('\n}\n', start)
+    return laneSource.slice(start, end)
+  }
+
+  it('no longer returns { ok: true, violations: [] } for a missing/null result', () => {
+    const body = ownershipFnBody()
+    expect(body).not.toMatch(/if\s*\(!result\)\s*return\s*\{\s*ok:\s*true,\s*violations:\s*\[\]\s*\}/)
+  })
+
+  it('a missing/null result is reported as ok: false with an ownership_check_failed violation', () => {
+    const body = ownershipFnBody()
+    expect(body).toMatch(/ok:\s*false/)
+    expect(body).toMatch(/ownership_check_failed/)
+  })
+
+  it('an unparseable (non-JSON, no files_changed) result is also treated as a check failure, not a clean pass', () => {
+    const body = ownershipFnBody()
+    // Must check that files_changed actually parsed as an array, not just
+    // fall through to an empty [] that trivially passes verifyFileOwnershipMatch.
+    expect(body).toMatch(/Array\.isArray\(.*files_changed/)
+  })
+
+  it('every !ok caller distinguishes a check failure (ownership_check_failed) from a real violation (file_ownership_violation)', () => {
+    expect(laneSource).toMatch(/checkFailed/)
+    // The old unconditional error template must be gone from both RED and GREEN call sites.
+    expect(laneSource).not.toMatch(/error:\s*`file_ownership_violation:\s*\$\{redOwnership\.violations\.join\(', '\)\}`/)
+    expect(laneSource).not.toMatch(/error:\s*`file_ownership_violation:\s*\$\{greenOwnership\.violations\.join\(', '\)\}`/)
+  })
+
+  it('a check-failure error string starts with ownership_check_failed, never file_ownership_violation', () => {
+    expect(laneSource).toMatch(/checkFailed\s*\?\s*'ownership_check_failed'\s*:\s*'file_ownership_violation'/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The skeptic panel's verdict must be consumed, not just logged. A
+// cross-validated BROKEN verdict must feed the confirmed bugs into one GREEN
+// retry (reusing greenRetryPrompt) and independently re-verify (test-verify +
+// a second skeptic pass) before the lane is allowed to proceed to REFACTOR.
+// FRAGILE stays log-only.
+// ---------------------------------------------------------------------------
+
+describe('skeptic verdict is consumed: a cross-validated BROKEN verdict retries GREEN', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('feeds confirmed bugs into a GREEN retry via greenRetryPrompt, using a SKEPTIC FINDINGS block', () => {
+    expect(laneSource).toMatch(/greenRetryPrompt\(/)
+    expect(laneSource).toMatch(/SKEPTIC FINDINGS/)
+  })
+
+  it('independently re-verifies after the retry (test-verify, not just the agent self-report)', () => {
+    const skepticIdx = laneSource.indexOf('SKEPTIC FINDINGS')
+    expect(skepticIdx).toBeGreaterThan(-1)
+    const after = laneSource.slice(skepticIdx)
+    expect(after).toMatch(/postGreenSteps\(/)
+  })
+
+  it('fails the lane with skeptic_broken and a confirmed-bug count if still BROKEN after the retry', () => {
+    expect(laneSource).toMatch(/skeptic_broken:\s*\$\{/)
+  })
+})
+
 describe('deterministic GREEN green-blindness gate (#386)', () => {
   const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
 

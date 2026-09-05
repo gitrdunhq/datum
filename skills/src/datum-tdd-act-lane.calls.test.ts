@@ -253,4 +253,100 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.error).toMatch(/count_gate_no_output/)
   })
+
+  // -------------------------------------------------------------------------
+  // Ownership check must fail closed. A null/unparseable ownership-check
+  // result must fail the lane with ownership_check_failed, never sail through
+  // as ok:true.
+  // -------------------------------------------------------------------------
+
+  it('a null ownership-check result at RED fails the lane with ownership_check_failed, not a silent pass', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (label.startsWith('ownership-check:') ? null : base(label, prompt))
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('RED')
+    expect(result.results.T1.error).toMatch(/^ownership_check_failed:/)
+  })
+
+  it('an unparseable ownership-check result (no files_changed) also fails closed', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (label.startsWith('ownership-check:') ? 'not json at all' : base(label, prompt))
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^ownership_check_failed:/)
+  })
+
+  // -------------------------------------------------------------------------
+  // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
+  // GREEN once with the confirmed bugs, then independently re-verify.
+  // -------------------------------------------------------------------------
+
+  it('a cross-validated BROKEN skeptic verdict retries GREEN once with confirmed bugs, then completes if the retry verdict is clean', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let skepticCalls = 0
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) {
+        skepticCalls++
+        if (skepticCalls <= 3) {
+          return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+        }
+        return { bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+      }
+      if (label.startsWith('green-skeptic-retry:')) {
+        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+      }
+      if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    const retryCall = calls.find((c) => c.label.startsWith('green-skeptic-retry:'))
+    expect(retryCall).toBeDefined()
+    expect(retryCall!.prompt).toMatch(/SKEPTIC FINDINGS/)
+    expect(retryCall!.prompt).toMatch(/off-by-one in loop bound/)
+    // Skeptic panel ran twice (3 lenses each): once after GREEN, once after the retry.
+    expect(skepticCalls).toBe(6)
+  })
+
+  it('a skeptic verdict still BROKEN after the retry fails the lane with skeptic_broken', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) {
+        return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+      }
+      if (label.startsWith('green-skeptic-retry:')) {
+        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+      }
+      if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/^skeptic_broken: \d+ confirmed bugs — off-by-one in loop bound/)
+  })
+
+  it('a skeptic retry whose independent test-verify still fails also fails the lane with skeptic_broken', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let skepticCalls = 0
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) {
+        skepticCalls++
+        return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+      }
+      if (label.startsWith('green-skeptic-retry:')) {
+        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+      }
+      if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=1\n' })
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/^skeptic_broken:/)
+    // Only one skeptic pass ran — the retry never got a second skeptic check
+    // because independent test-verify already failed it.
+    expect(skepticCalls).toBe(3)
+  })
 })

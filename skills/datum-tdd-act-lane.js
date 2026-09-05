@@ -892,10 +892,22 @@ Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
 No markdown fences, no explanation.`,
     stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") })
   );
-  if (!result) return { ok: true, violations: [] };
+  if (!result) {
+    return {
+      ok: false,
+      checkFailed: true,
+      violations: [`ownership_check_failed: ownership-check agent returned no result for ${stage} on ${taskId}`]
+    };
+  }
   const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
-  const changed = parsed.files_changed || [];
-  return verifyFileOwnership(changed, allowedFiles, forbiddenFiles);
+  if (!parsed || !Array.isArray(parsed.files_changed)) {
+    return {
+      ok: false,
+      checkFailed: true,
+      violations: [`ownership_check_failed: could not parse files_changed from ownership-check result for ${stage} on ${taskId} (raw: ${String(result).slice(0, 200)})`]
+    };
+  }
+  return verifyFileOwnership(parsed.files_changed, allowedFiles, forbiddenFiles);
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
@@ -1219,8 +1231,9 @@ No markdown fences, no explanation.`,
   await updateStage(issueId, "red", red.commit_sha);
   const redOwnership = deterministic ? ownershipFromStdout(stepStdout(postRedResult, "ownership"), testFiles, implFiles) : await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
   if (!redOwnership.ok) {
-    log(`[${taskId}] RED FILE OWNERSHIP VIOLATION: ${redOwnership.violations.join(", ")}`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: `file_ownership_violation: ${redOwnership.violations.join(", ")}` };
+    const redPrefix = redOwnership.checkFailed ? "ownership_check_failed" : "file_ownership_violation";
+    log(`[${taskId}] RED ${redPrefix.toUpperCase()}: ${redOwnership.violations.join(", ")}`);
+    return { task_id: taskId, status: "failed", stage: "RED", error: `${redPrefix}: ${redOwnership.violations.join(", ")}` };
   }
   const scopeTestContents = scopeContentsFromSteps(testFiles, (n) => stepStdout(postRedResult, n));
   const requiredScopeFiles = /* @__PURE__ */ new Set();
@@ -1418,11 +1431,71 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
   }
   if (!greenOwnership.ok) {
-    log(`[${taskId}] GREEN FILE OWNERSHIP VIOLATION: ${greenOwnership.violations.join(", ")}`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: `file_ownership_violation: ${greenOwnership.violations.join(", ")}` };
+    const greenPrefix = greenOwnership.checkFailed ? "ownership_check_failed" : "file_ownership_violation";
+    log(`[${taskId}] GREEN ${greenPrefix.toUpperCase()}: ${greenOwnership.violations.join(", ")}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: `${greenPrefix}: ${greenOwnership.violations.join(", ")}` };
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   await updateStage(issueId, "green", green.commit_sha);
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr);
+  if (skeptic.brokenCount >= 2) {
+    const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
+    const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join("\n") || "no bug detail available";
+    log(`[${taskId}] SKEPTIC VERDICT: ${skeptic.brokenCount}/3 BROKEN \u2014 retrying GREEN once with ${confirmedBugs.length} confirmed bug(s)`);
+    const skepticRetryPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
+    green = await resilientAgent(
+      greenRetryPrompt({
+        ...greenVars,
+        failureReason: `The skeptic panel found confirmed bugs in the GREEN implementation. Fix them without breaking the tests.
+SKEPTIC FINDINGS:
+${bugSummary}`,
+        greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: "skeptic_broken", skeptic_bugs: confirmedBugs })
+      }),
+      stageOpts("green", { label: `green-skeptic-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+    );
+    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
+    const retryVerifyRaw = await agent(
+      batchCommandPrompt(retryVerifySteps),
+      stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") })
+    );
+    const retryVerifyExit = testExitCode(stepStdout(parseBatchResult(retryVerifyRaw, retryVerifySteps), "test-verify"));
+    if (retryVerifyExit !== 0 || !green || !green.success) {
+      const first = confirmedBugs[0];
+      const summary = first ? first.description : "GREEN retry did not produce a passing, committed fix";
+      log(`[${taskId}] SKEPTIC RETRY FAILED: independent test-verify exit=${retryVerifyExit ?? "null"}`);
+      return {
+        task_id: taskId,
+        status: "failed",
+        stage: "GREEN",
+        error: `skeptic_broken: ${confirmedBugs.length} confirmed bugs \u2014 ${summary}`
+      };
+    }
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr);
+    if (skeptic.brokenCount >= 2) {
+      const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
+      const first = stillConfirmed[0];
+      const summary = first ? first.description : "implementation still broken after retry";
+      log(`[${taskId}] SKEPTIC VERDICT after retry: ${skeptic.brokenCount}/3 still BROKEN`);
+      return {
+        task_id: taskId,
+        status: "failed",
+        stage: "GREEN",
+        error: `skeptic_broken: ${stillConfirmed.length} confirmed bugs \u2014 ${summary}`
+      };
+    }
+    log(`[${taskId}] SKEPTIC VERDICT after retry: PASS (${skeptic.crossValidated.length} cross-validated)`);
+  } else {
+    log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`);
+  }
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+  if (!refResult) {
+    return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+  }
+  log(`[${taskId}] === LANE COMPLETE ===`);
+  await updateStage(issueId, "done");
+  return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+}
+async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr) {
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
@@ -1448,18 +1521,7 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
       log(`[${taskId}]   - [${bug.severity}] ${bug.description}`);
     }
   }
-  if (brokenCount >= 2) {
-    log(`[${taskId}] SKEPTIC VERDICT: ${brokenCount}/3 BROKEN`);
-  } else {
-    log(`[${taskId}] SKEPTIC VERDICT: PASS (${crossValidated.length} cross-validated)`);
-  }
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
-  if (!refResult) {
-    return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
-  }
-  log(`[${taskId}] === LANE COMPLETE ===`);
-  await updateStage(issueId, "done");
-  return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+  return { allBugs, brokenCount, crossValidated };
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
   log(`[${taskId}] REFACTOR: checking if needed`);
