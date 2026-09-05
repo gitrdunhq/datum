@@ -285,7 +285,7 @@ Concrete divergences in the current code, each naming the principle it violates.
 ### Open
 
 1. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion, the refactor pre-check decides whether REFACTOR runs at all, and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts`). Each is defensible as a *proposal*; none is re-verified. Violates (2). Accepted for now: the outcomes they gate (GREEN, REFACTOR, docs commit) are each independently verified afterwards.
-2. **Two remaining LLM relays** — Validate's main-sync (`mainSyncPrompt`, an agent fetches/merges main and reports `behind`/`merged`) and the `READ_CONFIG_PROMPT` reader that datum-validate / datum-tdd-act use when launched standalone without parent args. Both are bounded and the results are consumed by name, but neither is byte- or exit-code-verified. Violates (2).
+2. **Deferred files depend on the consuming agent reading them** — a file over the relay budget reaches the plan/refine/properties agents as a Read instruction, not as content. Nothing verifies the agent read it. Violates (2), mitigated by the hash in the instruction; a witness (the agent echoing the blob hash it read) would close it.
 3. **Dead producers with no consumer** (#394) — `datum gate red`, `datum verify-stage`, `commit_queue.py`, and the dedupe/render helpers have no call site in `skills/src/` or `datum/`. Violates (1). Decision pending: delete, or wire.
 
 ### Closed
@@ -301,6 +301,9 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Boot via LLM relay** — closed in a3e9dab: `bootSteps()`/`bootFromSteps()` read both configs, pipeline state, local skills, repo root and branch as one batch; corrupt state is `pipeline_state_corrupt`, not `null`.
 - **Triage re-guessed pipeline-known failures** — closed in 00c3892: `classifyLaneError` maps every named failure prefix to a category deterministically; dependency failures are never filed.
 - **Agent-type switch read after first use** — closed in 8a23f0b: `stageOpts` throws `agent_types_unconfigured` before `configureAgentTypes`; `bootstrapOpts` is the explicit pre-config read; a static test checks the order in every script.
+- **Main-sync and standalone config read via LLM** — closed in 337f3a8: `mainSyncSteps`/`mainSyncFromSteps` and `configReadSteps`/`configFromSteps`; `mainSyncPrompt` and `READ_CONFIG_PROMPT` are gone.
+- **Resume replayed stale gates** — closed in dcda394: the inputs fingerprint (configs, epic docs, pipeline state) is stamped into every batch prompt.
+- **Large-file relays fabricated by the runner** — closed in 84607b8: two-phase budgeted relay; files over 16 KB are read by the consuming agent.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
