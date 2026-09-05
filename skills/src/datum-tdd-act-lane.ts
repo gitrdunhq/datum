@@ -478,6 +478,34 @@ No markdown fences, no explanation.`,
       stageOpts('red', { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
     )
 
+    if (!red) {
+      // A null result is NOT "unknown": the agent returned nothing — turn cap
+      // (agents/datum-red.md maxTurns), API error, or skipped — and may have
+      // left half-applied test edits in the worktree. Name it, reset the
+      // worktree to the lane's last commit, and retry before falling into the
+      // commit-check / success-retry paths below (mirrors GREEN's BUG F fix).
+      const redFirstFailure = 'red_no_result: RED agent returned nothing (likely the maxTurns cap in agents/datum-red.md, an API error, or a skip)'
+      const redResetStepList = worktreeResetSteps(wt)
+      const redResetResult = parseBatchResult(
+        await agent(batchCommandPrompt(redResetStepList), stageOpts('cli', { label: `red-reset:${taskId}`, phase: 'Act', model: model('fast') })),
+        redResetStepList,
+      )
+      const redLeftover = (stepStdout(redResetResult, 'status') || '').trim()
+      log(`[${taskId}] RED attempt 1: ${redFirstFailure}; worktree reset to HEAD before retry${redLeftover ? ` (WARNING: still dirty: ${redLeftover.split('\n').length} paths)` : ''}`)
+      red = await resilientAgent(
+        redRetryPrompt({ ...promptVars, failureReason: redFirstFailure }),
+        stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      )
+      if (!red) {
+        return {
+          task_id: taskId,
+          status: 'failed',
+          stage: 'RED',
+          error: 'red_no_result: RED agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-red.md — the lane may need a smaller scope, or the cap raised)',
+        }
+      }
+    }
+
     if (red?.success) {
       log(`[${taskId}] RED wrote: ${(red.files_written || []).join(', ')}`)
     }
@@ -1121,12 +1149,46 @@ async function runRefactor(
     stageOpts('refactor', { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
   )
 
-  if (!refactor?.success) {
-    if (refactor?.failure_reason?.toLowerCase().includes('nothing to')) {
+  if (!refactor) {
+    // A null result is NOT "nothing to change" — the agent returned nothing
+    // (turn cap in agents/datum-refactor.md, an API error, or a skip) and may
+    // have left half-applied refactor edits in the worktree. REFACTOR is
+    // optional, so reset to HEAD (no partial edit survives) and confirm
+    // independently the suite is still green from that reset tree before
+    // treating it as "no refactor applied" — never blindly return verified:true.
+    const failure = 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'
+    const resetStepList = worktreeResetSteps(wt)
+    const resetResult = parseBatchResult(
+      await agent(batchCommandPrompt(resetStepList), stageOpts('cli', { label: `refactor-reset:${taskId}`, phase: 'Act', model: model('fast') })),
+      resetStepList,
+    )
+    const leftover = (stepStdout(resetResult, 'status') || '').trim()
+    log(`[${taskId}] REFACTOR: ${failure}; worktree reset to HEAD${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''} — treating as no refactor applied (optional stage)`)
+
+    const noRefactorVerifySteps = [
+      { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
+    ]
+    const noRefactorVerifyRaw = await agent(
+      batchCommandPrompt(noRefactorVerifySteps),
+      stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }),
+    )
+    const noRefactorVerifyResult = parseBatchResult(noRefactorVerifyRaw, noRefactorVerifySteps)
+    if (noRefactorVerifyResult.missing) {
+      return { verified: false, error: `${failure} (verify batch could not run: ${describeFailure(noRefactorVerifyResult, 'post-refactor-verify')})` }
+    }
+    const noRefactorVerifyExit = testExitCode(stepStdout(noRefactorVerifyResult, 'test-verify'))
+    if (noRefactorVerifyExit !== 0) {
+      return { verified: false, error: `${failure} (suite red after reset: independent exit=${noRefactorVerifyExit ?? 'no result'})` }
+    }
+    return { verified: true }
+  }
+
+  if (!refactor.success) {
+    if (refactor.failure_reason?.toLowerCase().includes('nothing to')) {
       log(`[${taskId}] REFACTOR: nothing to change`)
       return { verified: true }
     }
-    log(`[${taskId}] REFACTOR FAILED: ${refactor?.failure_reason || 'null'}`)
+    log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason || 'unknown'}`)
     return null
   }
 

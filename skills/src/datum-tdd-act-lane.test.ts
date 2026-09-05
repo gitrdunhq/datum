@@ -571,3 +571,68 @@ describe('GREEN null result — named error and clean-slate retry (BUG F)', () =
     expect(resetAt).toBeLessThan(retryAt)
   })
 })
+
+// Mirrors the GREEN null-result fix (887c6aa, BUG F) for RED: a null
+// resilientAgent result is not "unknown" — it means the RED agent returned
+// nothing (maxTurns cap in agents/datum-red.md, an API error, or a skip) and
+// may have left half-applied test edits in the worktree. The retry must
+// start from a reset worktree, and a second null must fail the lane loudly
+// with a named reason before any post-RED batch runs.
+describe('RED null result — named error and clean-slate retry', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const redFn = laneSrc.slice(laneSrc.indexOf('async function runLane'), laneSrc.indexOf('async function runSkepticPanel'))
+
+  it('names a null RED result red_no_result and mentions the turn cap as a likely cause', () => {
+    expect(redFn).toMatch(/red_no_result/)
+    expect(redFn).toMatch(/maxTurns/)
+  })
+
+  it('resets the worktree to HEAD (worktreeResetSteps) before the RED escalation retry when the first attempt returned nothing', () => {
+    expect(laneSrc).toMatch(/from '\.\/shared\/commit-steps'/)
+    const resetAt = redFn.indexOf('worktreeResetSteps(')
+    const retryAt = redFn.indexOf('red-retry:')
+    expect(resetAt).toBeGreaterThan(-1)
+    expect(retryAt).toBeGreaterThan(-1)
+    expect(resetAt).toBeLessThan(retryAt)
+  })
+
+  it('fails the lane with red_no_result (stage RED) if the retry is also null, before any post-RED batch runs', () => {
+    const noResultAt = redFn.indexOf('red_no_result')
+    const postRedAt = redFn.indexOf('post-red:')
+    expect(noResultAt).toBeGreaterThan(-1)
+    expect(postRedAt).toBeGreaterThan(-1)
+    expect(noResultAt).toBeLessThan(postRedAt)
+    expect(redFn).toMatch(/stage:\s*'RED'/)
+  })
+})
+
+// Mirrors the GREEN null-result fix for REFACTOR: unlike RED/GREEN, REFACTOR
+// is optional, so a null result must NOT be conflated with "nothing to
+// change" (no half-applied edits survive that path). Reset the worktree,
+// name the failure, and confirm independently that the suite is still green
+// from the reset tree before treating it as "no refactor applied".
+describe('REFACTOR null result — named error, worktree reset, independent re-verify', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const refactorFn = laneSrc.slice(laneSrc.indexOf('async function runRefactor'), laneSrc.indexOf('// ── DAG scheduler'))
+
+  it('names a null REFACTOR result refactor_no_result and mentions the turn cap as a likely cause', () => {
+    expect(refactorFn).toMatch(/refactor_no_result/)
+    expect(refactorFn).toMatch(/maxTurns/)
+  })
+
+  it('resets the worktree to HEAD (worktreeResetSteps) on a null result, before deciding verified', () => {
+    expect(laneSrc).toMatch(/from '\.\/shared\/commit-steps'/)
+    const resetAt = refactorFn.indexOf('worktreeResetSteps(')
+    expect(resetAt).toBeGreaterThan(-1)
+  })
+
+  it('does not blindly return verified:true on a null result — it re-verifies the suite independently first', () => {
+    // The null-result branch must reach the same test-verify step used by the
+    // real REFACTOR path, and must be able to return verified:false when that
+    // verify can't confirm a green suite.
+    const nullBranch = refactorFn.slice(refactorFn.indexOf('if (!refactor)'), refactorFn.indexOf('if (!refactor.success)'))
+    expect(nullBranch).toMatch(/test-verify/)
+    expect(nullBranch).toMatch(/verified:\s*false/)
+    expect(nullBranch).toMatch(/refactor_no_result/)
+  })
+})
