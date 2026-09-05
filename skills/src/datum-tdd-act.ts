@@ -67,6 +67,8 @@ if (!runId) throw new Error(`args.runId is required and auto-detect failed (${de
 
 const epicDir: string = `docs/epics/${epicBranch}`
 const lanePlanPath: string = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, 'resolve') || '')
+// Pre-generated RED skeletons from the Plan phase (datum-go passes the same).
+const skeletonDir = `docs/epics/${epicBranch}/skeletons`
 
 // ── Topology ──
 
@@ -168,93 +170,107 @@ for (let bi = 0; bi < batches.length; bi++) {
     continue
   }
 
-  // Setup
-  log('── Setup ──')
-  const setup = await workflow(
-    { scriptPath: sk('datum-tdd-act-setup') },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' }
-  ) as SetupResult
+  try {
+    // Setup
+    log('── Setup ──')
+    const setup = await workflow(
+      { scriptPath: sk('datum-tdd-act-setup') },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' }
+    ) as SetupResult
 
-  // Act
-  log('── Act ──')
-  const act = await workflow(
-    { scriptPath: sk('datum-tdd-act-lane') },
-    {
-      batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' },
-      priorFailures: failures,
-      priorCompleted: completedLanes,
-    }
-  ) as LaneResult
+    // Act
+    log('── Act ──')
+    const act = await workflow(
+      { scriptPath: sk('datum-tdd-act-lane') },
+      {
+        batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' },
+        priorFailures: failures,
+        priorCompleted: completedLanes,
+      }
+    ) as LaneResult
 
-  // Collect results
-  for (const [id, r] of Object.entries(act.results || {})) {
-    results[id] = r
-    if (!r || r.status === 'failed') {
-      failures.push(id)
-      log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
-    } else if (r.status === 'skipped' || r.status === 'blocked') {
-      log(`  ${r.status.toUpperCase()} ${id}: ${r.error || 'dependency failed'}`)
-    } else {
-      completedLanes.push(id)
+    // Collect results
+    for (const [id, r] of Object.entries(act.results || {})) {
+      results[id] = r
+      if (!r || r.status === 'failed') {
+        failures.push(id)
+        log(`  FAILED ${id}: ${r ? `${r.stage} — ${r.error}` : 'null result'}`)
+      } else if (r.status === 'skipped' || r.status === 'blocked') {
+        log(`  ${r.status.toUpperCase()} ${id}: ${r.error || 'dependency failed'}`)
+      } else {
+        completedLanes.push(id)
+      }
     }
-  }
-  log(`Act${batchTag} done: ${batchLaneIds.filter(id => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`)
+    log(`Act${batchTag} done: ${batchLaneIds.filter(id => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`)
 
-  // #356: a GREEN that is blocked on write access outside allowed_write_files
-  // is surfaced ONCE, as a single lead-approval question — not retried blind.
-  const approvals = Object.values(act.results || {}).filter(
-    (r): r is LaneOutcome => !!r && r.status === 'blocked' && r.stage === 'GREEN' && Array.isArray(r.needs_write),
-  )
-  if (approvals.length > 0) {
-    log(`\nLEAD APPROVAL NEEDED${batchTag} — GREEN is blocked on files outside allowed_write_files:`)
-    for (const r of approvals) {
-      log(`  ${r.task_id}: needs_write=[${(r.needs_write || []).join(', ')}]`)
-      log(`    ${r.error}`)
+    // #356: a GREEN that is blocked on write access outside allowed_write_files
+    // is surfaced ONCE, as a single lead-approval question — not retried blind.
+    const approvals = Object.values(act.results || {}).filter(
+      (r): r is LaneOutcome => !!r && r.status === 'blocked' && r.stage === 'GREEN' && Array.isArray(r.needs_write),
+    )
+    if (approvals.length > 0) {
+      log(`\nLEAD APPROVAL NEEDED${batchTag} — GREEN is blocked on files outside allowed_write_files:`)
+      for (const r of approvals) {
+        log(`  ${r.task_id}: needs_write=[${(r.needs_write || []).join(', ')}]`)
+        log(`    ${r.error}`)
+      }
+      log('  To approve: add the listed paths to that lane\'s `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.')
     }
-    log('  To approve: add the listed paths to that lane\'s `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.')
-  }
 
-  // Merge + Cleanup. The epic-scoped completion markers (so future runs/
-  // sessions skip these lanes) are written by the merge workflow in the same
-  // datum-cli call as the squash merge (#368).
-  log('── Merge ──')
-  const mergedIds = batchLaneIds.filter(id => completedLanes.includes(id))
-  const mergeResult = await workflow(
-    { scriptPath: sk('datum-tdd-act-merge') },
-    {
-      epicBranch,
-      completedIds: mergedIds,
-      results,
-      batchRunId,
-      topoOrder: lanePlan.topological_order,
-      batchTag,
-      agentTypes: agentTypeArgs(),
-      configFingerprint: a.configFingerprint || '',
-      laneState: mergedIds.length > 0
-        ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) }
-        : null,
-    }
-  ) as MergeResult | null
+    // Merge + Cleanup. The epic-scoped completion markers (so future runs/
+    // sessions skip these lanes) are written by the merge workflow in the same
+    // datum-cli call as the squash merge (#368).
+    log('── Merge ──')
+    const mergedIds = batchLaneIds.filter(id => completedLanes.includes(id))
+    const mergeResult = await workflow(
+      { scriptPath: sk('datum-tdd-act-merge') },
+      {
+        epicBranch,
+        completedIds: mergedIds,
+        results,
+        batchRunId,
+        topoOrder: lanePlan.topological_order,
+        batchTag,
+        agentTypes: agentTypeArgs(),
+        configFingerprint: a.configFingerprint || '',
+        laneState: mergedIds.length > 0
+          ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) }
+          : null,
+      }
+    ) as MergeResult | null
 
-  // Same rule as datum-go: a completed lane whose squash-merge did not land
-  // shipped nothing — demote it so the summary and triage tell the truth.
-  // Only the lanes the merge did not land are demoted: on a partial merge
-  // the earlier lanes are committed and kept (LaneMergeError).
-  if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
-    const failedLane = mergeResult && typeof mergeResult.failedLane === 'string' ? mergeResult.failedLane : ''
-    const why = mergeResult
-      ? (failedLane ? `squash-merge of ${failedLane} did not land` : 'squash-merge step exited non-zero')
-      : 'merge workflow returned null'
-    const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : [])
-    const unmerged = mergedIds.filter((id) => !landed.has(id))
-    for (const id of unmerged) {
-      const i = completedLanes.indexOf(id)
-      if (i >= 0) completedLanes.splice(i, 1)
-      failures.push(id)
-      results[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
+    // Same rule as datum-go: a completed lane whose squash-merge did not land
+    // shipped nothing — demote it so the summary and triage tell the truth.
+    // Only the lanes the merge did not land are demoted: on a partial merge
+    // the earlier lanes are committed and kept (LaneMergeError).
+    if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+      const failedLane = mergeResult && typeof mergeResult.failedLane === 'string' ? mergeResult.failedLane : ''
+      const why = mergeResult
+        ? (failedLane ? `squash-merge of ${failedLane} did not land` : 'squash-merge step exited non-zero')
+        : 'merge workflow returned null'
+      const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : [])
+      const unmerged = mergedIds.filter((id) => !landed.has(id))
+      for (const id of unmerged) {
+        const i = completedLanes.indexOf(id)
+        if (i >= 0) completedLanes.splice(i, 1)
+        failures.push(id)
+        results[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
+      }
+      log(`Merge${batchTag} FAILED — demoted [${unmerged.join(', ')}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(', ')}]` : ''}`)
     }
-    log(`Merge${batchTag} FAILED — demoted [${unmerged.join(', ')}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(', ')}]` : ''}`)
+  } catch (exc) {
+    // A throw in setup/lanes/merge must not abort the script with no
+    // summary and no triage after earlier batches merged (phase review
+    // wf_9a69f891-462): fail this batch's runnable lanes by name and go on —
+    // later batches that depend on them are blocked by the dep check.
+    const message = (exc as Error).message
+    log(`act_batch_failed: batch ${bi + 1}/${batches.length} — ${message}`)
+    for (const id of runnableBatchIds) {
+      if (results[id] && results[id].status === 'completed') continue
+      results[id] = { task_id: id, status: 'failed', stage: 'CRASH', error: `act_batch_failed: ${message}` }
+      if (!failures.includes(id)) failures.push(id)
+    }
   }
 }
 
@@ -334,9 +350,12 @@ export const __workflowResult = {
   completed: completedLanes.length,
   failed: failures.length,
   skipped: skippedLanes.length,
-  blocked: blockedLanes.length,
+  blocked: blockedLanes.filter(id => !laneNeedsWrite.includes(id)).length,
+  approval: laneNeedsWrite.length,
   failedLanes: failures,
   skippedLanes,
+  approvalLanes: laneNeedsWrite,
+  needsApproval: Object.fromEntries(laneNeedsWrite.map(id => [id, results[id]?.error || 'green_blocked_needs_write'])),
   blockedLanes,
   completedLanes,
 }

@@ -139,3 +139,31 @@ describe('GREEN needs-write blocks are surfaced and triaged in both orchestrator
     })
   }
 })
+
+// Phase review wf_9a69f891-462, datum-tdd-act.ts: a throw inside a batch
+// (setup, lane runner, merge) aborted the whole script with no summary and
+// no triage although earlier batches had merged; and the standalone entry
+// point never passed skeletonDir, so every lane regenerated its skeleton.
+describe('datum-tdd-act — a batch failure is contained and the Plan skeletons are reused', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act.ts'), 'utf8')
+  it('wraps each batch in try/catch and records act_batch_failed on the batch lanes', () => {
+    expect(src).toMatch(/for \(let bi = 0; bi < batches\.length; bi\+\+\) \{[\s\S]{0,1600}try \{/)
+    expect(src).toMatch(/act_batch_failed: batch \$\{bi \+ 1\}/)
+    expect(src).toMatch(/results\[id\] = \{ task_id: id, status: 'failed', stage: 'CRASH', error: `act_batch_failed/)
+  })
+  it('passes skeletonDir (docs/epics/<branch>/skeletons) to the lane runner cfg', () => {
+    expect(src).toMatch(/const skeletonDir = `docs\/epics\/\$\{epicBranch\}\/skeletons`/)
+    expect(src).toMatch(/cfg: \{[^\n]*skeletonDir[^\n]*\}/)
+  })
+})
+
+describe('the Act result reports needs-write lanes apart from dependency blocks', () => {
+  for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
+    it(`${f} exposes approvalLanes/needsApproval and excludes them from the blocked count`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/approvalLanes: \w*[nN]eedsWrite\w*/)
+      expect(src).toMatch(/needsApproval/)
+      expect(src).toMatch(/blocked: \w+\.(filter\(id => !\w*[nN]eedsWrite\w*\.includes\(id\)\)\.length|length)/)
+    })
+  }
+})
