@@ -653,6 +653,41 @@ function isStaleState(state2, currentBranch2) {
   if (!state2 || !currentBranch2) return false;
   return state2.branch !== currentBranch2;
 }
+var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function pipelineStateSaveSteps(o) {
+  const testsFlag = o.phase === "validate" ? o.testsPass ? " --tests-pass" : " --tests-fail" : "";
+  return [{
+    name: "save",
+    command: `datum pipeline-state-save --phase ${q3(o.phase)} --run-id ${q3(o.runId)} --route ${q3(o.route)}${testsFlag}`,
+    tolerant: true
+  }];
+}
+function pipelineStateSaveFromSteps(result, phase) {
+  const unverified = (why) => ({ recorded: false, refused: false, reason: `pipeline_state_save_unverified: ${why}` });
+  if (result.missing) return unverified(describeFailure(result, "save"));
+  const step = stepResult(result, "save");
+  if (!step) return unverified("save step did not run");
+  let json = null;
+  try {
+    const text = (step.stdout || "").trim();
+    const start = text.indexOf("{");
+    json = start >= 0 ? JSON.parse(text.slice(start, text.lastIndexOf("}") + 1)) : null;
+  } catch {
+    json = null;
+  }
+  if (json && json.verified === false) {
+    return { recorded: false, refused: true, reason: `pipeline_state_save_refused: ${typeof json.reason === "string" ? json.reason : "no reason given"}` };
+  }
+  if (step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    return unverified(`datum pipeline-state-save exited ${step.exit_code}${tail ? ` \u2014 ${tail}` : ""}`);
+  }
+  const completed = json && Array.isArray(json.completedPhases) ? json.completedPhases : null;
+  if (!completed || !completed.includes(phase)) {
+    return unverified(`exit 0 but the printed state does not list "${phase}" as completed`);
+  }
+  return { recorded: true, refused: false, reason: "" };
+}
 function detectStartFrom(state2) {
   if (!state2 || !state2.completedPhases?.length) return null;
   const ORDER = ["refine", "plan", "properties", "act", "validate", "review", "closeout"];
@@ -892,13 +927,13 @@ function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
 async function markPhaseComplete(p, testsPass) {
-  const testsFlag = p === "validate" ? testsPass ? " --tests-pass" : " --tests-fail" : "";
-  const saved = String(await agent(
-    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
-    stageOpts("cli", { label: `save-state:${p}`, model: model("fast") })
-  ) ?? "");
-  if (/"verified":\s*false/.test(saved)) {
-    log(`[warn] pipeline-state-save refused to record phase "${p}" \u2014 on-disk state NOT updated: ${saved.trim().slice(0, 300)}`);
+  const saveSteps = pipelineStateSaveSteps({ phase: p, runId: resolvedRunId, route, testsPass });
+  const saved = pipelineStateSaveFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(saveSteps), stageOpts("cli", { label: `save-state:${p}`, model: model("fast") })),
+    saveSteps
+  ), p);
+  if (!saved.recorded) {
+    log(`[warn] ${saved.reason} \u2014 phase "${p}" NOT recorded in .datum/pipeline-state.json`);
     return;
   }
   if (!completedPhases.includes(p)) completedPhases.push(p);
