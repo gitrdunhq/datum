@@ -335,14 +335,25 @@ def build_impl_stubs(
             continue
 
         content = "\n".join(lines)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
 
         stubs.append(
             {
                 "path": impl_path,
                 "functions": list(seen),
-                "stub_written": True,
+                # Fixed (#388): impl stubs are data for GREEN's packet, not
+                # files to plant in a checkout. Writing them to disk here
+                # left untracked source files (e.g. src/.../part_score.py)
+                # in whichever checkout happened to be `cwd` when `datum
+                # skeleton` ran — usually the ROOT checkout, since the lane
+                # intake and Plan-phase callers never `cd`/`--repo` into the
+                # lane worktree. Those stray files collided with squash-merge
+                # ("untracked working tree files would be overwritten") and
+                # could shadow GREEN's real implementation with a
+                # NotImplementedError stub during RED. GREEN reads stub
+                # bodies from this JSON's `content` field and writes the
+                # actual file itself — never from a pre-existing stub file.
+                "stub_written": False,
+                "content": content,
             }
         )
 
