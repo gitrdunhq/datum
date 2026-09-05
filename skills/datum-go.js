@@ -871,10 +871,16 @@ if (shouldRun("act", 3)) {
       log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
     }
   }
-  const docsResult = await workflow(
-    { scriptPath: sk("datum-tdd-act-docs") },
-    { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs() }
-  );
+  let docsResult = null;
+  try {
+    docsResult = await workflow(
+      { scriptPath: sk("datum-tdd-act-docs") },
+      { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint }
+    );
+  } catch (exc) {
+    log(`[warn] docs_workflow_failed: ${exc.message} \u2014 continuing; docs may be stale or left uncommitted`);
+    docsResult = { synced: false, committed: false, failure_reason: `docs_workflow_failed: ${exc.message}` };
+  }
   if (docsResult && docsResult.committed === false) {
     log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
   }

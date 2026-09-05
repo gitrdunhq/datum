@@ -16,61 +16,6 @@ function model(tier) {
   return activeTiers[tier];
 }
 
-// skills/src/shared/schemas.ts
-var STAGE_RESULT_SCHEMA = {
-  type: "object",
-  properties: {
-    files_written: { type: "array", items: { type: "string" } },
-    success: { type: "boolean" },
-    tests_pass: { type: "boolean" },
-    test_exit_code: { type: "number" },
-    test_errors: { type: "array", items: { type: "string" } },
-    test_output: { type: "string" },
-    committed: { type: "boolean" },
-    commit_sha: { type: "string" },
-    failure_reason: { type: "string" },
-    // #356: structured GREEN block — {status:"blocked", needs_write:[paths], reason}
-    status: { type: "string", enum: ["ok", "blocked"] },
-    needs_write: { type: "array", items: { type: "string" } },
-    reason: { type: "string" }
-  },
-  required: ["success", "tests_pass", "committed"]
-};
-var REFLECT_SCHEMA = {
-  type: "object",
-  properties: {
-    reasoning: { type: "string" },
-    gaps: { type: "array", items: { type: "string" } },
-    score: { type: "number" }
-  },
-  required: ["reasoning", "score"]
-};
-var SKEPTIC_SCHEMA = {
-  type: "object",
-  properties: {
-    bugs_found: { type: "array", items: {
-      type: "object",
-      properties: {
-        description: { type: "string" },
-        evidence: { type: "string" },
-        severity: { type: "string", enum: ["critical", "high", "medium", "low"] }
-      },
-      required: ["description", "evidence", "severity"]
-    } },
-    confidence: { type: "number" },
-    verdict: { type: "string", enum: ["PASS", "FRAGILE", "BROKEN"] }
-  },
-  required: ["bugs_found", "confidence", "verdict"]
-};
-var REFACTOR_CHECK_SCHEMA = {
-  type: "object",
-  properties: {
-    should_refactor: { type: "boolean" },
-    reason: { type: "string" }
-  },
-  required: ["should_refactor"]
-};
-
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -556,11 +501,11 @@ function parseCommitVerification(logStdout, statusStdout, commitPrefix, stage) {
   };
 }
 async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage, baseRef) {
-  const q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
-  const range = baseRef ? `${q2(baseRef)}..HEAD` : "-n 200";
+  const q3 = (s) => `"${s.replace(/"/g, '\\"')}"`;
+  const range = baseRef ? `${q3(baseRef)}..HEAD` : "-n 200";
   const steps = [
-    { name: "log", command: `git -C ${q2(wt)} log --format="%H %s" ${range}`, tolerant: true },
-    { name: "status", command: `git -C ${q2(wt)} status --porcelain -- ${files.map(q2).join(" ")}`, tolerant: true }
+    { name: "log", command: `git -C ${q3(wt)} log --format="%H %s" ${range}`, tolerant: true },
+    { name: "status", command: `git -C ${q3(wt)} status --porcelain -- ${files.map(q3).join(" ")}`, tolerant: true }
   ];
   const raw = await agent(
     batchCommandPrompt(steps),
@@ -780,6 +725,71 @@ function postGreenSteps(o) {
   }
   return steps;
 }
+
+// skills/src/shared/commit-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function worktreeResetSteps(wt) {
+  return [
+    { name: "reset", command: `git -C ${q2(wt)} reset --hard HEAD`, tolerant: true },
+    { name: "clean", command: `git -C ${q2(wt)} clean -fd`, tolerant: true },
+    { name: "status", command: `git -C ${q2(wt)} status --porcelain`, tolerant: true }
+  ];
+}
+
+// skills/src/shared/schemas.ts
+var STAGE_RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    files_written: { type: "array", items: { type: "string" } },
+    success: { type: "boolean" },
+    tests_pass: { type: "boolean" },
+    test_exit_code: { type: "number" },
+    test_errors: { type: "array", items: { type: "string" } },
+    test_output: { type: "string" },
+    committed: { type: "boolean" },
+    commit_sha: { type: "string" },
+    failure_reason: { type: "string" },
+    // #356: structured GREEN block — {status:"blocked", needs_write:[paths], reason}
+    status: { type: "string", enum: ["ok", "blocked"] },
+    needs_write: { type: "array", items: { type: "string" } },
+    reason: { type: "string" }
+  },
+  required: ["success", "tests_pass", "committed"]
+};
+var REFLECT_SCHEMA = {
+  type: "object",
+  properties: {
+    reasoning: { type: "string" },
+    gaps: { type: "array", items: { type: "string" } },
+    score: { type: "number" }
+  },
+  required: ["reasoning", "score"]
+};
+var SKEPTIC_SCHEMA = {
+  type: "object",
+  properties: {
+    bugs_found: { type: "array", items: {
+      type: "object",
+      properties: {
+        description: { type: "string" },
+        evidence: { type: "string" },
+        severity: { type: "string", enum: ["critical", "high", "medium", "low"] }
+      },
+      required: ["description", "evidence", "severity"]
+    } },
+    confidence: { type: "number" },
+    verdict: { type: "string", enum: ["PASS", "FRAGILE", "BROKEN"] }
+  },
+  required: ["bugs_found", "confidence", "verdict"]
+};
+var REFACTOR_CHECK_SCHEMA = {
+  type: "object",
+  properties: {
+    should_refactor: { type: "boolean" },
+    reason: { type: "string" }
+  },
+  required: ["should_refactor"]
+};
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
@@ -1404,16 +1414,35 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
         return { task_id: taskId, status: "blocked", stage: "GREEN", error: err, needs_write: decision.needsWrite };
       }
     } else {
-      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || "unknown"}, escalating to opus`);
+      let firstFailure = green?.failure_reason || "unknown";
+      if (!green) {
+        firstFailure = "green_no_result: GREEN agent returned nothing (likely the maxTurns cap in agents/datum-green.md, an API error, or a skip)";
+        const resetStepList = worktreeResetSteps(wt);
+        const resetResult = parseBatchResult(
+          await agent(batchCommandPrompt(resetStepList), stageOpts("cli", { label: `green-reset:${taskId}`, phase: "Act", model: model("fast") })),
+          resetStepList
+        );
+        const leftover = (stepStdout(resetResult, "status") || "").trim();
+        log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split("\n").length} paths)` : ""}`);
+      }
+      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${firstFailure}, escalating to opus`);
       green = await resilientAgent(
         greenRetryPrompt({
           ...greenVars,
-          failureReason: green?.failure_reason || "unknown",
-          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason })
+          failureReason: firstFailure,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure })
         }),
         stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
       );
     }
+  }
+  if (!green) {
+    return {
+      task_id: taskId,
+      status: "failed",
+      stage: "GREEN",
+      error: "green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md \u2014 the lane may need a smaller scope, or the cap raised)"
+    };
   }
   const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
   const postGreenVerifyRaw = await agent(

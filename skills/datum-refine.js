@@ -365,6 +365,46 @@ function contextSlot(f) {
   return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
 Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
+function contextWitnessInstruction(files) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  if (deferred.length === 0) return "";
+  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nYour JSON response is invalid without this field for every file listed above.";
+}
+function extractWitnessMap(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const w = parsed.read_witness;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return w;
+}
+function verifyReadWitness(files, parsed) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  const witness = extractWitnessMap(parsed);
+  const missing = [];
+  const mismatched = [];
+  for (const f of deferred) {
+    const value = witness[f.path];
+    if (typeof value !== "string" || !/^[0-9a-f]{12,}$/i.test(value)) {
+      missing.push(f.path);
+      continue;
+    }
+    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
+      mismatched.push(f.path);
+    }
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+}
+function assertReadWitness(files, parsed) {
+  const result = verifyReadWitness(files, parsed);
+  if (result.ok) return;
+  const witness = extractWitnessMap(parsed);
+  const byPath = new Map(files.map((f2) => [f2.path, f2]));
+  const badPath = result.missing[0] ?? result.mismatched[0];
+  const got = witness[badPath];
+  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
+  const f = byPath.get(badPath);
+  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -469,10 +509,11 @@ ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), al
   log("No addenda \u2014 single-scope TICKET");
 }
 var classifyRaw = await agent(
-  renderPrompt(refine_classify_default, { ticketContent }),
+  renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
   { label: "classify-ambiguity", model: model("fast") }
 );
 var classify = parseAgentJson(classifyRaw, { level: "medium", reasoning: "", gaps: [], assumptions: [] });
+assertReadWitness([ticketFile], classify);
 log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
 var requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
 var scanRaw = await agent(

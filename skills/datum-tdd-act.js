@@ -641,10 +641,16 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
   }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
-var docsResult = await workflow(
-  { scriptPath: sk("datum-tdd-act-docs") },
-  { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs() }
-);
+var docsResult = null;
+try {
+  docsResult = await workflow(
+    { scriptPath: sk("datum-tdd-act-docs") },
+    { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" }
+  );
+} catch (exc) {
+  log(`[warn] docs_workflow_failed: ${exc.message} \u2014 continuing; docs may be stale or left uncommitted`);
+  docsResult = { synced: false, committed: false, failure_reason: `docs_workflow_failed: ${exc.message}` };
+}
 if (docsResult && docsResult.committed === false) {
   log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
 }
