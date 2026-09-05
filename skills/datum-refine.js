@@ -205,6 +205,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -261,6 +264,98 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
+}
+function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
+}
+
+// skills/src/shared/commit-steps.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
+// skills/src/shared/agents.ts
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
+}
+
 // skills/src/shared/utf8.ts
 function utf8ByteLength(s) {
   let bytes = 0;
@@ -282,7 +377,7 @@ function utf8ByteLength(s) {
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
-function q(p) {
+function q2(p) {
   return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
 }
 function contextProbeSteps(o) {
@@ -293,12 +388,12 @@ function contextProbeSteps(o) {
   o.files.forEach((relPath, i) => {
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-sha-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then git hash-object ${q(relPath)}; else printf ''; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then git hash-object ${q2(relPath)}; else printf ''; fi`,
       tolerant: true
     });
   });
@@ -341,12 +436,12 @@ function contextInlineSteps(inlineFiles) {
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then cat ${q2(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
   });
@@ -437,81 +532,6 @@ function assertReadWitness(files, parsed) {
   const got = witness[badPath];
   const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
-}
-
-// skills/src/shared/agent-types.ts
-var AGENT_TYPE_TABLE = {
-  red: "datum-red",
-  green: "datum-green",
-  refactor: "datum-refactor",
-  skeptic: "datum-skeptic",
-  reflect: "datum-reflect",
-  docs: "datum-docs",
-  reader: "datum-reader",
-  cli: "datum-cli"
-};
-var state = { agentTypes: true, hooksInstalled: false };
-var configured = false;
-function configureAgentTypes(opts) {
-  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
-  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
-  configured = true;
-}
-function stageOpts(stage, extra = {}) {
-  if (!configured) {
-    throw new Error(
-      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
-    );
-  }
-  if (!state.agentTypes) return { ...extra };
-  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
-}
-function bootstrapOpts(stage, extra = {}) {
-  if (!configured) return { ...extra };
-  return stageOpts(stage, extra);
-}
-
-// skills/src/shared/commit-steps.ts
-var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
-function commitFilesSteps(o) {
-  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
-    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
-  }
-  if (/["`$\\]/.test(o.message)) {
-    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
-  }
-  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
-  const wt = q2(o.wt);
-  const files = o.files.map(q2).join(" ");
-  return [
-    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
-    { name: "add", command: `git -C ${wt} add -- ${files}` },
-    {
-      name: "commit",
-      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
-      tolerant: true
-    },
-    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
-  ];
-}
-function commitFilesFromSteps(result) {
-  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
-  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
-  const add = stepResult(result, "add");
-  if (!add || add.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const commit = stepResult(result, "commit");
-  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
-  const out = (commit.stdout || "").trim();
-  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
-  if (commit.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const sha = (stepStdout(result, "sha") || "").trim();
-  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
-  return { committed: true, nothingToCommit: false, sha, error: "" };
 }
 
 // skills/src/datum-refine.ts
@@ -658,10 +678,7 @@ for (const p of [specPath, questionsPath]) {
 var specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], "refine: write SPEC.md + QUESTIONS.md", "commit-spec");
 log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`);
 var gateStepList = gateSteps("refine", yolo ? " --approve" : "");
-var gate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),
-  gateStepList
-));
+var gate = parseGateResult(await runBatch(gateStepList, stageOpts("cli", { label: "gate", model: model("fast") })));
 if (gate.passed) log("Refine gate PASSED");
 else log(`Refine gate: ${gate.message || "needs review"}${gate.needsHuman ? " (needs human approval)" : ""}${gate.hardStop ? " (hard stop)" : ""}`);
 return {

@@ -523,10 +523,7 @@ if (!mainSync.ok) {
   log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else {
   const gateStepList = gateSteps("validate", yolo ? " --approve" : "");
-  const gate = parseGateResult(parseBatchResult(
-    await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),
-    gateStepList
-  ));
+  const gate = parseGateResult(await runBatch(gateStepList, stageOpts("cli", { label: "gate", model: model("fast") })));
   gatePassed = gate.passed;
   gateMessage = gate.message || "";
   gateNeedsHuman = !!gate.needsHuman;

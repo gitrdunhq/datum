@@ -278,6 +278,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -836,6 +839,23 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/agents.ts
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
+}
+
 // skills/src/prompts/plan-decompose.md
 var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nLanguage: {{language}}\nTest framework: {{testFramework}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nBUILD-ORDER / IMPORT ANALYSIS CHECK:\nBefore finalizing depends_on for any task, trace the actual import/reference graph implied by the codebase scan and the SPEC \u2014 which modules/files import or call which others \u2014 and make sure each task\'s depends_on reflects that real build order, not just narrative ordering from the SPEC. A task that will import or call code another task creates must depend_on that task.\n\nPROJECT BUILD CONSTRAINTS:\n{{contextFilesSection}}\nThe context_files section above (when present) lists project documentation that is authoritative for build order and module boundaries. Where these project docs conflict with a build order you would otherwise infer from source imports, the project docs take precedence over inferred imports \u2014 follow the documented order and note the override in the affected task\'s red_note.\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Task ids MUST be `task-NNN` \u2014 zero-padded to three digits, numbered in the order you list them (task-001, task-002, ...). The schema gate rejects any other id shape. Put the descriptive name in the required `slug` field instead (lowercase letters, digits, hyphens; 3-61 chars; pattern `^[a-z0-9][a-z0-9-]{2,60}$`, e.g. "add-cycle-detection", "validate-input-schema"). `depends_on` references use the `task-NNN` ids, never slugs.\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- PROTOCOL COMPLETENESS CHECK (do this for every task before finalizing its `files`): read each acceptance_criteria and ask "does satisfying this AC require adding or changing a method, property, or signature declared on a protocol, an abstract contract, a trait, or a base class?" (e.g. an AC like "use case calls repository.newMethod(...)" implies `newMethod` must be added to wherever the repository\'s contract is declared, not just its concrete implementation). If yes, search the repo (grep/ast-grep) for the declaration site of that contract/type \u2014 the keywords to search for vary by language ("protocol", "trait", "abstract", or the equivalent construct that declares a contract rather than an implementation) \u2014 and add that declaring file to `files` alongside the implementation file, since the lane\'s implementer needs to edit both in the same commit. Do not add it to `reads` in this case; `reads` is for files this task depends on but does not modify, and a contract gaining a new required member IS a modification. If no declaring file exists yet (the contract itself is new), say so in `red_note` instead of inventing a path.\n- NO-CODE-CHURN / DOCS-ONLY DETECTION (do this once, before writing any task\'s `red_note`): read the SPEC content for an NFR-style constraint stating the epic\'s diff must contain zero files of a given source-code extension, or that the epic is documentation-only/docs-only (e.g. "the diff must contain zero .swift/.py files", "documentation-only epic", "no code churn"). If such a constraint is present, then for every task whose `files[]` includes a test-artifact path that is directory-shaped or otherwise extensionless in a context where the epic\'s implementation language would normally require a compiled test package for that path (e.g. a Swift Testing target directory like `tests/CpdTableTests`), append this exact instruction to that task\'s `red_note`: "This epic forbids any file of the forbidden extension(s) in the diff. Write this test artifact as a single extensionless file containing pseudo-code/plain-text assertions \u2014 NOT a real compiled test package. Do NOT create a Package.swift, do NOT create a nested Tests/<Target>/ subdirectory, and do NOT add `import XCTest`/`import Testing` or any other compiled-test-framework import." Apply this identically to every affected lane so the constraint is decided once, centrally, at plan time rather than inferred independently per-lane.\n- UNIFICATION / FORK-CONSUMPTION PARITY CHECK (do this once, before finalizing any flip lane or deletion lane): read the SPEC for language describing a fork-consumption epic \u2014 e.g. "flip consumer(s) to the shared/canonical copy", "delete the fork/duplicate", "consolidate X into shared Y", or any end-state where a source tree is deleted in favor of an existing alternate tree. If detected, actually read and compare the fork\'s and the shared copy\'s file sets and public API surface for the specific files named in the SPEC \u2014 file existence, method/property signatures, protocol/contract conformance \u2014 do not just trust the SPEC\'s audit narrative. For every concrete gap found (a file present in the fork but missing from the shared copy, a method/property the fork\'s callers require that the shared copy lacks, a behavioral divergence the SPEC\'s own audit notes call out), emit a dedicated port task/lane scoped only to that gap\'s files, and add its id to the flip lane\'s `depends_on` so the flip lane is scoped to "flip now that parity is real," not "flip and also happen to fix everything wrong along the way." If the comparison can\'t be done confidently (the named files aren\'t findable, or the SPEC\'s claimed shared-copy location doesn\'t exist yet), do not fabricate port lanes \u2014 note the uncertainty in the flip lane\'s `red_note` instead, same fallback style as the PROTOCOL COMPLETENESS CHECK above.\n- BASELINE SYNC CHECK (same pass as the parity check above, unification epics only): before finalizing the flip lane, check whether the fork\'s target files as they exist on the epic branch actually match `main` for those same files \u2014 i.e. whether `main` has newer fixes to the fork that this plan doesn\'t yet account for. If a divergence is found, emit a dedicated sync-from-main task/lane scoped to only the diverging files, and add it to the flip lane\'s `depends_on` ahead of any parity-check port lanes. If this can\'t be determined confidently, note it in the flip lane\'s `red_note` rather than guessing \u2014 do not invent a sync lane speculatively.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: id, slug, title, acceptance_criteria, files, reads, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove \u2014 use the project\'s language and test framework, not Python/pytest unless that IS the project language\n- kind is "behavioral" (default) for any task that changes testable behavior. Set "kind": "structural" ONLY for tasks whose deliverable has no testable behavior at all \u2014 documentation-only (ADRs, README, docs/*.md), config-only, or pure file moves. Structural tasks skip the RED/GREEN test stages and run a single commit stage, so never mark a task structural if any acceptance criterion could be checked by a test.\n- depends_on lists task IDs this task requires to be completed first\n- reads lists files this task\'s implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on \u2014 otherwise the reader may run before the writer produces that file.\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "task-001",\n    "slug": "descriptive-task-name",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["src/module/file", "tests/test_file"],\n    "reads": [],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "kind": "behavioral",\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -963,10 +983,7 @@ var build = planBuildFromSteps(parseBatchResult(
 ), tasksJsonBlobSha(tasksJson));
 if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");
-var earlyGate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(earlyGateSteps), stageOpts("cli", { label: "gate-early", model: model("fast") })),
-  earlyGateSteps
-));
+var earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts("cli", { label: "gate-early", model: model("fast") })));
 if (!earlyGate.passed) {
   throw new Error(`Plan gate failed right after datum lane-plan \u2014 plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || "no message"}`);
 }
@@ -1015,10 +1032,7 @@ var routingWritten = writeFileFromSteps(parseBatchResult(
 if (!routingWritten.ok) throw new Error(routingWritten.error);
 await commitPlanFiles([".datum/routing.json"], "plan: triage decision", "commit-routing");
 var triageGateSteps = gateSteps("triage", "");
-var triageGate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(triageGateSteps), stageOpts("cli", { label: "gate-triage", model: model("fast") })),
-  triageGateSteps
-));
+var triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts("cli", { label: "gate-triage", model: model("fast") })));
 if (!triageGate.passed) throw new Error(`Triage gate failed \u2014 routing.json rejected: ${triageGate.message || "no message"}`);
 if (triage.decision === "deepen") {
   const deepenRaw = await agent(
@@ -1029,20 +1043,14 @@ if (triage.decision === "deepen") {
   log(`Deepen: ${deepen.tasks_researched} tasks, ${deepen.findings_count} findings`);
   await commitPlanFiles([`${epicDir}/TASKS.md`], "plan: deepen - research findings", "commit-deepen");
   const deepenGateSteps = gateSteps("deepen", "");
-  const deepenGate = parseGateResult(parseBatchResult(
-    await agent(batchCommandPrompt(deepenGateSteps), stageOpts("cli", { label: "gate-deepen", model: model("fast") })),
-    deepenGateSteps
-  ));
+  const deepenGate = parseGateResult(await runBatch(deepenGateSteps, stageOpts("cli", { label: "gate-deepen", model: model("fast") })));
   if (!deepenGate.passed) throw new Error(`Deepen gate failed \u2014 TASKS.md carries no Research Findings after the deepen agent ran: ${deepenGate.message || "no message"}`);
   log("Deepen gate PASSED");
 } else {
   log("Deepen skipped");
 }
 var gateStepList = gateSteps("plan", yolo ? " --approve" : "");
-var gate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),
-  gateStepList
-));
+var gate = parseGateResult(await runBatch(gateStepList, stageOpts("cli", { label: "gate", model: model("fast") })));
 if (gate.passed) log("Plan gate PASSED");
 else log(`Plan gate: ${gate.message || "needs approval"}${gate.needsHuman ? " (needs human approval)" : ""}${gate.hardStop ? " (hard stop)" : ""}`);
 var epicIssue;
