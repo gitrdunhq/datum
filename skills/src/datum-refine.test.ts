@@ -142,6 +142,49 @@ describe('datum-refine — deterministic gate verdict', () => {
 // named agent_output_unparseable failure instead of defaulting.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SPEC.md + QUESTIONS.md (and ROADMAP.md after addenda triage) were written
+// AND committed by the same agent, with its reply discarded: a runner that
+// wrote the files but never committed — or committed with a trailer copied
+// from the harness reminder — was indistinguishable from success, and
+// nothing verified a deferred TICKET.md was read before the SPEC was
+// written. Now the agents write and return a JSON receipt (carrying the
+// read witness when TICKET.md was deferred); the script commits through
+// commitFilesSteps and halts by name on a failed or empty commit.
+// ---------------------------------------------------------------------------
+
+describe('datum-refine — write and commit are separated; commits are batches', () => {
+  const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
+
+  it('no agent prompt commits', () => {
+    expect(src).not.toMatch(/&& git commit -m/)
+    expect(src).not.toMatch(/TASK 3 — Commit/)
+  })
+
+  it('the spec agent returns a receipt gated by the TICKET read witness, then the script commits SPEC.md + QUESTIONS.md', () => {
+    const idx = src.indexOf("label: 'write-spec-and-questions'")
+    expect(idx).toBeGreaterThan(-1)
+    const before = src.slice(idx - 2000, idx)
+    expect(before).toMatch(/Do NOT git add or git commit/)
+    expect(before).toMatch(/contextWitnessInstruction\(\[ticketFile\]\)/)
+    const after = src.slice(idx)
+    expect(after).toMatch(/parseAgentJsonStrict<SpecReceipt>\(specRaw as string, 'write-spec-and-questions'\)/)
+    expect(after).toMatch(/assertReadWitness\(\[ticketFile\], spec\)/)
+    expect(after).toMatch(/commitRefineFiles\(\[`\$\{epicDir\}\/SPEC\.md`, `\$\{epicDir\}\/QUESTIONS\.md`\], 'refine: write SPEC.md \+ QUESTIONS.md'/)
+  })
+
+  it('ROADMAP.md is committed by the script only when addenda were roadmapped, and an unchanged file is a named failure', () => {
+    expect(src).toMatch(/if \(triageResult\.roadmap_items\.length > 0\) \{/)
+    expect(src).toMatch(/commitRefineFiles\(\['ROADMAP\.md'\], 'roadmap: triage items from refine'/)
+  })
+
+  it('commitRefineFiles wraps commitFilesSteps/commitFilesFromSteps and halts as refine_commit_failed', () => {
+    expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files, message \}\)/)
+    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/throw new Error\(`refine_commit_failed: /)
+  })
+})
+
 describe('datum-refine — triage-addenda and classify-ambiguity use the strict parser', () => {
   const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
 

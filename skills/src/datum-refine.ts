@@ -9,6 +9,7 @@ import { gateSteps, parseGateResult } from './shared/gate'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
 
 export const meta = {
@@ -127,15 +128,33 @@ let triageResult: TriageResult = {
   merged_requirements: [],
 }
 
+// Every refine commit goes through a commitFilesSteps batch
+// (shared/commit-steps.ts): the exit code is the verdict, the agent that
+// wrote the files never commits them, and a failed or empty commit halts
+// by name. (An agent that "committed" used to be indistinguishable from
+// one that did not — its reply was discarded — and it could copy an
+// attribution trailer from the harness reminder into the message.)
+async function commitRefineFiles(files: string[], message: string, label: string): Promise<string> {
+  const commitStepList = commitFilesSteps({ wt: '.', files, message })
+  const commit = commitFilesFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label, model: model('fast') })),
+    commitStepList,
+  ))
+  if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`)
+  if (commit.nothingToCommit) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(', ')}) — the agent did not write them`)
+  return commit.sha
+}
+
 if (hasAddenda) {
-  // Triage agent also updates ROADMAP.md if needed (collapsed update-roadmap)
+  // Triage agent also updates ROADMAP.md if needed (collapsed update-roadmap);
+  // the script commits it below.
   const triageRaw = await agent(
     renderPrompt(refineTriageTemplate, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
-3. Commit: git add ROADMAP.md && git commit -m "roadmap: triage items from refine"`,
+Do NOT git add or git commit anything — the workflow commits ROADMAP.md after you return.`,
     { label: 'triage-addenda', model: model('balanced') },
   )
   // Strict: hasAddenda is true here, so a silent fallback to "no addenda"
@@ -145,6 +164,12 @@ ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), al
   // phase instead.
   triageResult = parseAgentJsonStrict<TriageResult>(triageRaw as string, 'triage-addenda')
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`)
+  if (triageResult.roadmap_items.length > 0) {
+    // Roadmapped addenda mean ROADMAP.md must have changed; nothing to
+    // commit is the agent having skipped the append, not a clean outcome.
+    const roadmapCommit = await commitRefineFiles(['ROADMAP.md'], 'roadmap: triage items from refine', 'commit-roadmap')
+    log(`ROADMAP.md committed (${roadmapCommit})`)
+  }
 } else {
   log('No addenda — single-scope TICKET')
 }
@@ -178,8 +203,8 @@ log(`Ambiguity: ${classify.level} — ${classify.reasoning}`)
 // Scan codebase
 // Not read-witness-gated: scanRaw's output is kept as free-form text
 // (scanResults below), never parsed as JSON, so there is no JSON field to
-// carry a read_witness in. Same reasoning applies to write-spec-and-questions
-// further down — its return value is discarded (it only writes files).
+// carry a read_witness in. (write-spec-and-questions further down IS gated:
+// it returns a JSON receipt.)
 const requirements: string = triageResult.merged_requirements.length > 0
   ? triageResult.merged_requirements.join('\n')
   : ticketContent
@@ -195,11 +220,15 @@ const scanResults: string = typeof scanRaw === 'string' ? scanRaw : JSON.stringi
 
 phase('Write')
 
-// Agent 1: write SPEC + QUESTIONS + commit both
+// Agent 1: write SPEC + QUESTIONS and return a receipt; the script commits.
+// The receipt is where a deferred TICKET.md read is evidenced (FLOW.md gap
+// 2): contextWitnessInstruction is '' when TICKET.md was inlined.
 const timestamp: string = stepStdout(readBatch, 'timestamp') || ''
 const today = timestamp ? timestamp.slice(0, 10) : '(date unavailable)'
+const specPath = `${epicDir}/SPEC.md`
+const questionsPath = `${epicDir}/QUESTIONS.md`
 
-await agent(
+const specRaw = await agent(
   `You have TWO tasks. Do them in order.
 
 TASK 1 — Write SPEC.md:
@@ -211,7 +240,7 @@ ${renderPrompt(refineSpecTemplate, {
     assumptions: classify.assumptions.join('\n'),
   })}
 
-Write the SPEC to "${epicDir}/SPEC.md" (create dirs if needed).
+Write the SPEC to "${specPath}" (create dirs if needed).
 
 TASK 2 — Write QUESTIONS.md:
 ${renderPrompt(refineQuestionsTemplate, {
@@ -221,14 +250,25 @@ ${renderPrompt(refineQuestionsTemplate, {
     date: today,
   })}
 
-Write the QUESTIONS to "${epicDir}/QUESTIONS.md".
+Write the QUESTIONS to "${questionsPath}".
 
-TASK 3 — Commit both:
-git add "${epicDir}/SPEC.md" "${epicDir}/QUESTIONS.md" && git commit -m "refine: write SPEC.md + QUESTIONS.md"`,
+Do NOT git add or git commit anything — the workflow commits both files after you return.
+Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}`
+  + contextWitnessInstruction([ticketFile]),
   { label: 'write-spec-and-questions', model: model('balanced') },
 )
 
-log(`SPEC.md + QUESTIONS.md written to ${epicDir}`)
+interface SpecReceipt { written: string[]; read_witness?: Record<string, string> }
+const spec = parseAgentJsonStrict<SpecReceipt>(specRaw as string, 'write-spec-and-questions')
+assertReadWitness([ticketFile], spec)
+for (const p of [specPath, questionsPath]) {
+  if (!Array.isArray(spec.written) || !spec.written.includes(p)) {
+    throw new Error(`refine_write_failed: agent did not report writing ${p} (reported: ${JSON.stringify(spec.written)})`)
+  }
+}
+
+const specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], 'refine: write SPEC.md + QUESTIONS.md', 'commit-spec')
+log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`)
 
 // Gate — deterministic: the verdict is `datum gate`'s exit code read from a
 // batch step (shared/gate.ts), not an LLM's echo of its JSON.
