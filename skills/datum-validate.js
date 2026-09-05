@@ -90,6 +90,9 @@ function evaluateMainSync(result, noMergeMain2) {
   if (!result || typeof result !== "object" || typeof result.behind !== "number") {
     return { ok: false, message: `could not determine whether the epic is behind main: ${result?.error || "no sync result (git fetch origin main failed or returned unparseable output)"}` };
   }
+  if (result.skipped) {
+    return { ok: true, message: `main sync skipped: ${result.skipped}` };
+  }
   if (result.conflict) {
     return { ok: false, message: `merging origin/main into the epic branch hit a conflict (epic was ${result.behind} commits behind main); merge aborted \u2014 resolve by hand, then re-run validate: ${result.output || ""}`.trim() };
   }
@@ -254,6 +257,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -293,17 +299,28 @@ function validateVerifySteps(testCommand2, cwd) {
 }
 
 // skills/src/shared/main-sync-steps.ts
-function mainSyncSteps(noMergeMain2) {
+var SKIP_MARKER = "SKIPPED_NO_REMOTE";
+var BRANCH_RE = /^[A-Za-z0-9._\/-]+$/;
+function mainSyncSteps(noMergeMain2, mainBranch) {
+  const explicit = typeof mainBranch === "string" && mainBranch.trim() && BRANCH_RE.test(mainBranch.trim()) && !mainBranch.trim().startsWith("-") ? mainBranch.trim() : null;
+  const baseCommand = explicit ? `BASE="${explicit}"; echo "$BASE"` : [
+    'BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed "s#^origin/##")',
+    'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then BASE="$b"; break; fi; done; fi',
+    '[ -n "$BASE" ] || BASE=main',
+    'echo "$BASE"'
+  ].join("\n");
   const steps = [
-    { name: "fetch", command: "git fetch origin main" },
-    { name: "behind", command: 'BEHIND=$(git rev-list --count HEAD..origin/main); echo "$BEHIND"' }
+    { name: "remote", command: `if git remote get-url origin >/dev/null 2>&1; then HAS_REMOTE=1; echo HAS_REMOTE; else HAS_REMOTE=0; echo NO_REMOTE; fi`, tolerant: true },
+    { name: "base", command: baseCommand, tolerant: true },
+    { name: "fetch", command: `if [ "\${HAS_REMOTE:-0}" -eq 1 ]; then git fetch origin "$BASE"; else echo ${SKIP_MARKER}; fi` },
+    { name: "behind", command: `if [ "\${HAS_REMOTE:-0}" -eq 1 ]; then BEHIND=$(git rev-list --count HEAD.."origin/$BASE"); echo "$BEHIND"; else BEHIND=0; echo ${SKIP_MARKER}; fi` }
   ];
   if (!noMergeMain2) {
     steps.push({
       name: "merge",
       command: [
         'if [ "${BEHIND:-0}" -gt 0 ]; then',
-        "  if git merge --no-edit origin/main; then",
+        '  if git merge --no-edit "origin/$BASE"; then',
         "    true",
         "  else",
         "    git merge --abort",
@@ -320,15 +337,18 @@ function mainSyncSteps(noMergeMain2) {
 }
 function mainSyncFromSteps(result, noMergeMain2) {
   if (result.missing) {
-    throw new Error("main_sync_failed: batch agent returned no parseable result for main-sync");
+    throw new Error(`main_sync_failed: ${describeFailure(result, "main-sync")}`);
   }
   if (result.failed) {
     throw new Error(`main_sync_failed: ${describeFailure(result, "main-sync")}`);
   }
   const behindRaw = (stepStdout(result, "behind") || "").trim();
+  if (behindRaw === SKIP_MARKER && (stepStdout(result, "remote") || "").trim() === "NO_REMOTE") {
+    return { behind: 0, merged: false, conflict: false, skipped: "no origin remote" };
+  }
   const behind = parseInt(behindRaw, 10);
   if (!Number.isFinite(behind)) {
-    throw new Error(`main_sync_failed: could not parse behind-count output from \`git rev-list --count HEAD..origin/main\` ("${behindRaw}")`);
+    throw new Error(`main_sync_failed: could not parse behind-count output from \`git rev-list --count HEAD..origin/<base>\` ("${behindRaw}")`);
   }
   if (noMergeMain2 || behind === 0) {
     return { behind, merged: false, conflict: false };
@@ -342,6 +362,23 @@ function mainSyncFromSteps(result, noMergeMain2) {
   }
   const output = (mergeStep.stderr || mergeStep.stdout || "").trim().split("\n").slice(-20).join("\n");
   return { behind, merged: false, conflict: true, output };
+}
+
+// skills/src/shared/agents.ts
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
 }
 
 // skills/src/shared/config-steps.ts
@@ -431,9 +468,8 @@ if (!a.testCommand) {
 if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 phase("Validate");
-var syncSteps = mainSyncSteps(noMergeMain);
-var syncBatchRaw = await agent(batchCommandPrompt(syncSteps), stageOpts("cli", { label: "main-sync", model: model("fast") }));
-var syncBatch = parseBatchResult(syncBatchRaw, syncSteps);
+var syncSteps = mainSyncSteps(noMergeMain, repoCfg.main_branch);
+var syncBatch = await runBatch(syncSteps, stageOpts("cli", { label: "main-sync", model: model("fast") }));
 var syncResult = null;
 var mainSync;
 try {
