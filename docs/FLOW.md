@@ -285,9 +285,10 @@ Concrete divergences in the current code, each naming the principle it violates.
 ### Open
 
 1. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion, the refactor pre-check decides whether REFACTOR runs at all, and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts`). Each is defensible as a *proposal*; none is re-verified. Violates (2). Accepted for now: the outcomes they gate (GREEN, REFACTOR, docs commit) are each independently verified afterwards.
-2. **Two deferred-file consumers still have no witness** — plan's decompose-tasks returns a bare JSON array (no slot for `read_witness` without changing the tasks.json contract) and properties' derive agent's output is discarded (it writes and commits PROPERTIES.md itself). Both can receive a deferred SPEC. Violates (2). The classify and approaches agents are gated (840becd).
+
 ### Closed
 
+- **Two deferred-file consumers had no witness** — closed in 45d4b50: decompose-tasks gets `contextWitnessWrapInstruction` (wrap the array as `{read_witness, tasks}` only when the SPEC or a context_file was deferred; `unwrapWitnessedArray` takes it back out, tasks.json unchanged) and properties' derive agent now writes PROPERTIES.md, returns a JSON receipt carrying the witness, and the script commits it via `commitFilesSteps` (`properties_commit_failed`). The classify and approaches agents were gated in 840becd.
 - **Dead producers with no consumer** (#394) — closed in 9b6ffcb/1840733: `get_spm_test_command` was the one producer worth a consumer and now feeds per-lane `test_command` for Swift subpackages (`detect_spm_lane_override`); `datum gate red`, `datum verify-stage`, `commit_queue.py`, `dedupe.py`, the `tdd_driver` verify helpers, `resolve_tier`, `load_project_rules`, `caliper_available`, `backoff_ms`, and `check_no_source_leak` were deleted with their tests.
 - **Skeptic verdicts advisory** — closed in 3b5b480: BROKEN triggers one verified GREEN retry, then `skeptic_broken` fails the lane.
 - **Review's `canMerge` LLM-judged; `gate_review` unreachable** — closed in b5528aa: `datum gate review` resolves the report via `resolve_artifact`, drops the packets requirement, and datum-review/datum-go run `gateSteps('review')` and halt on it.
