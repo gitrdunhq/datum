@@ -2284,7 +2284,25 @@ def lane_state_read(
         typer.echo(json.dumps({"status": "not_found"}))
         return
 
-    typer.echo(marker_path.read_text().strip())
+    # Validate marker content: must be valid JSON and a dict.
+    # Per FLOW.md principle 3 "No silent fallbacks", corrupt markers are named errors,
+    # not silently treated as "fresh lane" by downstream jq parsing that fails silently.
+    try:
+        marker_text = marker_path.read_text().strip()
+        if not marker_text:
+            raise ValueError("marker file is empty")
+        marker_data = json.loads(marker_text)
+        if not isinstance(marker_data, dict):
+            raise ValueError(
+                f"marker must be a JSON object, not {type(marker_data).__name__}"
+            )
+    except (json.JSONDecodeError, ValueError) as exc:
+        console_err.print(
+            f"[bold red]lane_state_marker_corrupt: {marker_path}: {exc}[/bold red]"
+        )
+        raise typer.Exit(1) from None
+
+    typer.echo(json.dumps(marker_data))
 
 
 # ── TDD stage verification (#133) ────────────────────────────────────────────
