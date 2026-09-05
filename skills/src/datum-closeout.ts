@@ -123,8 +123,10 @@ const synthCommit = commitFilesFromSteps(parseBatchResult(
   synthCommitSteps,
 ))
 if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`)
-if (synthCommit.nothingToCommit) throw new Error(`closeout_commit_failed: nothing to commit for ${synthFiles.join(', ')} — the synthesis agent did not write them`)
-log(`Closeout artifacts committed (${synthCommit.sha})`)
+// A missing file fails `git add` (synthCommit.error); nothing-to-commit means
+// the artifacts already match HEAD — a resume after they landed.
+if (synthCommit.nothingToCommit) log(`Closeout artifacts unchanged since the last run — already committed (${synthFiles.join(', ')})`)
+else log(`Closeout artifacts committed (${synthCommit.sha})`)
 
 // ── Archive: tag, datum closeout-archive, move pipeline artifacts, commit ──
 //

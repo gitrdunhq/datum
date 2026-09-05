@@ -269,7 +269,9 @@ async function commitPlanFiles(files: string[], message: string, label: string):
     commitStepList,
   ))
   if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`)
-  if (commit.nothingToCommit) throw new Error(`plan_commit_failed: nothing to commit for ${label} (${files.join(', ')})`)
+  // A missing file fails `git add` (commit.error); nothing-to-commit means the
+  // files already match HEAD — a resume re-running a landed step.
+  if (commit.nothingToCommit) { log(`${label}: ${files.join(', ')} unchanged since the last run — already committed`); return 'unchanged' }
   return commit.sha
 }
 

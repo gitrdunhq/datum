@@ -122,9 +122,11 @@ const commit = commitFilesFromSteps(parseBatchResult(
   commitStepList,
 ))
 if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`)
-if (commit.nothingToCommit) throw new Error(`properties_commit_failed: nothing to commit at ${propertiesPath} — the derive agent did not write it`)
-
-log(`PROPERTIES.md written and committed (${commit.sha})`)
+// `git add` of a missing file fails the batch above (commit.error), so
+// nothing-to-commit means the file exists and already matches HEAD: a resume
+// after derive+commit landed but the gate threw (phase review wf_8a923794-99c).
+if (commit.nothingToCommit) log(`PROPERTIES.md unchanged since the last run — already committed at ${propertiesPath}`)
+else log(`PROPERTIES.md written and committed (${commit.sha})`)
 
 // Gate
 // Deterministic: the verdict is `datum gate`'s exit code read from a batch

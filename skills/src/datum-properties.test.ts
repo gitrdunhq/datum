@@ -148,10 +148,16 @@ describe('datum-properties — read-witness gate on derive (FLOW.md open gap 2)'
     expect(commitIdx).toBeGreaterThan(assertIdx)
   })
 
-  it('a commit that fails or finds nothing to commit is a named properties_commit_failed halt, not a log line', () => {
+  // Phase review (wf_8a923794-99c): `git add` of a missing file fails the
+  // batch (commit.error), so nothingToCommit can only mean the file exists
+  // and already matches HEAD — a resume after derive+commit landed but the
+  // gate threw. Throwing "the derive agent did not write it" there was a
+  // wrong diagnosis that blocked a legitimate resume.
+  it('a failed commit is a named properties_commit_failed halt; nothing-to-commit is a logged no-op (file unchanged since last run)', () => {
     expect(propertiesSrc).toMatch(/commitFilesFromSteps\(/)
-    expect(propertiesSrc).toMatch(/throw new Error\(`properties_commit_failed: /)
-    expect(propertiesSrc).toMatch(/nothingToCommit/)
+    expect(propertiesSrc).toMatch(/throw new Error\(`properties_commit_failed: \$\{commit\.error\}`\)/)
+    expect(propertiesSrc).toMatch(/if \(commit\.nothingToCommit\) log\(`PROPERTIES\.md unchanged since the last run/)
+    expect(propertiesSrc).not.toMatch(/nothingToCommit\) throw/)
   })
 })
 

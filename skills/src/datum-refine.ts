@@ -134,14 +134,21 @@ let triageResult: TriageResult = {
 // by name. (An agent that "committed" used to be indistinguishable from
 // one that did not — its reply was discarded — and it could copy an
 // attribution trailer from the harness reminder into the message.)
-async function commitRefineFiles(files: string[], message: string, label: string): Promise<string> {
+async function commitRefineFiles(files: string[], message: string, label: string, opts: { allowUnchanged: boolean } = { allowUnchanged: true }): Promise<string> {
   const commitStepList = commitFilesSteps({ wt: '.', files, message })
   const commit = commitFilesFromSteps(parseBatchResult(
     await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label, model: model('fast') })),
     commitStepList,
   ))
   if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`)
-  if (commit.nothingToCommit) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(', ')}) — the agent did not write them`)
+  // A missing file fails `git add` (commit.error). Nothing-to-commit means the
+  // files already match HEAD: fine for a resume re-writing SPEC.md, a failure
+  // for an append the agent was supposed to make (ROADMAP.md, allowUnchanged=false).
+  if (commit.nothingToCommit) {
+    if (!opts.allowUnchanged) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(', ')}) — the agent did not write them`)
+    log(`${label}: ${files.join(', ')} unchanged since the last run — already committed`)
+    return 'unchanged'
+  }
   return commit.sha
 }
 
@@ -167,7 +174,7 @@ Do NOT git add or git commit anything — the workflow commits ROADMAP.md after 
   if (triageResult.roadmap_items.length > 0) {
     // Roadmapped addenda mean ROADMAP.md must have changed; nothing to
     // commit is the agent having skipped the append, not a clean outcome.
-    const roadmapCommit = await commitRefineFiles(['ROADMAP.md'], 'roadmap: triage items from refine', 'commit-roadmap')
+    const roadmapCommit = await commitRefineFiles(['ROADMAP.md'], 'roadmap: triage items from refine', 'commit-roadmap', { allowUnchanged: false })
     log(`ROADMAP.md committed (${roadmapCommit})`)
   }
 } else {
