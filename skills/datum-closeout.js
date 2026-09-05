@@ -91,7 +91,7 @@ function model(tier) {
 }
 
 // skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact:\n- Write the file\n- Commit: git add <file> && git commit -m "closeout: write <artifact>"\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits CURRENT_STATE.md, CHANGELOG.md and RETRO.md after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -273,6 +273,49 @@ function closeoutArchiveSteps(o) {
   return steps;
 }
 
+// skills/src/shared/commit-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q2(o.wt);
+  const files = o.files.map(q2).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
 // skills/src/datum-closeout.ts
 var COLLECTOR_STEPS = ["collect-git", "collect-tasks", "collect-token-metrics", "collate"];
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -306,6 +349,7 @@ if (!dataExists) {
   );
 }
 phase("Synthesize");
+var epicDir = `docs/epics/${branch}`;
 var synthResult = await agent(
   renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
   { label: "synthesize", model: model("balanced") }
@@ -314,8 +358,16 @@ if (!synthResult) {
   throw new Error("agent_output_unparseable: synthesize \u2014 (no result)");
 }
 var synth = typeof synthResult === "string" ? parseAgentJsonStrict(synthResult, "synthesize") : synthResult;
-log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
-var epicDir = `docs/epics/${branch}`;
+log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(", ")}`);
+var synthFiles = ["CURRENT_STATE.md", "CHANGELOG.md", `${epicDir}/RETRO.md`];
+var synthCommitSteps = commitFilesSteps({ wt: ".", files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` });
+var synthCommit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(synthCommitSteps), stageOpts("cli", { label: "commit-synthesis", model: model("fast") })),
+  synthCommitSteps
+));
+if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`);
+if (synthCommit.nothingToCommit) throw new Error(`closeout_commit_failed: nothing to commit for ${synthFiles.join(", ")} \u2014 the synthesis agent did not write them`);
+log(`Closeout artifacts committed (${synthCommit.sha})`);
 var archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir });
 var archiveRaw = await agent(
   batchCommandPrompt(archiveSteps),
