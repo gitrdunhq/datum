@@ -441,6 +441,46 @@ function describeFailure(r, label) {
 
 // skills/src/shared/commit-steps.ts
 var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
 function worktreeResetSteps(wt) {
   return [
     { name: "reset", command: `git -C ${q(wt)} reset --hard HEAD`, tolerant: true },
@@ -1802,8 +1842,16 @@ No markdown fences, no explanation.`,
         );
       } else {
         const refusal = cfg2.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(", ")}] not inside src/)` : "";
-        const err = `needs_approval: GREEN blocked \u2014 needs write access to [${decision.needsWrite.join(", ") || "unspecified"}]: ${decision.reason}${refusal}`;
+        const err = `green_blocked_needs_write: [${decision.needsWrite.join(", ") || "unspecified"}] \u2014 ${decision.reason}${refusal}`;
         log(`[${taskId}] ${err}`);
+        const partial = (green?.files_written || []).filter((f) => implFiles.includes(f));
+        if (partial.length > 0) {
+          const wipMsg = `wip(${taskId}): GREEN partial - blocked on ${decision.needsWrite.join(" ") || "unspecified"}`.replace(/["`$\\]/g, "");
+          const wipSteps = commitFilesSteps({ wt, files: partial, message: wipMsg });
+          const wip = commitFilesFromSteps(await runBatch(wipSteps, stageOpts("cli", { label: `green-wip-commit:${taskId}`, phase: "Act", model: model("fast") })));
+          if (wip.committed) log(`[${taskId}] green_partial_committed: ${wip.sha} \u2014 [${partial.join(", ")}] kept on the lane branch as a wip commit`);
+          else log(`[${taskId}] green_partial_not_committed: ${wip.nothingToCommit ? "nothing to commit" : wip.error} \u2014 partial edits in [${partial.join(", ")}] will be lost at cleanup`);
+        }
         return { task_id: taskId, status: "blocked", stage: "GREEN", error: err, needs_write: decision.needsWrite };
       }
     } else {

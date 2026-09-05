@@ -810,12 +810,13 @@ if (blockedLanes.length > 0) {
   }
 }
 log(`${"\u2550".repeat(60)}`);
-if (failures.length > 0) {
+var laneNeedsWrite = blockedLanes.filter((id) => Array.isArray(results[id]?.needs_write));
+if (failures.length > 0 || laneNeedsWrite.length > 0) {
   log("\u2500\u2500 Triage \u2500\u2500");
   try {
     const triage = await workflow(
       { scriptPath: sk("datum-tdd-act-triage") },
-      { failures, blocked: blockedLanes.map((id) => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
+      { failures: [...failures, ...laneNeedsWrite], blocked: blockedLanes.filter((id) => !laneNeedsWrite.includes(id)).map((id) => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
     );
     log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`);
   } catch (exc) {

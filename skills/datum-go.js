@@ -1093,11 +1093,21 @@ if (shouldRun("act", 3)) {
     }
     const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
     const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
-    if (actFailures.length > 0) {
+    const actNeedsWrite = actBlocked.filter((id) => Array.isArray(actResults[id]?.needs_write));
+    if (actNeedsWrite.length > 0) {
+      log("\nLEAD APPROVAL NEEDED \u2014 GREEN is blocked on files outside allowed_write_files:");
+      for (const id of actNeedsWrite) {
+        const r = actResults[id];
+        log(`  ${id}: needs_write=[${(r?.needs_write || []).join(", ")}]`);
+        log(`    ${r?.error || ""}`);
+      }
+      log("  To approve: add the listed paths to that lane's `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.");
+    }
+    if (actFailures.length > 0 || actNeedsWrite.length > 0) {
       try {
         const triage = await workflow(
           { scriptPath: sk("datum-tdd-act-triage") },
-          { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
+          { failures: [...actFailures, ...actNeedsWrite], blocked: actBlocked.filter((id) => !actNeedsWrite.includes(id)).map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
         );
         log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`);
       } catch (exc) {
