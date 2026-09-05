@@ -157,10 +157,22 @@ async function witnessedAgent<T>(
   prompt: string,
   opts: Parameters<typeof resilientAgent>[1],
   specFile: ContextFile,
+  stage: LaneOutcome['stage'],
 ): Promise<T | null> {
   const result = await resilientAgent<T>(prompt, opts)
-  if (result !== null) assertReadWitness([specFile], result)
+  if (result !== null) assertStageWitness(specFile, result, stage)
   return result
+}
+
+/** assertReadWitness that names the stage, so the outer handler records it instead of CRASH. */
+function assertStageWitness(specFile: ContextFile, parsed: unknown, stage: LaneOutcome['stage']): void {
+  try {
+    assertReadWitness([specFile], parsed)
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e))
+    ;(err as Error & { stage?: LaneOutcome['stage'] }).stage = stage
+    throw err
+  }
 }
 
 
@@ -369,7 +381,7 @@ No markdown fences, no explanation.`,
   // only its path/bytes/blob sha/ac_count come back. The criteria text never
   // enters the script or any runner turn: each stage agent reads the file
   // and proves it with a read_witness (assertReadWitness → context_read_unverified).
-  const spec = laneSpecFromSteps(intakeResult, taskId)
+  const spec = laneSpecFromSteps(intakeResult, taskId, `${wt}/.datum/lane-spec.json`)
   if (!spec.ok || !spec.spec) {
     log(`[${taskId}] LANE SPEC EXPORT FAILED: ${spec.error}`)
     return { task_id: taskId, status: 'failed', stage: 'CRASH', error: spec.error }
@@ -584,7 +596,7 @@ No markdown fences, no explanation.`,
     red = await witnessedAgent(
       redPrompt(promptVars),
       stageOpts('red', { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-      specFile,
+      specFile, 'RED',
     )
 
     if (!red) {
@@ -604,7 +616,7 @@ No markdown fences, no explanation.`,
       red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: redFirstFailure }),
         stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile,
+        specFile, 'RED',
       )
       if (!red) {
         return {
@@ -640,7 +652,7 @@ No markdown fences, no explanation.`,
         red = await witnessedAgent(
           redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
           stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-          specFile,
+          specFile, 'RED',
         )
         // Re-run the same commit-check gate (not around it) so a retry that still didn't
         // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
@@ -669,7 +681,7 @@ No markdown fences, no explanation.`,
       red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
         stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile,
+        specFile, 'RED',
       )
     }
   }
@@ -901,7 +913,7 @@ No markdown fences, no explanation.`,
   const reflectResult: ReflectResult | null = await witnessedAgent(
     reflectPrompt({ wt, testFiles: testFiles.join(', '), laneSpec: specFile }),
     stageOpts('reflect', { label: `reflect:${taskId}`, phase: 'Act', model: model('fast'), schema: REFLECT_SCHEMA, maxRetries: 1 }),
-    specFile,
+    specFile, 'RED',
   )
 
   if (!reflectResult) {
@@ -954,7 +966,7 @@ No markdown fences, no explanation.`,
         })
       : greenPrompt(greenVars),
     stageOpts('green', { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-    specFile,
+    specFile, 'GREEN',
   )
 
   if (green?.success) {
@@ -1003,7 +1015,7 @@ No markdown fences, no explanation.`,
             greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason }),
           }),
           stageOpts('green', { label: `green-widened:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-          specFile,
+          specFile, 'GREEN',
         )
       } else {
         const refusal = cfg.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(', ')}] not inside src/)` : ''
@@ -1037,7 +1049,7 @@ No markdown fences, no explanation.`,
           greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure }),
         }),
         stageOpts('green', { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile,
+        specFile, 'GREEN',
       )
     }
   }
@@ -1147,7 +1159,7 @@ No markdown fences, no explanation.`,
         greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: 'skeptic_broken', skeptic_bugs: confirmedBugs }),
       }),
       stageOpts('green', { label: `green-skeptic-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-      specFile,
+      specFile, 'GREEN',
     )
 
     // Independent re-verification of the retry — never trust the retry
@@ -1236,7 +1248,7 @@ async function runSkepticPanel(
 
   // A lens that answered without reading the spec file did not review against
   // the criteria: fail by name rather than count its verdict.
-  for (const r of skepticResults) if (r !== null) assertReadWitness([specFile], r)
+  for (const r of skepticResults) if (r !== null) assertStageWitness(specFile, r, 'GREEN')
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses)
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i]
@@ -1465,7 +1477,8 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
       const r = await runLane(taskId, lanePlan, worktreePaths, cfg)
       result = r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' }
     } catch (e) {
-      result = { task_id: taskId, status: 'failed', stage: 'CRASH', error: e instanceof Error ? e.message : String(e) }
+      const staged = (e as { stage?: LaneOutcome['stage'] }).stage
+      result = { task_id: taskId, status: 'failed', stage: staged || 'CRASH', error: e instanceof Error ? e.message : String(e) }
     }
     depResolvers[taskId](result)
     return result

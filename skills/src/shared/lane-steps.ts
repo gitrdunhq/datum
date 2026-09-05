@@ -83,7 +83,13 @@ export interface LaneSpecExportOpts {
 
 export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
   const steps: BatchStep[] = []
-  if (o.laneSpec) steps.push({ name: 'lane-spec', command: laneSpecExportCommand(o.laneSpec), tolerant: true })
+  if (o.laneSpec) {
+    steps.push({ name: 'lane-spec', command: laneSpecExportCommand(o.laneSpec), tolerant: true })
+    // The summary line is still an LLM echo: re-measure the written file in
+    // bash so a rewritten bytes/sha cannot pass as the witness reference.
+    steps.push({ name: 'lane-spec-bytes', command: `wc -c < ${q(o.laneSpec.outPath)} | tr -d ' '`, tolerant: true })
+    steps.push({ name: 'lane-spec-sha', command: `git hash-object ${q(o.laneSpec.outPath)}`, tolerant: true })
+  }
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
   steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true })
   if (!o.structural) {
@@ -613,12 +619,15 @@ export interface LaneSpecSummary {
 }
 
 export function laneSpecExportCommand(o: LaneSpecExportOpts): string {
+  if (!PLAIN_ID_RE.test(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`)
+  if (!/^[A-Za-z0-9:]+$/.test(o.expectHash)) throw new Error(`laneSpecExportCommand: spec hash must be plain, got ${JSON.stringify(o.expectHash)}`)
   return `datum lane-spec-export --plan ${q(o.planPath)} --task ${q(o.taskId)} --out ${q(o.outPath)} --expect-hash ${q(o.expectHash)}`
 }
 
 export function laneSpecFromSteps(
   result: BatchResult,
   taskId: string,
+  outPath: string,
 ): { ok: boolean; spec: LaneSpecSummary | null; error: string } {
   const none = { ok: false, spec: null }
   if (result.missing) return { ...none, error: `lane_spec_export_failed: ${taskId} — ${describeFailure(result, 'lane-spec')}` }
@@ -639,6 +648,13 @@ export function laneSpecFromSteps(
   if (typeof parsed.sha !== 'string' || !/^[0-9a-f]{40}$/.test(parsed.sha)) return bad('sha is not a 40-hex blob id')
   if (typeof parsed.spec_hash !== 'string' || !parsed.spec_hash) return bad('no spec_hash')
   if (typeof parsed.ac_count !== 'number' || !Number.isInteger(parsed.ac_count) || parsed.ac_count < 0) return bad('ac_count is not a non-negative integer')
+  if (parsed.path !== outPath) return bad(`path is ${parsed.path}, expected ${outPath}`)
+  // Cross-check the echoed numbers against what bash measured on disk.
+  const diskBytes = parseInt((stepStdout(result, 'lane-spec-bytes') || '').trim(), 10)
+  const diskSha = (stepStdout(result, 'lane-spec-sha') || '').trim()
+  if (diskBytes !== parsed.bytes || diskSha !== parsed.sha) {
+    return { ...none, error: `lane_spec_relay_mismatch: ${taskId} — the summary says ${parsed.bytes} bytes / blob ${parsed.sha} but ${outPath} measures ${Number.isFinite(diskBytes) ? diskBytes : '?'} bytes / blob ${diskSha || '?'} — the runner did not return the export summary verbatim` }
+  }
   return {
     ok: true,
     spec: { task_id: parsed.task_id, path: parsed.path, bytes: parsed.bytes, sha: parsed.sha, spec_hash: parsed.spec_hash, ac_count: parsed.ac_count },

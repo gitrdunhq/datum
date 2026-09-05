@@ -688,7 +688,7 @@ describe('reflect and refactor-check never crash the lane on a prose reply', () 
     const reflectCall = laneFn.slice(laneFn.indexOf('reflectPrompt('), laneFn.indexOf('reflectPrompt(') + 400)
     // witnessedAgent is resilientAgent plus the lane-spec read witness check.
     expect(laneFn).toMatch(/await witnessedAgent\(\s*reflectPrompt\(/)
-    expect(laneSrc).toMatch(/async function witnessedAgent<T>\([\s\S]{0,300}await resilientAgent<T>\(prompt, opts\)[\s\S]{0,120}assertReadWitness\(\[specFile\], result\)/)
+    expect(laneSrc).toMatch(/async function witnessedAgent<T>\([\s\S]{0,300}await resilientAgent<T>\(prompt, opts\)[\s\S]{0,120}assertStageWitness\(specFile, result, stage\)/)
     expect(reflectCall).toMatch(/maxRetries: 1/)
     expect(laneFn).toMatch(/reflect_no_result/)
     // The score must only be read once a non-null result is established.
@@ -860,7 +860,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
 
   it('passes planPath/taskId/outPath/expectHash to laneIntakeSteps and parses the summary with laneSpecFromSteps', () => {
     expect(body).toMatch(/laneSpec: \{ planPath: `\$\{wt\}\/\.datum\/lane-plan\.json`, taskId, outPath: `\$\{wt\}\/\.datum\/lane-spec\.json`, expectHash: digestSpecHash\(lanePlan, taskId\) \}/)
-    expect(body).toMatch(/laneSpecFromSteps\(intakeResult, taskId\)/)
+    expect(body).toMatch(/laneSpecFromSteps\(intakeResult, taskId, `\$\{wt\}\/\.datum\/lane-spec\.json`\)/)
     expect(body).not.toMatch(/laneSpecFromSteps\(intakeResult, taskId, digestSpecHash/)
   })
 
@@ -899,8 +899,12 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(laneSource).toMatch(/assertReadWitness\(\[?specFile\]?, /)
   })
 
-  it('a thrown context_read_unverified reaches the outcome as its own message, not "Error: ..."', () => {
+  it('a thrown context_read_unverified reaches the outcome as its own message and its own stage, not "Error: ..." at CRASH', () => {
     expect(laneSource).toMatch(/error: e instanceof Error \? e\.message : String\(e\)/)
+    expect(laneSource).toMatch(/stage: staged \|\| 'CRASH'/)
+    // Every witnessed call names its stage; skeptic lenses are GREEN-stage evidence.
+    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(9)
+    expect(laneSource).toMatch(/assertStageWitness\(specFile, r, 'GREEN'\)/)
   })
 })
 

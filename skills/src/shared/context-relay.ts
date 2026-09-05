@@ -14,7 +14,7 @@
 // the files whose total fits CONTEXT_RELAY_BUDGET_BYTES; phase 2
 // (contextInlineSteps) cats exactly those and contextFromRelay
 // byte-verifies them. Everything else is DEFERRED: the consuming agent gets
-// the path, byte count and git blob hash and a mandatory instruction to
+// the path and byte count (never the blob hash — that is the witness) and a mandatory instruction to
 // read the file with the Read tool (contextSlot) — exact bytes by
 // construction, no relay to verify.
 // tested-by: skills/src/shared/context-relay.test.ts
@@ -178,7 +178,7 @@ export function contextSlot(f: ContextFile): string {
   if (f.inlined && f.content !== null) return f.content
   return (
     `[FILE NOT INLINED — ${f.bytes} bytes is over the relay budget]\n` +
-    `Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). ` +
+    `Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). ` +
     `Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`
   )
 }

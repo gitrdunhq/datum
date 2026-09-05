@@ -1144,7 +1144,9 @@ describe('buildPacket', () => {
 
   it('carries the lane spec FILE reference, never the criteria or red_note text', () => {
     const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
-    expect(packet.lane_spec_file).toEqual({ path: '/wt/.datum/lane-spec.json', bytes: 300, sha: 'f'.repeat(40) })
+    // path + bytes only: the sha is the read witness and must not be in the prompt.
+    expect(packet.lane_spec_file).toEqual({ path: '/wt/.datum/lane-spec.json', bytes: 300 })
+    expect(JSON.stringify(packet)).not.toContain('ffffffffffff')
     expect((packet as any).acceptance_criteria).toBeUndefined()
     expect((packet as any).red_note).toBeUndefined()
     expect(JSON.stringify(packet)).not.toContain('AC1')

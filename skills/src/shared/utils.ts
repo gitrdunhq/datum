@@ -710,7 +710,9 @@ export function buildPacket(
     // The criteria/red_note/contract_summary are in this file, not in the
     // packet: nothing an LLM turn relayed is trusted as content (see
     // datum/lane_spec_export.py). The agent reads it and witnesses the read.
-    lane_spec_file: { path: specFile.path, bytes: specFile.bytes, sha: specFile.sha },
+    // No sha here: the blob sha is the read witness, and a prompt that
+    // prints it lets the agent copy it without opening the file.
+    lane_spec_file: { path: specFile.path, bytes: specFile.bytes },
     allowed_write_files:
       stage === 'RED'
         ? testFiles

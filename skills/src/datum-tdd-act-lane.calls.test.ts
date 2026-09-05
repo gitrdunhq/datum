@@ -50,7 +50,7 @@ function happyPathResponder(o: { pytest: boolean }): Responder {
   return (label, prompt) => {
     if (label.startsWith('completion-check:')) return 'MISSING'
     if (label.startsWith('lane-intake:')) {
-      return batch({ 'lane-spec': JSON.stringify(specSummary) + '\n', history: '', cleanup: '', 'skeleton-gen': '{}' })
+      return batch({ 'lane-spec': JSON.stringify(specSummary) + '\n', 'lane-spec-bytes': '321\n', 'lane-spec-sha': `${SPEC_SHA}\n`, history: '', cleanup: '', 'skeleton-gen': '{}' })
     }
     if (label.startsWith('red:')) {
       return { ...witness, success: true, tests_pass: false, committed: true, commit_sha: 'aaa111', files_written: [testFile], test_exit_code: 1, test_errors: ['AttributeError'] }
@@ -332,12 +332,13 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     for (const prefix of ['red:', 'green:', 'reflect:', 'skeptic-']) {
       const call = calls.find((c) => c.label.startsWith(prefix))!
       expect(call.prompt, prefix).toContain(SPEC_PATH)
-      expect(call.prompt, prefix).toContain(`git blob ${SPEC_SHA}`)
+      // The sha is the witness: a prompt that printed it would let the agent copy it.
+      expect(call.prompt, prefix).not.toContain(SPEC_SHA.slice(0, 12))
       expect(call.prompt, prefix).toMatch(/MANDATORY READ WITNESS/)
       expect(call.prompt, prefix).not.toContain('does a')
     }
     const red = calls.find((c) => c.label.startsWith('red:'))!
-    expect(red.prompt).toContain(`"lane_spec_file":{"path":"${SPEC_PATH}","bytes":321,"sha":"${SPEC_SHA}"}`)
+    expect(red.prompt).toContain(`"lane_spec_file":{"path":"${SPEC_PATH}","bytes":321}`)
     expect(red.prompt).not.toContain('"acceptance_criteria"')
   })
 
@@ -349,6 +350,7 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     }
     const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('RED')
     expect(result.results.T1.error).toMatch(/^context_read_unverified: \/wt\/T1\/\.datum\/lane-spec\.json/)
     expect(calls.some((c) => c.label.startsWith('post-red:'))).toBe(false)
   })
@@ -361,13 +363,14 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     }
     const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
     expect(result.results.T1.error).toMatch(/^context_read_unverified: .*expected blob c0ffee/)
   })
 
   it('a lane-spec-export failure (hash mismatch) fails the lane by the CLI\'s own reason and dispatches no stage agent', async () => {
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => {
-      if (label.startsWith('lane-intake:')) return batch({ 'lane-spec': { exit_code: 1, stdout: '{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake"}\n' }, history: '' })
+      if (label.startsWith('lane-intake:')) return batch({ 'lane-spec': { exit_code: 1, stdout: '{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake"}\n' }, 'lane-spec-bytes': { exit_code: 1 }, 'lane-spec-sha': { exit_code: 128 }, history: '' })
       return base(label, prompt)
     }
     const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })

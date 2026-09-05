@@ -151,11 +151,11 @@ describe('contextSlot', () => {
     expect(contextSlot({ path: 'A.md', exists: true, inlined: true, bytes: 5, sha: 'aaa', content: 'hello' })).toBe('hello')
   })
 
-  it('is a mandatory Read instruction naming path, bytes and sha for a deferred file', () => {
+  it('is a mandatory Read instruction naming path and bytes (never the sha — that is the witness) for a deferred file', () => {
     const slot = contextSlot({ path: 'docs/epics/datum/x/SPEC.md', exists: true, inlined: false, bytes: 31133, sha: 'bbb', content: null })
     expect(slot).toContain('docs/epics/datum/x/SPEC.md')
     expect(slot).toContain('31133')
-    expect(slot).toContain('bbb')
+    expect(slot).not.toContain('bbb')
     expect(slot).toMatch(/Read tool/)
     expect(slot).toMatch(/before/i)
   })
@@ -331,5 +331,21 @@ describe('end-to-end under real bash', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+
+// A witness the prompt itself prints is no witness: the agent could copy the
+// blob-sha prefix out of its own prompt without opening the file.
+describe('the deferred-file prompt never prints the blob sha the witness must reproduce', () => {
+  const f: ContextFile = { path: 'docs/SPEC.md', exists: true, inlined: false, bytes: 4096, sha: 'abcdef0123456789abcdef0123456789abcdef01', content: null }
+  it('contextSlot names path and bytes only', () => {
+    const slot = contextSlot(f)
+    expect(slot).toContain('docs/SPEC.md')
+    expect(slot).toContain('4096 bytes')
+    expect(slot).not.toContain('abcdef012345')
+  })
+  it('contextWitnessInstruction tells the agent to compute the hash, without printing it', () => {
+    expect(contextWitnessInstruction([f])).not.toContain('abcdef012345')
   })
 })

@@ -35,6 +35,7 @@ import {
   digestSpecHash,
   laneSpecFromSteps,
   laneSpecContextFile,
+  laneSpecExportCommand,
   LANE_PLAN_DIGEST_BUDGET_BYTES,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
@@ -827,19 +828,30 @@ describe('laneIntakeSteps lane-spec export + laneSpecFromSteps', () => {
       wt: '/wt/T1', epicBranch: 'e', completionPath: null, structural: true, cleanupCmd: null,
       planSkeletonPath: '', skeletonCmd: '', preflightPath: '', laneSpec,
     })
-    expect(names(steps)[0]).toBe('lane-spec')
+    expect(names(steps).slice(0, 3)).toEqual(['lane-spec', 'lane-spec-bytes', 'lane-spec-sha'])
     expect(steps[0].command).toBe('datum lane-spec-export --plan "/wt/T1/.datum/lane-plan.json" --task "T1" --out "/wt/T1/.datum/lane-spec.json" --expect-hash "fnv1a64:0000000000000001"')
-    expect(steps[0].tolerant).toBe(true)
-    expect(names(steps)).not.toContain('lane-spec-bytes')
+    // The written file is re-measured in bash so the echoed summary cannot lie about it.
+    expect(steps[1].command).toBe(`wc -c < "/wt/T1/.datum/lane-spec.json" | tr -d ' '`)
+    expect(steps[2].command).toBe('git hash-object "/wt/T1/.datum/lane-spec.json"')
+    for (const st of steps.slice(0, 3)) expect(st.tolerant).toBe(true)
     expect(steps.map((s) => s.command).join('\n')).not.toMatch(/jq/)
   })
 
-  const res = (stdout: string, exit = 0) => parseBatchResult(JSON.stringify(
-    [{ name: 'lane-spec', exit_code: exit, stdout, stderr: '' }, { name: 'history', exit_code: 0, stdout: '', stderr: '' }],
-  ), [{ name: 'lane-spec', command: '' }, { name: 'history', command: '' }])
+  it('refuses a task id or hash that is not a plain identifier (shell interpolation guard)', () => {
+    expect(() => laneSpecExportCommand({ ...laneSpec, taskId: 'T1; rm -rf /' })).toThrow(/plain identifier/)
+    expect(() => laneSpecExportCommand({ ...laneSpec, expectHash: '$(x)' })).toThrow(/plain/)
+  })
+
+  const OUT = '/wt/T1/.datum/lane-spec.json'
+  const res = (stdout: string, exit = 0, disk: { bytes?: string; sha?: string } = {}) => parseBatchResult(JSON.stringify([
+    { name: 'lane-spec', exit_code: exit, stdout, stderr: '' },
+    { name: 'lane-spec-bytes', exit_code: 0, stdout: disk.bytes ?? '412\n', stderr: '' },
+    { name: 'lane-spec-sha', exit_code: 0, stdout: disk.sha ?? 'a'.repeat(40) + '\n', stderr: '' },
+    { name: 'history', exit_code: 0, stdout: '', stderr: '' },
+  ]), [{ name: 'lane-spec', command: '' }, { name: 'lane-spec-bytes', command: '' }, { name: 'lane-spec-sha', command: '' }, { name: 'history', command: '' }])
 
   it('returns the short summary (path, bytes, blob sha, ac_count) — never the criteria', () => {
-    const r = laneSpecFromSteps(res(JSON.stringify(summary) + '\n'), 'T1')
+    const r = laneSpecFromSteps(res(JSON.stringify(summary) + '\n'), 'T1', OUT)
     expect(r.ok).toBe(true)
     expect(r.spec).toEqual(summary)
     expect(r.error).toBe('')
@@ -850,17 +862,17 @@ describe('laneIntakeSteps lane-spec export + laneSpecFromSteps', () => {
   })
 
   it("the CLI's named errors (hash mismatch, missing lane) surface verbatim as lane_spec_export_failed", () => {
-    const r = laneSpecFromSteps(res('{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake","spec_hash":"fnv1a64:2","expected":"fnv1a64:1"}\n', 1), 'T1')
+    const r = laneSpecFromSteps(res('{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake","spec_hash":"fnv1a64:2","expected":"fnv1a64:1"}\n', 1), 'T1', OUT)
     expect(r.ok).toBe(false)
     expect(r.spec).toBeNull()
     expect(r.error).toMatch(/^lane_spec_export_failed: T1 — lane_spec_hash_mismatch: T1 hashes to fnv1a64:2/)
-    expect(laneSpecFromSteps(res('{"error":"lane_spec_missing: T9 is not in the lane plan"}\n', 1), 'T9').error).toMatch(/^lane_spec_export_failed: T9 — lane_spec_missing: T9/)
+    expect(laneSpecFromSteps(res('{"error":"lane_spec_missing: T9 is not in the lane plan"}\n', 1), 'T9', OUT).error).toMatch(/^lane_spec_export_failed: T9 — lane_spec_missing: T9/)
   })
 
   it('a missing batch or a step that never ran is lane_spec_export_failed', () => {
-    expect(laneSpecFromSteps(parseBatchResult(null, [{ name: 'lane-spec', command: '' }]), 'T1').error).toMatch(/^lane_spec_export_failed: T1/)
+    expect(laneSpecFromSteps(parseBatchResult(null, [{ name: 'lane-spec', command: '' }]), 'T1', OUT).error).toMatch(/^lane_spec_export_failed: T1/)
     const noStep = parseBatchResult(JSON.stringify([{ name: 'history', exit_code: 0, stdout: '', stderr: '' }]), [{ name: 'lane-spec', command: '' }, { name: 'history', command: '' }])
-    expect(laneSpecFromSteps(noStep, 'T1').error).toMatch(/^lane_spec_export_failed: T1/)
+    expect(laneSpecFromSteps(noStep, 'T1', OUT).error).toMatch(/^lane_spec_export_failed: T1/)
   })
 
   it('a summary the runner rewrote (wrong task, bad sha, non-numeric bytes) is lane_spec_export_unparseable', () => {
@@ -871,11 +883,19 @@ describe('laneIntakeSteps lane-spec export + laneSpecFromSteps', () => {
       { ...summary, ac_count: -1 },
       { ...summary, path: '' },
     ]) {
-      const r = laneSpecFromSteps(res(JSON.stringify(bad) + '\n'), 'T1')
+      const r = laneSpecFromSteps(res(JSON.stringify(bad) + '\n'), 'T1', OUT)
       expect(r.ok).toBe(false)
       expect(r.error).toMatch(/^lane_spec_export_unparseable: T1/)
     }
-    expect(laneSpecFromSteps(res('not json'), 'T1').error).toMatch(/^lane_spec_export_unparseable: T1/)
+    expect(laneSpecFromSteps(res(JSON.stringify({ ...summary, path: '/elsewhere/lane-spec.json' }) + '\n'), 'T1', OUT).error).toMatch(/^lane_spec_export_unparseable: T1 — path is/)
+    expect(laneSpecFromSteps(res('not json'), 'T1', OUT).error).toMatch(/^lane_spec_export_unparseable: T1/)
+  })
+
+  it('a summary whose bytes or sha disagree with what bash measured on disk is lane_spec_relay_mismatch', () => {
+    const text = JSON.stringify(summary) + '\n'
+    expect(laneSpecFromSteps(res(text, 0, { bytes: '413\n' }), 'T1', OUT).error).toMatch(/^lane_spec_relay_mismatch: T1 — the summary says 412 bytes/)
+    expect(laneSpecFromSteps(res(text, 0, { sha: 'b'.repeat(40) + '\n' }), 'T1', OUT).error).toMatch(/^lane_spec_relay_mismatch: T1/)
+    expect(laneSpecFromSteps(res(text, 0, { bytes: '' }), 'T1', OUT).ok).toBe(false)
   })
 })
 
