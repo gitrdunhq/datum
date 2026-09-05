@@ -87,6 +87,38 @@ export function worktreeResetSteps(wt: string): BatchStep[] {
 }
 
 /**
+ * resilientAgent's retry guard: is the worktree dirty after a null/thrown
+ * stage attempt? One tolerant `git status --porcelain` step. It used to be a
+ * runner told to "Run: git status" and echo the output — an echoed "" (or a
+ * null reply) for a dirty tree let the retry replay onto half-applied edits.
+ */
+export function worktreeDirtySteps(wt: string): BatchStep[] {
+  return [{ name: 'status', command: `git -C ${q(wt)} status --porcelain`, tolerant: true }]
+}
+
+export interface WorktreeDirtyResult {
+  /** True when the tree has changes — or when its state could not be established. */
+  dirty: boolean
+  /** False when the batch was missing or git exited non-zero: unknown is never clean. */
+  known: boolean
+  /** Status lines when dirty; a retry_guard_unverified reason when unknown. */
+  detail: string
+}
+
+export function worktreeDirtyFromSteps(result: BatchResult): WorktreeDirtyResult {
+  if (result.missing) {
+    return { dirty: true, known: false, detail: `retry_guard_unverified: ${describeFailure(result, 'status')}` }
+  }
+  const step = stepResult(result, 'status')
+  if (!step || step.exit_code !== 0) {
+    const tail = ((step && (step.stderr || step.stdout)) || '').trim().split('\n').slice(-3).join(' | ')
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : 'without running'}${tail ? ` — ${tail}` : ''}` }
+  }
+  const lines = (step.stdout || '').split('\n').filter((l) => l.trim().length > 0)
+  return { dirty: lines.length > 0, known: true, detail: lines.join(' | ') }
+}
+
+/**
  * Sibling of worktreeResetSteps() that resets to an explicit sha rather than
  * HEAD — used when a lane's committed GREEN turns out to be stale (#331): an
  * independent intake-verify found the suite red at the lane's current HEAD,

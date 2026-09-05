@@ -1,6 +1,7 @@
 import { model } from './models'
 import { stageOpts } from './agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, type BatchStep } from './batch'
+import { worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
 // ── Rate-limit resilient agent wrapper ──────────────────────────────────────
 
@@ -132,13 +133,22 @@ export async function resilientAgent<T = unknown>(
     // a null result (or a thrown error) after file writes means the agent
     // partially completed and a blind replay would duplicate work or create
     // extra commits.
+    // The guard is a datum-cli batch (shared/commit-steps.ts), never a runner
+    // told to "Run: git status" and echo the output: an echoed "" — or a null
+    // reply — for a dirty tree let the retry replay onto half-applied edits.
+    // Unknown state (missing batch, git error) is never treated as clean.
     if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agentFn(
-        `Run: git -C "${opts.worktree}" status --porcelain\nReturn ONLY the raw output, no explanation.`,
-        stageOpts('cli', { label: 'retry-guard', model: 'haiku' }),
-      )
-      if (dirty && String(dirty).trim().length > 0) {
-        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} but worktree is dirty — aborting retry to prevent duplicate writes`)
+      const guardSteps = worktreeDirtySteps(opts.worktree)
+      const guard = worktreeDirtyFromSteps(parseBatchResult(
+        await agentFn(batchCommandPrompt(guardSteps), stageOpts('cli', { label: 'retry-guard', model: 'haiku' })),
+        guardSteps,
+      ))
+      if (!guard.known) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} and the worktree state is unknown (${guard.detail}) — aborting retry to prevent duplicate writes`)
+        return lastResult
+      }
+      if (guard.dirty) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} but worktree is dirty — aborting retry to prevent duplicate writes (${guard.detail})`)
         return lastResult
       }
     }

@@ -76,6 +76,13 @@ describe('resilientAgent', () => {
     }
   })
 
+  // The dirty-worktree guard is a datum-cli batch (git status --porcelain as
+  // a step), never a runner told to "Run: git status" and echo the output:
+  // an echo of "" for a dirty tree — or a null reply — used to let the
+  // retry replay onto half-applied edits.
+  const statusBatch = (stdout: string): string =>
+    JSON.stringify([{ name: 'status', exit_code: 0, stdout, stderr: '' }])
+
   it('aborts retry when worktree is dirty after a thrown error, returning null', async () => {
     const logFn = vi.fn()
     const agentFn = vi.fn()
@@ -83,8 +90,8 @@ describe('resilientAgent', () => {
       .mockImplementationOnce(async () => {
         throw new Error('stalled — no StructuredOutput')
       })
-      // Second call: the dirty-worktree guard check — report dirty.
-      .mockImplementationOnce(async () => 'M some/file.ts\n')
+      // Second call: the dirty-worktree guard batch — report dirty.
+      .mockImplementationOnce(async () => statusBatch('M some/file.ts\n'))
 
     const result = await resilientAgent(
       'do the thing',
@@ -95,9 +102,47 @@ describe('resilientAgent', () => {
     expect(result).toBeNull()
     // Only the initial attempt + the dirty-guard check ran; no further retry.
     expect(agentFn).toHaveBeenCalledTimes(2)
+    expect(agentFn.mock.calls[1][0]).toContain('git -C "/some/wt" status --porcelain')
     expect(logFn).toHaveBeenCalledWith(
       expect.stringContaining('worktree is dirty — aborting retry to prevent duplicate writes'),
     )
+  })
+
+  it('a guard batch that returned nothing parseable aborts the retry (unknown state is not clean)', async () => {
+    const logFn = vi.fn()
+    const agentFn = vi.fn()
+      .mockImplementationOnce(async () => null)
+      .mockImplementationOnce(async () => null)
+
+    const result = await resilientAgent(
+      'do the thing',
+      { maxRetries: 2, worktree: '/some/wt' },
+      { agentFn, logFn },
+    )
+
+    expect(result).toBeNull()
+    expect(agentFn).toHaveBeenCalledTimes(2)
+    expect(logFn).toHaveBeenCalledWith(expect.stringContaining('retry_guard_unverified'))
+  })
+
+  it('retries when the guard batch reports a clean worktree', async () => {
+    vi.useFakeTimers()
+    try {
+      const logFn = vi.fn()
+      const agentFn = vi.fn()
+        .mockImplementationOnce(async () => null)
+        .mockImplementationOnce(async () => statusBatch(''))
+        .mockImplementationOnce(async () => ({ committed: true }))
+
+      const pending = resilientAgent('do the thing', { maxRetries: 2, worktree: '/some/wt' }, { agentFn, logFn })
+      await vi.runAllTimersAsync()
+      const result = await pending
+
+      expect(result).toEqual({ committed: true })
+      expect(agentFn).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('still returns the result unchanged when agent() resolves normally (no throw)', async () => {

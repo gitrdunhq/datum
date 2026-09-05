@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { batchScript, parseBatchResult, type BatchResult } from './batch'
-import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps } from './commit-steps'
+import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps, worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
 function fake(stdouts: Record<string, string>, exits: Record<string, number> = {}): BatchResult {
   const steps = Object.entries(stdouts).map(([name, stdout]) => ({ name, exit_code: exits[name] ?? 0, stdout, stderr: '' }))
@@ -89,6 +89,39 @@ describe('worktreeResetSteps', () => {
     expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status'])
     expect(steps[0].command).toContain('git -C "/wt" reset --hard HEAD')
     expect(steps[1].command).toContain('git -C "/wt" clean -fd')
+  })
+})
+
+// resilientAgent's retry guard: is the worktree dirty after a null/thrown
+// stage attempt? Used to be a runner told to "Run: git status --porcelain"
+// and echo the output — an echoed "" (or a null reply) for a dirty tree let
+// the retry replay onto half-applied edits. One tolerant step; unknown is
+// never treated as clean.
+describe('worktreeDirtySteps / worktreeDirtyFromSteps', () => {
+  it('is a single tolerant git status --porcelain step', () => {
+    const steps = worktreeDirtySteps('/wt')
+    expect(steps.map((s) => s.name)).toEqual(['status'])
+    expect(steps[0].command).toBe('git -C "/wt" status --porcelain')
+    expect(steps[0].tolerant).toBe(true)
+  })
+
+  it('reports dirty:true with the status lines when porcelain output is non-empty', () => {
+    const r = worktreeDirtyFromSteps(fake({ status: ' M src/a.ts\n?? new.ts\n' }))
+    expect(r).toEqual({ dirty: true, known: true, detail: ' M src/a.ts | ?? new.ts' })
+  })
+
+  it('reports dirty:false, known:true for an empty porcelain output with exit 0', () => {
+    expect(worktreeDirtyFromSteps(fake({ status: '' }))).toEqual({ dirty: false, known: true, detail: '' })
+  })
+
+  it('a missing batch or a non-zero git exit is known:false (never clean) with a retry_guard_unverified detail', () => {
+    const missing = worktreeDirtyFromSteps(parseBatchResult(null, worktreeDirtySteps('/wt')))
+    expect(missing.known).toBe(false)
+    expect(missing.dirty).toBe(true)
+    expect(missing.detail).toMatch(/^retry_guard_unverified: /)
+    const crashed = worktreeDirtyFromSteps(fake({ status: 'fatal: not a git repository' }, { status: 128 }))
+    expect(crashed.known).toBe(false)
+    expect(crashed.detail).toMatch(/^retry_guard_unverified: .*128/)
   })
 })
 
