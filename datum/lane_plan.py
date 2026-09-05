@@ -436,6 +436,76 @@ def detect_lane_test_command(
     return override
 
 
+def detect_spm_lane_override(
+    lane_id: str, files: list[str], repo_root: Path
+) -> tuple[str | None, str | None]:
+    """Scope a Swift lane's test_command to its SPM subpackage (#394).
+
+    Wires the previously-unconsumed `datum.tdd_driver.detect_spm_subpackage`
+    / `get_spm_test_command` into lane-plan generation: when every .swift
+    file in the lane resolves to the same nested subpackage (a directory
+    with its own Package.swift, not the repo root's), the lane's own test
+    command should be scoped to that subpackage — the epic-wide `swift test`
+    would otherwise build against the wrong (root) dependency graph.
+
+    Returns (test_command, warning). Exactly one of the two is non-None:
+    - A single, non-root subpackage -> ("swift test --package-path <dir>", None)
+    - No .swift files, or all resolve to the repo root, or none resolve to
+      any Package.swift -> (None, None) — no opinion, caller falls back to
+      the ordinary language-detection override.
+    - .swift files resolving to *different* subpackages (or a mix of a
+      subpackage and the root/no-package) -> (None, "<warning naming the
+      lane and the packages involved>") — no single command can run the
+      full lane's files.
+    """
+    from datum.tdd_driver import detect_spm_subpackage, get_spm_test_command
+
+    swift_files = [f for f in files if Path(f).suffix.lower() == ".swift"]
+    if not swift_files:
+        return None, None
+
+    root_resolved = repo_root.resolve()
+    packages: dict[Path | None, list[str]] = {}
+    for f in swift_files:
+        pkg = detect_spm_subpackage(repo_root / f)
+        resolved = pkg.resolve() if pkg is not None else None
+        packages.setdefault(resolved, []).append(f)
+
+    if len(packages) != 1:
+        names = []
+        for pkg_dir in packages:
+            if pkg_dir is None:
+                names.append("<no Package.swift>")
+            elif pkg_dir == root_resolved:
+                names.append("<repo root>")
+            else:
+                try:
+                    names.append(str(pkg_dir.relative_to(root_resolved)))
+                except ValueError:
+                    names.append(str(pkg_dir))
+        warning = (
+            f"lane {lane_id}: .swift files span multiple SPM packages "
+            f"({', '.join(sorted(names))}); leaving test_command unset"
+        )
+        return None, warning
+
+    (pkg_dir,) = packages.keys()
+    if pkg_dir is None or pkg_dir == root_resolved:
+        return None, None
+
+    cmd = get_spm_test_command(repo_root / swift_files[0])
+    if not cmd:
+        return None, None
+
+    try:
+        rel_dir = str(pkg_dir.relative_to(root_resolved))
+    except ValueError:
+        rel_dir = str(pkg_dir)
+    if " " in rel_dir:
+        rel_dir = f'"{rel_dir}"'
+    return f"swift test --package-path {rel_dir}", None
+
+
 def validate_lane_test_commands(lanes: dict) -> list[str]:
     """Preflight: for each lane, confirm its effective test_command (the
     lane-level override if set, else it must already have been resolved by
@@ -471,11 +541,14 @@ def build_lane_plan(
     ownership: dict,
     units: dict | None = None,
     global_test_command: str | None = None,
+    repo_root: Path | str = ".",
 ) -> dict:
     """Build the full lane-plan.json structure."""
     task_map = {t["id"]: t for t in tasks}
+    repo_root = Path(repo_root)
 
     lanes = {}
+    spm_warnings: list[str] = []
     for tid in sorted_ids:
         task = task_map[tid]
 
@@ -519,9 +592,23 @@ def build_lane_plan(
         if explicit_cmd:
             lanes[tid]["test_command"] = explicit_cmd
         else:
-            detected = detect_lane_test_command(task["files"], global_test_command)
-            if detected:
-                lanes[tid]["test_command"] = detected
+            spm_cmd, spm_warning = detect_spm_lane_override(
+                tid, task["files"], repo_root
+            )
+            if spm_warning:
+                spm_warnings.append(spm_warning)
+            if spm_cmd:
+                lanes[tid]["test_command"] = spm_cmd
+            elif spm_warning is None:
+                # Only fall back to the generic per-language default when the
+                # SPM check had no opinion at all — a lane whose .swift files
+                # span multiple subpackages must stay unset (ambiguous
+                # scope), not silently get a repo-wide `swift test` that
+                # builds against the wrong dependency graph for at least one
+                # file.
+                detected = detect_lane_test_command(task["files"], global_test_command)
+                if detected:
+                    lanes[tid]["test_command"] = detected
 
     result = {
         "schema_version": "1.0.0",
@@ -532,6 +619,8 @@ def build_lane_plan(
     }
     if units:
         result["units"] = units
+    if spm_warnings:
+        result["warnings"] = spm_warnings
     return result
 
 
@@ -622,7 +711,7 @@ def main() -> None:
 
     ownership, _ = build_file_ownership(tasks)
     lane_plan = build_lane_plan(
-        tasks, sorted_ids, ownership, units, global_test_command
+        tasks, sorted_ids, ownership, units, global_test_command, repo_root=Path(".")
     )
 
     # Preflight (#307): fail fast, before a single agent-token is spent, if
@@ -652,8 +741,9 @@ def main() -> None:
         "tasks_md": args.md_output,
         "total_lanes": lane_plan["total_lanes"],
     }
-    if read_edge_warnings:
-        result["warnings"] = read_edge_warnings
+    all_warnings = list(read_edge_warnings) + list(lane_plan.get("warnings", []))
+    if all_warnings:
+        result["warnings"] = all_warnings
     print(json.dumps(result))
 
 
