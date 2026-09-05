@@ -19,8 +19,8 @@ The shape principle 2 takes everywhere:
 ```mermaid
 flowchart LR
     Agent["🤖 Agent proposes<br/>(self-reported result)"]
-    Batch["⚙️ datum-cli batch step<br/>(re-runs the same check)"]
-    Decide{"Exit code"}
+    Batch[["⚙️ datum-cli batch step<br/>(re-runs the same check)"]]
+    Decide{{"Exit code"}}
     Pass["✅ Advance"]
     Fail["❌ Named failure"]
 
@@ -30,24 +30,24 @@ flowchart LR
     Decide -->|"non-zero or absent"| Fail
 
     classDef service fill:#d0bfff,stroke:#7048e8,stroke-width:2px,color:darkblue
-    classDef normal fill:#F0F0F0,stroke:#000000,stroke-width:2px,color:black
-    classDef decision fill:#FFD700,stroke:#B8860B,stroke-width:2px,color:black
+    classDef deterministic fill:#c5f6fa,stroke:#0b7285,stroke-width:2px,color:#0b7285
     classDef success fill:#90EE90,stroke:#2E7D2E,stroke-width:2px,color:darkgreen
     classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
 
     class Agent service
-    class Batch normal
-    class Decide decision
+    class Batch,Decide deterministic
     class Pass success
     class Fail error
 ```
+
+Legend for every diagram below: **purple rounded boxes are LLM agents** (a proposal, self-reported); **teal double-bordered or hexagonal nodes are deterministic** — a `datum` CLI, a bash batch, or the script itself reading an exit code, with no model in the loop. A teal step can run under a Haiku "runner" that only types the command, but nothing it says is trusted; only the exit code and the bytes on disk are.
 
 ## 1. The pipeline
 
 ```mermaid
 flowchart TD
     Start(["datum go"])
-    Preflight["🔒 Preflight<br/>tool install · gitignore-check · state staleness"]
+    Preflight[["🔒 Preflight (deterministic)<br/>tool install · gitignore-check · state staleness"]]
     Refine["📝 Refine → SPEC.md"]
     Plan["🗂️ Plan → tasks.json + lane-plan.json"]
     Props["📐 Properties → PROPERTIES.md"]
@@ -76,11 +76,13 @@ flowchart TD
     Review -.->|"critical findings (non-yolo)"| Halt
 
     classDef normal fill:#F0F0F0,stroke:#000000,stroke-width:2px,color:black
+    classDef deterministic fill:#c5f6fa,stroke:#0b7285,stroke-width:2px,color:#0b7285
     classDef orchestration fill:#ffc9c9,stroke:#e03131,stroke-width:2px,color:darkred
     classDef error fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:black
     classDef success fill:#90EE90,stroke:#2E7D2E,stroke-width:2px,color:darkgreen
 
-    class Preflight,Refine,Plan,Props,Validate,Review,Closeout normal
+    class Preflight deterministic
+    class Refine,Plan,Props,Validate,Review,Closeout normal
     class Act orchestration
     class Halt error
     class Complete success
@@ -196,43 +198,55 @@ Act is where the propose/verify split earns its keep. Each lane runs in its own 
 
 ```mermaid
 sequenceDiagram
-    participant Runner as Lane runner
+    box rgb(197,246,250) Deterministic — script + CLI, no model decides
+    participant Runner as Lane runner (script)
     participant CLI as datum-cli batch
+    end
+    box rgb(208,191,255) LLM agents — propose, never decide
     participant Red as RED agent
     participant Reflect as Reflect
     participant Green as GREEN agent
     participant Skeptic as Skeptic panel
     participant Refactor as REFACTOR agent
+    end
 
-    Runner->>CLI: intake batch (completion marker, <epic>..HEAD history,<br/>lane-cleanup, skeleton)
-    CLI-->>Runner: per-step exit_code + stdout
-    Note over Runner: history == null → lane_intake_failed (never "fresh lane")
+    rect rgb(197,246,250)
+    Runner->>CLI: intake batch (datum lane-spec-export → <wt>/.datum/lane-spec.json,<br/>wc -c + hash-object of it, completion marker, <epic>..HEAD history,<br/>lane-cleanup, skeleton)
+    CLI-->>Runner: per-step exit_code + stdout (spec summary: path, bytes, sha, ac_count — never the criteria)
+    Note over Runner,CLI: prose reply → runner_permission_denied / runner_no_json<br/>history == null → lane_intake_failed (never "fresh lane")<br/>export refused → lane_spec_export_failed<br/>summary ≠ file on disk → lane_spec_relay_mismatch
+    Note over Runner,CLI: RED+GREEN already on branch → intake-verify re-runs the suite:<br/>exit 0 → resume at REFACTOR, else reset-to-red batch,<br/>HEAD ≠ RED sha or dirty → worktree_reset_failed (RED never dispatched)
+    end
 
-    Runner->>Red: write failing tests, run suite, commit
-    Red-->>Runner: StageResult (self-reported)
+    Runner->>Red: packet names lane_spec_file (path, bytes) — read it, hash it,<br/>write failing tests, run suite, commit
+    Red-->>Runner: StageResult + read_witness (sha prefix)
+    Note over Runner,CLI: witness missing/forged → context_read_unverified (stage RED)
 
+    rect rgb(197,246,250)
     Runner->>CLI: post-RED batch
     CLI-->>Runner: count-gate JSON, assert-check, ownership diff,<br/>scope reads, test-count before/after, TEST_EXIT
-    Note over Runner: exit 0 → green_blindness_violation<br/>no JSON → count_gate_failed<br/>diff outside testFiles → file_ownership_violation
+    Note over Runner,CLI: exit 0 → green_blindness_violation<br/>no JSON → count_gate_failed<br/>count step absent → test_count_missing<br/>diff outside testFiles → file_ownership_violation
 
     Runner->>CLI: scope-gap existence + contract-preflight
     CLI-->>Runner: exit codes → auto-widen or scope_gap failure
+    end
 
-    Runner->>Reflect: score the new tests 0-10
-    Reflect-->>Runner: score < 4 halts the lane
+    Runner->>Reflect: read the spec file, score the new tests 0-10
+    Reflect-->>Runner: score + read_witness — score < 4 halts the lane
 
-    Runner->>Green: minimum implementation, run suite, commit
-    Green-->>Runner: StageResult (or status "blocked" + needs_write)
+    Runner->>Green: read the spec file (criteria, red_note, contract_summary),<br/>minimum implementation, run suite, commit
+    Green-->>Runner: StageResult + read_witness (or status "blocked" + needs_write)
 
+    rect rgb(197,246,250)
     Runner->>CLI: post-GREEN batch (independent test re-run + ownership diff)
     CLI-->>Runner: TEST_EXIT != 0 → green_verify_failed
+    end
 
-    Runner->>Skeptic: 3 adversarial lenses, read-only
-    Skeptic-->>Runner: verdicts + cross-validated bugs
+    Runner->>Skeptic: 3 adversarial lenses, read-only, each reads the spec file
+    Skeptic-->>Runner: verdicts + read_witness + cross-validated bugs
 
     Runner->>Refactor: clean up without touching tests, commit
     Refactor-->>Runner: tests still green, or revert
-    Note over Runner: LaneOutcome { task_id, status: "completed", stage: "REFACTOR" }
+    Note over Runner,CLI: LaneOutcome { task_id, status: "completed", stage: "REFACTOR" }
 ```
 
 Every `Note over Runner` is a named failure the workflow script decides on its own. Nothing in that column is the agent's opinion.
