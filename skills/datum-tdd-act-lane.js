@@ -860,7 +860,7 @@ datum dev test-count-gate --repo ${q2(o.wt)} --files ${o.testFiles.map(q2).join(
         // a statement start: an unanchored grep matched `assert True` inside a
         // quoted fixture string of a test-detection test and failed a sound
         // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
-        `ast-grep --pattern '${p.pattern}' ${q2(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${ereEscape(p.pattern)}' ${q2(`${o.wt}/${f}`)} 2>/dev/null`
+        `ast-grep --pattern '${p.pattern}' ${q2(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' ${q2(`${o.wt}/${f}`)} 2>/dev/null`
       )
     ).join("\n")).join("\n") + `
 BODYPATFILE=$(mktemp)
@@ -1696,6 +1696,7 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: red?.failure_reason || "RED failed" };
   }
   const acCount = spec.spec.ac_count;
+  const SKELETON_THROW_RE = "throw new Error\\(.RED agent: implement this assertion.\\)";
   const sgPatterns = laneLanguage === "swift" ? [
     { pattern: "XCTFail", name: "XCTFail" },
     { pattern: "fatalError", name: "fatalError" }
@@ -1703,7 +1704,15 @@ No markdown fences, no explanation.`,
     { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
     { pattern: 'panic("not implemented")', name: "panic placeholder" }
   ] : laneLanguage === "typescript" || laneLanguage === "javascript" ? [
-    { pattern: "throw new Error", name: "throw placeholder" },
+    // The placeholder is a test whose whole body is the skeleton throw —
+    // never the bare `throw new Error` token, which also matched a guard
+    // clause beside real expect() calls and failed a sound RED
+    // (elonchesd wf_a979f3d8-f0c task-013). The grep fallback matches the
+    // skeleton's own message.
+    { pattern: "it($_, () => { throw new Error($_) })", name: "skeleton placeholder", grep: SKELETON_THROW_RE },
+    { pattern: "it($_, async () => { throw new Error($_) })", name: "skeleton placeholder (async)", grep: SKELETON_THROW_RE },
+    { pattern: "test($_, () => { throw new Error($_) })", name: "skeleton placeholder (test)", grep: SKELETON_THROW_RE },
+    { pattern: "test($_, async () => { throw new Error($_) })", name: "skeleton placeholder (test, async)", grep: SKELETON_THROW_RE },
     { pattern: "expect(true).toBe(false)", name: "forced failure" }
   ] : [
     { pattern: "assert True", name: "assert True" },
