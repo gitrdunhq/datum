@@ -5,6 +5,7 @@ import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { resilientAgent } from './shared/agents'
 
 export const meta = {
   name: 'datum-tdd-act-docs',
@@ -28,12 +29,17 @@ if (a.completedLanes.length === 0) {
 } else {
   const changedFiles = [...new Set(a.completedLanes.flatMap(id => a.lanePlan.lanes[id].files || []))]
 
-  const docsCheck = await agent(
+  // resilientAgent, not agent(): a null result is a skipped check, which must
+  // not read as "no stale references found" (phase review wf_9a69f891-462).
+  const docsCheck = await resilientAgent<{ should_refactor?: boolean; reason?: string }>(
     docsCheckPrompt({ changedFiles: changedFiles.join(', ') }),
-    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA }
+    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 },
   )
 
-  if (docsCheck?.should_refactor) {
+  if (!docsCheck) {
+    failureReason = 'docs_check_no_result: the docs-check agent returned nothing on both attempts — docs were not checked'
+    log(`Docs: ${failureReason}`)
+  } else if (docsCheck.should_refactor) {
     const docsPacket = JSON.stringify({
       schema_version: '1.0',
       changed_files: changedFiles,

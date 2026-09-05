@@ -523,3 +523,13 @@ describe('datum-plan — propose-approaches uses the strict parser', () => {
     expect(datumPlanSrc).toMatch(/const approaches: ApproachResult = parseAgentJsonStrict<ApproachResult>\(approachesRaw as string, 'propose-approaches'\)/)
   })
 })
+
+// Phase review wf_9a69f891-462: a parseable {approaches: []} left `chosen`
+// undefined and "undefined" flowed into the decompose prompt.
+describe('datum-plan — an empty approaches array halts by name', () => {
+  const src = readFileSync(join(__dirname, 'datum-plan.ts'), 'utf8')
+  it('throws plan_no_approaches before selecting the chosen approach', () => {
+    expect(src).toMatch(/if \(!Array\.isArray\(approaches\.approaches\) \|\| approaches\.approaches\.length === 0\) throw new Error\(`plan_no_approaches:/)
+    expect(src.indexOf('plan_no_approaches')).toBeLessThan(src.indexOf('const chosen: Approach'))
+  })
+})

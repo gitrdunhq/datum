@@ -174,3 +174,20 @@ describe('datum-review — domain findings use the strict parser and reject a nu
     expect(datumReviewSrc).toMatch(/parseAgentJsonStrict<DomainResult>\(result as string, `review-\$\{DOMAINS\[i\]\.domain\.toLowerCase\(\)\}`\)/)
   })
 })
+
+// Phase review wf_9a69f891-462: the critical/high gate compared the LLM's
+// severity string verbatim, so "High"/"HIGH"/"blocker" never counted and
+// canMerge could pass with high findings; and a parseable reply without a
+// findings array threw a bare TypeError instead of a named error.
+describe('datum-review — severity is normalised before the merge gate; a malformed domain reply fails by name', () => {
+  const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+  it('normalises severity to the enum (unknown values count as high, fail closed) before filtering', () => {
+    expect(src).toMatch(/function normaliseSeverity\(/)
+    expect(src).toMatch(/const critical = deduped\.filter\(\(f\) => f\.severity === 'critical' \|\| f\.severity === 'high'\)/)
+    expect(src).toMatch(/severity: normaliseSeverity\(raw\.severity/)
+    expect(src).toMatch(/review_severity_unknown/)
+  })
+  it('a domain reply without a findings array is agent_output_unparseable, not a TypeError', () => {
+    expect(src).toMatch(/if \(!Array\.isArray\(parsed\.findings\)\) \{?\s*throw new Error\(`agent_output_unparseable: review-/)
+  })
+})

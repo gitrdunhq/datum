@@ -223,3 +223,17 @@ describe('determinism fix — config read is a deterministic batch, not an LLM r
     expect(validateSrc).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
   })
 })
+
+// Phase review wf_9a69f891-462: datum-go reads gateMessage / gateNeedsHuman /
+// hardStop off the validate result on every halt path (datum-go.ts:679) and
+// validate never exported them — every validate hold printed "needs review".
+describe('datum-validate — the gate verdict fields datum-go reads are exported', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('exports gateMessage, gateNeedsHuman and hardStop from the deterministic gate verdict', () => {
+    expect(src).toMatch(/export const __workflowResult = \{[\s\S]*gateMessage: gateMessage,\s*gateNeedsHuman: gateNeedsHuman,\s*hardStop: hardStop/)
+    // A skipped gate (main out of sync / tests red) still carries a message, not undefined.
+    expect(src).toMatch(/let gateMessage = ''/)
+    expect(src).toMatch(/gateMessage = `validate_run_failed:/)
+    expect(src).toMatch(/gateMessage = `tests red/)
+  })
+})

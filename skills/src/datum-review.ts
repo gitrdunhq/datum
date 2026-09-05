@@ -45,6 +45,19 @@ phase('Review')
 interface Finding { id: string; severity: Severity | 'info'; file: string; line: number; description: string; suggestion: string }
 interface DomainResult { domain: string; findings: Finding[] }
 
+/**
+ * The merge gate compares severity to the enum; the LLM writes free text
+ * ("High", "HIGH", "blocker", "sev1"). Normalise, and count anything
+ * unrecognised as high — fail closed — with a named log line.
+ */
+function normaliseSeverity(raw: unknown, where: string): Finding['severity'] {
+  const v = String(raw ?? '').trim().toLowerCase()
+  if (v === 'critical' || v === 'high' || v === 'medium' || v === 'low' || v === 'info') return v
+  if (/\b(crit|blocker|sev ?0|sev ?1|p0|p1)\b/.test(v)) return 'critical'
+  log(`review_severity_unknown: ${where} reported severity ${JSON.stringify(raw)} — counted as high (fail closed)`)
+  return 'high'
+}
+
 const reviewResults = await parallel<DomainResult>(
   DOMAINS.map((d) => () =>
     agent(
@@ -71,8 +84,12 @@ for (let i = 0; i < DOMAINS.length; i++) {
   const parsed: DomainResult = typeof result === 'string'
     ? parseAgentJsonStrict<DomainResult>(result as string, `review-${DOMAINS[i].domain.toLowerCase()}`)
     : result as DomainResult
+  if (!Array.isArray(parsed.findings)) {
+    throw new Error(`agent_output_unparseable: review-${DOMAINS[i].domain.toLowerCase()} — reply has no findings array`)
+  }
   log(`${parsed.domain}: ${parsed.findings.length} findings`)
-  for (const f of parsed.findings) {
+  for (const raw of parsed.findings) {
+    const f: Finding = { ...raw, severity: normaliseSeverity(raw.severity, `review-${DOMAINS[i].domain.toLowerCase()} ${raw.id || ''}`), description: String(raw.description ?? '') }
     log(`  [${f.severity}] ${f.id}: ${f.description.slice(0, 80)}`)
     allFindings.push(f)
   }

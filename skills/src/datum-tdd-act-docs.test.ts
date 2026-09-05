@@ -58,3 +58,15 @@ describe('docs sub-workflow fails soft in both orchestrators', () => {
     })
   }
 })
+
+// Phase review wf_9a69f891-462: docs-check used plain agent(), so a null
+// result read as "no stale references found" — a skipped check was
+// indistinguishable from a clean one.
+describe('datum-tdd-act-docs — a missing docs-check result is named, not "no stale references"', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-docs.ts'), 'utf8')
+  it('runs docs-check through resilientAgent and names a null result docs_check_no_result in failure_reason', () => {
+    expect(src).toMatch(/const docsCheck = await resilientAgent(<[^>]*>)?\(/)
+    expect(src).toMatch(/if \(!docsCheck\) \{[\s\S]{0,200}failureReason = 'docs_check_no_result:/)
+    expect(src).not.toMatch(/const docsCheck = await agent\(/)
+  })
+})

@@ -175,6 +175,8 @@ interface ApproachResult { approaches: Approach[]; recommended: number; recommen
 // failed to produce parseable output.
 const approaches: ApproachResult = parseAgentJsonStrict<ApproachResult>(approachesRaw as string, 'propose-approaches')
 assertReadWitness([specFile], approaches)
+// A parseable but empty list would leave `chosen` undefined and feed "undefined" to decompose.
+if (!Array.isArray(approaches.approaches) || approaches.approaches.length === 0) throw new Error(`plan_no_approaches: propose-approaches returned no approaches (recommendation: ${approaches.recommendation_reason || 'none'})`)
 const chosen: Approach = approaches.approaches[approaches.recommended] || approaches.approaches[0]
 log(`Selected: ${chosen?.name || 'default'} — ${approaches.recommendation_reason}`)
 

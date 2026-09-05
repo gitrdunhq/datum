@@ -115,13 +115,20 @@ log(`Lint: ${check?.lint_clean ? 'clean' : `${(check?.lint_fixes || []).length} 
 if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join('; ')}`)
 
 let gatePassed = false
+// datum-go reads these on every validate halt path (phase review wf_9a69f891-462).
+let gateMessage = ''
+let gateNeedsHuman = false
+let hardStop = false
 
 if (!mainSync.ok) {
+  gateMessage = `main_sync: ${mainSync.message || 'epic branch is not in sync with main'}`
   log('Validate gate skipped — epic branch is not in sync with main.')
 } else if (testExit === null) {
-  log(`VALIDATION FAILED — validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, 'test-verify')}). Cannot proceed.`)
+  gateMessage = `validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, 'test-verify')})`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
 } else if (testExit !== 0) {
-  log(`VALIDATION FAILED — tests are red (independent run exited ${testExit}${check?.tests_pass ? ', despite agent self-report of tests_pass=true' : ''}). Cannot proceed.`)
+  gateMessage = `tests red: independent run exited ${testExit}${check?.tests_pass ? ', despite agent self-report of tests_pass=true' : ''}`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
 } else {
   // Deterministic: the verdict is `datum gate`'s exit code read from a batch
   // step (shared/gate.ts), not an LLM's echo of its JSON.
@@ -131,6 +138,9 @@ if (!mainSync.ok) {
     gateStepList,
   ))
   gatePassed = gate.passed
+  gateMessage = gate.message || ''
+  gateNeedsHuman = !!gate.needsHuman
+  hardStop = !!gate.hardStop
   if (gate.passed) log('Validate gate PASSED')
   else log(`Validate gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 }
@@ -138,5 +148,8 @@ if (!mainSync.ok) {
 export const __workflowResult = {
   testsPassed, testExitCode: testExit, lintClean: !!check?.lint_clean,
   acGaps: check?.ac_gaps || [], gatePassed,
+  gateMessage: gateMessage,
+  gateNeedsHuman: gateNeedsHuman,
+  hardStop: hardStop,
   mainSync: { ok: mainSync.ok, behind: syncResult?.behind ?? null, merged: !!syncResult?.merged, message: mainSync.message },
 }
