@@ -12,7 +12,8 @@ EVALUATE:
 1. For each AC, identify which test function covers it (cite the function name)
 2. Check assertion strength: does each test assert specific values, not just "no error"?
 3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases
-4. List each gap found
+4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN's correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` — this is a gap even when every AC has a strong new test.
+5. List each gap found
 
 SCORING RUBRIC:
 - 9-10: Every AC has a strong test with specific assertions

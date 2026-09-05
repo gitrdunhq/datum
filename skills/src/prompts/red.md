@@ -50,7 +50,9 @@ AFTER WRITING:
 8. Report the commit SHA in commit_sha.
 
 CONSTRAINTS:
-- Append new test functions to existing test files — keep all existing tests intact
+- Append new test functions to existing test files. Existing tests stay as they are, with ONE exception below.
+- STALE OWNED ASSERTIONS (stale_owned_test): when an existing test in one of YOUR test files ({{testFilesList}}) pins behaviour that this lane's acceptance criteria supersede — an exact-shape `toEqual` on a model this lane extends, a fixture or precondition this lane's ACs change, a value the AC now defines differently — amend that assertion in the same RED commit so it states the NEW contract (prefer `toMatchObject`/partial matches over widening to "anything"). Name each amended test in test_output as `amended: <test name> — superseded by <AC id>`. GREEN is forbidden from touching test files, so an assertion you leave stale deadlocks the lane: GREEN's correct implementation fails the old test.
+- Never delete or weaken a test that is not contradicted by an acceptance criterion of THIS lane; tests in files you do not own are off-limits even when they are stale (report them in failure_reason as `stale_foreign_test: <file>:<line>` and continue).
 - Only write and commit test files: {{testFilesList}}
 - OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift — this is a production implementation file, not a test file. If it is not a test file, do not write it.
 
