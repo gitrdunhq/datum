@@ -124,16 +124,6 @@ RULES:
 Output the full QUESTIONS.md content as markdown. No JSON wrapping.
 `;
 
-// skills/src/prompts/util-read-context.md
-var util_read_context_default = `Return a JSON object with:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "epic_dir": "docs/epics/" + the branch name
-{{extraFields}}
-If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
-\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
-Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
-`;
-
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function validateBatchSteps(steps) {
@@ -190,6 +180,10 @@ function parseBatchResult(raw, steps) {
 function stepResult(r, name) {
   return r.steps.find((s) => s.name === name) ?? null;
 }
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
@@ -239,6 +233,77 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/utf8.ts
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+var CONTEXT_FILE_NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+function readContextSteps(o) {
+  const steps = [
+    { name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
+    { name: "epic-dir", command: `printf 'docs/epics/%s' "$__eb"`, tolerant: true }
+  ];
+  o.files.forEach((relPath, i) => {
+    steps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${CONTEXT_FILE_NOT_FOUND_MARKER}'; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+  });
+  for (const extra of o.extraCommands || []) {
+    steps.push({ name: extra.name, command: extra.command, tolerant: true });
+  }
+  return steps;
+}
+function contextFromSteps(result, files) {
+  const branch = stepStdout(result, "branch") || "";
+  const epicDir2 = stepStdout(result, "epic-dir") || `docs/epics/${branch}`;
+  const contents = {};
+  const warnings = [];
+  files.forEach((relPath, i) => {
+    const raw = stepStdout(result, `ctx-cat-${i}`);
+    const declaredRaw = stepStdout(result, `ctx-wc-${i}`);
+    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
+    if (raw === null || raw === CONTEXT_FILE_NOT_FOUND_MARKER || declaredBytes === -1) {
+      contents[relPath] = null;
+      return;
+    }
+    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_FILE_RELAY_LIMIT_BYTES) {
+      warnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_FILE_RELAY_LIMIT_BYTES} bytes)`);
+      contents[relPath] = null;
+      return;
+    }
+    const actualBytes = utf8ByteLength(raw);
+    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
+    }
+    contents[relPath] = raw;
+  });
+  return { branch, epicDir: epicDir2, contents, warnings };
+}
+
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -251,13 +316,24 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 
 // skills/src/datum-refine.ts
@@ -266,24 +342,33 @@ var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: tr
 var yolo = !!a.yolo;
 var issueNumber = typeof a.issueNumber === "number" ? a.issueNumber : null;
 var freeText = typeof a.freeText === "string" ? a.freeText : "";
+if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
 phase("Read");
-var readResult = await agent(
-  renderPrompt(util_read_context_default, {
-    extraFields: `3. "ticket_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/TICKET.md exists (true/false)
-4. "ticket_content": if ticket_exists, read the full file contents, else null
-5. "spec_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md exists (true/false)
-6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
-7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\`
-8. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`
-  }),
-  { label: "read-context", model: model("fast") }
+var TICKET_REL = "docs/epics/$__eb/TICKET.md";
+var readSteps = readContextSteps({
+  files: [TICKET_REL],
+  extraCommands: [
+    { name: "timestamp", command: "date +%Y-%m-%dT%H:%M:%S" },
+    { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` }
+  ]
+});
+var readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
+  readSteps
 );
-var ctx = typeof readResult === "string" ? parseAgentJson(readResult, {}) : readResult;
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
-var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
+if (readBatch.missing) {
+  throw new Error("context_relay_mismatch: batch agent returned no parseable result for read-context");
+}
+var ctx = contextFromSteps(readBatch, [TICKET_REL]);
+for (const warning of ctx.warnings) log(`read-context: ${warning}`);
+if (!(a.agentTypes && typeof a.agentTypes === "object")) {
+  const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
+  configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
+}
+var epicDir = ctx.epicDir;
 var ticketPath = `${epicDir}/TICKET.md`;
-var ticketContent = ctx.ticket_content || "";
-if (!ctx.ticket_exists || !ticketContent) {
+var ticketContent = ctx.contents[TICKET_REL] || "";
+if (!ticketContent) {
   const ignoredInputHint = issueNumber ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically \u2014 that input was ignored. Run \`datum ticket-from-issue ${issueNumber}\` to fetch the issue and bootstrap TICKET.md from it, then re-run \`datum go\` with no args.` : freeText ? ` You passed a brief ("${freeText.slice(0, 80)}${freeText.length > 80 ? "\u2026" : ""}"), but datum-go only uses freeText to detect a NEW epic when one is already in progress on this branch \u2014 it does not bootstrap a brand-new epic from freeText when nothing exists yet, so that input was ignored. Run \`datum init --name <slug>\` yourself, fill in TICKET.md with your brief, commit it, then re-run \`datum go\` with no args.` : " Run `datum init` first.";
   throw new Error(`TICKET.md not found at ${ticketPath}.${ignoredInputHint}`);
 }
@@ -324,7 +409,8 @@ var scanRaw = await agent(
 );
 var scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
 phase("Write");
-var today = ctx.timestamp ? ctx.timestamp.slice(0, 10) : "(date unavailable)";
+var timestamp = stepStdout(readBatch, "timestamp") || "";
+var today = timestamp ? timestamp.slice(0, 10) : "(date unavailable)";
 await agent(
   `You have TWO tasks. Do them in order.
 

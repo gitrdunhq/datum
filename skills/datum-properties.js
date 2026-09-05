@@ -82,16 +82,6 @@ function model(tier) {
 // skills/src/prompts/properties-derive.md
 var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nReturn the full PROPERTIES.md content as markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n\nOutput as markdown. No JSON wrapping.\n";
 
-// skills/src/prompts/util-read-context.md
-var util_read_context_default = `Return a JSON object with:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "epic_dir": "docs/epics/" + the branch name
-{{extraFields}}
-If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
-\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
-Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
-`;
-
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function validateBatchSteps(steps) {
@@ -148,6 +138,10 @@ function parseBatchResult(raw, steps) {
 function stepResult(r, name) {
   return r.steps.find((s) => s.name === name) ?? null;
 }
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
@@ -197,6 +191,77 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/utf8.ts
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+var CONTEXT_FILE_NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+function readContextSteps(o) {
+  const steps = [
+    { name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
+    { name: "epic-dir", command: `printf 'docs/epics/%s' "$__eb"`, tolerant: true }
+  ];
+  o.files.forEach((relPath, i) => {
+    steps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${CONTEXT_FILE_NOT_FOUND_MARKER}'; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+  });
+  for (const extra of o.extraCommands || []) {
+    steps.push({ name: extra.name, command: extra.command, tolerant: true });
+  }
+  return steps;
+}
+function contextFromSteps(result, files) {
+  const branch = stepStdout(result, "branch") || "";
+  const epicDir2 = stepStdout(result, "epic-dir") || `docs/epics/${branch}`;
+  const contents = {};
+  const warnings = [];
+  files.forEach((relPath, i) => {
+    const raw = stepStdout(result, `ctx-cat-${i}`);
+    const declaredRaw = stepStdout(result, `ctx-wc-${i}`);
+    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
+    if (raw === null || raw === CONTEXT_FILE_NOT_FOUND_MARKER || declaredBytes === -1) {
+      contents[relPath] = null;
+      return;
+    }
+    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_FILE_RELAY_LIMIT_BYTES) {
+      warnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_FILE_RELAY_LIMIT_BYTES} bytes)`);
+      contents[relPath] = null;
+      return;
+    }
+    const actualBytes = utf8ByteLength(raw);
+    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
+    }
+    contents[relPath] = raw;
+  });
+  return { branch, epicDir: epicDir2, contents, warnings };
+}
+
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -209,37 +274,62 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 
 // skills/src/datum-properties.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
+if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
 phase("Read");
-var context = await agent(
-  renderPrompt(util_read_context_default, {
-    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md
-5. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`
-  }),
-  { label: "read-context", model: model("fast") }
+var SPEC_REL = "docs/epics/$__eb/SPEC.md";
+var TASKS_REL = "docs/epics/$__eb/TASKS.md";
+var readSteps = readContextSteps({
+  files: [SPEC_REL, TASKS_REL],
+  extraCommands: [
+    { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` }
+  ]
+});
+var readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
+  readSteps
 );
-var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
-if (!ctx.spec_content) throw new Error("SPEC.md not found. Run datum-refine first.");
-if (!ctx.tasks_content) throw new Error("TASKS.md not found. Run datum-plan first.");
-var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
-log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split("\n").length} lines`);
+if (readBatch.missing) {
+  throw new Error("context_relay_mismatch: batch agent returned no parseable result for read-context");
+}
+var ctx = contextFromSteps(readBatch, [SPEC_REL, TASKS_REL]);
+for (const warning of ctx.warnings) log(`read-context: ${warning}`);
+if (!(a.agentTypes && typeof a.agentTypes === "object")) {
+  const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
+  configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
+}
+var specContent = ctx.contents[SPEC_REL] || "";
+var tasksContent = ctx.contents[TASKS_REL] || "";
+if (!specContent) throw new Error("SPEC.md not found. Run datum-refine first.");
+if (!tasksContent) throw new Error("TASKS.md not found. Run datum-plan first.");
+var epicDir = ctx.epicDir;
+log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
 phase("Derive");
 await agent(
-  renderPrompt(properties_derive_default, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content }) + `
+  renderPrompt(properties_derive_default, { specContent, tasksContent }) + `
 
 AFTER WRITING THE PROPERTIES CONTENT:
 1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)

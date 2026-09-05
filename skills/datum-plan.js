@@ -170,6 +170,7 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
@@ -180,10 +181,20 @@ function readAgentTypeConfig(cfg) {
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 
 // skills/src/shared/tracker.ts
@@ -192,11 +203,18 @@ async function publishLanePlan(lanePlanPath, epicTitle) {
     `Run: datum plan-issues --lane-plan "${lanePlanPath}" --title "${epicTitle}"
 Return the JSON output. If the command fails, return {"error": "<message>"}.
 Output raw JSON only.`,
-    stageOpts("cli", { label: "publish-issues", model: "haiku" })
+    stageOpts("cli", { label: "publish-issues", model: model("fast") })
   );
-  if (!result) return null;
-  const parsed = typeof result === "string" ? JSON.parse(result.replace(/```[a-z]*\n?/g, "").trim()) : result;
-  if (parsed?.error) {
+  if (!result) {
+    log("[tracker] publish failed: agent returned no result");
+    return null;
+  }
+  const parsed = typeof result === "string" ? parseAgentJson(result, null) : result;
+  if (!parsed) {
+    log(`[tracker] publish failed: unparseable output \u2014 ${String(result).slice(0, 200)}`);
+    return null;
+  }
+  if (parsed.error) {
     log(`[tracker] publish failed: ${parsed.error}`);
     return null;
   }
@@ -275,6 +293,77 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/utf8.ts
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+var CONTEXT_FILE_NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+function readContextSteps(o) {
+  const steps = [
+    { name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
+    { name: "epic-dir", command: `printf 'docs/epics/%s' "$__eb"`, tolerant: true }
+  ];
+  o.files.forEach((relPath, i) => {
+    steps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${CONTEXT_FILE_NOT_FOUND_MARKER}'; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+  });
+  for (const extra of o.extraCommands || []) {
+    steps.push({ name: extra.name, command: extra.command, tolerant: true });
+  }
+  return steps;
+}
+function contextFromSteps(result, files) {
+  const branch = stepStdout(result, "branch") || "";
+  const epicDir2 = stepStdout(result, "epic-dir") || `docs/epics/${branch}`;
+  const contents = {};
+  const warnings = [];
+  files.forEach((relPath, i) => {
+    const raw = stepStdout(result, `ctx-cat-${i}`);
+    const declaredRaw = stepStdout(result, `ctx-wc-${i}`);
+    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
+    if (raw === null || raw === CONTEXT_FILE_NOT_FOUND_MARKER || declaredBytes === -1) {
+      contents[relPath] = null;
+      return;
+    }
+    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_FILE_RELAY_LIMIT_BYTES) {
+      warnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_FILE_RELAY_LIMIT_BYTES} bytes)`);
+      contents[relPath] = null;
+      return;
+    }
+    const actualBytes = utf8ByteLength(raw);
+    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
+    }
+    contents[relPath] = raw;
+  });
+  return { branch, epicDir: epicDir2, contents, warnings };
+}
+
 // skills/src/prompts/plan-approaches.md
 var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["src/module/file1", "src/module/file2"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -286,16 +375,6 @@ var plan_triage_default = 'Triage agent. Read the plan and decide if deep codeba
 
 // skills/src/prompts/plan-deepen.md
 var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nAfter appending, commit: git add docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md && git commit -m "plan: deepen \u2014 research findings"\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
-
-// skills/src/prompts/util-read-context.md
-var util_read_context_default = `Return a JSON object with:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "epic_dir": "docs/epics/" + the branch name
-{{extraFields}}
-If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
-\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
-Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
-`;
 
 // skills/src/shared/gate.ts
 function gateSteps(phase2, flags) {
@@ -346,27 +425,42 @@ var plan_decompose_default = 'Task decomposer. Break the SPEC into implementatio
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var yolo = !!a.yolo;
+if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
 phase("Read");
-var context = await agent(
-  renderPrompt(util_read_context_default, {
-    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "current_state": read CURRENT_STATE.md if it exists (first 80 lines), else null
-5. "prior_defects": run \`jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null\` \u2014 return as string, empty if none
-6. "error_history": read .datum/ERRORS.md if it exists (first 40 lines), else null`
-  }),
-  { label: "read-context", model: model("balanced") }
+var NOT_FOUND_MARKER = "__DATUM_CTXFIELD_NOT_FOUND__";
+var SPEC_REL = "docs/epics/$__eb/SPEC.md";
+var readSteps = readContextSteps({
+  files: [SPEC_REL],
+  extraCommands: [
+    { name: "current-state", command: `if [ -f CURRENT_STATE.md ]; then head -80 CURRENT_STATE.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` },
+    { name: "prior-defects", command: `jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null` },
+    { name: "error-history", command: `if [ -f .datum/ERRORS.md ]; then head -40 .datum/ERRORS.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` }
+  ]
+});
+var readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
+  readSteps
 );
-var ctx = typeof context === "string" ? parseAgentJson(context, {}) : context;
-var epicDir = ctx.epic_dir || `docs/epics/${ctx.branch || "unknown"}`;
-var specContent = ctx.spec_content || "";
+if (readBatch.missing) {
+  throw new Error("context_relay_mismatch: batch agent returned no parseable result for read-context");
+}
+var ctx = contextFromSteps(readBatch, [SPEC_REL]);
+for (const warning of ctx.warnings) log(`read-context: ${warning}`);
+var epicDir = ctx.epicDir;
+var specContent = ctx.contents[SPEC_REL] || "";
 if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`);
 log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
-var priorFailures = [ctx.prior_defects || "", ctx.error_history || ""].filter(Boolean).join("\n") || "(no prior failure data)";
+var currentStateRaw = stepStdout(readBatch, "current-state");
+var currentState = currentStateRaw === null || currentStateRaw === NOT_FOUND_MARKER ? null : currentStateRaw;
+var priorDefects = stepStdout(readBatch, "prior-defects") || "";
+var errorHistoryRaw = stepStdout(readBatch, "error-history");
+var errorHistory = errorHistoryRaw === null || errorHistoryRaw === NOT_FOUND_MARKER ? null : errorHistoryRaw;
+var priorFailures = [priorDefects, errorHistory || ""].filter(Boolean).join("\n") || "(no prior failure data)";
 var configSteps = [
   { name: "repo-config", command: "cat .datum/config.json" },
   { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
 ];
-var configBatchRaw = await agent(batchCommandPrompt(configSteps), stageOpts("cli", { label: "read-config", model: model("fast") }));
+var configBatchRaw = await agent(batchCommandPrompt(configSteps), bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
 var configBatch = parseBatchResult(configBatchRaw, configSteps);
 if (configBatch.missing || configBatch.failed) {
   throw new Error("missing .datum/config.json \u2014 run datum init first");
@@ -384,7 +478,7 @@ try {
   globalCfgParsed = {};
 }
 var repoCfg = { ...DEFAULT_CONFIG, ...mergeConfig(globalCfgParsed, repoCfgParsed) };
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : readAgentTypeConfig(repoCfg));
+if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
 var CONTEXT_RELAY_LIMIT_BYTES = 64 * 1024;
@@ -392,12 +486,12 @@ var contextFilesList = repoCfg.context_files || [];
 var contextFileContents = {};
 var contextFilesWarnings = [];
 if (contextFilesList.length > 0) {
-  const NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+  const NOT_FOUND_MARKER2 = "__DATUM_CTXFILE_NOT_FOUND__";
   const fileSteps = [];
   contextFilesList.forEach((relPath, i) => {
     fileSteps.push({
       name: `ctx-cat-${i}`,
-      command: `if [ -f "${relPath}" ]; then cat "${relPath}"; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      command: `if [ -f "${relPath}" ]; then cat "${relPath}"; else printf '%s' '${NOT_FOUND_MARKER2}'; fi`,
       tolerant: true
     });
     fileSteps.push({
@@ -415,7 +509,7 @@ if (contextFilesList.length > 0) {
     const raw = stepStdout(filesBatch, `ctx-cat-${i}`);
     const declaredRaw = stepStdout(filesBatch, `ctx-wc-${i}`);
     const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
-    if (raw === null || raw === NOT_FOUND_MARKER || declaredBytes === -1) {
+    if (raw === null || raw === NOT_FOUND_MARKER2 || declaredBytes === -1) {
       contextFileContents[relPath] = null;
       return;
     }
@@ -423,7 +517,7 @@ if (contextFilesList.length > 0) {
       contextFilesWarnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_RELAY_LIMIT_BYTES} bytes)`);
       return;
     }
-    const actualBytes = Buffer.byteLength(raw, "utf8");
+    const actualBytes = utf8ByteLength(raw);
     if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
       throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
     }
@@ -437,7 +531,7 @@ var contextFilesSection = buildContextFilesSection(
 for (const warning of contextFilesWarnings) log(`context_files: ${warning}`);
 phase("Decompose");
 var approachesRaw = await agent(
-  renderPrompt(plan_approaches_default, { specContent, currentState: ctx.current_state || "(not available)" }),
+  renderPrompt(plan_approaches_default, { specContent, currentState: currentState || "(not available)" }),
   { label: "propose-approaches", model: model("balanced") }
 );
 var approaches = parseAgentJson(approachesRaw, { approaches: [], recommended: 0, recommendation_reason: "" });

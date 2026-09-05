@@ -16,11 +16,6 @@ function model(tier) {
   return activeTiers[tier];
 }
 
-// skills/src/shared/boot.ts
-function runCommandPrompt(command) {
-  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
-}
-
 // skills/src/shared/schemas.ts
 var STAGE_RESULT_SCHEMA = {
   type: "object",
@@ -88,102 +83,23 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function deterministicChecks() {
   return state.agentTypes && state.hooksInstalled;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
-}
-
-// skills/src/shared/agents.ts
-var RATE_LIMIT_MAX_RETRIES = 4;
-var RATE_LIMIT_BASE_DELAY_MS = 5e3;
-var RATE_LIMIT_JITTER_MS = 2e3;
-function sleepMs(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage) {
-  const raw = await agent(
-    `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:
-git -C "${wt}" log --format="%H %s"
-git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(" ")}
-Return ONLY the raw output, no explanation, no markdown fences.`,
-    stageOpts("cli", { label: `verify-commit:${taskId}:${stage}`, model: "haiku" })
-  );
-  if (!raw) return { committed: false, detail: "independent check returned no result" };
-  const lines = String(raw).trim().split("\n").filter(Boolean);
-  const shaLine = /^[0-9a-f]{40} /;
-  const logLines = lines.filter((l) => shaLine.test(l));
-  const statusLines = lines.filter((l) => !shaLine.test(l));
-  const target = `${commitPrefix}: ${stage} complete`;
-  const match = logLines.find((l) => l.includes(target));
-  const clean = statusLines.length === 0;
-  return {
-    committed: Boolean(match) && clean,
-    commitSha: match ? match.split(" ")[0] : "",
-    clean,
-    detail: match ? `found_commit="${match}" uncommitted_files=${statusLines.length}` : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`
-  };
-}
-async function resilientAgent(prompt, opts, deps) {
-  const agentFn = deps?.agentFn ?? agent;
-  const logFn = deps?.logFn ?? log;
-  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
-  let lastResult = null;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    let threw = false;
-    let caughtMessage = "";
-    try {
-      lastResult = await agentFn(prompt, opts);
-    } catch (err) {
-      threw = true;
-      caughtMessage = err instanceof Error ? err.message : String(err);
-      lastResult = null;
-    }
-    if (!threw && lastResult !== null) return lastResult;
-    if (threw) {
-      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
-    }
-    if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agentFn(
-        `Run: git -C "${opts.worktree}" status --porcelain
-Return ONLY the raw output, no explanation.`,
-        stageOpts("cli", { label: "retry-guard", model: "haiku" })
-      );
-      if (dirty && String(dirty).trim().length > 0) {
-        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
-        return lastResult;
-      }
-    }
-    if (attempt < maxRetries) {
-      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS);
-      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
-      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
-      await sleepMs(delay);
-    }
-  }
-  return lastResult;
-}
-
-// skills/src/shared/tracker.ts
-async function updateStage(issueId, stage, commitSha) {
-  if (!issueId) return;
-  const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
-  await agent(
-    `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
-If the command doesn't exist or fails, silently continue.
-Output nothing.`,
-    stageOpts("cli", { label: `tracker:${issueId}:${stage}`, model: "haiku" })
-  );
-}
-function getIssueId(lanePlan2, taskId) {
-  const issue = lanePlan2.lanes[taskId]?.github_issue;
-  return issue ? String(issue) : "";
 }
 
 // skills/src/shared/utils.ts
@@ -405,7 +321,7 @@ var BUILTIN_SKIP = /* @__PURE__ */ new Set([
 ]);
 function extractContractSummary(acceptanceCriteria) {
   return (acceptanceCriteria || []).map((ac) => {
-    const funcMatch = ac.match(/(?<!['"-])(\w+)\(([^)]*)\)/);
+    const funcMatch = ac.match(/(?<!['"-])(\w+)\s*\(([^)]*)\)/);
     const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i);
     const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/);
     if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null;
@@ -429,7 +345,8 @@ function crossValidateBugs(skepticResults, lenses) {
       allBugs.push({ ...bug, lens: lenses[i].key });
     }
   }
-  const bugDescs = allBugs.map((b) => b.description.toLowerCase().slice(0, 60));
+  const normalize = (d) => d.toLowerCase().replace(/\s+/g, " ").slice(0, 60);
+  const bugDescs = allBugs.map((b) => normalize(b.description));
   const crossValidated = allBugs.filter((_bug, idx) => {
     const myDesc = bugDescs[idx];
     return bugDescs.some((d, j) => j !== idx && d === myDesc);
@@ -438,6 +355,7 @@ function crossValidateBugs(skepticResults, lenses) {
 }
 function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras = {}) {
   return {
+    ...extras,
     schema_version: "1.0",
     task_id: taskId,
     stage,
@@ -449,8 +367,7 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras
     allowed_write_files: stage === "RED" ? testFiles : stage === "GREEN" ? implFiles : [...testFiles, ...implFiles],
     forbidden_write_files: stage === "RED" ? implFiles : stage === "GREEN" ? testFiles : [],
     commit_prefix: stage === "RED" ? `red(${taskId})` : stage === "GREEN" ? `green(${taskId})` : `refactor(${taskId})`,
-    ...cfg2.test_framework ? { test_framework: cfg2.test_framework } : {},
-    ...extras
+    ...cfg2.test_framework ? { test_framework: cfg2.test_framework } : {}
   };
 }
 var SKIPPED_PREFLIGHT = { status: "skipped", conflicts: [], needs_write: [], reason: "no preflight result" };
@@ -608,6 +525,107 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/agents.ts
+var RATE_LIMIT_MAX_RETRIES = 4;
+var RATE_LIMIT_BASE_DELAY_MS = 5e3;
+var RATE_LIMIT_JITTER_MS = 2e3;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function parseCommitVerification(logStdout, statusStdout, commitPrefix, stage) {
+  if (logStdout === null || logStdout === void 0) {
+    return { committed: false, detail: "independent check returned no result (log step did not run)" };
+  }
+  const shaLine = /^[0-9a-f]{40} /;
+  const logLines = String(logStdout).split("\n").map((l) => l.trim()).filter((l) => shaLine.test(l));
+  const statusLines = String(statusStdout ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const target = `${commitPrefix}: ${stage} complete`;
+  const match = logLines.find((l) => l.includes(target));
+  const clean = statusLines.length === 0;
+  return {
+    committed: Boolean(match) && clean,
+    commitSha: match ? match.split(" ")[0] : "",
+    clean,
+    detail: match ? `found_commit="${match}" uncommitted_files=${statusLines.length}` : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`
+  };
+}
+async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage, baseRef) {
+  const q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
+  const range = baseRef ? `${q2(baseRef)}..HEAD` : "-n 200";
+  const steps = [
+    { name: "log", command: `git -C ${q2(wt)} log --format="%H %s" ${range}`, tolerant: true },
+    { name: "status", command: `git -C ${q2(wt)} status --porcelain -- ${files.map(q2).join(" ")}`, tolerant: true }
+  ];
+  const raw = await agent(
+    batchCommandPrompt(steps),
+    stageOpts("cli", { label: `verify-commit:${taskId}:${stage}`, model: model("fast") })
+  );
+  const result = parseBatchResult(raw, steps);
+  if (result.missing) return { committed: false, detail: `independent check returned no result (${describeFailure(result, "verify-commit")})` };
+  return parseCommitVerification(stepStdout(result, "log"), stepStdout(result, "status"), commitPrefix, stage);
+}
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
+  let lastResult = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    }
+    if (attempt < maxRetries && opts?.worktree) {
+      const dirty = await agentFn(
+        `Run: git -C "${opts.worktree}" status --porcelain
+Return ONLY the raw output, no explanation.`,
+        stageOpts("cli", { label: "retry-guard", model: "haiku" })
+      );
+      if (dirty && String(dirty).trim().length > 0) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
+        return lastResult;
+      }
+    }
+    if (attempt < maxRetries) {
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS);
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      await sleepMs(delay);
+    }
+  }
+  return lastResult;
+}
+
+// skills/src/shared/tracker.ts
+async function updateStage(issueId, stage, commitSha) {
+  if (!issueId) return false;
+  const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
+  const result = await agent(
+    `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
+Return ONLY the command's JSON output. If it fails, return {"ok": false, "error": "<last lines of output>"}.
+Output raw JSON only.`,
+    stageOpts("cli", { label: `tracker:${issueId}:${stage}`, model: model("fast") })
+  );
+  const parsed = result ? parseAgentJson(String(result), null) : null;
+  if (!parsed || parsed.ok === false) {
+    log(`[tracker] issue-stage failed for #${issueId} \u2192 ${stage}: ${parsed?.error || (result ? String(result).slice(0, 200) : "agent returned no result")}`);
+    return false;
+  }
+  return true;
+}
+function getIssueId(lanePlan2, taskId) {
+  const issue = lanePlan2.lanes[taskId]?.github_issue;
+  return issue ? String(issue) : "";
+}
+
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function catOrMissing(path) {
@@ -756,6 +774,7 @@ function postGreenSteps(o) {
   }
   return steps;
 }
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
@@ -1005,14 +1024,14 @@ No markdown fences, no explanation.`,
   const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
-    if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+    if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
   if (redAlreadyCommitted && greenAlreadyCommitted) {
     log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
-    if (!r) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: "refactor failed" };
+    if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
@@ -1085,7 +1104,7 @@ No markdown fences, no explanation.`,
   let red = null;
   if (redAlreadyCommitted) {
     log(`[${taskId}] RED commit already exists on lane branch \u2014 skipping RED dispatch, resuming from GREEN (#331)`);
-    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED", cfg2.epicBranch);
     red = {
       success: true,
       tests_pass: false,
@@ -1102,7 +1121,7 @@ No markdown fences, no explanation.`,
       log(`[${taskId}] RED wrote: ${(red.files_written || []).join(", ")}`);
     }
     if (!red || !red.committed) {
-      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED", cfg2.epicBranch);
       if (check.committed) {
         log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
         red = {
@@ -1120,7 +1139,7 @@ No markdown fences, no explanation.`,
           stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
         );
         if (!red || !red.committed) {
-          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED");
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED", cfg2.epicBranch);
           if (retryCheck.committed) {
             log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) \u2014 treating as committed (#274)`);
             red = {
@@ -1409,7 +1428,7 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     return { task_id: taskId, status: "failed", stage: "GREEN", error: reason };
   }
   if (!green.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, "GREEN");
+    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, "GREEN", cfg2.epicBranch);
     if (check.committed) {
       log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) \u2014 treating as committed (#274)`);
       green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha };
@@ -1561,17 +1580,35 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
     log(`[${taskId}] REFACTOR FAILED: ${refactor?.failure_reason || "null"}`);
     return null;
   }
-  if (!refactor.tests_pass) {
-    log(`[${taskId}] REFACTOR broke tests \u2014 agent should not have committed`);
+  const verifySteps = [
+    { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true }
+  ];
+  const verifyRaw = await agent(
+    batchCommandPrompt(verifySteps),
+    stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") })
+  );
+  let refactorVerifyExit = testExitCode(stepStdout(parseBatchResult(verifyRaw, verifySteps), "test-verify"));
+  if (refactorVerifyExit !== 0) {
+    log(`[${taskId}] REFACTOR VERIFY FAILED: independent run exit=${refactorVerifyExit ?? "n/a"} (agent self-reported tests_pass=${!!refactor.tests_pass}) \u2014 ${refactor.committed ? "reverting the refactor commit" : "agent reported no commit"}`);
     if (refactor.committed) {
-      await agent(
-        runCommandPrompt(`git -C "${wt}" revert --no-edit HEAD`),
+      const revertSteps = [
+        { name: "revert", command: `git -C "${wt}" revert --no-edit HEAD`, tolerant: true },
+        { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-reverify"), tolerant: true }
+      ];
+      const revertRaw = await agent(
+        batchCommandPrompt(revertSteps),
         stageOpts("cli", { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") })
       );
+      const revertResult = parseBatchResult(revertRaw, revertSteps);
+      refactorVerifyExit = testExitCode(stepStdout(revertResult, "test-verify"));
+      log(`[${taskId}] REFACTOR reverted (revert exit=${stepResult(revertResult, "revert")?.exit_code ?? "n/a"}); suite after revert exit=${refactorVerifyExit ?? "n/a"}`);
+    }
+    if (refactorVerifyExit !== 0) {
+      return { verified: false, error: `refactor_verify_failed: suite red after REFACTOR (independent exit=${refactorVerifyExit ?? "no result"})${refactor.committed ? " even after reverting the refactor commit" : ""}` };
     }
     return { verified: true };
   }
-  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || "n/a"})`);
+  log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || "n/a"}; independent verify exit=0)`);
   return { verified: true };
 }
 var a = args;

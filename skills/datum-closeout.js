@@ -94,47 +94,24 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
-
-// skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
-function closeoutCollectSteps(o) {
-  return [
-    {
-      name: "branch",
-      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
-      tolerant: true
-    },
-    {
-      name: "timestamp",
-      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
-      tolerant: true
-    },
-    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
-    { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
-    { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
-    { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
-    {
-      name: "collect-git",
-      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
-      tolerant: true
-    },
-    { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
-    { name: "collect-token-metrics", command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
-    { name: "collate", command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
-    {
-      name: "data-exists",
-      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
-      tolerant: true
-    }
-  ];
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 
 // skills/src/shared/batch.ts
@@ -204,16 +181,80 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function closeoutCollectSteps(o) {
+  return [
+    {
+      name: "branch",
+      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
+      tolerant: true
+    },
+    {
+      name: "timestamp",
+      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
+      tolerant: true
+    },
+    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
+    { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
+    { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
+    { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    {
+      name: "collect-git",
+      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
+      tolerant: true
+    },
+    { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
+    { name: "collect-token-metrics", command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
+    { name: "collate", command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
+    {
+      name: "data-exists",
+      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
+      tolerant: true
+    }
+  ];
+}
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+var ARCHIVE_ROOT_FILES = ["SPEC.md", "TASKS.md", "QUESTIONS.md", "PROPERTIES.md", "TICKET.md", "tasks.json"];
+function moveStepName(fileName) {
+  return `move-${fileName.toLowerCase().replace(/\./g, "-")}`;
+}
+function moveIntoEpicDirCommand(src, epicDir2, base) {
+  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(`${epicDir2}/${base}`)}; else echo ABSENT; fi`;
+}
+function closeoutArchiveSteps(o) {
+  const steps = [
+    { name: "tag", command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
+    { name: "archive", command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true }
+  ];
+  for (const f of ARCHIVE_ROOT_FILES) {
+    steps.push({ name: moveStepName(f), command: moveIntoEpicDirCommand(f, o.epicDir, f), tolerant: true });
+  }
+  steps.push({
+    name: "move-lane-plan-json",
+    command: moveIntoEpicDirCommand(".datum/lane-plan.json", o.epicDir, "lane-plan.json"),
+    tolerant: true
+  });
+  steps.push({
+    name: "commit",
+    command: `git diff --cached --quiet || git commit -m ${q(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
+    tolerant: true
+  });
+  steps.push({ name: "commit-sha", command: "git rev-parse --short HEAD", tolerant: true });
+  return steps;
+}
+
 // skills/src/datum-closeout.ts
 var COLLECTOR_STEPS = ["collect-git", "collect-tasks", "collect-token-metrics", "collate"];
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var runId = a.runId || "";
+if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
 phase("Collect");
 var collectSteps = closeoutCollectSteps({ runId });
 var collectRaw = await agent(
   batchCommandPrompt(collectSteps),
-  stageOpts("cli", { label: "closeout-collect", model: model("fast") })
+  bootstrapOpts("cli", { label: "closeout-collect", model: model("fast") })
 );
 var collectResult = parseBatchResult(collectRaw, collectSteps);
 for (const name of COLLECTOR_STEPS) {
@@ -225,7 +266,7 @@ for (const name of COLLECTOR_STEPS) {
 }
 var branch = (stepStdout(collectResult, "branch") || "").trim();
 var cfg = parseAgentJson(stepStdout(collectResult, "config") || "{}", {});
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: cfg.agent_types !== false });
+if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes({ agentTypes: cfg.agent_types !== false });
 var rid = runId || (stepStdout(collectResult, "timestamp") || "").trim();
 var dataExists = (stepStdout(collectResult, "data-exists") || "").trim() === "yes";
 log(`Branch: ${branch}, run: ${rid}`);
@@ -236,23 +277,29 @@ if (!dataExists) {
 }
 phase("Synthesize");
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }) + `
-
-AFTER writing artifacts, also:
-1. Tag: git tag "epic/${branch}/${rid}" HEAD 2>/dev/null || true
-2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true
-3. Clean up root pipeline artifacts \u2014 move them to the epic archive dir:
-   EPIC_DIR="docs/epics/${branch}"
-   mkdir -p "$EPIC_DIR"
-   for f in SPEC.md TASKS.md QUESTIONS.md PROPERTIES.md TICKET.md tasks.json; do
-     [ -f "$f" ] && mv "$f" "$EPIC_DIR/" && echo "archived $f \u2192 $EPIC_DIR/"
-   done
-   [ -f .datum/lane-plan.json ] && mv .datum/lane-plan.json "$EPIC_DIR/" && echo "archived lane-plan.json \u2192 $EPIC_DIR/"
-4. Commit the cleanup: git add -A && git commit -m "closeout(${rid}): archive pipeline artifacts to $EPIC_DIR"`,
-  { label: "synthesize-and-archive", model: model("balanced") }
+  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
+  { label: "synthesize", model: model("balanced") }
 );
 var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
+var epicDir = `docs/epics/${branch}`;
+var archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir });
+var archiveRaw = await agent(
+  batchCommandPrompt(archiveSteps),
+  stageOpts("cli", { label: "closeout-archive", model: model("fast") })
+);
+var archiveResult = parseBatchResult(archiveRaw, archiveSteps);
+var archiveFailures = [];
+for (const step of archiveResult.steps) {
+  if (step.exit_code !== 0) {
+    archiveFailures.push(step.name);
+    const tail = (step.stderr || step.stdout).trim().split("\n").slice(-5).join("\n");
+    log(`[closeout] archive step "${step.name}" exited ${step.exit_code}${tail ? ` \u2014 ${tail}` : ""}`);
+  }
+}
+var commitStep = archiveResult.steps.find((s) => s.name === "commit");
+var archived = !archiveResult.missing && !!commitStep && commitStep.exit_code === 0;
+var archiveCommit = archived ? (stepStdout(archiveResult, "commit-sha") || "").trim() : "";
 await agent(
   `Run: datum housekeep-epic ${branch}`,
   stageOpts("cli", { label: "housekeep", model: model("fast") })
@@ -261,5 +308,8 @@ return {
   branch,
   runId: rid,
   artifacts: synth?.artifacts_written || [],
-  followUps: synth?.follow_up_count || 0
+  followUps: synth?.follow_up_count || 0,
+  archived,
+  archiveCommit,
+  archiveFailures
 };

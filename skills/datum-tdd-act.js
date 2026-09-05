@@ -236,83 +236,6 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-read.md
 var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
-// skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
-function fencedScript(rendered) {
-  const m = rendered.match(/```[a-z]*\n([\s\S]*?)\n```/);
-  if (!m) throw new Error("template has no fenced script block");
-  return m[1];
-}
-function actStartSteps(o) {
-  const steps = [];
-  if (o.branch === "init") {
-    steps.push({ name: "bootstrap", command: `__boot=$(${o.initCmd || "datum init --json"}) && printf '%s' "$__boot"` });
-    steps.push({ name: "branch", command: `__eb=$(printf '%s' "$__boot" | jq -r '.epicBranch // empty') && [ -n "$__eb" ] && printf '%s' "$__eb"` });
-  } else if (o.branch === "detect") {
-    steps.push({ name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"` });
-  } else {
-    steps.push({ name: "branch", command: `__eb=${q(o.branch)} && printf '%s' "$__eb"` });
-  }
-  steps.push({ name: "timestamp", command: "date +%Y%m%d-%H%M%S" });
-  if (o.lanePlanPath) {
-    steps.push({ name: "resolve", command: `__plan=${q(o.lanePlanPath)} && echo given` });
-  } else {
-    steps.push({
-      name: "resolve",
-      command: `__epic="docs/epics/$__eb"
-if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.json"; echo final; elif [ -f "$__epic/lane-plan.json" ]; then __plan="$__epic/lane-plan.json"; echo default; else __plan=""; echo none; fi`,
-      tolerant: true
-    });
-  }
-  steps.push({
-    name: "plan-shape",
-    command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
-    tolerant: true
-  });
-  steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
-  return steps;
-}
-function verifyLanePlanShape(plan, shapeStdout) {
-  let shape = null;
-  try {
-    shape = shapeStdout && shapeStdout.trim() ? JSON.parse(shapeStdout.trim()) : null;
-  } catch {
-    shape = null;
-  }
-  if (!shape || !Array.isArray(shape.lanes)) {
-    return { ok: false, reason: "plan-shape step produced no JSON \u2014 the relayed lane plan cannot be verified" };
-  }
-  const got = Object.keys(plan.lanes || {}).sort();
-  const want = [...shape.lanes].sort();
-  const missing = want.filter((id) => !got.includes(id));
-  const extra = got.filter((id) => !want.includes(id));
-  if (missing.length || extra.length) {
-    return {
-      ok: false,
-      reason: `relayed lane plan has ${got.length} lanes but the file has ${want.length}` + (missing.length ? `; missing: ${missing.join(", ")}` : "") + (extra.length ? `; not in file: ${extra.join(", ")}` : "")
-    };
-  }
-  if (typeof shape.topo === "number" && (plan.topological_order || []).length !== shape.topo) {
-    return { ok: false, reason: `relayed topological_order has ${(plan.topological_order || []).length} entries but the file has ${shape.topo}` };
-  }
-  if (typeof shape.total === "number" && plan.total_lanes !== shape.total) {
-    return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` };
-  }
-  return { ok: true, reason: "" };
-}
-function readLanePlanPrompt(lanePlanPath2) {
-  return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
-}
-
-// skills/src/shared/prompts.ts
-var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
-function laneStateReadPrompt(vars) {
-  return renderPrompt(lane_state_read_default, vars);
-}
-function laneStateReadScript(vars) {
-  return fencedScript(laneStateReadPrompt(vars));
-}
-
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function validateBatchSteps(steps) {
@@ -380,6 +303,84 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function fencedScript(rendered) {
+  const m = rendered.match(/```[a-z]*\n([\s\S]*?)\n```/);
+  if (!m) throw new Error("template has no fenced script block");
+  return m[1];
+}
+function actStartSteps(o) {
+  const steps = [];
+  if (o.branch === "init") {
+    steps.push({ name: "bootstrap", command: `__boot=$(${o.initCmd || "datum init --json"}) && printf '%s' "$__boot"` });
+    steps.push({ name: "branch", command: `__eb=$(printf '%s' "$__boot" | jq -r '.epicBranch // empty') && [ -n "$__eb" ] && printf '%s' "$__eb"` });
+  } else if (o.branch === "detect") {
+    steps.push({ name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"` });
+  } else {
+    steps.push({ name: "branch", command: `__eb=${q(o.branch)} && printf '%s' "$__eb"` });
+  }
+  steps.push({ name: "timestamp", command: "date +%Y%m%d-%H%M%S" });
+  if (o.lanePlanPath) {
+    steps.push({ name: "resolve", command: `__plan=${q(o.lanePlanPath)} && echo given` });
+  } else {
+    steps.push({
+      name: "resolve",
+      command: `__epic="docs/epics/$__eb"
+if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.json"; echo final; elif [ -f "$__epic/lane-plan.json" ]; then __plan="$__epic/lane-plan.json"; echo default; else __plan=""; echo none; fi`,
+      tolerant: true
+    });
+  }
+  steps.push({
+    name: "plan-shape",
+    command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
+    tolerant: true
+  });
+  steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
+  return steps;
+}
+function verifyLanePlanShape(plan, shapeStdout) {
+  let shape = null;
+  try {
+    shape = shapeStdout && shapeStdout.trim() ? JSON.parse(shapeStdout.trim()) : null;
+  } catch {
+    shape = null;
+  }
+  if (!shape || !Array.isArray(shape.lanes)) {
+    return { ok: false, reason: "plan-shape step produced no JSON \u2014 the relayed lane plan cannot be verified" };
+  }
+  const got = Object.keys(plan.lanes || {}).sort();
+  const want = [...shape.lanes].sort();
+  const missing = want.filter((id) => !got.includes(id));
+  const extra = got.filter((id) => !want.includes(id));
+  if (missing.length || extra.length) {
+    return {
+      ok: false,
+      reason: `relayed lane plan has ${got.length} lanes but the file has ${want.length}` + (missing.length ? `; missing: ${missing.join(", ")}` : "") + (extra.length ? `; not in file: ${extra.join(", ")}` : "")
+    };
+  }
+  if (typeof shape.topo === "number" && (plan.topological_order || []).length !== shape.topo) {
+    return { ok: false, reason: `relayed topological_order has ${(plan.topological_order || []).length} entries but the file has ${shape.topo}` };
+  }
+  if (typeof shape.total === "number" && plan.total_lanes !== shape.total) {
+    return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` };
+  }
+  return { ok: true, reason: "" };
+}
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+function readLanePlanPrompt(lanePlanPath2) {
+  return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
+}
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function laneStateReadPrompt(vars) {
+  return renderPrompt(lane_state_read_default, vars);
+}
+function laneStateReadScript(vars) {
+  return fencedScript(laneStateReadPrompt(vars));
+}
+
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -392,6 +393,7 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
@@ -402,10 +404,20 @@ function readAgentTypeConfig(cfg) {
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 function agentTypeArgs() {
   return { ...state };
@@ -414,7 +426,7 @@ function agentTypeArgs() {
 // skills/src/datum-tdd-act.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
-var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") })) : null;
+var cfgText = !a.testCommand || !a.language ? await agent(READ_CONFIG_PROMPT, bootstrapOpts("reader", { label: "read-config", model: model("fast") })) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
 if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.models);
 configureAgentTypes(readAgentTypeConfig(repoCfg));

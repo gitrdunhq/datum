@@ -160,6 +160,7 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
@@ -170,10 +171,20 @@ function readAgentTypeConfig(cfg) {
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
 }
 
 // skills/src/shared/batch.ts
@@ -250,6 +261,21 @@ function testExitCode(stdout) {
   if (matches.length === 0) return null;
   return Number(matches[matches.length - 1][1]);
 }
+var CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024;
+
+// skills/src/shared/validate-steps.ts
+var TEST_SIGNAL_PATH = ".datum/last-test-signal.json";
+function validateVerifySteps(testCommand2, cwd) {
+  const signalPath = `${cwd.replace(/\/+$/, "")}/${TEST_SIGNAL_PATH}`;
+  return [
+    { name: "test-verify", command: testRunCommand(testCommand2, cwd, "validate-verify"), tolerant: true },
+    {
+      name: "write-signal",
+      command: `mkdir -p "$(dirname "${signalPath}")" && jq -n --arg status "$([ "\${TEST_EXIT:-1}" -eq 0 ] && echo pass || echo fail)" --argjson exit_code "\${TEST_EXIT:-1}" --arg command ${JSON.stringify(testCommand2)} --arg recorded_at "$(date +%Y-%m-%dT%H:%M:%S)" '{status: $status, exit_code: $exit_code, command: $command, recorded_at: $recorded_at}' > "${signalPath}" && cat "${signalPath}"`,
+      tolerant: true
+    }
+  ];
+}
 
 // skills/src/prompts/validate-check.md
 var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
@@ -300,9 +326,10 @@ function parseGateResult(result) {
 var a = parseValidateArgs(args);
 var yolo = a.yolo;
 var noMergeMain = a.noMergeMain;
-var cfgText = !a.testCommand ? await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") })) : null;
+if (a.agentTypes && typeof a.agentTypes === "object") configureAgentTypes(a.agentTypes);
+var cfgText = !a.testCommand ? await agent(READ_CONFIG_PROMPT, bootstrapOpts("reader", { label: "read-config", model: model("fast") })) : null;
 var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : {};
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : readAgentTypeConfig(repoCfg));
+if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
 phase("Validate");
 var syncRaw = await agent(mainSyncPrompt(noMergeMain), stageOpts("cli", { label: "main-sync", model: model("fast") }));
@@ -327,7 +354,7 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced") }
 );
 var check = typeof checkResult === "string" ? parseAgentJson(checkResult, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] }) : checkResult;
-var verifySteps = [{ name: "test-verify", command: testRunCommand(testCommand, ".", "validate-verify") }];
+var verifySteps = validateVerifySteps(testCommand, ".");
 var verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
   stageOpts("cli", { label: "validate-verify", phase: "Validate", model: model("fast") })
