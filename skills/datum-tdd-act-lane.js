@@ -595,7 +595,7 @@ Return ONLY the raw output, no explanation.`,
       }
     }
     if (attempt < maxRetries) {
-      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * RATE_LIMIT_JITTER_MS);
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + (attempt + 1) * 7919 % RATE_LIMIT_JITTER_MS;
       const reason = threw ? `threw: ${caughtMessage}` : "returned null";
       logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
       await sleepMs(delay);
