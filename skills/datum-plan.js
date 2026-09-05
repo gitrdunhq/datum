@@ -277,8 +277,8 @@ function stepStdout(r, name) {
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
-  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
+  const tail3 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail3 ? ` \u2014 ${tail3}` : ""}`;
 }
 
 // skills/src/shared/tracker.ts
@@ -324,6 +324,24 @@ async function publishLanePlan(lanePlanPath, epicTitle) {
 }
 
 // skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
 function utf8ByteLength(s) {
   let bytes = 0;
   for (let i = 0; i < s.length; i++) {
@@ -339,6 +357,84 @@ function utf8ByteLength(s) {
     } else bytes += 3;
   }
   return bytes;
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
 }
 
 // skills/src/shared/context-relay.ts
@@ -530,6 +626,108 @@ function configFromSteps(result) {
   return mergeConfig(globalCfgParsed, repoCfgParsed);
 }
 
+// skills/src/shared/plan-steps.ts
+var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var HEREDOC_EOF = "DATUM_TASKS_EOF";
+function tail2(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function lanePlanCommand(epicDir2) {
+  return `datum lane-plan --input ${q3(`${epicDir2}/tasks.json`)} --output ${q3(`${epicDir2}/lane-plan.json`)} --md-output ${q3(`${epicDir2}/TASKS.md`)}`;
+}
+function planBuildSteps(o) {
+  if (o.tasksJson.includes("\n")) throw new Error("planBuildSteps: tasksJson must be a single line (JSON.stringify without indentation)");
+  if (o.tasksJson.includes(HEREDOC_EOF)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_EOF}`);
+  const tasksPath = `${o.epicDir}/tasks.json`;
+  return [
+    { name: "mkdir", command: `mkdir -p ${q3(o.epicDir)}` },
+    { name: "write-tasks", command: `cat > ${q3(tasksPath)} <<'${HEREDOC_EOF}'
+${o.tasksJson}
+${HEREDOC_EOF}` },
+    { name: "tasks-sha", command: `git hash-object ${q3(tasksPath)}`, tolerant: true },
+    { name: "lane-plan", command: lanePlanCommand(o.epicDir) }
+  ];
+}
+function tasksJsonBlobSha(tasksJson2) {
+  return gitBlobSha(utf8Encode(tasksJson2 + "\n"));
+}
+function planBuildFromSteps(result, expectedSha) {
+  if (result.missing) return { ok: false, error: `plan_build_failed: ${describeFailure(result, "lane-plan")}` };
+  for (const name of ["mkdir", "write-tasks"]) {
+    const step = stepResult(result, name);
+    if (!step) return { ok: false, error: `plan_build_failed: ${name} step did not run` };
+    if (step.exit_code !== 0) return { ok: false, error: `plan_build_failed: ${name} exited ${step.exit_code} \u2014 ${tail2(step)}` };
+  }
+  const sha = (stepResult(result, "tasks-sha")?.stdout || "").trim();
+  if (sha !== expectedSha) {
+    return { ok: false, error: `plan_write_mismatch: tasks.json on disk is blob ${sha || "(none)"}, the script wrote ${expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
+  }
+  const lanePlan = stepResult(result, "lane-plan");
+  if (!lanePlan) return { ok: false, error: "plan_build_failed: lane-plan step did not run" };
+  if (lanePlan.exit_code !== 0) return { ok: false, error: `plan_build_failed: datum lane-plan exited ${lanePlan.exit_code} \u2014 ${tail2(lanePlan)}` };
+  return { ok: true, error: "" };
+}
+function skeletonBatchSteps(o) {
+  const skeletonDir2 = `${o.epicDir}/skeletons`;
+  return [
+    { name: "mkdir", command: `mkdir -p ${q3(skeletonDir2)}` },
+    { name: "skeleton", command: `datum skeleton --batch --language ${o.language} --tasks ${q3(`${o.epicDir}/lane-plan.json`)} --output-dir ${q3(skeletonDir2)}` }
+  ];
+}
+function skeletonBatchFromSteps(result) {
+  if (result.missing) return { ok: false, error: `skeleton_batch_failed: ${describeFailure(result, "skeleton")}` };
+  const step = stepResult(result, "skeleton");
+  if (!step) {
+    const mk = stepResult(result, "mkdir");
+    return { ok: false, error: `skeleton_batch_failed: skeleton step did not run${mk && mk.exit_code !== 0 ? ` (mkdir exited ${mk.exit_code} \u2014 ${tail2(mk)})` : ""}` };
+  }
+  if (step.exit_code !== 0) return { ok: false, error: `skeleton_batch_failed: datum skeleton exited ${step.exit_code} \u2014 ${tail2(step)}` };
+  return { ok: true, error: "" };
+}
+
+// skills/src/shared/commit-steps.ts
+var q4 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q4(o.wt);
+  const files = o.files.map(q4).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q4(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
 // skills/src/prompts/plan-approaches.md
 var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["src/module/file1", "src/module/file2"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -540,7 +738,7 @@ var plan_impact_default = 'Impact analyzer. For each module/file the SPEC will c
 var plan_triage_default = 'Triage agent. Read the plan and decide if deep codebase research is needed before Act.\n\nRead docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md.\n\nEVALUATE against this rubric:\n1. Does the plan modify security, authentication, or core data models?\n2. Does any task touch more than 3 files or span multiple domains?\n3. Does it introduce a new dependency?\n4. Does it require adhering to existing, complex architectural patterns?\n\nROUTING:\n- If ANY of these are true \u2192 "deepen" (gather codebase evidence first)\n- If ALL are false (trivial changes, simple additions, isolated modules) \u2192 "properties"\n\nReturn JSON:\n{\n  "decision": "deepen|properties",\n  "reason": "one sentence justification",\n  "triggers": ["which rubric items triggered deepen, if any"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/prompts/plan-deepen.md
-var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nAfter appending, commit: git add docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md && git commit -m "plan: deepen \u2014 research findings"\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
+var plan_deepen_default = 'Evidence gatherer. Ground the plan in codebase reality by researching each complex task.\n\nRead docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md, then for each task that touches non-trivial logic:\n\n1. Search the codebase for existing implementations of similar logic\n2. Identify project conventions (how this pattern is usually handled here)\n3. Find known pitfalls in related code (error handling patterns, edge cases)\n4. Check test conventions in the relevant test directories\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<pattern>\' .` \u2014 structural search (e.g. find all try/except, all class defs, all async functions)\n2. `headroom memory list` \u2014 check for relevant past learnings\n3. `headroom learn show` \u2014 check for past tool call failures relevant to these files\n4. GitNexus (gitnexus_context, gitnexus_query) if available\n5. grep/find for pattern matching\n\nUse headroom_compress on large files. Query-retrieve specific sections as needed.\n\nAPPEND a single section to the end of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md titled exactly `## Research Findings`.\nGroup findings by task ID. Keep it concise \u2014 patterns and pitfalls, not full file dumps.\n\nFormat:\n```markdown\n## Research Findings\n\n### task-id: Task Title\n- **Pattern**: See `module/file:45` for existing approach\n- **Convention**: This codebase uses X pattern for Y\n- **Pitfall**: Known issue with Z \u2014 handle via W\n- **Past failure**: headroom learn flagged <issue> in this area\n```\n\nCRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.\n\nDo NOT git add or git commit anything \u2014 the workflow commits TASKS.md after you return.\n\nReturn JSON: {"tasks_researched": N, "findings_count": N}\nOutput raw JSON only. No markdown fences.\n';
 
 // skills/src/shared/gate.ts
 function gateSteps(phase2, flags) {
@@ -566,13 +764,13 @@ function parseGateResult(result) {
     json = null;
   }
   if (!json || typeof json !== "object") {
-    const tail2 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    const tail3 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
     return {
       passed: false,
       needsHuman: false,
       hardStop: step.exit_code === 2,
       exitCode: step.exit_code,
-      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail2 ? ` \u2014 ${tail2}` : ""}`
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail3 ? ` \u2014 ${tail3}` : ""}`
     };
   }
   return {
@@ -703,21 +901,12 @@ for (const task of tasks) {
   const deps = task.depends_on && task.depends_on.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
   log(`  ${task.id}: ${task.title}${deps}`);
 }
-var buildRaw = await agent(
-  `Do these steps in order:
-1. mkdir -p "${epicDir}"
-2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
-3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-Do NOT git add or git commit anything in this step.
-If step 2 or step 3 fails (non-zero exit), return JSON: {"exit_code": <the exit code>, "error": "<the stdout+stderr of the failing step>"}
-Otherwise return: {"exit_code": 0}
-Output raw JSON only.`,
-  { label: "build-lane-plan", model: model("fast") }
-);
-var build = typeof buildRaw === "string" ? parseAgentJson(buildRaw, { exit_code: 1, error: "build-lane-plan agent returned unparseable output" }) : buildRaw;
-if (!build || build.exit_code !== 0) {
-  throw new Error(`datum lane-plan failed (exit ${build?.exit_code ?? "?"}) \u2014 plan NOT committed: ${build?.error || "no error output"}`);
-}
+var buildSteps = planBuildSteps({ epicDir, tasksJson });
+var build = planBuildFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(buildSteps), stageOpts("cli", { label: "build-lane-plan", model: model("fast") })),
+  buildSteps
+), tasksJsonBlobSha(tasksJson));
+if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");
 var earlyGate = parseGateResult(parseBatchResult(
   await agent(batchCommandPrompt(earlyGateSteps), stageOpts("cli", { label: "gate-early", model: model("fast") })),
@@ -727,23 +916,30 @@ if (!earlyGate.passed) {
   throw new Error(`Plan gate failed right after datum lane-plan \u2014 plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || "no message"}`);
 }
 log("Early plan gate PASSED (schema + structure)");
-await agent(
-  `Commit the plan artifacts: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
-Return JSON: {"exit_code": 0} on success, or {"exit_code": 1, "error": "the stderr"} on failure. Output raw JSON only.`,
-  stageOpts("cli", { label: "commit-lane-plan", model: model("fast") })
+async function commitPlanFiles(files, message, label) {
+  const commitStepList = commitFilesSteps({ wt: ".", files, message });
+  const commit = commitFilesFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
+    commitStepList
+  ));
+  if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`);
+  if (commit.nothingToCommit) throw new Error(`plan_commit_failed: nothing to commit for ${label} (${files.join(", ")})`);
+  return commit.sha;
+}
+var planCommit = await commitPlanFiles(
+  [`${epicDir}/tasks.json`, `${epicDir}/lane-plan.json`, `${epicDir}/TASKS.md`],
+  "plan: tasks.json + lane-plan.json + TASKS.md",
+  "commit-lane-plan"
 );
-log("Lane plan built, gated, and committed");
+log(`Lane plan built, gated, and committed (${planCommit})`);
 var skeletonDir = `${epicDir}/skeletons`;
-await agent(
-  `Run these commands in order:
-1. mkdir -p "${skeletonDir}"
-2. datum skeleton --batch --language ${language} --tasks "${epicDir}/lane-plan.json" --output-dir "${skeletonDir}"
-3. git add "${skeletonDir}" && git commit -m "plan: pre-generate RED skeletons"
-If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
-Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
-Output raw JSON only.`,
-  stageOpts("cli", { label: "skeleton-batch", model: model("fast") })
-);
+var skeletonSteps = skeletonBatchSteps({ epicDir, language });
+var skeleton = skeletonBatchFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(skeletonSteps), stageOpts("cli", { label: "skeleton-batch", model: model("fast") })),
+  skeletonSteps
+));
+if (!skeleton.ok) throw new Error(skeleton.error);
+await commitPlanFiles([skeletonDir], "plan: pre-generate RED skeletons", "commit-skeletons");
 log(`Skeletons pre-generated in ${skeletonDir}`);
 phase("Triage");
 var triageRaw = await agent(
@@ -757,16 +953,19 @@ var triage = parseAgentJson(triageRaw, { decision: "properties", reason: "parse 
 log(`Triage: ${triage.decision} \u2014 ${triage.reason}`);
 if (triage.decision === "deepen") {
   const deepenRaw = await agent(
-    plan_deepen_default + `
-
-ADDITIONAL TASK after appending Research Findings:
-1. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-2. Commit: git add "${epicDir}/TASKS.md" "${epicDir}/lane-plan.json" && git commit -m "plan: deepen + rebuild"
-Return JSON: {"tasks_researched": N, "findings_count": N}`,
+    plan_deepen_default,
     { label: "deepen-research", model: model("balanced") }
   );
   const deepen = parseAgentJson(deepenRaw, { tasks_researched: 0, findings_count: 0 });
   log(`Deepen: ${deepen.tasks_researched} tasks, ${deepen.findings_count} findings`);
+  await commitPlanFiles([`${epicDir}/TASKS.md`], "plan: deepen - research findings", "commit-deepen");
+  const deepenGateSteps = gateSteps("deepen", "");
+  const deepenGate = parseGateResult(parseBatchResult(
+    await agent(batchCommandPrompt(deepenGateSteps), stageOpts("cli", { label: "gate-deepen", model: model("fast") })),
+    deepenGateSteps
+  ));
+  if (!deepenGate.passed) throw new Error(`Deepen gate failed \u2014 TASKS.md carries no Research Findings after the deepen agent ran: ${deepenGate.message || "no message"}`);
+  log("Deepen gate PASSED");
 } else {
   log("Deepen skipped");
 }
