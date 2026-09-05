@@ -454,7 +454,7 @@ No markdown fences, no explanation.`,
     // helper the retry paths below already rely on (#274), rather than
     // re-running the RED agent against tests that already exist.
     log(`[${taskId}] RED commit already exists on lane branch — skipping RED dispatch, resuming from GREEN (#331)`)
-    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+    const existingRedCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED', cfg.epicBranch)
     red = {
       success: true,
       tests_pass: false,
@@ -476,7 +476,7 @@ No markdown fences, no explanation.`,
     // If the first attempt didn't commit, retry via redRetryPrompt (the recovery path that
     // already exists for a failed-but-committed attempt) before hard-failing the lane (#333).
     if (!red || !red.committed) {
-      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+      const check = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED', cfg.epicBranch)
       if (check.committed) {
         log(`[${taskId}] RED: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
         red = {
@@ -496,7 +496,7 @@ No markdown fences, no explanation.`,
         // Re-run the same commit-check gate (not around it) so a retry that still didn't
         // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
         if (!red || !red.committed) {
-          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED')
+          const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, 'RED', cfg.epicBranch)
           if (retryCheck.committed) {
             log(`[${taskId}] RED retry: agent reported committed=false but independent check confirms a commit exists (${retryCheck.detail}) — treating as committed (#274)`)
             red = {
@@ -889,7 +889,7 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
   }
 
   if (!green.committed) {
-    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, 'GREEN')
+    const check = await verifyCommitIndependently(taskId, wt, implFiles, greenPacket.commit_prefix, 'GREEN', cfg.epicBranch)
     if (check.committed) {
       log(`[${taskId}] GREEN: agent reported committed=false but independent check confirms a commit exists (${check.detail}) — treating as committed (#274)`)
       green = { ...green, committed: true, commit_sha: check.commitSha || green.commit_sha }

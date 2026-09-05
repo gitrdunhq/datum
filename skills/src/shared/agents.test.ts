@@ -104,3 +104,58 @@ describe('resilientAgent', () => {
     expect(agentFn).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// verifyCommitIndependently — the "did the agent really commit?" check ran
+// an UNBOUNDED `git log --format="%H %s"` through an LLM relay (the same
+// 90 KB truncation hazard that broke lane intake, commit 726dbd8) and
+// hard-coded model 'haiku'. It must run as a datum-cli batch with the log
+// bounded to the lane (`<base>..HEAD`), and the decision must be a pure,
+// testable parser over the two steps' stdout.
+// ---------------------------------------------------------------------------
+
+import { readFileSync as _rf } from 'node:fs'
+import { join as _join } from 'node:path'
+import { parseCommitVerification } from './agents'
+
+describe('verifyCommitIndependently is a bounded deterministic batch', () => {
+  const src = _rf(_join(__dirname, 'agents.ts'), 'utf8')
+  const fn = src.slice(src.indexOf('export async function verifyCommitIndependently'), src.indexOf('export interface ResilientAgentDeps'))
+
+  it('uses batchCommandPrompt/parseBatchResult and bounds the log to the lane', () => {
+    expect(fn).toMatch(/batchCommandPrompt\(/)
+    expect(fn).toMatch(/parseBatchResult\(/)
+    expect(fn).toMatch(/\.\.HEAD|-n \d+/)
+    expect(fn).not.toMatch(/model: 'haiku'/)
+  })
+})
+
+describe('parseCommitVerification', () => {
+  const log = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa green(T1): GREEN complete\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(T1): RED complete\n'
+
+  it('finds the stage commit anywhere in the lane log and reports clean when status is empty', () => {
+    const r = parseCommitVerification(log, '', 'red(T1)', 'RED')
+    expect(r.committed).toBe(true)
+    expect(r.commitSha).toBe('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+    expect(r.clean).toBe(true)
+  })
+
+  it('is not committed when uncommitted changes remain in the lane files', () => {
+    const r = parseCommitVerification(log, ' M tests/test_a.py\n', 'red(T1)', 'RED')
+    expect(r.committed).toBe(false)
+    expect(r.clean).toBe(false)
+    expect(r.detail).toMatch(/uncommitted_files=1/)
+  })
+
+  it('reports a missing commit with the target subject in the detail', () => {
+    const r = parseCommitVerification(log, '', 'green(T2)', 'GREEN')
+    expect(r.committed).toBe(false)
+    expect(r.detail).toMatch(/green\(T2\): GREEN complete/)
+  })
+
+  it('a null log (step did not run) is not committed and says so', () => {
+    const r = parseCommitVerification(null, null, 'red(T1)', 'RED')
+    expect(r.committed).toBe(false)
+    expect(r.detail).toMatch(/no result|did not run/i)
+  })
+})

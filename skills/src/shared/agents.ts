@@ -3,6 +3,7 @@ import type { TddStage } from './models'
 import { CommitResult } from './types'
 import { COMMIT_RESULT_SCHEMA } from './schemas'
 import { stageOpts } from './agent-types'
+import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, type BatchStep } from './batch'
 
 // ── Rate-limit resilient agent wrapper ──────────────────────────────────────
 
@@ -28,33 +29,27 @@ export interface CommitVerification {
   detail: string
 }
 
-export async function verifyCommitIndependently(
-  taskId: string,
-  wt: string,
-  files: string[],
+/**
+ * Pure decision over the two step outputs: the lane's log (`<base>..HEAD`,
+ * `%H %s`) and `git status --porcelain` for the stage's files. A lane may
+ * already have progressed past this stage (RED -> GREEN -> REFACTOR) when the
+ * check runs, so the target commit is searched anywhere in the lane's log.
+ */
+export function parseCommitVerification(
+  logStdout: string | null | undefined,
+  statusStdout: string | null | undefined,
   commitPrefix: string,
   stage: string,
-): Promise<CommitVerification> {
-  const raw: string | null = await agent(
-    `Run these two commands in order in "${wt}" and return their raw combined output, nothing else:\n` +
-      `git -C "${wt}" log --format="%H %s"\n` +
-      `git -C "${wt}" status --porcelain -- ${files.map((f) => `"${f}"`).join(' ')}\n` +
-      `Return ONLY the raw output, no explanation, no markdown fences.`,
-    stageOpts('cli', { label: `verify-commit:${taskId}:${stage}`, model: 'haiku' }),
-  )
-  if (!raw) return { committed: false, detail: 'independent check returned no result' }
-
-  // A lane may have already progressed past this stage (RED -> GREEN ->
-  // REFACTOR) by the time this check runs, so the target commit is not
-  // necessarily HEAD — search the full log, not just `git log -1`.
-  const lines = String(raw).trim().split('\n').filter(Boolean)
+): CommitVerification {
+  if (logStdout === null || logStdout === undefined) {
+    return { committed: false, detail: 'independent check returned no result (log step did not run)' }
+  }
   const shaLine = /^[0-9a-f]{40} /
-  const logLines = lines.filter((l) => shaLine.test(l))
-  const statusLines = lines.filter((l) => !shaLine.test(l))
+  const logLines = String(logStdout).split('\n').map((l) => l.trim()).filter((l) => shaLine.test(l))
+  const statusLines = String(statusStdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
   const target = `${commitPrefix}: ${stage} complete`
   const match = logLines.find((l) => l.includes(target))
   const clean = statusLines.length === 0
-
   return {
     committed: Boolean(match) && clean,
     commitSha: match ? match.split(' ')[0] : '',
@@ -63,6 +58,36 @@ export async function verifyCommitIndependently(
       ? `found_commit="${match}" uncommitted_files=${statusLines.length}`
       : `no commit matching "${target}" found in history; uncommitted_files=${statusLines.length}`,
   }
+}
+
+/**
+ * Did the stage agent really commit? Runs as a datum-cli batch (never an LLM
+ * echo of raw git output) with the log BOUNDED to the lane's own commits —
+ * an unbounded `git log` was 90 KB in a real consumer repo and the relay
+ * truncated it (726dbd8). `baseRef` is the epic branch; when absent the log
+ * is capped at 200 entries.
+ */
+export async function verifyCommitIndependently(
+  taskId: string,
+  wt: string,
+  files: string[],
+  commitPrefix: string,
+  stage: string,
+  baseRef?: string,
+): Promise<CommitVerification> {
+  const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
+  const range = baseRef ? `${q(baseRef)}..HEAD` : '-n 200'
+  const steps: BatchStep[] = [
+    { name: 'log', command: `git -C ${q(wt)} log --format="%H %s" ${range}`, tolerant: true },
+    { name: 'status', command: `git -C ${q(wt)} status --porcelain -- ${files.map(q).join(' ')}`, tolerant: true },
+  ]
+  const raw = await agent(
+    batchCommandPrompt(steps),
+    stageOpts('cli', { label: `verify-commit:${taskId}:${stage}`, model: model('fast') }),
+  )
+  const result = parseBatchResult(raw, steps)
+  if (result.missing) return { committed: false, detail: `independent check returned no result (${describeFailure(result, 'verify-commit')})` }
+  return parseCommitVerification(stepStdout(result, 'log'), stepStdout(result, 'status'), commitPrefix, stage)
 }
 
 // Injectable deps so resilientAgent's retry/backoff/dirty-guard logic can be
