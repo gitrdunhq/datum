@@ -312,6 +312,7 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Two-commit RED failed as "no new tests"** — closed in a7abd94: the before-count reads from the epic merge-base.
 - **Issue filer defaulted to datum's own tracker** — closed in c74f2c9: an unresolved GitHub repo is `github_repo_unresolved`; `plan-issues` skips and the tracker logs it.
 - **Closeout scripts ignored git/gh exit codes** — closed in dc00821; the triage classifier learned every named lane failure with a completeness test in 3772a62.
+- **Prose reply to a schema'd reflect/refactor-check crashed the lane** — closed in 2864a90: both route through `resilientAgent`; `reflect_no_result` proceeds without a score, `refactor_check_no_result` skips the optional stage; a test rejects schema calls outside `resilientAgent`/`parallel`.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
