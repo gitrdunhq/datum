@@ -453,7 +453,11 @@ if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.j
   }
   steps.push({
     name: "digest",
-    command: `__digest=$(mktemp) && if [ -n "$__plan" ]; then datum lane-plan-digest --plan "$__plan" --out "$__digest" >/dev/null; else printf ''; fi`,
+    // The CLI's stdout is the digest on success (already in the temp file,
+    // not repeated here) and a JSON error on failure — printed only then, so
+    // lanePlanDigestFromSteps can name the real cause (review finding: a
+    // `>/dev/null` hid every CLI error behind a blank tail).
+    command: `__digest=$(mktemp) && if [ -n "$__plan" ]; then __dout=$(datum lane-plan-digest --plan "$__plan" --out "$__digest"); __drc=$?; if [ "$__drc" -ne 0 ]; then printf '%s' "$__dout"; fi; [ "$__drc" -eq 0 ]; else printf ''; fi`,
     tolerant: true
   });
   steps.push({ name: "digest-bytes", command: `if [ -n "$__plan" ]; then wc -c < "$__digest" | tr -d ' '; else printf -- '-1'; fi`, tolerant: true });
