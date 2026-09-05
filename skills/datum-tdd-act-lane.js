@@ -401,6 +401,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -545,6 +548,21 @@ async function resilientAgent(prompt, opts, deps) {
     }
   }
   return lastResult;
+}
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
 }
 
 // skills/src/shared/tracker.ts
@@ -972,79 +990,10 @@ Only write and commit test files: {{testFilesList}}. OFF-LIMITS: Do NOT write an
 `;
 
 // skills/src/prompts/green.md
-var green_default = `GREEN TDD agent. Make the failing tests pass with minimum implementation code.
-
-SETUP (run first): {{greenCtxCmd}}
-TASK PACKET: {{greenPacketStr}}
-
-LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
-{{laneSpecSlot}}
-
-CONTEXT MANAGEMENT:
-Before reading implementation files, use headroom_compress on any file longer than 100 lines.
-This saves context for reasoning. Use headroom_retrieve with a targeted query when you need
-specific sections back (e.g. query="function signature" or query="class definition").
-
-TARGET CONTEXT (import guard):
-If target_context is present in the task packet, only use imports that are valid for the target.
-Check the dependency list before adding any import statement. DO NOT import modules that are
-not listed as dependencies of the target you are implementing in.
-
-APPROACH:
-1. Read test_signal carefully \u2014 each error tells you exactly what to implement
-2. Read impl_stubs \u2014 fill in function bodies, do not create new files
-3. Check existing_api \u2014 extend it, do not replace it
-4. Implement only what the errors require
-
-AFTER WRITING:
-5. Run the suite with exactly: {{testRunCmd}}
-   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). ALL tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code from it.
-6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
-7. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
-   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.
-8. Report commit_sha.
-
-PACKET FIELDS:
-- test_signal: error messages from failing tests \u2014 your implementation spec
-- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)
-- impl_stubs: skeleton files \u2014 fill these in
-- existing_api: current module code shape
-
-CONSTRAINTS:
-- Only write and commit implementation files: {{implFilesList}}
-- If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) \u2014 one honest blocked result beats three blind attempts.
-- Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
-- For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.
-`;
+var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nCONTEXT MANAGEMENT:\nBefore reading implementation files, use headroom_compress on any file longer than 100 lines.\nThis saves context for reasoning. Use headroom_retrieve with a targeted query when you need\nspecific sections back (e.g. query="function signature" or query="class definition").\n\nTARGET CONTEXT (import guard):\nIf target_context is present in the task packet, only use imports that are valid for the target.\nCheck the dependency list before adding any import statement. DO NOT import modules that are\nnot listed as dependencies of the target you are implementing in.\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 fill in function bodies, do not create new files\n3. Check existing_api \u2014 extend it, do not replace it\n4. Implement only what the errors require\n\nAFTER WRITING:\n5. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). ALL tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code from it.\n6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n7. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n8. Report commit_sha.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)\n- impl_stubs: skeleton files \u2014 fill these in\n- existing_api: current module code shape\n\nCONSTRAINTS:\n- Only write and commit implementation files: {{implFilesList}}\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\n- If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) \u2014 one honest blocked result beats three blind attempts.\n- Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with \'Package.swift\' and a description of the required dependency.\n- For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.\n';
 
 // skills/src/prompts/green-retry.md
-var green_retry_default = `GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
-
-First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
-
-SETUP: {{greenCtxCmd}}
-TASK PACKET: {{greenRetryPacketStr}}
-
-LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
-{{laneSpecSlot}}
-
-CONTEXT MANAGEMENT:
-Use headroom_compress on any file or test output longer than 100 lines.
-Use headroom_retrieve with a targeted query to pull back only what you need.
-
-Read test_signal errors carefully. Read existing implementation files first. Fix specific failures.
-
-AFTER WRITING:
-1. Run the suite with exactly: {{testRunCmd}}
-   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.
-2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
-3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
-   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.
-4. Report commit_sha.
-
-Only write and commit implementation files: {{implFilesList}}
-If the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.
-`;
+var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\nIf the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.\n';
 
 // skills/src/prompts/refactor.md
 var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
@@ -1117,13 +1066,7 @@ configureAgentTypes(cfg.agentTypes || {});
 setBatchCacheKey(cfg.configFingerprint || "");
 async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
   const steps = ownershipCheckSteps(wt);
-  const result = parseBatchResult(
-    await agent(
-      batchCommandPrompt(steps),
-      stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") })
-    ),
-    steps
-  );
+  const result = await runBatch(steps, stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }));
   if (result.missing) {
     return {
       ok: false,
@@ -1226,11 +1169,8 @@ No markdown fences, no explanation.`,
     preflightPath,
     laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) }
   });
-  const intakeRaw = await agent(
-    batchCommandPrompt(intakeSteps),
-    stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  const intakeResult = parseBatchResult(intakeRaw, intakeSteps);
+  const intakeRaw = await runBatch(intakeSteps, stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") }));
+  const intakeResult = intakeRaw;
   const intake = intakeResult;
   if (intake.missing || stepStdout(intake, "history") === null) {
     const why = describeFailure(intake, "lane intake");
@@ -1274,11 +1214,8 @@ No markdown fences, no explanation.`,
       preflightPath: "",
       verifyTestCmd: scopedTestCmd
     });
-    const intakeVerifyRaw = await agent(
-      batchCommandPrompt(intakeVerifySteps),
-      stageOpts("cli", { label: `lane-intake-verify:${taskId}`, phase: "Act", model: model("fast") })
-    );
-    const intakeVerify = parseBatchResult(intakeVerifyRaw, intakeVerifySteps);
+    const intakeVerifyRaw = await runBatch(intakeVerifySteps, stageOpts("cli", { label: `lane-intake-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const intakeVerify = intakeVerifyRaw;
     const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, "test-verify"));
     if (intakeVerifyExit === null) {
       const why = describeFailure(intakeVerify, "lane intake verify");
@@ -1299,10 +1236,7 @@ No markdown fences, no explanation.`,
       return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not find the RED commit sha in lane history to reset to (${redCommitInfo.detail})` };
     }
     const resetToRedSteps = worktreeResetToSteps(wt, redCommitInfo.commitSha);
-    const resetToRedResult = parseBatchResult(
-      await agent(batchCommandPrompt(resetToRedSteps), stageOpts("cli", { label: `reset-to-red:${taskId}`, phase: "Act", model: model("fast") })),
-      resetToRedSteps
-    );
+    const resetToRedResult = await runBatch(resetToRedSteps, stageOpts("cli", { label: `reset-to-red:${taskId}`, phase: "Act", model: model("fast") }));
     const resetToRed = worktreeResetToFromSteps(resetToRedResult, redCommitInfo.commitSha);
     if (!resetToRed.ok) {
       return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${resetToRed.error})` };
@@ -1398,10 +1332,7 @@ No markdown fences, no explanation.`,
     if (!red) {
       const redFirstFailure = "red_no_result: RED agent returned nothing (likely the maxTurns cap in agents/datum-red.md, an API error, or a skip)";
       const redResetStepList = worktreeResetSteps(wt);
-      const redResetResult = parseBatchResult(
-        await agent(batchCommandPrompt(redResetStepList), stageOpts("cli", { label: `red-reset:${taskId}`, phase: "Act", model: model("fast") })),
-        redResetStepList
-      );
+      const redResetResult = await runBatch(redResetStepList, stageOpts("cli", { label: `red-reset:${taskId}`, phase: "Act", model: model("fast") }));
       const redLeftover = (stepStdout(redResetResult, "status") || "").trim();
       log(`[${taskId}] RED attempt 1: ${redFirstFailure}; worktree reset to HEAD before retry${redLeftover ? ` (WARNING: still dirty: ${redLeftover.split("\n").length} paths)` : ""}`);
       red = await witnessedAgent(
@@ -1502,11 +1433,8 @@ No markdown fences, no explanation.`,
     verifyTestCmd: scopedTestCmd,
     baseRef: cfg2.epicBranch
   });
-  const postRedRaw = await agent(
-    batchCommandPrompt(postRed),
-    stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  const postRedResult = parseBatchResult(postRedRaw, postRed);
+  const postRedRaw = await runBatch(postRed, stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") }));
+  const postRedResult = postRedRaw;
   if (acCount > 0) {
     let newTestCount2 = 0;
     let gatePassed = false;
@@ -1578,13 +1506,7 @@ No markdown fences, no explanation.`,
     scopeGaps,
     contractPreflight: isPytestLane ? { testFiles, implFiles, scopedTestCmd } : null
   });
-  const scopeContractResult = scopeContract.length > 0 ? parseBatchResult(
-    await agent(
-      batchCommandPrompt(scopeContract),
-      stageOpts("cli", { label: `scope-contract:${taskId}`, phase: "Act", model: model("fast") })
-    ),
-    scopeContract
-  ) : null;
+  const scopeContractResult = scopeContract.length > 0 ? await runBatch(scopeContract, stageOpts("cli", { label: `scope-contract:${taskId}`, phase: "Act", model: model("fast") })) : null;
   if (scopeGaps.length > 0) {
     const { existing: existingGaps, missing: missingGaps } = scopeGapsFromSteps(
       scopeGaps,
@@ -1681,14 +1603,7 @@ No markdown fences, no explanation.`,
     const selfReportedBlock = !!green && (green.status === "blocked" || /scope_exceeded/i.test(green.failure_reason || ""));
     if (green && isPytestLane && !selfReportedBlock) {
       const checkSteps = scopeContractSteps({ wt, scopeGaps: [], contractPreflight: { testFiles, implFiles, scopedTestCmd } });
-      const checkResult = parseBatchResult(
-        await agent(batchCommandPrompt(checkSteps), stageOpts("cli", {
-          label: `contract-check:${taskId}`,
-          phase: "Act",
-          model: model("fast")
-        })),
-        checkSteps
-      );
+      const checkResult = await runBatch(checkSteps, stageOpts("cli", { label: `contract-check:${taskId}`, phase: "Act", model: model("fast") }));
       greenPreflight = parseContractPreflight(stepStdout(checkResult, "contract-preflight"));
     }
     const decision = decideGreenBlock(green, greenPreflight);
@@ -1721,10 +1636,7 @@ No markdown fences, no explanation.`,
       if (!green) {
         firstFailure = "green_no_result: GREEN agent returned nothing (likely the maxTurns cap in agents/datum-green.md, an API error, or a skip)";
         const resetStepList = worktreeResetSteps(wt);
-        const resetResult = parseBatchResult(
-          await agent(batchCommandPrompt(resetStepList), stageOpts("cli", { label: `green-reset:${taskId}`, phase: "Act", model: model("fast") })),
-          resetStepList
-        );
+        const resetResult = await runBatch(resetStepList, stageOpts("cli", { label: `green-reset:${taskId}`, phase: "Act", model: model("fast") }));
         const leftover = (stepStdout(resetResult, "status") || "").trim();
         log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split("\n").length} paths)` : ""}`);
       }
@@ -1750,11 +1662,8 @@ No markdown fences, no explanation.`,
     };
   }
   const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
-  const postGreenVerifyRaw = await agent(
-    batchCommandPrompt(postGreenVerify),
-    stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  const postGreenVerifyResult = parseBatchResult(postGreenVerifyRaw, postGreenVerify);
+  const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") }));
+  const postGreenVerifyResult = postGreenVerifyRaw;
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, "test-verify"));
   if (greenVerifyExit !== 0) {
     log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? "null"} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
@@ -1783,16 +1692,47 @@ No markdown fences, no explanation.`,
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
     }
   }
-  let greenOwnership;
-  if (deterministic) {
-    const postGreen = postGreenSteps({ wt });
-    const postGreenRaw = await agent(
-      batchCommandPrompt(postGreen),
-      stageOpts("cli", { label: `post-green:${taskId}`, phase: "Act", model: model("fast") })
+  const checkGreenOwnership = async (labelSuffix) => {
+    if (deterministic) {
+      const postGreen = postGreenSteps({ wt });
+      const postGreenRaw = await runBatch(postGreen, stageOpts("cli", { label: `post-green${labelSuffix}:${taskId}`, phase: "Act", model: model("fast") }));
+      return ownershipFromStdout(stepStdout(postGreenRaw, "ownership"), implFiles, testFiles);
+    }
+    return verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
+  };
+  let greenOwnership = await checkGreenOwnership("");
+  const ownTestsOnly = (o) => !o.checkFailed && o.violations.length > 0 && o.violations.every((v) => testFiles.some((t) => v.startsWith(`${t} `)));
+  if (!greenOwnership.ok && ownTestsOnly(greenOwnership) && red.commit_sha) {
+    const touched = [...new Set(greenOwnership.violations.map((v) => v.split(" ")[0]))];
+    const hint = `green_edited_tests: GREEN modified the lane's test files [${touched.join(", ")}]; write only the implementation files and never amend or rewrite the RED commit`;
+    log(`[${taskId}] ${hint} \u2014 resetting to the RED commit ${red.commit_sha} and re-running GREEN once`);
+    const testsResetSteps = worktreeResetToSteps(wt, red.commit_sha);
+    const testsReset = worktreeResetToFromSteps(
+      await runBatch(testsResetSteps, stageOpts("cli", { label: `green-tests-reset:${taskId}`, phase: "Act", model: model("fast") })),
+      red.commit_sha
     );
-    greenOwnership = ownershipFromStdout(stepStdout(parseBatchResult(postGreenRaw, postGreen), "ownership"), implFiles, testFiles);
-  } else {
-    greenOwnership = await verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
+    if (!testsReset.ok) {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} (could not reset for the retry: ${testsReset.error})` };
+    }
+    green = await witnessedAgent(
+      greenRetryPrompt({
+        ...greenVars,
+        failureReason: hint,
+        greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "green_edited_tests" })
+      }),
+      stageOpts("green", { label: `green-tests-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile,
+      "GREEN"
+    );
+    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const retryExit = testExitCode(stepStdout(retryVerify, "test-verify"));
+    if (!green || !green.success || retryExit !== 0) {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} \u2014 retry ${!green ? "returned nothing" : !green.success ? `failed: ${green.failure_reason || "no reason"}` : `did not pass the suite (exit=${retryExit ?? "null"})`}` };
+    }
+    greenOwnership = await checkGreenOwnership("-tests-retry");
+    if (!greenOwnership.ok && ownTestsOnly(greenOwnership)) {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_edited_tests: GREEN modified test files again on retry [${[...new Set(greenOwnership.violations.map((v) => v.split(" ")[0]))].join(", ")}]` };
+    }
   }
   if (!greenOwnership.ok) {
     const greenPrefix = greenOwnership.checkFailed ? "ownership_check_failed" : "file_ownership_violation";
@@ -1820,11 +1760,8 @@ ${bugSummary}`,
       "GREEN"
     );
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
-    const retryVerifyRaw = await agent(
-      batchCommandPrompt(retryVerifySteps),
-      stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") })
-    );
-    const retryVerifyExit = testExitCode(stepStdout(parseBatchResult(retryVerifyRaw, retryVerifySteps), "test-verify"));
+    const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const retryVerifyExit = testExitCode(stepStdout(retryVerifyRaw, "test-verify"));
     if (retryVerifyExit !== 0 || !green || !green.success) {
       const first = confirmedBugs[0];
       const summary = first ? first.description : "GREEN retry did not produce a passing, committed fix";
@@ -1925,20 +1862,14 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
   if (!refactor) {
     const failure = "refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)";
     const resetStepList = worktreeResetSteps(wt);
-    const resetResult = parseBatchResult(
-      await agent(batchCommandPrompt(resetStepList), stageOpts("cli", { label: `refactor-reset:${taskId}`, phase: "Act", model: model("fast") })),
-      resetStepList
-    );
+    const resetResult = await runBatch(resetStepList, stageOpts("cli", { label: `refactor-reset:${taskId}`, phase: "Act", model: model("fast") }));
     const leftover = (stepStdout(resetResult, "status") || "").trim();
     log(`[${taskId}] REFACTOR: ${failure}; worktree reset to HEAD${leftover ? ` (WARNING: still dirty: ${leftover.split("\n").length} paths)` : ""} \u2014 treating as no refactor applied (optional stage)`);
     const noRefactorVerifySteps = [
       { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true }
     ];
-    const noRefactorVerifyRaw = await agent(
-      batchCommandPrompt(noRefactorVerifySteps),
-      stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") })
-    );
-    const noRefactorVerifyResult = parseBatchResult(noRefactorVerifyRaw, noRefactorVerifySteps);
+    const noRefactorVerifyRaw = await runBatch(noRefactorVerifySteps, stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const noRefactorVerifyResult = noRefactorVerifyRaw;
     if (noRefactorVerifyResult.missing) {
       return { verified: false, error: `${failure} (verify batch could not run: ${describeFailure(noRefactorVerifyResult, "post-refactor-verify")})` };
     }
@@ -1959,11 +1890,8 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
   const verifySteps = [
     { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true }
   ];
-  const verifyRaw = await agent(
-    batchCommandPrompt(verifySteps),
-    stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") })
-  );
-  let refactorVerifyExit = testExitCode(stepStdout(parseBatchResult(verifyRaw, verifySteps), "test-verify"));
+  const verifyRaw = await runBatch(verifySteps, stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") }));
+  let refactorVerifyExit = testExitCode(stepStdout(verifyRaw, "test-verify"));
   if (refactorVerifyExit !== 0) {
     log(`[${taskId}] REFACTOR VERIFY FAILED: independent run exit=${refactorVerifyExit ?? "n/a"} (agent self-reported tests_pass=${!!refactor.tests_pass}) \u2014 ${refactor.committed ? "reverting the refactor commit" : "agent reported no commit"}`);
     if (refactor.committed) {
@@ -1971,11 +1899,8 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
         { name: "revert", command: `git -C "${wt}" revert --no-edit HEAD`, tolerant: true },
         { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-reverify"), tolerant: true }
       ];
-      const revertRaw = await agent(
-        batchCommandPrompt(revertSteps),
-        stageOpts("cli", { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") })
-      );
-      const revertResult = parseBatchResult(revertRaw, revertSteps);
+      const revertRaw = await runBatch(revertSteps, stageOpts("cli", { label: `revert-refactor:${taskId}`, phase: "Act", model: model("fast") }));
+      const revertResult = revertRaw;
       refactorVerifyExit = testExitCode(stepStdout(revertResult, "test-verify"));
       log(`[${taskId}] REFACTOR reverted (revert exit=${stepResult(revertResult, "revert")?.exit_code ?? "n/a"}); suite after revert exit=${refactorVerifyExit ?? "n/a"}`);
     }
