@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { classifyLaneError } from './triage-classify'
+import { classifyLaneError, triageDestination, type TriageClassifyCategory } from './triage-classify'
 
 describe('classifyLaneError — deterministic infrastructure prefixes', () => {
   const infraCases: Array<[string, string]> = [
@@ -169,6 +169,106 @@ describe('classifyLaneError — table completeness vs datum-tdd-act-lane.ts', ()
       expect(result.confidence).toBe('deterministic')
     },
   )
+})
+
+describe('triageDestination — bug: consumer-code findings (e.g. #417) must never be filed to datum\'s tracker', () => {
+  it('routes agent_behavior (skeptic_broken / green_verify_failed) findings to consumer, not datum', () => {
+    const result = triageDestination(
+      { category: 'agent_behavior', confidence: 'deterministic', reason: 'skeptic_broken: 2 confirmed bugs' },
+      'skeptic_broken: 2 confirmed bugs — off-by-one in loop bound',
+    )
+    expect(result).toBe('consumer')
+  })
+
+  it('routes lane_plan (contract_conflict / scope_gap) findings to consumer, not datum', () => {
+    const result = triageDestination(
+      { category: 'lane_plan', confidence: 'deterministic', reason: 'scope_gap: ...' },
+      'scope_gap: declared files do not cover required acceptance criteria',
+    )
+    expect(result).toBe('consumer')
+  })
+
+  it('routes test_quality findings to consumer, not datum', () => {
+    const result = triageDestination(
+      { category: 'test_quality', confidence: 'heuristic', reason: 'weak assertions' },
+      'tests assert nothing meaningful',
+    )
+    expect(result).toBe('consumer')
+  })
+
+  it('routes infrastructure findings to datum (pipeline/tooling is at fault)', () => {
+    const result = triageDestination(
+      { category: 'infrastructure', confidence: 'deterministic', reason: 'count_gate_no_output: ...' },
+      'count_gate_no_output: test-count-check returned null',
+    )
+    expect(result).toBe('datum')
+  })
+
+  it('routes workflow_bug findings to datum (datum-tdd-act.js logic error)', () => {
+    const result = triageDestination(
+      { category: 'workflow_bug', confidence: 'heuristic', reason: 'pipeline logic error' },
+      'TypeError in datum-tdd-act-lane.ts scheduling',
+    )
+    expect(result).toBe('datum')
+  })
+
+  it('routes dependency (already-skipped) failures to none — they were never filed anywhere', () => {
+    const result = triageDestination(
+      { category: 'dependency', confidence: 'deterministic', reason: 'blocked' },
+      'blocked: dep(s) failed [task-002]',
+    )
+    expect(result).toBe('none')
+  })
+
+  it('routes unknown/heuristic findings to consumer (never assume datum is at fault without a known pipeline prefix)', () => {
+    const result = triageDestination(
+      { category: 'unknown', confidence: 'heuristic', reason: 'no known prefix matched' },
+      'TypeError: cannot read property of undefined',
+    )
+    expect(result).toBe('consumer')
+  })
+})
+
+describe('triageDestination — every taxonomy category in triage-classify.ts has an explicit destination', () => {
+  // Source-text scan (like the classifyLaneError table-completeness test above)
+  // so this test fails the moment a new TriageClassifyCategory value is
+  // introduced into PREFIX_RULES without also being taught to triageDestination
+  // — the exact failure mode this module exists to prevent (a new category
+  // silently defaulting to 'datum' and misfiling a consumer-code finding,
+  // as happened with #417).
+  const src = readFileSync(join(__dirname, 'triage-classify.ts'), 'utf8')
+  const CATEGORY_LITERAL_RE = /category:\s*'([a-z_]+)'/g
+  const foundCategories = new Set<string>(['dependency', 'unknown'])
+  let m: RegExpExecArray | null
+  while ((m = CATEGORY_LITERAL_RE.exec(src))) {
+    foundCategories.add(m[1])
+  }
+
+  it('regex sanity check: found a non-trivial number of known taxonomy categories', () => {
+    expect(foundCategories.size).toBeGreaterThanOrEqual(5)
+  })
+
+  const EXPECTED_DESTINATION: Record<string, 'datum' | 'consumer' | 'none'> = {
+    infrastructure: 'datum',
+    workflow_bug: 'datum',
+    lane_plan: 'consumer',
+    agent_behavior: 'consumer',
+    test_quality: 'consumer',
+    dependency: 'none',
+    unknown: 'consumer',
+  }
+
+  it.each([...foundCategories].sort())('taxonomy category %s has an explicit destination table entry', (category) => {
+    expect(
+      EXPECTED_DESTINATION[category],
+      `no expected destination for taxonomy category "${category}" — update EXPECTED_DESTINATION in this test and triageDestination in triage-classify.ts`,
+    ).toBeDefined()
+    const result = triageDestination(
+      { category: category as TriageClassifyCategory, confidence: 'deterministic', reason: 'x' },
+      'some error text',
+    )
+    expect(result).toBe(EXPECTED_DESTINATION[category])
+  })
 })
 
 describe('classifyLaneError — unknown fallback', () => {

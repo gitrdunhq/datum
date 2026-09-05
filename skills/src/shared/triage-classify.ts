@@ -178,6 +178,11 @@ const PREFIX_RULES: PrefixRule[] = [
     category: 'agent_behavior',
     reason: 'refactor_verify_failed: independent test-verify after REFACTOR disagreed with the agent\'s self-reported result.',
   },
+  {
+    test: /\brefactor_failed\b/,
+    category: 'agent_behavior',
+    reason: 'refactor_failed: the REFACTOR agent itself reported a real failure_reason (not "nothing to change"). agent_behavior, not infrastructure: by the time REFACTOR is dispatched the runner has already independently verified the suite is green at the lane\'s HEAD (the intake-verify gate, #331) — a suite that was already red would have been caught upstream as green_stale/lane_intake_failed before REFACTOR ever ran, so a failure here is about what the REFACTOR agent did, not stale pipeline state.',
+  },
 ]
 
 /**
@@ -215,4 +220,57 @@ export function classifyLaneError(
     confidence: 'heuristic',
     reason: 'No known machine-generated prefix matched — the LLM must actually reason about this failure from the raw error text.',
   }
+}
+
+export type TriageDestination = 'datum' | 'consumer' | 'none'
+
+// Where a classified failure's issue (if any) belongs. #417 landed a
+// skeptic-confirmed CONSUMER-repo code bug ("resolveConvert recomputes
+// fog-of-war from stale board state" in Shroud Chess) into datum's own
+// tracker, because datum-tdd-act-triage.ts hardcodes `gh issue create --repo
+// gitrdunhq/datum` for every failure regardless of what actually broke. This
+// map is the single source of truth for which categories mean *datum's own*
+// pipeline/tooling is at fault (file to datum) vs. which mean the lane's
+// work / the consumer repo's code is what's wrong (never datum's tracker —
+// the consumer may have no configured remote, so datum does not attempt to
+// file there either; it only stops misfiling).
+//
+// Declared as a `Record<TriageClassifyCategory, TriageDestination>` so
+// TypeScript's exhaustiveness check fails to compile the moment a new
+// category is added to `TriageClassifyCategory` without a destination
+// decision here (the #417 failure mode: a new category silently defaulting
+// to 'datum' and misfiling a consumer-code finding).
+const DESTINATION_BY_CATEGORY: Record<TriageClassifyCategory, TriageDestination> = {
+  // datum's own pipeline/tooling categories — the lane never got a fair run.
+  infrastructure: 'datum',
+  workflow_bug: 'datum',
+  // The lane's work or the consumer repo's code is what's actually wrong —
+  // never datum's tracker. Includes lane_plan (contract_conflict, scope_gap:
+  // the plan asked for something the lane's own scope/contracts don't
+  // support), agent_behavior (skeptic_broken, green_verify_failed,
+  // placeholder_assertions, etc.: a real finding about the implementation or
+  // tests the lane produced), and test_quality (weak/wrong assertions).
+  lane_plan: 'consumer',
+  agent_behavior: 'consumer',
+  test_quality: 'consumer',
+  // No known pipeline prefix matched — never assume datum is at fault
+  // without positive evidence; treat as a consumer-code finding to log, not
+  // as a reason to file against datum.
+  unknown: 'consumer',
+  // Already-skipped consequence of an upstream root failure — never filed
+  // anywhere on its own.
+  dependency: 'none',
+}
+
+/**
+ * Pure routing decision for where (if anywhere) a classified lane failure's
+ * issue belongs. `error` is accepted for symmetry with `classifyLaneError`
+ * and to leave room for future error-text-based overrides, but the decision
+ * today is entirely a function of `classification.category`.
+ */
+export function triageDestination(
+  classification: TriageClassification,
+  _error: string | undefined,
+): TriageDestination {
+  return DESTINATION_BY_CATEGORY[classification.category]
 }

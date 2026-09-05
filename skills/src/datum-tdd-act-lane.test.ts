@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import * as utils from './shared/utils'
+import { classifyLaneError } from './shared/triage-classify'
 
 const repoRoot = join(__dirname, '..', '..')
 
@@ -686,5 +687,113 @@ describe('reflect and refactor-check never crash the lane on a prose reply', () 
       }
     })
     expect(offenders).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #331 follow-up (elonchesd wf_93040d99-e3c -> wf_30d8f723-8d3): the "RED and
+// GREEN commits already exist — resuming from REFACTOR" shortcut trusted the
+// commit MESSAGES alone. A GREEN retry that itself failed the skeptic panel's
+// independent verify (2/3 BROKEN) still left a `green(...): GREEN complete`
+// commit on the branch, so a relaunch resumed straight at REFACTOR against a
+// suite that was never actually green, and REFACTOR's real failure_reason was
+// swallowed behind a bare "refactor failed" string.
+//
+// The shortcut must now independently re-verify the suite at the lane's
+// current HEAD before trusting it, and REFACTOR failures must carry the
+// agent's real reason (or the verify exit code) so triage can classify them
+// deterministically instead of the LLM re-guessing from "refactor failed".
+// ---------------------------------------------------------------------------
+
+describe('lane intake: the REFACTOR-resume shortcut is gated on an independent test-verify (#331)', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const bothCommittedBlock = laneSrc.slice(
+    laneSrc.indexOf('if (redAlreadyCommitted && greenAlreadyCommitted)'),
+    laneSrc.indexOf('// ── Pre-RED cleanup'),
+  )
+
+  it('reads the independent test-verify exit code from the intake-verify batch before resuming at REFACTOR', () => {
+    expect(bothCommittedBlock).toMatch(/testExitCode\(stepStdout\(intakeVerify,\s*'test-verify'\)\)/)
+  })
+
+  it('passes verifyTestCmd: scopedTestCmd to a laneIntakeSteps call inside the both-committed branch', () => {
+    expect(bothCommittedBlock).toMatch(/laneIntakeSteps\(\{[\s\S]{0,300}verifyTestCmd:\s*scopedTestCmd/)
+  })
+
+  it('a missing test-verify result (step did not run) is lane_intake_failed, never treated as green', () => {
+    const nullBranch = bothCommittedBlock.slice(
+      bothCommittedBlock.indexOf('intakeVerifyExit === null'),
+      bothCommittedBlock.indexOf('intakeVerifyExit === 0'),
+    )
+    expect(nullBranch).toMatch(/lane_intake_failed/)
+    expect(nullBranch).not.toMatch(/resuming from REFACTOR/)
+  })
+
+  it('only resumes at REFACTOR when the independent verify exit is exactly 0', () => {
+    expect(bothCommittedBlock).toMatch(/intakeVerifyExit === 0\)\s*\{[\s\S]{0,200}resuming from REFACTOR/)
+  })
+
+  it('logs a green_stale message (with the exit code) and resets the worktree to the RED commit sha when the exit is non-zero', () => {
+    const staleBranch = bothCommittedBlock.slice(bothCommittedBlock.indexOf('intakeVerifyExit === 0'))
+    expect(staleBranch).toMatch(/green_stale:.*independent exit=\$\{intakeVerifyExit\}/)
+    expect(staleBranch).toMatch(/parseCommitVerification\(laneHistoryRaw,\s*'',\s*`red\(\$\{taskId\}\)`,\s*'RED'\)/)
+    expect(staleBranch).toMatch(/worktreeResetToSteps\(wt,\s*redCommitInfo\.commitSha\)/)
+  })
+
+  it('sets redAlreadyCommitted/greenAlreadyCommitted so the reset lane falls through to the existing RED-only resume path', () => {
+    const staleBranch = bothCommittedBlock.slice(bothCommittedBlock.indexOf('intakeVerifyExit === 0'))
+    expect(staleBranch).toMatch(/redAlreadyCommitted = true/)
+    expect(staleBranch).toMatch(/greenAlreadyCommitted = false/)
+  })
+
+  it('feeds the green_stale hint into the first GREEN dispatch as a retry-style failure reason', () => {
+    const greenDispatch = laneSrc.slice(
+      laneSrc.indexOf('let green: StageResult | null = await resilientAgent('),
+      laneSrc.indexOf('let green: StageResult | null = await resilientAgent(') + 500,
+    )
+    expect(greenDispatch).toMatch(/greenStaleHint/)
+    expect(greenDispatch).toMatch(/greenRetryPrompt\(/)
+    expect(greenDispatch).toMatch(/failureReason:\s*greenStaleHint/)
+  })
+
+  it('imports parseCommitVerification and worktreeResetToSteps', () => {
+    expect(laneSrc).toMatch(/import \{[^}]*parseCommitVerification[^}]*\} from '\.\/shared\/agents'/)
+    expect(laneSrc).toMatch(/import \{[^}]*worktreeResetToSteps[^}]*\} from '\.\/shared\/commit-steps'/)
+  })
+})
+
+describe('REFACTOR failures surface the real reason, never a bare "refactor failed" (#331)', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const refactorFn = laneSrc.slice(laneSrc.indexOf('async function runRefactor'), laneSrc.indexOf('// ── DAG scheduler'))
+
+  it('runRefactor never returns bare null for a real (non-"nothing to change") REFACTOR failure', () => {
+    const successFalseBlock = refactorFn.slice(
+      refactorFn.indexOf('if (!refactor.success)'),
+      refactorFn.indexOf('if (!refactor.success)') + 900,
+    )
+    expect(successFalseBlock).not.toMatch(/return null/)
+    expect(successFalseBlock).toMatch(/refactor_failed:\s*\$\{refactor\.failure_reason/)
+  })
+
+  it('the final REFACTOR call site checks .verified (not just truthiness) and surfaces refResult.error', () => {
+    const finalCallSite = laneSrc.slice(
+      laneSrc.indexOf('const refResult = await runRefactor('),
+      laneSrc.indexOf('const refResult = await runRefactor(') + 700,
+    )
+    expect(finalCallSite).toMatch(/!refResult \|\| !refResult\.verified/)
+    expect(finalCallSite).toMatch(/refResult\?\.error \|\| 'refactor failed'/)
+  })
+
+  it('the structural and both-committed fast-paths already surface r.error (still hold post-#331)', () => {
+    const structuralBlock = laneSrc.slice(laneSrc.indexOf('if (isStructural) {'), laneSrc.indexOf('if (isStructural) {') + 400)
+    expect(structuralBlock).toMatch(/r\?\.error \|\| 'refactor failed'/)
+  })
+})
+
+describe('triage-classify — refactor_failed is a known deterministic prefix', () => {
+  it('classifyLaneError classifies refactor_failed as agent_behavior deterministically', () => {
+    const result = classifyLaneError('refactor_failed: suite red after REFACTOR wrote a broken helper', 'REFACTOR')
+    expect(result.category).toBe('agent_behavior')
+    expect(result.confidence).toBe('deterministic')
   })
 })

@@ -48,27 +48,43 @@ export interface LaneIntakeOpts {
   skeletonCmd: string
   /** Path (under wt) the skeleton command writes. */
   preflightPath: string
+  /**
+   * When given, independently re-run this exact test command against `wt` —
+   * used ONLY by the "resume at REFACTOR" shortcut (#331): a lane whose
+   * branch already carries RED+GREEN stage-complete commits must not be
+   * assumed green on the strength of those commit messages alone (a GREEN
+   * retry that itself failed independent verify still leaves a
+   * `green(...): GREEN complete` commit behind). Appended as the LAST step
+   * regardless of `structural`, so callers that only want history + this
+   * check can pass `structural: true` and skip cleanup/skeleton entirely.
+   * Null/omitted skips the step (unchanged behavior).
+   */
+  verifyTestCmd?: string | null
 }
 
 export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
   const steps: BatchStep[] = []
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
   steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true })
-  if (o.structural) return steps
-  if (o.cleanupCmd) steps.push({ name: 'cleanup', command: o.cleanupCmd, tolerant: true })
-  if (o.planSkeletonPath) {
-    steps.push({ name: 'skeleton-plan', command: catOrMissing(o.planSkeletonPath), tolerant: true })
+  if (!o.structural) {
+    if (o.cleanupCmd) steps.push({ name: 'cleanup', command: o.cleanupCmd, tolerant: true })
+    if (o.planSkeletonPath) {
+      steps.push({ name: 'skeleton-plan', command: catOrMissing(o.planSkeletonPath), tolerant: true })
+    }
+    // The skeleton command's --output is relative to the cwd (repo root) while the
+    // RED prompt reads it from inside the worktree — try both before giving up.
+    const gen = `${o.skeletonCmd}\ncat ${q(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q(o.preflightPath)} 2>/dev/null || echo "{}"`
+    steps.push({
+      name: 'skeleton-gen',
+      command: o.planSkeletonPath
+        ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else\n${gen}\nfi`
+        : gen,
+      tolerant: true,
+    })
   }
-  // The skeleton command's --output is relative to the cwd (repo root) while the
-  // RED prompt reads it from inside the worktree — try both before giving up.
-  const gen = `${o.skeletonCmd}\ncat ${q(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q(o.preflightPath)} 2>/dev/null || echo "{}"`
-  steps.push({
-    name: 'skeleton-gen',
-    command: o.planSkeletonPath
-      ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else\n${gen}\nfi`
-      : gen,
-    tolerant: true,
-  })
+  if (o.verifyTestCmd) {
+    steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'intake-verify'), tolerant: true })
+  }
   return steps
 }
 

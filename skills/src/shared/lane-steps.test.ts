@@ -96,6 +96,100 @@ describe('laneIntakeSteps', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// laneIntakeSteps — verifyTestCmd (#331 follow-up): the "resume at REFACTOR"
+// shortcut must not trust RED+GREEN commit MESSAGES alone — a GREEN retry
+// that itself failed independent verify still leaves a `green(...): GREEN
+// complete` commit on the branch. This step lets the runner independently
+// re-run the suite at the lane's current HEAD before trusting the shortcut.
+// ---------------------------------------------------------------------------
+
+describe('laneIntakeSteps — verifyTestCmd (#331 intake-verify gate)', () => {
+  const base = {
+    wt: '/wt/T1',
+    epicBranch: 'datum/e',
+    completionPath: '.datum/runs/r1/lane-state/T1.json',
+    structural: false,
+    cleanupCmd: 'datum lane-cleanup "/wt/T1" --allowed "tests/test_a.py"',
+    planSkeletonPath: 'docs/epics/e/skeletons/preflight-T1.json',
+    skeletonCmd: 'datum skeleton --task-id T1',
+    preflightPath: '.datum/runs/r1/preflight-T1.json',
+  }
+
+  it('appends a test-verify step after the existing (non-structural) steps when verifyTestCmd is given', () => {
+    const steps = laneIntakeSteps({ ...base, verifyTestCmd: 'pytest -q' })
+    expect(names(steps)).toEqual(['completion', 'history', 'cleanup', 'skeleton-plan', 'skeleton-gen', 'test-verify'])
+    const step = steps[steps.length - 1]
+    expect(step.name).toBe('test-verify')
+    expect(step.tolerant).toBe(true)
+    expect(step.command).toContain('pytest -q')
+    expect(step.command).toContain('TEST_EXIT=$?')
+    expect(step.command).toContain('/wt/T1')
+  })
+
+  it('appends a test-verify step after history for a structural (history-only) call when verifyTestCmd is given', () => {
+    const steps = laneIntakeSteps({ ...base, structural: true, verifyTestCmd: 'pytest -q' })
+    expect(names(steps)).toEqual(['completion', 'history', 'test-verify'])
+  })
+
+  it('omits the test-verify step when verifyTestCmd is not given (unchanged behavior)', () => {
+    expect(names(laneIntakeSteps(base))).toEqual(['completion', 'history', 'cleanup', 'skeleton-plan', 'skeleton-gen'])
+    expect(names(laneIntakeSteps({ ...base, structural: true }))).toEqual(['completion', 'history'])
+  })
+
+  it('omits the test-verify step when verifyTestCmd is null', () => {
+    expect(names(laneIntakeSteps({ ...base, verifyTestCmd: null }))).not.toContain('test-verify')
+  })
+})
+
+describe('laneIntakeSteps — test-verify executed against a real git worktree', () => {
+  function initRepo(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-intake-verify-'))
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    git('init', '-q')
+    git('config', 'core.hooksPath', '/dev/null')
+    git('config', 'user.email', 't@t')
+    git('config', 'user.name', 't')
+    writeFileSync(join(dir, 'f.txt'), 'x\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'base')
+    return dir
+  }
+
+  const intakeBase = {
+    epicBranch: 'HEAD',
+    completionPath: null,
+    structural: true,
+    cleanupCmd: null,
+    planSkeletonPath: '',
+    skeletonCmd: '',
+    preflightPath: '',
+  }
+
+  it('prints TEST_EXIT=0 for a passing command', () => {
+    const dir = initRepo()
+    try {
+      const steps = laneIntakeSteps({ ...intakeBase, wt: dir, verifyTestCmd: 'true' })
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(stepStdout(r, 'test-verify')).toContain('TEST_EXIT=0')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('prints a non-zero TEST_EXIT for a failing command', () => {
+    const dir = initRepo()
+    try {
+      const steps = laneIntakeSteps({ ...intakeBase, wt: dir, verifyTestCmd: 'false' })
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(stepStdout(r, 'test-verify')).toMatch(/TEST_EXIT=[1-9]\d*/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('postRedSteps', () => {
   const opts = {
     wt: '/wt/T1',

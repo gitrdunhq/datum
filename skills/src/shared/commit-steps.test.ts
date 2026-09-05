@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { batchScript, parseBatchResult, type BatchResult } from './batch'
-import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps } from './commit-steps'
+import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps } from './commit-steps'
 
 function fake(stdouts: Record<string, string>, exits: Record<string, number> = {}): BatchResult {
   const steps = Object.entries(stdouts).map(([name, stdout]) => ({ name, exit_code: exits[name] ?? 0, stdout, stderr: '' }))
@@ -89,6 +89,35 @@ describe('worktreeResetSteps', () => {
     expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status'])
     expect(steps[0].command).toContain('git -C "/wt" reset --hard HEAD')
     expect(steps[1].command).toContain('git -C "/wt" clean -fd')
+  })
+})
+
+describe('worktreeResetToSteps', () => {
+  it('resets to the given sha (not HEAD) then cleans and reports status — sibling of worktreeResetSteps', () => {
+    const steps = worktreeResetToSteps('/wt', 'abc1234')
+    expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status'])
+    expect(steps[0].command).toContain('git -C "/wt" reset --hard "abc1234"')
+    expect(steps[0].command).not.toContain('HEAD')
+    expect(steps[1].command).toContain('git -C "/wt" clean -fd')
+  })
+
+  it('under real bash: returns the tree to the named sha, discarding a later (stale GREEN) commit entirely', () => {
+    const dir = tempRepo()
+    try {
+      writeFileSync(join(dir, 'a.py'), 'red\n')
+      git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'red(T1): RED complete')
+      const redSha = git(dir, 'rev-parse', 'HEAD')
+      writeFileSync(join(dir, 'a.py'), 'stale green\n')
+      git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'green(T1): GREEN complete')
+
+      const steps = worktreeResetToSteps(dir, redSha)
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(r.steps.find((s) => s.name === 'status')!.stdout.trim()).toBe('')
+      expect(git(dir, 'rev-parse', 'HEAD')).toBe(redSha)
+      expect(git(dir, 'log', '-1', '--format=%s')).toBe('red(T1): RED complete')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

@@ -1,6 +1,6 @@
 import { model, type ModelName } from './shared/models'
 import { runCommandPrompt } from './shared/boot'
-import { resilientAgent, verifyCommitIndependently } from './shared/agents'
+import { resilientAgent, verifyCommitIndependently, parseCommitVerification } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
@@ -16,7 +16,7 @@ import {
   ownershipFromStdout,
   testExitCode,
 } from './shared/lane-steps'
-import { worktreeResetSteps } from './shared/commit-steps'
+import { worktreeResetSteps, worktreeResetToSteps } from './shared/commit-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -346,8 +346,13 @@ No markdown fences, no explanation.`,
   // since later stages may have already landed and the target commit is not
   // necessarily HEAD.
   const laneHistoryRaw: string | null = stepStdout(intake, 'history')
-  const { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
+  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
     detectExistingLaneCommits(laneHistoryRaw || '', taskId)
+  // Set only when a stale GREEN forces a reset-to-RED-and-resume below —
+  // fed to the first GREEN dispatch as its failure hint so the agent knows a
+  // previous GREEN on this lane was independently rejected, not that this is
+  // its first attempt.
+  let greenStaleHint: string | null = null
 
   // Cross-run completion markers (.datum/runs/<runId>/lane-state/<task>.json)
   // are written by datum-tdd-act-merge for every completed lane, in the same
@@ -361,15 +366,66 @@ No markdown fences, no explanation.`,
   }
 
   if (redAlreadyCommitted && greenAlreadyCommitted) {
-    // Both stage-complete commits already exist — the lane's work is done;
-    // re-running RED/GREEN here would only duplicate coverage or regress a
-    // shipped fix (#331). Resume from REFACTOR, same as the isStructural
-    // fast-path above.
-    log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
-    if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
-    await updateStage(issueId, 'done')
-    return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+    // #331's shortcut resumed straight to REFACTOR on the strength of the
+    // RED+GREEN commit MESSAGES alone. A GREEN retry that itself failed
+    // independent verify (e.g. skeptic panel found 2/3 BROKEN and the retry
+    // still didn't pass) still leaves a `green(...): GREEN complete` commit
+    // on the branch — the shortcut then resumed at REFACTOR against a suite
+    // that was never actually green, and REFACTOR's failure was reported as
+    // a generic "refactor failed" (elonchesd wf_93040d99-e3c -> wf_30d8f723-8d3).
+    // Verify the suite independently AT THE LANE'S CURRENT HEAD before
+    // trusting the shortcut — never assume the commit messages are the truth.
+    const intakeVerifySteps = laneIntakeSteps({
+      wt, epicBranch: cfg.epicBranch, completionPath: null, structural: true,
+      cleanupCmd: null, planSkeletonPath: '', skeletonCmd: '', preflightPath: '',
+      verifyTestCmd: scopedTestCmd,
+    })
+    const intakeVerifyRaw = await agent(
+      batchCommandPrompt(intakeVerifySteps),
+      stageOpts('cli', { label: `lane-intake-verify:${taskId}`, phase: 'Act', model: model('fast') }),
+    )
+    const intakeVerify = parseBatchResult(intakeVerifyRaw, intakeVerifySteps)
+    const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, 'test-verify'))
+
+    if (intakeVerifyExit === null) {
+      // The verify step did not run (missing batch, tooling crash) — this is
+      // a tooling failure, never "assume green": trusting a missing check
+      // over an independent re-run is exactly the failure mode this gate
+      // exists to close.
+      const why = describeFailure(intakeVerify, 'lane intake verify')
+      log(`[${taskId}] LANE INTAKE VERIFY FAILED: ${why} — cannot confirm the existing GREEN commit passes the suite; refusing to assume it does`)
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: intake-verify step did not run (${why})` }
+    }
+
+    if (intakeVerifyExit === 0) {
+      log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+      if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
+      await updateStage(issueId, 'done')
+      return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+    }
+
+    // The committed GREEN does not independently pass — reset the worktree
+    // to the RED commit (never HEAD: HEAD *is* the rejected GREEN) and fall
+    // through into the exact same RED-only resume path used below, with a
+    // failure hint so the GREEN agent knows a prior attempt on this lane was
+    // rejected.
+    greenStaleHint = `green_stale: GREEN commit(s) on the lane branch do not pass the suite (independent exit=${intakeVerifyExit}) — resetting to the RED commit and resuming at GREEN`
+    log(`[${taskId}] ${greenStaleHint}`)
+    const redCommitInfo = parseCommitVerification(laneHistoryRaw, '', `red(${taskId})`, 'RED')
+    if (!redCommitInfo.commitSha) {
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: could not find the RED commit sha in lane history to reset to (${redCommitInfo.detail})` }
+    }
+    const resetToRedSteps = worktreeResetToSteps(wt, redCommitInfo.commitSha)
+    const resetToRedResult = parseBatchResult(
+      await agent(batchCommandPrompt(resetToRedSteps), stageOpts('cli', { label: `reset-to-red:${taskId}`, phase: 'Act', model: model('fast') })),
+      resetToRedSteps,
+    )
+    if (resetToRedResult.missing) {
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${describeFailure(resetToRedResult, 'reset-to-red')})` }
+    }
+    redAlreadyCommitted = true
+    greenAlreadyCommitted = false
   }
 
   // ── Pre-RED cleanup: stray untracked test files from prior skeleton runs ──
@@ -852,7 +908,13 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
   }
 
   let green: StageResult | null = await resilientAgent(
-    greenPrompt(greenVars),
+    greenStaleHint
+      ? greenRetryPrompt({
+          ...greenVars,
+          failureReason: greenStaleHint,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: 'green_stale' }),
+        })
+      : greenPrompt(greenVars),
     stageOpts('green', { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }),
   )
 
@@ -1080,8 +1142,12 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
 
   // ── REFACTOR (writes + verifies + commits in one agent) ──
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
-  if (!refResult) {
-    return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: 'refactor failed' }
+  // Must check `.verified`, not just truthiness: runRefactor returns a
+  // `{ verified: false, error }` OBJECT (truthy) for a real REFACTOR failure,
+  // not null — a bare `!refResult` check here would have treated that as
+  // success and reported the lane completed.
+  if (!refResult || !refResult.verified) {
+    return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: refResult?.error || 'refactor failed' }
   }
 
   log(`[${taskId}] === LANE COMPLETE ===`)
@@ -1221,7 +1287,11 @@ async function runRefactor(
       return { verified: true }
     }
     log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason || 'unknown'}`)
-    return null
+    // A bare `null` here — as opposed to `{ verified: false, error }` — is
+    // what let the caller's generic 'refactor failed' fallback swallow the
+    // agent's real failure_reason (elonchesd wf_93040d99-e3c -> wf_30d8f723-8d3):
+    // `r?.error` on a null `r` is always undefined, so triage never saw why.
+    return { verified: false, error: `refactor_failed: ${refactor.failure_reason || 'unknown'}` }
   }
 
   // Independent verification — never the agent's self-reported tests_pass

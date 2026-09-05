@@ -85,3 +85,18 @@ export function worktreeResetSteps(wt: string): BatchStep[] {
     { name: 'status', command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
   ]
 }
+
+/**
+ * Sibling of worktreeResetSteps() that resets to an explicit sha rather than
+ * HEAD — used when a lane's committed GREEN turns out to be stale (#331): an
+ * independent intake-verify found the suite red at the lane's current HEAD,
+ * so the worktree must go back to the RED commit (not HEAD, which IS the
+ * rejected GREEN) before GREEN is re-dispatched.
+ */
+export function worktreeResetToSteps(wt: string, sha: string): BatchStep[] {
+  return [
+    { name: 'reset', command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },
+    { name: 'clean', command: `git -C ${q(wt)} clean -fd`, tolerant: true },
+    { name: 'status', command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
+  ]
+}
