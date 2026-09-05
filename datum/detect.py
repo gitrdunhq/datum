@@ -1,5 +1,6 @@
 """Auto-detect language, test framework, and test command for a repo."""
 
+import json
 import os
 from pathlib import Path
 
@@ -113,12 +114,54 @@ def _detect_ts_test_framework(root: Path) -> str:
     pkg = root / "package.json"
     if pkg.exists():
         content = pkg.read_text(errors="ignore")
-        if "vitest" in content:
-            return "vitest"
-        if "jest" in content:
-            return "jest"
-        if "mocha" in content:
-            return "mocha"
+
+        # First pass: parse JSON and check dependency keys
+        try:
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                # JSON parsed but root is not an object, fall through to substring
+                pass
+            else:
+                # Collect all dependency keys
+                deps = set()
+                dev_deps = data.get("devDependencies")
+                if isinstance(dev_deps, dict):
+                    deps.update(dev_deps.keys())
+                regular_deps = data.get("dependencies")
+                if isinstance(regular_deps, dict):
+                    deps.update(regular_deps.keys())
+
+                # Check exact package names in priority order
+                if "vitest" in deps:
+                    return "vitest"
+                if "jest" in deps:
+                    return "jest"
+                if "mocha" in deps:
+                    return "mocha"
+
+                # Second pass: check scripts.test as secondary signal
+                scripts = data.get("scripts")
+                if isinstance(scripts, dict):
+                    test_script = scripts.get("test")
+                    if isinstance(test_script, str):
+                        if "vitest" in test_script:
+                            return "vitest"
+                        if "jest" in test_script:
+                            return "jest"
+                        if "mocha" in test_script:
+                            return "mocha"
+
+        except (json.JSONDecodeError, ValueError):
+            # JSON is malformed — the ONLY case where the substring scan runs
+            # (a well-formed package.json with no signal must not be re-read
+            # as substrings, or eslint-plugin-vitest reads as vitest again).
+            if "vitest" in content:
+                return "vitest"
+            if "jest" in content:
+                return "jest"
+            if "mocha" in content:
+                return "mocha"
+
     return "jest"
 
 
@@ -165,6 +208,9 @@ def _detect_test_command(root: Path, lang: str, framework: str) -> str:
         if not (root / "uv.lock").exists() and not (root / "pyproject.toml").exists():
             return "python -m pytest -x -q"
 
-    return commands.get(
-        (lang, framework), f"echo 'no test command for {lang}/{framework}'"
-    )
+    if (lang, framework) in commands:
+        return commands[(lang, framework)]
+
+    # Fallback to a command that exits non-zero with a clear message
+    msg = f"datum: no test command detected for {lang}/{framework} — set test_command in .datum/config.json"
+    return f"sh -c 'echo \"{msg}\" >&2; exit 1'"

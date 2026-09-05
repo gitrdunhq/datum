@@ -6,6 +6,7 @@ models.ts DEFAULT_CONFIG.
 """
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -314,25 +315,36 @@ class TestExtensionFallback:
             assert result["test_framework"] == "unknown"
 
     def test_unknown_test_command_for_unknown_language(self) -> None:
-        """Unknown language/framework returns echo fallback (BUG #3).
+        """Unknown language/framework returns a command that exits non-zero (BUG #1).
 
-        This is a silent fallback that will cause `test_command` to echo
-        instead of failing. A lane that runs this will report "success"
-        with zero tests.
+        The test_command must exit 1 with a clear error message on stderr,
+        not silently succeed with zero tests.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
 
             result = detect_repo(str(root))
 
-            assert "no test command for unknown/unknown" in result["test_command"]
+            cmd = result["test_command"]
+            # Assert the string contains the error message components
+            assert "no test command detected" in cmd
+            assert "unknown/unknown" in cmd
+
+            # Execute the command and verify it exits 1 with stderr message
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            assert proc.returncode == 1, f"Expected exit 1, got {proc.returncode}"
+            assert (
+                "no test command detected for unknown/unknown" in proc.stderr
+            ), f"Expected message in stderr, got: {proc.stderr}"
+            # Verify message is NOT in stdout (bug was silently succeeding on stdout)
+            assert "no test command detected for unknown/unknown" not in proc.stdout
 
 
 class TestMalformedInput:
     """Test handling of malformed or missing configuration files."""
 
     def test_malformed_package_json_does_not_crash(self) -> None:
-        """Malformed package.json doesn't crash (substring search, not JSON parsing)."""
+        """Malformed package.json doesn't crash (falls back to substring scan)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "tsconfig.json").write_text("{}\n")
@@ -368,12 +380,11 @@ class TestSubstringFalsePositive:
     """
 
     def test_vitest_substring_false_positive(self) -> None:
-        """Jest repo with eslint-plugin-vitest detects as vitest (BUG #2a).
+        """Jest repo with eslint-plugin-vitest correctly detects jest (BUG #2a fixed).
 
-        This is a real false positive: a package.json with
-        "eslint-plugin-vitest" in devDependencies will match
-        the "vitest" in content check, and report vitest as the
-        test framework even if jest is the actual runner.
+        A package.json with "eslint-plugin-vitest" in devDependencies must not
+        trigger a false positive for vitest. JSON parsing of dependency keys
+        is preferred over substring matching.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -384,11 +395,26 @@ class TestSubstringFalsePositive:
 
             result = detect_repo(str(root))
 
-            # This is the bug: vitest is checked before jest, and matches
-            # the substring in eslint-plugin-vitest
+            # jest is in devDependencies keys; eslint-plugin-vitest is not "vitest"
+            assert result["test_framework"] == "jest"
+            assert result["test_command"] == "npx jest"
+
+    def test_vitest_detected_via_scripts_test(self) -> None:
+        """Vitest is detected when only scripts.test signal is present.
+
+        When vitest/jest/mocha are not in dependencies but only in scripts,
+        the scripts.test string is checked as a secondary signal.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "tsconfig.json").write_text("{}\n")
+            (root / "package.json").write_text('{"scripts": {"test": "vitest run"}}\n')
+
+            result = detect_repo(str(root))
+
+            # vitest is detected from scripts.test
             assert result["test_framework"] == "vitest"
             assert result["test_command"] == "npx vitest run"
-            # But the actual test framework is jest, not vitest
 
 
 class TestSkipFilter:
