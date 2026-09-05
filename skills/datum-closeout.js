@@ -265,6 +265,8 @@ function moveIntoEpicDirCommand(src, epicDir2, base) {
 }
 function closeoutArchiveSteps(o) {
   const steps = [
+    // File the run's follow-ups (synthesis manifest + per-lane skeptic minority findings) before archiving.
+    { name: "file-followups", command: `datum closeout-file-followups --run-id ${q(o.runId)}`, tolerant: true },
     { name: "tag", command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
     { name: "archive", command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true }
   ];
@@ -386,6 +388,11 @@ var archiveRaw = await agent(
   stageOpts("cli", { label: "closeout-archive", model: model("fast") })
 );
 var archiveResult = parseBatchResult(archiveRaw, archiveSteps);
+var filedRaw = stepStdout(archiveResult, "file-followups");
+var filed = parseAgentJson(filedRaw || "", null);
+if (!filed) log(`[closeout] follow-ups: filer returned no JSON (${(filedRaw || "").trim().slice(0, 120) || "nothing"})`);
+else if (filed.skipped) log("[closeout] follow-ups: already filed for this run");
+else log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ""}${filed.reason ? ` \u2014 ${filed.reason}` : ""}`);
 var archiveFailures = [];
 for (const step of archiveResult.steps) {
   if (step.exit_code !== 0) {

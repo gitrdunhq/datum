@@ -203,6 +203,29 @@ function laneCtxCmd(packet, wt) {
   });
   return `mkdir -p "${wt}/.datum" && printf '%s' '${ctx.replace(/'/g, "'\\''")}' > "${wt}/.datum/lane-context.json"`;
 }
+function skepticMinorityFindings(allBugs, crossValidated) {
+  const validated = new Set(crossValidated);
+  return allBugs.filter(
+    (b) => !validated.has(b) && (b.severity === "critical" || b.severity === "high") && typeof b.evidence === "string" && b.evidence.trim().length > 0
+  );
+}
+function minorityFollowUps(taskId, greenSha, findings) {
+  return findings.map((b, i) => ({
+    dedup_key: `skeptic-minority:${taskId}:${greenSha || "nosha"}:${i}`,
+    title: `[skeptic] ${taskId}: ${b.description.replace(/\s+/g, " ").slice(0, 100)}`,
+    body: `Lane ${taskId}, GREEN ${greenSha || "(no sha)"}, skeptic lens "${b.lens}", severity ${b.severity}.
+
+${b.description}
+
+Evidence: ${b.evidence}
+
+A single lens reported this and the other lenses did not corroborate it, so the lane was not retried (2-of-3 rule). Verify before acting.`,
+    severity: b.severity === "critical" ? "critical" : "high",
+    category: "other",
+    suggested_labels: ["datum-followup", "skeptic"],
+    source: "act.skeptic-minority"
+  }));
+}
 function crossValidateBugs(skepticResults, lenses) {
   const allBugs = [];
   let brokenCount = 0;
@@ -414,8 +437,8 @@ function describeFailure(r, label) {
     return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
   }
   if (!r.failed) return `${label}: ok`;
-  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
+  const tail3 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail3 ? ` \u2014 ${tail3}` : ""}`;
 }
 
 // skills/src/shared/commit-steps.ts
@@ -436,8 +459,8 @@ function worktreeDirtyFromSteps(result) {
   }
   const step = stepResult(result, "status");
   if (!step || step.exit_code !== 0) {
-    const tail2 = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
-    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail2 ? ` \u2014 ${tail2}` : ""}` };
+    const tail3 = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail3 ? ` \u2014 ${tail3}` : ""}` };
   }
   const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
   return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
@@ -490,11 +513,11 @@ function parseCommitVerification(logStdout, statusStdout, commitPrefix, stage) {
   };
 }
 async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage, baseRef) {
-  const q3 = (s) => `"${s.replace(/"/g, '\\"')}"`;
-  const range = baseRef ? `${q3(baseRef)}..HEAD` : "-n 200";
+  const q4 = (s) => `"${s.replace(/"/g, '\\"')}"`;
+  const range = baseRef ? `${q4(baseRef)}..HEAD` : "-n 200";
   const steps = [
-    { name: "log", command: `git -C ${q3(wt)} log --format="%H %s" ${range}`, tolerant: true },
-    { name: "status", command: `git -C ${q3(wt)} status --porcelain -- ${files.map(q3).join(" ")}`, tolerant: true }
+    { name: "log", command: `git -C ${q4(wt)} log --format="%H %s" ${range}`, tolerant: true },
+    { name: "status", command: `git -C ${q4(wt)} status --porcelain -- ${files.map(q4).join(" ")}`, tolerant: true }
   ];
   const raw = await agent(
     batchCommandPrompt(steps),
@@ -600,6 +623,104 @@ async function updateStage(issueId, stage, commitSha) {
 function getIssueId(lanePlan2, taskId) {
   const issue = lanePlan2.lanes[taskId]?.github_issue;
   return issue ? String(issue) : "";
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
 }
 
 // skills/src/shared/lane-steps.ts
@@ -732,8 +853,8 @@ function depMergeFromSteps(result, branches) {
       return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} \u2014 merge step did not run` };
     }
     if (step.exit_code !== 0) {
-      const tail2 = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
-      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) \u2014 ${tail2}` };
+      const tail3 = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) \u2014 ${tail3}` };
     }
   }
   return { ok: true, error: "" };
@@ -905,6 +1026,51 @@ function assertReadWitness(files, parsed) {
   const got = witness[badPath];
   const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
+}
+
+// skills/src/shared/write-steps.ts
+var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
+var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
+function heredocBytes(content) {
+  return content === "" || content.endsWith("\n") ? content : content + "\n";
+}
+function writeFileSteps(o) {
+  if (o.content.split("\n").some((line) => line === HEREDOC_TERMINATOR)) {
+    throw new Error(`writeFileSteps: content contains the heredoc terminator ${HEREDOC_TERMINATOR} on its own line`);
+  }
+  const names = o.names ?? DEFAULT_NAMES;
+  const slash = o.path.lastIndexOf("/");
+  const dir = slash > 0 ? o.path.slice(0, slash) : ".";
+  const body = heredocBytes(o.content);
+  const write = body === "" ? `: > ${q3(o.path)}` : `cat > ${q3(o.path)} <<'${HEREDOC_TERMINATOR}'
+${body.slice(0, -1)}
+${HEREDOC_TERMINATOR}`;
+  return [
+    { name: names.mkdir, command: `mkdir -p ${q3(dir)}` },
+    { name: names.write, command: write },
+    { name: names.sha, command: `git hash-object ${q3(o.path)}`, tolerant: true }
+  ];
+}
+function writeFileBlobSha(content) {
+  return gitBlobSha(utf8Encode(heredocBytes(content)));
+}
+function tail2(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function writeFileFromSteps(result, o) {
+  const names = o.names ?? DEFAULT_NAMES;
+  if (result.missing) return { ok: false, error: `${o.prefix}_write_failed: ${describeFailure(result, names.write)}` };
+  for (const name of [names.mkdir, names.write]) {
+    const step = stepResult(result, name);
+    if (!step) return { ok: false, error: `${o.prefix}_write_failed: ${name} step did not run` };
+    if (step.exit_code !== 0) return { ok: false, error: `${o.prefix}_write_failed: ${name} exited ${step.exit_code} \u2014 ${tail2(step)}` };
+  }
+  const sha = (stepResult(result, names.sha)?.stdout || "").trim();
+  if (sha !== o.expectedSha) {
+    return { ok: false, error: `${o.prefix}_write_mismatch: ${o.path} on disk is blob ${sha || "(none)"}, the script wrote ${o.expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
+  }
+  return { ok: true, error: "" };
 }
 
 // skills/src/shared/schemas.ts
@@ -1800,13 +1966,27 @@ ${bugSummary}`,
   } else {
     log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`);
   }
+  const minority = skepticMinorityFindings(skeptic.allBugs, skeptic.crossValidated);
+  let followUps = 0;
+  if (minority.length > 0) {
+    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} \u2014 ${b.description.replace(/\s+/g, " ").slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, " ").slice(0, 120)})`);
+    const followUpPath = `.datum/runs/${runId}/follow-ups/${taskId}.json`;
+    const followUpText = JSON.stringify(minorityFollowUps(taskId, green.commit_sha || "", minority), null, 2);
+    const fuSteps = writeFileSteps({ path: followUpPath, content: followUpText });
+    const fuWrite = writeFileFromSteps(
+      await runBatch(fuSteps, stageOpts("cli", { label: `followups-write:${taskId}`, phase: "Act", model: model("fast") })),
+      { path: followUpPath, expectedSha: writeFileBlobSha(followUpText), prefix: "followups" }
+    );
+    if (!fuWrite.ok) log(`[${taskId}] ${fuWrite.error} \u2014 ${minority.length} skeptic minority finding(s) stay in this log only`);
+    else followUps = minority.length;
+  }
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
   if (!refResult || !refResult.verified) {
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: refResult?.error || "refactor failed" };
   }
   log(`[${taskId}] === LANE COMPLETE ===`);
   await updateStage(issueId, "done");
-  return { task_id: taskId, status: "completed", stage: "REFACTOR" };
+  return followUps > 0 ? { task_id: taskId, status: "completed", stage: "REFACTOR", follow_ups: followUps } : { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
 async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile) {
   const base = skepticBasePrompt({

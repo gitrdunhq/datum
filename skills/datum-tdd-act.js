@@ -796,6 +796,10 @@ if (failures.length > 0) {
   }
 }
 if (skippedLanes.length > 0) log(`  skipped:   [${skippedLanes.join(", ")}]`);
+var followUpLanes = Object.keys(results).filter((id) => (results[id]?.follow_ups || 0) > 0);
+if (followUpLanes.length > 0) {
+  log(`  skeptic minority findings (filed at Closeout): [${followUpLanes.map((id) => `${id}:${results[id].follow_ups}`).join(", ")}]`);
+}
 if (blockedLanes.length > 0) {
   log(`  blocked:   [${blockedLanes.join(", ")}]`);
   for (const bid of blockedLanes) {
