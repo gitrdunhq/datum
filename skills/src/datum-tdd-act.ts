@@ -4,7 +4,8 @@ import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHas
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
-import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
+import { DEFAULT_CONFIG, skillPath } from './shared/models'
+import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
@@ -22,10 +23,12 @@ const a = ((typeof args === 'string')
   : (args || {})) as TddActArgs
 
 // Read config from .datum/config.json if not passed as args
-const cfgText = (!a.testCommand || !a.language)
-  ? await agent(READ_CONFIG_PROMPT, bootstrapOpts('reader', { label: 'read-config', model: model('fast') }))
-  : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as RepoConfig : {} as RepoConfig
+let repoCfg: RepoConfig = {} as RepoConfig
+if (!a.testCommand || !a.language) {
+  const configReadStepList = configReadSteps()
+  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) } as RepoConfig
+}
 if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.models)
 // #368: agent_types / hooks_installed switches for this and every child workflow.
 configureAgentTypes(readAgentTypeConfig(repoCfg))

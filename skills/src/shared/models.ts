@@ -65,23 +65,18 @@ export const DEFAULT_CONFIG = {
   hooks_installed: false,
 }
 
-export const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
-1. Global: ~/.datum/config.json (may not exist — skip if missing)
-2. Repo: .datum/config.json (required — if missing, return {"error": "missing .datum/config.json — run datum init first"})
-Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
-Return the merged JSON. Output raw JSON only.`
-
 /**
- * Deterministic replacement for the LLM "read two configs and merge them by
- * hand" relay described by READ_CONFIG_PROMPT above (datum-plan.ts used to
- * ask an agent to do this; a hand-merged config with one wrong field — e.g.
- * test_command — silently poisons every downstream lane). Pure: callers get
- * the two files' parsed JSON via a deterministic batch step (cat + parse),
+ * Deterministic replacement for the old LLM "read two configs and merge them
+ * by hand" relay (READ_CONFIG_PROMPT, retired #368 item 2 — datum-plan.ts /
+ * datum-validate.ts / datum-tdd-act.ts used to ask an agent to do this; a
+ * hand-merged config with one wrong field — e.g. test_command — silently
+ * poisons every downstream lane). Pure: callers get the two files' parsed
+ * JSON via a deterministic batch step (shared/config-steps.ts: cat + parse),
  * not an LLM relay, then call this to merge.
  *
- * Semantics mirror READ_CONFIG_PROMPT: start with global, overlay repo on
- * top (repo wins on top-level conflicts); for nested "models", merge keys
- * (repo overrides individual tiers) instead of replacing the whole object.
+ * Semantics: start with global, overlay repo on top (repo wins on top-level
+ * conflicts); for nested "models", merge keys (repo overrides individual
+ * tiers) instead of replacing the whole object.
  */
 export function mergeConfig(
   globalCfg: Record<string, unknown> | null | undefined,

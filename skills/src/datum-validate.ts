@@ -1,10 +1,12 @@
-import { renderPrompt, parseAgentJson, parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
+import { renderPrompt, parseAgentJson, parseValidateArgs, evaluateMainSync, testRunCommand } from './shared/utils'
 import type { MainSyncResult } from './shared/utils'
-import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
+import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
+import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
+import { configReadSteps, configFromSteps } from './shared/config-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 
@@ -26,10 +28,12 @@ const noMergeMain: boolean = a.noMergeMain
 // #368: the parent's switches are honoured BEFORE the first agent() call.
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes as Record<string, boolean>)
 
-const cfgText = !a.testCommand
-  ? await agent(READ_CONFIG_PROMPT, bootstrapOpts('reader', { label: 'read-config', model: model('fast') }))
-  : null
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as unknown as Record<string, string> : {}
+let repoCfg: Record<string, string> = {}
+if (!a.testCommand) {
+  const configReadStepList = configReadSteps()
+  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+  repoCfg = configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) as unknown as Record<string, string>
+}
 // Standalone run (no parent args): the repo config, else the defaults.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
@@ -43,11 +47,19 @@ phase('Validate')
 // the epic branch itself — a bug introduced on the epic and already fixed on
 // main was never seen. Fetch main and merge it in (default), or fail loudly
 // when --no-merge-main is set and the epic is behind.
-const syncRaw = await agent(mainSyncPrompt(noMergeMain), stageOpts('cli', { label: 'main-sync', model: model('fast') }))
-const syncResult = typeof syncRaw === 'string'
-  ? parseAgentJson<MainSyncResult | null>(syncRaw as string, null)
-  : (syncRaw as MainSyncResult | null)
-const mainSync = evaluateMainSync(syncResult, noMergeMain)
+const syncSteps = mainSyncSteps(noMergeMain)
+const syncBatchRaw = await agent(batchCommandPrompt(syncSteps), stageOpts('cli', { label: 'main-sync', model: model('fast') }))
+const syncBatch = parseBatchResult(syncBatchRaw, syncSteps)
+let syncResult: MainSyncResult | null = null
+let mainSync: { ok: boolean; message: string }
+try {
+  syncResult = mainSyncFromSteps(syncBatch, noMergeMain)
+  mainSync = evaluateMainSync(syncResult, noMergeMain)
+} catch (exc) {
+  // A missing batch or a failed fetch is a named failure — never "treat as
+  // in sync" (mainSyncFromSteps throws main_sync_failed: ...).
+  mainSync = { ok: false, message: (exc as Error).message }
+}
 if (!mainSync.ok) {
   log(`VALIDATION FAILED — ${mainSync.message}`)
 } else {

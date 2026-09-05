@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
+import { parseValidateArgs, evaluateMainSync, testRunCommand } from './shared/utils'
 
 const validateSrc = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
 const promptsDir = join(__dirname, 'prompts')
@@ -28,18 +28,7 @@ describe('#358 — parseValidateArgs', () => {
   })
 })
 
-describe('#358 — mainSyncPrompt / evaluateMainSync', () => {
-  it('always fetches origin main and counts how far behind HEAD is', () => {
-    for (const noMerge of [true, false]) {
-      const p = mainSyncPrompt(noMerge)
-      expect(p).toContain('git fetch origin main')
-      expect(p).toContain('git rev-list --count HEAD..origin/main')
-    }
-  })
-  it('merges origin/main by default and only reports when --no-merge-main is set', () => {
-    expect(mainSyncPrompt(false)).toContain('git merge --no-edit origin/main')
-    expect(mainSyncPrompt(true)).not.toContain('git merge')
-  })
+describe('#358 — evaluateMainSync', () => {
   it('fails loudly with the behind count when merging is disabled and the epic is behind', () => {
     const r = evaluateMainSync({ behind: 7, merged: false, conflict: false }, true)
     expect(r.ok).toBe(false)
@@ -85,12 +74,36 @@ describe('#358 — validate + lane prompts use the file-backed test run', () => 
     }
   })
   it('datum-validate.ts syncs with main before running the validate check', () => {
-    const syncIdx = validateSrc.indexOf('mainSyncPrompt(')
+    const syncIdx = validateSrc.indexOf('mainSyncSteps(')
     const checkIdx = validateSrc.indexOf("label: 'validate-check'")
     expect(syncIdx).toBeGreaterThan(-1)
     expect(syncIdx).toBeLessThan(checkIdx)
     expect(validateSrc).toMatch(/evaluateMainSync\(/)
     expect(validateSrc).toMatch(/parseValidateArgs\(/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix — main sync (fetch/behind-count/merge) is a deterministic
+// datum-cli batch (shared/main-sync-steps.ts), not an LLM relay that fetches,
+// merges and self-reports {behind, merged, conflict} JSON.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — main sync is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports or calls the retired mainSyncPrompt relay', () => {
+    expect(validateSrc).not.toMatch(/mainSyncPrompt/)
+  })
+
+  it('imports mainSyncSteps/mainSyncFromSteps from shared/main-sync-steps', () => {
+    expect(validateSrc).toMatch(/import\s*\{[^}]*mainSyncSteps[^}]*mainSyncFromSteps[^}]*\}\s*from\s*'\.\/shared\/main-sync-steps'/)
+  })
+
+  it('runs the sync steps through batchCommandPrompt/parseBatchResult like every other cli batch', () => {
+    const syncIdx = validateSrc.indexOf('mainSyncSteps(')
+    const block = validateSrc.slice(syncIdx, syncIdx + 400)
+    expect(block).toMatch(/batchCommandPrompt\(/)
+    expect(block).toMatch(/parseBatchResult\(/)
+    expect(block).toMatch(/stageOpts\(\s*'cli'/)
   })
 })
 
@@ -192,5 +205,21 @@ describe('determinism fix — util-read-context.md LLM relay is fully retired', 
 
   it('the util-read-context.md prompt file itself no longer exists', () => {
     expect(existsSync(join(__dirname, 'prompts', 'util-read-context.md'))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix — the standalone-run config read no longer relays through
+// READ_CONFIG_PROMPT (an LLM "read two configs and merge them by hand"),
+// it uses the same shared/config-steps.ts batch as datum-plan.ts.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — config read is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports or calls agent(READ_CONFIG_PROMPT ...)', () => {
+    expect(validateSrc).not.toMatch(/READ_CONFIG_PROMPT/)
+  })
+
+  it('imports configReadSteps/configFromSteps from shared/config-steps', () => {
+    expect(validateSrc).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
   })
 })

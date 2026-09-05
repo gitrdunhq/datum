@@ -74,3 +74,20 @@ describe('lane-plan relay integrity', () => {
     expect(src).toMatch(/lane_plan_relay_mismatch/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Determinism fix — the standalone config read no longer relays through
+// READ_CONFIG_PROMPT (an LLM "read two configs and merge them by hand"),
+// it uses the same shared/config-steps.ts batch as datum-plan.ts /
+// datum-validate.ts.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — config read is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports or calls agent(READ_CONFIG_PROMPT ...)', () => {
+    expect(src).not.toMatch(/READ_CONFIG_PROMPT/)
+  })
+
+  it('imports configReadSteps/configFromSteps from shared/config-steps', () => {
+    expect(src).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
+  })
+})

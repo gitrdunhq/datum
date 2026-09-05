@@ -941,23 +941,6 @@ export function parseValidateArgs(raw: unknown): ValidateArgs {
   }
 }
 
-/** Shell steps that fetch main and (unless disabled) merge it into the epic branch. */
-export function mainSyncPrompt(noMergeMain: boolean): string {
-  const merge = noMergeMain
-    ? `3. Do NOT merge. Return JSON: {"behind": <BEHIND>, "merged": false, "conflict": false}`
-    : `3. If BEHIND is 0, return JSON: {"behind": 0, "merged": false, "conflict": false}
-4. Otherwise run: git merge --no-edit origin/main > .datum/main-sync.log 2>&1; MERGE_EXIT=$?
-   If MERGE_EXIT is 0, return JSON: {"behind": <BEHIND>, "merged": true, "conflict": false}
-   If it is not 0, run: git merge --abort
-   and return JSON: {"behind": <BEHIND>, "merged": false, "conflict": true, "output": "<last 20 lines of .datum/main-sync.log>"}`
-  return `Sync the epic branch with main before validating (#358). Run these commands in order at the repo root:
-1. git fetch origin main
-   If the fetch fails (no remote, no network), return JSON: {"error": "<stderr>"}
-2. BEHIND=$(git rev-list --count HEAD..origin/main)
-${merge}
-Do not read the exit code through a pipe. Output raw JSON only, no markdown fences, no explanation.`
-}
-
 export interface MainSyncResult {
   behind: number
   merged: boolean

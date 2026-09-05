@@ -1,9 +1,10 @@
 import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
-import { model, DEFAULT_CONFIG, mergeConfig } from './shared/models'
+import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
 import { readContextSteps, contextFromSteps } from './shared/lane-steps'
+import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { utf8ByteLength } from './shared/utf8'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
@@ -77,31 +78,13 @@ const errorHistory: string | null = (errorHistoryRaw === null || errorHistoryRaw
 const priorFailures: string = [priorDefects, errorHistory || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
 // Deterministic config read: two `cat` steps in one datum-cli batch, parsed
-// and merged in TS — replaces the old LLM "read two JSON files and merge
-// them by hand" relay (nothing verified that relay; a wrong merged field,
-// e.g. test_command, silently poisoned every downstream lane).
-const configSteps: BatchStep[] = [
-  { name: 'repo-config', command: 'cat .datum/config.json' },
-  { name: 'global-config', command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true },
-]
-const configBatchRaw = await agent(batchCommandPrompt(configSteps), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
-const configBatch = parseBatchResult(configBatchRaw, configSteps)
-if (configBatch.missing || configBatch.failed) {
-  throw new Error('missing .datum/config.json — run datum init first')
-}
-let repoCfgParsed: Record<string, unknown>
-try {
-  repoCfgParsed = JSON.parse(stepStdout(configBatch, 'repo-config') || '')
-} catch {
-  throw new Error('missing .datum/config.json — run datum init first')
-}
-let globalCfgParsed: Record<string, unknown> = {}
-try {
-  globalCfgParsed = JSON.parse(stepStdout(configBatch, 'global-config') || '{}')
-} catch {
-  globalCfgParsed = {}
-}
-const repoCfg = { ...DEFAULT_CONFIG, ...mergeConfig(globalCfgParsed, repoCfgParsed) } as Record<string, unknown>
+// and merged in TS (shared/config-steps.ts) — replaces the old LLM "read two
+// JSON files and merge them by hand" relay (nothing verified that relay; a
+// wrong merged field, e.g. test_command, silently poisoned every downstream
+// lane). Shared with datum-validate.ts / datum-tdd-act.ts (#368 item 2).
+const configReadStepList = configReadSteps()
+const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+const repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) } as Record<string, unknown>
 // #368: args (from datum-go) win, else the repo config, else the defaults.
 // Standalone run (no parent args): switches come from the repo config just read.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
