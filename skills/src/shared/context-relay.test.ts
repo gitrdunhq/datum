@@ -236,6 +236,14 @@ describe('verifyReadWitness', () => {
     expect(() => assertReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef' } })).toThrow(/context_read_unverified: A\.md — witness prefix too short \(6 < 7\)/)
   })
 
+  // caliper wf_2f49073d-f07 (BUG K3): a haiku lens returned {"<12-hex prefix>": "true"}
+  // — the proof as the KEY. The evidence of the read is the prefix string
+  // itself, wherever the model put it.
+  it('accepts a correct prefix appearing as a key of the witness object', () => {
+    expect(verifyReadWitness([deferredA], { read_witness: { 'abcdef123456': 'true' } }).ok).toBe(true)
+    expect(verifyReadWitness([deferredA], { read_witness: { 'abcdef1234567890': true } }).ok).toBe(true)
+  })
+
   it('a wrong-key entry with a wrong value is still missing for that file', () => {
     const r = verifyReadWitness([deferredA], { read_witness: { 'whatever': 'deadbeefdead' } })
     expect(r.ok).toBe(false)

@@ -103,6 +103,7 @@ async function runLane(opts: {
   respond: Responder
   agentTypes: { agentTypes: boolean; hooksInstalled: boolean }
   pytest: boolean
+  logs?: string[]
 }): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }> {
   const bundle = readFileSync(bundlePath, 'utf8')
   const body = bundle.replace(/^export const meta = /m, 'const meta = ')
@@ -138,7 +139,7 @@ async function runLane(opts: {
     priorCompleted: [],
     batchTag: '',
   }
-  const result = await script(agent, parallel, () => undefined, () => undefined, args, async () => ({}), { total: null, spent: () => 0, remaining: () => 0 })
+  const result = await script(agent, parallel, () => undefined, (m: string) => { if (opts.logs) opts.logs.push(m) }, args, async () => ({}), { total: null, spent: () => 0, remaining: () => 0 })
   return { calls, result: result as { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }
 }
 
@@ -503,6 +504,39 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(write.prompt).toContain('"dedup_key": "skeptic-minority:T1:bbb222:0"')
     expect(write.prompt).toContain('thresholds dropped on --serve path')
     expect(calls.some((c) => c.label.startsWith('green-skeptic-retry:'))).toBe(false)
+  })
+
+  // caliper wf_2f49073d-f07 (BUG K3): one haiku lens mangled its witness while
+  // the other two verified — the lane must not fail on the unverifiable lens;
+  // it is dropped from the vote by name.
+  it('a skeptic lens without a verifiable witness is dropped from the vote (skeptic_lens_unverified), the lane completes', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let skepticCalls = 0
+    const logs: string[] = []
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) {
+        skepticCalls++
+        if (skepticCalls === 2) return { bugs_found: [{ description: 'x', evidence: 'y', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+        return { ...witness, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+      }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false, logs })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(logs.some((l) => /skeptic_lens_unverified: T1 — lens error/.test(l))).toBe(true)
+    expect(result.results.T1.follow_ups).toBeUndefined()
+  })
+
+  it('when no skeptic lens verifies its witness the lane fails as context_read_unverified at GREEN', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) return { bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/^context_read_unverified: .*no skeptic lens evidenced reading/)
   })
 
   // -------------------------------------------------------------------------

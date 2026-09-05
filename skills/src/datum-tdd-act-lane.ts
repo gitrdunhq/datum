@@ -23,7 +23,7 @@ import {
   digestSpecHash,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps } from './shared/commit-steps'
-import { assertReadWitness, type ContextFile } from './shared/context-relay'
+import { assertReadWitness, verifyReadWitness, type ContextFile } from './shared/context-relay'
 import { writeFileSteps, writeFileBlobSha, writeFileFromSteps } from './shared/write-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -1272,9 +1272,24 @@ async function runSkepticPanel(
     ),
   )
 
-  // A lens that answered without reading the spec file did not review against
-  // the criteria: fail by name rather than count its verdict.
-  for (const r of skepticResults) if (r !== null) assertStageWitness(specFile, r, 'GREEN')
+  // A lens that did not evidence reading the spec file did not review against
+  // the criteria: drop it from the vote by name (caliper BUG K3 — one haiku
+  // lens mangled its witness while two verified). Only when NO lens verified
+  // is the panel void, and that fails the lane at GREEN.
+  let verifiedLenses = 0
+  for (let i = 0; i < skepticResults.length; i++) {
+    const r = skepticResults[i]
+    if (r === null) continue
+    const w = verifyReadWitness([specFile], r)
+    if (w.ok) { verifiedLenses++; continue }
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} — lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? 'prefix too short' : w.mismatched.length ? 'wrong prefix' : 'no witness'}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`)
+    skepticResults[i] = null
+  }
+  if (verifiedLenses === 0) {
+    const err = new Error(`context_read_unverified: ${specFile.path} — no skeptic lens evidenced reading the lane spec; the panel is void`)
+    ;(err as Error & { stage?: LaneOutcome['stage'] }).stage = 'GREEN'
+    throw err
+  }
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses)
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i]

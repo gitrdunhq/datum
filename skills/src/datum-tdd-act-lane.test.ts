@@ -912,7 +912,8 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(laneSource).toMatch(/stage: staged \|\| 'CRASH'/)
     // Every witnessed call names its stage; skeptic lenses are GREEN-stage evidence.
     expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(10)
-    expect(laneSource).toMatch(/assertStageWitness\(specFile, r, 'GREEN'\)/)
+    expect(laneSource).toMatch(/skeptic_lens_unverified/)
+    expect(laneSource).toMatch(/no skeptic lens evidenced reading/)
   })
 })
 

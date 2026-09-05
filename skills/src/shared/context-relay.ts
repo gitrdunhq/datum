@@ -241,7 +241,9 @@ export function verifyReadWitness(
   // sha instead of the path (caliper wf_181691ac-fbf, BUG K), so any entry
   // whose value is a prefix of this file's sha counts for it. Agents also
   // returned correct 8/9-char prefixes (BUG K2): >= 7 hex chars is accepted.
-  const hexValues = Object.values(witness).filter((v): v is string => typeof v === 'string' && /^[0-9a-f]+$/i.test(v))
+  // Keys count too: a haiku lens returned {"<prefix>": "true"} (caliper BUG K3).
+  const candidates = [...Object.values(witness), ...Object.keys(witness)]
+  const hexValues = candidates.filter((v): v is string => typeof v === 'string' && /^[0-9a-f]+$/i.test(v))
   const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX)
   for (const f of deferred) {
     const sha = f.sha.toLowerCase()
