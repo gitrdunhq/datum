@@ -91,6 +91,7 @@ Two `.datum/config.json` keys control how the lane pipeline spawns subagents. `d
 | Key | Default | Effect |
 |---|---|---|
 | `agent_types` | `true` | Every mapped `agent()` call passes `agentType`: RED/GREEN/REFACTOR/skeptic/reflect/docs use `agents/datum-{red,green,refactor,skeptic,reflect,docs}.md`, pure JSON/file reads use `datum-reader`, command runners use `datum-cli`. Set to `false` for a runtime without `agentType` support (the OpenAI-compatible runtime) — no call then carries one. |
+| `worktree_link_dirs` | `["node_modules", ".venv"]` | Dependency directories symlinked from the main checkout into every lane worktree at setup, so the lane's test command has a runner. A `git worktree add` checkout carries none, and a suite that exits 1 for want of `vitest`/`pytest` is `test_env_missing`, never a red suite. |
 | `hooks_installed` | `false` | Written by `datum init` once the `datum-red/green/refactor` PreToolUse hooks (lane-file-guard, protect-tests) are materialised in the repo. When `agent_types && hooks_installed`, the per-stage ownership check and the cross-run completion read become plain commands inside the batched `datum-cli` calls, evaluated by the script; otherwise the standalone LLM checks run as before. |
 
 The mapping lives in one table, `AGENT_TYPE_TABLE` in `skills/src/shared/agent-types.ts` (`stageOpts(stage, opts)` at every call site). A vitest drift guard requires an `agents/<name>.md` for every entry.
