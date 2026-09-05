@@ -742,3 +742,73 @@ describe('datum-go — child phase workflow failures are caught and halted, not 
     expect(block).toMatch(/haltedAt = 'closeout'/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md §5 open item 3: the inline Act phase (actStartSteps, the chunked
+// lane-plan relay, verifyLanePlanShape, the setup/lane/merge batch loop, docs,
+// triage) runs inline in datum-go rather than through runPhaseWorkflow. A
+// throw anywhere in there (lane_plan_relay_mismatch, context_relay_mismatch,
+// a setup/lane/merge child throwing) used to end the whole workflow with an
+// uncaught exception: no Act summary, no halt record, haltedAt unset, and
+// pipeline-state left as it was. It must halt exactly like a failed lane
+// does — same haltedAt = 'act', Act NOT marked complete — instead of crashing.
+// ---------------------------------------------------------------------------
+
+describe('datum-go — a throw inside the inline Act phase halts like a failed lane, not an uncaught exception', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  const actIdx = src.indexOf("shouldRun('act', 3)) {")
+  const actEndIdx = src.indexOf("} else if (activePhases.includes('act' as Phase))")
+  const actBlock = src.slice(actIdx, actEndIdx)
+
+  it('wraps the Act body in a try/catch', () => {
+    expect(actIdx).toBeGreaterThan(-1)
+    expect(actEndIdx).toBeGreaterThan(actIdx)
+    expect(actBlock).toMatch(/try \{/)
+    expect(actBlock).toMatch(/\} catch \(exc\) \{/)
+  })
+
+  it('the catch logs act_phase_failed with the thrown message', () => {
+    const catchIdx = actBlock.lastIndexOf('} catch (exc) {')
+    expect(catchIdx).toBeGreaterThan(-1)
+    const catchBody = actBlock.slice(catchIdx)
+    expect(catchBody).toMatch(/act_phase_failed/)
+    expect(catchBody).toMatch(/\(exc as Error\)\.message/)
+  })
+
+  it('the catch sets haltedAt = \'act\', the same identifier a failed lane halt uses, and does not call markPhaseComplete(\'act\')', () => {
+    const catchIdx = actBlock.lastIndexOf('} catch (exc) {')
+    const catchBody = actBlock.slice(catchIdx)
+    expect(catchBody).toMatch(/haltedAt = 'act'/)
+    expect(catchBody).not.toMatch(/markPhaseComplete\('act'\)/)
+  })
+
+  it('the catch sets lastResult carrying failed/failedLanes/error, the same shape the Act summary already reports', () => {
+    const catchIdx = actBlock.lastIndexOf('} catch (exc) {')
+    const catchBody = actBlock.slice(catchIdx)
+    expect(catchBody).toMatch(/lastResult = \{[^}]*failed:[^}]*failedLanes:[^}]*\}/s)
+  })
+
+  it('the catch does not re-throw — the run must fall through to the normal halt reporting below', () => {
+    const catchIdx = actBlock.lastIndexOf('} catch (exc) {')
+    const catchBody = actBlock.slice(catchIdx)
+    expect(catchBody).not.toMatch(/\bthrow\b/)
+  })
+
+  // Coarse guard, not a full parser: flags any `throw new Error` or bare
+  // `throw` between the act-start batch and the end of the Act block that
+  // sits OUTSIDE the try/catch — i.e. before the try opens or after the
+  // catch closes. It cannot detect a throw nested inside a callback or a
+  // helper defined elsewhere; it is only meant to catch the case this test
+  // suite exists for (a throw statement written directly in the Act body).
+  it('no throw remains in the Act block outside the try/catch', () => {
+    const tryIdx = actBlock.indexOf('try {')
+    const catchIdx = actBlock.lastIndexOf('} catch (exc) {')
+    const catchCloseIdx = actBlock.lastIndexOf('}')
+    expect(tryIdx).toBeGreaterThan(-1)
+    expect(catchIdx).toBeGreaterThan(tryIdx)
+    const before = actBlock.slice(0, tryIdx)
+    const after = actBlock.slice(catchCloseIdx + 1)
+    expect(before).not.toMatch(/\bthrow\b/)
+    expect(after).not.toMatch(/\bthrow\b/)
+  })
+})

@@ -379,6 +379,7 @@ log(`[debug] shouldRun act=${shouldRun('act', 3)} startIdx=${startIdx} haltedAt=
 
 if (shouldRun('act', 3)) {
   log('── Act ──')
+  try {
 
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
   const language = globalCfg.language || DEFAULT_CONFIG.language
@@ -649,6 +650,24 @@ if (shouldRun('act', 3)) {
     log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged — not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`)
   } else {
     await markPhaseComplete('act')
+  }
+  } catch (exc) {
+    // FLOW.md §5 open item 3: the Act phase runs inline (actStartSteps, the
+    // chunked lane-plan relay, verifyLanePlanShape, the setup/lane/merge
+    // batch loop, docs, triage) rather than through runPhaseWorkflow, so an
+    // exception raised anywhere in that body (lane_plan_relay_mismatch,
+    // context_relay_mismatch, a setup/lane/merge child failing) used to end
+    // the whole workflow uncaught: no Act summary, no halt record, haltedAt
+    // unset, pipeline-state left as it was, and no resume path. Fold it into
+    // the same halt a failed lane already produces above instead: halt at
+    // 'act', deliberately skip recording Act as complete so a resume
+    // re-enters Act, and do not propagate the exception further — fall
+    // through to the normal halt reporting below with pipeline-state
+    // untouched.
+    const message = (exc as Error).message
+    log(`[warn] act_phase_failed: ${message}`)
+    haltedAt = 'act'
+    lastResult = { failed: 1, failedLanes: [], error: message }
   }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)
