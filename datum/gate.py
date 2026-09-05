@@ -335,6 +335,23 @@ _FINDING_ROW_RE = re.compile(
 _KEY_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
 
 
+DEFAULT_REVIEW_MAX_ITERATIONS = 3
+
+
+def _review_max_iterations(config: dict) -> int:
+    """review_max_iterations from .datum/config.json, default 3. Anything
+    that is not a positive integer keeps the default (never a silent 0 that
+    would hard-stop every review)."""
+    raw = config.get("review_max_iterations") if isinstance(config, dict) else None
+    if isinstance(raw, bool):
+        return DEFAULT_REVIEW_MAX_ITERATIONS
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return DEFAULT_REVIEW_MAX_ITERATIONS
+    return value if value >= 1 else DEFAULT_REVIEW_MAX_ITERATIONS
+
+
 def _report_sha(content: str) -> str:
     import hashlib
 
@@ -1232,10 +1249,16 @@ def gate_review(yolo: bool, config: dict) -> None:
         report_sha = _report_sha(content)
         iteration = len(seen | {report_sha})
 
-        if iteration >= 3:
+        # Configurable: review_max_iterations in .datum/config.json (default
+        # 3). Some iterations are datum-driven, not the operator's (caliper:
+        # the BUG R key drift consumed one), and the operator decides how
+        # many passes a review loop is worth.
+        max_iterations = _review_max_iterations(config)
+        if iteration >= max_iterations:
             fail(
-                "REVIEW-REPORT.md contains HIGH/CRITICAL findings after 3 iterations. "
-                "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding.",
+                f"REVIEW-REPORT.md contains HIGH/CRITICAL findings after {max_iterations} iterations. "
+                "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding "
+                "(raise review_max_iterations in .datum/config.json to allow another pass).",
                 hard=True,
             )
         else:
@@ -1252,7 +1275,7 @@ def gate_review(yolo: bool, config: dict) -> None:
                 else ""
             )
             fail(
-                f"REVIEW-REPORT.md contains high-severity findings (iteration {iteration}/3): {ids}. "
+                f"REVIEW-REPORT.md contains high-severity findings (iteration {iteration}/{max_iterations}): {ids}. "
                 "Fix them and re-run review, or record a reasoned accept per finding with "
                 '`datum review-accept <ID-or-key> --reason "..."` (writes REVIEW-RESPONSE.md next to the report).'
                 + ignored_note

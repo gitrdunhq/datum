@@ -162,6 +162,30 @@ def test_third_iteration_hard_stops(epic_repo, capsys):
     assert "ESCALATION" in result["message"]
 
 
+def test_review_max_iterations_is_configurable(epic_repo, capsys):
+    """caliper (eedom iteration 3/3): the cap was hard-coded at 3, and some
+    iterations were datum-driven (the BUG R key drift consumed one). The
+    operator raises it with review_max_iterations in .datum/config.json;
+    the message echoes N/M."""
+    _write_report(epic_repo, "severity: high finding\n")
+    iter_file = Path(".datum/epics/datum-epic-review/review-iterations.json")
+    iter_file.parent.mkdir(parents=True, exist_ok=True)
+    iter_file.write_text(json.dumps({"seen": ["a" * 40, "b" * 40]}))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {"review_max_iterations": 4})
+
+    assert exc.value.code == 1
+    result = _fail_json(capsys)
+    assert result["hard_stop"] is False
+    assert "(iteration 3/4)" in result["message"]
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {"review_max_iterations": "not a number"})
+    assert exc.value.code == 2
+    assert "after 3 iterations" in _fail_json(capsys)["message"]
+
+
 def test_remediation_skipped_when_no_producer_artifacts_exist(epic_repo, capsys):
     """No review-packets/unified.json producer exists (see gate.py comment).
     In this fixture repo neither datum/remediate.py nor a findings file
