@@ -47,6 +47,33 @@ export function utf8BytesToString(bytes: number[]): string {
   return out
 }
 
+/**
+ * Encode a JS string as raw UTF-8 bytes, in pure code (no TextEncoder in
+ * the sandbox). Same surrogate policy as utf8ByteLength: a paired surrogate
+ * is one 4-byte sequence, a lone one is encoded as its own 3-byte sequence
+ * (what Buffer.from(s, 'utf8') does), so utf8Encode(s).length ===
+ * utf8ByteLength(s) always. Used to hash the exact bytes a heredoc will
+ * write (shared/plan-steps.ts) before comparing with `git hash-object`.
+ */
+export function utf8Encode(s: string): number[] {
+  const out: number[] = []
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1)
+      if (d >= 0xdc00 && d <= 0xdfff) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00)
+        i++
+      }
+    }
+    if (c < 0x80) out.push(c)
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f))
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f))
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f))
+  }
+  return out
+}
+
 export function utf8ByteLength(s: string): number {
   let bytes = 0
   for (let i = 0; i < s.length; i++) {
