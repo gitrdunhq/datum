@@ -193,7 +193,10 @@ function fencedScript(rendered) {
   if (!m) throw new Error("template has no fenced script block");
   return m[1];
 }
+var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
 function completionMarkerCommand(runId, taskId) {
+  if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`);
+  if (!PLAIN_ID_RE.test(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`);
   const dir = `.datum/runs/${runId}/lane-state`;
   return `mkdir -p ${q(dir)} && printf '%s\\n' '{"task_id": "${taskId}", "status": "completed"}' > ${q(`${dir}/${taskId}.json`)}`;
 }

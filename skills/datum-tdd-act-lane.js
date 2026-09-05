@@ -600,6 +600,8 @@ function tail(step) {
   return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
 }
 function stageSteps(issueId, stage, commitSha) {
+  if (!/^\d+$/.test(issueId)) throw new Error(`stageSteps: issue id must be numeric, got ${JSON.stringify(issueId)}`);
+  if (commitSha && !/^[0-9a-f]{4,40}$/i.test(commitSha)) throw new Error(`stageSteps: commit sha must be hex, got ${JSON.stringify(commitSha)}`);
   const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
   return [{ name: "stage", command: `datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}`, tolerant: true }];
 }
