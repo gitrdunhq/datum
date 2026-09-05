@@ -480,6 +480,7 @@ function assertReadWitness(files, parsed) {
   const f = byPath.get(badPath);
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
+var CONTEXT_CHUNK_BYTES = 12 * 1024;
 
 // skills/src/shared/config-steps.ts
 var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";

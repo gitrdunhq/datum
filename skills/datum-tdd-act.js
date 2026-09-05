@@ -275,6 +275,16 @@ if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.j
     });
   }
   steps.push({
+    name: "plan-bytes",
+    command: `if [ -n "$__plan" ]; then wc -c < "$__plan" | tr -d ' '; else printf -- '-1'; fi`,
+    tolerant: true
+  });
+  steps.push({
+    name: "plan-sha",
+    command: `if [ -n "$__plan" ]; then git hash-object "$__plan"; else printf ''; fi`,
+    tolerant: true
+  });
+  steps.push({
     name: "plan-shape",
     command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
     tolerant: true
@@ -309,9 +319,6 @@ function verifyLanePlanShape(plan, shapeStdout) {
     return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` };
   }
   return { ok: true, reason: "" };
-}
-function readLanePlanPrompt(lanePlanPath2) {
-  return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
 }
 
 // skills/src/shared/prompts.ts
@@ -394,6 +401,151 @@ function describeFailure(r, label) {
   if (!r.failed) return `${label}: ok`;
   const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/utf8.ts
+function utf8BytesToString(bytes) {
+  let out = "";
+  let i = 0;
+  while (i < bytes.length) {
+    const b0 = bytes[i];
+    let codepoint;
+    let len;
+    if (b0 < 128) {
+      codepoint = b0;
+      len = 1;
+    } else if ((b0 & 224) === 192) {
+      codepoint = b0 & 31;
+      len = 2;
+    } else if ((b0 & 240) === 224) {
+      codepoint = b0 & 15;
+      len = 3;
+    } else if ((b0 & 248) === 240) {
+      codepoint = b0 & 7;
+      len = 4;
+    } else {
+      throw new Error(`utf8_decode_invalid_byte: 0x${b0.toString(16)} at position ${i}`);
+    }
+    if (i + len > bytes.length) throw new Error(`utf8_decode_truncated: sequence at position ${i} needs ${len} bytes`);
+    for (let k = 1; k < len; k++) {
+      const bk = bytes[i + k];
+      if ((bk & 192) !== 128) throw new Error(`utf8_decode_invalid_continuation: at position ${i + k}`);
+      codepoint = codepoint << 6 | bk & 63;
+    }
+    if (codepoint <= 65535) {
+      out += String.fromCharCode(codepoint);
+    } else {
+      const cp = codepoint - 65536;
+      out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
+    }
+    i += len;
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/base64.ts
+var B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function base64Decode(input) {
+  const chars = input.replace(/[\s=]/g, "");
+  const bytes = [];
+  let buffer = 0;
+  let bits = 0;
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    const val = B64_CHARS.indexOf(c);
+    if (val === -1) throw new Error(`base64_decode_invalid_char: ${JSON.stringify(c)} at position ${i}`);
+    buffer = buffer << 6 | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push(buffer >> bits & 255);
+    }
+  }
+  return bytes;
+}
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+function q2(p) {
+  return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
+}
+var CONTEXT_CHUNK_BYTES = 12 * 1024;
+function contextChunkPlan(bytes, budget = CONTEXT_CHUNK_BYTES) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return [{ offset: 0, length: 0 }];
+  const chunks = [];
+  let offset = 0;
+  while (offset < bytes) {
+    const length = Math.min(budget, bytes - offset);
+    chunks.push({ offset, length });
+    offset += length;
+  }
+  return chunks;
+}
+function chunkWindowCommand(relPath, offset, length) {
+  return `tail -c +${offset + 1} ${q2(relPath)} | head -c ${length}`;
+}
+function contextChunkSteps(relPath, chunk, i) {
+  const window = chunkWindowCommand(relPath, chunk.offset, chunk.length);
+  return [
+    { name: `ctx-chunk-${i}`, command: `${window} | base64`, tolerant: true },
+    { name: `ctx-chunk-wc-${i}`, command: `${window} | wc -c | tr -d ' '`, tolerant: true }
+  ];
+}
+function stdoutAcross(results2, name) {
+  for (const r of results2) {
+    const s = stepStdout(r, name);
+    if (s !== null) return s;
+  }
+  return null;
+}
+function contextAssembleChunks(relPath, probeBytes, sha, chunkResults, plan) {
+  let bytes = [];
+  plan.forEach((chunk, i) => {
+    const b64 = stdoutAcross(chunkResults, `ctx-chunk-${i}`);
+    const wcRaw = stdoutAcross(chunkResults, `ctx-chunk-wc-${i}`);
+    if (b64 === null || wcRaw === null) {
+      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} produced no result (sha ${sha || "?"})`);
+    }
+    const declared = parseInt(wcRaw.trim(), 10);
+    let decoded;
+    try {
+      decoded = base64Decode(b64.trim());
+    } catch (exc) {
+      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} was not valid base64 \u2014 ${exc.message}`);
+    }
+    if (!Number.isFinite(declared) || decoded.length !== declared) {
+      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} expected ${declared} bytes (wc -c), got ${decoded.length} bytes`);
+    }
+    if (decoded.length !== chunk.length) {
+      throw new Error(`context_relay_mismatch: ${relPath} chunk ${i} expected planned length ${chunk.length} bytes, got ${decoded.length} bytes`);
+    }
+    bytes = bytes.concat(decoded);
+  });
+  if (bytes.length !== probeBytes) {
+    throw new Error(`context_relay_mismatch: ${relPath} total expected ${probeBytes} bytes, got ${bytes.length} bytes (sha ${sha || "?"})`);
+  }
+  const assembled = utf8BytesToString(bytes);
+  const actual = utf8ByteLength(assembled);
+  if (actual !== probeBytes) {
+    throw new Error(`context_relay_mismatch: ${relPath} total expected ${probeBytes} bytes, decoded string is ${actual} bytes`);
+  }
+  return assembled;
 }
 
 // skills/src/shared/config-steps.ts
@@ -505,10 +657,22 @@ if (!runId) throw new Error(`args.runId is required and auto-detect failed (${de
 var epicDir = `docs/epics/${epicBranch}`;
 var lanePlanPath = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
 phase("Topology");
-var lanePlanText = await agent(
-  readLanePlanPrompt(lanePlanPath),
-  stageOpts("reader", { label: "read-lane-plan", phase: "Topology", model: model("fast") })
-);
+var planBytes = parseInt((stepStdout(actStartResult, "plan-bytes") || "").trim(), 10);
+var planSha = (stepStdout(actStartResult, "plan-sha") || "").trim();
+if (!Number.isFinite(planBytes) || planBytes < 0) {
+  throw new Error(`lane_plan_relay_mismatch: could not determine the byte size of ${lanePlanPath} (${describeFailure(actStartResult, "act-start")})`);
+}
+var lanePlanChunkPlan = contextChunkPlan(planBytes);
+var lanePlanChunkResults = [];
+for (let i = 0; i < lanePlanChunkPlan.length; i++) {
+  const chunkSteps = contextChunkSteps(lanePlanPath, lanePlanChunkPlan[i], i);
+  const chunkRaw = await agent(
+    batchCommandPrompt(chunkSteps),
+    stageOpts("cli", { label: `lane-plan-chunk-${i}`, phase: "Topology", model: model("fast") })
+  );
+  lanePlanChunkResults.push(parseBatchResult(chunkRaw, chunkSteps));
+}
+var lanePlanText = contextAssembleChunks(lanePlanPath, planBytes, planSha, lanePlanChunkResults, lanePlanChunkPlan);
 var lanePlan = parseAgentJson(lanePlanText, null);
 if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
 var planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, "plan-shape"));

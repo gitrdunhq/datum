@@ -327,6 +327,7 @@ function contextSlot(f) {
   return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
 Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
+var CONTEXT_CHUNK_BYTES = 12 * 1024;
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
