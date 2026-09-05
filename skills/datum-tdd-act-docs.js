@@ -227,6 +227,9 @@ var docs_sync_default = 'Documentation sync agent. Update existing doc files to 
 // skills/src/shared/lane-steps.ts
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
 function docsCheckPrompt(vars) {

@@ -65,24 +65,6 @@ function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
   }
   return { ok: violations.length === 0, violations };
 }
-function fnv1a64(input) {
-  const PRIME = 0x100000001b3n;
-  const MASK = 0xffffffffffffffffn;
-  let hash = 0xcbf29ce484222325n;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= BigInt(input.charCodeAt(i));
-    hash = hash * PRIME & MASK;
-  }
-  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
-}
-function laneSpecHash(lane) {
-  const spec = {
-    files: lane.files || [],
-    acceptance_criteria: lane.acceptance_criteria || [],
-    depends_on: lane.depends_on || []
-  };
-  return fnv1a64(JSON.stringify(spec));
-}
 function classifyFiles(files) {
   const isImplAdjacent = (f) => {
     return f.includes("/Mocks/") || f.includes("/mocks/") || f.includes("/Fakes/") || f.includes("/fakes/") || f.includes("/Stubs/") || f.includes("/stubs/") || f.includes("/Fixtures/") || f.includes("/fixtures/") || f.includes("/Helpers/") || f.includes("/helpers/");
@@ -221,86 +203,6 @@ function laneCtxCmd(packet, wt) {
   });
   return `mkdir -p "${wt}/.datum" && printf '%s' '${ctx.replace(/'/g, "'\\''")}' > "${wt}/.datum/lane-context.json"`;
 }
-var BUILTIN_SKIP = /* @__PURE__ */ new Set([
-  // Python
-  "print",
-  "len",
-  "str",
-  "int",
-  "dict",
-  "list",
-  "set",
-  "isinstance",
-  "type",
-  "exit",
-  "round",
-  "sorted",
-  "filter",
-  "map",
-  "any",
-  "all",
-  "range",
-  "enumerate",
-  "zip",
-  "open",
-  "input",
-  "format",
-  "repr",
-  "hash",
-  "id",
-  "dir",
-  "vars",
-  "super",
-  "property",
-  "staticmethod",
-  "classmethod",
-  // Swift
-  "fatalError",
-  "precondition",
-  "debugPrint",
-  "String",
-  "Int",
-  "Array",
-  "Dictionary",
-  "Bool",
-  "Optional",
-  // Go
-  "fmt",
-  "Println",
-  "Printf",
-  "Sprintf",
-  "make",
-  "append",
-  "delete",
-  "panic",
-  "recover",
-  // TypeScript / JavaScript
-  "console",
-  "log",
-  "parseInt",
-  "parseFloat",
-  "Number",
-  "Object",
-  "Boolean",
-  "Promise",
-  "setTimeout",
-  "JSON"
-]);
-function extractContractSummary(acceptanceCriteria) {
-  return (acceptanceCriteria || []).map((ac) => {
-    const funcMatch = ac.match(/(?<!['"-])(\w+)\s*\(([^)]*)\)/);
-    const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i);
-    const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/);
-    if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null;
-    return {
-      function: funcMatch[1],
-      args: funcMatch[2] ? funcMatch[2].split(",").map((a2) => a2.trim()).filter(Boolean) : [],
-      returns: retMatch ? retMatch[1] : null,
-      raises: raiseMatch ? raiseMatch[1] : null,
-      ac: ac.slice(0, 120)
-    };
-  }).filter((entry) => entry !== null);
-}
 function crossValidateBugs(skepticResults, lenses) {
   const allBugs = [];
   let brokenCount = 0;
@@ -320,7 +222,7 @@ function crossValidateBugs(skepticResults, lenses) {
   });
   return { allBugs, brokenCount, crossValidated };
 }
-function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras = {}) {
+function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, specFile, extras = {}) {
   return {
     ...extras,
     schema_version: "1.0",
@@ -329,8 +231,10 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, extras
     title: lane.title,
     working_directory: wt,
     test_command: cfg2.testCommand,
-    acceptance_criteria: lane.acceptance_criteria || [],
-    red_note: lane.red_note || "",
+    // The criteria/red_note/contract_summary are in this file, not in the
+    // packet: nothing an LLM turn relayed is trusted as content (see
+    // datum/lane_spec_export.py). The agent reads it and witnesses the read.
+    lane_spec_file: { path: specFile.path, bytes: specFile.bytes, sha: specFile.sha },
     allowed_write_files: stage === "RED" ? testFiles : stage === "GREEN" ? implFiles : [...testFiles, ...implFiles],
     forbidden_write_files: stage === "RED" ? implFiles : stage === "GREEN" ? testFiles : [],
     commit_prefix: stage === "RED" ? `red(${taskId})` : stage === "GREEN" ? `green(${taskId})` : `refactor(${taskId})`,
@@ -650,120 +554,6 @@ function getIssueId(lanePlan2, taskId) {
   return issue ? String(issue) : "";
 }
 
-// skills/src/shared/utf8.ts
-function utf8Encode(s) {
-  const out = [];
-  for (let i = 0; i < s.length; i++) {
-    let c = s.charCodeAt(i);
-    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        c = 65536 + (c - 55296 << 10) + (d - 56320);
-        i++;
-      }
-    }
-    if (c < 128) out.push(c);
-    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
-    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-  }
-  return out;
-}
-function utf8ByteLength(s) {
-  let bytes = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 128) bytes += 1;
-    else if (c < 2048) bytes += 2;
-    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        bytes += 4;
-        i++;
-      } else bytes += 3;
-    } else bytes += 3;
-  }
-  return bytes;
-}
-
-// skills/src/shared/sha1.ts
-function rotl(x, n) {
-  return (x << n | x >>> 32 - n) >>> 0;
-}
-function sha1Hex(bytes) {
-  const msgBitsLow = bytes.length * 8 >>> 0;
-  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
-  const padded = bytes.slice();
-  padded.push(128);
-  while (padded.length % 64 !== 56) padded.push(0);
-  padded.push(
-    msgBitsHigh >>> 24 & 255,
-    msgBitsHigh >>> 16 & 255,
-    msgBitsHigh >>> 8 & 255,
-    msgBitsHigh & 255,
-    msgBitsLow >>> 24 & 255,
-    msgBitsLow >>> 16 & 255,
-    msgBitsLow >>> 8 & 255,
-    msgBitsLow & 255
-  );
-  let h0 = 1732584193;
-  let h1 = 4023233417;
-  let h2 = 2562383102;
-  let h3 = 271733878;
-  let h4 = 3285377520;
-  const w = new Array(80).fill(0);
-  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
-    for (let i = 0; i < 16; i++) {
-      const o = chunkStart + i * 4;
-      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
-    }
-    for (let i = 16; i < 80; i++) {
-      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-    }
-    let a2 = h0;
-    let b = h1;
-    let c = h2;
-    let d = h3;
-    let e = h4;
-    for (let i = 0; i < 80; i++) {
-      let f;
-      let k;
-      if (i < 20) {
-        f = b & c | ~b & d;
-        k = 1518500249;
-      } else if (i < 40) {
-        f = b ^ c ^ d;
-        k = 1859775393;
-      } else if (i < 60) {
-        f = b & c | b & d | c & d;
-        k = 2400959708;
-      } else {
-        f = b ^ c ^ d;
-        k = 3395469782;
-      }
-      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
-      e = d;
-      d = c;
-      c = rotl(b, 30);
-      b = a2;
-      a2 = temp;
-    }
-    h0 = h0 + a2 >>> 0;
-    h1 = h1 + b >>> 0;
-    h2 = h2 + c >>> 0;
-    h3 = h3 + d >>> 0;
-    h4 = h4 + e >>> 0;
-  }
-  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
-  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
-}
-function gitBlobSha(bytes) {
-  const header = `blob ${bytes.length}\0`;
-  const headerBytes = [];
-  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
-  return sha1Hex(headerBytes.concat(bytes));
-}
-
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function catOrMissing(path) {
@@ -774,12 +564,7 @@ function isMissing(raw) {
 }
 function laneIntakeSteps(o) {
   const steps = [];
-  if (o.laneSpec) {
-    const spec = laneSpecCommand(o.laneSpec.planPath, o.laneSpec.taskId);
-    steps.push({ name: "lane-spec", command: spec, tolerant: true });
-    steps.push({ name: "lane-spec-bytes", command: `${spec} | wc -c | tr -d ' '`, tolerant: true });
-    steps.push({ name: "lane-spec-sha", command: `${spec} | git hash-object --stdin`, tolerant: true });
-  }
+  if (o.laneSpec) steps.push({ name: "lane-spec", command: laneSpecExportCommand(o.laneSpec), tolerant: true });
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
   if (!o.structural) {
@@ -955,33 +740,85 @@ function digestSpecHash(digest, taskId) {
   if (typeof lane.spec_hash !== "string" || !lane.spec_hash) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} carries no spec_hash`);
   return lane.spec_hash;
 }
-function laneSpecCommand(planPath, taskId) {
-  return `jq -c --arg id ${q2(taskId)} '.lanes[$id]' ${q2(planPath)}`;
+function laneSpecExportCommand(o) {
+  return `datum lane-spec-export --plan ${q2(o.planPath)} --task ${q2(o.taskId)} --out ${q2(o.outPath)} --expect-hash ${q2(o.expectHash)}`;
 }
-function laneSpecFromSteps(result, taskId, expectedSpecHash) {
-  const none = { ok: false, lane: null };
-  if (result.missing) return { ...none, error: `lane_spec_relay_failed: ${taskId} \u2014 ${describeFailure(result, "lane-spec")}` };
+function laneSpecFromSteps(result, taskId) {
+  const none = { ok: false, spec: null };
+  if (result.missing) return { ...none, error: `lane_spec_export_failed: ${taskId} \u2014 ${describeFailure(result, "lane-spec")}` };
   const step = stepResult(result, "lane-spec");
-  if (!step || step.exit_code !== 0) {
-    return { ...none, error: `lane_spec_relay_failed: ${taskId} \u2014 jq exited ${step ? step.exit_code : "without running"}: ${(step && (step.stderr || step.stdout) || "").trim().slice(0, 200)}` };
+  if (!step) return { ...none, error: `lane_spec_export_failed: ${taskId} \u2014 the lane-spec step never ran` };
+  if (step.exit_code !== 0) {
+    const cliErr = parseAgentJson(step.stdout || "", null);
+    const why = cliErr && typeof cliErr.error === "string" && cliErr.error || (step.stderr || step.stdout || "").trim().slice(0, 300) || `exit ${step.exit_code}`;
+    return { ...none, error: `lane_spec_export_failed: ${taskId} \u2014 ${why}` };
   }
-  const text = step.stdout || "";
-  const bytes = parseInt((stepStdout(result, "lane-spec-bytes") || "").trim(), 10);
-  const sha = (stepStdout(result, "lane-spec-sha") || "").trim();
-  const gotBytes = utf8ByteLength(text);
-  const gotSha = gitBlobSha(utf8Encode(text));
-  if (!Number.isFinite(bytes) || gotBytes !== bytes || !sha || gotSha !== sha) {
-    return { ...none, error: `lane_spec_relay_mismatch: ${taskId} \u2014 expected ${bytes} bytes / blob ${sha}, got ${gotBytes} bytes / blob ${gotSha} \u2014 the runner did not return the lane spec verbatim` };
+  const parsed = parseAgentJson(step.stdout || "", null);
+  const bad = (what) => ({ ...none, error: `lane_spec_export_unparseable: ${taskId} \u2014 ${what}: ${(step.stdout || "").trim().slice(0, 200)}` });
+  if (!parsed || typeof parsed !== "object") return bad("datum lane-spec-export printed no JSON object");
+  if (parsed.task_id !== taskId) return bad(`summary is for ${String(parsed.task_id)}`);
+  if (typeof parsed.path !== "string" || !parsed.path) return bad("no path");
+  if (typeof parsed.bytes !== "number" || !Number.isInteger(parsed.bytes) || parsed.bytes <= 0) return bad("bytes is not a positive integer");
+  if (typeof parsed.sha !== "string" || !/^[0-9a-f]{40}$/.test(parsed.sha)) return bad("sha is not a 40-hex blob id");
+  if (typeof parsed.spec_hash !== "string" || !parsed.spec_hash) return bad("no spec_hash");
+  if (typeof parsed.ac_count !== "number" || !Number.isInteger(parsed.ac_count) || parsed.ac_count < 0) return bad("ac_count is not a non-negative integer");
+  return {
+    ok: true,
+    spec: { task_id: parsed.task_id, path: parsed.path, bytes: parsed.bytes, sha: parsed.sha, spec_hash: parsed.spec_hash, ac_count: parsed.ac_count },
+    error: ""
+  };
+}
+function laneSpecContextFile(spec) {
+  return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null };
+}
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+function contextSlot(f) {
+  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
+  if (f.inlined && f.content !== null) return f.content;
+  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
+}
+function contextWitnessInstruction(files) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  if (deferred.length === 0) return "";
+  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nYour JSON response is invalid without this field for every file listed above.";
+}
+function extractWitnessMap(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const w = parsed.read_witness;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return w;
+}
+function verifyReadWitness(files, parsed) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  const witness = extractWitnessMap(parsed);
+  const missing = [];
+  const mismatched = [];
+  for (const f of deferred) {
+    const value = witness[f.path];
+    if (typeof value !== "string" || !/^[0-9a-f]{12,}$/i.test(value)) {
+      missing.push(f.path);
+      continue;
+    }
+    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
+      mismatched.push(f.path);
+    }
   }
-  const parsed = parseAgentJson(text, null);
-  if (parsed === null || typeof parsed !== "object") {
-    return { ...none, error: `lane_spec_missing: ${taskId} is not in the worktree lane plan (jq printed ${text.trim().slice(0, 40) || "nothing"})` };
-  }
-  const got = laneSpecHash(parsed);
-  if (got !== expectedSpecHash) {
-    return { ...none, error: `lane_spec_hash_mismatch: ${taskId} \u2014 the worktree lane plan hashes to ${got} but the digest says ${expectedSpecHash}; the plan changed between digest and intake` };
-  }
-  return { ok: true, lane: parsed, error: "" };
+  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+}
+function assertReadWitness(files, parsed) {
+  const result = verifyReadWitness(files, parsed);
+  if (result.ok) return;
+  const witness = extractWitnessMap(parsed);
+  const byPath = new Map(files.map((f2) => [f2.path, f2]));
+  const badPath = result.missing[0] ?? result.mismatched[0];
+  const got = witness[badPath];
+  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
+  const f = byPath.get(badPath);
+  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
 
 // skills/src/shared/schemas.ts
@@ -1000,7 +837,9 @@ var STAGE_RESULT_SCHEMA = {
     // #356: structured GREEN block — {status:"blocked", needs_write:[paths], reason}
     status: { type: "string", enum: ["ok", "blocked"] },
     needs_write: { type: "array", items: { type: "string" } },
-    reason: { type: "string" }
+    reason: { type: "string" },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: "object", additionalProperties: { type: "string" } }
   },
   required: ["success", "tests_pass", "committed"]
 };
@@ -1009,7 +848,9 @@ var REFLECT_SCHEMA = {
   properties: {
     reasoning: { type: "string" },
     gaps: { type: "array", items: { type: "string" } },
-    score: { type: "number" }
+    score: { type: "number" },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: "object", additionalProperties: { type: "string" } }
   },
   required: ["reasoning", "score"]
 };
@@ -1026,7 +867,9 @@ var SKEPTIC_SCHEMA = {
       required: ["description", "evidence", "severity"]
     } },
     confidence: { type: "number" },
-    verdict: { type: "string", enum: ["PASS", "FRAGILE", "BROKEN"] }
+    verdict: { type: "string", enum: ["PASS", "FRAGILE", "BROKEN"] },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: "object", additionalProperties: { type: "string" } }
   },
   required: ["bugs_found", "confidence", "verdict"]
 };
@@ -1043,7 +886,7 @@ var REFACTOR_CHECK_SCHEMA = {
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/red.md
-var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria from the task packet\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run the suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>` \u2014 that code is the real exit status. Never run {{testCommand}} through a pipe into tail or grep: a pipe masks the exit code. Report the printed output in test_output (last 50 lines max) and TEST_EXIT in test_exit_code.\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n- OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift \u2014 this is a production implementation file, not a test file. If it is not a test file, do not write it.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n';
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria (and red_note) from the lane spec file\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run the suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>` \u2014 that code is the real exit status. Never run {{testCommand}} through a pipe into tail or grep: a pipe masks the exit code. Report the printed output in test_output (last 50 lines max) and TEST_EXIT in test_exit_code.\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files \u2014 keep all existing tests intact\n- Only write and commit test files: {{testFilesList}}\n- OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift \u2014 this is a production implementation file, not a test file. If it is not a test file, do not write it.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n';
 
 // skills/src/prompts/red-retry.md
 var red_retry_default = `RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
@@ -1052,6 +895,9 @@ First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclud
 
 SETUP: {{redCtxCmd}}
 TASK PACKET: {{redPacketStr}}
+
+LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
 
 Write simple, concrete tests. One test per acceptance criterion. Assert specific values.
 Call methods that don't exist yet \u2014 the language's missing-method error (AttributeError, TypeError, compilation error, etc.) is your RED signal.
@@ -1072,6 +918,9 @@ var green_default = `GREEN TDD agent. Make the failing tests pass with minimum i
 
 SETUP (run first): {{greenCtxCmd}}
 TASK PACKET: {{greenPacketStr}}
+
+LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
 
 CONTEXT MANAGEMENT:
 Before reading implementation files, use headroom_compress on any file longer than 100 lines.
@@ -1099,7 +948,7 @@ AFTER WRITING:
 
 PACKET FIELDS:
 - test_signal: error messages from failing tests \u2014 your implementation spec
-- contract_summary: function signatures extracted from acceptance criteria
+- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)
 - impl_stubs: skeleton files \u2014 fill these in
 - existing_api: current module code shape
 
@@ -1111,16 +960,42 @@ CONSTRAINTS:
 `;
 
 // skills/src/prompts/green-retry.md
-var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\nIf the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.\n';
+var green_retry_default = `GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
+
+First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
+
+SETUP: {{greenCtxCmd}}
+TASK PACKET: {{greenRetryPacketStr}}
+
+LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
+CONTEXT MANAGEMENT:
+Use headroom_compress on any file or test output longer than 100 lines.
+Use headroom_retrieve with a targeted query to pull back only what you need.
+
+Read test_signal errors carefully. Read existing implementation files first. Fix specific failures.
+
+AFTER WRITING:
+1. Run the suite with exactly: {{testRunCmd}}
+   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.
+2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.
+3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}
+   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.
+4. Report commit_sha.
+
+Only write and commit implementation files: {{implFilesList}}
+If the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.
+`;
 
 // skills/src/prompts/refactor.md
 var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
 
 // skills/src/prompts/reflect.md
-var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover:\n{{acStr}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
+var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
 
 // skills/src/prompts/skeptic-base.md
-var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria:\n{{acStr}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n";
+var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n";
 
 // skills/src/prompts/skeptic-edge.md
 var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\nFor each finding: describe the input, what happens, what should happen.\n";
@@ -1136,26 +1011,35 @@ var refactor_check_default = 'CODE QUALITY gate. Decide if the implementation ne
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withLaneSpec(template, vars, laneSpec) {
+  return PREAMBLE + renderPrompt(template, { ...vars, laneSpecSlot: contextSlot(laneSpec) }) + contextWitnessInstruction([laneSpec]);
+}
 function redPrompt(vars) {
-  return PREAMBLE + renderPrompt(red_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(red_default, rest, laneSpec);
 }
 function redRetryPrompt(vars) {
-  return PREAMBLE + renderPrompt(red_retry_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(red_retry_default, rest, laneSpec);
 }
 function greenPrompt(vars) {
-  return PREAMBLE + renderPrompt(green_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(green_default, rest, laneSpec);
 }
 function greenRetryPrompt(vars) {
-  return PREAMBLE + renderPrompt(green_retry_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(green_retry_default, rest, laneSpec);
 }
 function refactorPrompt(vars) {
   return PREAMBLE + renderPrompt(refactor_default, vars);
 }
 function reflectPrompt(vars) {
-  return PREAMBLE + renderPrompt(reflect_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(reflect_default, rest, laneSpec);
 }
 function skepticBasePrompt(vars) {
-  return PREAMBLE + renderPrompt(skeptic_base_default, vars);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(skeptic_base_default, rest, laneSpec);
 }
 function skepticLenses() {
   return [
@@ -1200,8 +1084,13 @@ async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFi
   const verdict = ownershipFromStdout(stepStdout(result, "ownership"), allowedFiles, forbiddenFiles);
   return verdict.ok ? verdict : { ...verdict, checkFailed: verdict.violations.some((v) => v.startsWith("ownership_check_failed")) };
 }
+async function witnessedAgent(prompt, opts, specFile) {
+  const result = await resilientAgent(prompt, opts);
+  if (result !== null) assertReadWitness([specFile], result);
+  return result;
+}
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
-  let lane = lanePlan2.lanes[taskId];
+  const lane = lanePlan2.lanes[taskId];
   const wt = worktreePaths2[taskId];
   if (!wt || typeof wt !== "string" || !wt.startsWith("/")) {
     return {
@@ -1215,7 +1104,6 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const runId = cfg2.runId;
   const isStructural = lane.kind === "structural";
   const { testFiles, implFiles } = classifyFiles(lane.files);
-  let acStr = "";
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
   const laneFiles = [...testFiles, ...implFiles];
@@ -1269,7 +1157,7 @@ No markdown fences, no explanation.`,
     planSkeletonPath,
     skeletonCmd,
     preflightPath,
-    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId }
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) }
   });
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
@@ -1292,18 +1180,17 @@ No markdown fences, no explanation.`,
       }
     }
   }
-  const spec = laneSpecFromSteps(intakeResult, taskId, digestSpecHash(lanePlan2, taskId));
-  if (!spec.ok || !spec.lane) {
-    log(`[${taskId}] LANE SPEC FETCH FAILED: ${spec.error}`);
+  const spec = laneSpecFromSteps(intakeResult, taskId);
+  if (!spec.ok || !spec.spec) {
+    log(`[${taskId}] LANE SPEC EXPORT FAILED: ${spec.error}`);
     return { task_id: taskId, status: "failed", stage: "CRASH", error: spec.error };
   }
-  lane = spec.lane;
-  acStr = (spec.lane.acceptance_criteria || []).join("\n");
+  const specFile = laneSpecContextFile(spec.spec);
   const laneHistoryRaw = stepStdout(intake, "history");
   let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   let greenStaleHint = null;
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
     if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
@@ -1333,7 +1220,7 @@ No markdown fences, no explanation.`,
     }
     if (intakeVerifyExit === 0) {
       log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
-      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
       if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
       await updateStage(issueId, "done");
       return { task_id: taskId, status: "completed", stage: "REFACTOR" };
@@ -1403,7 +1290,7 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_test_files: classifyFiles returned empty testFiles for lane" };
   }
   const redExtras = targetContext ? { target_context: targetContext } : {};
-  const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", redExtras);
+  const redPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, "RED", specFile, redExtras);
   const redCtxCmd = laneCtxCmd(redPacket, wt);
   const testFuncLabel = laneLanguage === "swift" ? "@Test or func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it( or test( or describe(" : "def test_";
   const promptVars = {
@@ -1419,7 +1306,8 @@ No markdown fences, no explanation.`,
     // One commit convention for every stage (#357): datum author + Datum-* trailers.
     commitCmd: laneCommitCommand({ wt, taskId, stage: "RED", runId }),
     taskId,
-    testFuncPattern: testFuncLabel
+    testFuncPattern: testFuncLabel,
+    laneSpec: specFile
   };
   let red = null;
   if (redAlreadyCommitted) {
@@ -1433,9 +1321,10 @@ No markdown fences, no explanation.`,
       files_written: testFiles
     };
   } else {
-    red = await resilientAgent(
+    red = await witnessedAgent(
       redPrompt(promptVars),
-      stageOpts("red", { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+      stageOpts("red", { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile
     );
     if (!red) {
       const redFirstFailure = "red_no_result: RED agent returned nothing (likely the maxTurns cap in agents/datum-red.md, an API error, or a skip)";
@@ -1446,9 +1335,10 @@ No markdown fences, no explanation.`,
       );
       const redLeftover = (stepStdout(redResetResult, "status") || "").trim();
       log(`[${taskId}] RED attempt 1: ${redFirstFailure}; worktree reset to HEAD before retry${redLeftover ? ` (WARNING: still dirty: ${redLeftover.split("\n").length} paths)` : ""}`);
-      red = await resilientAgent(
+      red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: redFirstFailure }),
-        stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+        stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile
       );
       if (!red) {
         return {
@@ -1476,9 +1366,10 @@ No markdown fences, no explanation.`,
         };
       } else {
         log(`[${taskId}] RED: agent did not commit on first attempt \u2014 retrying (independent check: ${check.detail})`);
-        red = await resilientAgent(
+        red = await witnessedAgent(
           redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
-          stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+          stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+          specFile
         );
         if (!red || !red.committed) {
           const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED", cfg2.epicBranch);
@@ -1501,9 +1392,10 @@ No markdown fences, no explanation.`,
     }
     if (!red || !red.success) {
       log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || "unknown"}, retrying`);
-      red = await resilientAgent(
+      red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
-        stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+        stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile
       );
     }
   }
@@ -1511,7 +1403,7 @@ No markdown fences, no explanation.`,
     log(`[${taskId}] RED FAILED: ${red?.failure_reason || "no files written after 2 attempts"}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: red?.failure_reason || "RED failed" };
   }
-  const acCount = (lane.acceptance_criteria || []).length;
+  const acCount = spec.spec.ac_count;
   const sgPatterns = laneLanguage === "swift" ? [
     { pattern: "XCTFail", name: "XCTFail" },
     { pattern: "fatalError", name: "fatalError" }
@@ -1658,9 +1550,10 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_new_tests_written: RED agent did not append any test functions" };
   }
   log(`[${taskId}] RED: ${newTestCount} new test functions verified (${beforeCount} \u2192 ${afterCount})`);
-  const reflectResult = await resilientAgent(
-    reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
-    stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA, maxRetries: 1 })
+  const reflectResult = await witnessedAgent(
+    reflectPrompt({ wt, testFiles: testFiles.join(", "), laneSpec: specFile }),
+    stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA, maxRetries: 1 }),
+    specFile
   );
   if (!reflectResult) {
     log(`[${taskId}] reflect_no_result: reflect agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-reflect.md) \u2014 proceeding to GREEN without a quality score`);
@@ -1676,14 +1569,12 @@ No markdown fences, no explanation.`,
     }
   }
   const greenModel = lane.green_model || model("balanced");
-  const contractSummary = extractContractSummary(lane.acceptance_criteria || []);
   log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`);
   const greenExtras = {
     test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
-    contract_summary: contractSummary,
     ...targetContext ? { target_context: targetContext } : {}
   };
-  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
+  const greenPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", specFile, greenExtras);
   const greenCtxCmd = laneCtxCmd(greenPacket, wt);
   const greenVars = {
     wt,
@@ -1693,15 +1584,17 @@ No markdown fences, no explanation.`,
     testRunCmd: testRunCommand(scopedTestCmd, wt, "GREEN"),
     implFilesList: implFiles.join(" "),
     commitPrefix: greenPacket.commit_prefix,
-    commitCmd: laneCommitCommand({ wt, taskId, stage: "GREEN", runId })
+    commitCmd: laneCommitCommand({ wt, taskId, stage: "GREEN", runId }),
+    laneSpec: specFile
   };
-  let green = await resilientAgent(
+  let green = await witnessedAgent(
     greenStaleHint ? greenRetryPrompt({
       ...greenVars,
       failureReason: greenStaleHint,
       greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "green_stale" })
     }) : greenPrompt(greenVars),
-    stageOpts("green", { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt })
+    stageOpts("green", { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+    specFile
   );
   if (green?.success) {
     log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ")}`);
@@ -1727,8 +1620,8 @@ No markdown fences, no explanation.`,
       if (cfg2.yolo && widen.length > 0 && rejected.length === 0) {
         for (const f of widen) if (!implFiles.includes(f)) implFiles.push(f);
         log(`[${taskId}] GREEN blocked \u2014 yolo auto-widened allowed_write_files with [${widen.join(", ")}] (all inside src/); re-running GREEN once`);
-        const widenedPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
-        green = await resilientAgent(
+        const widenedPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", specFile, greenExtras);
+        green = await witnessedAgent(
           greenRetryPrompt({
             ...greenVars,
             greenCtxCmd: laneCtxCmd(widenedPacket, wt),
@@ -1736,7 +1629,8 @@ No markdown fences, no explanation.`,
             failureReason: `blocked: ${decision.reason} \u2014 allowed_write_files now also includes ${widen.join(", ")}`,
             greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason })
           }),
-          stageOpts("green", { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+          stageOpts("green", { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+          specFile
         );
       } else {
         const refusal = cfg2.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(", ")}] not inside src/)` : "";
@@ -1757,13 +1651,14 @@ No markdown fences, no explanation.`,
         log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split("\n").length} paths)` : ""}`);
       }
       log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${firstFailure}, escalating to opus`);
-      green = await resilientAgent(
+      green = await witnessedAgent(
         greenRetryPrompt({
           ...greenVars,
           failureReason: firstFailure,
           greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure })
         }),
-        stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+        stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile
       );
     }
   }
@@ -1827,13 +1722,13 @@ No markdown fences, no explanation.`,
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   await updateStage(issueId, "green", green.commit_sha);
-  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr);
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
   if (skeptic.brokenCount >= 2) {
     const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
     const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join("\n") || "no bug detail available";
     log(`[${taskId}] SKEPTIC VERDICT: ${skeptic.brokenCount}/3 BROKEN \u2014 retrying GREEN once with ${confirmedBugs.length} confirmed bug(s)`);
-    const skepticRetryPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", greenExtras);
-    green = await resilientAgent(
+    const skepticRetryPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, "GREEN", specFile, greenExtras);
+    green = await witnessedAgent(
       greenRetryPrompt({
         ...greenVars,
         failureReason: `The skeptic panel found confirmed bugs in the GREEN implementation. Fix them without breaking the tests.
@@ -1841,7 +1736,8 @@ SKEPTIC FINDINGS:
 ${bugSummary}`,
         greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: "skeptic_broken", skeptic_bugs: confirmedBugs })
       }),
-      stageOpts("green", { label: `green-skeptic-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+      stageOpts("green", { label: `green-skeptic-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile
     );
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
     const retryVerifyRaw = await agent(
@@ -1860,7 +1756,7 @@ ${bugSummary}`,
         error: `skeptic_broken: ${confirmedBugs.length} confirmed bugs \u2014 ${summary}`
       };
     }
-    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr);
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
     if (skeptic.brokenCount >= 2) {
       const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
       const first = stillConfirmed[0];
@@ -1877,7 +1773,7 @@ ${bugSummary}`,
   } else {
     log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`);
   }
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg);
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
   if (!refResult || !refResult.verified) {
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: refResult?.error || "refactor failed" };
   }
@@ -1885,13 +1781,13 @@ ${bugSummary}`,
   await updateStage(issueId, "done");
   return { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
-async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr) {
+async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile) {
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
     testFiles: testFiles.join(", "),
     testCommand: scopedTestCmd,
-    acStr
+    laneSpec: specFile
   });
   const lenses = skepticLenses();
   const skepticResults = await parallel(
@@ -1899,6 +1795,7 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
       (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }))
     )
   );
+  for (const r of skepticResults) if (r !== null) assertReadWitness([specFile], r);
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses);
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i];
@@ -1913,7 +1810,7 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
   }
   return { allBugs, brokenCount, crossValidated };
 }
-async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
+async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFile) {
   log(`[${taskId}] REFACTOR: checking if needed`);
   const preCheck = await resilientAgent(
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(", ") }),
@@ -1928,7 +1825,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
     return { verified: true };
   }
   log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`);
-  const refactorPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, "REFACTOR", {});
+  const refactorPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, "REFACTOR", specFile, {});
   const refactorCtxCmd = laneCtxCmd(refactorPacket, wt);
   const refactor = await resilientAgent(
     refactorPrompt({
@@ -2072,7 +1969,7 @@ var dagResults = await parallel(
       const r = await runLane(taskId, lanePlan, worktreePaths, cfg);
       result = r || { task_id: taskId, status: "failed", stage: "UNKNOWN", error: "null result" };
     } catch (e) {
-      result = { task_id: taskId, status: "failed", stage: "CRASH", error: String(e) };
+      result = { task_id: taskId, status: "failed", stage: "CRASH", error: e instanceof Error ? e.message : String(e) };
     }
     depResolvers[taskId](result);
     return result;

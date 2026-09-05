@@ -241,6 +241,9 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-write.md
 var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  case "${__merged_ids:- $TID }" in *" $TID "*) ;; *) continue;; esac\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
 function laneStateWritePrompt(vars) {

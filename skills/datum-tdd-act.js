@@ -499,6 +499,9 @@ function digestSpecHash(digest, taskId) {
   return lane.spec_hash;
 }
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
 function laneStateReadPrompt(vars) {
