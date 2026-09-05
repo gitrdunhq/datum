@@ -292,9 +292,11 @@ log(`datum go — route: ${route}, start: ${startFrom}${yolo ? ' (yolo)' : ''}`)
 if (shouldRun('refine', 0)) {
   log('── Refine ──')
   lastResult = await workflow({ scriptPath: sk('datum-refine') }, phaseArgs) as PhaseResult
-  if (!yolo && !lastResult.gatePassed) {
+  // yolo already passes --approve (skips only the human hold); a gate that
+  // still fails is a real structural failure and halts in every mode.
+  if (!lastResult.gatePassed) {
     haltedAt = 'refine'
-    log(`Refine gate held: ${lastResult.gateMessage || 'needs review'}. Address QUESTIONS.md, then: datum go --start-from plan`)
+    log(`Refine gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Address QUESTIONS.md, then: datum go --start-from plan`)
   } else {
     log('Refine complete')
     await markPhaseComplete('refine')
@@ -305,9 +307,9 @@ if (shouldRun('refine', 0)) {
 if (shouldRun('plan', 1)) {
   log('── Plan ──')
   lastResult = await workflow({ scriptPath: sk('datum-plan') }, phaseArgs) as PhaseResult
-  if (!yolo && !lastResult.gatePassed) {
+  if (!lastResult.gatePassed) {
     haltedAt = 'plan'
-    log(`Plan gate held: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
+    log(`Plan gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs approval'}. Review TASKS.md, then: datum go --start-from properties`)
   } else {
     log(`Plan complete — ${lastResult.taskCount || '?'} tasks`)
     await markPhaseComplete('plan')
@@ -318,8 +320,14 @@ if (shouldRun('plan', 1)) {
 if (shouldRun('properties', 2)) {
   log('── Properties ──')
   lastResult = await workflow({ scriptPath: sk('datum-properties') }, phaseArgs) as PhaseResult
-  log('Properties complete')
-  await markPhaseComplete('properties')
+  // Properties' gate verdict used to be ignored here entirely.
+  if (!lastResult.gatePassed) {
+    haltedAt = 'properties'
+    log(`Properties gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Review PROPERTIES.md, then: datum go --start-from act`)
+  } else {
+    log('Properties complete')
+    await markPhaseComplete('properties')
+  }
 }
 
 // Act — inlined from datum-tdd-act to avoid workflow() nesting limit
@@ -570,9 +578,11 @@ if (shouldRun('act', 3)) {
 if (shouldRun('validate', 4)) {
   log('── Validate ──')
   lastResult = await workflow({ scriptPath: sk('datum-validate') }, phaseArgs) as PhaseResult
-  if (!yolo && !lastResult.testsPassed) {
+  // testsPassed is the independent test run's real exit (b321e89) and
+  // gatePassed is `datum gate validate`'s exit code — both halt in every mode.
+  if (!lastResult.testsPassed || !lastResult.gatePassed) {
     haltedAt = 'validate'
-    log('Validate FAILED — tests are red. Pipeline halted.')
+    log(`Validate ${!lastResult.testsPassed ? 'FAILED — tests are red' : `gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}`}. Pipeline halted.`)
   } else {
     log('Validate complete')
     await markPhaseComplete('validate', !!lastResult.testsPassed)

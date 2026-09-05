@@ -560,3 +560,25 @@ describe('lane-plan relay integrity', () => {
     expect(goSource).toMatch(/lane_plan_relay_mismatch/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Gate failures halt in yolo too. yolo already passes --approve to every
+// gate (skips only the human hold), so a gate that still fails is a real
+// structural failure (schema, zero lanes, missing artifact) — continuing
+// past it produced runs that "completed" on a broken plan. The `!yolo &&`
+// guard dates from when the verdict was an LLM echo; it is now the CLI's
+// exit code (shared/gate.ts). Properties' gatePassed was ignored entirely.
+// ---------------------------------------------------------------------------
+
+describe('gate failures halt datum-go regardless of yolo', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('refine, plan, properties and validate halt on !gatePassed without a !yolo guard', () => {
+    for (const phase of ['refine', 'plan', 'properties', 'validate']) {
+      const block = goSource.slice(goSource.indexOf(`if (shouldRun('${phase}'`), goSource.indexOf(`haltedAt = '${phase}'`) + 40)
+      expect(block, phase).not.toMatch(/!yolo && !lastResult\.gatePassed/)
+      expect(block, phase).toMatch(/!lastResult\.gatePassed/)
+      expect(block, phase).toMatch(new RegExp(`haltedAt = '${phase}'`))
+    }
+  })
+})

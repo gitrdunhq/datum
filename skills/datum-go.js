@@ -618,9 +618,9 @@ log(`datum go \u2014 route: ${route}, start: ${startFrom}${yolo ? " (yolo)" : ""
 if (shouldRun("refine", 0)) {
   log("\u2500\u2500 Refine \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-refine") }, phaseArgs);
-  if (!yolo && !lastResult.gatePassed) {
+  if (!lastResult.gatePassed) {
     haltedAt = "refine";
-    log(`Refine gate held: ${lastResult.gateMessage || "needs review"}. Address QUESTIONS.md, then: datum go --start-from plan`);
+    log(`Refine gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Address QUESTIONS.md, then: datum go --start-from plan`);
   } else {
     log("Refine complete");
     await markPhaseComplete("refine");
@@ -629,9 +629,9 @@ if (shouldRun("refine", 0)) {
 if (shouldRun("plan", 1)) {
   log("\u2500\u2500 Plan \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-plan") }, phaseArgs);
-  if (!yolo && !lastResult.gatePassed) {
+  if (!lastResult.gatePassed) {
     haltedAt = "plan";
-    log(`Plan gate held: ${lastResult.gateMessage || "needs approval"}. Review TASKS.md, then: datum go --start-from properties`);
+    log(`Plan gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs approval"}. Review TASKS.md, then: datum go --start-from properties`);
   } else {
     log(`Plan complete \u2014 ${lastResult.taskCount || "?"} tasks`);
     await markPhaseComplete("plan");
@@ -640,8 +640,13 @@ if (shouldRun("plan", 1)) {
 if (shouldRun("properties", 2)) {
   log("\u2500\u2500 Properties \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-properties") }, phaseArgs);
-  log("Properties complete");
-  await markPhaseComplete("properties");
+  if (!lastResult.gatePassed) {
+    haltedAt = "properties";
+    log(`Properties gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Review PROPERTIES.md, then: datum go --start-from act`);
+  } else {
+    log("Properties complete");
+    await markPhaseComplete("properties");
+  }
 }
 log(`[debug] shouldRun act=${shouldRun("act", 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`);
 if (shouldRun("act", 3)) {
@@ -819,9 +824,9 @@ if (shouldRun("act", 3)) {
 if (shouldRun("validate", 4)) {
   log("\u2500\u2500 Validate \u2500\u2500");
   lastResult = await workflow({ scriptPath: sk("datum-validate") }, phaseArgs);
-  if (!yolo && !lastResult.testsPassed) {
+  if (!lastResult.testsPassed || !lastResult.gatePassed) {
     haltedAt = "validate";
-    log("Validate FAILED \u2014 tests are red. Pipeline halted.");
+    log(`Validate ${!lastResult.testsPassed ? "FAILED \u2014 tests are red" : `gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}`}. Pipeline halted.`);
   } else {
     log("Validate complete");
     await markPhaseComplete("validate", !!lastResult.testsPassed);
