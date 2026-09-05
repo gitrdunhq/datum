@@ -2,6 +2,7 @@ import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { runBatch } from './shared/agents'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -132,10 +133,7 @@ else log(`PROPERTIES.md written and committed (${commit.sha})`)
 // Deterministic: the verdict is `datum gate`'s exit code read from a batch
 // step (shared/gate.ts), not an LLM's echo of its JSON.
 const gateStepList = gateSteps('properties', yolo ? ' --approve' : '')
-const gate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
-  gateStepList,
-))
+const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
 
 if (gate.passed) log('Properties gate PASSED')
 else log(`Properties gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)

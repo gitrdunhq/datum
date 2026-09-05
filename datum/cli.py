@@ -2248,22 +2248,31 @@ def review_accept_cmd(
     reason: str = typer.Option(
         ..., "--reason", help="Why this finding is accepted as-is (required, recorded)"
     ),
+    defer_to: str = typer.Option(
+        "",
+        "--defer-to",
+        help="Record a DEFER to this epic branch instead of an ACCEPT (the gate treats both alike)",
+    ),
 ):
-    """Record a reasoned operator accept for one review finding.
+    """Record a reasoned operator accept (or defer) for one review finding.
 
-    Appends `- ACCEPT <ID>: <reason>` to docs/epics/<branch>/REVIEW-RESPONSE.md
-    (idempotent per id). `datum gate review` ignores accepted ids when it
-    counts blocking high/critical findings, and names them in its pass
-    message. An LLM reviewer's severity calibration is never a hard stop
-    with no recorded way past it.
+    The finding is named by its id (PERF-001) or its Key column; the id is
+    resolved against the current REVIEW-REPORT.md and the line written to
+    docs/epics/<branch>/REVIEW-RESPONSE.md binds to the KEY, because ids
+    are renumbered on every review run. `datum gate review` ignores accepted
+    keys when it counts blocking high/critical findings and names them in
+    its pass message. An LLM reviewer's severity calibration is never a hard
+    stop with no recorded way past it.
     """
-    from datum.gate import resolve_epic_dir
+    from datum.gate import resolve_epic_dir, review_report_rows
 
-    fid = finding_id.strip().upper()
-    if not re.fullmatch(r"[A-Z]+-\d+", fid):
+    token = finding_id.strip().upper()
+    if not re.fullmatch(r"[A-Z]+-\d+|[0-9A-F]{8}", token):
         typer.echo(
             json.dumps(
-                {"error": f"finding id must look like PERF-001, got {finding_id!r}"}
+                {
+                    "error": f"finding must be an id like PERF-001 or an 8-hex key, got {finding_id!r}"
+                }
             )
         )
         raise typer.Exit(code=1)
@@ -2278,6 +2287,22 @@ def review_accept_cmd(
         )
         raise typer.Exit(code=1)
     epic_dir = resolve_epic_dir()
+    report = epic_dir / "REVIEW-REPORT.md"
+    rows = review_report_rows(report.read_text()) if report.exists() else []
+    row = next((r for r in rows if r["id"] == token or r["key"].upper() == token), None)
+    if rows and row is None:
+        typer.echo(
+            json.dumps({"error": f"{token} is not in REVIEW-REPORT.md ({report})"})
+        )
+        raise typer.Exit(code=1)
+    if row is not None and row["key"]:
+        bound = row["key"]
+        note = f" ({row['id']} {row['file']}:{row['line']})"
+    else:
+        bound = token
+        note = ""
+    verb = "DEFER" if defer_to.strip() else "ACCEPT"
+    target = f" -> {defer_to.strip()}" if defer_to.strip() else ""
     epic_dir.mkdir(parents=True, exist_ok=True)
     response = epic_dir / "REVIEW-RESPONSE.md"
     lines = (
@@ -2288,11 +2313,22 @@ def review_accept_cmd(
     kept = [
         ln
         for ln in lines
-        if not re.match(rf"^\s*[-*]?\s*ACCEPT\s+{re.escape(fid)}\s*:", ln)
+        if not re.match(
+            rf"^\s*[-*]?\s*(ACCEPT|DEFER)\s+{re.escape(bound)}\b", ln, re.IGNORECASE
+        )
     ]
-    kept.append(f"- ACCEPT {fid}: {why}")
+    kept.append(f"- {verb} {bound}{note}{target}: {why}")
     response.write_text("\n".join(kept).rstrip("\n") + "\n")
-    typer.echo(json.dumps({"accepted": fid, "reason": why, "path": str(response)}))
+    typer.echo(
+        json.dumps(
+            {
+                verb.lower() + "ed": bound,
+                "finding": token,
+                "reason": why,
+                "path": str(response),
+            }
+        )
+    )
 
 
 @app.command(name="housekeep-epic")

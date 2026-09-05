@@ -14,6 +14,7 @@ import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
 import planDeepenTemplate from './prompts/plan-deepen.md'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { runBatch } from './shared/agents'
 
 export const meta = {
   name: 'datum-plan',
@@ -252,10 +253,7 @@ if (!build.ok) throw new Error(build.error)
 // overlap, assumption audit) still runs. The human hold is re-checked by the
 // final gate at the end of Triage.
 const earlyGateSteps = gateSteps('plan', ' --approve')
-const earlyGate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(earlyGateSteps), stageOpts('cli', { label: 'gate-early', model: model('fast') })),
-  earlyGateSteps,
-))
+const earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts('cli', { label: 'gate-early', model: model('fast') })))
 if (!earlyGate.passed) {
   throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || 'no message'}`)
 }
@@ -327,10 +325,7 @@ const routingWritten = writeFileFromSteps(parseBatchResult(
 if (!routingWritten.ok) throw new Error(routingWritten.error)
 await commitPlanFiles(['.datum/routing.json'], 'plan: triage decision', 'commit-routing')
 const triageGateSteps = gateSteps('triage', '')
-const triageGate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(triageGateSteps), stageOpts('cli', { label: 'gate-triage', model: model('fast') })),
-  triageGateSteps,
-))
+const triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts('cli', { label: 'gate-triage', model: model('fast') })))
 if (!triageGate.passed) throw new Error(`Triage gate failed — routing.json rejected: ${triageGate.message || 'no message'}`)
 
 // Deepen (conditional). The research agent APPENDS `## Research Findings`
@@ -351,10 +346,7 @@ if (triage.decision === 'deepen') {
   log(`Deepen: ${deepen.tasks_researched} tasks, ${deepen.findings_count} findings`)
   await commitPlanFiles([`${epicDir}/TASKS.md`], 'plan: deepen - research findings', 'commit-deepen')
   const deepenGateSteps = gateSteps('deepen', '')
-  const deepenGate = parseGateResult(parseBatchResult(
-    await agent(batchCommandPrompt(deepenGateSteps), stageOpts('cli', { label: 'gate-deepen', model: model('fast') })),
-    deepenGateSteps,
-  ))
+  const deepenGate = parseGateResult(await runBatch(deepenGateSteps, stageOpts('cli', { label: 'gate-deepen', model: model('fast') })))
   if (!deepenGate.passed) throw new Error(`Deepen gate failed — TASKS.md carries no Research Findings after the deepen agent ran: ${deepenGate.message || 'no message'}`)
   log('Deepen gate PASSED')
 } else {
@@ -365,10 +357,7 @@ if (triage.decision === 'deepen') {
 // Deterministic: the verdict is `datum gate`'s exit code read from a batch
 // step (shared/gate.ts), not an LLM's echo of its JSON.
 const gateStepList = gateSteps('plan', yolo ? ' --approve' : '')
-const gate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
-  gateStepList,
-))
+const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
 
 if (gate.passed) log('Plan gate PASSED')
 else log(`Plan gate: ${gate.message || 'needs approval'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)

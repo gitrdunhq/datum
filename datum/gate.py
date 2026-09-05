@@ -321,43 +321,135 @@ _HIGH_OR_CRITICAL_RE = re.compile(
 )
 
 
-_ACCEPT_LINE_RE = re.compile(r"^\s*[-*]?\s*ACCEPT\s+([A-Za-z]+-\d+)\s*:\s*(.*?)\s*$")
+# `- ACCEPT <token> [(note)]: <reason>` or `- DEFER <token> [(note)] -> <epic>: <reason>`.
+# <token> is the row's content key (8 hex, stable across re-reviews) or, for
+# a report without a Key column, its id.
+_ACCEPT_LINE_RE = re.compile(
+    r"^\s*[-*]?\s*(ACCEPT|DEFER)\s+([A-Za-z0-9]+(?:-\d+)?)\s*(?:\([^)]*\))?\s*"
+    r"(?:->\s*(\S+)\s*)?:\s*(.*?)\s*$"
+)
 _FINDING_ROW_RE = re.compile(
     r"^\|\s*([A-Za-z]+-\d+)\s*\|\s*\**\s*(critical|high|medium|low|info)\b",
     re.IGNORECASE,
 )
+_KEY_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+
+def _report_sha(content: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+
+def _review_iterations_path(report_path: Path) -> Path:
+    """Per-epic record of the distinct blocked reports seen:
+    .datum/epics/<slug>/review-iterations.json (the pipeline-state slug)."""
+    from datum.pipeline_state import epic_state_slug
+
+    slug = epic_state_slug(str(report_path.parent).replace("docs/epics/", "", 1))
+    return Path(".datum") / "epics" / (slug or "unknown") / "review-iterations.json"
+
+
+def _blocked_reports_seen(report_path: Path) -> set[str]:
+    path = _review_iterations_path(report_path)
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return set()
+    seen = data.get("seen") if isinstance(data, dict) else None
+    return {str(s) for s in seen} if isinstance(seen, list) else set()
+
+
+def _record_blocked_report(report_path: Path, seen: set[str]) -> None:
+    path = _review_iterations_path(report_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"seen": sorted(seen)}, indent=2) + "\n")
 
 
 def accepted_review_findings(response_path: Path) -> dict[str, str]:
-    """Finding id → reason from REVIEW-RESPONSE.md (`- ACCEPT <ID>: <reason>`
-    lines). An ACCEPT with no reason is not an accept: the whole point is a
-    recorded, reasoned operator decision."""
+    """Token (key or id, upper-cased) → reason from REVIEW-RESPONSE.md. A
+    DEFER counts as an accept whose reason names the target epic. A line
+    with no reason is not an accept: the whole point is a recorded,
+    reasoned operator decision."""
     if not response_path.exists():
         return {}
     accepted: dict[str, str] = {}
     for line in response_path.read_text().splitlines():
         match = _ACCEPT_LINE_RE.match(line)
-        if match and match.group(2).strip():
-            accepted[match.group(1).upper()] = match.group(2).strip()
+        if not match or not match.group(4).strip():
+            continue
+        verb, token, target, reason = match.groups()
+        if verb == "DEFER" and target:
+            reason = f"deferred to {target}: {reason.strip()}"
+        accepted[token.upper()] = reason.strip()
     return accepted
 
 
-def _blocking_review_findings(content: str, accepted: dict[str, str]) -> list[str]:
-    """Ids of high/critical findings not accepted, in report order. A report
-    with no id-labelled table rows falls back to the whole-content severity
-    scan and reports a single "(unlabelled)" blocker."""
-    rows = [
-        (m.group(1).upper(), m.group(2).lower())
-        for m in (_FINDING_ROW_RE.match(line.strip()) for line in content.splitlines())
-        if m
-    ]
-    if rows:
-        return [
-            fid
-            for fid, sev in rows
-            if sev in ("high", "critical") and fid not in accepted
-        ]
-    return ["(unlabelled)"] if _report_has_high_or_critical(content) else []
+def review_report_rows(content: str) -> list[dict[str, str]]:
+    """The report's finding rows as {id, severity, file, line, key} in report
+    order. `key` is '' for a report without a Key column (pre-key reports)."""
+    header_cols: list[str] = []
+    rows: list[dict[str, str]] = []
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not header_cols and cells and cells[0].lower() == "id":
+            header_cols = [c.lower() for c in cells]
+            continue
+        match = _FINDING_ROW_RE.match(line)
+        if not match:
+            continue
+
+        def cell(name: str) -> str:
+            if name in header_cols and header_cols.index(name) < len(cells):
+                return cells[header_cols.index(name)]
+            return ""
+
+        key = cell("key")
+        rows.append(
+            {
+                "id": match.group(1).upper(),
+                "severity": match.group(2).lower(),
+                "file": cell("file"),
+                "line": cell("line"),
+                "key": key.lower() if _KEY_RE.match(key) else "",
+            }
+        )
+    return rows
+
+
+def _blocking_review_findings(
+    content: str, accepted: dict[str, str]
+) -> tuple[list[str], list[str]]:
+    """(blocking labels, ignored accept tokens). A high/critical row is
+    cleared by an accept of its key, or of its id only when the report
+    carries no keys — ids are renumbered every review, so an id accept on a
+    keyed report is named as ignored rather than silently binding to
+    whatever row wears that id now. A report with no id-labelled rows falls
+    back to the whole-content severity scan ("(unlabelled)")."""
+    rows = review_report_rows(content)
+    if not rows:
+        blocked = _report_has_high_or_critical(content)
+        return (["(unlabelled)"] if blocked else []), []
+    keyed = any(r["key"] for r in rows)
+    blocking: list[str] = []
+    for r in rows:
+        if r["severity"] not in ("high", "critical"):
+            continue
+        if r["key"] and r["key"].upper() in accepted:
+            continue
+        if not keyed and r["id"] in accepted:
+            continue
+        blocking.append(f"{r['id']} [{r['key']}]" if r["key"] else r["id"])
+    ignored: list[str] = []
+    if keyed:
+        ids = {r["id"] for r in rows}
+        ignored = [t for t in accepted if t in ids]
+    return blocking, ignored
 
 
 def _report_has_high_or_critical(content: str) -> bool:
@@ -1047,18 +1139,18 @@ def gate_review(yolo: bool, config: dict) -> None:
     # reasoned, recorded way past it (elonchesd epic-1: five "high" findings
     # were per-frame scans over forty items).
     accepted = accepted_review_findings(report_path.parent / "REVIEW-RESPONSE.md")
-    blocking = _blocking_review_findings(content, accepted)
+    blocking, ignored = _blocking_review_findings(content, accepted)
     if blocking:
-        # Satisfaction Loop Logic
-        state_path = Path(".datum/state.json")
-        run_id = "default"
-        if state_path.exists():
-            run_id = json.loads(state_path.read_text()).get("run_id", "default")
-
-        iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
-        iteration = 1
-        if iter_file.exists():
-            iteration = int(iter_file.read_text().strip())
+        # Satisfaction loop: an iteration is a DISTINCT blocked report, kept
+        # per epic. The old counter lived under a run id read from the wrong
+        # key (so every epic shared ".datum/runs/default") and grew on every
+        # gate call, so an operator's own `datum gate review` probes escalated
+        # the epic (elonchesd, iteration 2). Accepting or fixing every
+        # blocking finding clears the escalation: the hard stop only exists
+        # while something blocks.
+        seen = _blocked_reports_seen(report_path)
+        report_sha = _report_sha(content)
+        iteration = len(seen | {report_sha})
 
         if iteration >= 3:
             fail(
@@ -1068,15 +1160,22 @@ def gate_review(yolo: bool, config: dict) -> None:
             )
         else:
             # Nothing produces a remediation package in a consumer repo (the
-            # old message claimed one was generated). Say what blocks, by id,
-            # and how to record an accept.
-            iter_file.parent.mkdir(parents=True, exist_ok=True)
-            iter_file.write_text(str(iteration + 1))
+            # old message claimed one was generated). Say what blocks, by id
+            # and key, and how to record an accept.
+            _record_blocked_report(report_path, seen | {report_sha})
             ids = ", ".join(blocking) if blocking != ["(unlabelled)"] else "unlabelled"
+            ignored_note = (
+                " Ignored (ids are renumbered every review; accept by the Key column): "
+                + ", ".join(f"ACCEPT {t} ignored" for t in ignored)
+                + "."
+                if ignored
+                else ""
+            )
             fail(
                 f"REVIEW-REPORT.md contains high-severity findings (iteration {iteration}/3): {ids}. "
                 "Fix them and re-run review, or record a reasoned accept per finding with "
-                '`datum review-accept <ID> --reason "..."` (writes REVIEW-RESPONSE.md next to the report).'
+                '`datum review-accept <ID-or-key> --reason "..."` (writes REVIEW-RESPONSE.md next to the report).'
+                + ignored_note
             )
 
     policy = gate_policy(config, "review_human_approval")
@@ -1096,7 +1195,7 @@ def gate_review(yolo: bool, config: dict) -> None:
     if accepted:
         pass_gate(
             f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: "
-            f"{', '.join(sorted(accepted))})"
+            f"{', '.join(sorted(t.lower() if _KEY_RE.match(t) else t for t in accepted))})"
         )
     pass_gate("Review gate passed")
 

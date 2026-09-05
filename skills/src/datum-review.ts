@@ -5,6 +5,8 @@ import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-sp
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { findingKey } from './shared/review-keys'
+import { runBatch } from './shared/agents'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
@@ -42,7 +44,9 @@ const DOMAINS = [
 
 phase('Review')
 
-interface Finding { id: string; severity: Severity | 'info'; file: string; line: number; description: string; suggestion: string }
+// `key` is the content key (shared/review-keys.ts): ids are renumbered every
+// review run, so operator accepts in REVIEW-RESPONSE.md bind to the key.
+interface Finding { id: string; severity: Severity | 'info'; file: string; line: number; description: string; suggestion: string; key: string }
 interface DomainResult { domain: string; findings: Finding[] }
 
 /**
@@ -89,7 +93,13 @@ for (let i = 0; i < DOMAINS.length; i++) {
   }
   log(`${parsed.domain}: ${parsed.findings.length} findings`)
   for (const raw of parsed.findings) {
-    const f: Finding = { ...raw, severity: normaliseSeverity(raw.severity, `review-${DOMAINS[i].domain.toLowerCase()} ${raw.id || ''}`), description: String(raw.description ?? '') }
+    const description = String(raw.description ?? '')
+    const f: Finding = {
+      ...raw,
+      severity: normaliseSeverity(raw.severity, `review-${DOMAINS[i].domain.toLowerCase()} ${raw.id || ''}`),
+      description,
+      key: findingKey(DOMAINS[i].domain, String(raw.file ?? ''), description),
+    }
     log(`  [${f.severity}] ${f.id}: ${f.description.slice(0, 80)}`)
     allFindings.push(f)
   }
@@ -118,9 +128,9 @@ const reportLines = [
   '# Review Report\n',
   `**Findings:** ${deduped.length} unique (${critical.length} high/critical)\n`,
   '## Findings\n',
-  '| ID | Severity | File | Line | Description | Suggestion |',
-  '|---|---|---|---|---|---|',
-  ...deduped.map((f) => `| ${f.id} | **${f.severity}** | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} |`),
+  '| ID | Severity | File | Line | Description | Suggestion | Key |',
+  '|---|---|---|---|---|---|---|',
+  ...deduped.map((f) => `| ${f.id} | **${f.severity}** | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} | ${f.key} |`),
   '',
 ]
 
@@ -164,10 +174,7 @@ if (critical.length > 0) log(`${critical.length} high/critical — remediation n
 // as Refine/Plan/Properties/Validate (#368). Runs after the report is
 // committed so the gate can resolve docs/epics/<branch>/REVIEW-REPORT.md.
 const gateStepList = gateSteps('review', yolo ? ' --approve' : '')
-const gate = parseGateResult(parseBatchResult(
-  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
-  gateStepList,
-))
+const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
 if (gate.passed) log('Review gate PASSED')
 else log(`Review gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 

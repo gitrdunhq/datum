@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { findingKey } from './shared/review-keys'
 
 const datumReviewSrc = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
 const correctnessPromptSrc = readFileSync(
@@ -190,4 +191,37 @@ describe('datum-review — severity is normalised before the merge gate; a malfo
   it('a domain reply without a findings array is agent_output_unparseable, not a TypeError', () => {
     expect(src).toMatch(/if \(!Array\.isArray\(parsed\.findings\)\) \{?\s*throw new Error\(`agent_output_unparseable: review-/)
   })
+})
+
+// elonchesd review iteration 2: finding ids are renumbered every iteration,
+// so an accept recorded against PERF-001 later matched a different row.
+// Every report row carries a content key (lens + file + normalised
+// description) that survives renumbering and line drift, and every gate
+// batch goes through runBatch so a classifier refusal is retried and named.
+describe('stable finding keys and the gate runner', () => {
+  it('findingKey is 8 hex chars of lens+file+normalised description, insensitive to id, line, case and punctuation', () => {
+    const a = findingKey('Performance', 'src/turn.ts', 'isStalemate: Array.find per frame!')
+    const b = findingKey('Performance', 'src/turn.ts', '  isstalemate array find per   frame ')
+    const c = findingKey('Performance', 'src/fog.ts', 'isStalemate: Array.find per frame!')
+    expect(a).toMatch(/^[0-9a-f]{8}$/)
+    expect(a).toBe(b)
+    expect(a).not.toBe(c)
+    expect(findingKey('Correctness', 'src/turn.ts', 'isStalemate: Array.find per frame!')).not.toBe(a)
+  })
+
+  it('the report table ends with a Key column filled from findingKey', () => {
+    const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+    expect(src).toContain("'| ID | Severity | File | Line | Description | Suggestion | Key |'")
+    expect(src).toContain("'|---|---|---|---|---|---|---|'")
+    expect(src).toMatch(/\| \$\{f\.suggestion\} \| \$\{f\.key\} \|/)
+    expect(src).toMatch(/key: findingKey\(DOMAINS\[i\]\.domain, /)
+  })
+
+  for (const f of ['datum-refine.ts', 'datum-plan.ts', 'datum-properties.ts', 'datum-validate.ts', 'datum-review.ts']) {
+    it(`${f} runs every gate batch through runBatch`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).not.toMatch(/agent\(batchCommandPrompt\(\w*[gG]ate\w*\)/)
+      expect(src).toMatch(/parseGateResult\(await runBatch\(/)
+    })
+  }
 })

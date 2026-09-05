@@ -147,10 +147,11 @@ def test_critical_finding_also_fails(epic_repo, capsys):
 
 def test_third_iteration_hard_stops(epic_repo, capsys):
     _write_report(epic_repo, "severity: high finding\n")
-    run_id = "default"
-    iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
+    # Two DISTINCT blocked reports already seen for this epic; this one is
+    # the third.
+    iter_file = Path(".datum/epics/datum-epic-review/review-iterations.json")
     iter_file.parent.mkdir(parents=True, exist_ok=True)
-    iter_file.write_text("3")
+    iter_file.write_text(json.dumps({"seen": ["a" * 40, "b" * 40]}))
 
     with pytest.raises(SystemExit) as exc:
         gate.gate_review(True, {})
@@ -243,6 +244,115 @@ def test_an_accept_without_a_reason_does_not_count(epic_repo, capsys):
 
     assert exc.value.code == 1
     assert "CORR-001" in _fail_json(capsys)["message"]
+
+
+# ── stable finding keys (elonchesd, review iteration 2) ──────────────────
+# Finding ids are renumbered every iteration (iteration 1's PERF-001 became
+# iteration 2's PERF-002), so ACCEPT-by-id accepted a different finding
+# than the one reasoned about. The report carries a content key per row
+# (lens + file + normalised description) and accepts bind to that key.
+
+KEYED_REPORT = (
+    "# Review Report\n\n## Findings\n\n"
+    "| ID | Severity | File | Line | Description | Suggestion | Key |\n"
+    "|---|---|---|---|---|---|---|\n"
+    "| PERF-001 | **high** | src/fog.ts | 181 | visiblePiecesFor scans per frame | index | 9c1d2e3f |\n"
+    "| PERF-002 | **high** | src/turn.ts | 39 | isStalemate Array.find per frame | index | 3fa9c1d2 |\n"
+    "| CORR-001 | **high** | src/ui.ts | 5 | TECH_BUY unhandled | wire | ab12cd34 |\n"
+)
+
+
+def test_accept_by_key_survives_id_renumbering(epic_repo, capsys):
+    _write_report(epic_repo, KEYED_REPORT)
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- ACCEPT 3fa9c1d2 (PERF-001 src/turn.ts:39): 40 pieces, microseconds\n"
+        "- ACCEPT 9c1d2e3f: same scale argument\n"
+        "- DEFER ab12cd34 -> datum/playable-ui-shell: fixed by the UI epic\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 0
+    result = _fail_json(capsys)
+    assert result["passed"] is True
+    assert "3 accepted" in result["message"]
+    assert "3fa9c1d2" in result["message"] and "ab12cd34" in result["message"]
+
+
+def test_bare_id_accept_on_a_keyed_report_does_not_count_and_is_named(
+    epic_repo, capsys
+):
+    _write_report(epic_repo, KEYED_REPORT)
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- ACCEPT PERF-001: reasoned about turn.ts, but PERF-001 now means fog.ts\n"
+        "- ACCEPT 9c1d2e3f: fine\n- ACCEPT ab12cd34: fine\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 1
+    message = _fail_json(capsys)["message"]
+    assert "PERF-002" in message
+    assert "3fa9c1d2" in message
+    assert "ACCEPT PERF-001 ignored" in message
+
+
+def test_iterations_count_distinct_reports_not_gate_calls(epic_repo, capsys):
+    """The counter hit 3 after two review runs: every gate call on the same
+    report (an operator's manual `datum gate review`, a re-run) counted."""
+    _write_report(epic_repo, KEYED_REPORT)
+    for _ in range(3):
+        with pytest.raises(SystemExit) as exc:
+            gate.gate_review(True, {})
+        assert exc.value.code == 1, "same report re-checked must not escalate"
+        assert "(iteration 1/3)" in _fail_json(capsys)["message"]
+
+    _write_report(epic_repo, KEYED_REPORT.replace("9c1d2e3f", "9c1d2e40"))
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+    assert exc.value.code == 1
+    assert "(iteration 2/3)" in _fail_json(capsys)["message"]
+
+
+def test_review_accept_cli_resolves_an_id_to_the_reports_key(epic_repo):
+    from typer.testing import CliRunner
+
+    from datum.cli import app
+
+    _write_report(epic_repo, KEYED_REPORT)
+    runner = CliRunner()
+    result = runner.invoke(
+        app, ["review-accept", "PERF-002", "--reason", "40 pieces, microseconds"]
+    )
+    assert result.exit_code == 0, result.output
+    text = (epic_repo / "REVIEW-RESPONSE.md").read_text()
+    assert (
+        "- ACCEPT 3fa9c1d2 (PERF-002 src/turn.ts:39): 40 pieces, microseconds" in text
+    )
+    assert gate.accepted_review_findings(epic_repo / "REVIEW-RESPONSE.md") == {
+        "3FA9C1D2": "40 pieces, microseconds"
+    }
+    deferred = runner.invoke(
+        app,
+        [
+            "review-accept",
+            "CORR-001",
+            "--defer-to",
+            "datum/playable-ui-shell",
+            "--reason",
+            "UI epic",
+        ],
+    )
+    assert deferred.exit_code == 0, deferred.output
+    assert (
+        "- DEFER ab12cd34 (CORR-001 src/ui.ts:5) -> datum/playable-ui-shell: UI epic"
+        in (epic_repo / "REVIEW-RESPONSE.md").read_text()
+    )
+    unknown = runner.invoke(app, ["review-accept", "PERF-009", "--reason", "x"])
+    assert unknown.exit_code == 1
+    assert "not in REVIEW-REPORT.md" in unknown.output
 
 
 def test_review_accept_cli_writes_the_response_file_idempotently(epic_repo):

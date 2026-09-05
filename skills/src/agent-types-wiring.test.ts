@@ -41,7 +41,9 @@ interface CallSite { file: string; line: number; args: string }
 /** Find `agent(` / `resilientAgent(` call expressions and return their argument text. */
 function findCallSites(file: string, src: string): CallSite[] {
   const sites: CallSite[] = []
-  const re = /(?<![\w.$])(?:agent|resilientAgent|witnessedAgent)\(/g
+  // runBatch(steps, stageOpts(...)) is an agent() call site with the same
+  // table lookup (shared/agents.ts).
+  const re = /(?<![\w.$])(?:agent|resilientAgent|witnessedAgent|runBatch)\(/g
   let m: RegExpExecArray | null
   while ((m = re.exec(src)) !== null) {
     // skip declarations / definitions: `function agent(`, `agentFn(`

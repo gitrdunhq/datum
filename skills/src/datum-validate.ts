@@ -136,10 +136,7 @@ if (!mainSync.ok) {
   // Deterministic: the verdict is `datum gate`'s exit code read from a batch
   // step (shared/gate.ts), not an LLM's echo of its JSON.
   const gateStepList = gateSteps('validate', yolo ? ' --approve' : '')
-  const gate = parseGateResult(parseBatchResult(
-    await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
-    gateStepList,
-  ))
+  const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
   gatePassed = gate.passed
   gateMessage = gate.message || ''
   gateNeedsHuman = !!gate.needsHuman
