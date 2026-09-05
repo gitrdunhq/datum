@@ -801,7 +801,7 @@ def _print_launch_line(skills_dir: str) -> None:
         f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>" }} }})'
         "\nPermissions: the pipeline resets its own scratch worktrees; a host permission classifier may refuse that.\n"
         "  `datum permissions-snippet` prints the allow rules to paste into .claude/settings.local.json (datum never writes them);\n"
-        "  add the file before the session starts (or run /hooks), and consider `/auto-mode-setup` at user level too. See SKILL.md \"Permissions\"."
+        '  add the file before the session starts (or run /hooks), and consider `/auto-mode-setup` at user level too. See SKILL.md "Permissions".'
     )
 
 
@@ -2284,6 +2284,7 @@ def pipeline_state_save_cmd(
 
     from datum.pipeline_state import (
         PipelineStateCorruptError,
+        read_epic_pipeline_state,
         read_pipeline_state,
         verify_phase,
         write_pipeline_state,
@@ -2319,11 +2320,20 @@ def pipeline_state_save_cmd(
     except PipelineStateCorruptError as exc:
         typer.echo(json.dumps({"verified": False, "phase": phase, "reason": str(exc)}))
         raise typer.Exit(code=1) from exc
-    completed = (
-        list(prior["completedPhases"])
-        if prior and prior.get("branch") == branch
-        else []
-    )
+    if prior and prior.get("branch") == branch:
+        completed = list(prior["completedPhases"])
+    else:
+        # The global file belongs to another epic (a later init took it
+        # over): continue THIS epic's own recorded progress from its
+        # per-epic mirror, never restart it at one phase.
+        try:
+            mirrored = read_epic_pipeline_state(branch)
+        except PipelineStateCorruptError as exc:
+            typer.echo(
+                json.dumps({"verified": False, "phase": phase, "reason": str(exc)})
+            )
+            raise typer.Exit(code=1) from exc
+        completed = list(mirrored["completedPhases"]) if mirrored else []
     if phase not in completed:
         completed.append(phase)
 

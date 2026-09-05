@@ -18,6 +18,56 @@ from datum.pipeline_state import (
 )
 
 
+# elonchesd (2026-09-05): `datum init` for epic-2 overwrote the single global
+# pipeline-state.json, so a fresh datum-go on epic-1 started over at Refine
+# and had to be repaired by hand with four pipeline-state-save calls. The
+# global file stays the "current epic" pointer the workflows read, but every
+# write is mirrored per epic under .datum/epics/<slug>/pipeline-state.json,
+# and switching back restores that epic's progress instead of clearing it.
+def test_write_pipeline_state_mirrors_a_per_epic_copy(tmp_path: Path) -> None:
+    state = write_pipeline_state(
+        branch="datum/epic-1",
+        run_id="r1",
+        route="feature",
+        completed_phases=["refine", "plan"],
+        datum_dir=tmp_path,
+    )
+    mirror = tmp_path / "epics" / "datum-epic-1" / "pipeline-state.json"
+    assert json.loads(mirror.read_text()) == state
+
+
+def test_switching_epics_restores_the_other_epics_progress(tmp_path: Path) -> None:
+    write_pipeline_state(
+        branch="datum/epic-1",
+        run_id="r1",
+        route="feature",
+        completed_phases=["refine", "plan", "properties", "act"],
+        datum_dir=tmp_path,
+    )
+    prior = reset_stale_pipeline_state("datum/playable-ui-shell", datum_dir=tmp_path)
+    assert prior is not None and prior["branch"] == "datum/epic-1"
+    fresh = read_pipeline_state(tmp_path)
+    assert fresh["branch"] == "datum/playable-ui-shell"
+    assert fresh["completedPhases"] == []
+    write_pipeline_state(
+        branch="datum/playable-ui-shell",
+        run_id="r2",
+        route="feature",
+        completed_phases=["refine"],
+        datum_dir=tmp_path,
+    )
+
+    back = reset_stale_pipeline_state("datum/epic-1", datum_dir=tmp_path)
+    assert back is not None and back["branch"] == "datum/playable-ui-shell"
+    restored = read_pipeline_state(tmp_path)
+    assert restored["branch"] == "datum/epic-1"
+    assert restored["runId"] == "r1"
+    assert restored["completedPhases"] == ["refine", "plan", "properties", "act"]
+    # And epic-2's own progress survived the switch too.
+    mirror2 = tmp_path / "epics" / "datum-playable-ui-shell" / "pipeline-state.json"
+    assert json.loads(mirror2.read_text())["completedPhases"] == ["refine"]
+
+
 def test_reset_stale_pipeline_state_clears_on_branch_mismatch(tmp_path: Path) -> None:
     write_pipeline_state(
         branch="datum/other-epic",
@@ -188,6 +238,34 @@ def test_pipeline_state_save_does_not_inherit_completed_phases_from_a_different_
     assert state["completedPhases"] == ["plan"]
 
 
+def test_pipeline_state_save_seeds_from_the_epics_own_mirror_when_the_global_file_belongs_to_another(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """elonchesd: after epic-2's init took over the global file, a save on
+    epic-1 must continue epic-1's own recorded progress (its per-epic
+    mirror), not restart at one phase."""
+    datum_dir = tmp_path / ".datum"
+    write_pipeline_state(
+        branch="datum/epic-1",
+        run_id="r1",
+        route="feature",
+        completed_phases=["refine", "plan", "properties"],
+        datum_dir=datum_dir,
+    )
+    write_pipeline_state(
+        branch="datum/epic-2",
+        run_id="r2",
+        route="feature",
+        completed_phases=["refine"],
+        datum_dir=datum_dir,
+    )
+    state = _invoke_save(monkeypatch, tmp_path, branch="datum/epic-1", phase="act")
+    assert state["branch"] == "datum/epic-1"
+    assert state["completedPhases"] == ["refine", "plan", "properties", "act"]
+    mirror2 = datum_dir / "epics" / "datum-epic-2" / "pipeline-state.json"
+    assert json.loads(mirror2.read_text())["completedPhases"] == ["refine"]
+
+
 def test_pipeline_state_save_inherits_completed_phases_from_the_same_branch(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -219,8 +297,14 @@ def test_write_pipeline_state_is_atomic_no_leftover_tmp_file(tmp_path: Path) -> 
         completed_phases=["refine"],
         datum_dir=tmp_path,
     )
-    leftovers = [p for p in tmp_path.iterdir() if p.name != "pipeline-state.json"]
+    # The per-epic mirror under epics/ is intended; temp files anywhere are not.
+    leftovers = [
+        p
+        for p in tmp_path.rglob("*")
+        if p.is_file() and p.name != "pipeline-state.json"
+    ]
     assert leftovers == [], f"unexpected leftover files: {leftovers}"
+    assert {p.name for p in tmp_path.iterdir()} == {"pipeline-state.json", "epics"}
 
 
 def test_write_pipeline_state_failed_write_does_not_corrupt_existing_state(

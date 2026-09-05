@@ -9,6 +9,7 @@ the fork point) are safe to force-delete.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -317,6 +318,31 @@ class TestHousekeepEpic:
 
         assert result["pipeline_state_removed"] is True
         assert not state_path.exists()
+
+    def test_leaves_another_epics_global_state_alone_and_removes_only_this_epics_mirror(
+        self, repo: Path
+    ):
+        """elonchesd: two epics in flight share the checkout. Closing out
+        epic-1 must not delete the global pipeline-state.json that now
+        belongs to epic-2; it removes epic-1's own per-epic mirror."""
+        from datum.pipeline_state import write_pipeline_state
+
+        datum_dir = repo / ".datum"
+        write_pipeline_state("epic/test", "r1", "feature", ["act"], datum_dir=datum_dir)
+        write_pipeline_state(
+            "epic/other", "r2", "feature", ["refine"], datum_dir=datum_dir
+        )
+        state_path = datum_dir / "pipeline-state.json"
+        mine = datum_dir / "epics" / "epic-test" / "pipeline-state.json"
+        theirs = datum_dir / "epics" / "epic-other" / "pipeline-state.json"
+        assert mine.exists() and theirs.exists()
+
+        result = housekeep_epic("epic/test", repo_root=repo)
+
+        assert result["pipeline_state_removed"] is False
+        assert json.loads(state_path.read_text())["branch"] == "epic/other"
+        assert not mine.exists()
+        assert theirs.exists()
 
     def test_leaves_unmerged_lane_branch_alone_while_deleting_merged_one(
         self, repo: Path

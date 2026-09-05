@@ -14,6 +14,7 @@ See: references/git-workflows.md and GitHub issue #137.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -851,10 +852,25 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
     _validate_ref_arg(epic_branch, "epic_branch")
     repo_root = (repo_root or Path(".")).resolve()
 
+    # The global pipeline-state.json is removed only when it is THIS epic's
+    # (or carries no branch at all); with two epics in flight it may belong
+    # to the other one (elonchesd). The epic's own per-epic mirror always goes.
+    from datum.pipeline_state import epic_state_path
+
     state_path = repo_root / ".datum" / "pipeline-state.json"
-    state_removed = state_path.exists()
-    if state_removed:
-        state_path.unlink()
+    state_removed = False
+    if state_path.exists():
+        owner: object = None
+        try:
+            owner = json.loads(state_path.read_text()).get("branch")
+        except (OSError, ValueError, AttributeError):
+            owner = None
+        if owner in (None, "", epic_branch):
+            state_path.unlink()
+            state_removed = True
+    mirror = epic_state_path(epic_branch, repo_root / ".datum")
+    if mirror is not None and mirror.exists():
+        mirror.unlink()
 
     # "Merged" means merged into the EPIC branch we were given — never into
     # whatever HEAD happens to be (closeout can run from a detached root
