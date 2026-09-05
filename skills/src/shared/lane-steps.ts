@@ -8,7 +8,6 @@
 import type { BatchStep, BatchResult } from './batch'
 import { stepStdout } from './batch'
 import { verifyFileOwnership, testRunCommand } from './utils'
-import { utf8ByteLength } from './utf8'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
 
@@ -503,94 +502,6 @@ export function closeoutCollectSteps(o: CloseoutCollectOpts): BatchStep[] {
       tolerant: true,
     },
   ]
-}
-
-// ── Read context: branch/epic-dir + byte-verified file relay for refine/properties ──
-
-/**
- * Determinism fix (datum-refine.ts / datum-properties.ts): the old
- * util-read-context.md prompt handed an LLM `reader`/agent the job of
- * reading TICKET.md/SPEC.md/tasks.json etc. and echoing their CONTENTS back
- * inside a JSON object. An LLM echoing a file is lossy — a 90 KB relay came
- * back as 6.7 KB of "successful" abridged content in dogfooding — and
- * nothing verified it. This mirrors the fix already applied to datum-plan.ts
- * (commit a7093d2): one datum-cli batch `cat`s each file alongside `wc -c`,
- * and contextFromSteps() below verifies `utf8ByteLength(content) ===
- * declared` before trusting it.
- */
-export const CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024 // mirrors datum-plan.ts's own CONTEXT_RELAY_LIMIT_BYTES (not exported from there)
-
-const CONTEXT_FILE_NOT_FOUND_MARKER = '__DATUM_CTXFILE_NOT_FOUND__'
-
-export interface ReadContextOpts {
-  /** Repo-relative paths to cat + byte-verify, e.g. ["docs/epics/x/SPEC.md"]. */
-  files: string[]
-  /** Extra deterministic commands a caller needs alongside the standard
-   *  branch/epic-dir/file reads (e.g. an `agent_types` config lookup, a
-   *  `spec_exists` test -f, a bounded CURRENT_STATE.md read). Run in order,
-   *  after the file steps, all tolerant — evaluate their stdout with
-   *  `stepStdout(result, name)` in the caller. */
-  extraCommands?: { name: string; command: string }[]
-}
-
-export function readContextSteps(o: ReadContextOpts): BatchStep[] {
-  const steps: BatchStep[] = [
-    { name: 'branch', command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
-    { name: 'epic-dir', command: `printf 'docs/epics/%s' "$__eb"`, tolerant: true },
-  ]
-  o.files.forEach((relPath, i) => {
-    steps.push({
-      name: `ctx-cat-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${CONTEXT_FILE_NOT_FOUND_MARKER}'; fi`,
-      tolerant: true,
-    })
-    steps.push({
-      name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
-      tolerant: true,
-    })
-  })
-  for (const extra of o.extraCommands || []) {
-    steps.push({ name: extra.name, command: extra.command, tolerant: true })
-  }
-  return steps
-}
-
-/**
- * Deterministic evaluation of readContextSteps()'s result: verifies every
- * relayed file's actual byte count against `wc -c`'s declared count and
- * throws loud on a mismatch rather than silently trusting an abridged copy.
- * Files over CONTEXT_FILE_RELAY_LIMIT_BYTES are omitted (contents[path] =
- * null) with a warning instead of being relayed at all.
- */
-export function contextFromSteps(
-  result: BatchResult,
-  files: string[],
-): { branch: string; epicDir: string; contents: Record<string, string | null>; warnings: string[] } {
-  const branch = stepStdout(result, 'branch') || ''
-  const epicDir = stepStdout(result, 'epic-dir') || `docs/epics/${branch}`
-  const contents: Record<string, string | null> = {}
-  const warnings: string[] = []
-  files.forEach((relPath, i) => {
-    const raw = stepStdout(result, `ctx-cat-${i}`)
-    const declaredRaw = stepStdout(result, `ctx-wc-${i}`)
-    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN
-    if (raw === null || raw === CONTEXT_FILE_NOT_FOUND_MARKER || declaredBytes === -1) {
-      contents[relPath] = null
-      return
-    }
-    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_FILE_RELAY_LIMIT_BYTES) {
-      warnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_FILE_RELAY_LIMIT_BYTES} bytes)`)
-      contents[relPath] = null
-      return
-    }
-    const actualBytes = utf8ByteLength(raw)
-    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
-      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`)
-    }
-    contents[relPath] = raw
-  })
-  return { branch, epicDir, contents, warnings }
 }
 
 // ── Closeout archive: tag, datum closeout-archive, move artifacts, commit ──

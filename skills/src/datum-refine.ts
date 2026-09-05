@@ -6,8 +6,8 @@ import refineScanTemplate from './prompts/refine-scan.md'
 import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
 import { gateSteps, parseGateResult } from './shared/gate'
-import { batchCommandPrompt, parseBatchResult, stepStdout } from './shared/batch'
-import { readContextSteps, contextFromSteps } from './shared/lane-steps'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -47,26 +47,28 @@ const freeText: string = typeof a.freeText === 'string' ? a.freeText : ''
 // with `agent_types: false` the config read below must not itself go out
 // as agentType 'datum-cli' (a dogfooding run died right here).
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+// Resume cache key (#354): an answered QUESTIONS.md must re-run the reads and the gate.
+setBatchCacheKey(a.configFingerprint || '')
 
 phase('Read')
 
+// Two-phase relay (shared/context-relay.ts): probe sizes first, inline only
+// what fits the budget, hand anything larger to the agents by path + hash.
 const TICKET_REL = 'docs/epics/$__eb/TICKET.md'
-const readSteps = readContextSteps({
+const probeSteps = contextProbeSteps({
   files: [TICKET_REL],
   extraCommands: [
     { name: 'timestamp', command: 'date +%Y-%m-%dT%H:%M:%S' },
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
+    // Evaluated in the script (below) whether or not the TICKET is inlined.
+    { name: 'has-addenda', command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` },
   ],
 })
 const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  readSteps,
+  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
+  probeSteps,
 )
-if (readBatch.missing) {
-  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
-}
-const ctx = contextFromSteps(readBatch, [TICKET_REL])
-for (const warning of ctx.warnings) log(`read-context: ${warning}`)
+const relayPlan = contextRelayPlan(readBatch, [TICKET_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
@@ -74,11 +76,22 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
   configureAgentTypes({ agentTypes: agentTypesRaw !== 'false' })
 }
 
+let inlineBatch: BatchResult | null = null
+if (relayPlan.inline.length > 0) {
+  const inlineSteps = contextInlineSteps(relayPlan.inline)
+  inlineBatch = parseBatchResult(
+    await agent(batchCommandPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
+    inlineSteps,
+  )
+}
+const ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+for (const warning of ctx.warnings) log(`read-context: ${warning}`)
+
 const epicDir: string = ctx.epicDir
 const ticketPath: string = `${epicDir}/TICKET.md`
-const ticketContent: string = ctx.contents[TICKET_REL] || ''
+const ticketFile = ctx.files[TICKET_REL]
 
-if (!ticketContent) {
+if (!ticketFile.exists) {
   const ignoredInputHint = issueNumber
     ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically — that input was ignored. Run \`datum ticket-from-issue ${issueNumber}\` to fetch the issue and bootstrap TICKET.md from it, then re-run \`datum go\` with no args.`
     : freeText
@@ -87,14 +100,18 @@ if (!ticketContent) {
   throw new Error(`TICKET.md not found at ${ticketPath}.${ignoredInputHint}`)
 }
 
-log(`Branch: ${ctx.branch}, TICKET: ${ticketContent.split('\n').length} lines`)
+// Either the verified content or a mandatory "Read it with the Read tool"
+// instruction (contextSlot) — every prompt slot below takes either.
+const ticketContent: string = contextSlot(ticketFile)
+log(`Branch: ${ctx.branch}, TICKET: ${ticketFile.bytes} bytes${ticketFile.inlined ? '' : ' (over relay budget — agents read it themselves)'}`)
 
 // ── Analyze (collapsed: triage + classify + scan run in sequence, no mechanical agents) ──
 
 phase('Analyze')
 
-// Triage addenda (only if addenda exist)
-const hasAddenda: boolean = ticketContent.includes('## Addendum')
+// Triage addenda (only if addenda exist) — counted by the probe batch, so it
+// holds whether or not the TICKET was inlined.
+const hasAddenda: boolean = parseInt((stepStdout(readBatch, 'has-addenda') || '0').trim(), 10) > 0
 
 interface TriageResult {
   original_scope: string

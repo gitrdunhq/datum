@@ -289,19 +289,21 @@ describe('determinism fix — context_files relay is one verified batch, not a p
     expect(datumPlanSrc).not.toMatch(/read-context-file:\$\{relPath\}/)
   })
 
-  it('uses a wc -c byte-count step alongside the cat step for each context file', () => {
-    expect(datumPlanSrc).toMatch(/wc -c/)
+  it('probes sizes/hashes first and inlines only the files that fit the relay budget (shared/context-relay.ts)', () => {
+    // The probe/inline split, the budget and the byte verification all live
+    // in the shared module (its own tests cover them); the script must route
+    // context_files through it rather than cat everything in one batch.
+    expect(datumPlanSrc).toMatch(/contextProbeSteps\(\{ files: contextFilesList \}\)/)
+    expect(datumPlanSrc).toMatch(/contextRelayPlan\(cfProbe, contextFilesList\)/)
+    expect(datumPlanSrc).toMatch(/contextInlineSteps\(cfPlan\.inline\)/)
+    expect(datumPlanSrc).not.toMatch(/name: `ctx-cat-\$\{i\}`/)
   })
 
-  it('verifies declared vs actual byte length with the sandbox-safe utf8ByteLength (no Buffer/TextEncoder in the vm) and fails loud on mismatch', () => {
-    expect(datumPlanSrc).toMatch(/utf8ByteLength\(raw\)/)
-    expect(datumPlanSrc).not.toMatch(/Buffer\.byteLength\(/)
-    expect(datumPlanSrc).toMatch(/context_relay_mismatch/)
-  })
-
-  it('caps relay at 64KB and skips (with a size warning) oversized context files instead of relaying an abridged copy', () => {
-    expect(datumPlanSrc).toMatch(/64\s*\*\s*1024|65536/)
-    expect(datumPlanSrc).toMatch(/exceeds relay limit/)
+  it('hands oversized files to the decompose agent by path + bytes + hash instead of relaying an abridged copy', () => {
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/CONTEXT_RELAY_BUDGET_BYTES = 16 \* 1024/)
+    expect(relaySrc).toMatch(/Read tool/)
+    expect(datumPlanSrc).toMatch(/contextFileContents\[relPath\] = f\.exists \? contextSlot\(f\) : null/)
   })
 })
 
@@ -320,14 +322,24 @@ describe('determinism fix — top-of-file Read phase is a deterministic batch, n
     expect(datumPlanSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
   })
 
-  it('reads SPEC.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
-    expect(datumPlanSrc).toMatch(/import\s*\{\s*readContextSteps,\s*contextFromSteps\s*\}\s*from\s*'\.\/shared\/lane-steps'/)
-    expect(datumPlanSrc).toMatch(/readContextSteps\(/)
-    expect(datumPlanSrc).toMatch(/contextFromSteps\(/)
+  it('reads SPEC.md and context_files through the two-phase budgeted relay (probe → plan → inline → slot)', () => {
+    // A 31 KB SPEC relayed in one batch was spilled by the harness and the
+    // runner fabricated the echo (caught as context_relay_mismatch). Large
+    // files are handed to the agents by path + hash instead.
+    expect(datumPlanSrc).toMatch(/from '\.\/shared\/context-relay'/)
+    expect(datumPlanSrc).toMatch(/contextProbeSteps\(/)
+    expect(datumPlanSrc).toMatch(/contextRelayPlan\(/)
+    expect(datumPlanSrc).toMatch(/contextInlineSteps\(/)
+    expect(datumPlanSrc).toMatch(/const specContent: string = contextSlot\(specFile\)/)
+    expect(datumPlanSrc).toMatch(/contextFileContents\[relPath\] = f\.exists \? contextSlot\(f\) : null/)
+    expect(datumPlanSrc).not.toMatch(/readContextSteps\(|contextFromSteps\(|Buffer\.byteLength|utf8ByteLength\(/)
   })
 
-  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
-    expect(datumPlanSrc).toMatch(/context_relay_mismatch/)
+  it('fails loud with context_relay_mismatch, not a silent fallback, when a relay batch returns nothing parseable', () => {
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/context_relay_mismatch/)
+    expect(datumPlanSrc).toMatch(/contextFromRelay\(readBatch, inlineBatch, relayPlan\)/)
+    expect(datumPlanSrc).toMatch(/contextFromRelay\(cfProbe, cfInline, cfPlan\)/)
   })
 
   it('carries current_state / prior_defects / error_history as extraCommands, not through the LLM relay', () => {

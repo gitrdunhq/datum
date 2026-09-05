@@ -2,8 +2,8 @@ import { renderPrompt } from './shared/utils'
 import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
-import { batchCommandPrompt, parseBatchResult, stepStdout } from './shared/batch'
-import { readContextSteps, contextFromSteps } from './shared/lane-steps'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -33,26 +33,26 @@ const yolo: boolean = !!a.yolo
 // with `agent_types: false` the config read below must not itself go out
 // as agentType 'datum-cli'.
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+// Resume cache key (#354): an edited SPEC/TASKS must re-run the reads and the gate.
+setBatchCacheKey(a.configFingerprint || '')
 
 phase('Read')
 
+// Two-phase relay (shared/context-relay.ts): probe sizes first, inline only
+// what fits the budget, hand anything larger to the agents by path + hash.
 const SPEC_REL = 'docs/epics/$__eb/SPEC.md'
 const TASKS_REL = 'docs/epics/$__eb/TASKS.md'
-const readSteps = readContextSteps({
+const probeSteps = contextProbeSteps({
   files: [SPEC_REL, TASKS_REL],
   extraCommands: [
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
   ],
 })
 const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  readSteps,
+  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
+  probeSteps,
 )
-if (readBatch.missing) {
-  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
-}
-const ctx = contextFromSteps(readBatch, [SPEC_REL, TASKS_REL])
-for (const warning of ctx.warnings) log(`read-context: ${warning}`)
+const relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
@@ -60,15 +60,30 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
   configureAgentTypes({ agentTypes: agentTypesRaw !== 'false' })
 }
 
-const specContent: string = ctx.contents[SPEC_REL] || ''
-const tasksContent: string = ctx.contents[TASKS_REL] || ''
+let inlineBatch: BatchResult | null = null
+if (relayPlan.inline.length > 0) {
+  const inlineSteps = contextInlineSteps(relayPlan.inline)
+  inlineBatch = parseBatchResult(
+    await agent(batchCommandPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
+    inlineSteps,
+  )
+}
+const ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
-if (!specContent) throw new Error('SPEC.md not found. Run datum-refine first.')
-if (!tasksContent) throw new Error('TASKS.md not found. Run datum-plan first.')
+const specFile = ctx.files[SPEC_REL]
+const tasksFile = ctx.files[TASKS_REL]
+if (!specFile.exists) throw new Error('SPEC.md not found. Run datum-refine first.')
+if (!tasksFile.exists) throw new Error('TASKS.md not found. Run datum-plan first.')
+
+// Either the verified content or a mandatory "Read it with the Read tool"
+// instruction (contextSlot) — the prompt slot takes either.
+const specContent: string = contextSlot(specFile)
+const tasksContent: string = contextSlot(tasksFile)
 
 const epicDir: string = ctx.epicDir
 
-log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
+log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? '' : ' (deferred)'}, TASKS: ${tasksFile.bytes} bytes${tasksFile.inlined ? '' : ' (deferred)'}`)
 
 // ── Derive + commit + gate (collapsed: derive writes + commits + gates in 2 agents) ──
 

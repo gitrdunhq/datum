@@ -26,17 +26,17 @@ describe('TICKET.md-not-found error is actionable about ignored issueNumber/free
   })
 
   it('the not-found error mentions issueNumber when one was passed and ignored', () => {
-    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'))
+    const throwBlock = src.slice(src.indexOf('if (!ticketFile.exists)'))
     expect(throwBlock).toMatch(/issueNumber/)
   })
 
   it('the not-found error mentions freeText when one was passed and ignored', () => {
-    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'))
+    const throwBlock = src.slice(src.indexOf('if (!ticketFile.exists)'))
     expect(throwBlock).toMatch(/freeText/)
   })
 
   it('still gives the plain "run datum init first" guidance when neither was passed', () => {
-    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'), src.indexOf('if (!ticketContent)') + 800)
+    const throwBlock = src.slice(src.indexOf('if (!ticketFile.exists)'), src.indexOf('if (!ticketFile.exists)') + 800)
     expect(throwBlock).toMatch(/datum init/)
   })
 })
@@ -56,17 +56,35 @@ describe('datum-refine — TICKET.md relay is a byte-verified batch, not an LLM 
     expect(src).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
   })
 
-  it('reads TICKET.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
-    expect(src).toMatch(/readContextSteps\(/)
-    expect(src).toMatch(/contextFromSteps\(/)
+  it('reads TICKET.md through the two-phase budgeted relay (probe → plan → inline → slot), never a single cat', () => {
+    // A 31 KB SPEC relayed in one batch was spilled by the harness and the
+    // runner fabricated the echo (caught as context_relay_mismatch). Large
+    // files are handed to the agents by path + hash instead.
+    expect(src).toMatch(/contextProbeSteps\(/)
+    expect(src).toMatch(/contextRelayPlan\(/)
+    expect(src).toMatch(/contextInlineSteps\(/)
+    expect(src).toMatch(/contextFromRelay\(/)
+    expect(src).toMatch(/const ticketContent: string = contextSlot\(ticketFile\)/)
+    expect(src).not.toMatch(/readContextSteps\(|contextFromSteps\(/)
+    // The addenda check must not depend on the content being inlined.
+    expect(src).toMatch(/name: 'has-addenda'/)
+    expect(src).toMatch(/stepStdout\(readBatch, 'has-addenda'\)/)
+    expect(src).not.toMatch(/ticketContent\.includes\('## Addendum'\)/)
   })
 
-  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
-    expect(src).toMatch(/context_relay_mismatch/)
+  it('fails loud with context_relay_mismatch, not a silent fallback, when a relay batch returns nothing parseable', () => {
+    // The throw lives in shared/context-relay.ts (contextRelayPlan on a
+    // missing probe, contextFromRelay on a missing inline batch or a byte
+    // mismatch); the script must route both batches through it.
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/context_relay_mismatch/)
+    expect(src).toMatch(/contextRelayPlan\(readBatch/)
+    expect(src).toMatch(/contextFromRelay\(readBatch, inlineBatch, relayPlan\)/)
   })
 
-  it('runs the read batch through the deterministic cli stage, not a JSON-echoing agent call', () => {
-    expect(src).toMatch(/batchCommandPrompt\(readSteps\)/)
+  it('runs the read batches through the deterministic cli stage, not a JSON-echoing agent call', () => {
+    expect(src).toMatch(/batchCommandPrompt\(probeSteps\)/)
+    expect(src).toMatch(/batchCommandPrompt\(inlineSteps\)/)
     expect(src).toMatch(/parseBatchResult\(/)
   })
 })

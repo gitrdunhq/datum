@@ -2,10 +2,9 @@ import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSect
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
-import { readContextSteps, contextFromSteps } from './shared/lane-steps'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
-import { utf8ByteLength } from './shared/utf8'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -31,6 +30,8 @@ const yolo: boolean = !!a.yolo
 // #368: the parent's switches are honoured BEFORE the first agent() call —
 // with `agent_types: false` the reads below must not go out as 'datum-cli'.
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+// Resume cache key (#354): an edited SPEC.md must re-run the reads and the gates.
+setBatchCacheKey(a.configFingerprint || '')
 
 // ── Read (deterministic batch: branch/epic-dir + byte-verified SPEC.md
 // relay, replacing the LLM `reader` echo of util-read-context.md — an LLM
@@ -43,9 +44,14 @@ if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agen
 
 phase('Read')
 
+// Two-phase relay (shared/context-relay.ts): probe sizes first, inline only
+// what fits the budget, hand anything larger to the agents by path + hash —
+// a 31 KB SPEC relayed in one batch was spilled by the harness and the
+// runner fabricated the echo (caught as context_relay_mismatch, run
+// wf_fcf49a90-0bf).
 const NOT_FOUND_MARKER = '__DATUM_CTXFIELD_NOT_FOUND__'
 const SPEC_REL = 'docs/epics/$__eb/SPEC.md'
-const readSteps = readContextSteps({
+const probeSteps = contextProbeSteps({
   files: [SPEC_REL],
   extraCommands: [
     { name: 'current-state', command: `if [ -f CURRENT_STATE.md ]; then head -80 CURRENT_STATE.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` },
@@ -54,20 +60,29 @@ const readSteps = readContextSteps({
   ],
 })
 const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  readSteps,
+  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
+  probeSteps,
 )
-if (readBatch.missing) {
-  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
+const relayPlan = contextRelayPlan(readBatch, [SPEC_REL])
+let inlineBatch: BatchResult | null = null
+if (relayPlan.inline.length > 0) {
+  const inlineSteps = contextInlineSteps(relayPlan.inline)
+  inlineBatch = parseBatchResult(
+    await agent(batchCommandPrompt(inlineSteps), bootstrapOpts('cli', { label: 'read-context-files', model: model('fast') })),
+    inlineSteps,
+  )
 }
-const ctx = contextFromSteps(readBatch, [SPEC_REL])
+const ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
 const epicDir: string = ctx.epicDir
-const specContent: string = ctx.contents[SPEC_REL] || ''
-if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`)
+const specFile = ctx.files[SPEC_REL]
+if (!specFile.exists) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`)
+// Either the verified content or a mandatory "Read it with the Read tool"
+// instruction (contextSlot) — every prompt slot below takes either.
+const specContent: string = contextSlot(specFile)
 
-log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
+log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? '' : ' (over relay budget — agents read it themselves)'}`)
 
 const currentStateRaw = stepStdout(readBatch, 'current-state')
 const currentState: string | null = (currentStateRaw === null || currentStateRaw === NOT_FOUND_MARKER) ? null : currentStateRaw
@@ -91,55 +106,34 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(rea
 const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
 const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
 
-// Deterministic context_files relay: one batch (cat + wc -c per file)
-// instead of an LLM "read this file back to me" per-file loop — an LLM
-// echoing a file is lossy (a 90KB relay came back as 6.7KB of "successful"
-// abridged content in dogfooding). Every relayed file's actual byte count
-// is checked against `wc -c`'s declared count; a mismatch fails loud rather
-// than silently planning on an abridged file. Files over the relay cap are
-// not relayed at all — logged as skipped for size instead.
-const CONTEXT_RELAY_LIMIT_BYTES = 64 * 1024
+// context_files: the same two-phase relay (probe → budgeted inline → slot).
+// Small files are inlined byte-verified; large ones reach the decompose
+// agent as a mandatory Read instruction with path, bytes and hash; missing
+// ones stay null so buildContextFilesSection warns about them.
 const contextFilesList: string[] = (repoCfg.context_files as string[] | undefined) || []
 const contextFileContents: Record<string, string | null> = {}
 const contextFilesWarnings: string[] = []
 if (contextFilesList.length > 0) {
-  const NOT_FOUND_MARKER = '__DATUM_CTXFILE_NOT_FOUND__'
-  const fileSteps: BatchStep[] = []
-  contextFilesList.forEach((relPath, i) => {
-    fileSteps.push({
-      name: `ctx-cat-${i}`,
-      command: `if [ -f "${relPath}" ]; then cat "${relPath}"; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
-      tolerant: true,
-    })
-    fileSteps.push({
-      name: `ctx-wc-${i}`,
-      command: `if [ -f "${relPath}" ]; then wc -c < "${relPath}" | tr -d ' '; else printf -- '-1'; fi`,
-      tolerant: true,
-    })
-  })
-  const filesBatchRaw = await agent(batchCommandPrompt(fileSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') }))
-  const filesBatch = parseBatchResult(filesBatchRaw, fileSteps)
-  if (filesBatch.missing) {
-    throw new Error('context_relay_mismatch: batch agent returned no parseable result for context_files')
+  const cfProbeSteps = contextProbeSteps({ files: contextFilesList })
+  const cfProbe = parseBatchResult(
+    await agent(batchCommandPrompt(cfProbeSteps), stageOpts('cli', { label: 'probe-context-files', model: model('fast') })),
+    cfProbeSteps,
+  )
+  const cfPlan = contextRelayPlan(cfProbe, contextFilesList)
+  let cfInline: BatchResult | null = null
+  if (cfPlan.inline.length > 0) {
+    const cfInlineSteps = contextInlineSteps(cfPlan.inline)
+    cfInline = parseBatchResult(
+      await agent(batchCommandPrompt(cfInlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
+      cfInlineSteps,
+    )
   }
-  contextFilesList.forEach((relPath, i) => {
-    const raw = stepStdout(filesBatch, `ctx-cat-${i}`)
-    const declaredRaw = stepStdout(filesBatch, `ctx-wc-${i}`)
-    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN
-    if (raw === null || raw === NOT_FOUND_MARKER || declaredBytes === -1) {
-      contextFileContents[relPath] = null
-      return
-    }
-    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_RELAY_LIMIT_BYTES) {
-      contextFilesWarnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_RELAY_LIMIT_BYTES} bytes)`)
-      return
-    }
-    const actualBytes = utf8ByteLength(raw)
-    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
-      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`)
-    }
-    contextFileContents[relPath] = raw
-  })
+  const cf = contextFromRelay(cfProbe, cfInline, cfPlan)
+  for (const warning of cf.warnings) contextFilesWarnings.push(warning)
+  for (const relPath of contextFilesList) {
+    const f = cf.files[relPath]
+    contextFileContents[relPath] = f.exists ? contextSlot(f) : null
+  }
 }
 const contextFilesSection: string = buildContextFilesSection(
   contextFileContents,

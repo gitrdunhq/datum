@@ -41,10 +41,10 @@ describe('datum-properties — agent_types precedence (#368)', () => {
 
 describe('datum-properties — Read phase guards', () => {
   it('throws when SPEC.md is missing, telling the operator to run datum-refine first', () => {
-    expect(propertiesSrc).toMatch(/if \(!specContent\) throw new Error\(.*datum-refine/)
+    expect(propertiesSrc).toMatch(/if \(!specFile\.exists\) throw new Error\(.*datum-refine/)
   })
   it('throws when TASKS.md is missing, telling the operator to run datum-plan first', () => {
-    expect(propertiesSrc).toMatch(/if \(!tasksContent\) throw new Error\(.*datum-plan/)
+    expect(propertiesSrc).toMatch(/if \(!tasksFile\.exists\) throw new Error\(.*datum-plan/)
   })
 })
 
@@ -67,13 +67,21 @@ describe('datum-properties — SPEC.md/TASKS.md relay is a byte-verified batch, 
     expect(propertiesSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
   })
 
-  it('reads SPEC.md/TASKS.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
-    expect(propertiesSrc).toMatch(/readContextSteps\(/)
-    expect(propertiesSrc).toMatch(/contextFromSteps\(/)
+  it('reads SPEC.md/TASKS.md through the two-phase budgeted relay (probe → plan → inline → slot)', () => {
+    expect(propertiesSrc).toMatch(/contextProbeSteps\(/)
+    expect(propertiesSrc).toMatch(/contextRelayPlan\(/)
+    expect(propertiesSrc).toMatch(/contextInlineSteps\(/)
+    expect(propertiesSrc).toMatch(/contextFromRelay\(/)
+    expect(propertiesSrc).toMatch(/contextSlot\(specFile\)/)
+    expect(propertiesSrc).toMatch(/contextSlot\(tasksFile\)/)
+    expect(propertiesSrc).not.toMatch(/readContextSteps\(|contextFromSteps\(/)
   })
 
-  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
-    expect(propertiesSrc).toMatch(/context_relay_mismatch/)
+  it('fails loud with context_relay_mismatch, not a silent fallback, when a relay batch returns nothing parseable', () => {
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/context_relay_mismatch/)
+    expect(propertiesSrc).toMatch(/contextRelayPlan\(readBatch/)
+    expect(propertiesSrc).toMatch(/contextFromRelay\(readBatch, inlineBatch, relayPlan\)/)
   })
 
   it('derives epicDir from the batch result, not a hand-rolled fallback expression', () => {
