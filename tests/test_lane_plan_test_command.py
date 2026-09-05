@@ -153,3 +153,19 @@ class TestBuildLanePlanTestCommandOverride:
             plan["lanes"]["lane-explicit"]["test_command"]
             == "npx vitest run --project custom"
         )
+
+
+def test_unrecognised_wrapper_global_command_is_no_opinion_not_a_mismatch():
+    """A consumer repo whose test_command is a shell/Makefile wrapper (no
+    language marker in the string) must NOT have every Python lane stamped
+    with the built-in `uv run pytest -x -q` override — an unknown-language
+    global command is "no opinion", exactly like a missing one."""
+    from datum.lane_plan import detect_lane_test_command
+
+    assert (
+        detect_lane_test_command(
+            ["src/pkg/mod.py", "tests/test_mod.py"],
+            "bash scripts/test-run.sh --affected",
+        )
+        is None
+    )

@@ -420,6 +420,14 @@ def detect_lane_test_command(
     if lane_lang is None:
         return None
     global_lang = detect_command_language(global_test_command)
+    # A configured epic-level command with no recognisable language marker (a
+    # Makefile or shell wrapper like `bash scripts/test-run.sh`) is "no
+    # opinion", not "wrong language" — otherwise every lane gets stamped with
+    # the built-in per-language default and the repo's real runner is never
+    # used. A *missing* command (None) still falls through to the language
+    # default below so the lane has something to run.
+    if global_test_command and global_lang is None:
+        return None
     if global_lang == lane_lang:
         return None
     override = LANE_LANGUAGE_TEST_COMMANDS.get(lane_lang)
