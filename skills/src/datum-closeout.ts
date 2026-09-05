@@ -100,8 +100,26 @@ phase('Synthesize')
 
 const epicDir = `docs/epics/${branch}`
 
+// caliper BUG U: a repo whose CHANGELOG.md release-please owns (config file
+// or the header sentence, read by the collect batch) gets no hand-authored
+// section — the versioned entry is generated from the conventional commits.
+const changelogOwner = (stepStdout(collectResult, 'changelog-owner') || '').trim()
+const changelogManaged = changelogOwner === 'release-please'
+if (changelogManaged) log('changelog_skipped: CHANGELOG.md is managed by release-please — closeout writes CURRENT_STATE.md and RETRO.md only')
+const preserved = (stepStdout(collectResult, 'preserve-current-state') || '').trim()
+if (preserved.startsWith('moved-aside')) log(`current_state_preserved: an untracked root CURRENT_STATE.md was ${preserved}`)
+const changelogInstruction = changelogManaged
+  ? 'SKIP CHANGELOG.md entirely: this repository\'s CHANGELOG.md is managed by release-please and is generated from the conventional commits. Do not create, edit or mention it in artifacts_written.'
+  : 'CHANGELOG.md — append entries for what shipped'
+
 const synthResult = await agent(
-  renderPrompt(closeoutSynthTemplate, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
+  renderPrompt(closeoutSynthTemplate, {
+    closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
+    reviewResponsePath: `${epicDir}/REVIEW-RESPONSE.md`,
+    changelogInstruction,
+    branch,
+    runId: rid,
+  }),
   { label: 'synthesize', model: model('balanced') },
 )
 
@@ -124,8 +142,8 @@ log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(', ')}`)
 // a skipped commit, or a `git add` of follow-ups.json out of the
 // gitignored .datum/runs dir that stopped there, looked like success.
 // follow-ups.json stays under .datum/runs (untracked by design).
-const synthFiles = ['CURRENT_STATE.md', 'CHANGELOG.md', `${epicDir}/RETRO.md`]
-const synthCommitSteps = commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` })
+const synthFiles = changelogManaged ? ['CURRENT_STATE.md', `${epicDir}/RETRO.md`] : ['CURRENT_STATE.md', 'CHANGELOG.md', `${epicDir}/RETRO.md`]
+const synthCommitSteps = commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write ${synthFiles.map((f) => f.split('/').pop()).join(' + ')}` })
 const synthCommit = commitFilesFromSteps(parseBatchResult(
   await agent(batchCommandPrompt(synthCommitSteps), stageOpts('cli', { label: 'commit-synthesis', model: model('fast') })),
   synthCommitSteps,

@@ -1128,8 +1128,21 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
     const steps = closeoutCollectSteps({ runId: 'r1' })
     expect(names(steps)).toEqual([
       'branch', 'timestamp', 'base-sha', 'merge-sha', 'config',
-      'mkdir', 'collect-git', 'collect-tasks', 'collect-token-metrics', 'collate', 'data-exists',
+      'mkdir', 'changelog-owner', 'preserve-current-state',
+      'collect-git', 'collect-tasks', 'collect-token-metrics', 'collate', 'data-exists',
     ])
+    // caliper BUG U: a CHANGELOG.md owned by release-please must not get a
+    // hand-authored section; the script reads the owner from this step.
+    const owner = steps.find((s) => s.name === 'changelog-owner')!
+    expect(owner.command).toContain('release-please-config.json')
+    expect(owner.command).toContain('managed by release-please')
+    expect(owner.command).toMatch(/echo release-please/)
+    expect(owner.command).toMatch(/echo datum/)
+    // An UNTRACKED root CURRENT_STATE.md (a previous closeout's artifact git
+    // never had) was overwritten and lost: moved aside first, never clobbered.
+    const keep = steps.find((s) => s.name === 'preserve-current-state')!
+    expect(keep.command).toContain('git ls-files CURRENT_STATE.md')
+    expect(keep.command).toContain('mv CURRENT_STATE.md "CURRENT_STATE.$__rid.prev.md"')
     for (const s of steps) expect(s.tolerant).toBe(true)
     for (const s of steps) {
       expect(s.command).not.toMatch(/\|\|\s*true\b/)
@@ -1268,10 +1281,36 @@ describe('closeoutArchiveSteps', () => {
     const steps = closeoutArchiveSteps(opts)
     const spec = steps.find((s) => s.name === 'move-spec-md')!
     expect(spec.command).toBe(
-      'if [ -f "SPEC.md" ]; then mkdir -p "docs/epics/datum/e" && git mv "SPEC.md" "docs/epics/datum/e/SPEC.md"; else echo ABSENT; fi',
+      // caliper BUG V: a stale root artifact from an OLDER epic must not be
+      // moved over this epic's file (git mv: "destination exists", exit 128).
+      'if [ -f "SPEC.md" ]; then if [ -e "docs/epics/datum/e/SPEC.md" ]; then echo "KEPT_ROOT: docs/epics/datum/e/SPEC.md exists, root SPEC.md is not this epic\'s, left in place"; else mkdir -p "docs/epics/datum/e" && git mv "SPEC.md" "docs/epics/datum/e/SPEC.md"; fi; else echo ABSENT; fi',
     )
     const tasksJson = steps.find((s) => s.name === 'move-tasks-json')!
     expect(tasksJson.command).toContain('git mv "tasks.json" "docs/epics/datum/e/tasks.json"')
+  })
+
+  it('under real git, a root TASKS.md whose epic-scoped destination already exists is kept in place and reported, not a git fatal', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-archive-keep-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'datum/e'], { cwd: dir })
+      execFileSync('git', ['config', 'core.hooksPath', '/dev/null'], { cwd: dir })
+      mkdirSync(join(dir, 'docs/epics/datum/e'), { recursive: true })
+      writeFileSync(join(dir, 'TASKS.md'), '# stale, from an older epic\n')
+      writeFileSync(join(dir, 'docs/epics/datum/e/TASKS.md'), '# this epic\n')
+      writeFileSync(join(dir, 'SPEC.md'), '# spec\n')
+      execFileSync('git', ['add', '.'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'base'], { cwd: dir })
+      const steps = closeoutArchiveSteps({ runId: 'r1', branch: 'datum/e', epicDir: 'docs/epics/datum/e' }).filter((s) => s.name.startsWith('move-'))
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(stepResult(r, 'move-tasks-md')?.exit_code).toBe(0)
+      expect(stepStdout(r, 'move-tasks-md')).toMatch(/^KEPT_ROOT: docs\/epics\/datum\/e\/TASKS\.md exists/)
+      expect(stepResult(r, 'move-spec-md')?.exit_code).toBe(0)
+      expect(existsSync(join(dir, 'docs/epics/datum/e/SPEC.md'))).toBe(true)
+      expect(existsSync(join(dir, 'TASKS.md'))).toBe(true)
+      expect(readFileSync(join(dir, 'docs/epics/datum/e/TASKS.md'), 'utf8')).toBe('# this epic\n')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('reads lane-plan.json from .datum, not the repo root', () => {

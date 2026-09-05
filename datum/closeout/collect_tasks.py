@@ -124,10 +124,16 @@ def main() -> None:
         )
         sys.exit(1)
 
-    lane_ids = plan_ids if plan_ids is not None else sorted(statuses)
-    for task in sorted(statuses):
-        if task not in lane_ids:
-            lane_ids.append(task)
+    # With a lane plan, ONLY its lanes count: .datum/runs/ holds markers from
+    # other epics' runs too (caliper BUG T: 23 counted where the plan had 9).
+    # Foreign markers are reported, never counted. Without a plan the
+    # markers are all there is.
+    ignored_foreign: list[str] = []
+    if plan_ids is not None:
+        lane_ids = list(plan_ids)
+        ignored_foreign = sorted(t for t in statuses if t not in lane_ids)
+    else:
+        lane_ids = sorted(statuses)
     lanes = [
         {"task_id": task, "final_status": statuses.get(task, "not_started")}
         for task in lane_ids
@@ -146,6 +152,7 @@ def main() -> None:
         "say_do_ratio": round(say_do, 3),
         "per_stage_retries": None,
         "lanes": lanes,
+        "ignored_foreign_markers": ignored_foreign,
         "source": "lane-plan.json + lane-state markers",
         "brief_defects": [],
         "lane_tools_added": [],

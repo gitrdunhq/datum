@@ -100,7 +100,14 @@ def main() -> None:
         data["tasks"] = {
             k: v
             for k, v in task_data.items()
-            if k not in ("brief_defects", "lane_tools_added", "lanes", "source")
+            if k
+            not in (
+                "brief_defects",
+                "lane_tools_added",
+                "lanes",
+                "source",
+                "ignored_foreign_markers",
+            )
         }
         if isinstance(task_data.get("lanes"), list):
             data["lanes"] = task_data["lanes"]

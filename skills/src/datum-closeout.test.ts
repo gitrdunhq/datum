@@ -138,10 +138,11 @@ describe('datum-closeout — synthesis artifacts are committed by the script, no
 
   it('commits CURRENT_STATE.md, CHANGELOG.md and the epic RETRO.md through commitFilesSteps after synthesis', () => {
     const synthIdx = src.indexOf("label: 'synthesize'")
-    const commitIdx = src.indexOf("commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write CURRENT_STATE.md + CHANGELOG.md + RETRO.md` })")
+    const commitIdx = src.indexOf("commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write ${synthFiles.map((f) => f.split('/').pop()).join(' + ')}` })")
     expect(synthIdx).toBeGreaterThan(-1)
     expect(commitIdx).toBeGreaterThan(synthIdx)
-    expect(src).toMatch(/const synthFiles = \['CURRENT_STATE\.md', 'CHANGELOG\.md', `\$\{epicDir\}\/RETRO\.md`\]/)
+    // CHANGELOG.md is in the list unless release-please owns it (BUG U).
+    expect(src).toMatch(/const synthFiles = changelogManaged \? \[[^\]]*\] : \['CURRENT_STATE\.md', 'CHANGELOG\.md', `\$\{epicDir\}\/RETRO\.md`\]/)
     expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
     expect(src).toMatch(/throw new Error\(`closeout_commit_failed: /)
   })
@@ -183,5 +184,29 @@ describe('datum-closeout — the missing-data error names the collectors that fa
     expect(src).toMatch(/Failed collectors: \$\{failedCollectors\.join\(' \| '\)\}/)
     expect(src).toMatch(/closeout-data\.json is missing after collect[^\n]*\$\{cause\}/)
     expect(src).not.toMatch(/missing after collect[^\n]*describeFailure\(collectResult, 'closeout-collect'\)\}`/)
+  })
+})
+
+// caliper BUG U (eedom, first full completion): closeout wrote a hand-authored
+// "## [Unreleased]" section into a CHANGELOG.md that release-please owns.
+// The collect batch reads the owner; when it is release-please the synthesis
+// prompt says skip it and the commit list omits it. The retro also
+// paraphrased an accepted PERF reason into nonsense: decisions are quoted
+// from REVIEW-RESPONSE.md, never restated.
+describe('datum-closeout — CHANGELOG ownership and quoted review decisions', () => {
+  const src = readFileSync(join(__dirname, 'datum-closeout.ts'), 'utf8')
+  const prompt = readFileSync(join(__dirname, 'prompts', 'closeout-synthesize.md'), 'utf8')
+  it('reads changelog-owner from the collect batch and drops CHANGELOG.md from the synthesis commit when release-please owns it', () => {
+    expect(src).toMatch(/const changelogOwner = \(stepStdout\(collectResult, 'changelog-owner'\) \|\| ''\)\.trim\(\)/)
+    expect(src).toMatch(/const changelogManaged = changelogOwner === 'release-please'/)
+    expect(src).toMatch(/changelogManaged \? \['CURRENT_STATE\.md', `\$\{epicDir\}\/RETRO\.md`\] : \['CURRENT_STATE\.md', 'CHANGELOG\.md', `\$\{epicDir\}\/RETRO\.md`\]/)
+    expect(src).toMatch(/changelog_skipped: CHANGELOG\.md is managed by release-please/)
+    expect(src).toMatch(/changelogInstruction/)
+  })
+  it('the synthesis prompt carries the changelog instruction slot and quotes REVIEW-RESPONSE.md verbatim', () => {
+    expect(prompt).toContain('{{changelogInstruction}}')
+    expect(prompt).toContain('{{reviewResponsePath}}')
+    expect(prompt).toMatch(/quote[^\n]*verbatim/i)
+    expect(prompt).not.toMatch(/^2\. CHANGELOG\.md — append entries for what shipped$/m)
   })
 })

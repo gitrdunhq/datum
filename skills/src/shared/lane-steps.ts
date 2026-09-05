@@ -858,6 +858,20 @@ export function closeoutCollectSteps(o: CloseoutCollectOpts): BatchStep[] {
     { name: 'merge-sha', command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
     { name: 'config', command: `cat .datum/config.json || echo '{}'`, tolerant: true },
     { name: 'mkdir', command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    // caliper BUG U: a CHANGELOG.md owned by release-please must not get a
+    // hand-authored section. The script reads the owner from this step.
+    {
+      name: 'changelog-owner',
+      command: `if [ -f release-please-config.json ] || { [ -f CHANGELOG.md ] && grep -qi "managed by release-please" CHANGELOG.md; }; then echo release-please; else echo datum; fi`,
+      tolerant: true,
+    },
+    // An UNTRACKED root CURRENT_STATE.md (a previous closeout's artifact git
+    // never had) was overwritten and lost. Moved aside first, never clobbered.
+    {
+      name: 'preserve-current-state',
+      command: `if [ -f CURRENT_STATE.md ] && [ -z "$(git ls-files CURRENT_STATE.md)" ]; then mv CURRENT_STATE.md "CURRENT_STATE.$__rid.prev.md" && echo "moved-aside: CURRENT_STATE.$__rid.prev.md"; else echo ok; fi`,
+      tolerant: true,
+    },
     {
       name: 'collect-git',
       command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
@@ -891,8 +905,18 @@ function moveStepName(fileName: string): string {
 }
 
 /** `if [ -f <src> ]; then mkdir -p <epicDir> && git mv <src> <epicDir>/<base>; else echo ABSENT; fi` */
+// A root file whose epic-scoped destination already exists is a stale
+// leftover from an OLDER epic, not this one's: kept in place and reported
+// as KEPT_ROOT rather than `git mv` failing "destination exists" with exit
+// 128 (caliper BUG V, root TASKS.md from #146).
 function moveIntoEpicDirCommand(src: string, epicDir: string, base: string): string {
-  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir)} && git mv ${q(src)} ${q(`${epicDir}/${base}`)}; else echo ABSENT; fi`
+  const dest = `${epicDir}/${base}`
+  return (
+    `if [ -f ${q(src)} ]; then ` +
+    `if [ -e ${q(dest)} ]; then echo "KEPT_ROOT: ${dest} exists, root ${src} is not this epic's, left in place"; ` +
+    `else mkdir -p ${q(epicDir)} && git mv ${q(src)} ${q(dest)}; fi; ` +
+    `else echo ABSENT; fi`
+  )
 }
 
 /**

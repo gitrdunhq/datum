@@ -311,6 +311,44 @@ class TestCollectTasks:
         ]
         assert data["source"] == "lane-plan.json + lane-state markers"
 
+    def test_markers_for_lanes_outside_this_epics_plan_are_ignored(self, env_with_repo):
+        """caliper BUG T: .datum/runs/ holds markers from OTHER epics' runs
+        (23 counted where the plan had 9). With a lane plan, only its lane
+        ids count; foreign markers are reported, not counted."""
+        repo = env_with_repo
+        _write_lane_plan(repo["repo_dir"], "datum/epic-123", ["task-001", "task-002"])
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-001", "completed")
+        foreign = (
+            repo["repo_dir"] / ".datum" / "runs" / "20260902-032652-b4" / "lane-state"
+        )
+        foreign.mkdir(parents=True)
+        for t in ("task-003", "task-004", "task-005"):
+            (foreign / f"{t}.json").write_text(
+                json.dumps({"task_id": t, "status": "completed"})
+            )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_tasks",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        data = json.loads(
+            (repo["runs_dir"] / "closeout-raw" / "tasks.json").read_text()
+        )
+        assert data["total"] == 2
+        assert data["completed"] == 1
+        assert [lane["task_id"] for lane in data["lanes"]] == ["task-001", "task-002"]
+        assert data["ignored_foreign_markers"] == ["task-003", "task-004", "task-005"]
+
     def test_no_lane_plan_and_no_markers_is_a_named_failure(self, env_with_repo):
         repo = env_with_repo
 
