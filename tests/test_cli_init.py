@@ -94,6 +94,36 @@ def test_json_stdout_is_only_the_json_object(git_repo):
 
 
 # ---------------------------------------------------------------------------
+# Agent registration notice. Claude Code registers .claude/agents/*.md at
+# session start (or on /reload-plugins), so agents `datum init` just wrote
+# are unresolvable until then — a dogfooding run died with "agent type
+# 'datum-cli' not found" right after a mid-session init. Say so, once,
+# whenever agent files were actually (re)written.
+# ---------------------------------------------------------------------------
+
+
+def test_init_says_how_to_register_freshly_written_agents(git_repo):
+    result = _invoke("--name", "first")
+    assert result.exit_code == 0, result.output
+    assert "/reload-plugins" in result.output
+    assert "agent_types" in result.output  # names the fallback switch too
+
+
+def test_init_stays_quiet_when_agents_are_already_current(git_repo):
+    _invoke("--name", "first")
+    _run_git("checkout", "-q", "main", cwd=git_repo)
+    result = _invoke("--name", "second")
+    assert result.exit_code == 0, result.output
+    assert "/reload-plugins" not in result.output
+
+
+def test_init_json_mode_never_prints_the_notice(git_repo):
+    result = _invoke("--json")
+    assert result.exit_code == 0, result.output
+    assert "/reload-plugins" not in result.stdout
+
+
+# ---------------------------------------------------------------------------
 # --json on a feature branch with no epic artifacts: adoption path (#213).
 # ---------------------------------------------------------------------------
 

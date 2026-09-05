@@ -449,6 +449,15 @@ def _print_agent_install(installed) -> None:
         )
     for err in installed.errors:
         console.print(f"[bold red]agent install: {err}[/bold red]")
+    if installed.agents_written:
+        # Claude Code registers project agents at session start; a mid-session
+        # init leaves the fresh datum-* types unresolvable ("agent type
+        # 'datum-cli' not found") until the session reloads them.
+        console.print(
+            "[yellow]Agent types were (re)written — run /reload-plugins in this "
+            "Claude Code session (or restart it) before `datum go`, or set "
+            '"agent_types": false in .datum/config.json to run without them.[/yellow]'
+        )
 
 
 def _quiet_stdout_ctx(json_output: bool):
