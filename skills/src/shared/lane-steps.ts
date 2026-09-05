@@ -106,7 +106,10 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
       name: 'count-gate',
       command:
         `PATFILE=$(mktemp)\ncat > "$PATFILE" <<'PATTERN_EOF'\n${o.testFuncDiffRegex}\nPATTERN_EOF\n` +
-        `bash scripts/test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(' ')} --pattern-file "$PATFILE" --required ${o.acCount}`,
+        // Through the installed `datum dev` wrapper (cli.py _DEV_BASH_SCRIPTS),
+        // never a repo-relative `bash scripts/...`: consumer repos don't carry
+        // datum's scripts/ dir, and `datum init --refresh` doesn't materialise it.
+        `datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(' ')} --pattern-file "$PATFILE" --required ${o.acCount}`,
       tolerant: true,
     })
   }

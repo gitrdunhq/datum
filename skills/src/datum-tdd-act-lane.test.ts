@@ -281,6 +281,26 @@ describe('#356 — RED-time contract preflight and GREEN block routing', () => {
 // through the gate undetected.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Count-gate infrastructure failures must surface as their own error, never
+// as a test count. In the field the gate script was missing (exit 127, empty
+// stdout) and the digit-stripping fallback reported it as
+// "no_new_test_functions_committed: found 0" — blaming the RED agent for a
+// tooling failure.
+// ---------------------------------------------------------------------------
+
+describe('count-gate failures are distinct from a low count', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('returns count_gate_failed when the gate output is not the expected JSON', () => {
+    expect(laneSource).toMatch(/count_gate_failed/)
+  })
+
+  it('has no digit-stripping fallback that turns arbitrary output into a count', () => {
+    expect(laneSource).not.toMatch(/replace\(\/\[\^0-9\]\/g/)
+  })
+})
+
 describe('deterministic RED green-blindness gate', () => {
   const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
 

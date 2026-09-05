@@ -115,7 +115,11 @@ describe('postRedSteps', () => {
   it('writes grep patterns through quoted heredocs (never inline-quoted)', () => {
     const steps = postRedSteps(opts)
     expect(steps[0].command).toContain("<<'PATTERN_EOF'\n[+][[:space:]]*def test_\nPATTERN_EOF")
-    expect(steps[0].command).toContain('bash scripts/test-count-gate --repo "/wt/T1" --files "tests/test_a.py" "tests/test_b.py" --pattern-file "$PATFILE" --required 2')
+    // Must go through the installed `datum dev` wrapper, never a repo-relative
+    // `bash scripts/...` path — consumer repos don't have datum's scripts/ dir
+    // and `datum init --refresh` does not materialise it (exit 127 in the field).
+    expect(steps[0].command).toContain('datum dev test-count-gate --repo "/wt/T1" --files "tests/test_a.py" "tests/test_b.py" --pattern-file "$PATFILE" --required 2')
+    expect(steps[0].command).not.toContain('bash scripts/test-count-gate')
     expect(steps[5].command).toContain("<<'PATTERN_EOF'\ndef test_|async def test_\nPATTERN_EOF")
   })
 

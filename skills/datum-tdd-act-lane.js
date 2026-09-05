@@ -649,7 +649,7 @@ function postRedSteps(o) {
 cat > "$PATFILE" <<'PATTERN_EOF'
 ${o.testFuncDiffRegex}
 PATTERN_EOF
-bash scripts/test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}`,
+datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}`,
       tolerant: true
     });
   }
@@ -1176,9 +1176,10 @@ No markdown fences, no explanation.`,
         const passedMatch = text.match(/"passed":\s*(true|false)/);
         gatePassed = passedMatch ? passedMatch[1] === "true" : newTestCount2 >= acCount;
       } else {
-        const digits = text.replace(/[^0-9]/g, "");
-        newTestCount2 = digits ? parseInt(digits, 10) : 0;
-        gatePassed = newTestCount2 >= acCount;
+        const gateStep = stepResult(postRedResult, "count-gate");
+        const detail = `exit ${gateStep?.exit_code ?? "?"}${(gateStep?.stderr || text).trim() ? ` \u2014 ${(gateStep?.stderr || text).trim().split("\n").slice(-3).join(" | ")}` : ""}`;
+        log(`[${taskId}] RED FAILED: count-gate produced no JSON (${detail}) \u2014 cannot verify ${acCount} new test functions were committed`);
+        return { task_id: taskId, status: "failed", stage: "RED", error: `count_gate_failed: test-count-gate produced no JSON (${detail})` };
       }
     }
     if (!gatePassed) {

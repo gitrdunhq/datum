@@ -558,10 +558,14 @@ No markdown fences, no explanation.`,
         const passedMatch = text.match(/"passed":\s*(true|false)/)
         gatePassed = passedMatch ? passedMatch[1] === 'true' : newTestCount >= acCount
       } else {
-        // Hard fallback — try to extract any number of grep matches from the text
-        const digits = text.replace(/[^0-9]/g, '')
-        newTestCount = digits ? parseInt(digits, 10) : 0
-        gatePassed = newTestCount >= acCount
+        // The gate ran but did not print its JSON — the script was missing
+        // (exit 127), crashed, or is the wrong version. That is a tooling
+        // failure, not "0 tests found": report it as its own error so the RED
+        // agent isn't blamed for an infrastructure problem.
+        const gateStep = stepResult(postRedResult, 'count-gate')
+        const detail = `exit ${gateStep?.exit_code ?? '?'}${(gateStep?.stderr || text).trim() ? ` — ${(gateStep?.stderr || text).trim().split('\n').slice(-3).join(' | ')}` : ''}`
+        log(`[${taskId}] RED FAILED: count-gate produced no JSON (${detail}) — cannot verify ${acCount} new test functions were committed`)
+        return { task_id: taskId, status: 'failed', stage: 'RED', error: `count_gate_failed: test-count-gate produced no JSON (${detail})` }
       }
     }
     if (!gatePassed) {
