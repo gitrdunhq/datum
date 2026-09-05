@@ -772,6 +772,25 @@ function bootFromSteps(result) {
 function runCommandPrompt(command) {
   return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
 }
+var SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+function newEpicBootstrapSteps(slug) {
+  if (!SLUG_RE.test(slug)) throw new Error(`newEpicBootstrapSteps: invalid slug ${JSON.stringify(slug)} \u2014 expected kebab-case [a-z0-9-]`);
+  return [{ name: "init", command: `datum init --name ${slug} --json` }];
+}
+function newEpicBootstrapFromSteps(result, slug) {
+  const none = { ok: false, epicBranch: "" };
+  if (result.missing) return { ...none, error: describeFailure(result, "init") };
+  const step = stepResult(result, "init");
+  if (!step) return { ...none, error: "init step did not run" };
+  if (step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    return { ...none, error: `datum init --name ${slug} --json exited ${step.exit_code} \u2014 ${tail}` };
+  }
+  const parsed = parseAgentJson(step.stdout || "", null);
+  const epicBranch = parsed && typeof parsed.epicBranch === "string" ? parsed.epicBranch.trim() : "";
+  if (!epicBranch) return { ...none, error: `datum init printed no epicBranch \u2014 ${(step.stdout || "").trim().slice(0, 200)}` };
+  return { ok: true, epicBranch, error: "" };
+}
 var NO_FINGERPRINT_WARNING = 'args.configFingerprint not set \u2014 on Workflow resume the cached config read is replayed and a config edit is NOT picked up (#354). Launch with args: { ..., configFingerprint: "<output of `datum config-fingerprint`>" }.';
 
 // skills/src/shared/agent-types.ts
@@ -948,16 +967,22 @@ ${a.freeText}
 """
 Decide: does the brief describe the SAME piece of work as the existing TICKET.md, or a CLEARLY DIFFERENT one?
 - If SAME, or you cannot confidently tell they differ: output {"newEpic": false}.
-- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief, then run exactly: datum init --name <slug> --json
-  and return the raw JSON it printed, merged with {"newEpic": true, "reason": "<why they differ>"}.
+- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief and output {"newEpic": true, "slug": "<kebab-case-slug>", "reason": "<why they differ>"}.
+Do NOT run datum init or any other command \u2014 the workflow bootstraps the new epic itself from your slug.
 Output ONLY raw JSON, no markdown fences, no explanation.`,
     { label: "new-epic-check", model: model("balanced") }
   );
   const newEpicInfo = parseAgentJson(newEpicText, { newEpic: false });
-  if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
-    log(`New epic detected \u2014 brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || "no reason given"}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`);
-    newEpicBranch = newEpicInfo.epicBranch;
-    resolvedBranch = newEpicInfo.epicBranch;
+  if (newEpicInfo.newEpic && typeof newEpicInfo.slug === "string" && newEpicInfo.slug.trim()) {
+    const bootstrapSteps = newEpicBootstrapSteps(newEpicInfo.slug);
+    const bootstrap = newEpicBootstrapFromSteps(parseBatchResult(
+      await agent(batchCommandPrompt(bootstrapSteps), stageOpts("cli", { label: "new-epic-bootstrap", model: model("fast") })),
+      bootstrapSteps
+    ), newEpicInfo.slug);
+    if (!bootstrap.ok) throw new Error(`new_epic_bootstrap_failed: ${bootstrap.error}`);
+    log(`New epic detected \u2014 brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || "no reason given"}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`);
+    newEpicBranch = bootstrap.epicBranch;
+    resolvedBranch = bootstrap.epicBranch;
   }
 }
 if (priorState && !explicitStart && !newEpicBranch) {
