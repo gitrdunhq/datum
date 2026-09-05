@@ -1,0 +1,96 @@
+import { describe, it, expect } from 'vitest'
+import { classifyLaneError } from './triage-classify'
+
+describe('classifyLaneError — deterministic infrastructure prefixes', () => {
+  const infraCases: Array<[string, string]> = [
+    ['lane_intake_failed', 'lane_intake_failed: could not read intake batch result'],
+    ['count_gate_no_output', 'count_gate_no_output: test-count-check returned null — cannot verify 3 new test functions were committed'],
+    ['count_gate_failed', 'count_gate_failed: test-count-gate produced no JSON (exit 1)'],
+    ['merge_failed', 'merge_failed: could not squash-merge task-004 onto epic-99'],
+    ['dep_merge_failed (still merge_failed family)', 'dep_merge_failed: could not merge [epic--a] into b worktree — exit 1'],
+    ['ownership_check_failed', 'ownership_check_failed: ownership diff step did not run or returned no result'],
+    ['validate_run_failed', 'VALIDATION FAILED — validate_run_failed: independent test run did not execute (crash)'],
+    ['lane_plan_relay_mismatch', 'lane_plan_relay_mismatch: shape differs (lane-plan.json) — refusing to execute a plan that differs from the file'],
+    ['context_relay_mismatch', 'context_relay_mismatch: batch agent returned no parseable result for context_files'],
+    ['no worktree path', 'no worktree path for task-004 (setup returned undefined) — refusing to run outside an isolated worktree'],
+  ]
+
+  it.each(infraCases)('%s classifies as infrastructure with deterministic confidence', (_label, error) => {
+    const result = classifyLaneError(error, 'RED')
+    expect(result.category).toBe('infrastructure')
+    expect(result.confidence).toBe('deterministic')
+    expect(result.reason.length).toBeGreaterThan(0)
+  })
+})
+
+describe('classifyLaneError — deterministic lane_plan prefixes', () => {
+  const lanePlanCases: Array<[string, string]> = [
+    ['contract_conflict', 'contract_conflict: acceptance criteria conflict with existing contract'],
+    ['scope_gap', 'scope_gap: declared files do not cover required acceptance criteria'],
+    ['no_test_files', 'no_test_files: classifyFiles returned empty testFiles for lane'],
+  ]
+
+  it.each(lanePlanCases)('%s classifies as lane_plan with deterministic confidence', (_label, error) => {
+    const result = classifyLaneError(error, 'RED')
+    expect(result.category).toBe('lane_plan')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — deterministic agent_behavior prefixes', () => {
+  const agentBehaviorCases: Array<[string, string]> = [
+    ['placeholder_assertions', 'placeholder_assertions: 3: expect(true).toBe(false)'],
+    ['no_new_test_functions_committed', 'no_new_test_functions_committed: 0 of 3 required test functions found'],
+    ['green_blindness_violation', 'green_blindness_violation: GREEN agent read RED test file contents'],
+    ['file_ownership_violation', 'file_ownership_violation: wrote outside allowed_write_files'],
+    ['skeptic_broken', 'skeptic_broken: 2 confirmed bugs — off-by-one in loop bound'],
+    ['green_verify_failed', 'green_verify_failed: independent test-verify step exit=1 (agent self-reported tests_pass=true)'],
+    ['refactor_verify_failed', 'refactor_verify_failed: independent test-verify step exit=1 after refactor'],
+  ]
+
+  it.each(agentBehaviorCases)('%s classifies as agent_behavior with deterministic confidence', (_label, error) => {
+    const result = classifyLaneError(error, 'GREEN')
+    expect(result.category).toBe('agent_behavior')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — dependency (blocked/SKIPPED)', () => {
+  it('classifies stage=SKIPPED as dependency regardless of error text', () => {
+    const result = classifyLaneError('anything at all', 'SKIPPED')
+    expect(result.category).toBe('dependency')
+    expect(result.confidence).toBe('deterministic')
+  })
+
+  it('classifies a "blocked: ..." error as dependency even without SKIPPED stage', () => {
+    const result = classifyLaneError('blocked: upstream dependency \'task-001\' is blocked (count_gate_failed: ...)', undefined)
+    expect(result.category).toBe('dependency')
+    expect(result.confidence).toBe('deterministic')
+  })
+
+  it('classifies a "blocked: dep(s) failed [...]" error as dependency', () => {
+    const result = classifyLaneError('blocked: dep(s) failed [task-002]', 'RED')
+    expect(result.category).toBe('dependency')
+    expect(result.confidence).toBe('deterministic')
+  })
+})
+
+describe('classifyLaneError — unknown fallback', () => {
+  it('returns unknown/heuristic for an error with no recognized prefix', () => {
+    const result = classifyLaneError('TypeError: cannot read property of undefined', 'GREEN')
+    expect(result.category).toBe('unknown')
+    expect(result.confidence).toBe('heuristic')
+  })
+
+  it('returns unknown/heuristic for an undefined error', () => {
+    const result = classifyLaneError(undefined, undefined)
+    expect(result.category).toBe('unknown')
+    expect(result.confidence).toBe('heuristic')
+  })
+
+  it('returns unknown/heuristic for an empty error string', () => {
+    const result = classifyLaneError('', 'RED')
+    expect(result.category).toBe('unknown')
+    expect(result.confidence).toBe('heuristic')
+  })
+})

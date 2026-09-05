@@ -31,3 +31,48 @@ describe('datum-tdd-act-triage — accurate filed count/log', () => {
     expect(src).toMatch(/\[triage\] (Skipped|Duplicate)/i)
   })
 })
+
+// #387/#392 postmortem: the LLM triage prompt re-guessed a category the
+// pipeline had already determined deterministically from a machine-readable
+// error prefix, and twice filed a confidently wrong issue. classifyLaneError
+// must run BEFORE the agent() call, its deterministic result must be threaded
+// into the prompt as a given (not a suggestion) and into the filed issue's
+// label, dependency failures must never be filed, and the prompt must warn
+// against diagnosing lanes from the ROOT checkout.
+describe('datum-tdd-act-triage — deterministic pre-classification (#387/#392)', () => {
+  it('imports and calls classifyLaneError from the shared triage-classify module', () => {
+    expect(src).toMatch(/import\s*\{\s*classifyLaneError/)
+    expect(src).toMatch(/from\s+'\.\/shared\/triage-classify'/)
+    expect(src).toMatch(/classifyLaneError\(/)
+  })
+
+  it('classifies every failure before the LLM triage agent() call runs', () => {
+    const classifyIdx = src.indexOf('classifyLaneError(')
+    const agentCallIdx = src.indexOf("label: 'triage'")
+    expect(classifyIdx).toBeGreaterThan(-1)
+    expect(agentCallIdx).toBeGreaterThan(-1)
+    expect(classifyIdx).toBeLessThan(agentCallIdx)
+  })
+
+  it('skips filing for dependency-classified failures instead of asking the LLM to diagnose them', () => {
+    expect(src).toMatch(/dependency/)
+    expect(src).toMatch(/triageableFailures|nonDependency/i)
+  })
+
+  it('threads the deterministic category into the prompt as a given, not a request to reclassify', () => {
+    expect(src.toLowerCase()).toMatch(/categor(y|ies) already determined/)
+    expect(src.toLowerCase()).toMatch(/do not reclassify/)
+  })
+
+  it('uses the deterministic classifier result — not the model output — for the filed issue label', () => {
+    // The label must be built from a `category` variable derived from the
+    // classification, not straight from `issue.category`.
+    expect(src).toMatch(/const category = \(cls[\s\S]{0,120}\)\s*\n\s*\?\s*CATEGORY_LABEL/)
+    expect(src).toMatch(/`datum-bug,\$\{category\}`/)
+  })
+
+  it('warns the model never to inspect the ROOT checkout to diagnose a lane (the #387 failure mode)', () => {
+    expect(src.toUpperCase()).toMatch(/NEVER INSPECT THE ROOT CHECKOUT/)
+    expect(src).toMatch(/#387/)
+  })
+})
