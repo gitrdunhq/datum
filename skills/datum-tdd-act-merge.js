@@ -239,12 +239,15 @@ fi`,
       tolerant: true
     });
   }
-  steps2.push({
-    name: "cleanup",
-    command: `datum worktrees cleanup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)}`,
-    tolerant: true
-  });
+  steps2.push(...cleanupSteps(o.batchRunId, o.epicBranch));
   return steps2;
+}
+function cleanupSteps(batchRunId, epicBranch) {
+  return [{
+    name: "cleanup",
+    command: `datum worktrees cleanup --run-id ${q(batchRunId)} --epic-branch ${q(epicBranch)}`,
+    tolerant: true
+  }];
 }
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 

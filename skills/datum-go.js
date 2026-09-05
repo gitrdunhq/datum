@@ -306,6 +306,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -442,6 +445,13 @@ function fencedScript(rendered) {
   return m[1];
 }
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+function cleanupSteps(batchRunId, epicBranch) {
+  return [{
+    name: "cleanup",
+    command: `datum worktrees cleanup --run-id ${q(batchRunId)} --epic-branch ${q(epicBranch)}`,
+    tolerant: true
+  }];
+}
 function actStartSteps(o) {
   const steps = [];
   if (o.branch === "init") {
@@ -529,6 +539,65 @@ function laneStateReadPrompt(vars) {
 }
 function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
+}
+
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
+function readAgentTypeConfig(cfg) {
+  const o = cfg && typeof cfg === "object" ? cfg : {};
+  return {
+    agentTypes: o.agent_types !== false,
+    hooksInstalled: o.hooks_installed === true
+  };
+}
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
+}
+function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
+}
+function agentTypeArgs() {
+  return { ...state };
+}
+
+// skills/src/shared/agents.ts
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
 }
 
 // skills/src/shared/pipeline-state.ts
@@ -683,48 +752,6 @@ function newEpicBootstrapFromSteps(result, slug) {
   return { ok: true, epicBranch, error: "" };
 }
 var NO_FINGERPRINT_WARNING = 'args.configFingerprint not set \u2014 on Workflow resume the cached config read is replayed and a config edit is NOT picked up (#354). Launch with args: { ..., configFingerprint: "<output of `datum config-fingerprint`>" }.';
-
-// skills/src/shared/agent-types.ts
-var AGENT_TYPE_TABLE = {
-  red: "datum-red",
-  green: "datum-green",
-  refactor: "datum-refactor",
-  skeptic: "datum-skeptic",
-  reflect: "datum-reflect",
-  docs: "datum-docs",
-  reader: "datum-reader",
-  cli: "datum-cli"
-};
-var state = { agentTypes: true, hooksInstalled: false };
-var configured = false;
-function readAgentTypeConfig(cfg) {
-  const o = cfg && typeof cfg === "object" ? cfg : {};
-  return {
-    agentTypes: o.agent_types !== false,
-    hooksInstalled: o.hooks_installed === true
-  };
-}
-function configureAgentTypes(opts) {
-  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
-  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
-  configured = true;
-}
-function stageOpts(stage, extra = {}) {
-  if (!configured) {
-    throw new Error(
-      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
-    );
-  }
-  if (!state.agentTypes) return { ...extra };
-  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
-}
-function bootstrapOpts(stage, extra = {}) {
-  if (!configured) return { ...extra };
-  return stageOpts(stage, extra);
-}
-function agentTypeArgs() {
-  return { ...state };
-}
 
 // skills/src/datum-go.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -937,6 +964,7 @@ if (shouldRun("properties", 2)) {
 log(`[debug] shouldRun act=${shouldRun("act", 3)} startIdx=${startIdx} haltedAt=${haltedAt} activePhases=${JSON.stringify(activePhases)}`);
 if (shouldRun("act", 3)) {
   log("\u2500\u2500 Act \u2500\u2500");
+  let inFlightBatch = null;
   try {
     const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
     const language = globalCfg.language || DEFAULT_CONFIG.language;
@@ -1001,6 +1029,7 @@ if (shouldRun("act", 3)) {
       const batchLaneIds = batches[bi];
       const batchTag = batches.length > 1 ? ` [batch ${bi + 1}/${batches.length}]` : "";
       const batchRunId = batches.length > 1 ? `${runId}-b${bi}` : runId;
+      inFlightBatch = { batchRunId, batchTag, epicBranch };
       if (batches.length > 1) log(`
 === Batch ${bi + 1}/${batches.length}: [${batchLaneIds.join(", ")}] ===`);
       for (const lid of batchLaneIds) {
@@ -1067,6 +1096,7 @@ if (shouldRun("act", 3)) {
           laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) } : null
         }
       );
+      inFlightBatch = null;
       if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
         const failedLane = mergeResult && typeof mergeResult.failedLane === "string" ? mergeResult.failedLane : "";
         const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : "squash-merge step exited non-zero" : "merge workflow returned null";
@@ -1135,6 +1165,15 @@ if (shouldRun("act", 3)) {
     log(`[warn] act_phase_failed: ${message}`);
     haltedAt = "act";
     lastResult = { failed: 1, failedLanes: [], error: message };
+    if (inFlightBatch) {
+      const { batchRunId, batchTag, epicBranch } = inFlightBatch;
+      try {
+        const cleanup = await runBatch(cleanupSteps(batchRunId, epicBranch), stageOpts("cli", { label: `cleanup-after-crash${batchTag}`, phase: "Act", model: model("fast") }));
+        log(`  cleanup${batchTag}: ${stepStdout(cleanup, "cleanup") || describeFailure(cleanup, "cleanup")}`);
+      } catch (cleanupExc) {
+        log(`[warn] cleanup_after_crash_failed${batchTag}: ${cleanupExc.message}`);
+      }
+    }
   }
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);

@@ -298,6 +298,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -434,6 +437,13 @@ function fencedScript(rendered) {
   return m[1];
 }
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+function cleanupSteps(batchRunId, epicBranch2) {
+  return [{
+    name: "cleanup",
+    command: `datum worktrees cleanup --run-id ${q(batchRunId)} --epic-branch ${q(epicBranch2)}`,
+    tolerant: true
+  }];
+}
 function actStartSteps(o) {
   const steps = [];
   if (o.branch === "init") {
@@ -523,33 +533,6 @@ function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
 }
 
-// skills/src/shared/config-steps.ts
-var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";
-function configReadSteps() {
-  return [
-    { name: "repo-config", command: "cat .datum/config.json" },
-    { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
-  ];
-}
-function configFromSteps(result) {
-  if (result.missing || result.failed) {
-    throw new Error(MISSING_CONFIG_MESSAGE);
-  }
-  let repoCfgParsed;
-  try {
-    repoCfgParsed = JSON.parse(stepStdout(result, "repo-config") || "");
-  } catch {
-    throw new Error(MISSING_CONFIG_MESSAGE);
-  }
-  let globalCfgParsed = {};
-  try {
-    globalCfgParsed = JSON.parse(stepStdout(result, "global-config") || "{}");
-  } catch {
-    globalCfgParsed = {};
-  }
-  return mergeConfig(globalCfgParsed, repoCfgParsed);
-}
-
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -590,6 +573,50 @@ function bootstrapOpts(stage, extra = {}) {
 }
 function agentTypeArgs() {
   return { ...state };
+}
+
+// skills/src/shared/agents.ts
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  return result;
+}
+
+// skills/src/shared/config-steps.ts
+var MISSING_CONFIG_MESSAGE = "missing .datum/config.json \u2014 run datum init first";
+function configReadSteps() {
+  return [
+    { name: "repo-config", command: "cat .datum/config.json" },
+    { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
+  ];
+}
+function configFromSteps(result) {
+  if (result.missing || result.failed) {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let repoCfgParsed;
+  try {
+    repoCfgParsed = JSON.parse(stepStdout(result, "repo-config") || "");
+  } catch {
+    throw new Error(MISSING_CONFIG_MESSAGE);
+  }
+  let globalCfgParsed = {};
+  try {
+    globalCfgParsed = JSON.parse(stepStdout(result, "global-config") || "{}");
+  } catch {
+    globalCfgParsed = {};
+  }
+  return mergeConfig(globalCfgParsed, repoCfgParsed);
 }
 
 // skills/src/datum-tdd-act.ts
@@ -777,6 +804,12 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       if (results[id] && results[id].status === "completed") continue;
       results[id] = { task_id: id, status: "failed", stage: "CRASH", error: `act_batch_failed: ${message}` };
       if (!failures.includes(id)) failures.push(id);
+    }
+    try {
+      const cleanup = await runBatch(cleanupSteps(batchRunId, epicBranch), stageOpts("cli", { label: `cleanup-after-crash${batchTag}`, phase: "Act", model: model("fast") }));
+      log(`  cleanup${batchTag}: ${stepStdout(cleanup, "cleanup") || describeFailure(cleanup, "cleanup")}`);
+    } catch (cleanupExc) {
+      log(`[warn] cleanup_after_crash_failed${batchTag}: ${cleanupExc.message}`);
     }
   }
 }
