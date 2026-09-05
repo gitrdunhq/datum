@@ -1030,7 +1030,6 @@ var routingWritten = writeFileFromSteps(parseBatchResult(
   routingSteps
 ), { path: ".datum/routing.json", expectedSha: writeFileBlobSha(routingJson), prefix: "routing" });
 if (!routingWritten.ok) throw new Error(routingWritten.error);
-await commitPlanFiles([".datum/routing.json"], "plan: triage decision", "commit-routing");
 var triageGateSteps = gateSteps("triage", "");
 var triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts("cli", { label: "gate-triage", model: model("fast") })));
 if (!triageGate.passed) throw new Error(`Triage gate failed \u2014 routing.json rejected: ${triageGate.message || "no message"}`);
