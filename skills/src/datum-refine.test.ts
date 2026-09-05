@@ -26,18 +26,48 @@ describe('TICKET.md-not-found error is actionable about ignored issueNumber/free
   })
 
   it('the not-found error mentions issueNumber when one was passed and ignored', () => {
-    const throwBlock = src.slice(src.indexOf('ticket_exists || !ticketContent'))
+    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'))
     expect(throwBlock).toMatch(/issueNumber/)
   })
 
   it('the not-found error mentions freeText when one was passed and ignored', () => {
-    const throwBlock = src.slice(src.indexOf('ticket_exists || !ticketContent'))
+    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'))
     expect(throwBlock).toMatch(/freeText/)
   })
 
   it('still gives the plain "run datum init first" guidance when neither was passed', () => {
-    const throwBlock = src.slice(src.indexOf('ticket_exists || !ticketContent'), src.indexOf('ticket_exists || !ticketContent') + 800)
+    const throwBlock = src.slice(src.indexOf('if (!ticketContent)'), src.indexOf('if (!ticketContent)') + 800)
     expect(throwBlock).toMatch(/datum init/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix: the Read phase used to hand an LLM `reader` agent
+// util-read-context.md and trust its echoed JSON verbatim for TICKET.md's
+// full contents — an LLM echoing a file is lossy (a 90 KB relay came back as
+// 6.7 KB of "successful" abridged content in dogfooding), and nothing
+// verified it. Mirrors the fix already applied to datum-plan.ts's
+// context_files relay (commit a7093d2): one batched cat + wc -c per file,
+// verified with Buffer.byteLength before the file's content is trusted.
+// ---------------------------------------------------------------------------
+
+describe('datum-refine — TICKET.md relay is a byte-verified batch, not an LLM echo', () => {
+  it('no longer imports the util-read-context.md LLM relay prompt', () => {
+    expect(src).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
+  })
+
+  it('reads TICKET.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
+    expect(src).toMatch(/readContextSteps\(/)
+    expect(src).toMatch(/contextFromSteps\(/)
+  })
+
+  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
+    expect(src).toMatch(/context_relay_mismatch/)
+  })
+
+  it('runs the read batch through the deterministic cli stage, not a JSON-echoing agent call', () => {
+    expect(src).toMatch(/batchCommandPrompt\(readSteps\)/)
+    expect(src).toMatch(/parseBatchResult\(/)
   })
 })
 

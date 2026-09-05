@@ -5,9 +5,9 @@ import refineClassifyTemplate from './prompts/refine-classify.md'
 import refineScanTemplate from './prompts/refine-scan.md'
 import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
-import readContextTemplate from './prompts/util-read-context.md'
 import { gateSteps, parseGateResult } from './shared/gate'
-import { batchCommandPrompt, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, parseBatchResult, stepStdout } from './shared/batch'
+import { readContextSteps, contextFromSteps } from './shared/lane-steps'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -37,34 +37,41 @@ const yolo: boolean = !!a.yolo
 const issueNumber: number | null = typeof a.issueNumber === 'number' ? a.issueNumber : null
 const freeText: string = typeof a.freeText === 'string' ? a.freeText : ''
 
-// ── Read (collapsed: read-context + read-ticket into one agent) ──
+// ── Read (deterministic batch: branch/epic-dir + byte-verified TICKET.md
+// relay, replacing the LLM `reader` echo of util-read-context.md — an LLM
+// echoing a file is lossy (a 90 KB relay came back as 6.7 KB of "successful"
+// abridged content in dogfooding), and nothing verified it. Mirrors the fix
+// already applied to datum-plan.ts's context_files relay (commit a7093d2). ──
 
 phase('Read')
 
-const readResult = await agent(
-  renderPrompt(readContextTemplate, {
-    extraFields: `3. "ticket_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/TICKET.md exists (true/false)
-4. "ticket_content": if ticket_exists, read the full file contents, else null
-5. "spec_exists": whether docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md exists (true/false)
-6. "current_state": read CURRENT_STATE.md if it exists (first 50 lines), else null
-7. "timestamp": output of \`date +%Y-%m-%dT%H:%M:%S\`
-8. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`,
-  }),
-  { label: 'read-context', model: model('fast') },
+const TICKET_REL = 'docs/epics/$__eb/TICKET.md'
+const readSteps = readContextSteps({
+  files: [TICKET_REL],
+  extraCommands: [
+    { name: 'timestamp', command: 'date +%Y-%m-%dT%H:%M:%S' },
+    { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
+  ],
+})
+const readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), stageOpts('cli', { label: 'read-context', model: model('fast') })),
+  readSteps,
 )
+if (readBatch.missing) {
+  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
+}
+const ctx = contextFromSteps(readBatch, [TICKET_REL])
+for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
-const ctx = typeof readResult === 'string'
-  ? parseAgentJson(readResult as string, {} as Record<string, unknown>)
-  : readResult
+// #368: args (from datum-go) win, else the agent_types field the batch pulled from config.
+const agentTypesRaw = (stepStdout(readBatch, 'agent-types') || '').trim()
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: agentTypesRaw !== 'false' })
 
-// #368: args (from datum-go) win, else the agent_types field read-context pulled from config.
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
-
-const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
+const epicDir: string = ctx.epicDir
 const ticketPath: string = `${epicDir}/TICKET.md`
-const ticketContent: string = ctx.ticket_content || ''
+const ticketContent: string = ctx.contents[TICKET_REL] || ''
 
-if (!ctx.ticket_exists || !ticketContent) {
+if (!ticketContent) {
   const ignoredInputHint = issueNumber
     ? ` You passed issueNumber ${issueNumber}, but datum-go does not yet bootstrap TICKET.md from a GitHub issue automatically — that input was ignored. Run \`datum ticket-from-issue ${issueNumber}\` to fetch the issue and bootstrap TICKET.md from it, then re-run \`datum go\` with no args.`
     : freeText
@@ -146,7 +153,8 @@ const scanResults: string = typeof scanRaw === 'string' ? scanRaw : JSON.stringi
 phase('Write')
 
 // Agent 1: write SPEC + QUESTIONS + commit both
-const today = ctx.timestamp ? ctx.timestamp.slice(0, 10) : '(date unavailable)'
+const timestamp: string = stepStdout(readBatch, 'timestamp') || ''
+const today = timestamp ? timestamp.slice(0, 10) : '(date unavailable)'
 
 await agent(
   `You have TWO tasks. Do them in order.

@@ -25,49 +25,61 @@ describe('datum-properties — args parsing', () => {
 })
 
 describe('datum-properties — agent_types precedence (#368)', () => {
-  it('args.agentTypes (from datum-go) wins over the config.json agent_types field read via read-context', () => {
+  it('args.agentTypes (from datum-go) wins over the config.json agent_types field read via the deterministic batch', () => {
     const idx = propertiesSrc.indexOf('configureAgentTypes(')
     expect(idx).toBeGreaterThan(-1)
     const call = propertiesSrc.slice(idx, propertiesSrc.indexOf('\n', idx))
     expect(call).toMatch(/a\.agentTypes/)
-    expect(call).toMatch(/ctx\.agent_types/)
+    expect(call).toMatch(/agentTypesRaw/)
   })
 })
 
 describe('datum-properties — Read phase guards', () => {
   it('throws when SPEC.md is missing, telling the operator to run datum-refine first', () => {
-    expect(propertiesSrc).toMatch(/if \(!ctx\.spec_content\) throw new Error\(.*datum-refine/)
+    expect(propertiesSrc).toMatch(/if \(!specContent\) throw new Error\(.*datum-refine/)
   })
   it('throws when TASKS.md is missing, telling the operator to run datum-plan first', () => {
-    expect(propertiesSrc).toMatch(/if \(!ctx\.tasks_content\) throw new Error\(.*datum-plan/)
+    expect(propertiesSrc).toMatch(/if \(!tasksContent\) throw new Error\(.*datum-plan/)
   })
 })
 
 // ---------------------------------------------------------------------------
-// BUG: every other phase script that reads ctx.epic_dir off the read-context
-// agent's JSON falls back to `docs/epics/${ctx.branch || 'unknown'}` when
-// epic_dir is missing/empty (see datum-plan.ts and datum-refine.ts, both of
-// which declare `const epicDir: string = ctx.epic_dir || \`docs/epics/...\``).
-// datum-properties.ts is the only consumer of that same field that uses
-// `ctx.epic_dir` raw. A read-context agent that returns valid JSON with
-// spec_content/tasks_content present but epic_dir empty or omitted (a
-// realistic partial-output failure, not a contrived one) makes this phase
-// write PROPERTIES.md to "/PROPERTIES.md" or "undefined/PROPERTIES.md"
-// instead of the epic directory, and commit whatever git happens to find
-// there — silently, with no thrown error.
+// Determinism fix: the Read phase used to hand an LLM `reader` agent
+// util-read-context.md and trust its echoed JSON verbatim for SPEC.md's and
+// TASKS.md's full contents — an LLM echoing a file is lossy (a 90 KB relay
+// came back as 6.7 KB of "successful" abridged content in dogfooding), and
+// nothing verified it. Mirrors the fix already applied to datum-plan.ts's
+// context_files relay (commit a7093d2): one batched cat + wc -c per file,
+// verified with Buffer.byteLength before the file's content is trusted.
+// epicDir itself is now always derived deterministically by the epic-dir
+// batch step (readContextSteps/contextFromSteps), so the old missing-fallback
+// bug (ctx.epic_dir used raw, no `|| docs/epics/${ctx.branch}` guard) no
+// longer has a code path where it could recur.
 // ---------------------------------------------------------------------------
 
-describe('datum-properties — epic_dir fallback (bug fix)', () => {
-  it('declares an epicDir constant with the same fallback used by datum-plan.ts / datum-refine.ts', () => {
-    expect(propertiesSrc).toMatch(/const epicDir: string = ctx\.epic_dir \|\| `docs\/epics\/\$\{ctx\.branch \|\| 'unknown'\}`/)
+describe('datum-properties — SPEC.md/TASKS.md relay is a byte-verified batch, not an LLM echo', () => {
+  it('no longer imports the util-read-context.md LLM relay prompt', () => {
+    expect(propertiesSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
   })
 
-  it('writes and commits PROPERTIES.md via the epicDir constant, not raw ctx.epic_dir', () => {
-    expect(propertiesSrc).not.toMatch(/\$\{ctx\.epic_dir\}\/PROPERTIES\.md/)
+  it('reads SPEC.md/TASKS.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
+    expect(propertiesSrc).toMatch(/readContextSteps\(/)
+    expect(propertiesSrc).toMatch(/contextFromSteps\(/)
+  })
+
+  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
+    expect(propertiesSrc).toMatch(/context_relay_mismatch/)
+  })
+
+  it('derives epicDir from the batch result, not a hand-rolled fallback expression', () => {
+    expect(propertiesSrc).toMatch(/const epicDir: string = ctx\.epicDir/)
+  })
+
+  it('writes and commits PROPERTIES.md via the epicDir constant', () => {
     expect(propertiesSrc).toMatch(/\$\{epicDir\}\/PROPERTIES\.md/)
   })
 
-  it('the epicDir fallback is declared before it is used in the derive/commit prompt', () => {
+  it('epicDir is declared before it is used in the derive/commit prompt', () => {
     const declIdx = propertiesSrc.indexOf('const epicDir: string =')
     const useIdx = propertiesSrc.indexOf('${epicDir}/PROPERTIES.md')
     expect(declIdx).toBeGreaterThan(-1)

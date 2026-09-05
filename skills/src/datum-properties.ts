@@ -1,9 +1,9 @@
-import { renderPrompt, parseAgentJson } from './shared/utils'
+import { renderPrompt } from './shared/utils'
 import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
-import readContextTemplate from './prompts/util-read-context.md'
 import { gateSteps, parseGateResult } from './shared/gate'
-import { batchCommandPrompt, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, parseBatchResult, stepStdout } from './shared/batch'
+import { readContextSteps, contextFromSteps } from './shared/lane-steps'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -22,32 +22,46 @@ const a = ((typeof args === 'string')
   : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
 
-// ── Read ──
+// ── Read (deterministic batch: branch/epic-dir + byte-verified SPEC.md /
+// TASKS.md relay, replacing the LLM `reader` echo of util-read-context.md —
+// an LLM echoing a file is lossy (a 90 KB relay came back as 6.7 KB of
+// "successful" abridged content in dogfooding), and nothing verified it.
+// Mirrors the fix already applied to datum-plan.ts's context_files relay
+// (commit a7093d2). ──
 
 phase('Read')
 
-const context = await agent(
-  renderPrompt(readContextTemplate, {
-    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "tasks_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md
-5. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)`,
-  }),
-  { label: 'read-context', model: model('fast') },
+const SPEC_REL = 'docs/epics/$__eb/SPEC.md'
+const TASKS_REL = 'docs/epics/$__eb/TASKS.md'
+const readSteps = readContextSteps({
+  files: [SPEC_REL, TASKS_REL],
+  extraCommands: [
+    { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
+  ],
+})
+const readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), stageOpts('cli', { label: 'read-context', model: model('fast') })),
+  readSteps,
 )
+if (readBatch.missing) {
+  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
+}
+const ctx = contextFromSteps(readBatch, [SPEC_REL, TASKS_REL])
+for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
-const ctx = typeof context === 'string'
-  ? parseAgentJson(context as string, {} as Record<string, unknown>)
-  : context
+// #368: args (from datum-go) win, else the agent_types field the batch pulled from config.
+const agentTypesRaw = (stepStdout(readBatch, 'agent-types') || '').trim()
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: agentTypesRaw !== 'false' })
 
-// #368: args (from datum-go) win, else the agent_types field read-context pulled from config.
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
+const specContent: string = ctx.contents[SPEC_REL] || ''
+const tasksContent: string = ctx.contents[TASKS_REL] || ''
 
-if (!ctx.spec_content) throw new Error('SPEC.md not found. Run datum-refine first.')
-if (!ctx.tasks_content) throw new Error('TASKS.md not found. Run datum-plan first.')
+if (!specContent) throw new Error('SPEC.md not found. Run datum-refine first.')
+if (!tasksContent) throw new Error('TASKS.md not found. Run datum-plan first.')
 
-const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
+const epicDir: string = ctx.epicDir
 
-log(`Branch: ${ctx.branch}, SPEC: ${ctx.spec_content.split('\n').length} lines`)
+log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 
 // ── Derive + commit + gate (collapsed: derive writes + commits + gates in 2 agents) ──
 
@@ -55,7 +69,7 @@ phase('Derive')
 
 // Derive agent also writes and commits (collapsed commit-properties)
 await agent(
-  renderPrompt(propertiesDeriveTemplate, { specContent: ctx.spec_content, tasksContent: ctx.tasks_content })
+  renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent })
   + `\n\nAFTER WRITING THE PROPERTIES CONTENT:
 1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)
 2. Commit: git add "${epicDir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
