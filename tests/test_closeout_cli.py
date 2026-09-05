@@ -24,6 +24,7 @@ CLOSEOUT_COMMANDS = [
     "closeout-collect-token-metrics",
     "closeout-collate",
     "closeout-archive",
+    "closeout-file-followups",
 ]
 
 

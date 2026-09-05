@@ -34,6 +34,7 @@ MODULE_WRAPPERS: dict[str, str] = {
     "closeout-collect-git": "datum.closeout.collect_git",
     "closeout-collect-tasks": "datum.closeout.collect_tasks",
     "closeout-collect-token-metrics": "datum.closeout.collect_token_metrics",
+    "closeout-file-followups": "datum.closeout.file_followups",
 }
 # `datum dev <name>` → scripts/<file>; flags are whatever the script parses.
 SCRIPT_WRAPPERS: dict[str, Path] = {

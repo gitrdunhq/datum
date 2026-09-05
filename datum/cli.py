@@ -2747,6 +2747,7 @@ _CLOSEOUT_MODULES = {
     "closeout-collect-token-metrics": "collect_token_metrics",
     "closeout-collate": "collate",
     "closeout-archive": "archive",
+    "closeout-file-followups": "file_followups",
 }
 
 

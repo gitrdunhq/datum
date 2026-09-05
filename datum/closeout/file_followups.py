@@ -24,15 +24,35 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    followups_path = Path("follow-ups.json")
-    if not followups_path.exists():
+    # Sources, all under the run directory: the synthesis agent's manifest
+    # (skills/src/prompts/closeout-synthesize.md) and one file per lane the
+    # Act phase wrote for skeptic minority findings (datum-tdd-act-lane.ts).
+    run_dir = marker.parent
+    followups_path = run_dir / "follow-ups.json"
+    followups: list = []
+    if followups_path.exists():
+        loaded = json.loads(followups_path.read_text())
+        followups.extend(loaded if isinstance(loaded, list) else loaded.get("items", []))
+    lane_dir = run_dir / "follow-ups"
+    if lane_dir.is_dir():
+        for lane_file in sorted(lane_dir.glob("*.json")):
+            loaded = json.loads(lane_file.read_text())
+            followups.extend(loaded if isinstance(loaded, list) else loaded.get("items", []))
+    if not followups:
         marker.write_text("done")
-        print(json.dumps({"ok": True, "filed": 0, "reason": "no follow-ups.json"}))
+        print(json.dumps({"ok": True, "filed": 0, "reason": "no follow-ups"}))
         return
-
-    followups = json.loads(followups_path.read_text())
-    if not isinstance(followups, list):
-        followups = followups.get("items", [])
+    # dedup_key is the idempotency key across sources and re-runs.
+    seen: set = set()
+    unique: list = []
+    for item in followups:
+        key = item.get("dedup_key") if isinstance(item, dict) else None
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        unique.append(item)
+    followups = unique
 
     invalid: list[dict] = []
     invalid_items: list[dict] = []
