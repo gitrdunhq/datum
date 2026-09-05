@@ -11,6 +11,12 @@ DOMAIN FOCUS — {{domainFocus}}
 For each finding provide:
 - id: {{domainPrefix}}-NNN
 - severity: critical / high / medium / low / info
+
+SEVERITY RUBRIC (high and critical block the merge, so calibrate to the project's stated scale):
+- critical: wrong results, data loss, or a security hole on the documented happy path
+- high: a defect or cost that is MEASURABLE at the scale the spec states (its NFR budget, or absent one, the data sizes visible in SPEC.md/PROPERTIES.md). A per-frame scan over forty items is not high; the same scan over a million rows is.
+- medium: real, but only under inputs the spec does not promise, or with a cheap workaround
+- low / info: style, clarity, hygiene
 - file: the path
 - line: the line number (integer)
 - description: what is wrong

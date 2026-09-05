@@ -321,6 +321,45 @@ _HIGH_OR_CRITICAL_RE = re.compile(
 )
 
 
+_ACCEPT_LINE_RE = re.compile(r"^\s*[-*]?\s*ACCEPT\s+([A-Za-z]+-\d+)\s*:\s*(.*?)\s*$")
+_FINDING_ROW_RE = re.compile(
+    r"^\|\s*([A-Za-z]+-\d+)\s*\|\s*\**\s*(critical|high|medium|low|info)\b",
+    re.IGNORECASE,
+)
+
+
+def accepted_review_findings(response_path: Path) -> dict[str, str]:
+    """Finding id → reason from REVIEW-RESPONSE.md (`- ACCEPT <ID>: <reason>`
+    lines). An ACCEPT with no reason is not an accept: the whole point is a
+    recorded, reasoned operator decision."""
+    if not response_path.exists():
+        return {}
+    accepted: dict[str, str] = {}
+    for line in response_path.read_text().splitlines():
+        match = _ACCEPT_LINE_RE.match(line)
+        if match and match.group(2).strip():
+            accepted[match.group(1).upper()] = match.group(2).strip()
+    return accepted
+
+
+def _blocking_review_findings(content: str, accepted: dict[str, str]) -> list[str]:
+    """Ids of high/critical findings not accepted, in report order. A report
+    with no id-labelled table rows falls back to the whole-content severity
+    scan and reports a single "(unlabelled)" blocker."""
+    rows = [
+        (m.group(1).upper(), m.group(2).lower())
+        for m in (_FINDING_ROW_RE.match(line.strip()) for line in content.splitlines())
+        if m
+    ]
+    if rows:
+        return [
+            fid
+            for fid, sev in rows
+            if sev in ("high", "critical") and fid not in accepted
+        ]
+    return ["(unlabelled)"] if _report_has_high_or_critical(content) else []
+
+
 def _report_has_high_or_critical(content: str) -> bool:
     """Does REVIEW-REPORT.md carry a high/critical finding, however the
     reviewer spelled the severity (\"Severity: high\", \"Priority: High\",
@@ -1002,7 +1041,14 @@ def gate_review(yolo: bool, config: dict) -> None:
         fail("REVIEW-REPORT.md not found")
 
     content = report_path.read_text()
-    if _report_has_high_or_critical(content):
+    # Operator-accepted findings (docs/epics/<branch>/REVIEW-RESPONSE.md,
+    # written by `datum review-accept <ID> --reason ...`) do not block: an
+    # LLM lens's severity calibration must never be a hard stop with no
+    # reasoned, recorded way past it (elonchesd epic-1: five "high" findings
+    # were per-frame scans over forty items).
+    accepted = accepted_review_findings(report_path.parent / "REVIEW-RESPONSE.md")
+    blocking = _blocking_review_findings(content, accepted)
+    if blocking:
         # Satisfaction Loop Logic
         state_path = Path(".datum/state.json")
         run_id = "default"
@@ -1021,30 +1067,16 @@ def gate_review(yolo: bool, config: dict) -> None:
                 hard=True,
             )
         else:
-            print(
-                f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package..."
-            )
-            # No producer writes review-packets/unified.json (see note above),
-            # so only attempt remediation when both the real script (it lives
-            # at datum/remediate.py, not the scripts/remediate.py the old code
-            # referenced) and a findings file actually exist.
-            remediate_script = Path("datum/remediate.py")
-            findings_path = Path(f".datum/runs/{run_id}/review-packets/unified.json")
-            if remediate_script.exists() and findings_path.exists():
-                subprocess.run(
-                    [
-                        sys.executable,
-                        str(remediate_script),
-                        "--run-id",
-                        run_id,
-                        "--findings",
-                        str(findings_path),
-                    ]
-                )
+            # Nothing produces a remediation package in a consumer repo (the
+            # old message claimed one was generated). Say what blocks, by id,
+            # and how to record an accept.
             iter_file.parent.mkdir(parents=True, exist_ok=True)
             iter_file.write_text(str(iteration + 1))
+            ids = ", ".join(blocking) if blocking != ["(unlabelled)"] else "unlabelled"
             fail(
-                f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry."
+                f"REVIEW-REPORT.md contains high-severity findings (iteration {iteration}/3): {ids}. "
+                "Fix them and re-run review, or record a reasoned accept per finding with "
+                '`datum review-accept <ID> --reason "..."` (writes REVIEW-RESPONSE.md next to the report).'
             )
 
     policy = gate_policy(config, "review_human_approval")
@@ -1061,6 +1093,11 @@ def gate_review(yolo: bool, config: dict) -> None:
         )
         sys.exit(1)
 
+    if accepted:
+        pass_gate(
+            f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: "
+            f"{', '.join(sorted(accepted))})"
+        )
     pass_gate("Review gate passed")
 
 

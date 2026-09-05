@@ -176,6 +176,99 @@ def test_remediation_skipped_when_no_producer_artifacts_exist(epic_repo, capsys)
     assert "high-severity findings" in _fail_json(capsys)["message"]
 
 
+# ── operator-accepted findings (elonchesd, epic-1 review iteration 1) ─────
+# Five of six "high" findings were per-frame scans over forty items — an LLM
+# lens's severity calibration was a hard block with no way to record a
+# reasoned accept. And the gate claimed "Remediation Package generated"
+# while nothing produces one in a consumer repo.
+
+REPORT_TABLE = (
+    "# Review Report\n\n## Findings\n\n"
+    "| ID | Severity | File | Line | Description | Suggestion |\n"
+    "|---|---|---|---|---|---|\n"
+    "| CORR-001 | **high** | src/reducer.ts | 10 | promote accepts any toType | check |\n"
+    "| PERF-001 | **high** | src/render.ts | 20 | Array.find per frame | index |\n"
+    "| PERF-005 | **high** | src/engine.ts | 30 | O(256n) lookup | index |\n"
+    "| ARCH-001 | **medium** | src/x.ts | 1 | small | small |\n"
+)
+
+
+def test_unaccepted_high_findings_fail_by_id_and_point_at_review_accept(
+    epic_repo, capsys
+):
+    _write_report(epic_repo, REPORT_TABLE)
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert "Remediation Package" not in out
+    message = json.loads([line for line in out.splitlines() if line.strip()][-1])[
+        "message"
+    ]
+    assert "high-severity findings" in message
+    assert "CORR-001, PERF-001, PERF-005" in message
+    assert "datum review-accept" in message
+
+
+def test_accepted_findings_are_ignored_and_the_pass_names_them(epic_repo, capsys):
+    _write_report(epic_repo, REPORT_TABLE)
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "# Review Response\n\n"
+        "- ACCEPT PERF-001: 16x16 board, at most 40 pieces, microseconds per frame\n"
+        "- ACCEPT PERF-005: same scale argument, engine hot path not measurable\n"
+        "- ACCEPT CORR-001: fixed in 1a2b3c4\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 0
+    result = _fail_json(capsys)
+    assert result["passed"] is True
+    assert result["message"] == (
+        "Review gate passed (3 accepted by REVIEW-RESPONSE.md: CORR-001, PERF-001, PERF-005)"
+    )
+
+
+def test_an_accept_without_a_reason_does_not_count(epic_repo, capsys):
+    _write_report(epic_repo, REPORT_TABLE)
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- ACCEPT CORR-001:\n- ACCEPT PERF-001: fine\n- ACCEPT PERF-005: fine\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 1
+    assert "CORR-001" in _fail_json(capsys)["message"]
+
+
+def test_review_accept_cli_writes_the_response_file_idempotently(epic_repo):
+    from typer.testing import CliRunner
+
+    from datum.cli import app
+
+    runner = CliRunner()
+    first = runner.invoke(
+        app, ["review-accept", "PERF-001", "--reason", "40 pieces, microseconds"]
+    )
+    assert first.exit_code == 0, first.output
+    again = runner.invoke(
+        app, ["review-accept", "PERF-001", "--reason", "40 pieces, microseconds"]
+    )
+    assert again.exit_code == 0, again.output
+    text = (epic_repo / "REVIEW-RESPONSE.md").read_text()
+    assert text.count("ACCEPT PERF-001:") == 1
+    assert "40 pieces, microseconds" in text
+    assert gate.accepted_review_findings(epic_repo / "REVIEW-RESPONSE.md") == {
+        "PERF-001": "40 pieces, microseconds"
+    }
+    empty = runner.invoke(app, ["review-accept", "PERF-002", "--reason", "  "])
+    assert empty.exit_code == 1
+
+
 # ── human-approval policy parity with the other gates ────────────────────
 
 

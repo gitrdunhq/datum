@@ -2240,6 +2240,61 @@ def worktrees_list_cmd(
     typer.echo(json.dumps(worktrees, indent=2))
 
 
+@app.command(name="review-accept")
+def review_accept_cmd(
+    finding_id: str = typer.Argument(
+        ..., help="Finding id from REVIEW-REPORT.md, e.g. PERF-001"
+    ),
+    reason: str = typer.Option(
+        ..., "--reason", help="Why this finding is accepted as-is (required, recorded)"
+    ),
+):
+    """Record a reasoned operator accept for one review finding.
+
+    Appends `- ACCEPT <ID>: <reason>` to docs/epics/<branch>/REVIEW-RESPONSE.md
+    (idempotent per id). `datum gate review` ignores accepted ids when it
+    counts blocking high/critical findings, and names them in its pass
+    message. An LLM reviewer's severity calibration is never a hard stop
+    with no recorded way past it.
+    """
+    from datum.gate import resolve_epic_dir
+
+    fid = finding_id.strip().upper()
+    if not re.fullmatch(r"[A-Z]+-\d+", fid):
+        typer.echo(
+            json.dumps(
+                {"error": f"finding id must look like PERF-001, got {finding_id!r}"}
+            )
+        )
+        raise typer.Exit(code=1)
+    why = " ".join(reason.split())
+    if not why:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "--reason must not be empty: an accept is a recorded decision"
+                }
+            )
+        )
+        raise typer.Exit(code=1)
+    epic_dir = resolve_epic_dir()
+    epic_dir.mkdir(parents=True, exist_ok=True)
+    response = epic_dir / "REVIEW-RESPONSE.md"
+    lines = (
+        response.read_text().splitlines()
+        if response.exists()
+        else ["# Review Response", ""]
+    )
+    kept = [
+        ln
+        for ln in lines
+        if not re.match(rf"^\s*[-*]?\s*ACCEPT\s+{re.escape(fid)}\s*:", ln)
+    ]
+    kept.append(f"- ACCEPT {fid}: {why}")
+    response.write_text("\n".join(kept).rstrip("\n") + "\n")
+    typer.echo(json.dumps({"accepted": fid, "reason": why, "path": str(response)}))
+
+
 @app.command(name="housekeep-epic")
 def housekeep_epic_cmd(
     epic_branch: str = typer.Argument(
