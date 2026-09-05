@@ -62,7 +62,7 @@ describe('docs workflow result is consumed, not discarded', () => {
   const src = readFileSync(join(__dirname, 'datum-tdd-act.ts'), 'utf8')
 
   it('captures the datum-tdd-act-docs result and surfaces a refused docs commit', () => {
-    expect(src).toMatch(/const docs\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-docs'\) \}/)
+    expect(src).toMatch(/docs\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-docs'\) \}/)
     expect(src).toMatch(/docs[^\n]*committed === false|docs[^\n]*failure_reason/)
   })
 })

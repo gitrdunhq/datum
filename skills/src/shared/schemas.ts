@@ -28,18 +28,6 @@ export const STAGE_RESULT_SCHEMA = {
   required: ['success', 'tests_pass', 'committed'],
 } as const
 
-export const COMMIT_RESULT_SCHEMA = {
-  type: 'object',
-  properties: {
-    committed: { type: 'boolean' },
-    commit_sha: { type: 'string' },
-    files_staged: { type: 'array', items: { type: 'string' } },
-    violations: { type: 'array', items: { type: 'string' } },
-    failure_reason: { type: 'string' },
-  },
-  required: ['committed'],
-} as const
-
 export const REFLECT_SCHEMA = {
   type: 'object',
   properties: {

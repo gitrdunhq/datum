@@ -547,10 +547,19 @@ if (shouldRun('act', 3)) {
 
   // Docs — direct child workflow. Its outcome is surfaced here: a docs-sync
   // that was written but refused at commit used to vanish from the run.
-  const docsResult = await workflow(
-    { scriptPath: sk('datum-tdd-act-docs') },
-    { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs() },
-  ) as DocsResult | null
+  // Fails soft: the lanes are merged by now and the halt record still has to
+  // be written — a docs failure lands in the Act summary, never aborts the
+  // run (wf_b1c88e09-036: a thrown docs child killed datum-go with no summary).
+  let docsResult: DocsResult | null = null
+  try {
+    docsResult = await workflow(
+      { scriptPath: sk('datum-tdd-act-docs') },
+      { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint },
+    ) as DocsResult | null
+  } catch (exc) {
+    log(`[warn] docs_workflow_failed: ${(exc as Error).message} — continuing; docs may be stale or left uncommitted`)
+    docsResult = { synced: false, committed: false, failure_reason: `docs_workflow_failed: ${(exc as Error).message}` } as DocsResult
+  }
   if (docsResult && docsResult.committed === false) {
     log(`[warn] Docs sync wrote [${(docsResult.files || []).join(', ')}] but the commit was refused: ${docsResult.failure_reason || 'unknown'} — the files are left modified in the checkout`)
   }

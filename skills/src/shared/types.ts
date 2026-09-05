@@ -117,6 +117,8 @@ export interface DocsArgs {
   lanePlan: LanePlan
   runId: string
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
 }
 export interface DocsResult {
   synced: boolean
@@ -244,14 +246,6 @@ export interface ContractPreflight {
   needs_write: string[]
   reason: string
   pytest_exit_code?: number | null
-}
-
-export interface CommitResult {
-  committed: boolean
-  commit_sha?: string
-  files_staged?: string[]
-  violations?: string[]
-  failure_reason?: string
 }
 
 export interface ReflectResult {

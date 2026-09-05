@@ -1,7 +1,4 @@
 import { model } from './models'
-import type { TddStage } from './models'
-import { CommitResult } from './types'
-import { COMMIT_RESULT_SCHEMA } from './schemas'
 import { stageOpts } from './agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, type BatchStep } from './batch'
 
@@ -161,84 +158,4 @@ export async function resilientAgent<T = unknown>(
   return lastResult
 }
 
-// ── Git agents (single-writer pattern) ──────────────────────────────────────
-
-export interface CommitStageOptions {
-  /**
-   * 'strict' (default): any modified file outside allowedFiles is a violation
-   * and nothing is committed — right for lane worktrees, where no one but the
-   * agent writes. 'allowed-only': stage and commit only allowedFiles and
-   * ignore every other modified file — right for the ROOT checkout, which
-   * carries the operator's unrelated work in progress (policy chosen with the
-   * eedom dogfooding user after docs-sync commits were refused over WIP in
-   * AGENTS.md/CLAUDE.md).
-   */
-  scope?: 'strict' | 'allowed-only'
-}
-
-export async function commitStage(
-  taskId: string,
-  wt: string,
-  commitPrefix: string,
-  allowedFiles: string[],
-  stage: TddStage | string,
-  opts: CommitStageOptions = {},
-): Promise<CommitResult | null> {
-  const allowedList = allowedFiles.join(', ')
-  const scope = opts.scope ?? 'strict'
-  const verifySteps = scope === 'allowed-only'
-    ? `2. This commit runs in the ROOT checkout, which may carry the operator's unrelated work in progress. IGNORE other modified files entirely — they are NOT violations and must NOT be staged.\n` +
-      `3. Only these files are yours to commit: ${allowedList}. If none of them is modified, return committed=false.\n`
-    : `2. Verify ONLY these files were modified: ${allowedList}\n` +
-      `3. If files outside that list were changed, report them as violations and do NOT commit\n`
-  const basePrompt =
-    `You are a GIT COMMIT agent. You ONLY handle git operations — never edit source files.\n\n` +
-    `TASK:\n` +
-    `1. Run: git -C "${wt}" status --porcelain\n` +
-    verifySteps +
-    `4. Stage the allowed files: git -C "${wt}" add <files>\n` +
-    `5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"\n` +
-    `6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD\n\n` +
-    `CONSTRAINTS:\n` +
-    `- NEVER edit, create, or delete source files — only git operations\n` +
-    `- If there are no changes to commit, return committed=false\n` +
-    `- Use git -C "${wt}" for ALL git commands to enforce directory`
-
-  let result: CommitResult | null = await agent(basePrompt, stageOpts('cli', {
-    label: `git-${stage.toLowerCase()}:${taskId}`,
-    phase: 'Act',
-    model: model('fast'),
-    schema: COMMIT_RESULT_SCHEMA,
-  }))
-
-  if (result && result.violations && result.violations.length > 0) {
-    log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(', ')}`)
-  }
-
-  if (!result || (!result.committed && result.failure_reason)) {
-    log(`[${taskId}] GIT ${stage}: haiku failed (${(result && result.failure_reason) || 'null'}), escalating to sonnet`)
-    result = await agent(
-      basePrompt +
-        `\n\nRETRY CONTEXT: Previous commit attempt failed: ${(result && result.failure_reason) || 'null result'}.\n` +
-        `Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.\n` +
-        `Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.\n` +
-        `If the worktree is in a broken state, report failure_reason with details.`,
-      stageOpts('cli', {
-        label: `git-${stage.toLowerCase()}-fix:${taskId}`,
-        phase: 'Act',
-        model: model('balanced'),
-        schema: COMMIT_RESULT_SCHEMA,
-      }),
-    )
-  }
-
-  if (result && result.committed) {
-    log(`[${taskId}] GIT ${stage} committed: ${result.commit_sha || '(no sha)'}`)
-    log(`[${taskId}]   staged: ${(result.files_staged || []).join(', ') || '(none reported)'}`)
-  } else {
-    log(`[${taskId}] GIT ${stage} FAILED: ${(result && result.failure_reason) || 'no commit after escalation'}`)
-  }
-
-  return result
-}
 

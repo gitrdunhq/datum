@@ -1,7 +1,8 @@
 import { model } from './shared/models'
 import type { DocsArgs, WriteResult } from './shared/types'
-import { WRITE_RESULT_SCHEMA, COMMIT_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
-import { commitStage } from './shared/agents'
+import { WRITE_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 
@@ -13,6 +14,7 @@ export const meta = {
 
 const a = args as DocsArgs
 configureAgentTypes(a.agentTypes || {})
+setBatchCacheKey(a.configFingerprint || '')
 phase('Docs')
 
 let synced = false
@@ -54,20 +56,26 @@ if (a.completedLanes.length === 0) {
         log('Docs: agent reported success but no files_written — skipping commit')
         failureReason = 'docs agent reported success but wrote no files'
       } else {
-        // Root checkout: commit only the docs files, ignore the operator's
-        // unrelated WIP (allowed-only scope). The outcome is surfaced, not
-        // assumed — a refused commit used to be reported as "synced".
-        const commit = await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS', { scope: 'allowed-only' })
-        committed = !!commit?.committed
-        commitSha = commit?.commit_sha
+        // Root checkout: stage and commit ONLY the docs files (the operator's
+        // unrelated WIP stays untouched), as one deterministic batch with the
+        // exact message — no commit agent, no trailers, and the outcome is the
+        // exit code. "Nothing to commit" is a rerun after a landed commit.
+        const commitStepList = commitFilesSteps({ wt: '.', files: docsWritten, message: `docs(${a.runId}): sync docs for merged lanes` })
+        const commit = commitFilesFromSteps(parseBatchResult(
+          await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label: 'docs-commit', phase: 'Docs', model: model('fast') })),
+          commitStepList,
+        ))
+        committed = commit.committed || commit.nothingToCommit
+        commitSha = commit.sha || ''
+        syncedFiles = docsWritten
         if (committed) {
-          log(`Docs synced and committed (${commitSha || 'no sha'}): ${docsWritten.join(', ')}`)
+          log(commit.nothingToCommit
+            ? `Docs already committed (nothing to commit): ${docsWritten.join(', ')}`
+            : `Docs synced and committed (${commitSha}): ${docsWritten.join(', ')}`)
           synced = true
-          syncedFiles = docsWritten
         } else {
-          failureReason = commit?.failure_reason || (commit?.violations?.length ? `violations: ${commit.violations.join(', ')}` : 'commit agent returned no result')
+          failureReason = commit.error || 'commit_failed: unknown'
           log(`Docs written but NOT committed — ${failureReason}. Files left modified in the checkout: ${docsWritten.join(', ')}`)
-          syncedFiles = docsWritten
         }
       }
     } else {
