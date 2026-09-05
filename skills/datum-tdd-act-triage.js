@@ -122,6 +122,26 @@ var PREFIX_RULES = [
     category: "infrastructure",
     reason: "no worktree path: setup never produced an isolated worktree for the lane \u2014 infrastructure, and specifically why lane files must never be looked for in the ROOT checkout (#387)."
   },
+  {
+    test: /\bgreen_no_result\b/,
+    category: "infrastructure",
+    reason: `green_no_result: the GREEN agent returned nothing at all (maxTurns cap in agents/datum-green.md, an API error, or a skip) \u2014 a capacity/infra failure like lane_intake_failed's "no result", not a claim about what the agent did with the code.`
+  },
+  {
+    test: /\bred_no_result\b/,
+    category: "infrastructure",
+    reason: "red_no_result: the RED agent returned nothing at all (maxTurns cap in agents/datum-red.md, an API error, or a skip) \u2014 same capacity/infra bucket as green_no_result, not agent behavior about the tests."
+  },
+  {
+    test: /\brefactor_no_result\b/,
+    category: "infrastructure",
+    reason: "refactor_no_result: the REFACTOR agent returned nothing at all (maxTurns cap in agents/datum-refactor.md, an API error, or a skip) \u2014 same capacity/infra bucket as green_no_result/red_no_result."
+  },
+  {
+    test: /\bagent_types_unconfigured\b/,
+    category: "infrastructure",
+    reason: "agent_types_unconfigured: stageOpts() was called before configureAgentTypes() \u2014 a pipeline wiring/ordering bug, not anything the lane's agents did."
+  },
   // ── lane_plan: the plan itself asked for something contradictory/impossible ──
   {
     test: /\bcontract_conflict\b/,
@@ -148,6 +168,21 @@ var PREFIX_RULES = [
     test: /\bno_new_test_functions_committed\b/,
     category: "agent_behavior",
     reason: "no_new_test_functions_committed: the RED agent did not actually add the required new test functions."
+  },
+  {
+    test: /\bno_new_tests_written\b/,
+    category: "agent_behavior",
+    reason: "no_new_tests_written: the lane runner's post-RED count from the epic merge-base (after a7abd94) found no new test functions \u2014 same agent-behavior signal as no_new_test_functions_committed, just measured from a different baseline."
+  },
+  {
+    test: /\bcontext_read_unverified\b/,
+    category: "agent_behavior",
+    reason: "context_read_unverified: assertReadWitness found the agent did not evidence reading a deferred large file it was required to read before acting \u2014 the agent skipped a required step, not a pipeline bug."
+  },
+  {
+    test: /\bagent_output_unparseable\b/,
+    category: "agent_behavior",
+    reason: "agent_output_unparseable: parseAgentJsonStrict found the agent returned no parseable JSON at all \u2014 an agent output-format failure, not tooling (contrast with count_gate_no_output, where the *tool* being called is what failed)."
   },
   {
     test: /\bgreen_blindness_violation\b/,
