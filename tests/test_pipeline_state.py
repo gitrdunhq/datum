@@ -6,10 +6,12 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from datum.cli import app
 from datum.pipeline_state import (
+    PipelineStateCorruptError,
     read_pipeline_state,
     reset_stale_pipeline_state,
     write_pipeline_state,
@@ -69,9 +71,23 @@ def test_read_pipeline_state_missing_returns_none(tmp_path: Path) -> None:
     assert read_pipeline_state(tmp_path) is None
 
 
-def test_read_pipeline_state_corrupt_json_returns_none(tmp_path: Path) -> None:
+def test_read_pipeline_state_corrupt_json_raises_instead_of_returning_none(
+    tmp_path: Path,
+) -> None:
+    """Regression guard: a corrupted pipeline-state.json must never be
+    silently treated the same as "no prior state" (returning None) — a
+    caller that does `if not prior_state: start_fresh()` would misread
+    corruption as a legitimate fresh lane, silently discarding tracked
+    progress. Corruption must be a loud, distinguishable failure."""
     (tmp_path / "pipeline-state.json").write_text("not json")
-    assert read_pipeline_state(tmp_path) is None
+    with pytest.raises(PipelineStateCorruptError):
+        read_pipeline_state(tmp_path)
+
+
+def test_reset_stale_pipeline_state_raises_on_corrupt_json(tmp_path: Path) -> None:
+    (tmp_path / "pipeline-state.json").write_text("not json")
+    with pytest.raises(PipelineStateCorruptError):
+        reset_stale_pipeline_state("datum/new-epic", datum_dir=tmp_path)
 
 
 def _invoke_save(
@@ -99,6 +115,43 @@ def _invoke_save(
         )
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
+
+
+def test_pipeline_state_save_fails_loudly_on_corrupt_prior_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Regression guard: if .datum/pipeline-state.json exists but is corrupt,
+    `pipeline-state-save` must refuse and report the corruption — not
+    silently treat it as "no prior state" and start completedPhases from
+    scratch, which would quietly erase a previously tracked epic's
+    progress."""
+    datum_dir = tmp_path / ".datum"
+    datum_dir.mkdir()
+    (datum_dir / "pipeline-state.json").write_text("not json")
+
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("datum.pipeline_state.verify_phase", return_value=(True, "")),
+        patch("subprocess.run") as mock_run,
+    ):
+        mock_run.return_value.stdout = "datum/new-epic\n"
+        mock_run.return_value.returncode = 0
+        result = runner.invoke(
+            app,
+            [
+                "pipeline-state-save",
+                "--phase",
+                "plan",
+                "--run-id",
+                "20260101-000000",
+                "--route",
+                "feature",
+            ],
+        )
+    assert result.exit_code != 0
+    payload = json.loads(result.output)
+    assert payload["verified"] is False
 
 
 def test_pipeline_state_save_does_not_inherit_completed_phases_from_a_different_branch(

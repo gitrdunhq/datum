@@ -10,10 +10,13 @@ from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 
 try:
-    from importlib.metadata import version as _pkg_version
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
     __version__ = _pkg_version("datum")
-except Exception:
+except PackageNotFoundError:
+    # Expected when running from a source checkout that was never `pip
+    # install`-ed (e.g. local dev via `uv run`) — no installed distribution
+    # metadata exists to read a version from.
     __version__ = "dev"
 
 
@@ -606,9 +609,15 @@ def init(
     if not json_output:
         console.print(f"[dim]Branch: {branch}[/dim]")
 
-    from datum.pipeline_state import reset_stale_pipeline_state
+    from datum.pipeline_state import (
+        PipelineStateCorruptError,
+        reset_stale_pipeline_state,
+    )
 
-    cleared_state = reset_stale_pipeline_state(branch)
+    try:
+        cleared_state = reset_stale_pipeline_state(branch)
+    except PipelineStateCorruptError as exc:
+        _fail(str(exc))
     if cleared_state and not json_output:
         console.print(
             f"[dim]Cleared stale pipeline state from '{cleared_state.get('branch')}'[/dim]"
@@ -2107,6 +2116,7 @@ def pipeline_state_save_cmd(
     import subprocess
 
     from datum.pipeline_state import (
+        PipelineStateCorruptError,
         read_pipeline_state,
         verify_phase,
         write_pipeline_state,
@@ -2124,7 +2134,11 @@ def pipeline_state_save_cmd(
         check=True,
     ).stdout.strip()
 
-    prior = read_pipeline_state()
+    try:
+        prior = read_pipeline_state()
+    except PipelineStateCorruptError as exc:
+        typer.echo(json.dumps({"verified": False, "phase": phase, "reason": str(exc)}))
+        raise typer.Exit(code=1) from exc
     completed = (
         list(prior["completedPhases"])
         if prior and prior.get("branch") == branch
@@ -2563,6 +2577,11 @@ def main():
                             "[yellow]Skipped — duplicate issue already open or failed to file.[/yellow]"
                         )
             except Exception:
+                # Best-effort optional bug auto-file prompt (input errors,
+                # network failures reporting to GitHub, etc.) — the real
+                # error and traceback were already printed above and the
+                # process exits non-zero either way, so a failure here must
+                # never mask or replace the original failure.
                 pass
 
         sys.exit(1)

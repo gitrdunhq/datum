@@ -22,6 +22,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+
+class PipelineStateCorruptError(RuntimeError):
+    """.datum/pipeline-state.json exists but could not be read/parsed.
+
+    Must never be treated the same as "no prior state" — a caller that
+    does `if not prior_state: start_fresh()` would silently discard
+    tracked pipeline progress on file corruption.
+    """
+
+
 PHASE_COMMIT_PREFIX = {
     "refine": "refine:",
     "plan": "plan:",
@@ -77,8 +87,10 @@ def read_pipeline_state(datum_dir: Path | None = None) -> dict[str, Any] | None:
         return None
     try:
         return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PipelineStateCorruptError(
+            f"{path} exists but could not be parsed as JSON: {exc}"
+        ) from exc
 
 
 def write_pipeline_state(

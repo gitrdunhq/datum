@@ -112,13 +112,23 @@ def fetch_issue(issue_number: int) -> dict:
 
 
 def parse_metadata(body: str) -> dict | None:
+    """Parse the `<!-- datum:metadata {...} -->` block from an issue body.
+
+    Returns None only when no metadata block is present at all — that is a
+    legitimate, expected case (a plain issue with no datum metadata yet).
+    A metadata block that IS present but fails to parse as JSON raises
+    instead: callers (list_sub_issues/build_lane_plan_from_epic) do
+    `meta or {}`, so silently returning None here would be indistinguishable
+    from "no metadata" and would quietly generate an empty lane (no files,
+    depends_on, acceptance_criteria) with no error surfaced.
+    """
     m = METADATA_PATTERN.search(body or "")
     if not m:
         return None
     try:
         return json.loads(m.group(1))
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed datum:metadata JSON block: {exc}") from exc
 
 
 def create_labels() -> None:

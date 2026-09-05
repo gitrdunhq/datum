@@ -120,7 +120,9 @@ def _load_library_patterns() -> tuple[list, list, list]:
     for block in blocks:
         try:
             data = tomllib.loads(block)
-        except Exception:
+        except tomllib.TOMLDecodeError:
+            # One malformed ```toml block in pattern-library.md must not
+            # break loading of the other (valid) pattern blocks — skip it.
             continue
         for p in data.get("patterns", []):
             regex = p.get("regex", "")
