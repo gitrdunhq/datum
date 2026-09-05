@@ -22,6 +22,7 @@ import {
   actStartSteps,
   ownershipCommand,
   sumCounts,
+  newTestCountFromSteps,
   scopeContentsFromSteps,
   scopeGapsFromSteps,
   completionMarkerCommand,
@@ -250,6 +251,19 @@ describe('postRedSteps', () => {
 
   it('ownershipCommand is the stage-commit diff', () => {
     expect(ownershipCommand('/wt/T1')).toBe('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+  })
+
+  // A dropped `test-count-before` entry used to read as before=0, so the
+  // "new tests written" gate PASSED on a baseline that never ran.
+  it('newTestCountFromSteps requires both count steps and names the absent one', () => {
+    const mk = (names: string[]) => parseBatchResult(JSON.stringify(names.map((name) => ({ name, exit_code: 0, stdout: name === 'test-count-after' ? '3\n' : '1\n', stderr: '' }))),
+      [{ name: 'test-count-before', command: '' }, { name: 'test-count-after', command: '' }])
+    expect(newTestCountFromSteps(mk(['test-count-before', 'test-count-after']))).toEqual({ ok: true, before: 1, after: 3, added: 2, error: '' })
+    const noBefore = newTestCountFromSteps(mk(['test-count-after']))
+    expect(noBefore.ok).toBe(false)
+    expect(noBefore.error).toMatch(/^test_count_missing: test-count-before step absent/)
+    expect(newTestCountFromSteps(mk(['test-count-before'])).error).toMatch(/^test_count_missing: test-count-after/)
+    expect(newTestCountFromSteps(parseBatchResult(null, [])).error).toMatch(/^test_count_missing:/)
   })
 
   it('sumCounts tolerates the grep -c + `|| echo 0` double-zero and junk lines', () => {

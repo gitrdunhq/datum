@@ -379,6 +379,22 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(calls.some((c) => c.label.startsWith('red:'))).toBe(false)
   })
 
+  it('a post-RED batch missing the test-count-before step fails the lane as test_count_missing, never as "new tests verified"', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('post-red:')) {
+        const arr = JSON.parse(base(label, prompt) as string) as Array<{ name: string }>
+        return JSON.stringify(arr.filter((s) => s.name !== 'test-count-before'))
+      }
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('RED')
+    expect(result.results.T1.error).toMatch(/^test_count_missing: test-count-before/)
+    expect(calls.some((c) => c.label.startsWith('reflect:'))).toBe(false)
+  })
+
   // -------------------------------------------------------------------------
   // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
   // GREEN once with the confirmed bugs, then independently re-verify.

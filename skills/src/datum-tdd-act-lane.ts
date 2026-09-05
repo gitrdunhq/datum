@@ -9,7 +9,7 @@ import {
   postRedSteps,
   scopeContractSteps,
   isMissing,
-  sumCounts,
+  newTestCountFromSteps,
   scopeContentsFromSteps,
   scopeGapsFromSteps,
   postGreenSteps,
@@ -894,9 +894,13 @@ No markdown fences, no explanation.`,
   }
 
   // ── Pre-reflect: verify new tests were actually written — deterministic count ──
-  const afterCount = sumCounts(stepStdout(postRedResult, 'test-count-after'))
-  const beforeCount = sumCounts(stepStdout(postRedResult, 'test-count-before'))
-  const newTestCount = afterCount - beforeCount
+  const counts = newTestCountFromSteps(postRedResult)
+  if (!counts.ok) {
+    // A missing probe is not "zero tests before": fail by name (review sweep).
+    log(`[${taskId}] RED FAILED: ${counts.error}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: counts.error }
+  }
+  const { before: beforeCount, after: afterCount, added: newTestCount } = counts
   if (newTestCount <= 0) {
     log(`[${taskId}] RED FAILED: no new test functions written (before=${beforeCount}, after=${afterCount})`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: 'no_new_tests_written: RED agent did not append any test functions' }

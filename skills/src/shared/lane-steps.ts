@@ -308,6 +308,24 @@ export function ownershipFromStdout(
 }
 
 /** Sum every integer on its own line (grep -c output, `|| echo 0` fallbacks included). */
+/**
+ * The post-RED "new tests were written" gate. Both count steps must be
+ * present in the batch result: a dropped `test-count-before` used to sum to
+ * 0 and the gate passed on a baseline that never ran (review sweep).
+ */
+export function newTestCountFromSteps(
+  result: BatchResult,
+): { ok: boolean; before: number; after: number; added: number; error: string } {
+  const none = { ok: false, before: 0, after: 0, added: 0 }
+  if (result.missing) return { ...none, error: `test_count_missing: ${describeFailure(result, 'post-red batch')}` }
+  for (const name of ['test-count-before', 'test-count-after']) {
+    if (!stepResult(result, name)) return { ...none, error: `test_count_missing: ${name} step absent from the post-red batch result — cannot tell whether RED wrote any tests` }
+  }
+  const before = sumCounts(stepStdout(result, 'test-count-before'))
+  const after = sumCounts(stepStdout(result, 'test-count-after'))
+  return { ok: true, before, after, added: after - before, error: '' }
+}
+
 export function sumCounts(raw: string | null | undefined): number {
   if (!raw) return 0
   return raw.split('\n').map((l) => parseInt(l.trim(), 10)).filter((n) => !isNaN(n)).reduce((a, b) => a + b, 0)
