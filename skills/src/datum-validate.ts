@@ -2,6 +2,8 @@ import { renderPrompt, parseAgentJson, parseValidateArgs, mainSyncPrompt, evalua
 import type { MainSyncResult } from './shared/utils'
 import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
+import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { testExitCode } from './shared/lane-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import runGateTemplate from './prompts/util-run-gate.md'
@@ -69,7 +71,24 @@ const check = typeof checkResult === 'string'
   ? parseAgentJson(checkResult as string, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] })
   : checkResult
 
-log(`Tests: ${check?.tests_pass ? 'PASS' : 'FAIL'} (${check?.test_count || '?'} tests)`)
+// ── Deterministic test-verify (green-blindness gate, mirrors RED's post-red
+// batch) ───────────────────────────────────────────────────────────────────
+// The validate-check agent above self-reports tests_pass from a run IT
+// performed and read the exit status from — a hallucinated or mistaken
+// "tests_pass: true" would sail through undetected, and this is the FINAL
+// gate of the whole pipeline. Re-run the exact same test command
+// independently as one deterministic datum-cli batch step and trust ONLY
+// that exit code, never the agent's self-report.
+const verifySteps = [{ name: 'test-verify', command: testRunCommand(testCommand, '.', 'validate-verify') }]
+const verifyRaw = !mainSync.ok ? null : await agent(
+  batchCommandPrompt(verifySteps),
+  stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }),
+)
+const verifyResult = parseBatchResult(verifyRaw, verifySteps)
+const testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, 'test-verify')) : null
+const testsPassed = testExit === 0
+
+log(`Tests: ${testsPassed ? 'PASS' : 'FAIL'} (independent run exit=${testExit === null ? 'n/a' : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || '?'} tests)`)
 log(`Lint: ${check?.lint_clean ? 'clean' : `${(check?.lint_fixes || []).length} files fixed`}`)
 if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join('; ')}`)
 
@@ -77,8 +96,10 @@ let gatePassed = false
 
 if (!mainSync.ok) {
   log('Validate gate skipped — epic branch is not in sync with main.')
-} else if (!check?.tests_pass) {
-  log('VALIDATION FAILED — tests are red. Cannot proceed.')
+} else if (testExit === null) {
+  log(`VALIDATION FAILED — validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, 'test-verify')}). Cannot proceed.`)
+} else if (testExit !== 0) {
+  log(`VALIDATION FAILED — tests are red (independent run exited ${testExit}${check?.tests_pass ? ', despite agent self-report of tests_pass=true' : ''}). Cannot proceed.`)
 } else {
   const gateResult = await agent(
     renderPrompt(runGateTemplate, { phase: 'validate', flags: yolo ? ' --approve' : '' }),
@@ -91,7 +112,7 @@ if (!mainSync.ok) {
 }
 
 export const __workflowResult = {
-  testsPassed: !!check?.tests_pass, lintClean: !!check?.lint_clean,
+  testsPassed, testExitCode: testExit, lintClean: !!check?.lint_clean,
   acGaps: check?.ac_gaps || [], gatePassed,
   mainSync: { ok: mainSync.ok, behind: syncResult?.behind ?? null, merged: !!syncResult?.merged, message: mainSync.message },
 }

@@ -93,3 +93,42 @@ describe('#358 — validate + lane prompts use the file-backed test run', () => 
     expect(validateSrc).toMatch(/parseValidateArgs\(/)
   })
 })
+
+describe('#validate-gate-determinism — the pass/fail bit comes from an independent test run, not the LLM self-report', () => {
+  it('runs the test command itself as a deterministic datum-cli batch step', () => {
+    // One agent() call built from batchCommandPrompt(...) with stageOpts('cli', ...),
+    // mirroring the RED-stage post-red batch (datum-tdd-act-lane.ts) — not the
+    // validate-check agent's own self-reported test run.
+    expect(validateSrc).toMatch(/batchCommandPrompt\(/)
+    expect(validateSrc).toMatch(/stageOpts\(\s*'cli'/)
+    expect(validateSrc).toMatch(/parseBatchResult\(/)
+  })
+
+  it('derives testsPassed from testExitCode(...) === 0, not from the agent-reported tests_pass', () => {
+    expect(validateSrc).toMatch(/testExitCode\(/)
+    // The final testsPassed assignment must not be a bare pass-through of the
+    // LLM's self-reported field.
+    expect(validateSrc).not.toMatch(/testsPassed:\s*!!check\?\.tests_pass/)
+  })
+
+  it('imports testExitCode from shared/lane-steps and batch helpers from shared/batch', () => {
+    expect(validateSrc).toMatch(/from '\.\/shared\/lane-steps'/)
+    expect(validateSrc).toMatch(/from '\.\/shared\/batch'/)
+  })
+
+  it('a non-zero deterministic exit fails validation regardless of the agent self-report', () => {
+    // Looks for the exit-code-driven branch, distinct from the old
+    // `!check?.tests_pass` gate condition.
+    expect(validateSrc).not.toMatch(/else if \(!check\?\.tests_pass\)/)
+    expect(validateSrc).toMatch(/testExit\s*!==\s*0/)
+  })
+
+  it('a null exit code (deterministic step never ran) fails loudly with an explicit reason, never a silent pass', () => {
+    expect(validateSrc).toMatch(/testExit\s*===\s*null/)
+    expect(validateSrc).toMatch(/validate_run_failed/)
+  })
+
+  it('the workflow result carries the deterministic exit code alongside testsPassed', () => {
+    expect(validateSrc).toMatch(/testExitCode:\s*testExit/)
+  })
+})

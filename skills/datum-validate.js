@@ -176,6 +176,81 @@ function stageOpts(stage, extra = {}) {
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
 
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/lane-steps.ts
+function testExitCode(stdout) {
+  if (!stdout) return null;
+  const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)];
+  if (matches.length === 0) return null;
+  return Number(matches[matches.length - 1][1]);
+}
+
 // skills/src/prompts/validate-check.md
 var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -213,14 +288,24 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced") }
 );
 var check = typeof checkResult === "string" ? parseAgentJson(checkResult, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] }) : checkResult;
-log(`Tests: ${check?.tests_pass ? "PASS" : "FAIL"} (${check?.test_count || "?"} tests)`);
+var verifySteps = [{ name: "test-verify", command: testRunCommand(testCommand, ".", "validate-verify") }];
+var verifyRaw = !mainSync.ok ? null : await agent(
+  batchCommandPrompt(verifySteps),
+  stageOpts("cli", { label: "validate-verify", phase: "Validate", model: model("fast") })
+);
+var verifyResult = parseBatchResult(verifyRaw, verifySteps);
+var testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, "test-verify")) : null;
+var testsPassed = testExit === 0;
+log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit === null ? "n/a" : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || "?"} tests)`);
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
 if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
 var gatePassed = false;
 if (!mainSync.ok) {
   log("Validate gate skipped \u2014 epic branch is not in sync with main.");
-} else if (!check?.tests_pass) {
-  log("VALIDATION FAILED \u2014 tests are red. Cannot proceed.");
+} else if (testExit === null) {
+  log(`VALIDATION FAILED \u2014 validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, "test-verify")}). Cannot proceed.`);
+} else if (testExit !== 0) {
+  log(`VALIDATION FAILED \u2014 tests are red (independent run exited ${testExit}${check?.tests_pass ? ", despite agent self-report of tests_pass=true" : ""}). Cannot proceed.`);
 } else {
   const gateResult = await agent(
     renderPrompt(util_run_gate_default, { phase: "validate", flags: yolo ? " --approve" : "" }),
@@ -232,7 +317,8 @@ if (!mainSync.ok) {
   else log(`Validate gate: ${gate?.message || "needs review"}`);
 }
 return {
-  testsPassed: !!check?.tests_pass,
+  testsPassed,
+  testExitCode: testExit,
   lintClean: !!check?.lint_clean,
   acGaps: check?.ac_gaps || [],
   gatePassed,
