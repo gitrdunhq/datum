@@ -69,7 +69,7 @@ const mergeOk: boolean = mergeOrder.length === 0 || (!!mergeStep && mergeStep.ex
 // the same plus {failed_lane, error} on a partial merge (exit 1): the lanes
 // that landed before a conflicting lane are committed and kept, so callers
 // demote only failed_lane (elonchesd wf_4f1e41dd-ab7 batch 3/5).
-interface MergeJson { sha?: string; merged?: string[]; already_merged?: string[]; failed_lane?: string; error?: string }
+interface MergeJson { sha?: string; merged?: string[]; already_merged?: string[]; failed_lane?: string; conflict_files?: string[]; report?: string; error?: string }
 const mergeJson = parseAgentJson<MergeJson | null>(mergeStep ? mergeStep.stdout : '', null)
 const landedIds: string[] = mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : (mergeOk ? mergeOrder : [])
 const failedLane: string = mergeJson && typeof mergeJson.failed_lane === 'string' ? mergeJson.failed_lane : ''
@@ -113,4 +113,9 @@ export const __workflowResult = {
   failed: mergeOrder.length > 0 && !mergeOk,
   mergedIds: mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : (mergeOk ? mergeOrder : []),
   failedLane: mergeJson && typeof mergeJson.failed_lane === 'string' ? mergeJson.failed_lane : '',
+  // The git-level reason and the conflicted paths, so the demoted lane's
+  // error says what happened (elonchesd wf_8769406f-b9c task-015).
+  error: mergeJson && typeof mergeJson.error === 'string' ? mergeJson.error : '',
+  conflictFiles: mergeJson && Array.isArray(mergeJson.conflict_files) ? mergeJson.conflict_files : [],
+  report: mergeJson && typeof mergeJson.report === 'string' ? mergeJson.report : '',
 }

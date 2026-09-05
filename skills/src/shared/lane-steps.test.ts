@@ -809,7 +809,8 @@ describe('mergeSteps', () => {
     expect(steps[1].command).toMatch(/^__landed_ids=" \$\(printf '%s' "\$\{__merge_out:-\}" \| jq -r '\(\.merged\[\]\?, \.already_merged\[\]\?\)' 2>\/dev\/null \| tr '\\n' ' '\)"\n/)
     expect(steps[1].command).toContain(`case "$__landed_ids" in *" T1 "*) ${completionMarkerCommand('r1', 'T1')};; *) echo "SKIPPED_NOT_MERGED T1";; esac`)
     expect(steps[1].command).toContain(`case "$__landed_ids" in *" T2 "*) ${completionMarkerCommand('r1', 'T2')};; *) echo "SKIPPED_NOT_MERGED T2";; esac`)
-    expect(steps[0].command).toContain('__merge_out=$(datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes")')
+    // --run-id: a conflict report lands in .datum/runs/<run>/ (elonchesd task-015).
+    expect(steps[0].command).toContain('__merge_out=$(datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes" --run-id "r1")')
     expect(steps[0].command).toContain('__merge_rc=$?')
     expect(steps[0].command).toContain(`printf '%s\\n' "$__merge_out"`)
     // The merge JSON's `merged` list — not the exit code — decides which

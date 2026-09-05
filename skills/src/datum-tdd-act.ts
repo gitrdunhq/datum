@@ -252,11 +252,15 @@ for (let bi = 0; bi < batches.length; bi++) {
         : 'merge workflow returned null'
       const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : [])
       const unmerged = mergedIds.filter((id) => !landed.has(id))
+      // The git-level reason travels with the demotion (elonchesd task-015).
+      const conflictFiles = mergeResult && Array.isArray(mergeResult.conflictFiles) ? mergeResult.conflictFiles : []
+      const reason = mergeResult && typeof mergeResult.error === 'string' ? mergeResult.error.slice(0, 300) : ''
+      const detail = `${conflictFiles.length > 0 ? ` — conflicted files: [${conflictFiles.join(', ')}]` : ''}${reason ? ` — ${reason}` : ''}${mergeResult && mergeResult.report ? ` (report: ${mergeResult.report})` : ''}`
       for (const id of unmerged) {
         const i = completedLanes.indexOf(id)
         if (i >= 0) completedLanes.splice(i, 1)
         failures.push(id)
-        results[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
+        results[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${detail}${batchTag}` }
       }
       log(`Merge${batchTag} FAILED — demoted [${unmerged.join(', ')}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(', ')}]` : ''}`)
     }

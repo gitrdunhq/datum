@@ -592,7 +592,7 @@ export function mergeSteps(o: MergeStepsOpts): BatchStep[] {
       name: 'merge',
       command:
         `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(',')} ` +
-        `--commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
+        `--commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes" --run-id ${q(o.batchRunId)}); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
       tolerant: true,
     })
   }

@@ -454,12 +454,16 @@ class LaneMergeError(RuntimeError):
         merged: list[str],
         already_merged: list[str],
         sha: str,
+        conflict_files: list[str] | None = None,
+        report: str = "",
     ) -> None:
         super().__init__(message)
         self.failed_lane = failed_lane
         self.merged = merged
         self.already_merged = already_merged
         self.sha = sha
+        self.conflict_files = list(conflict_files or [])
+        self.report = report
 
     def payload(self) -> dict[str, str | list[str]]:
         return {
@@ -467,6 +471,8 @@ class LaneMergeError(RuntimeError):
             "merged": list(self.merged),
             "already_merged": list(self.already_merged),
             "failed_lane": self.failed_lane,
+            "conflict_files": list(self.conflict_files),
+            "report": self.report,
             "error": str(self),
         }
 
@@ -477,8 +483,14 @@ def merge_lane_branches(
     commit_message: str,
     *,
     repo_root: Path | None = None,
+    report_dir: Path | None = None,
 ) -> dict[str, str | list[str]]:
     """Squash-merge all completed lane branches into the epic branch.
+
+    ``report_dir`` (the run directory) receives
+    ``merge-conflict-<lane>.json`` — the conflicted paths and git's own
+    output — when a lane's squash conflicts, so the reason survives the
+    lane's demotion (elonchesd wf_8769406f-b9c task-015).
 
     Merges in lane_order (dependency order: depended-on lanes first).
     All accumulated changes land in one commit, satisfying the squash-before-push rule.
@@ -635,6 +647,33 @@ def merge_lane_branches(
             check=False,
         )
         if result.returncode != 0:
+            # Capture the reason BEFORE the reset erases it: the conflicted
+            # paths and git's own output, persisted next to the run when a
+            # report dir is given.
+            unmerged = _git(
+                ["diff", "--name-only", "--diff-filter=U"], cwd=repo_root, check=False
+            )
+            conflict_files = sorted(
+                p.strip() for p in unmerged.stdout.splitlines() if p.strip()
+            )
+            git_output = (result.stdout.strip() + "\n" + result.stderr.strip()).strip()
+            report_path = ""
+            if report_dir is not None:
+                report_dir.mkdir(parents=True, exist_ok=True)
+                report_file = report_dir / f"merge-conflict-{lane_id}.json"
+                report_file.write_text(
+                    json.dumps(
+                        {
+                            "lane": lane_id,
+                            "epic_branch": epic_branch,
+                            "conflict_files": conflict_files,
+                            "git_output": git_output,
+                        },
+                        indent=2,
+                    )
+                    + "\n"
+                )
+                report_path = str(report_file)
             # A failed `git merge --squash` (real content conflict) leaves the
             # root checkout mid-merge: SQUASH_MSG/MERGE_MSG present and AA
             # (unmerged) entries in the index/working tree. Left as-is, every
@@ -655,13 +694,20 @@ def merge_lane_branches(
                 if merged
                 else " No lanes were merged before this failure."
             )
+            files_note = (
+                f" Conflicted files: {', '.join(conflict_files)}."
+                if conflict_files
+                else ""
+            )
             raise LaneMergeError(
                 f"Squash-merge of lane '{lane_id}' failed: "
-                f"{result.stderr.strip()}.{merged_note}",
+                f"{git_output or result.stderr.strip()}.{files_note}{merged_note}",
                 failed_lane=lane_id,
                 merged=merged,
                 already_merged=already_merged,
                 sha=sha,
+                conflict_files=conflict_files,
+                report=report_path,
             )
 
         # Check if there are any staged changes after the squash-merge.

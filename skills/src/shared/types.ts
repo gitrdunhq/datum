@@ -112,6 +112,12 @@ export interface MergeResult {
   mergedIds: string[]
   /** The lane whose squash-merge did not land on a partial merge, else ''. */
   failedLane: string
+  /** The CLI's error text (git's conflict output) on a failed merge, else ''. */
+  error?: string
+  /** Paths the failed lane's squash conflicted on. */
+  conflictFiles?: string[]
+  /** .datum/runs/<run>/merge-conflict-<lane>.json when a conflict was recorded, else ''. */
+  report?: string
 }
 
 export interface DocsArgs {

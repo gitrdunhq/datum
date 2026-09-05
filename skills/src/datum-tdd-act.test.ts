@@ -184,3 +184,24 @@ describe('the Act result reports needs-write lanes apart from dependency blocks'
     })
   }
 })
+
+// elonchesd wf_8769406f-b9c task-015: `merge_failed: squash-merge of task-015
+// did not land` carried no git-level reason. The merge CLI now names the
+// conflicted files and writes a report; the merge child exports them and
+// both orchestrators put them in the demoted lane's error.
+describe('a merge failure carries the git reason and the conflicted files', () => {
+  it('datum-tdd-act-merge.ts exports error and conflictFiles from the merge JSON', () => {
+    const src = readFileSync(join(__dirname, 'datum-tdd-act-merge.ts'), 'utf8')
+    expect(src).toMatch(/interface MergeJson \{[^}]*conflict_files\?: string\[\][^}]*report\?: string/)
+    expect(src).toMatch(/error: mergeJson && typeof mergeJson\.error === 'string' \? mergeJson\.error : ''/)
+    expect(src).toMatch(/conflictFiles: mergeJson && Array\.isArray\(mergeJson\.conflict_files\) \? mergeJson\.conflict_files : \[\]/)
+  })
+  for (const f of ['datum-tdd-act.ts', 'datum-go.ts']) {
+    it(`${f} names the conflicted files and the git reason in the demoted lane's merge_failed error`, () => {
+      const src = readFileSync(join(__dirname, f), 'utf8')
+      expect(src).toMatch(/mergeResult\.conflictFiles/)
+      expect(src).toMatch(/mergeResult\.error/)
+      expect(src).toMatch(/error: `merge_failed: \$\{why\}\$\{detail\}\$\{batchTag\}`/)
+    })
+  }
+})

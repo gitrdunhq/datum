@@ -575,6 +575,48 @@ class TestMergeLaneBranches:
                 "epic/test", ["lane-a", "lane-b"], "merge: conflict", repo_root=repo
             )
 
+    def test_conflict_names_the_files_and_writes_a_report_into_the_run_dir(
+        self, repo: Path
+    ):
+        """elonchesd wf_8769406f-b9c task-015: `merge_failed: squash-merge of
+        task-015 did not land` carried no git-level reason anywhere — the
+        operator had to redo the merge by hand to learn which file
+        conflicted. The error now names the conflicted paths and, given a
+        report dir, persists git's conflict output next to the run."""
+        from datum.worktree_manager import LaneMergeError, merge_lane_branches
+
+        for lane, text in (("lane-a", "from lane a\n"), ("lane-b", "from lane b\n")):
+            branch = _make_lane_branch(repo, "epic/test", lane)
+            wt = repo.parent / f"wt-report-{lane}"
+            _git(["worktree", "add", str(wt), branch], cwd=repo)
+            (wt / "shared.txt").write_text(text)
+            _git(["add", "shared.txt"], cwd=wt)
+            _git(["commit", "-q", "-m", f"{lane} edits shared.txt"], cwd=wt)
+            _git(["worktree", "remove", "--force", str(wt)], cwd=repo)
+        _git(["checkout", "epic/test"], cwd=repo)
+        report_dir = repo / ".datum" / "runs" / "r1"
+
+        with pytest.raises(LaneMergeError) as exc:
+            merge_lane_branches(
+                "epic/test",
+                ["lane-a", "lane-b"],
+                "merge: conflict",
+                repo_root=repo,
+                report_dir=report_dir,
+            )
+
+        payload = exc.value.payload()
+        assert payload["failed_lane"] == "lane-b"
+        assert payload["conflict_files"] == ["shared.txt"]
+        assert "shared.txt" in payload["error"]
+        report = report_dir / "merge-conflict-lane-b.json"
+        assert payload["report"] == str(report)
+        data = json.loads(report.read_text())
+        assert data["lane"] == "lane-b" and data["conflict_files"] == ["shared.txt"]
+        assert "CONFLICT" in data["git_output"]
+        # The checkout is clean again, as before.
+        assert _git(["status", "--porcelain"], cwd=repo).stdout.strip() == ""
+
     def test_conflicting_lane_merge_reports_which_lanes_already_merged(
         self, repo: Path
     ):

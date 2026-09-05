@@ -2167,18 +2167,27 @@ def worktrees_merge(
     commit_message: str = typer.Option(
         ..., "--commit-message", help="Merge commit message"
     ),
+    run_id: str = typer.Option(
+        "",
+        "--run-id",
+        help="Run id; a conflict writes .datum/runs/<run-id>/merge-conflict-<lane>.json",
+    ),
 ):
     """Squash-merge completed lane branches into the epic branch.
 
     A partial merge (a later lane conflicted after earlier lanes landed)
-    prints the same JSON shape plus ``failed_lane`` and ``error`` and exits
-    1, so the workflow can demote only the lane that did not land.
+    prints the same JSON shape plus ``failed_lane``, ``conflict_files``,
+    ``report`` and ``error`` and exits 1, so the workflow can demote only
+    the lane that did not land and say why.
     """
     from datum.worktree_manager import LaneMergeError, merge_lane_branches
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
+    report_dir = Path(".datum") / "runs" / run_id if run_id.strip() else None
     try:
-        result = merge_lane_branches(epic_branch, order, commit_message)
+        result = merge_lane_branches(
+            epic_branch, order, commit_message, report_dir=report_dir
+        )
     except LaneMergeError as exc:
         typer.echo(json.dumps(exc.payload()))
         raise typer.Exit(code=1) from None
