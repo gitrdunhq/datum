@@ -315,6 +315,8 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Prose reply to a schema'd reflect/refactor-check crashed the lane** — closed in 2864a90: both route through `resilientAgent`; `reflect_no_result` proceeds without a score, `refactor_check_no_result` skips the optional stage; a test rejects schema calls outside `resilientAgent`/`parallel`.
 - **Lane plan relayed by an LLM echo drifted and broke resume hashes; re-merging an already-merged lane crashed** — closed in b823892 (chunked base64 relay) and `cc83935` (empty squash is "already merged").
 - **A throw inside the inline Act phase bypassed the halt record** — closed in 41d0a79: the Act body is one try/catch, `act_phase_failed` halts at Act with state preserved.
+- **Intake trusted a rejected GREEN commit; REFACTOR swallowed its reason** — closed in a8879a2: intake runs the suite before resuming at REFACTOR, `green_stale` resets to RED and re-runs GREEN, `refactor_failed: <reason>` surfaces.
+- **Triage filed consumer-code findings into datum's tracker** — closed in 11e3b6f: `triageDestination` routes only infrastructure/workflow failures to datum; consumer findings are logged and counted.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
