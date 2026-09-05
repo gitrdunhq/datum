@@ -220,9 +220,10 @@ describe('#352 — decompose prompt id/slug contract', () => {
 })
 
 describe('#352 — plan gate ordering', () => {
-  // The gate is rendered from prompts/util-run-gate.md with phase 'plan';
-  // the FIRST such call must be the early one.
-  const gateIdx = datumPlanSrc.indexOf("renderPrompt(runGateTemplate, { phase: 'plan'")
+  // The gate runs as a deterministic batch step (shared/gate.ts) with phase
+  // 'plan'; the FIRST such call must be the early one (--approve: structural
+  // checks only, the human hold is re-checked by the final gate).
+  const gateIdx = datumPlanSrc.indexOf("gateSteps('plan', ' --approve')")
   const lanePlanIdx = datumPlanSrc.indexOf('datum lane-plan --input')
   const skeletonIdx = datumPlanSrc.indexOf('datum skeleton --batch')
   const triageIdx = datumPlanSrc.indexOf("phase('Triage')")

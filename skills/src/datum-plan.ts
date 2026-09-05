@@ -216,15 +216,13 @@ if (!build || build.exit_code !== 0) {
 // hold; every structural check (lane-plan schema, topological order, file
 // overlap, assumption audit) still runs. The human hold is re-checked by the
 // final gate at the end of Triage.
-const earlyGateResult = await agent(
-  renderPrompt(runGateTemplate, { phase: 'plan', flags: ' --approve' }),
-  stageOpts('cli', { label: 'gate-early', model: model('fast') }),
-)
-const earlyGate = typeof earlyGateResult === 'string'
-  ? parseAgentJson(earlyGateResult as string, { passed: false, message: 'early gate returned unparseable output' } as { passed: boolean; message?: string })
-  : (earlyGateResult as { passed: boolean; message?: string })
-if (!earlyGate?.passed) {
-  throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate?.message || 'no message'}`)
+const earlyGateSteps = gateSteps('plan', ' --approve')
+const earlyGate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(earlyGateSteps), stageOpts('cli', { label: 'gate-early', model: model('fast') })),
+  earlyGateSteps,
+))
+if (!earlyGate.passed) {
+  throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || 'no message'}`)
 }
 log('Early plan gate PASSED (schema + structure)')
 
