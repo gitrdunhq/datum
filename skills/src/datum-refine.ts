@@ -6,7 +6,8 @@ import refineScanTemplate from './prompts/refine-scan.md'
 import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
 import readContextTemplate from './prompts/util-read-context.md'
-import runGateTemplate from './prompts/util-run-gate.md'
+import { gateSteps, parseGateResult } from './shared/gate'
+import { batchCommandPrompt, parseBatchResult } from './shared/batch'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -178,18 +179,16 @@ git add "${epicDir}/SPEC.md" "${epicDir}/QUESTIONS.md" && git commit -m "refine:
 
 log(`SPEC.md + QUESTIONS.md written to ${epicDir}`)
 
-// Agent 2: run gate (collapsed gate-refine — still needs an agent since we can't run bash directly)
-const gateResult = await agent(
-  renderPrompt(runGateTemplate, { phase: 'refine', flags: yolo ? ' --approve' : '' }),
-  stageOpts('cli', { label: 'gate', model: model('fast') }),
-)
+// Gate — deterministic: the verdict is `datum gate`'s exit code read from a
+// batch step (shared/gate.ts), not an LLM's echo of its JSON.
+const gateStepList = gateSteps('refine', yolo ? ' --approve' : '')
+const gate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
+  gateStepList,
+))
 
-const gate = typeof gateResult === 'string'
-  ? parseAgentJson(gateResult as string, { passed: false })
-  : gateResult
-
-if (gate?.passed) log('Refine gate PASSED')
-else log(`Refine gate: ${gate?.message || 'needs review'}`)
+if (gate.passed) log('Refine gate PASSED')
+else log(`Refine gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 
 export const __workflowResult = {
   branch: ctx.branch,
@@ -197,6 +196,7 @@ export const __workflowResult = {
   ambiguity: classify.level,
   gaps: classify.gaps,
   roadmapItems: triageResult.roadmap_items,
-  gatePassed: !!gate?.passed,
-  gateMessage: gate?.message || '',
+  gatePassed: gate.passed,
+  gateMessage: gate.message,
+  gateNeedsHuman: gate.needsHuman,
 }

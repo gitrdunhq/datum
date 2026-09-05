@@ -2,7 +2,8 @@ import { renderPrompt, parseAgentJson } from './shared/utils'
 import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import readContextTemplate from './prompts/util-read-context.md'
-import runGateTemplate from './prompts/util-run-gate.md'
+import { gateSteps, parseGateResult } from './shared/gate'
+import { batchCommandPrompt, parseBatchResult } from './shared/batch'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -64,13 +65,15 @@ await agent(
 log('PROPERTIES.md written and committed')
 
 // Gate
-const gateResult = await agent(
-  renderPrompt(runGateTemplate, { phase: 'properties', flags: yolo ? ' --approve' : '' }),
-  stageOpts('cli', { label: 'gate', model: model('fast') }),
-)
-const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
+// Deterministic: the verdict is `datum gate`'s exit code read from a batch
+// step (shared/gate.ts), not an LLM's echo of its JSON.
+const gateStepList = gateSteps('properties', yolo ? ' --approve' : '')
+const gate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
+  gateStepList,
+))
 
-if (gate?.passed) log('Properties gate PASSED')
-else log(`Properties gate: ${gate?.message || 'needs review'}`)
+if (gate.passed) log('Properties gate PASSED')
+else log(`Properties gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 
-export const __workflowResult = { branch: ctx.branch, gatePassed: !!gate?.passed }
+export const __workflowResult = { branch: ctx.branch, gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman }

@@ -6,7 +6,7 @@ import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } fro
 import { testExitCode } from './shared/lane-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
-import runGateTemplate from './prompts/util-run-gate.md'
+import { gateSteps, parseGateResult } from './shared/gate'
 
 export const meta = {
   name: 'datum-validate',
@@ -101,14 +101,16 @@ if (!mainSync.ok) {
 } else if (testExit !== 0) {
   log(`VALIDATION FAILED — tests are red (independent run exited ${testExit}${check?.tests_pass ? ', despite agent self-report of tests_pass=true' : ''}). Cannot proceed.`)
 } else {
-  const gateResult = await agent(
-    renderPrompt(runGateTemplate, { phase: 'validate', flags: yolo ? ' --approve' : '' }),
-    stageOpts('cli', { label: 'gate', model: model('fast') }),
-  )
-  const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
-  gatePassed = !!gate?.passed
-  if (gate?.passed) log('Validate gate PASSED')
-  else log(`Validate gate: ${gate?.message || 'needs review'}`)
+  // Deterministic: the verdict is `datum gate`'s exit code read from a batch
+  // step (shared/gate.ts), not an LLM's echo of its JSON.
+  const gateStepList = gateSteps('validate', yolo ? ' --approve' : '')
+  const gate = parseGateResult(parseBatchResult(
+    await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
+    gateStepList,
+  ))
+  gatePassed = gate.passed
+  if (gate.passed) log('Validate gate PASSED')
+  else log(`Validate gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 }
 
 export const __workflowResult = {

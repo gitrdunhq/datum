@@ -40,3 +40,18 @@ describe('TICKET.md-not-found error is actionable about ignored issueNumber/free
     expect(throwBlock).toMatch(/datum init/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// The phase gate verdict must come from the CLI's exit code via a
+// deterministic batch step (shared/gate.ts), never from an LLM agent that
+// ran `datum gate` and echoed the JSON back.
+// ---------------------------------------------------------------------------
+
+describe('datum-refine — deterministic gate verdict', () => {
+  const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
+  it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {
+    expect(src).not.toMatch(/util-run-gate/)
+    expect(src).toMatch(/gateSteps\(/)
+    expect(src).toMatch(/parseGateResult\(/)
+  })
+})

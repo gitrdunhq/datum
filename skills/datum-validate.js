@@ -254,8 +254,47 @@ function testExitCode(stdout) {
 // skills/src/prompts/validate-check.md
 var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
-// skills/src/prompts/util-run-gate.md
-var util_run_gate_default = "Run: datum gate {{phase}}{{flags}}\nReturn the JSON output from the gate command. If the gate fails, return the failure JSON as-is.\nOutput raw JSON only.\n";
+// skills/src/shared/gate.ts
+function gateSteps(phase2, flags) {
+  return [{ name: "gate", command: `datum gate ${phase2}${flags}`, tolerant: true }];
+}
+function parseGateResult(result) {
+  const step = result.missing ? null : stepResult(result, "gate");
+  if (!step) {
+    return {
+      passed: false,
+      needsHuman: false,
+      hardStop: false,
+      exitCode: null,
+      message: `gate_run_failed: ${describeFailure(result, "gate")}`
+    };
+  }
+  let json = null;
+  try {
+    const text = step.stdout.trim();
+    const start = text.indexOf("{");
+    json = start >= 0 ? JSON.parse(text.slice(start, text.lastIndexOf("}") + 1)) : null;
+  } catch {
+    json = null;
+  }
+  if (!json || typeof json !== "object") {
+    const tail = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    return {
+      passed: false,
+      needsHuman: false,
+      hardStop: step.exit_code === 2,
+      exitCode: step.exit_code,
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail ? ` \u2014 ${tail}` : ""}`
+    };
+  }
+  return {
+    passed: step.exit_code === 0 && json.passed === true,
+    needsHuman: json.needs_human === true,
+    hardStop: step.exit_code === 2 || json.hard_stop === true,
+    exitCode: step.exit_code,
+    message: typeof json.message === "string" ? json.message : ""
+  };
+}
 
 // skills/src/datum-validate.ts
 var a = parseValidateArgs(args);
@@ -307,14 +346,14 @@ if (!mainSync.ok) {
 } else if (testExit !== 0) {
   log(`VALIDATION FAILED \u2014 tests are red (independent run exited ${testExit}${check?.tests_pass ? ", despite agent self-report of tests_pass=true" : ""}). Cannot proceed.`);
 } else {
-  const gateResult = await agent(
-    renderPrompt(util_run_gate_default, { phase: "validate", flags: yolo ? " --approve" : "" }),
-    stageOpts("cli", { label: "gate", model: model("fast") })
-  );
-  const gate = typeof gateResult === "string" ? parseAgentJson(gateResult, { passed: false }) : gateResult;
-  gatePassed = !!gate?.passed;
-  if (gate?.passed) log("Validate gate PASSED");
-  else log(`Validate gate: ${gate?.message || "needs review"}`);
+  const gateStepList = gateSteps("validate", yolo ? " --approve" : "");
+  const gate = parseGateResult(parseBatchResult(
+    await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),
+    gateStepList
+  ));
+  gatePassed = gate.passed;
+  if (gate.passed) log("Validate gate PASSED");
+  else log(`Validate gate: ${gate.message || "needs review"}${gate.needsHuman ? " (needs human approval)" : ""}${gate.hardStop ? " (hard stop)" : ""}`);
 }
 return {
   testsPassed,

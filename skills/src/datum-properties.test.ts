@@ -79,19 +79,34 @@ describe('datum-properties — epic_dir fallback (bug fix)', () => {
 describe('datum-properties — Derive phase ordering', () => {
   it('writes and commits PROPERTIES.md before running the properties gate', () => {
     const commitIdx = propertiesSrc.indexOf('git commit -m "properties: derive PROPERTIES.md"')
-    const gateIdx = propertiesSrc.indexOf("renderPrompt(runGateTemplate, { phase: 'properties'")
+    const gateIdx = propertiesSrc.indexOf("gateSteps('properties'")
     expect(commitIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeGreaterThan(-1)
     expect(commitIdx).toBeLessThan(gateIdx)
   })
 
   it('the gate flags carry --approve only in yolo mode, matching datum-plan.ts', () => {
-    expect(propertiesSrc).toMatch(/flags: yolo \? ' --approve' : ''/)
+    expect(propertiesSrc).toMatch(/gateSteps\('properties', yolo \? ' --approve' : ''\)/)
   })
 })
 
 describe('datum-properties — workflow result shape', () => {
-  it('exports branch and gatePassed, coerced to a boolean', () => {
-    expect(propertiesSrc).toMatch(/export const __workflowResult = \{ branch: ctx\.branch, gatePassed: !!gate\?\.passed \}/)
+  it('exports branch and gatePassed taken from the deterministic gate verdict', () => {
+    expect(propertiesSrc).toMatch(/export const __workflowResult = \{ branch: ctx\.branch, gatePassed: gate\.passed/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The phase gate verdict must come from the CLI's exit code via a
+// deterministic batch step (shared/gate.ts), never from an LLM agent that
+// ran `datum gate` and echoed the JSON back.
+// ---------------------------------------------------------------------------
+
+describe('datum-properties — deterministic gate verdict', () => {
+  const src = readFileSync(join(__dirname, 'datum-properties.ts'), 'utf8')
+  it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {
+    expect(src).not.toMatch(/util-run-gate/)
+    expect(src).toMatch(/gateSteps\(/)
+    expect(src).toMatch(/parseGateResult\(/)
   })
 })
