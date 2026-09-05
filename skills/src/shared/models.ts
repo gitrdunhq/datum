@@ -37,7 +37,6 @@ export type FailureStage = TddStage | 'MERGE' | 'SKIPPED' | 'UNKNOWN' | 'CRASH'
 // carries the root-cause lane in error. Distinct from 'skipped' (dep never ran).
 export type LaneStatus = 'completed' | 'failed' | 'skipped' | 'blocked'
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
-export const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'] as const
 
 export type SkepticVerdict = 'PASS' | 'FRAGILE' | 'BROKEN'
 export type ReviewDomain = 'Security' | 'Performance' | 'Architecture' | 'Correctness'
@@ -45,9 +44,6 @@ export type ReviewDomain = 'Security' | 'Performance' | 'Architecture' | 'Correc
 export type AmbiguityLevel = 'high' | 'medium' | 'low' | 'trivial'
 export type RiskLevel = 'low' | 'medium' | 'high'
 export type TriageCategory = 'workflow-bug' | 'lane-plan' | 'agent-behavior' | 'infrastructure' | 'test-quality'
-export type Scope = 'narrow' | 'moderate' | 'broad'
-export type BranchType = 'main' | 'feature' | 'hotfix'
-export type InputType = 'ticket' | 'bug' | 'question' | 'audit' | 'continuation' | 'raw-idea'
 
 export const DEFAULT_CONFIG = {
   language: '',

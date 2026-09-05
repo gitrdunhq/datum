@@ -69,6 +69,8 @@ Epic artifacts always live at `docs/epics/<branch>/`.
 
 After each phase: `datum gate <phase> [--approve]`
 
+Outside the pipeline, `datum-awake` (`Workflow({ name: "datum-awake" })`) rescans the repo and regenerates the agent preamble; it is not dispatched by `datum-go`.
+
 ## Launching `datum-go`
 
 Compute the inputs fingerprint first and pass it in `args`. `Workflow({resumeFromRunId})` replays every agent call whose prompt is unchanged — the config read, every deterministic batch that reads an epic doc, and every gate. The fingerprint (`.datum/config.json`, `~/.datum/config.json`, every `*.md`/`*.json` in the current epic dir, `.datum/pipeline-state.json`) is stamped into every batch prompt, so a human edit between runs — an answered QUESTIONS.md, a fixed SPEC.md — is a cache miss and an unchanged input still hits (#354). **Recompute it on every launch, resumes included**; a resume with the old value replays the stale gate verdict.

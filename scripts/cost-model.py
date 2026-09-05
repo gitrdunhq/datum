@@ -58,7 +58,6 @@ TOKEN_ESTIMATES = {
     "docs-sync": {"input": 8000, "output": 5000},
     "synthesize": {"input": 8000, "output": 5000},
     "triage-analyze": {"input": 8000, "output": 4000},
-    "route-classify": {"input": 5000, "output": 1500},
     "skeptic-contract": {"input": 8000, "output": 3000},
     "deepen-research": {"input": 10000, "output": 6000},
     "triage-addenda": {"input": 8000, "output": 4000},
@@ -71,12 +70,6 @@ TOKEN_ESTIMATES = {
 
 # Full feature pipeline agent composition (datum-go, 5 lanes, no retries)
 FULL_PIPELINE = {
-    "route": [
-        ("haiku", "check-artifacts"),
-        ("haiku", "check-git"),
-        ("sonnet", "route-classify"),
-        ("haiku", "log-decision"),
-    ],
     "refine": [
         ("haiku", "read-context"),
         ("haiku", "classify"),
