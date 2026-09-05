@@ -307,6 +307,9 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Deferred reads unverified** — closed for the JSON-returning consumers in 840becd: `contextWitnessInstruction`/`assertReadWitness`, `context_read_unverified`.
 - **Docs commit via a 3-turn agent; docs failure aborted the run** — closed in 800e9dd: `commitFilesSteps` with the exact message (trailers refused), `docs_workflow_failed` fails soft in both orchestrators.
 - **GREEN turn-cap left a dirty worktree and an "unknown" failure** — closed in 887c6aa: `green_no_result`, `worktreeResetSteps` before the escalation retry, stage caps 80/60/60.
+- **Closeout batch invoked commands that did not exist** — closed in ae4c6f2: `datum closeout-collect-*`, `closeout-collate`, `closeout-archive` registered, forwarding to the closeout modules.
+- **Agent replies defaulted on parse failure** — closed in c13757f: `parseAgentJsonStrict` at every site whose default would have been acted on; thrown phase children fold into the halt path.
+- **Two-commit RED failed as "no new tests"** — closed in a7abd94: the before-count reads from the epic merge-base.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
