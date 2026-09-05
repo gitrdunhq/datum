@@ -234,7 +234,9 @@ function buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, stage, specFi
     // The criteria/red_note/contract_summary are in this file, not in the
     // packet: nothing an LLM turn relayed is trusted as content (see
     // datum/lane_spec_export.py). The agent reads it and witnesses the read.
-    lane_spec_file: { path: specFile.path, bytes: specFile.bytes, sha: specFile.sha },
+    // No sha here: the blob sha is the read witness, and a prompt that
+    // prints it lets the agent copy it without opening the file.
+    lane_spec_file: { path: specFile.path, bytes: specFile.bytes },
     allowed_write_files: stage === "RED" ? testFiles : stage === "GREEN" ? implFiles : [...testFiles, ...implFiles],
     forbidden_write_files: stage === "RED" ? implFiles : stage === "GREEN" ? testFiles : [],
     commit_prefix: stage === "RED" ? `red(${taskId})` : stage === "GREEN" ? `green(${taskId})` : `refactor(${taskId})`,
@@ -564,7 +566,11 @@ function isMissing(raw) {
 }
 function laneIntakeSteps(o) {
   const steps = [];
-  if (o.laneSpec) steps.push({ name: "lane-spec", command: laneSpecExportCommand(o.laneSpec), tolerant: true });
+  if (o.laneSpec) {
+    steps.push({ name: "lane-spec", command: laneSpecExportCommand(o.laneSpec), tolerant: true });
+    steps.push({ name: "lane-spec-bytes", command: `wc -c < ${q2(o.laneSpec.outPath)} | tr -d ' '`, tolerant: true });
+    steps.push({ name: "lane-spec-sha", command: `git hash-object ${q2(o.laneSpec.outPath)}`, tolerant: true });
+  }
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
   if (!o.structural) {
@@ -733,6 +739,7 @@ function postGreenSteps(o) {
   }
   return steps;
 }
+var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
@@ -741,9 +748,11 @@ function digestSpecHash(digest, taskId) {
   return lane.spec_hash;
 }
 function laneSpecExportCommand(o) {
+  if (!PLAIN_ID_RE.test(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`);
+  if (!/^[A-Za-z0-9:]+$/.test(o.expectHash)) throw new Error(`laneSpecExportCommand: spec hash must be plain, got ${JSON.stringify(o.expectHash)}`);
   return `datum lane-spec-export --plan ${q2(o.planPath)} --task ${q2(o.taskId)} --out ${q2(o.outPath)} --expect-hash ${q2(o.expectHash)}`;
 }
-function laneSpecFromSteps(result, taskId) {
+function laneSpecFromSteps(result, taskId, outPath) {
   const none = { ok: false, spec: null };
   if (result.missing) return { ...none, error: `lane_spec_export_failed: ${taskId} \u2014 ${describeFailure(result, "lane-spec")}` };
   const step = stepResult(result, "lane-spec");
@@ -762,6 +771,12 @@ function laneSpecFromSteps(result, taskId) {
   if (typeof parsed.sha !== "string" || !/^[0-9a-f]{40}$/.test(parsed.sha)) return bad("sha is not a 40-hex blob id");
   if (typeof parsed.spec_hash !== "string" || !parsed.spec_hash) return bad("no spec_hash");
   if (typeof parsed.ac_count !== "number" || !Number.isInteger(parsed.ac_count) || parsed.ac_count < 0) return bad("ac_count is not a non-negative integer");
+  if (parsed.path !== outPath) return bad(`path is ${parsed.path}, expected ${outPath}`);
+  const diskBytes = parseInt((stepStdout(result, "lane-spec-bytes") || "").trim(), 10);
+  const diskSha = (stepStdout(result, "lane-spec-sha") || "").trim();
+  if (diskBytes !== parsed.bytes || diskSha !== parsed.sha) {
+    return { ...none, error: `lane_spec_relay_mismatch: ${taskId} \u2014 the summary says ${parsed.bytes} bytes / blob ${parsed.sha} but ${outPath} measures ${Number.isFinite(diskBytes) ? diskBytes : "?"} bytes / blob ${diskSha || "?"} \u2014 the runner did not return the export summary verbatim` };
+  }
   return {
     ok: true,
     spec: { task_id: parsed.task_id, path: parsed.path, bytes: parsed.bytes, sha: parsed.sha, spec_hash: parsed.spec_hash, ac_count: parsed.ac_count },
@@ -778,7 +793,7 @@ function contextSlot(f) {
   if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
   if (f.inlined && f.content !== null) return f.content;
   return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
-Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
 function contextWitnessInstruction(files) {
   const deferred = files.filter((f) => f.exists && !f.inlined);
@@ -1084,10 +1099,19 @@ async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFi
   const verdict = ownershipFromStdout(stepStdout(result, "ownership"), allowedFiles, forbiddenFiles);
   return verdict.ok ? verdict : { ...verdict, checkFailed: verdict.violations.some((v) => v.startsWith("ownership_check_failed")) };
 }
-async function witnessedAgent(prompt, opts, specFile) {
+async function witnessedAgent(prompt, opts, specFile, stage) {
   const result = await resilientAgent(prompt, opts);
-  if (result !== null) assertReadWitness([specFile], result);
+  if (result !== null) assertStageWitness(specFile, result, stage);
   return result;
+}
+function assertStageWitness(specFile, parsed, stage) {
+  try {
+    assertReadWitness([specFile], parsed);
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    err.stage = stage;
+    throw err;
+  }
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
@@ -1180,7 +1204,7 @@ No markdown fences, no explanation.`,
       }
     }
   }
-  const spec = laneSpecFromSteps(intakeResult, taskId);
+  const spec = laneSpecFromSteps(intakeResult, taskId, `${wt}/.datum/lane-spec.json`);
   if (!spec.ok || !spec.spec) {
     log(`[${taskId}] LANE SPEC EXPORT FAILED: ${spec.error}`);
     return { task_id: taskId, status: "failed", stage: "CRASH", error: spec.error };
@@ -1324,7 +1348,8 @@ No markdown fences, no explanation.`,
     red = await witnessedAgent(
       redPrompt(promptVars),
       stageOpts("red", { label: `red:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-      specFile
+      specFile,
+      "RED"
     );
     if (!red) {
       const redFirstFailure = "red_no_result: RED agent returned nothing (likely the maxTurns cap in agents/datum-red.md, an API error, or a skip)";
@@ -1338,7 +1363,8 @@ No markdown fences, no explanation.`,
       red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: redFirstFailure }),
         stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile
+        specFile,
+        "RED"
       );
       if (!red) {
         return {
@@ -1369,7 +1395,8 @@ No markdown fences, no explanation.`,
         red = await witnessedAgent(
           redRetryPrompt({ ...promptVars, failureReason: "agent did not commit test files" }),
           stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-          specFile
+          specFile,
+          "RED"
         );
         if (!red || !red.committed) {
           const retryCheck = await verifyCommitIndependently(taskId, wt, testFiles, redPacket.commit_prefix, "RED", cfg2.epicBranch);
@@ -1395,7 +1422,8 @@ No markdown fences, no explanation.`,
       red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || "unknown" }),
         stageOpts("red", { label: `red-retry:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile
+        specFile,
+        "RED"
       );
     }
   }
@@ -1553,7 +1581,8 @@ No markdown fences, no explanation.`,
   const reflectResult = await witnessedAgent(
     reflectPrompt({ wt, testFiles: testFiles.join(", "), laneSpec: specFile }),
     stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA, maxRetries: 1 }),
-    specFile
+    specFile,
+    "RED"
   );
   if (!reflectResult) {
     log(`[${taskId}] reflect_no_result: reflect agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-reflect.md) \u2014 proceeding to GREEN without a quality score`);
@@ -1594,7 +1623,8 @@ No markdown fences, no explanation.`,
       greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "green_stale" })
     }) : greenPrompt(greenVars),
     stageOpts("green", { label: `green:${taskId}`, phase: "Act", model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-    specFile
+    specFile,
+    "GREEN"
   );
   if (green?.success) {
     log(`[${taskId}] GREEN wrote: ${(green.files_written || []).join(", ")}`);
@@ -1630,7 +1660,8 @@ No markdown fences, no explanation.`,
             greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason })
           }),
           stageOpts("green", { label: `green-widened:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-          specFile
+          specFile,
+          "GREEN"
         );
       } else {
         const refusal = cfg2.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(", ")}] not inside src/)` : "";
@@ -1658,7 +1689,8 @@ No markdown fences, no explanation.`,
           greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure })
         }),
         stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile
+        specFile,
+        "GREEN"
       );
     }
   }
@@ -1737,7 +1769,8 @@ ${bugSummary}`,
         greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: "skeptic_broken", skeptic_bugs: confirmedBugs })
       }),
       stageOpts("green", { label: `green-skeptic-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-      specFile
+      specFile,
+      "GREEN"
     );
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
     const retryVerifyRaw = await agent(
@@ -1795,7 +1828,7 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
       (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }))
     )
   );
-  for (const r of skepticResults) if (r !== null) assertReadWitness([specFile], r);
+  for (const r of skepticResults) if (r !== null) assertStageWitness(specFile, r, "GREEN");
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses);
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i];
@@ -1969,7 +2002,8 @@ var dagResults = await parallel(
       const r = await runLane(taskId, lanePlan, worktreePaths, cfg);
       result = r || { task_id: taskId, status: "failed", stage: "UNKNOWN", error: "null result" };
     } catch (e) {
-      result = { task_id: taskId, status: "failed", stage: "CRASH", error: e instanceof Error ? e.message : String(e) };
+      const staged = e.stage;
+      result = { task_id: taskId, status: "failed", stage: staged || "CRASH", error: e instanceof Error ? e.message : String(e) };
     }
     depResolvers[taskId](result);
     return result;

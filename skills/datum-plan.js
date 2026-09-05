@@ -465,7 +465,7 @@ function contextSlot(f) {
   if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
   if (f.inlined && f.content !== null) return f.content;
   return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
-Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes; git blob ${f.sha}). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
 }
 function contextWitnessInstruction(files) {
   const deferred = files.filter((f) => f.exists && !f.inlined);
