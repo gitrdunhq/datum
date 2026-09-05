@@ -264,8 +264,41 @@ if [ -f "$__epic/lane-plan-final.json" ]; then __plan="$__epic/lane-plan-final.j
       tolerant: true
     });
   }
+  steps.push({
+    name: "plan-shape",
+    command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
+    tolerant: true
+  });
   steps.push({ name: "lane-state-read", command: o.laneStateReadScript.trim(), tolerant: true });
   return steps;
+}
+function verifyLanePlanShape(plan, shapeStdout) {
+  let shape = null;
+  try {
+    shape = shapeStdout && shapeStdout.trim() ? JSON.parse(shapeStdout.trim()) : null;
+  } catch {
+    shape = null;
+  }
+  if (!shape || !Array.isArray(shape.lanes)) {
+    return { ok: false, reason: "plan-shape step produced no JSON \u2014 the relayed lane plan cannot be verified" };
+  }
+  const got = Object.keys(plan.lanes || {}).sort();
+  const want = [...shape.lanes].sort();
+  const missing = want.filter((id) => !got.includes(id));
+  const extra = got.filter((id) => !want.includes(id));
+  if (missing.length || extra.length) {
+    return {
+      ok: false,
+      reason: `relayed lane plan has ${got.length} lanes but the file has ${want.length}` + (missing.length ? `; missing: ${missing.join(", ")}` : "") + (extra.length ? `; not in file: ${extra.join(", ")}` : "")
+    };
+  }
+  if (typeof shape.topo === "number" && (plan.topological_order || []).length !== shape.topo) {
+    return { ok: false, reason: `relayed topological_order has ${(plan.topological_order || []).length} entries but the file has ${shape.topo}` };
+  }
+  if (typeof shape.total === "number" && plan.total_lanes !== shape.total) {
+    return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` };
+  }
+  return { ok: true, reason: "" };
 }
 function readLanePlanPrompt(lanePlanPath2) {
   return `Read the file at "${lanePlanPath2}" and return its exact JSON contents \u2014 unmodified, unsummarised, not merged or interpreted. If the file is too large to read in one call, use the Read tool's offset parameter to read the rest and concatenate the full content before answering \u2014 never answer with a partial or reconstructed/fabricated version of the file. Output raw JSON only, no markdown fences, no explanation.`;
@@ -419,6 +452,8 @@ var lanePlanText = await agent(
 );
 var lanePlan = parseAgentJson(lanePlanText, null);
 if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} \u2014 ${describeFailure(actStartResult, "act-start")}`);
+var planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, "plan-shape"));
+if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) \u2014 refusing to execute a plan that differs from the file`);
 var waves = buildWaves(lanePlan);
 if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {
   throw new Error("Lane plan has 0 tasks \u2014 nothing to execute");

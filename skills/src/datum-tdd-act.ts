@@ -3,7 +3,7 @@ import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsR
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { actStartSteps, readLanePlanPrompt } from './shared/lane-steps'
+import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
@@ -74,6 +74,10 @@ const lanePlanText = await agent(
 )
 const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
 if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
+// The reader agent can silently abridge a large plan; check its copy
+// against the shape the act-start batch read straight from the file.
+const planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, 'plan-shape'))
+if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) — refusing to execute a plan that differs from the file`)
 
 const waves = buildWaves(lanePlan)
 if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {

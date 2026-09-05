@@ -2,7 +2,7 @@ import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsR
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { actStartSteps, readLanePlanPrompt } from './shared/lane-steps'
+import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
@@ -383,6 +383,10 @@ if (shouldRun('act', 3)) {
   )
   const lanePlan = parseAgentJson<LanePlan | null>(lanePlanText as string, null) as LanePlan
   if (!lanePlan || !lanePlan.lanes) throw new Error(`Failed to parse ${lanePlanPath} — ${describeFailure(actStartResult, 'act-start')}`)
+  // The reader agent can silently abridge a large plan; check its copy
+  // against the shape the act-start batch read straight from the file.
+  const planShape = verifyLanePlanShape(lanePlan, stepStdout(actStartResult, 'plan-shape'))
+  if (!planShape.ok) throw new Error(`lane_plan_relay_mismatch: ${planShape.reason} (${lanePlanPath}) — refusing to execute a plan that differs from the file`)
 
   const waves = buildWaves(lanePlan)
   if (waves.length === 0 || Object.keys(lanePlan.lanes || {}).length === 0) {

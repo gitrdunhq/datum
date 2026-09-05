@@ -66,3 +66,11 @@ describe('docs workflow result is consumed, not discarded', () => {
     expect(src).toMatch(/docs[^\n]*committed === false|docs[^\n]*failure_reason/)
   })
 })
+
+describe('lane-plan relay integrity', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act.ts'), 'utf8')
+  it('verifies the relayed lane plan against the jq-emitted shape and fails loud on mismatch', () => {
+    expect(src).toMatch(/verifyLanePlanShape\(/)
+    expect(src).toMatch(/lane_plan_relay_mismatch/)
+  })
+})

@@ -552,3 +552,11 @@ describe('preflight: gitignore check', () => {
     expect(goSource).toMatch(/gitignore[\s\S]{0,600}throw new Error\([^)]*missing/)
   })
 })
+
+describe('lane-plan relay integrity', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  it('verifies the relayed lane plan against the jq-emitted shape and fails loud on mismatch', () => {
+    expect(goSource).toMatch(/verifyLanePlanShape\(/)
+    expect(goSource).toMatch(/lane_plan_relay_mismatch/)
+  })
+})
