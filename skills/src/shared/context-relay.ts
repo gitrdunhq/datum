@@ -22,6 +22,7 @@
 import { stepStdout, type BatchResult, type BatchStep } from './batch'
 import { utf8ByteLength, utf8BytesToString } from './utf8'
 import { base64Decode } from './base64'
+import { gitBlobSha } from './sha1'
 
 /** Total bytes one inline batch may relay — well under the ~25 KB spill. */
 export const CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024
@@ -345,10 +346,14 @@ function stdoutAcross(results: BatchResult[], name: string): string | null {
  * `chunkResults` may be one BatchResult per chunk (one agent() call each,
  * via stageOpts('cli')) or fewer, larger batches — steps are looked up by
  * name across all of them, in order, so either shape works.
- * `sha` is carried through purely for the error text / caller logging: there
- * is no SHA-1 implementation available in the sandbox to re-derive a git
- * blob hash here, so it is never itself a pass/fail condition — the byte
- * counts are.
+ * `sha` is the git blob hash the probe read from disk with `git hash-object`
+ * (contextProbeSteps' `ctx-sha-<i>` step). When non-empty, the assembled
+ * bytes are hashed with gitBlobSha (shared/sha1.ts, a pure SHA-1 — the
+ * sandbox has no node:crypto) and compared BEFORE the UTF-8 decode, so a
+ * same-length single-byte tamper that the byte counts can't see (and that
+ * may not even be valid UTF-8) is still caught. `sha` may be empty when a
+ * caller probed without git; in that case the hash check is skipped and only
+ * the byte counts guard the assembly, same as before.
  */
 export function contextAssembleChunks(
   relPath: string,
@@ -381,6 +386,12 @@ export function contextAssembleChunks(
   })
   if (bytes.length !== probeBytes) {
     throw new Error(`context_relay_mismatch: ${relPath} total expected ${probeBytes} bytes, got ${bytes.length} bytes (sha ${sha || '?'})`)
+  }
+  if (sha) {
+    const computed = gitBlobSha(bytes)
+    if (computed !== sha) {
+      throw new Error(`context_relay_mismatch: ${relPath} blob sha ${computed} != probe ${sha}`)
+    }
   }
   const assembled = utf8BytesToString(bytes)
   const actual = utf8ByteLength(assembled)

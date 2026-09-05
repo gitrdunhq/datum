@@ -37,6 +37,7 @@ import {
   type ContextFile,
 } from './context-relay'
 import { base64Encode } from './base64'
+import { gitBlobSha } from './sha1'
 
 const names = (steps: BatchStep[]) => steps.map((s) => s.name)
 
@@ -324,7 +325,8 @@ describe('contextAssembleChunks', () => {
   it('assembles chunks in order, decoding base64 and verifying every byte count', () => {
     const plan = [{ offset: 0, length: 5 }, { offset: 5, length: 6 }]
     const results = [chunkResult(0, 'hello'), chunkResult(1, ' world')]
-    const out = contextAssembleChunks('SPEC.md', 11, 'deadbeef', results, plan)
+    const sha = gitBlobSha(Array.from(Buffer.from('hello world', 'utf8')))
+    const out = contextAssembleChunks('SPEC.md', 11, sha, results, plan)
     expect(out).toBe('hello world')
   })
 
@@ -339,14 +341,42 @@ describe('contextAssembleChunks', () => {
       fake({ 'ctx-chunk-0': base64Encode(chunkABytes), 'ctx-chunk-wc-0': String(chunkABytes.length) }),
       fake({ 'ctx-chunk-1': base64Encode(chunkBBytes), 'ctx-chunk-wc-1': String(chunkBBytes.length) }),
     ]
-    const out = contextAssembleChunks('SPEC.md', bytes.length, 'deadbeef', results, plan)
+    const out = contextAssembleChunks('SPEC.md', bytes.length, gitBlobSha(bytes), results, plan)
     expect(out).toBe(text)
   })
 
   it('accepts chunk results spread across several BatchResult objects (one agent() call per chunk)', () => {
     const plan = [{ offset: 0, length: 3 }, { offset: 3, length: 3 }]
     const results = [chunkResult(0, 'abc'), chunkResult(1, 'def')]
-    expect(contextAssembleChunks('X.json', 6, 's', results, plan)).toBe('abcdef')
+    const sha = gitBlobSha(Array.from(Buffer.from('abcdef', 'utf8')))
+    expect(contextAssembleChunks('X.json', 6, sha, results, plan)).toBe('abcdef')
+  })
+
+  it('skips the sha check entirely when sha is empty (probe ran without git)', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    const results = [chunkResult(0, 'hello')]
+    expect(contextAssembleChunks('SPEC.md', 5, '', results, plan)).toBe('hello')
+  })
+
+  it('throws context_relay_mismatch naming the computed and probe sha when the assembled bytes hash differently', () => {
+    const plan = [{ offset: 0, length: 5 }]
+    const results = [chunkResult(0, 'hello')]
+    expect(() => contextAssembleChunks('SPEC.md', 5, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', results, plan)).toThrow(
+      /context_relay_mismatch: SPEC\.md blob sha [0-9a-f]{40} != probe deadbeefdeadbeefdeadbeefdeadbeefdeadbeef/,
+    )
+  })
+
+  it('throws context_relay_mismatch when every byte count matches but one byte is flipped (same length) — only the sha catches it', () => {
+    const original = 'hello'
+    const bytes = Array.from(Buffer.from(original, 'utf8'))
+    const sha = gitBlobSha(bytes)
+    const flipped = bytes.slice()
+    flipped[0] = flipped[0] ^ 0xff
+    const plan = [{ offset: 0, length: flipped.length }]
+    const results = [fake({ 'ctx-chunk-0': base64Encode(flipped), 'ctx-chunk-wc-0': String(flipped.length) })]
+    // every declared byte count (chunk wc, planned length, total) matches —
+    // only gitBlobSha of the tampered content disagrees with the probe's sha.
+    expect(() => contextAssembleChunks('SPEC.md', flipped.length, sha, results, plan)).toThrow(/context_relay_mismatch: SPEC\.md blob sha/)
   })
 
   it('throws context_relay_mismatch naming the path and chunk index when a chunk is missing', () => {
@@ -393,13 +423,15 @@ describe('CHUNKED mode end-to-end under real bash', () => {
       const bytes = Buffer.byteLength(content, 'utf8')
       expect(bytes).toBeGreaterThan(40 * 1024)
 
+      const realSha = execFileSync('git', ['hash-object', 'lane-plan.json'], { cwd: dir, encoding: 'utf8' }).trim()
+
       const plan = contextChunkPlan(bytes, CONTEXT_RELAY_BUDGET_BYTES)
       expect(plan.length).toBeGreaterThan(1)
       const results = plan.map((chunk, i) => {
         const steps = contextChunkSteps('lane-plan.json', chunk, i)
         return parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
       })
-      const assembled = contextAssembleChunks('lane-plan.json', bytes, 'irrelevant-for-this-check', results, plan)
+      const assembled = contextAssembleChunks('lane-plan.json', bytes, realSha, results, plan)
       expect(assembled).toBe(content)
       const parsed = JSON.parse(assembled)
       expect(parsed.total_lanes).toBe(400)
@@ -408,7 +440,7 @@ describe('CHUNKED mode end-to-end under real bash', () => {
       // Tamper with one chunk's stdout the way a normalising runner would —
       // must throw, never silently assemble the corrupted version.
       const tamperedResults = results.map((r, i) => (i === 0 ? { ...r, steps: r.steps.map((s) => (s.name === 'ctx-chunk-0' ? { ...s, stdout: base64Encode([1, 2, 3]) } : s)) } : r))
-      expect(() => contextAssembleChunks('lane-plan.json', bytes, 'irrelevant-for-this-check', tamperedResults, plan)).toThrow(/context_relay_mismatch/)
+      expect(() => contextAssembleChunks('lane-plan.json', bytes, realSha, tamperedResults, plan)).toThrow(/context_relay_mismatch/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
