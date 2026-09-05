@@ -387,6 +387,44 @@ def accepted_review_findings(response_path: Path) -> dict[str, str]:
     return accepted
 
 
+_DECISION_LINE_RE = re.compile(
+    r"^\s*[-*]?\s*(ACCEPT|DEFER)\s+([A-Za-z0-9]+(?:-\d+)?)\s*"
+    r"(?:\(\s*([A-Za-z]+-\d+)\s+(\S+?):(\d+)\s*\))?\s*(?:->\s*(\S+)\s*)?:\s*(.*?)\s*$"
+)
+
+
+def review_decisions(response_path: Path) -> list[dict[str, str]]:
+    """Every reasoned ACCEPT/DEFER line with what it was recorded against:
+    {token, verb, id, file, line, reason}. `datum review-accept` writes the
+    `(<ID> <file>:<line>)` note, which is what lets a decision outlive a
+    reworded re-finding (caliper BUG R): the key hashes the text, the note
+    names the place."""
+    if not response_path.exists():
+        return []
+    out: list[dict[str, str]] = []
+    for line in response_path.read_text().splitlines():
+        m = _DECISION_LINE_RE.match(line)
+        if not m or not m.group(7).strip():
+            continue
+        verb, token, fid, path, lineno, target, reason = m.groups()
+        out.append(
+            {
+                "token": token.upper(),
+                "verb": verb,
+                "id": (fid or "").upper(),
+                "file": path or "",
+                "line": lineno or "",
+                "target": target or "",
+                "reason": reason.strip(),
+            }
+        )
+    return out
+
+
+def _lens_of(finding_id: str) -> str:
+    return finding_id.split("-", 1)[0].upper() if finding_id else ""
+
+
 def review_report_rows(content: str) -> list[dict[str, str]]:
     """The report's finding rows as {id, severity, file, line, key} in report
     order. `key` is '' for a report without a Key column (pre-key reports)."""
@@ -423,20 +461,28 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
 
 
 def _blocking_review_findings(
-    content: str, accepted: dict[str, str]
-) -> tuple[list[str], list[str]]:
-    """(blocking labels, ignored accept tokens). A high/critical row is
-    cleared by an accept of its key, or of its id only when the report
-    carries no keys — ids are renumbered every review, so an id accept on a
-    keyed report is named as ignored rather than silently binding to
-    whatever row wears that id now. A report with no id-labelled rows falls
-    back to the whole-content severity scan ("(unlabelled)")."""
+    content: str,
+    accepted: dict[str, str],
+    decisions: list[dict[str, str]] | None = None,
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """(blocking labels, ignored accept tokens, {row key: prior decision
+    token} for rows cleared by place rather than key). A high/critical row
+    is cleared by an accept of its key; failing that, by a recorded decision
+    whose note names the same lens, file and line — the key hashes the
+    finding's text, and a reviewer that restates the same finding produces
+    a new key (caliper BUG R). An id accept clears a row only when the
+    report carries no keys — ids are renumbered every review, so on a keyed
+    report it is named as ignored rather than silently binding to whatever
+    row wears that id now. A report with no id-labelled rows falls back to
+    the whole-content severity scan ("(unlabelled)")."""
     rows = review_report_rows(content)
     if not rows:
         blocked = _report_has_high_or_critical(content)
-        return (["(unlabelled)"] if blocked else []), []
+        return (["(unlabelled)"] if blocked else []), [], {}
     keyed = any(r["key"] for r in rows)
+    placed = [d for d in (decisions or []) if d["file"] and d["line"]]
     blocking: list[str] = []
+    matched: dict[str, str] = {}
     for r in rows:
         if r["severity"] not in ("high", "critical"):
             continue
@@ -444,12 +490,25 @@ def _blocking_review_findings(
             continue
         if not keyed and r["id"] in accepted:
             continue
+        prior = next(
+            (
+                d
+                for d in placed
+                if d["file"] == r["file"]
+                and d["line"] == r["line"]
+                and _lens_of(d["id"]) == _lens_of(r["id"])
+            ),
+            None,
+        )
+        if prior is not None and r["key"]:
+            matched[r["key"]] = prior["token"]
+            continue
         blocking.append(f"{r['id']} [{r['key']}]" if r["key"] else r["id"])
     ignored: list[str] = []
     if keyed:
         ids = {r["id"] for r in rows}
         ignored = [t for t in accepted if t in ids]
-    return blocking, ignored
+    return blocking, ignored, matched
 
 
 def _report_has_high_or_critical(content: str) -> bool:
@@ -1138,8 +1197,11 @@ def gate_review(yolo: bool, config: dict) -> None:
     # LLM lens's severity calibration must never be a hard stop with no
     # reasoned, recorded way past it (elonchesd epic-1: five "high" findings
     # were per-frame scans over forty items).
-    accepted = accepted_review_findings(report_path.parent / "REVIEW-RESPONSE.md")
-    blocking, ignored = _blocking_review_findings(content, accepted)
+    response_path = report_path.parent / "REVIEW-RESPONSE.md"
+    accepted = accepted_review_findings(response_path)
+    blocking, ignored, matched = _blocking_review_findings(
+        content, accepted, review_decisions(response_path)
+    )
     if blocking:
         # Satisfaction loop: an iteration is a DISTINCT blocked report, kept
         # per epic. The old counter lived under a run id read from the wrong
@@ -1192,10 +1254,18 @@ def gate_review(yolo: bool, config: dict) -> None:
         )
         sys.exit(1)
 
-    if accepted:
+    if accepted or matched:
+        named = ", ".join(
+            sorted(t.lower() if _KEY_RE.match(t) else t for t in accepted)
+        )
+        by_place = "; ".join(
+            f"{key} matched prior decision {token.lower() if _KEY_RE.match(token) else token}"
+            for key, token in matched.items()
+        )
         pass_gate(
-            f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: "
-            f"{', '.join(sorted(t.lower() if _KEY_RE.match(t) else t for t in accepted))})"
+            f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: {named}"
+            + (f"; {by_place}" if by_place else "")
+            + ")"
         )
     pass_gate("Review gate passed")
 

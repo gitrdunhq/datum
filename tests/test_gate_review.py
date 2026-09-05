@@ -280,6 +280,58 @@ def test_accept_by_key_survives_id_renumbering(epic_repo, capsys):
     assert "3fa9c1d2" in result["message"] and "ab12cd34" in result["message"]
 
 
+# caliper BUG R (eedom wf_40e67cca-a79): the key hashes the finding TEXT, so a
+# reviewer that restates the same finding (same file, same line, same lens)
+# produced a new key and the recorded DEFER stopped applying. A recorded
+# decision also matches a row by lens + file + line, and the gate says so.
+def test_a_reworded_refinding_matches_the_prior_decision_by_lens_file_and_line(
+    epic_repo, capsys
+):
+    _write_report(
+        epic_repo,
+        "# Review Report\n\n## Findings\n\n"
+        "| ID | Severity | File | Line | Description | Suggestion | Key |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| CORR-001 | **high** | src/part_framework.py | 34 | Framework-layout rules apply only to Django, restated | fix | 9b29b0f8 |\n"
+        "| PERF-001 | **high** | src/part_framework.py | 90 | scan per call | index | 11112222 |\n",
+    )
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- DEFER b0408cbd (CORR-001 src/part_framework.py:34) -> datum/next: R2.1 is the next epic\n"
+        "- ACCEPT 33334444 (PERF-003 src/part_framework.py:90): fine\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 0
+    message = _fail_json(capsys)["message"]
+    assert "matched prior decision b0408cbd" in message
+    assert "9b29b0f8" in message
+    assert "matched prior decision 33334444" in message
+
+
+def test_a_prior_decision_on_another_line_or_lens_does_not_match(epic_repo, capsys):
+    _write_report(
+        epic_repo,
+        "# Review Report\n\n## Findings\n\n"
+        "| ID | Severity | File | Line | Description | Suggestion | Key |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| CORR-001 | **high** | src/part_framework.py | 60 | different finding | fix | 9b29b0f8 |\n"
+        "| PERF-001 | **high** | src/part_framework.py | 34 | perf at the same line | index | 11112222 |\n",
+    )
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- DEFER b0408cbd (CORR-001 src/part_framework.py:34) -> datum/next: R2.1\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 1
+    message = _fail_json(capsys)["message"]
+    assert "CORR-001 [9b29b0f8]" in message
+    assert "PERF-001 [11112222]" in message
+
+
 def test_bare_id_accept_on_a_keyed_report_does_not_count_and_is_named(
     epic_repo, capsys
 ):
