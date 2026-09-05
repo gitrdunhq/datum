@@ -847,6 +847,33 @@ describe('GREEN contract check runs through the scope-contract batch, not a "Run
   })
 })
 
+// The lane runner receives the DIGEST (no acceptance criteria) and fetches
+// its own full spec at intake, byte-checked and cross-checked against the
+// digest's spec_hash — the plan never travels through an LLM turn.
+describe('runLane fetches the lane spec at intake from the worktree plan', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const start = laneSource.indexOf('async function runLane(')
+  const body = laneSource.slice(start, laneSource.indexOf('// ── Per-lane TDD saga', start) > 0 ? laneSource.length : laneSource.length)
+
+  it('passes laneSpec (worktree plan path + task id) to laneIntakeSteps and parses it with laneSpecFromSteps', () => {
+    expect(body).toMatch(/laneSpec: \{ planPath: `\$\{wt\}\/\.datum\/lane-plan\.json`, taskId \}/)
+    expect(body).toMatch(/laneSpecFromSteps\(intakeResult, taskId, digestSpecHash\(lanePlan, taskId\)\)/)
+  })
+
+  it('a failed spec fetch fails the lane by its named reason before any stage agent runs', () => {
+    const fetchIdx = body.indexOf('laneSpecFromSteps(intakeResult')
+    const redIdx = body.indexOf("label: `red:${taskId}`")
+    expect(fetchIdx).toBeGreaterThan(-1)
+    expect(fetchIdx).toBeLessThan(redIdx)
+    expect(body).toMatch(/if \(!spec\.ok \|\| !spec\.lane\) \{[\s\S]{0,200}status: 'failed', stage: 'CRASH', error: spec\.error/)
+  })
+
+  it('acceptance criteria come from the fetched spec, never from the digest lane', () => {
+    expect(body).toMatch(/acStr = \(spec\.lane\.acceptance_criteria \|\| \[\]\)\.join\('\\n'\)/)
+    expect(body).not.toMatch(/const acStr: string = \(lane\.acceptance_criteria/)
+  })
+})
+
 describe('triage-classify — refactor_failed is a known deterministic prefix', () => {
   it('classifyLaneError classifies refactor_failed as agent_behavior deterministically', () => {
     const result = classifyLaneError('refactor_failed: suite red after REFACTOR wrote a broken helper', 'REFACTOR')

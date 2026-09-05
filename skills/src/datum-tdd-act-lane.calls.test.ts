@@ -12,6 +12,9 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { laneSpecHash } from './shared/utils'
+import { utf8ByteLength, utf8Encode } from './shared/utf8'
+import { gitBlobSha } from './shared/sha1'
 
 const bundlePath = join(__dirname, '..', 'datum-tdd-act-lane.js')
 
@@ -28,13 +31,24 @@ function batch(steps: Record<string, string | { stdout?: string; exit_code?: num
   )))
 }
 
+/** The full lane as lane-plan.json holds it (acceptance criteria included). */
+function fullLane(o: { pytest: boolean }) {
+  const files = o.pytest ? ['tests/test_a.py', 'src/a.py'] : ['src/a.test.ts', 'src/a.ts']
+  return { title: 'lane one', files, acceptance_criteria: ['does a', 'does b'] }
+}
+
 function happyPathResponder(o: { pytest: boolean }): Responder {
   const testFile = o.pytest ? 'tests/test_a.py' : 'src/a.test.ts'
   const implFile = o.pytest ? 'src/a.py' : 'src/a.ts'
+  // The lane fetches its full spec at intake: jq output, its byte count and
+  // its blob sha must agree with each other and with the digest's spec_hash.
+  const specText = JSON.stringify(fullLane(o)) + '\n'
+  const specBytes = utf8ByteLength(specText)
+  const specSha = gitBlobSha(utf8Encode(specText))
   return (label, prompt) => {
     if (label.startsWith('completion-check:')) return 'MISSING'
     if (label.startsWith('lane-intake:')) {
-      return batch({ history: '', cleanup: '', 'skeleton-gen': '{}' })
+      return batch({ 'lane-spec': specText, 'lane-spec-bytes': `${specBytes}\n`, 'lane-spec-sha': `${specSha}\n`, history: '', cleanup: '', 'skeleton-gen': '{}' })
     }
     if (label.startsWith('red:')) {
       return { success: true, tests_pass: false, committed: true, commit_sha: 'aaa111', files_written: [testFile], test_exit_code: 1, test_errors: ['AttributeError'] }
@@ -96,10 +110,13 @@ async function runLane(opts: {
   }
   const testCommand = opts.pytest ? 'uv run pytest -q' : 'npx vitest run'
   const files = opts.pytest ? ['tests/test_a.py', 'src/a.py'] : ['src/a.test.ts', 'src/a.ts']
+  // The runner receives the DIGEST: files/deps/spec_hash, no acceptance criteria.
   const args = {
     batchLaneIds: ['T1'],
     lanePlan: {
-      lanes: { T1: { title: 'lane one', files, acceptance_criteria: ['does a', 'does b'] } },
+      schema_version: 1,
+      lane_plan_sha: 'plan-sha',
+      lanes: { T1: { title: 'lane one', files, reads: [], depends_on: [], spec_hash: laneSpecHash(fullLane(opts)) } },
       topological_order: ['T1'],
       total_lanes: 1,
     },

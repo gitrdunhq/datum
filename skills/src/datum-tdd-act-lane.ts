@@ -18,6 +18,8 @@ import {
   depMergeFromSteps,
   ownershipFromStdout,
   testExitCode,
+  laneSpecFromSteps,
+  digestSpecHash,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps } from './shared/commit-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
@@ -26,7 +28,7 @@ import { worktreeResetSteps, worktreeResetToSteps } from './shared/commit-steps'
 import type {
   LaneArgs,
   LaneOutcome,
-  LanePlan,
+  LanePlanDigest,
   Lane,
   PipelineConfig,
   StageResult,
@@ -146,11 +148,14 @@ async function verifyFileOwnership(
 
 async function runLane(
   taskId: string,
-  lanePlan: LanePlan,
+  lanePlan: LanePlanDigest,
   worktreePaths: Record<string, string>,
   cfg: PipelineConfig,
 ): Promise<LaneOutcome> {
-  const lane: Lane = lanePlan.lanes[taskId]
+  // The digest lane: files/deps/kind/test_command/spec_hash, NO acceptance
+  // criteria. The full spec is fetched at intake (laneSpecFromSteps) and
+  // replaces this once byte-checked and hash-matched.
+  let lane: Lane = lanePlan.lanes[taskId]
   const wt: string = worktreePaths[taskId]
   // A lane without an absolute worktree path must never run — agents would fall
   // back to the main checkout and commit RED/partial work onto the epic branch.
@@ -168,7 +173,8 @@ async function runLane(
   // ("queued"...), so comparing it to 'structural' made this path dead (#369).
   const isStructural: boolean = lane.kind === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
-  const acStr: string = (lane.acceptance_criteria || []).join('\n')
+  // Assigned from the fetched spec after intake — the digest carries none.
+  let acStr = ''
    const laneTestCmd: string = cfg.testCommand
    const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
 
@@ -310,12 +316,14 @@ No markdown fences, no explanation.`,
 
   const intakeSteps = laneIntakeSteps({
     wt, epicBranch: cfg.epicBranch, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId },
   })
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
     stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }),
   )
-  const intake = parseBatchResult(intakeRaw, intakeSteps)
+  const intakeResult = parseBatchResult(intakeRaw, intakeSteps)
+  const intake = intakeResult
   // A missing intake result is an infrastructure failure, not a fresh lane:
   // treating it as empty history is what re-dispatched RED onto a lane that
   // already had RED+GREEN commits (#331 missed, #392 misfiled).
@@ -339,6 +347,18 @@ No markdown fences, no explanation.`,
       }
     }
   }
+
+  // The full lane spec, fetched from the worktree copy of the plan by the
+  // intake batch: byte-checked (wc -c + git hash-object --stdin) and
+  // cross-checked against the digest's spec_hash. The plan never travels
+  // through an LLM turn as a whole; this one lane is small enough to.
+  const spec = laneSpecFromSteps(intakeResult, taskId, digestSpecHash(lanePlan, taskId))
+  if (!spec.ok || !spec.lane) {
+    log(`[${taskId}] LANE SPEC FETCH FAILED: ${spec.error}`)
+    return { task_id: taskId, status: 'failed', stage: 'CRASH', error: spec.error }
+  }
+  lane = spec.lane
+  acStr = (spec.lane.acceptance_criteria || []).join('\n')
 
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a

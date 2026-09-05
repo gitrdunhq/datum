@@ -64,7 +64,7 @@ export interface SetupArgs {
   batchRunId: string
   epicBranch: string
   batchLaneIds: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   lanePlanPath: string
   batchTag: string
   /** #368: agent_types / hooks_installed switches from the parent's config. */
@@ -78,7 +78,7 @@ export interface SetupResult {
 
 export interface LaneArgs {
   batchLaneIds: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   worktreePaths: Record<string, string>
   cfg: PipelineConfig
   priorFailures: string[]
@@ -116,7 +116,7 @@ export interface MergeResult {
 
 export interface DocsArgs {
   completedLanes: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   runId: string
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
@@ -136,7 +136,7 @@ export interface TriageArgs {
   failures: string[]
   blocked: LaneOutcome[]
   results: Record<string, LaneOutcome>
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   runId: string
   epicBranch: string
   agentTypes?: AgentTypeConfig
@@ -151,6 +151,19 @@ export interface LanePlan {
   lanes: Record<string, Lane>
   topological_order: string[]
   total_lanes: number
+}
+
+/**
+ * What the Act scheduler holds in-script: `datum lane-plan-digest`'s output.
+ * Same shape as LanePlan minus the per-lane prose (acceptance_criteria,
+ * red_note, ...) plus a per-lane `spec_hash` computed by the pinned Python
+ * port of laneSpecHash. The full lane is fetched per lane at intake. The
+ * plan file itself never travels through an LLM turn.
+ */
+export interface LanePlanDigest extends LanePlan {
+  schema_version: number
+  /** git blob sha of the lane-plan.json the digest was built from. */
+  lane_plan_sha: string
 }
 
 export interface Lane {
@@ -176,6 +189,8 @@ export interface Lane {
   test_command?: string
   /** GitHub sub-issue number, written back by `datum plan-issues` (datum/github_issues.py). */
   github_issue?: number
+  /** Present on digest lanes only: laneSpecHash of the full lane, computed by datum/lane_hash.py. */
+  spec_hash?: string
 }
 
 export interface PipelineConfig {

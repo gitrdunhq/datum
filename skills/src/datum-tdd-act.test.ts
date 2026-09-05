@@ -75,11 +75,15 @@ describe('docs workflow result is consumed, not discarded', () => {
   })
 })
 
-describe('lane-plan relay integrity', () => {
+describe('lane plan reaches the scheduler as a byte-verified digest, never an LLM echo', () => {
   const src = readFileSync(join(__dirname, 'datum-tdd-act.ts'), 'utf8')
-  it('verifies the relayed lane plan against the jq-emitted shape and fails loud on mismatch', () => {
-    expect(src).toMatch(/verifyLanePlanShape\(/)
-    expect(src).toMatch(/lane_plan_relay_mismatch/)
+  it('parses the digest with lanePlanDigestFromSteps, halts on its named failures, and uses digest spec hashes', () => {
+    expect(src).not.toMatch(/contextChunkPlan|contextChunkSteps|contextAssembleChunks|verifyLanePlanShape/)
+    expect(src).toMatch(/const digestResult = lanePlanDigestFromSteps\(actStartResult, lanePlanPath\)/)
+    expect(src).toMatch(/if \(!digestResult\.ok \|\| !digestResult\.digest\) throw new Error\(digestResult\.error\)/)
+    expect(src).toMatch(/const lanePlan: LanePlanDigest = digestResult\.digest/)
+    expect(src).not.toMatch(/laneSpecHash\(lanePlan\.lanes\[/)
+    expect(src).toMatch(/digestSpecHash\(lanePlan, id\)/)
   })
 })
 
@@ -90,34 +94,10 @@ describe('lane-plan relay integrity', () => {
 // datum-validate.ts.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// CHUNKED lane-plan relay — replaces the datum-reader echo of lane-plan.json
-// (elonchesd run wf_6bfbd9f2-510: the reader silently normalised "§4" to
-// "§ 4" inside 5 of 18 lanes' acceptance_criteria, which changed
-// laneSpecHash() for those lanes and re-scheduled already-completed work).
-// The plan is now read in byte-verified base64 chunks and assembled here —
-// never echoed by an LLM turn.
-// ---------------------------------------------------------------------------
-
-describe('lane-plan relay is byte-chunked, not an LLM echo', () => {
-  it('no longer imports or calls readLanePlanPrompt', () => {
+describe('lane plan is never read by a reader agent', () => {
+  it('no longer imports or calls readLanePlanPrompt or dispatches a reader-type agent for the plan', () => {
     expect(src).not.toMatch(/readLanePlanPrompt/)
-  })
-
-  it('no longer dispatches a reader-type agent call for the plan', () => {
     expect(src).not.toMatch(/stageOpts\('reader'/)
-  })
-
-  it('imports and calls the chunked context-relay helpers', () => {
-    expect(src).toMatch(/import\s*\{[^}]*contextChunkPlan[^}]*contextChunkSteps[^}]*contextAssembleChunks[^}]*\}\s*from\s*'\.\/shared\/context-relay'/)
-    expect(src).toMatch(/contextChunkPlan\(/)
-    expect(src).toMatch(/contextChunkSteps\(/)
-    expect(src).toMatch(/contextAssembleChunks\(/)
-  })
-
-  it('reads plan-bytes/plan-sha from the act-start batch to drive the chunk plan', () => {
-    expect(src).toMatch(/stepStdout\(actStartResult,\s*'plan-bytes'\)/)
-    expect(src).toMatch(/stepStdout\(actStartResult,\s*'plan-sha'\)/)
   })
 })
 

@@ -31,8 +31,15 @@ import {
   testExitCode,
   closeoutCollectSteps,
   closeoutArchiveSteps,
-  verifyLanePlanShape,
+  lanePlanDigestFromSteps,
+  digestSpecHash,
+  laneSpecFromSteps,
+  LANE_PLAN_DIGEST_BUDGET_BYTES,
 } from './lane-steps'
+import { utf8ByteLength, utf8Encode } from './utf8'
+import { gitBlobSha } from './sha1'
+import { laneSpecHash } from './utils'
+import type { LanePlanDigest } from './types'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
 import { readFileSync } from 'node:fs'
@@ -679,26 +686,29 @@ describe('actStartSteps', () => {
   // all. The lane-plan is now read by a separate, dedicated Read-based
   // agent call (readLanePlanPrompt) instead of being folded into this
   // batch, so this batch's own output stays small regardless of plan size.
-  it('datum-go: init, branch, timestamp, resolve, plan-bytes, plan-sha, plan-shape, lane-state-read — no read-plan step', () => {
+  it('datum-go: init, branch, timestamp, resolve, digest, digest-bytes, digest-sha, digest-cat, lane-state-read — the plan itself is never printed', () => {
     const steps = actStartSteps({ branch: 'init', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'plan-bytes', 'plan-sha', 'plan-shape', 'lane-state-read'])
+    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'digest', 'digest-bytes', 'digest-sha', 'digest-cat', 'lane-state-read'])
     expect(steps[0].command).toContain('datum init --json')
     expect(steps[0].tolerant).toBeFalsy()
     expect(steps[3].command).toContain('lane-plan-final.json')
     expect(steps[3].command).toContain('echo none')
-    expect(steps[4].command).toContain('wc -c') // plan-bytes
-    expect(steps[4].command).toContain('$__plan')
-    expect(steps[5].command).toContain('git hash-object') // plan-sha
-    expect(steps[5].command).toContain('$__plan')
-    expect(steps[6].command).toContain('jq -c') // plan-shape: shape only, never the whole plan
-    expect(steps[6].command).not.toContain('cat "$__plan"')
-    expect(steps[7].command).toContain('datum lane-state read --epic "$__eb"')
-    expect(steps[7].command).toContain('.topological_order[]')
+    // digest: written to a temp file by the CLI, never printed by this step
+    expect(steps[4].command).toContain('__digest=$(mktemp)')
+    expect(steps[4].command).toContain('datum lane-plan-digest --plan "$__plan" --out "$__digest"')
+    expect(steps[5].command).toContain('wc -c < "$__digest"')
+    expect(steps[6].command).toContain('git hash-object "$__digest"')
+    expect(steps[7].command).toContain(`-le ${LANE_PLAN_DIGEST_BUDGET_BYTES}`)
+    expect(steps[7].command).toContain('cat "$__digest"')
+    expect(steps[7].command).toContain('echo DIGEST_TOO_LARGE')
+    for (const s of steps) expect(s.command).not.toContain('cat "$__plan"')
+    expect(steps[8].command).toContain('datum lane-state read --epic "$__eb"')
+    expect(steps[8].command).toContain('.topological_order[]')
   })
 
   it('datum-tdd-act yolo: detects the branch instead of running init; explicit branch/plan skip both', () => {
     const detect = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'plan-bytes', 'plan-sha', 'plan-shape', 'lane-state-read'])
+    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'digest', 'digest-bytes', 'digest-sha', 'digest-cat', 'lane-state-read'])
     expect(detect[0].command).toContain('git rev-parse --abbrev-ref HEAD')
     const given = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
     expect(given[0].command).toContain('__eb="datum/e"')
@@ -727,6 +737,117 @@ describe('actStartSteps', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// The lane plan is never relayed through an LLM turn in any form (a reader
+// echo normalised "§4" → "§ 4", wf_6bfbd9f2-510; the base64 chunk relay was
+// GENERATED past ~2.7 KB, wf_5791e11f-693). The scheduler runs on the compact
+// digest `datum lane-plan-digest` writes; the batch relays that file's bytes
+// and the script checks them against wc -c and git hash-object.
+describe('lanePlanDigestFromSteps', () => {
+  const digestObj = {
+    schema_version: 1, lane_plan_sha: 'abc', total_lanes: 1, topological_order: ['T1'],
+    lanes: { T1: { title: 'one — §4', files: ['src/a.py'], reads: [], depends_on: [], spec_hash: 'fnv1a64:0000000000000001' } },
+  }
+  const digestText = JSON.stringify(digestObj) + '\n'
+  const bytes = utf8ByteLength(digestText)
+  const sha = gitBlobSha(utf8Encode(digestText))
+  type StepOut = string | { stdout?: string; exit_code?: number }
+  const res = (over: Record<string, StepOut>) => {
+    const merged: Record<string, StepOut> = { branch: 'e', timestamp: 't', resolve: 'default', digest: '', 'digest-bytes': `${bytes}\n`, 'digest-sha': `${sha}\n`, 'digest-cat': digestText, 'lane-state-read': '{}', ...over }
+    return parseBatchResult(JSON.stringify(
+      Object.entries(merged).map(([name, v]) => (typeof v === 'string' ? { name, exit_code: 0, stdout: v, stderr: '' } : { name, exit_code: v.exit_code ?? 0, stdout: v.stdout ?? '', stderr: '' })),
+    ), actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: 'echo "{}"' }))
+  }
+
+  it('returns the parsed digest when bytes and blob sha match what the CLI wrote', () => {
+    const r = lanePlanDigestFromSteps(res({}), 'docs/epics/e/lane-plan.json')
+    expect(r.ok).toBe(true)
+    expect(r.digest?.lanes.T1.spec_hash).toBe('fnv1a64:0000000000000001')
+    expect(r.digest?.topological_order).toEqual(['T1'])
+  })
+
+  it('a normalised or truncated echo is lane_plan_digest_mismatch (bytes and sha both named)', () => {
+    const r = lanePlanDigestFromSteps(res({ 'digest-cat': digestText.replace('§4', '§ 4') }), 'p')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^lane_plan_digest_mismatch: p .*expected \d+ bytes/)
+  })
+
+  it('a digest over the relay budget is lane_plan_digest_too_large, never chunked', () => {
+    const r = lanePlanDigestFromSteps(res({ 'digest-bytes': `${LANE_PLAN_DIGEST_BUDGET_BYTES + 1}\n`, 'digest-cat': 'DIGEST_TOO_LARGE\n' }), 'p')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^lane_plan_digest_too_large: p is \d+ bytes/)
+  })
+
+  it('a failed digest step surfaces the CLI error (missing plan) as lane_plan_digest_failed', () => {
+    const r = lanePlanDigestFromSteps(res({ digest: { exit_code: 1, stdout: '{"error": "lane plan not found: p"}' }, 'digest-bytes': '', 'digest-sha': '', 'digest-cat': '' }), 'p')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^lane_plan_digest_failed: .*lane plan not found/)
+  })
+
+  it('a missing batch is lane_plan_digest_failed', () => {
+    const r = lanePlanDigestFromSteps(parseBatchResult(null, actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: 'x' })), 'p')
+    expect(r.error).toMatch(/^lane_plan_digest_failed: /)
+  })
+
+  it('digestSpecHash returns the digest hash and throws when a lane has none', () => {
+    expect(digestSpecHash(digestObj as unknown as LanePlanDigest, 'T1')).toBe('fnv1a64:0000000000000001')
+    expect(() => digestSpecHash({ ...digestObj, lanes: { T1: { title: 'x', files: [] } } } as unknown as LanePlanDigest, 'T1')).toThrow(/spec_hash/)
+    expect(() => digestSpecHash(digestObj as unknown as LanePlanDigest, 'T9')).toThrow(/T9/)
+  })
+})
+
+// Each lane fetches its OWN full spec (acceptance criteria included) at
+// intake with one jq step in its worktree, byte-checked (wc -c + git
+// hash-object --stdin) and cross-checked against the digest's spec_hash.
+describe('laneIntakeSteps lane-spec fetch + laneSpecFromSteps', () => {
+  const fullLane = { title: 'one', files: ['src/a.py', 'tests/test_a.py'], depends_on: [], acceptance_criteria: ['a() returns 1 for §4.1'] }
+  const specText = JSON.stringify(fullLane) + '\n'
+  const bytes = utf8ByteLength(specText)
+  const sha = gitBlobSha(utf8Encode(specText))
+  const expectedHash = laneSpecHash(fullLane)
+
+  it('prepends lane-spec, lane-spec-bytes and lane-spec-sha steps over the worktree copy of the plan', () => {
+    const steps = laneIntakeSteps({
+      wt: '/wt/T1', epicBranch: 'e', completionPath: null, structural: true, cleanupCmd: null,
+      planSkeletonPath: '', skeletonCmd: '', preflightPath: '', laneSpec: { planPath: '/wt/T1/.datum/lane-plan.json', taskId: 'T1' },
+    })
+    expect(names(steps).slice(0, 3)).toEqual(['lane-spec', 'lane-spec-bytes', 'lane-spec-sha'])
+    expect(steps[0].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json"`)
+    expect(steps[1].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json" | wc -c | tr -d ' '`)
+    expect(steps[2].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json" | git hash-object --stdin`)
+    for (const s of steps.slice(0, 3)) expect(s.tolerant).toBe(true)
+  })
+
+  const res = (over: Record<string, string>) => parseBatchResult(JSON.stringify(
+    Object.entries({ 'lane-spec': specText, 'lane-spec-bytes': `${bytes}\n`, 'lane-spec-sha': `${sha}\n`, history: '', ...over })
+      .map(([name, v]) => ({ name, exit_code: 0, stdout: v, stderr: '' })),
+  ), [{ name: 'lane-spec', command: '' }, { name: 'lane-spec-bytes', command: '' }, { name: 'lane-spec-sha', command: '' }, { name: 'history', command: '' }])
+
+  it('returns the full lane when bytes, sha and spec_hash all agree', () => {
+    const r = laneSpecFromSteps(res({}), 'T1', expectedHash)
+    expect(r.ok).toBe(true)
+    expect(r.lane?.acceptance_criteria).toEqual(['a() returns 1 for §4.1'])
+  })
+
+  it('a normalised echo is lane_spec_relay_mismatch', () => {
+    const r = laneSpecFromSteps(res({ 'lane-spec': specText.replace('§4', '§ 4') }), 'T1', expectedHash)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^lane_spec_relay_mismatch: T1/)
+  })
+
+  it('a lane whose spec no longer matches the digest hash is lane_spec_hash_mismatch', () => {
+    const r = laneSpecFromSteps(res({}), 'T1', 'fnv1a64:ffffffffffffffff')
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^lane_spec_hash_mismatch: T1/)
+  })
+
+  it('jq printing null (id not in the worktree plan) is lane_spec_missing; a missing batch is lane_spec_relay_failed', () => {
+    const nullText = 'null\n'
+    const r = laneSpecFromSteps(res({ 'lane-spec': nullText, 'lane-spec-bytes': `${utf8ByteLength(nullText)}\n`, 'lane-spec-sha': `${gitBlobSha(utf8Encode(nullText))}\n` }), 'T1', expectedHash)
+    expect(r.error).toMatch(/^lane_spec_missing: T1/)
+    expect(laneSpecFromSteps(parseBatchResult(null, [{ name: 'lane-spec', command: '' }]), 'T1', expectedHash).error).toMatch(/^lane_spec_relay_failed: T1/)
   })
 })
 
@@ -879,105 +1000,6 @@ describe('closeoutArchiveSteps', () => {
 // steps above. These two steps carry the byte count and git blob hash the
 // chunked relay needs, using the batch's own $__plan (no second probe).
 // ---------------------------------------------------------------------------
-
-describe('actStartSteps — plan-bytes / plan-sha steps', () => {
-  const read = laneStateReadScript({ epicBranch: '$__eb', epicSlug: 'x', taskIdsSpace: '$(jq -r \'.topological_order[]\' "$__plan")' })
-
-  it('emits plan-bytes (wc -c) and plan-sha (git hash-object) against $__plan, both tolerant, after resolve and before plan-shape', () => {
-    const steps = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    const n = names(steps)
-    expect(n.indexOf('plan-bytes')).toBeGreaterThan(n.indexOf('resolve'))
-    expect(n.indexOf('plan-sha')).toBeGreaterThan(n.indexOf('plan-bytes'))
-    expect(n.indexOf('plan-shape')).toBeGreaterThan(n.indexOf('plan-sha'))
-    const bytesStep = steps.find((s) => s.name === 'plan-bytes')!
-    const shaStep = steps.find((s) => s.name === 'plan-sha')!
-    expect(bytesStep.tolerant).toBe(true)
-    expect(shaStep.tolerant).toBe(true)
-    expect(bytesStep.command).toContain('wc -c')
-    expect(bytesStep.command).toContain('$__plan')
-    expect(shaStep.command).toContain('git hash-object')
-    expect(shaStep.command).toContain('$__plan')
-  })
-
-  it('reports -1 bytes and an empty sha when no plan was resolved, rather than failing the batch', () => {
-    const steps = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
-    const bytesStep = steps.find((s) => s.name === 'plan-bytes')!
-    const shaStep = steps.find((s) => s.name === 'plan-sha')!
-    expect(bytesStep.command).toContain("printf -- '-1'")
-    expect(shaStep.command).toContain("printf ''")
-  })
-
-  it('runs under bash and reports the real byte count and a 40-hex git blob sha for a written plan file', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'datum-actstart-planbytes-'))
-    try {
-      execFileSync('git', ['init', '-q'], { cwd: dir })
-      const content = '{"lanes":{"a":{}},"topological_order":["a"],"total_lanes":1}'
-      writeFileSync(join(dir, 'plan.json'), content)
-      const steps = actStartSteps({ branch: 'datum/e', lanePlanPath: join(dir, 'plan.json'), laneStateReadScript: 'echo "{}"' })
-      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
-      expect(r.failed).toBeNull()
-      expect(stepStdout(r, 'plan-bytes')?.trim()).toBe(String(content.length))
-      expect(stepStdout(r, 'plan-sha')?.trim()).toMatch(/^[0-9a-f]{40}$/)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Lane-plan relay integrity. The plan is read by an LLM `reader` agent and
-// echoed back; a large plan can be silently abridged (a 90 KB batch came back
-// as 6.7 KB of "successful" hand-summarised JSON in eedom). The act-start
-// batch now emits the plan's SHAPE via jq — tiny, safe to relay — and the
-// script compares it to what the reader returned. Mismatch is a named
-// failure, never a shorter plan silently executed.
-// ---------------------------------------------------------------------------
-
-describe('actStartSteps — plan-shape step', () => {
-  const read = laneStateReadScript({ epicBranch: '$__eb', epicSlug: 'x', taskIdsSpace: '$(jq -r \'.topological_order[]\' "$__plan")' })
-
-  it('emits the plan shape (sorted lane ids, topo length, total_lanes) after resolve, tolerant', () => {
-    const steps = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    const idx = names(steps).indexOf('plan-shape')
-    expect(idx).toBeGreaterThan(names(steps).indexOf('resolve'))
-    expect(steps[idx].tolerant).toBe(true)
-    expect(steps[idx].command).toContain('jq -c')
-    expect(steps[idx].command).toContain('.lanes|keys')
-    expect(steps[idx].command).toContain('.topological_order|length')
-    expect(steps[idx].command).toContain('.total_lanes')
-  })
-})
-
-describe('verifyLanePlanShape', () => {
-  const plan = {
-    lanes: { 'task-001': { title: 'a', files: [] }, 'task-002': { title: 'b', files: [] } },
-    topological_order: ['task-001', 'task-002'],
-    total_lanes: 2,
-  }
-
-  it('accepts a relayed plan that matches the shape emitted by jq', () => {
-    const r = verifyLanePlanShape(plan as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
-    expect(r.ok).toBe(true)
-  })
-
-  it('rejects a relayed plan that dropped a lane', () => {
-    const short = { ...plan, lanes: { 'task-001': plan.lanes['task-001'] }, topological_order: ['task-001'] }
-    const r = verifyLanePlanShape(short as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
-    expect(r.ok).toBe(false)
-    expect(r.reason).toMatch(/task-002/)
-  })
-
-  it('rejects a relayed plan whose topological_order length differs', () => {
-    const r = verifyLanePlanShape({ ...plan, topological_order: ['task-001'] } as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
-    expect(r.ok).toBe(false)
-  })
-
-  it('rejects when the shape step produced no JSON — the relay cannot be verified', () => {
-    const r = verifyLanePlanShape(plan as never, '')
-    expect(r.ok).toBe(false)
-    expect(r.reason).toMatch(/shape/i)
-  })
-})
 
 describe('ownershipFromStdout fails closed when the diff step did not run', () => {
   it('a null/undefined step result is ownership_check_failed, never ok', () => {
