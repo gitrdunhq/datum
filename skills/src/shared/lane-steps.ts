@@ -431,6 +431,8 @@ export function setupSteps(o: SetupStepsOpts): BatchStep[] {
     {
       name: 'root-wt',
       command:
+        // Idempotent: remove a root worktree left by a prior partial setup of this batch.
+        `if [ -e ${q(rootDir)} ]; then git worktree remove --force ${q(rootDir)} 2>&1 || rm -rf ${q(rootDir)}; fi && git worktree prune && ` +
         `git worktree add --detach ${q(rootDir)} ${q(o.epicBranch)} 2>&1 && ` +
         `__root=$(cd ${q(rootDir)} && pwd) && printf '{"root": "%s"}' "$__root"`,
     },
@@ -477,13 +479,6 @@ export function completionMarkerCommand(runId: string, taskId: string): string {
 
 export function mergeSteps(o: MergeStepsOpts): BatchStep[] {
   const steps: BatchStep[] = []
-  if (o.completedIds.length > 0) {
-    steps.push({
-      name: 'completion-markers',
-      command: o.completedIds.map((id) => completionMarkerCommand(o.batchRunId, id)).join('\n'),
-      tolerant: true,
-    })
-  }
   if (o.mergeOrder.length > 0) {
     // The CLI prints {sha, merged, already_merged[, failed_lane, error]} on
     // both success and a partial failure (exit 1); the JSON is captured so
@@ -493,6 +488,18 @@ export function mergeSteps(o: MergeStepsOpts): BatchStep[] {
       command:
         `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(',')} ` +
         `--commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
+      tolerant: true,
+    })
+  }
+  if (o.completedIds.length > 0) {
+    // AFTER the merge, and only for lanes the merge JSON says are on the epic
+    // branch: a marker written before/regardless of the merge made the next
+    // run skip a lane whose squash had failed (phase review wf_9a69f891-462).
+    steps.push({
+      name: 'completion-markers',
+      command:
+        `__landed_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '(.merged[]?, .already_merged[]?)' 2>/dev/null | tr '\\n' ' ')"\n` +
+        o.completedIds.map((id) => `case "$__landed_ids" in *" ${id} "*) ${completionMarkerCommand(o.batchRunId, id)};; *) echo "SKIPPED_NOT_MERGED ${id}";; esac`).join('\n'),
       tolerant: true,
     })
   }

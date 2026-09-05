@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -562,11 +562,30 @@ describe('setupSteps', () => {
     const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1', 'T2'], lanePlanPath: 'docs/epics/datum/e/lane-plan.json' })
     expect(names(steps)).toEqual(['root-wt', 'setup-wt', 'distribute'])
     expect(steps.every((s) => !s.tolerant)).toBe(true)
+    // Idempotent: a root worktree left by a prior partial setup of the same
+    // batch is removed first (phase review wf_9a69f891-462).
+    expect(steps[0].command).toContain('if [ -e ".datum/worktrees/r1-b0-root" ]; then git worktree remove --force ".datum/worktrees/r1-b0-root" 2>&1 || rm -rf ".datum/worktrees/r1-b0-root"; fi && git worktree prune && ')
     expect(steps[0].command).toContain('git worktree add --detach ".datum/worktrees/r1-b0-root" "datum/e"')
     expect(steps[0].command).toContain('printf \'{"root": "%s"}\' "$__root"')
     expect(steps[1].command).toContain('cd "$__root" && datum worktrees setup --run-id "r1-b0" --epic-branch "datum/e" --lane-ids T1,T2')
     expect(steps[2].command).toContain('select(type=="string" and startswith("/"))')
     expect(steps[2].command).toContain('datum lane-plan-distribute "$__root/docs/epics/datum/e/lane-plan.json" "${__targets[@]}"')
+  })
+
+  it('under real bash, the root-wt step succeeds twice in a row for the same batch id', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-rootwt-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir })
+      execFileSync('git', ['branch', 'datum/e'], { cwd: dir })
+      const cmd = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1'], lanePlanPath: 'x' })[0].command
+      const first = execFileSync('bash', ['-c', cmd], { cwd: dir, encoding: 'utf8' })
+      const second = execFileSync('bash', ['-c', cmd], { cwd: dir, encoding: 'utf8' })
+      expect(first).toContain('"root": "')
+      expect(second).toContain('"root": "')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -650,15 +669,19 @@ describe('housekeepSteps / housekeepFromSteps (closeout)', () => {
 describe('mergeSteps', () => {
   const write = laneStateWriteScript({ epicBranch: 'datum/e', epicSlug: 'datum-e', runId: 'r1', entriesJson: '[{"task_id":"T1","spec_hash":"h"}]' })
 
-  it('writes completion markers, merges, records lane-state only when the merge succeeded, then cleans up', () => {
+  // Phase review wf_9a69f891-462: the per-run completion markers were written
+  // BEFORE the merge, unconditionally — a lane whose squash failed still got
+  // a marker and the next run skipped it at intake as "completed".
+  it('merges first, then writes completion markers only for lanes the merge JSON says landed, records lane-state, then cleans up', () => {
     const steps = mergeSteps({ batchRunId: 'r1', epicBranch: 'datum/e', completedIds: ['T1', 'T2'], mergeOrder: ['T1', 'T2'], laneStateWriteScript: write })
-    expect(names(steps)).toEqual(['completion-markers', 'merge', 'lane-state-write', 'cleanup'])
+    expect(names(steps)).toEqual(['merge', 'completion-markers', 'lane-state-write', 'cleanup'])
     expect(steps.every((s) => s.tolerant)).toBe(true)
-    expect(steps[0].command).toContain(completionMarkerCommand('r1', 'T1'))
-    expect(steps[0].command).toContain(completionMarkerCommand('r1', 'T2'))
-    expect(steps[1].command).toContain('__merge_out=$(datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes")')
-    expect(steps[1].command).toContain('__merge_rc=$?')
-    expect(steps[1].command).toContain(`printf '%s\\n' "$__merge_out"`)
+    expect(steps[1].command).toMatch(/^__landed_ids=" \$\(printf '%s' "\$\{__merge_out:-\}" \| jq -r '\(\.merged\[\]\?, \.already_merged\[\]\?\)' 2>\/dev\/null \| tr '\\n' ' '\)"\n/)
+    expect(steps[1].command).toContain(`case "$__landed_ids" in *" T1 "*) ${completionMarkerCommand('r1', 'T1')};; *) echo "SKIPPED_NOT_MERGED T1";; esac`)
+    expect(steps[1].command).toContain(`case "$__landed_ids" in *" T2 "*) ${completionMarkerCommand('r1', 'T2')};; *) echo "SKIPPED_NOT_MERGED T2";; esac`)
+    expect(steps[0].command).toContain('__merge_out=$(datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes")')
+    expect(steps[0].command).toContain('__merge_rc=$?')
+    expect(steps[0].command).toContain(`printf '%s\\n' "$__merge_out"`)
     // The merge JSON's `merged` list — not the exit code — decides which
     // lanes get an epic-scoped marker: a partial merge (later lane conflicted,
     // earlier lanes committed) still records the lanes that landed.
@@ -666,6 +689,27 @@ describe('mergeSteps', () => {
     expect(steps[2].command).toContain('if [ "$__merged_ids" = " " ]; then echo SKIPPED_MERGE_FAILED; else')
     expect(steps[2].command).toContain('datum lane-state write')
     expect(steps[3].command).toBe('datum worktrees cleanup --run-id "r1" --epic-branch "datum/e"')
+  })
+
+  it('under real bash, a completion marker is written only for lanes the merge JSON lists as merged or already_merged', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-markers-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'e'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir })
+      const bin = join(dir, 'bin')
+      mkdirSync(bin)
+      // Fake datum: the merge lands T1 and reports T3 already merged, T2 failed (exit 1).
+      writeFileSync(join(bin, 'datum'), `#!/usr/bin/env bash\ncase "$1 $2" in\n  "worktrees merge") printf '%s' '{"sha":"abc","merged":["T1"],"already_merged":["T3"],"failed_lane":"T2","error":"conflict"}'; exit 1;;\n  *) exit 0;;\nesac\n`, { mode: 0o755 })
+      const steps = mergeSteps({ batchRunId: 'r1', epicBranch: 'e', completedIds: ['T1', 'T2', 'T3'], mergeOrder: ['T1', 'T2', 'T3'], laneStateWriteScript: null })
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, env, encoding: 'utf8' }), steps)
+      expect(existsSync(join(dir, '.datum/runs/r1/lane-state/T1.json'))).toBe(true)
+      expect(existsSync(join(dir, '.datum/runs/r1/lane-state/T3.json'))).toBe(true)
+      expect(existsSync(join(dir, '.datum/runs/r1/lane-state/T2.json'))).toBe(false)
+      expect(stepStdout(r, 'completion-markers')).toContain('SKIPPED_NOT_MERGED T2')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('the lane-state write script skips entries the merge did not list as merged', () => {
