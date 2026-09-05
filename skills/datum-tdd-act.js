@@ -781,6 +781,8 @@ try {
 }
 if (docsResult && docsResult.committed === false) {
   log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
+} else if (docsResult && docsResult.failure_reason) {
+  log(`[warn] Docs sync did not complete: ${docsResult.failure_reason}`);
 }
 var skippedLanes = Object.keys(results).filter((id) => results[id]?.status === "skipped");
 var blockedLanes = Object.keys(results).filter((id) => results[id]?.status === "blocked");

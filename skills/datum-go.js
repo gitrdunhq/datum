@@ -1088,6 +1088,8 @@ if (shouldRun("act", 3)) {
     }
     if (docsResult && docsResult.committed === false) {
       log(`[warn] Docs sync wrote [${(docsResult.files || []).join(", ")}] but the commit was refused: ${docsResult.failure_reason || "unknown"} \u2014 the files are left modified in the checkout`);
+    } else if (docsResult && docsResult.failure_reason) {
+      log(`[warn] Docs sync did not complete: ${docsResult.failure_reason}`);
     }
     const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
     const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
