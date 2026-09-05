@@ -472,12 +472,18 @@ log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit ==
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
 if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
 var gatePassed = false;
+var gateMessage = "";
+var gateNeedsHuman = false;
+var hardStop = false;
 if (!mainSync.ok) {
+  gateMessage = `main_sync: ${mainSync.message || "epic branch is not in sync with main"}`;
   log("Validate gate skipped \u2014 epic branch is not in sync with main.");
 } else if (testExit === null) {
-  log(`VALIDATION FAILED \u2014 validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, "test-verify")}). Cannot proceed.`);
+  gateMessage = `validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, "test-verify")})`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else if (testExit !== 0) {
-  log(`VALIDATION FAILED \u2014 tests are red (independent run exited ${testExit}${check?.tests_pass ? ", despite agent self-report of tests_pass=true" : ""}). Cannot proceed.`);
+  gateMessage = `tests red: independent run exited ${testExit}${check?.tests_pass ? ", despite agent self-report of tests_pass=true" : ""}`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else {
   const gateStepList = gateSteps("validate", yolo ? " --approve" : "");
   const gate = parseGateResult(parseBatchResult(
@@ -485,6 +491,9 @@ if (!mainSync.ok) {
     gateStepList
   ));
   gatePassed = gate.passed;
+  gateMessage = gate.message || "";
+  gateNeedsHuman = !!gate.needsHuman;
+  hardStop = !!gate.hardStop;
   if (gate.passed) log("Validate gate PASSED");
   else log(`Validate gate: ${gate.message || "needs review"}${gate.needsHuman ? " (needs human approval)" : ""}${gate.hardStop ? " (hard stop)" : ""}`);
 }
@@ -494,5 +503,8 @@ return {
   lintClean: !!check?.lint_clean,
   acGaps: check?.ac_gaps || [],
   gatePassed,
+  gateMessage,
+  gateNeedsHuman,
+  hardStop,
   mainSync: { ok: mainSync.ok, behind: syncResult?.behind ?? null, merged: !!syncResult?.merged, message: mainSync.message }
 };

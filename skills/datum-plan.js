@@ -924,6 +924,7 @@ var approachesRaw = await agent(
 );
 var approaches = parseAgentJsonStrict(approachesRaw, "propose-approaches");
 assertReadWitness([specFile], approaches);
+if (!Array.isArray(approaches.approaches) || approaches.approaches.length === 0) throw new Error(`plan_no_approaches: propose-approaches returned no approaches (recommendation: ${approaches.recommendation_reason || "none"})`);
 var chosen = approaches.approaches[approaches.recommended] || approaches.approaches[0];
 log(`Selected: ${chosen?.name || "default"} \u2014 ${approaches.recommendation_reason}`);
 var impactRaw = await agent(

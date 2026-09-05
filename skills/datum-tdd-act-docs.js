@@ -225,6 +225,21 @@ function commitFilesFromSteps(result) {
   if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
   return { committed: true, nothingToCommit: false, sha, error: "" };
 }
+function worktreeDirtySteps(wt) {
+  return [{ name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }];
+}
+function worktreeDirtyFromSteps(result) {
+  if (result.missing) {
+    return { dirty: true, known: false, detail: `retry_guard_unverified: ${describeFailure(result, "status")}` };
+  }
+  const step = stepResult(result, "status");
+  if (!step || step.exit_code !== 0) {
+    const tail = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail ? ` \u2014 ${tail}` : ""}` };
+  }
+  const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
+  return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
+}
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
@@ -278,6 +293,59 @@ function stageOpts(stage, extra = {}) {
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
 
+// skills/src/shared/agents.ts
+var RATE_LIMIT_MAX_RETRIES = 4;
+var RATE_LIMIT_BASE_DELAY_MS = 5e3;
+var RATE_LIMIT_JITTER_MS = 2e3;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
+  let lastResult = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    } else if (attempt < maxRetries) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} returned nothing (null result) \u2014 retrying`);
+    }
+    if (attempt < maxRetries && opts?.worktree) {
+      const guardSteps = worktreeDirtySteps(opts.worktree);
+      const guard = worktreeDirtyFromSteps(parseBatchResult(
+        await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),
+        guardSteps
+      ));
+      if (!guard.known) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} and the worktree state is unknown (${guard.detail}) \u2014 aborting retry to prevent duplicate writes`);
+        return lastResult;
+      }
+      if (guard.dirty) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes (${guard.detail})`);
+        return lastResult;
+      }
+    }
+    if (attempt < maxRetries) {
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + (attempt + 1) * 7919 % RATE_LIMIT_JITTER_MS;
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      await sleepMs(delay);
+    }
+  }
+  return lastResult;
+}
+
 // skills/src/datum-tdd-act-docs.ts
 var a = args;
 configureAgentTypes(a.agentTypes || {});
@@ -292,11 +360,14 @@ if (a.completedLanes.length === 0) {
   log("No completed lanes \u2014 skipping docs");
 } else {
   const changedFiles = [...new Set(a.completedLanes.flatMap((id) => a.lanePlan.lanes[id].files || []))];
-  const docsCheck = await agent(
+  const docsCheck = await resilientAgent(
     docsCheckPrompt({ changedFiles: changedFiles.join(", ") }),
-    { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA }
+    { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }
   );
-  if (docsCheck?.should_refactor) {
+  if (!docsCheck) {
+    failureReason = "docs_check_no_result: the docs-check agent returned nothing on both attempts \u2014 docs were not checked";
+    log(`Docs: ${failureReason}`);
+  } else if (docsCheck.should_refactor) {
     const docsPacket = JSON.stringify({
       schema_version: "1.0",
       changed_files: changedFiles,

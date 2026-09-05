@@ -450,6 +450,13 @@ var DOMAINS = [
   { domain: "Correctness", prefix: "CORR", focus: "Does implementation match SPEC and ACs? Off-by-one, null handling, edge cases", model: model("balanced") }
 ];
 phase("Review");
+function normaliseSeverity(raw, where) {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (v === "critical" || v === "high" || v === "medium" || v === "low" || v === "info") return v;
+  if (/\b(crit|blocker|sev ?0|sev ?1|p0|p1)\b/.test(v)) return "critical";
+  log(`review_severity_unknown: ${where} reported severity ${JSON.stringify(raw)} \u2014 counted as high (fail closed)`);
+  return "high";
+}
 var reviewResults = await parallel(
   DOMAINS.map(
     (d) => () => agent(
@@ -465,8 +472,12 @@ for (let i = 0; i < DOMAINS.length; i++) {
     throw new Error(`agent_output_unparseable: review-${DOMAINS[i].domain.toLowerCase()} \u2014 (no result)`);
   }
   const parsed = typeof result === "string" ? parseAgentJsonStrict(result, `review-${DOMAINS[i].domain.toLowerCase()}`) : result;
+  if (!Array.isArray(parsed.findings)) {
+    throw new Error(`agent_output_unparseable: review-${DOMAINS[i].domain.toLowerCase()} \u2014 reply has no findings array`);
+  }
   log(`${parsed.domain}: ${parsed.findings.length} findings`);
-  for (const f of parsed.findings) {
+  for (const raw of parsed.findings) {
+    const f = { ...raw, severity: normaliseSeverity(raw.severity, `review-${DOMAINS[i].domain.toLowerCase()} ${raw.id || ""}`), description: String(raw.description ?? "") };
     log(`  [${f.severity}] ${f.id}: ${f.description.slice(0, 80)}`);
     allFindings.push(f);
   }
