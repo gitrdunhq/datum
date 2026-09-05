@@ -187,7 +187,7 @@ def check_open_questions(spec_content: str) -> list[str]:
     refine gate. Returns a list of error strings.
     """
     heading = re.search(
-        r"^(#{2,6})\s+(?:\d+\.\s+)?Open Questions\b.*$",
+        r"^(#{1,6})\s+(?:\d+\.\s+)?Open Questions\b.*$",
         spec_content,
         re.MULTILINE | re.IGNORECASE,
     )
@@ -198,7 +198,7 @@ def check_open_questions(spec_content: str) -> list[str]:
     body_start = heading.end()
     # Section ends at the next heading of the same or higher level
     next_heading = re.search(
-        rf"^#{{2,{level}}}\s", spec_content[body_start:], re.MULTILINE
+        rf"^#{{1,{level}}}\s", spec_content[body_start:], re.MULTILINE
     )
     body = (
         spec_content[body_start : body_start + next_heading.start()]
@@ -300,10 +300,38 @@ _CONDITIONAL_PATTERNS = [
 ]
 
 
+def _has_section(content: str, heading_name: str) -> bool:
+    """True when a markdown heading (any level) names the section — not when
+    the words merely appear in prose (Python core review)."""
+    return (
+        re.search(
+            rf"^#{{1,6}}\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b",
+            content,
+            re.MULTILINE | re.IGNORECASE,
+        )
+        is not None
+    )
+
+
+_HIGH_OR_CRITICAL_RE = re.compile(
+    r"(?:severity|sev|priority)\s*:?\s*\**\s*(?:high|critical)\b"
+    r"|\*\*(?:high|critical)\*\*"
+    r"|\|\s*(?:high|critical)\s*\|",
+    re.IGNORECASE,
+)
+
+
+def _report_has_high_or_critical(content: str) -> bool:
+    """Does REVIEW-REPORT.md carry a high/critical finding, however the
+    reviewer spelled the severity (\"Severity: high\", \"Priority: High\",
+    \"**critical**\", a table cell)? Four literal substrings missed the rest."""
+    return _HIGH_OR_CRITICAL_RE.search(content) is not None
+
+
 def _extract_section(spec_content: str, heading_name: str) -> str | None:
     """Return the body text of a '## <n>. <heading_name>' section, or None if absent."""
     heading = re.search(
-        rf"^(#{{2,6}})\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b.*$",
+        rf"^(#{{1,6}})\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b.*$",
         spec_content,
         re.MULTILINE | re.IGNORECASE,
     )
@@ -312,7 +340,7 @@ def _extract_section(spec_content: str, heading_name: str) -> str | None:
     level = len(heading.group(1))
     body_start = heading.end()
     next_heading = re.search(
-        rf"^#{{2,{level}}}\s", spec_content[body_start:], re.MULTILINE
+        rf"^#{{1,{level}}}\s", spec_content[body_start:], re.MULTILINE
     )
     return (
         spec_content[body_start : body_start + next_heading.start()]
@@ -581,7 +609,7 @@ def gate_refine(yolo: bool, config: dict) -> None:
         "Non-functional",
         "Out of scope",
     ]
-    missing = [s for s in required_sections if s.lower() not in content.lower()]
+    missing = [s for s in required_sections if not _has_section(content, s)]
     if missing:
         fail(f"SPEC.md missing sections: {missing}")
 
@@ -974,12 +1002,7 @@ def gate_review(yolo: bool, config: dict) -> None:
         fail("REVIEW-REPORT.md not found")
 
     content = report_path.read_text()
-    if (
-        "severity: high" in content.lower()
-        or "**high**" in content.lower()
-        or "severity: critical" in content.lower()
-        or "**critical**" in content.lower()
-    ):
+    if _report_has_high_or_critical(content):
         # Satisfaction Loop Logic
         state_path = Path(".datum/state.json")
         run_id = "default"
