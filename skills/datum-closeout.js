@@ -238,7 +238,20 @@ function closeoutCollectSteps(o) {
       command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
       tolerant: true
     },
-    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
+    {
+      // The base branch is resolved, never hard-coded origin/main (same class
+      // as main-sync, be0cd7fc): origin/HEAD, then origin/main|master, then a
+      // local main|master — a repo with no remote still gets a merge-base.
+      name: "base-sha",
+      command: [
+        'BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>&1); case "$BASE" in fatal*) BASE="";; esac',
+        'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then BASE="origin/$b"; break; fi; done; fi',
+        'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/heads/$b"; then BASE="$b"; break; fi; done; fi',
+        '[ -n "$BASE" ] || BASE=main',
+        `__base=$(git merge-base HEAD "$BASE") && printf '%s' "$__base"`
+      ].join("\n"),
+      tolerant: true
+    },
     { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
     { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
     { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
