@@ -112,6 +112,34 @@ describe('datum-review — deterministic gate verdict (#368)', () => {
 // retirement of the util-read-context.md LLM relay.
 // ---------------------------------------------------------------------------
 
+// The report's content is rendered by the script (reportLines), yet it was
+// handed to an LLM runner: "Write this content to docs/epics/$(git ...)/
+// REVIEW-REPORT.md ... Commit: ...". A runner that re-wrapped a table row
+// or dropped the bold severity broke `datum gate review`'s detection, and
+// its reply was discarded. Now: a byte-verified batch write, a batch
+// commit, both halting by name.
+describe('datum-review — the report is written and committed by batches, not an LLM runner', () => {
+  it('resolves the branch from a batch step first (the script needs the epic dir itself now)', () => {
+    expect(datumReviewSrc).toMatch(/git rev-parse --abbrev-ref HEAD/)
+    expect(datumReviewSrc).toMatch(/label: 'read-branch'/)
+    expect(datumReviewSrc).toMatch(/const epicDir = `docs\/epics\/\$\{branch\}`/)
+  })
+
+  it('writes REVIEW-REPORT.md through writeFileSteps and verifies the blob sha', () => {
+    expect(datumReviewSrc).not.toMatch(/Write this content to/)
+    expect(datumReviewSrc).toMatch(/writeFileSteps\(\{ path: reportPath, content: reportContent \}\)/)
+    expect(datumReviewSrc).toMatch(/writeFileFromSteps\(parseBatchResult\(/)
+    expect(datumReviewSrc).toMatch(/writeFileBlobSha\(reportContent\)/)
+    expect(datumReviewSrc).toMatch(/if \(!written\.ok\) throw new Error\(written\.error\)/)
+  })
+
+  it('commits the report through commitFilesSteps under the commit-report label and halts on review_commit_failed', () => {
+    expect(datumReviewSrc).not.toMatch(/&& git commit -m/)
+    expect(datumReviewSrc).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[reportPath\], message: `review: REVIEW-REPORT\.md \(\$\{deduped\.length\} findings\)` \}\)/)
+    expect(datumReviewSrc).toMatch(/throw new Error\(`review_commit_failed: /)
+  })
+})
+
 describe('determinism fix — dead util-read-context.md / util-commit-artifact.md imports removed', () => {
   it('no longer imports the unused util-read-context.md template', () => {
     expect(datumReviewSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)

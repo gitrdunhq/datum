@@ -3,8 +3,10 @@ import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
 
 export const meta = {
@@ -105,15 +107,38 @@ const reportLines = [
   '',
 ]
 
-// Commit agent (one remaining mechanical agent — needs to know the branch for path)
-await agent(
-  `Write this content to "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" (create dirs if needed).
-Commit: git add "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
-
-CONTENT:
-${reportLines.join('\n')}`,
-  { label: 'commit-report', model: model('fast') },
+// The report is written and committed by batches (shared/write-steps.ts,
+// shared/commit-steps.ts), never handed to an LLM runner as "Write this
+// content ... Commit: ..." — a runner that re-wrapped a table row or
+// dropped the bold severity broke the gate's detection, and its reply was
+// discarded. The branch comes from a batch step because this script has
+// no read-context relay of its own.
+const branchSteps = [{ name: 'branch', command: 'git rev-parse --abbrev-ref HEAD', tolerant: true }]
+const branchResult = parseBatchResult(
+  await agent(batchCommandPrompt(branchSteps), stageOpts('cli', { label: 'read-branch', model: model('fast') })),
+  branchSteps,
 )
+const branch = (stepStdout(branchResult, 'branch') || '').trim()
+if (!branch) throw new Error(`review_branch_unresolved: git rev-parse printed nothing (${branchResult.missing ? 'batch returned no result' : 'empty stdout'})`)
+const epicDir = `docs/epics/${branch}`
+const reportPath = `${epicDir}/REVIEW-REPORT.md`
+const reportContent = reportLines.join('\n')
+
+const writeSteps = writeFileSteps({ path: reportPath, content: reportContent })
+const written = writeFileFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(writeSteps), stageOpts('cli', { label: 'write-report', model: model('fast') })),
+  writeSteps,
+), { path: reportPath, expectedSha: writeFileBlobSha(reportContent), prefix: 'review_report' })
+if (!written.ok) throw new Error(written.error)
+
+const commitStepList = commitFilesSteps({ wt: '.', files: [reportPath], message: `review: REVIEW-REPORT.md (${deduped.length} findings)` })
+const commit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label: 'commit-report', model: model('fast') })),
+  commitStepList,
+))
+if (commit.error) throw new Error(`review_commit_failed: ${commit.error}`)
+if (commit.nothingToCommit) log('REVIEW-REPORT.md unchanged since the last review — nothing to commit')
+else log(`REVIEW-REPORT.md committed (${commit.sha})`)
 
 if (critical.length > 0) log(`${critical.length} high/critical — remediation needed`)
 
