@@ -2263,12 +2263,25 @@ def pipeline_state_save_cmd(
         typer.echo(json.dumps({"verified": False, "phase": phase, "reason": reason}))
         raise typer.Exit(code=1)
 
-    branch = subprocess.run(
+    branch_res = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout.strip()
+        check=False,
+    )
+    if branch_res.returncode != 0 or not branch_res.stdout.strip():
+        # JSON on every path: the TS side parses stdout (never a traceback).
+        typer.echo(
+            json.dumps(
+                {
+                    "verified": False,
+                    "phase": phase,
+                    "reason": f"git rev-parse --abbrev-ref HEAD failed (exit {branch_res.returncode}): {(branch_res.stderr or '').strip()}",
+                }
+            )
+        )
+        raise typer.Exit(code=1)
+    branch = branch_res.stdout.strip()
 
     try:
         prior = read_pipeline_state()
