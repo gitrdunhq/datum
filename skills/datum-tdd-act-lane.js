@@ -680,6 +680,9 @@ cat "$GREPPATFILE"`,
 function ownershipCommand(wt) {
   return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`;
 }
+function ownershipCheckSteps(wt) {
+  return [{ name: "ownership", command: ownershipCommand(wt), tolerant: true }];
+}
 function ownershipFromStdout(raw, allowedFiles, forbiddenFiles) {
   if (raw === null || raw === void 0) {
     return { ok: false, violations: ["ownership_check_failed: ownership diff step did not run or returned no result"] };
@@ -942,28 +945,31 @@ var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted,
 configureAgentTypes(cfg.agentTypes || {});
 setBatchCacheKey(cfg.configFingerprint || "");
 async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
-  const result = await agent(
-    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
-Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
-No markdown fences, no explanation.`,
-    stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") })
+  const steps = ownershipCheckSteps(wt);
+  const result = parseBatchResult(
+    await agent(
+      batchCommandPrompt(steps),
+      stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") })
+    ),
+    steps
   );
-  if (!result) {
+  if (result.missing) {
     return {
       ok: false,
       checkFailed: true,
-      violations: [`ownership_check_failed: ownership-check agent returned no result for ${stage} on ${taskId}`]
+      violations: [`ownership_check_failed: ownership-check batch returned no result for ${stage} on ${taskId} (${describeFailure(result, "ownership-check")})`]
     };
   }
-  const parsed = typeof result === "string" ? parseAgentJson(result, {}) : result;
-  if (!parsed || !Array.isArray(parsed.files_changed)) {
+  const step = stepResult(result, "ownership");
+  if (!step || step.exit_code !== 0) {
     return {
       ok: false,
       checkFailed: true,
-      violations: [`ownership_check_failed: could not parse files_changed from ownership-check result for ${stage} on ${taskId} (raw: ${String(result).slice(0, 200)})`]
+      violations: [`ownership_check_failed: git diff exited ${step ? step.exit_code : "without running"} for ${stage} on ${taskId}: ${(step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ")}`]
     };
   }
-  return verifyFileOwnership(parsed.files_changed, allowedFiles, forbiddenFiles);
+  const verdict = ownershipFromStdout(stepStdout(result, "ownership"), allowedFiles, forbiddenFiles);
+  return verdict.ok ? verdict : { ...verdict, checkFailed: verdict.violations.some((v) => v.startsWith("ownership_check_failed")) };
 }
 async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const lane = lanePlan2.lanes[taskId];
