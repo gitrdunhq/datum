@@ -37,6 +37,11 @@ interface PrefixRule {
 const PREFIX_RULES: PrefixRule[] = [
   // ── infrastructure: git/tooling/relay/gate plumbing the pipeline itself runs ──
   {
+    test: /\bgreen_edited_tests\b/,
+    category: 'agent_behavior',
+    reason: 'green_edited_tests: the GREEN agent modified the lane\'s own test files (or rewrote the RED commit) — a stage discipline violation by the agent, retried once from the RED commit with the hint; the lane failed only if it did it again.',
+  },
+  {
     test: /\brunner_permission_denied\b/,
     category: 'infrastructure',
     reason: 'runner_permission_denied: the host permission classifier refused the datum-cli runner\'s batch (typically git reset --hard / clean -fd inside datum\'s own scratch worktree) and it replied in prose. Fix is an allow-rule for those commands on the .datum/worktrees path, not a code or plan change.',

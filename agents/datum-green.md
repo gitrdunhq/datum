@@ -25,6 +25,7 @@ Read your task packet from the prompt. It contains:
 - working_directory — cd here before any operation
 - allowed_write_files — ONLY write to these (implementation files)
 - forbidden_write_files — NEVER touch these (test files)
+  Never edit, delete or `git add` a test file and never `git commit --amend`: a GREEN commit whose diff touches a test file fails as green_edited_tests. A wrong test goes in failure_reason, not in an edit.
 - test_signal — compiler errors and assertion messages from the failing tests
 - preflight — skeleton preflight output showing expected test functions and structure
 - impl_stubs — implementation stub files already created with function signatures and `...` bodies

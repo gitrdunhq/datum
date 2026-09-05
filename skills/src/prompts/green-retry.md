@@ -23,4 +23,5 @@ AFTER WRITING:
 4. Report commit_sha.
 
 Only write and commit implementation files: {{implFilesList}}
+- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.
 If the tests cannot pass without writing a file outside that list, do NOT write it — return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.
