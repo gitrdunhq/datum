@@ -186,6 +186,7 @@ datum/
 │   ├── gate.py
 │   ├── archive.py
 │   ├── lane_plan.py           Builds DAG from TASKS.md; outputs lane-plan.json
+│   ├── lane_plan_digest.py    Compact scheduler digest of lane-plan.json (topology, files, spec hashes)
 │   ├── pipeline_scheduler.py  Runs lanes, enforces concurrency cap and conflict gates
 │   ├── diff_normalize.py      Tool-adapter outputs → unified diff for commit queue
 │   ├── test_signal.py         Redacts test runner output for GREEN; fail-closed
