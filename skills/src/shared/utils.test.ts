@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
+import { verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
 import type { ContextFile } from './context-relay'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
@@ -1239,4 +1239,16 @@ describe('laneSpecHash — cross-language pin (tests/fixtures/lane_spec_hash_vec
       expect(laneSpecHash(vector.lane as Pick<Lane, 'files' | 'acceptance_criteria' | 'depends_on'>)).toBe(vector.hash)
     })
   }
+})
+
+// elonchesd wf_2b0230c2-f41: a RED-stage diff that touched the lane's OWN
+// impl file was reported as "owned by another lane". The forbidden list at
+// RED/GREEN is the other stage's files of the same lane, so say that.
+describe('verifyFileOwnership names forbidden files by stage, not as another lane\'s', () => {
+  it('a forbidden file is reported as off-limits for this stage', () => {
+    const r = verifyFileOwnership(['src/a.ts'], ['src/a.test.ts'], ['src/a.ts'])
+    expect(r.ok).toBe(false)
+    expect(r.violations[0]).toBe('src/a.ts is forbidden at this stage (the other stage of this lane owns it, or another lane does)')
+    expect(r.violations.join(' ')).not.toContain('owned by another lane')
+  })
 })

@@ -347,7 +347,7 @@ export function verifyFileOwnership(
 
   for (const f of changed) {
     if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
-      violations.push(`${f} is owned by another lane`)
+      violations.push(`${f} is forbidden at this stage (the other stage of this lane owns it, or another lane does)`)
     }
     if (allowedFiles.length > 0 && !allowedFiles.some((a) => pathBoundaryMatch(f, a))) {
       violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
