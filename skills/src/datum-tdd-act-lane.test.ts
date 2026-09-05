@@ -932,3 +932,11 @@ describe('post-RED scope reads: a truncated read is logged by name, never silent
     expect(src).toMatch(/scope_read_truncated: \$\{t\.file\} is \$\{t\.bytes\} bytes, scope-gap analysis used the first \$\{t\.cap\}/)
   })
 })
+
+describe('every independent test-verify names a missing test environment before reading the exit code', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('intake-verify, post-RED and post-GREEN verify all check testEnvMissing', () => {
+    expect((src.match(/testEnvMissing\(stepStdout\(/g) || []).length).toBeGreaterThanOrEqual(3)
+    expect(src).toMatch(/error: `test_env_missing: \$\{/)
+  })
+})

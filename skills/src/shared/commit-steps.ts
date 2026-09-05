@@ -146,7 +146,7 @@ export function worktreeResetToSteps(wt: string, sha: string): BatchStep[] {
 export function worktreeResetToFromSteps(result: BatchResult, sha: string): { ok: boolean; error: string } {
   if (result.missing) return { ok: false, error: `worktree_reset_failed: ${describeFailure(result, 'reset-to-red')}` }
   const head = stepStdout(result, 'head')
-  if (head === null) return { ok: false, error: 'worktree_reset_failed: the head step did not run — cannot confirm where the worktree is' }
+  if (head === null) return { ok: false, error: `worktree_reset_failed: the head step did not run — cannot confirm where the worktree is (steps returned: ${result.steps.map((st) => `${st.name}=${st.exit_code}`).join(', ') || 'none'})` }
   const got = head.trim()
   const resolved = (stepStdout(result, 'target') || '').trim() || sha
   if (got !== sha && got !== resolved) {

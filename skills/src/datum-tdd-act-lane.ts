@@ -20,6 +20,7 @@ import {
   depMergeFromSteps,
   ownershipFromStdout,
   testExitCode,
+  testEnvMissing,
   laneSpecFromSteps,
   laneSpecContextFile,
   digestSpecHash,
@@ -450,6 +451,13 @@ No markdown fences, no explanation.`,
     const intakeVerifyRaw = await runBatch(intakeVerifySteps, stageOpts('cli', { label: `lane-intake-verify:${taskId}`, phase: 'Act', model: model('fast') }))
     const intakeVerify = intakeVerifyRaw
     const intakeVerifyExit = testExitCode(stepStdout(intakeVerify, 'test-verify'))
+    const intakeEnvMissing = testEnvMissing(stepStdout(intakeVerify, 'test-verify'))
+    if (intakeEnvMissing) {
+      // Not a stale GREEN: the worktree has no test environment. Resetting
+      // and re-doing GREEN would loop forever (elonchesd wf_eb0f9f9b-7b1).
+      log(`[${taskId}] test_env_missing: ${intakeEnvMissing}`)
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `test_env_missing: ${intakeEnvMissing} — the lane worktree has no test environment (dependencies not linked/installed); no verdict on the committed GREEN` }
+    }
 
     if (intakeVerifyExit === null) {
       // The verify step did not run (missing batch, tooling crash) — this is
@@ -793,6 +801,11 @@ No markdown fences, no explanation.`,
   // undetected. Re-run the exact same test command independently here and
   // trust that result over the agent's self-report whenever the step ran.
   const redVerifyExit = testExitCode(stepStdout(postRedResult, 'test-verify'))
+  const redEnvMissing = testEnvMissing(stepStdout(postRedResult, 'test-verify'))
+  if (redEnvMissing) {
+    log(`[${taskId}] test_env_missing: ${redEnvMissing}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `test_env_missing: ${redEnvMissing} — the lane worktree has no test environment; RED's failure is not evidence` }
+  }
   if (redVerifyExit === 0) {
     log(`[${taskId}] RED VERIFY FAILED: independent re-run of the test suite exited 0 (green blindness), regardless of agent self-report (tests_pass=${red.tests_pass})`)
     return { task_id: taskId, status: 'failed', stage: 'RED', error: 'green_blindness_violation: independent test-verify step confirms tests passed after RED' }
@@ -1084,6 +1097,11 @@ No markdown fences, no explanation.`,
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }))
   const postGreenVerifyResult = postGreenVerifyRaw
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, 'test-verify'))
+  const greenEnvMissing = testEnvMissing(stepStdout(postGreenVerifyResult, 'test-verify'))
+  if (greenEnvMissing) {
+    log(`[${taskId}] test_env_missing: ${greenEnvMissing}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `test_env_missing: ${greenEnvMissing} — the lane worktree has no test environment; GREEN's verify is not evidence` }
+  }
   if (greenVerifyExit !== 0) {
     log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? 'null'} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`)
     return {

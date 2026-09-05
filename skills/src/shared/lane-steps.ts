@@ -151,6 +151,18 @@ export interface PostRedOpts {
  * the same idiom testRunCommand() prints. Returns null when no such line is
  * present (the step did not run, e.g. verifyTestCmd was null).
  */
+/**
+ * A verify run whose failure is the ENVIRONMENT, not the suite: the runner
+ * or interpreter is missing (a lane worktree with no dependencies — elonchesd
+ * wf_eb0f9f9b-7b1). Returns the offending line, or null for a real red/green.
+ */
+export function testEnvMissing(stdout: string | null | undefined): string | null {
+  if (!stdout) return null
+  const re = /command not found|node_modules missing|did you mean to install|No module named ['"]?pytest|Cannot find module ['"]vitest|vitest: not found|not recognized as an internal or external command/i
+  const line = stdout.split('\n').map((l) => l.trim()).find((l) => re.test(l))
+  return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, '') : null
+}
+
 export function testExitCode(stdout: string | null | undefined): number | null {
   if (!stdout) return null
   const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)]

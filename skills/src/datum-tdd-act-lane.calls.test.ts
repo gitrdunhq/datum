@@ -599,6 +599,27 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(calls.some((c) => c.label === 'red:T1')).toBe(false)
   })
 
+  // elonchesd wf_eb0f9f9b-7b1: a lane worktree without dependencies makes
+  // every verify exit 1; that is test_env_missing, not a stale GREEN.
+  it('an intake verify whose output says the test runner is missing fails the lane as test_env_missing, never green_stale', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const spec = laneSpecHash(fullLane({ pytest: false }))
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) {
+        const arr = JSON.parse(base(label, prompt) as string) as Array<{ name: string; stdout: string }>
+        for (const st of arr) if (st.name === 'history') st.stdout = `bbb222 green(T1): GREEN complete\t${spec}\naaa111 red(T1): RED complete\t${spec}\n`
+        return JSON.stringify(arr)
+      }
+      if (label.startsWith('lane-intake-verify:')) return batch({ 'test-verify': '> vitest run\n\nsh: vitest: command not found\n ELIFECYCLE Test failed.\nTEST_EXIT=1\n' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^test_env_missing: sh: vitest: command not found/)
+    expect(calls.some((c) => c.label.startsWith('reset-to-red:'))).toBe(false)
+    expect(calls.some((c) => c.label.startsWith('green:'))).toBe(false)
+  })
+
   // -------------------------------------------------------------------------
   // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
   // GREEN once with the confirmed bugs, then independently re-verify.

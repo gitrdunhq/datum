@@ -25,6 +25,7 @@ import {
   newTestCountFromSteps,
   scopeReadCap,
   scopeReadTruncations,
+  testEnvMissing,
   SCOPE_READ_BUDGET_BYTES,
   scopeContentsFromSteps,
   scopeGapsFromSteps,
@@ -372,6 +373,22 @@ describe('postRedSteps — deterministic test-verify step', () => {
   it('omits the test-verify step when verifyTestCmd is not given', () => {
     const steps = postRedSteps({ ...opts, verifyTestCmd: null })
     expect(names(steps)).not.toContain('test-verify')
+  })
+})
+
+// elonchesd wf_eb0f9f9b-7b1: "sh: vitest: command not found ... TEST_EXIT=1"
+// read as a red suite, so every GREEN was green_stale at the next intake.
+describe('testEnvMissing', () => {
+  it('names a missing test environment from the verify output', () => {
+    expect(testEnvMissing('> vitest run\n\nsh: vitest: command not found\n ELIFECYCLE Test failed.\nTEST_EXIT=1\n')).toBe('sh: vitest: command not found')
+    expect(testEnvMissing('WARN Local package.json exists, but node_modules missing, did you mean to install?\nTEST_EXIT=1')).toMatch(/node_modules missing/)
+    expect(testEnvMissing("ModuleNotFoundError: No module named 'pytest'\nTEST_EXIT=1")).toMatch(/No module named 'pytest'/)
+    expect(testEnvMissing('uv: command not found\nTEST_EXIT=127')).toMatch(/uv: command not found/)
+  })
+  it('is null for an ordinary red or green suite', () => {
+    expect(testEnvMissing('FAILED tests/test_a.py::test_x - assert 1 == 2\nTEST_EXIT=1')).toBeNull()
+    expect(testEnvMissing('3 passed\nTEST_EXIT=0')).toBeNull()
+    expect(testEnvMissing(null)).toBeNull()
   })
 })
 
