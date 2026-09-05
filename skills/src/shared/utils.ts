@@ -961,8 +961,10 @@ export function laneCommitCommand(opts: {
   taskId: string
   stage: TddStage
   runId: string
+  /** laneSpecHash of the lane this commit was made under (caliper BUG M). */
+  specHash?: string
 }): string {
-  const { wt, taskId, stage, runId } = opts
+  const { wt, taskId, stage, runId, specHash } = opts
   const prefix = `${stage.toLowerCase()}(${taskId})`
   const authorName = runId ? `datum/${runId}` : 'datum'
   const parts = [
@@ -974,6 +976,7 @@ export function laneCommitCommand(opts: {
   if (runId) parts.push(`-m "Datum-Run: ${runId}"`)
   parts.push(`-m "Datum-Lane: ${taskId}"`)
   parts.push(`-m "Datum-Stage: ${stage}"`)
+  if (specHash && /^[A-Za-z0-9:]+$/.test(specHash)) parts.push(`-m "Datum-Spec: ${specHash}"`)
   return parts.join(' ')
 }
 
@@ -996,13 +999,26 @@ export function laneCommitCommand(opts: {
 export function detectExistingLaneCommits(
   logOutput: string,
   taskId: string,
-): { hasRed: boolean; hasGreen: boolean } {
+): { hasRed: boolean; hasGreen: boolean; redSpec: string | null; greenSpec: string | null } {
   const redTarget = `red(${taskId}): RED complete`
   const greenTarget = `green(${taskId}): GREEN complete`
   const lines = (logOutput || '').split('\n')
+  // History lines are "<sha> <subject>\t<Datum-Spec trailer>" (lane-steps.ts
+  // 'history'); commits made before the trailer existed carry nothing after
+  // the tab (or no tab), which reads as "spec unknown", never as a mismatch.
+  const specOf = (target: string): string | null => {
+    const line = lines.find((l) => l.includes(target))
+    if (!line) return null
+    const tab = line.indexOf('\t')
+    if (tab === -1) return null
+    const spec = line.slice(tab + 1).trim().split(',')[0]
+    return spec || null
+  }
   return {
     hasRed: lines.some((l) => l.includes(redTarget)),
     hasGreen: lines.some((l) => l.includes(greenTarget)),
+    redSpec: specOf(redTarget),
+    greenSpec: specOf(greenTarget),
   }
 }
 

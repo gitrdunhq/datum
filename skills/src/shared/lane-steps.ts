@@ -93,7 +93,9 @@ export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
     steps.push({ name: 'lane-spec-sha', command: `git hash-object ${q(o.laneSpec.outPath)}`, tolerant: true })
   }
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
-  steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true })
+  // Subject plus the Datum-Spec trailer (tab-separated): the resume check
+  // compares the spec a RED was committed under with the current one (BUG M).
+  steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s%x09%(trailers:key=Datum-Spec,valueonly,separator=%x2C)" ${q(o.epicBranch)}..HEAD`, tolerant: true })
   if (!o.structural) {
     if (o.cleanupCmd) steps.push({ name: 'cleanup', command: o.cleanupCmd, tolerant: true })
     if (o.planSkeletonPath) {

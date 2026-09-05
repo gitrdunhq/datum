@@ -451,6 +451,8 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
     expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
       hasRed: true,
       hasGreen: true,
+      redSpec: null,
+      greenSpec: null,
     })
   })
 
@@ -459,12 +461,12 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(some-lane): RED complete',
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
     ].join('\n')
-    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false })
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false, redSpec: null, greenSpec: null })
   })
 
   it('reports neither present for a fresh lane branch with no stage commits', () => {
     const log = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit'
-    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false, redSpec: null, greenSpec: null })
   })
 
   it('does not match commits belonging to a different lane id (prefix collision)', () => {
@@ -476,11 +478,13 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
     expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
       hasRed: false,
       hasGreen: false,
+      redSpec: null,
+      greenSpec: null,
     })
   })
 
   it('handles empty log output without throwing', () => {
-    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false, redSpec: null, greenSpec: null })
   })
 })
 
@@ -493,6 +497,27 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
 // ---------------------------------------------------------------------------
 
 import { laneCommitCommand, LANE_COMMIT_AUTHOR_EMAIL } from './utils'
+
+// caliper BUG M: a RED committed under an earlier lane spec (files[] changed
+// between runs) was reused on resume because the subject alone was matched.
+describe('lane commits record the spec hash and the resume parser reads it back', () => {
+  it('laneCommitCommand adds a Datum-Spec trailer when given the spec hash', () => {
+    const cmd = laneCommitCommand({ wt: '/wt', taskId: 'T1', stage: 'RED', runId: 'r1', specHash: 'fnv1a64:00000000000000ab' })
+    expect(cmd).toContain('-m "Datum-Spec: fnv1a64:00000000000000ab"')
+    expect(laneCommitCommand({ wt: '/wt', taskId: 'T1', stage: 'RED', runId: 'r1' })).not.toContain('Datum-Spec')
+  })
+  it('detectExistingLaneCommits returns the RED/GREEN Datum-Spec trailers from the tab-separated history', () => {
+    const log = [
+      'bbb green(T1): GREEN complete\tfnv1a64:00000000000000ab',
+      'aaa red(T1): RED complete\tfnv1a64:00000000000000ab',
+    ].join('\n')
+    const r = detectExistingLaneCommits(log, 'T1')
+    expect(r).toEqual({ hasRed: true, hasGreen: true, redSpec: 'fnv1a64:00000000000000ab', greenSpec: 'fnv1a64:00000000000000ab' })
+    // Old commits without the trailer: present, spec unknown (null), never a false mismatch.
+    expect(detectExistingLaneCommits('aaa red(T1): RED complete', 'T1')).toEqual({ hasRed: true, hasGreen: false, redSpec: null, greenSpec: null })
+    expect(detectExistingLaneCommits('aaa red(T1): RED complete\t', 'T1').redSpec).toBeNull()
+  })
+})
 
 describe('laneCommitCommand — issue #357: unified lane commit convention', () => {
   const wt = '/tmp/wt/task-022'

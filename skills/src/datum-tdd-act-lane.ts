@@ -393,8 +393,26 @@ No markdown fences, no explanation.`,
   // since later stages may have already landed and the target commit is not
   // necessarily HEAD.
   const laneHistoryRaw: string | null = stepStdout(intake, 'history')
-  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } =
-    detectExistingLaneCommits(laneHistoryRaw || '', taskId)
+  const existing = detectExistingLaneCommits(laneHistoryRaw || '', taskId)
+  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = existing
+  // A RED committed under a different lane spec (files[]/criteria/deps
+  // changed between runs — caliper BUG M) is not this lane's RED: reset the
+  // worktree to the epic branch and dispatch RED fresh. Commits made before
+  // the Datum-Spec trailer existed (redSpec null) are reused as before.
+  if (redAlreadyCommitted && existing.redSpec && existing.redSpec !== spec.spec.spec_hash) {
+    const redSha = ((laneHistoryRaw || '').split('\n').find((l) => l.includes(`red(${taskId}): RED complete`)) || '').split(' ')[0]
+    log(`[${taskId}] red_spec_stale: ${taskId} — RED commit ${redSha} was made under spec ${existing.redSpec}, the plan now hashes to ${spec.spec.spec_hash}; resetting to ${cfg.epicBranch} and re-running RED`)
+    const specResetSteps = worktreeResetToSteps(wt, cfg.epicBranch)
+    const specReset = worktreeResetToFromSteps(
+      await runBatch(specResetSteps, stageOpts('cli', { label: `red-spec-reset:${taskId}`, phase: 'Act', model: model('fast') })),
+      cfg.epicBranch,
+    )
+    if (!specReset.ok) {
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: red_spec_stale but could not reset the worktree to ${cfg.epicBranch} (${specReset.error})` }
+    }
+    redAlreadyCommitted = false
+    greenAlreadyCommitted = false
+  }
   // Set only when a stale GREEN forces a reset-to-RED-and-resume below —
   // fed to the first GREEN dispatch as its failure hint so the agent knows a
   // previous GREEN on this lane was independently rejected, not that this is
@@ -560,7 +578,7 @@ No markdown fences, no explanation.`,
     testFilesList: testFiles.join(' '),
     commitPrefix: redPacket.commit_prefix,
     // One commit convention for every stage (#357): datum author + Datum-* trailers.
-    commitCmd: laneCommitCommand({ wt, taskId, stage: 'RED', runId }),
+    commitCmd: laneCommitCommand({ wt, taskId, stage: 'RED', runId, specHash: spec.spec.spec_hash }),
     taskId,
     testFuncPattern: testFuncLabel,
     laneSpec: specFile,
@@ -936,7 +954,7 @@ No markdown fences, no explanation.`,
     testRunCmd: testRunCommand(scopedTestCmd, wt, 'GREEN'),
     implFilesList: implFiles.join(' '),
     commitPrefix: greenPacket.commit_prefix,
-    commitCmd: laneCommitCommand({ wt, taskId, stage: 'GREEN', runId }),
+    commitCmd: laneCommitCommand({ wt, taskId, stage: 'GREEN', runId, specHash: spec.spec.spec_hash }),
     laneSpec: specFile,
   }
 

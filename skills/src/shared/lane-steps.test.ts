@@ -82,7 +82,7 @@ describe('laneIntakeSteps', () => {
     // Bounded to the lane's own commits: an unbounded log was 90 KB in a real
     // consumer repo, the relay agent truncated it to nothing, and the runner
     // missed the lane's existing RED/GREEN commits (#331) and re-ran RED.
-    expect(steps[1].command).toBe('git -C "/wt/T1" log --format="%H %s" "datum/e"..HEAD')
+    expect(steps[1].command).toBe('git -C "/wt/T1" log --format="%H %s%x09%(trailers:key=Datum-Spec,valueonly,separator=%x2C)" "datum/e"..HEAD')
     expect(steps[4].command).toContain('if [ -s "docs/epics/e/skeletons/preflight-T1.json" ]')
     expect(steps[4].command).toContain('datum skeleton --task-id T1')
     expect(steps[4].command).toContain('cat "/wt/T1/.datum/runs/r1/preflight-T1.json" 2>/dev/null || cat ".datum/runs/r1/preflight-T1.json" 2>/dev/null || echo "{}"')

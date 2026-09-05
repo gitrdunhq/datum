@@ -128,8 +128,10 @@ describe('worktreeDirtySteps / worktreeDirtyFromSteps', () => {
 describe('worktreeResetToSteps', () => {
   it('resets to the given sha (not HEAD) then cleans, reports status and the resulting HEAD — sibling of worktreeResetSteps', () => {
     const steps = worktreeResetToSteps('/wt', 'abc1234')
-    expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status', 'head'])
+    expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status', 'head', 'target'])
     expect(steps[3].command).toBe('git -C "/wt" rev-parse HEAD')
+    // The target is resolved too, so a ref (epic branch) works as well as a sha.
+    expect(steps[4].command).toBe('git -C "/wt" rev-parse "abc1234^{commit}"')
     expect(steps[0].command).toContain('git -C "/wt" reset --hard "abc1234"')
     expect(steps[0].command).not.toContain('HEAD')
     expect(steps[1].command).toContain('git -C "/wt" clean -fd')
@@ -200,7 +202,7 @@ describe('end-to-end under real bash', () => {
 describe('worktreeResetToFromSteps', () => {
   const sha = 'a'.repeat(40)
   const mk = (over: Record<string, { exit_code?: number; stdout?: string }>) => parseBatchResult(JSON.stringify(
-    ['reset', 'clean', 'status', 'head'].map((name) => ({ name, exit_code: over[name]?.exit_code ?? 0, stdout: over[name]?.stdout ?? (name === 'head' ? sha + '\n' : ''), stderr: '' })),
+    ['reset', 'clean', 'status', 'head', 'target'].map((name) => ({ name, exit_code: over[name]?.exit_code ?? 0, stdout: over[name]?.stdout ?? (name === 'head' || name === 'target' ? sha + '\n' : ''), stderr: '' })),
   ), worktreeResetToSteps('/wt', sha))
 
   it('ok only when HEAD equals the target sha and status is empty', () => {
@@ -217,6 +219,10 @@ describe('worktreeResetToFromSteps', () => {
     expect(worktreeResetToFromSteps(mk({ status: { stdout: ' M a.py\n' } }), sha).error).toMatch(/^worktree_reset_failed: .*still dirty/)
     const noHead = parseBatchResult(JSON.stringify([{ name: 'reset', exit_code: 0, stdout: '', stderr: '' }]), worktreeResetToSteps('/wt', sha))
     expect(worktreeResetToFromSteps(noHead, sha).error).toMatch(/^worktree_reset_failed: .*head step/)
+    // A ref target: HEAD must equal what the ref resolves to, not the literal.
+    const refSteps = worktreeResetToSteps('/wt', 'datum/e')
+    const refOk = parseBatchResult(JSON.stringify(['reset', 'clean', 'status', 'head', 'target'].map((name) => ({ name, exit_code: 0, stdout: name === 'head' || name === 'target' ? 'c'.repeat(40) + '\n' : '', stderr: '' }))), refSteps)
+    expect(worktreeResetToFromSteps(refOk, 'datum/e').ok).toBe(true)
     expect(worktreeResetToFromSteps(parseBatchResult('I cannot run destructive git commands', worktreeResetToSteps('/wt', sha)), sha).error).toMatch(/^worktree_reset_failed: .*runner_permission_denied/)
   })
 })

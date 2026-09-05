@@ -131,6 +131,8 @@ export function worktreeResetToSteps(wt: string, sha: string): BatchStep[] {
     { name: 'clean', command: `git -C ${q(wt)} clean -fd`, tolerant: true },
     { name: 'status', command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
     { name: 'head', command: `git -C ${q(wt)} rev-parse HEAD`, tolerant: true },
+    // Resolved so a ref (the epic branch) can be the target, not only a sha.
+    { name: 'target', command: `git -C ${q(wt)} rev-parse ${q(`${sha}^{commit}`)}`, tolerant: true },
   ]
 }
 
@@ -146,7 +148,8 @@ export function worktreeResetToFromSteps(result: BatchResult, sha: string): { ok
   const head = stepStdout(result, 'head')
   if (head === null) return { ok: false, error: 'worktree_reset_failed: the head step did not run — cannot confirm where the worktree is' }
   const got = head.trim()
-  if (got !== sha) {
+  const resolved = (stepStdout(result, 'target') || '').trim() || sha
+  if (got !== sha && got !== resolved) {
     const reset = stepResult(result, 'reset')
     const why = reset && reset.exit_code !== 0 ? ` (reset exited ${reset.exit_code}: ${(reset.stderr || reset.stdout || '').trim().slice(0, 200)})` : ''
     return { ok: false, error: `worktree_reset_failed: HEAD is ${got || '?'}, expected ${sha}${why}` }

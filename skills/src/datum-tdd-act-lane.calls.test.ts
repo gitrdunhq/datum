@@ -557,6 +557,48 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(wip.prompt).toContain('wip(T1): GREEN partial - blocked on tests/other.test.ts')
   })
 
+  // caliper wf_7fb1a1b8-252 (BUG M): the lane's files[] changed between runs
+  // (spec_hash changed) but the RED committed under the old spec was reused.
+  it('a RED commit whose Datum-Spec trailer differs from the current spec is reset away and RED re-dispatched (red_spec_stale)', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const logs: string[] = []
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) {
+        const arr = JSON.parse(base(label, prompt) as string) as Array<{ name: string; stdout: string }>
+        for (const st of arr) if (st.name === 'history') st.stdout = 'aaa111 red(T1): RED complete\tfnv1a64:0000000000000old\n'
+        return JSON.stringify(arr)
+      }
+      if (label.startsWith('red-spec-reset:')) return batch({ reset: '', clean: '', status: '', head: 'e'.repeat(40) + '\n', target: 'e'.repeat(40) + '\n' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false, logs })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(logs.some((l) => /red_spec_stale: T1 — RED commit aaa111 was made under spec fnv1a64:0000000000000old/.test(l))).toBe(true)
+    const reset = calls.find((c) => c.label.startsWith('red-spec-reset:'))!
+    expect(reset.prompt).toContain('git -C "/wt/T1" reset --hard "e"')
+    expect(calls.some((c) => c.label === 'red:T1')).toBe(true)
+    // The fresh RED commit records the current spec.
+    const red = calls.find((c) => c.label === 'red:T1')!
+    expect(red.prompt).toMatch(/-m "Datum-Spec: fnv1a64:[0-9a-f]{16}"/)
+  })
+
+  it('a RED commit with a matching Datum-Spec is reused (no reset, no RED dispatch)', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const spec = laneSpecHash(fullLane({ pytest: false }))
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) {
+        const arr = JSON.parse(base(label, prompt) as string) as Array<{ name: string; stdout: string }>
+        for (const st of arr) if (st.name === 'history') st.stdout = `aaa111 red(T1): RED complete\t${spec}\n`
+        return JSON.stringify(arr)
+      }
+      if (label.startsWith('verify-commit:') || label.startsWith('commit-check:')) return base(label, prompt)
+      return base(label, prompt)
+    }
+    const { calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(calls.some((c) => c.label.startsWith('red-spec-reset:'))).toBe(false)
+    expect(calls.some((c) => c.label === 'red:T1')).toBe(false)
+  })
+
   // -------------------------------------------------------------------------
   // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
   // GREEN once with the confirmed bugs, then independently re-verify.
