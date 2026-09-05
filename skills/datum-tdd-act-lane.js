@@ -322,7 +322,7 @@ function testRunCommand(testCommand, wt, stage) {
 }
 var LANE_COMMIT_AUTHOR_EMAIL = "datum@local";
 function laneCommitCommand(opts) {
-  const { wt, taskId, stage, runId } = opts;
+  const { wt, taskId, stage, runId, specHash } = opts;
   const prefix = `${stage.toLowerCase()}(${taskId})`;
   const authorName = runId ? `datum/${runId}` : "datum";
   const parts = [
@@ -334,15 +334,26 @@ function laneCommitCommand(opts) {
   if (runId) parts.push(`-m "Datum-Run: ${runId}"`);
   parts.push(`-m "Datum-Lane: ${taskId}"`);
   parts.push(`-m "Datum-Stage: ${stage}"`);
+  if (specHash && /^[A-Za-z0-9:]+$/.test(specHash)) parts.push(`-m "Datum-Spec: ${specHash}"`);
   return parts.join(" ");
 }
 function detectExistingLaneCommits(logOutput, taskId) {
   const redTarget = `red(${taskId}): RED complete`;
   const greenTarget = `green(${taskId}): GREEN complete`;
   const lines = (logOutput || "").split("\n");
+  const specOf = (target) => {
+    const line = lines.find((l) => l.includes(target));
+    if (!line) return null;
+    const tab = line.indexOf("	");
+    if (tab === -1) return null;
+    const spec = line.slice(tab + 1).trim().split(",")[0];
+    return spec || null;
+  };
   return {
     hasRed: lines.some((l) => l.includes(redTarget)),
-    hasGreen: lines.some((l) => l.includes(greenTarget))
+    hasGreen: lines.some((l) => l.includes(greenTarget)),
+    redSpec: specOf(redTarget),
+    greenSpec: specOf(greenTarget)
   };
 }
 function renderPrompt(template, vars) {
@@ -508,7 +519,9 @@ function worktreeResetToSteps(wt, sha) {
     { name: "reset", command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },
     { name: "clean", command: `git -C ${q(wt)} clean -fd`, tolerant: true },
     { name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
-    { name: "head", command: `git -C ${q(wt)} rev-parse HEAD`, tolerant: true }
+    { name: "head", command: `git -C ${q(wt)} rev-parse HEAD`, tolerant: true },
+    // Resolved so a ref (the epic branch) can be the target, not only a sha.
+    { name: "target", command: `git -C ${q(wt)} rev-parse ${q(`${sha}^{commit}`)}`, tolerant: true }
   ];
 }
 function worktreeResetToFromSteps(result, sha) {
@@ -516,7 +529,8 @@ function worktreeResetToFromSteps(result, sha) {
   const head = stepStdout(result, "head");
   if (head === null) return { ok: false, error: "worktree_reset_failed: the head step did not run \u2014 cannot confirm where the worktree is" };
   const got = head.trim();
-  if (got !== sha) {
+  const resolved = (stepStdout(result, "target") || "").trim() || sha;
+  if (got !== sha && got !== resolved) {
     const reset = stepResult(result, "reset");
     const why = reset && reset.exit_code !== 0 ? ` (reset exited ${reset.exit_code}: ${(reset.stderr || reset.stdout || "").trim().slice(0, 200)})` : "";
     return { ok: false, error: `worktree_reset_failed: HEAD is ${got || "?"}, expected ${sha}${why}` };
@@ -778,7 +792,7 @@ function laneIntakeSteps(o) {
     steps.push({ name: "lane-spec-sha", command: `git hash-object ${q2(o.laneSpec.outPath)}`, tolerant: true });
   }
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
-  steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
+  steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s%x09%(trailers:key=Datum-Spec,valueonly,separator=%x2C)" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
   if (!o.structural) {
     if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
     if (o.planSkeletonPath) {
@@ -1409,7 +1423,22 @@ No markdown fences, no explanation.`,
   }
   const specFile = laneSpecContextFile(spec.spec);
   const laneHistoryRaw = stepStdout(intake, "history");
-  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
+  const existing = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
+  let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = existing;
+  if (redAlreadyCommitted && existing.redSpec && existing.redSpec !== spec.spec.spec_hash) {
+    const redSha = ((laneHistoryRaw || "").split("\n").find((l) => l.includes(`red(${taskId}): RED complete`)) || "").split(" ")[0];
+    log(`[${taskId}] red_spec_stale: ${taskId} \u2014 RED commit ${redSha} was made under spec ${existing.redSpec}, the plan now hashes to ${spec.spec.spec_hash}; resetting to ${cfg2.epicBranch} and re-running RED`);
+    const specResetSteps = worktreeResetToSteps(wt, cfg2.epicBranch);
+    const specReset = worktreeResetToFromSteps(
+      await runBatch(specResetSteps, stageOpts("cli", { label: `red-spec-reset:${taskId}`, phase: "Act", model: model("fast") })),
+      cfg2.epicBranch
+    );
+    if (!specReset.ok) {
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: red_spec_stale but could not reset the worktree to ${cfg2.epicBranch} (${specReset.error})` };
+    }
+    redAlreadyCommitted = false;
+    greenAlreadyCommitted = false;
+  }
   let greenStaleHint = null;
   if (isStructural) {
     const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
@@ -1521,7 +1550,7 @@ No markdown fences, no explanation.`,
     testFilesList: testFiles.join(" "),
     commitPrefix: redPacket.commit_prefix,
     // One commit convention for every stage (#357): datum author + Datum-* trailers.
-    commitCmd: laneCommitCommand({ wt, taskId, stage: "RED", runId }),
+    commitCmd: laneCommitCommand({ wt, taskId, stage: "RED", runId, specHash: spec.spec.spec_hash }),
     taskId,
     testFuncPattern: testFuncLabel,
     laneSpec: specFile
@@ -1797,7 +1826,7 @@ No markdown fences, no explanation.`,
     testRunCmd: testRunCommand(scopedTestCmd, wt, "GREEN"),
     implFilesList: implFiles.join(" "),
     commitPrefix: greenPacket.commit_prefix,
-    commitCmd: laneCommitCommand({ wt, taskId, stage: "GREEN", runId }),
+    commitCmd: laneCommitCommand({ wt, taskId, stage: "GREEN", runId, specHash: spec.spec.spec_hash }),
     laneSpec: specFile
   };
   let green = await witnessedAgent(
