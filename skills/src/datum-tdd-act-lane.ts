@@ -823,6 +823,30 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     }
   }
 
+  // Deterministic green-blindness gate (#386): the GREEN agent's tests_pass
+  // is self-reported from a run IT performed and read the exit status from —
+  // a hallucinated or mistaken "tests_pass: true" would merge a lane whose
+  // tests never passed. Independently re-run the exact same test command
+  // here (whenever GREEN ran at all — this is not gated behind
+  // deterministicChecks(), unlike the ownership read below) and trust that
+  // result over the agent's self-report, before ever consulting it.
+  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
+  const postGreenVerifyRaw = await agent(
+    batchCommandPrompt(postGreenVerify),
+    stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }),
+  )
+  const postGreenVerifyResult = parseBatchResult(postGreenVerifyRaw, postGreenVerify)
+  const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, 'test-verify'))
+  if (greenVerifyExit !== 0) {
+    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? 'null'} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`)
+    return {
+      task_id: taskId,
+      status: 'failed',
+      stage: 'GREEN',
+      error: `green_verify_failed: independent test-verify step exit=${greenVerifyExit ?? 'null'} (agent self-reported tests_pass=${green?.tests_pass})`,
+    }
+  }
+
   if (!green || !green.success || !green.tests_pass) {
     // #278: a bare "GREEN failed" with no diagnostics happens when the agent call itself
     // returns null (crashed, skipped, or exhausted rate-limit retries) — distinguish that

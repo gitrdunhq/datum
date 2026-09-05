@@ -249,10 +249,25 @@ export function scopeGapsFromSteps(
   return { existing, missing }
 }
 
-// ── Post-GREEN: ownership read (deterministic-checks mode) ──
+// ── Post-GREEN: ownership read (deterministic-checks mode) + optional independent test-verify ──
 
-export function postGreenSteps(o: { wt: string }): BatchStep[] {
-  return [{ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true }]
+export interface PostGreenOpts {
+  wt: string
+  /**
+   * When given, independently re-run this exact test command against `wt`
+   * (never trusting the GREEN agent's self-reported tests_pass, which comes
+   * from a run the agent itself performed and read the exit status from).
+   * Null/omitted skips the step entirely. Mirrors PostRedOpts.verifyTestCmd.
+   */
+  verifyTestCmd?: string | null
+}
+
+export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
+  const steps: BatchStep[] = [{ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true }]
+  if (o.verifyTestCmd) {
+    steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'green-verify'), tolerant: true })
+  }
+  return steps
 }
 
 // ── Setup: root worktree + lane worktrees + plan distribution ──
@@ -378,8 +393,56 @@ export function actStartSteps(o: ActStartOpts): BatchStep[] {
       tolerant: true,
     })
   }
+  // The plan itself is relayed by a separate reader agent (see
+  // readLanePlanPrompt) and can be silently abridged on the way back. Emit
+  // its SHAPE here — sorted lane ids, topo length, total — which is tiny and
+  // safe to relay, so the script can verify the reader's copy is complete.
+  steps.push({
+    name: 'plan-shape',
+    command: `[ -n "$__plan" ] && jq -c '{lanes: (.lanes|keys|sort), topo: (.topological_order|length), total: .total_lanes}' "$__plan" || echo '{}'`,
+    tolerant: true,
+  })
   steps.push({ name: 'lane-state-read', command: o.laneStateReadScript.trim(), tolerant: true })
   return steps
+}
+
+/**
+ * Compare a relayed lane plan against the `plan-shape` step's jq output.
+ * A reader agent that summarised, dropped or invented lanes is caught here
+ * deterministically — never executed as a shorter plan.
+ */
+export function verifyLanePlanShape(
+  plan: { lanes: Record<string, unknown>; topological_order: string[]; total_lanes: number },
+  shapeStdout: string | null | undefined,
+): { ok: boolean; reason: string } {
+  let shape: { lanes?: string[]; topo?: number; total?: number } | null = null
+  try {
+    shape = shapeStdout && shapeStdout.trim() ? JSON.parse(shapeStdout.trim()) : null
+  } catch {
+    shape = null
+  }
+  if (!shape || !Array.isArray(shape.lanes)) {
+    return { ok: false, reason: 'plan-shape step produced no JSON — the relayed lane plan cannot be verified' }
+  }
+  const got = Object.keys(plan.lanes || {}).sort()
+  const want = [...shape.lanes].sort()
+  const missing = want.filter((id) => !got.includes(id))
+  const extra = got.filter((id) => !want.includes(id))
+  if (missing.length || extra.length) {
+    return {
+      ok: false,
+      reason: `relayed lane plan has ${got.length} lanes but the file has ${want.length}` +
+        (missing.length ? `; missing: ${missing.join(', ')}` : '') +
+        (extra.length ? `; not in file: ${extra.join(', ')}` : ''),
+    }
+  }
+  if (typeof shape.topo === 'number' && (plan.topological_order || []).length !== shape.topo) {
+    return { ok: false, reason: `relayed topological_order has ${(plan.topological_order || []).length} entries but the file has ${shape.topo}` }
+  }
+  if (typeof shape.total === 'number' && plan.total_lanes !== shape.total) {
+    return { ok: false, reason: `relayed total_lanes is ${plan.total_lanes} but the file says ${shape.total}` }
+  }
+  return { ok: true, reason: '' }
 }
 
 // ── Closeout collect: branch/shas/config + the four collectors + data-exists ──

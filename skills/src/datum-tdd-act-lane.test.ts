@@ -400,3 +400,40 @@ describe('deterministic RED green-blindness gate', () => {
     expect(exitCheckIdx).toBeLessThan(selfReportIdx)
   })
 })
+
+describe('deterministic GREEN green-blindness gate (#386)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('passes verifyTestCmd to postGreenSteps so the independent test-verify step runs', () => {
+    expect(laneSource).toMatch(/postGreenSteps\(\{[\s\S]{0,200}verifyTestCmd:\s*scopedTestCmd/)
+  })
+
+  it('computes greenVerifyExit from the test-verify step, not just the agent self-report', () => {
+    expect(laneSource).toMatch(/greenVerifyExit\s*=\s*testExitCode\(/)
+  })
+
+  it('fails GREEN on a non-zero/null independent exit even when green.tests_pass is true, before the final self-report trust that settles pass/fail after retries', () => {
+    const exitCheckIdx = laneSource.indexOf('greenVerifyExit !== 0')
+    // The final settle-point (post-retries) that trusts the self-report and
+    // returns a GREEN-failed result — distinct from the earlier retry-decision
+    // check, which only decides whether to retry, not the final verdict.
+    const finalSelfReportIdx = laneSource.indexOf('GREEN agent call returned no result after retries')
+    expect(exitCheckIdx).toBeGreaterThan(-1)
+    expect(finalSelfReportIdx).toBeGreaterThan(-1)
+    // The deterministic check must run BEFORE the final self-report trust,
+    // so a hallucinated tests_pass: true cannot short-circuit past it.
+    expect(exitCheckIdx).toBeLessThan(finalSelfReportIdx)
+  })
+
+  it('reports the failure with a distinct green_verify_failed error', () => {
+    expect(laneSource).toContain('green_verify_failed:')
+  })
+
+  it('does not gate the independent GREEN test-verify step behind deterministicChecks()', () => {
+    // The verify step must run whenever GREEN ran — it is not optional.
+    const verifyCallIdx = laneSource.search(/postGreenSteps\(\{[\s\S]{0,200}verifyTestCmd:\s*scopedTestCmd/)
+    expect(verifyCallIdx).toBeGreaterThan(-1)
+    const precedingSlice = laneSource.slice(Math.max(0, verifyCallIdx - 300), verifyCallIdx)
+    expect(precedingSlice).not.toMatch(/if \(deterministic\)/)
+  })
+})

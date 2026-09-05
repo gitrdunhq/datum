@@ -26,6 +26,7 @@ import {
   readLanePlanPrompt,
   testExitCode,
   closeoutCollectSteps,
+  verifyLanePlanShape,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -325,10 +326,25 @@ describe('ownershipFromStdout (#368 item D — script-evaluated ownership)', () 
 })
 
 describe('postGreenSteps', () => {
-  it('is the single ownership read', () => {
+  it('is the single ownership read when verifyTestCmd is not given', () => {
     const steps = postGreenSteps({ wt: '/wt/T1' })
     expect(names(steps)).toEqual(['ownership'])
     expect(steps[0].command).toBe(ownershipCommand('/wt/T1'))
+  })
+
+  it('omits the test-verify step when verifyTestCmd is null', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: null })
+    expect(names(steps)).not.toContain('test-verify')
+  })
+
+  it('appends a test-verify step, independently re-running the test command, when verifyTestCmd is given', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: 'pytest -q' })
+    expect(names(steps)).toContain('test-verify')
+    const step = steps.find((s) => s.name === 'test-verify')!
+    expect(step.tolerant).toBe(true)
+    expect(step.command).toContain('pytest -q')
+    expect(step.command).toContain('TEST_EXIT=$?')
+    expect(step.command).toContain('/wt/T1')
   })
 })
 
@@ -388,18 +404,20 @@ describe('actStartSteps', () => {
   // batch, so this batch's own output stays small regardless of plan size.
   it('datum-go: init, branch, timestamp, resolve, lane-state-read — no read-plan step', () => {
     const steps = actStartSteps({ branch: 'init', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'lane-state-read'])
+    expect(names(steps)).toEqual(['bootstrap', 'branch', 'timestamp', 'resolve', 'plan-shape', 'lane-state-read'])
     expect(steps[0].command).toContain('datum init --json')
     expect(steps[0].tolerant).toBeFalsy()
     expect(steps[3].command).toContain('lane-plan-final.json')
     expect(steps[3].command).toContain('echo none')
-    expect(steps[4].command).toContain('datum lane-state read --epic "$__eb"')
-    expect(steps[4].command).toContain('.topological_order[]')
+    expect(steps[4].command).toContain('jq -c') // plan-shape: shape only, never the whole plan
+    expect(steps[4].command).not.toContain('cat "$__plan"')
+    expect(steps[5].command).toContain('datum lane-state read --epic "$__eb"')
+    expect(steps[5].command).toContain('.topological_order[]')
   })
 
   it('datum-tdd-act yolo: detects the branch instead of running init; explicit branch/plan skip both', () => {
     const detect = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
-    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'lane-state-read'])
+    expect(names(detect)).toEqual(['branch', 'timestamp', 'resolve', 'plan-shape', 'lane-state-read'])
     expect(detect[0].command).toContain('git rev-parse --abbrev-ref HEAD')
     const given = actStartSteps({ branch: 'datum/e', lanePlanPath: 'docs/epics/datum/e/lane-plan.json', laneStateReadScript: read })
     expect(given[0].command).toContain('__eb="datum/e"')
@@ -522,5 +540,60 @@ describe('readLanePlanPrompt', () => {
     const p = readLanePlanPrompt('docs/epics/datum/e/lane-plan.json')
     expect(p).toMatch(/offset/i)
     expect(p).toMatch(/never answer with a partial|fabricat/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Lane-plan relay integrity. The plan is read by an LLM `reader` agent and
+// echoed back; a large plan can be silently abridged (a 90 KB batch came back
+// as 6.7 KB of "successful" hand-summarised JSON in eedom). The act-start
+// batch now emits the plan's SHAPE via jq — tiny, safe to relay — and the
+// script compares it to what the reader returned. Mismatch is a named
+// failure, never a shorter plan silently executed.
+// ---------------------------------------------------------------------------
+
+describe('actStartSteps — plan-shape step', () => {
+  const read = laneStateReadScript({ epicBranch: '$__eb', epicSlug: 'x', taskIdsSpace: '$(jq -r \'.topological_order[]\' "$__plan")' })
+
+  it('emits the plan shape (sorted lane ids, topo length, total_lanes) after resolve, tolerant', () => {
+    const steps = actStartSteps({ branch: 'detect', lanePlanPath: null, laneStateReadScript: read })
+    const idx = names(steps).indexOf('plan-shape')
+    expect(idx).toBeGreaterThan(names(steps).indexOf('resolve'))
+    expect(steps[idx].tolerant).toBe(true)
+    expect(steps[idx].command).toContain('jq -c')
+    expect(steps[idx].command).toContain('.lanes|keys')
+    expect(steps[idx].command).toContain('.topological_order|length')
+    expect(steps[idx].command).toContain('.total_lanes')
+  })
+})
+
+describe('verifyLanePlanShape', () => {
+  const plan = {
+    lanes: { 'task-001': { title: 'a', files: [] }, 'task-002': { title: 'b', files: [] } },
+    topological_order: ['task-001', 'task-002'],
+    total_lanes: 2,
+  }
+
+  it('accepts a relayed plan that matches the shape emitted by jq', () => {
+    const r = verifyLanePlanShape(plan as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
+    expect(r.ok).toBe(true)
+  })
+
+  it('rejects a relayed plan that dropped a lane', () => {
+    const short = { ...plan, lanes: { 'task-001': plan.lanes['task-001'] }, topological_order: ['task-001'] }
+    const r = verifyLanePlanShape(short as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/task-002/)
+  })
+
+  it('rejects a relayed plan whose topological_order length differs', () => {
+    const r = verifyLanePlanShape({ ...plan, topological_order: ['task-001'] } as never, '{"lanes":["task-001","task-002"],"topo":2,"total":2}')
+    expect(r.ok).toBe(false)
+  })
+
+  it('rejects when the shape step produced no JSON — the relay cannot be verified', () => {
+    const r = verifyLanePlanShape(plan as never, '')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toMatch(/shape/i)
   })
 })

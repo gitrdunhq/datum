@@ -748,7 +748,11 @@ function scopeGapsFromSteps(scopeGaps, exitOf) {
   return { existing, missing };
 }
 function postGreenSteps(o) {
-  return [{ name: "ownership", command: ownershipCommand(o.wt), tolerant: true }];
+  const steps = [{ name: "ownership", command: ownershipCommand(o.wt), tolerant: true }];
+  if (o.verifyTestCmd) {
+    steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
+  }
+  return steps;
 }
 
 // skills/src/prompts/agent-preamble.md
@@ -1367,6 +1371,22 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
         stageOpts("green", { label: `green-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
       );
     }
+  }
+  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
+  const postGreenVerifyRaw = await agent(
+    batchCommandPrompt(postGreenVerify),
+    stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") })
+  );
+  const postGreenVerifyResult = parseBatchResult(postGreenVerifyRaw, postGreenVerify);
+  const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, "test-verify"));
+  if (greenVerifyExit !== 0) {
+    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? "null"} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
+    return {
+      task_id: taskId,
+      status: "failed",
+      stage: "GREEN",
+      error: `green_verify_failed: independent test-verify step exit=${greenVerifyExit ?? "null"} (agent self-reported tests_pass=${green?.tests_pass})`
+    };
   }
   if (!green || !green.success || !green.tests_pass) {
     const reason = !green ? "GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) \u2014 check the subagent transcript for this run to recover the actual failure cause" : green.failure_reason || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? "n/a"})`;
