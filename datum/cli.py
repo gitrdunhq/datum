@@ -212,6 +212,39 @@ def lane_plan_digest_cmd(
     typer.echo(text, nl=False)
 
 
+@app.command(name="lane-spec-export")
+def lane_spec_export_cmd(
+    plan: str = typer.Option(
+        ..., "--plan", help="Path to the worktree's lane-plan.json"
+    ),
+    task: str = typer.Option(..., "--task", help="Lane id to export"),
+    out: str = typer.Option(..., "--out", help="Where to write the lane spec JSON"),
+    expect_hash: str = typer.Option(
+        "",
+        "--expect-hash",
+        help="The digest's spec_hash for this lane; a mismatch is exit 1 and writes nothing",
+    ),
+):
+    """Write one lane's full spec (acceptance criteria, red_note, contract
+    summary) to --out and print one short JSON line: task_id, path, bytes,
+    sha (git blob), spec_hash, ac_count.
+
+    The criteria never travel through stdout — the stage agents read the
+    file by path and evidence the read with its blob sha. Errors are JSON
+    with a named prefix (lane_spec_missing, lane_spec_hash_mismatch), exit 1.
+    """
+    from datum.lane_spec_export import LaneSpecExportError, export_lane_spec_file
+
+    try:
+        summary = export_lane_spec_file(
+            Path(plan), task, Path(out), expect_hash or None
+        )
+    except LaneSpecExportError as exc:
+        typer.echo(json.dumps(exc.payload))
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps(summary))
+
+
 @app.command(name="plan-issues")
 def plan_issues_cmd(
     lane_plan: str = typer.Option(
