@@ -199,7 +199,7 @@ describe('verifyReadWitness', () => {
 
   it('is ok with no missing/mismatched when every deferred file has a matching read_witness prefix', () => {
     const result = verifyReadWitness([deferredA, inlined], { read_witness: { 'A.md': 'abcdef123456' } })
-    expect(result).toEqual({ ok: true, missing: [], mismatched: [] })
+    expect(result).toEqual({ ok: true, missing: [], mismatched: [], tooShort: [] })
   })
 
   it('does not require a witness entry for an inlined file', () => {
@@ -221,6 +221,19 @@ describe('verifyReadWitness', () => {
     expect(verifyReadWitness([deferredA], { read_witness: { 'whatever': 'ABCDEF123456' } }).ok).toBe(true)
     // Two deferred files, both witnessed by value under wrong keys.
     expect(verifyReadWitness([deferredA, deferredB], { read_witness: { x: 'abcdef123456', y: '111111111122' } }).ok).toBe(true)
+  })
+
+  // caliper wf_c11a9109-d48 (BUG K2): agents returned correct 8- and 9-char
+  // prefixes and the lane failed context_read_unverified. Seven hex chars
+  // (git's own short-sha floor) is proof enough of the read; the prompt still
+  // asks for 12.
+  it('accepts a correct prefix of at least 7 hex chars, and rejects a shorter one by name', () => {
+    expect(verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef12' } }).ok).toBe(true)
+    expect(verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef1' } }).ok).toBe(true)
+    const short = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef' } })
+    expect(short.ok).toBe(false)
+    expect(short.tooShort).toEqual(['A.md'])
+    expect(() => assertReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef' } })).toThrow(/context_read_unverified: A\.md — witness prefix too short \(6 < 7\)/)
   })
 
   it('a wrong-key entry with a wrong value is still missing for that file', () => {
@@ -262,10 +275,13 @@ describe('verifyReadWitness', () => {
     expect(verifyReadWitness([deferredA], []).ok).toBe(false)
   })
 
-  it('treats a too-short witness value as missing, not a mismatch', () => {
+  it('treats a too-short but correct witness value as tooShort, and a too-short wrong one as missing', () => {
     const result = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abc' } })
-    expect(result.missing).toEqual(['A.md'])
+    expect(result.tooShort).toEqual(['A.md'])
+    expect(result.missing).toEqual([])
     expect(result.mismatched).toEqual([])
+    const wrong = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'zzz' } })
+    expect(wrong.missing).toEqual(['A.md'])
   })
 })
 

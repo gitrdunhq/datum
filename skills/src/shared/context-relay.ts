@@ -224,27 +224,35 @@ function extractWitnessMap(parsed: unknown): Record<string, unknown> {
  * prefix of that file's actual blob sha? Inlined files are not required —
  * the relay already byte-verified their content.
  */
+/** Shortest accepted witness prefix — git's own short-sha floor. The prompt asks for 12. */
+export const WITNESS_MIN_HEX = 7
+
 export function verifyReadWitness(
   files: ContextFile[],
   parsed: unknown,
-): { ok: boolean; missing: string[]; mismatched: string[] } {
+): { ok: boolean; missing: string[]; mismatched: string[]; tooShort: string[] } {
   const deferred = files.filter((f) => f.exists && !f.inlined)
   const witness = extractWitnessMap(parsed)
   const missing: string[] = []
   const mismatched: string[] = []
+  const tooShort: string[] = []
   // The VALUE is the proof (a prefix the agent can only get by hashing the
   // file); the key is bookkeeping. A haiku reflect agent keyed by the full
   // sha instead of the path (caliper wf_181691ac-fbf, BUG K), so any entry
-  // whose value is a prefix of this file's sha counts for it.
-  const values = Object.values(witness).filter((v): v is string => typeof v === 'string' && /^[0-9a-f]{12,}$/i.test(v))
+  // whose value is a prefix of this file's sha counts for it. Agents also
+  // returned correct 8/9-char prefixes (BUG K2): >= 7 hex chars is accepted.
+  const hexValues = Object.values(witness).filter((v): v is string => typeof v === 'string' && /^[0-9a-f]+$/i.test(v))
+  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX)
   for (const f of deferred) {
     const sha = f.sha.toLowerCase()
     if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue
     const keyed = witness[f.path]
-    if (typeof keyed === 'string' && /^[0-9a-f]{12,}$/i.test(keyed)) mismatched.push(f.path)
+    if (typeof keyed === 'string' && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path)
+    else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path)
+    else if (typeof keyed === 'string' && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path)
     else missing.push(f.path)
   }
-  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched }
+  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort }
 }
 
 /**
@@ -257,10 +265,15 @@ export function assertReadWitness(files: ContextFile[], parsed: unknown): void {
   if (result.ok) return
   const witness = extractWitnessMap(parsed)
   const byPath = new Map(files.map((f) => [f.path, f]))
-  const badPath = (result.missing[0] ?? result.mismatched[0]) as string
+  const badPath = (result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0]) as string
+  const f = byPath.get(badPath)
+  if (result.tooShort.includes(badPath)) {
+    const sha = (f ? f.sha : '').toLowerCase()
+    const short = Object.values(witness).find((v): v is string => typeof v === 'string' && v.length > 0 && sha.startsWith(v.toLowerCase())) || ''
+    throw new Error(`context_read_unverified: ${badPath} — witness prefix too short (${short.length} < ${WITNESS_MIN_HEX}): the agent read the file but returned only "${short}" of blob ${f ? f.sha : '?'}`)
+  }
   const got = witness[badPath]
   const gotStr = typeof got === 'string' && got.length > 0 ? got : 'missing'
-  const f = byPath.get(badPath)
   throw new Error(`context_read_unverified: ${badPath} — agent did not evidence reading the deferred file (expected blob ${f ? f.sha : '?'}, got ${gotStr})`)
 }
 
