@@ -13,6 +13,7 @@ import {
   scopeContentsFromSteps,
   scopeGapsFromSteps,
   postGreenSteps,
+  ownershipCheckSteps,
   ownershipFromStdout,
   testExitCode,
 } from './shared/lane-steps'
@@ -101,40 +102,42 @@ async function verifyFileOwnership(
   allowedFiles: string[],
   forbiddenFiles: string[],
 ): Promise<OwnershipCheckResult> {
-  const result: string | null = await agent(
-    `Run: git -C "${wt}" diff --name-only HEAD~1 HEAD
-Return ONLY a JSON object: {"files_changed": ["path1", "path2"]}
-No markdown fences, no explanation.`,
-    stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }),
+  // The same one-step batch the deterministic post-RED/post-GREEN reads carry
+  // (shared/lane-steps.ts): the diff's stdout comes back inside the batch
+  // result and is evaluated here by ownershipFromStdout. The runner used to
+  // be told to run the diff and RETURN a JSON list of the changed paths — a
+  // typed-back list that could drop a path and hide a real violation.
+  const steps = ownershipCheckSteps(wt)
+  const result = parseBatchResult(
+    await agent(
+      batchCommandPrompt(steps),
+      stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }),
+    ),
+    steps,
   )
 
   // A missing result is a named tooling failure, never a clean check — the
-  // ownership-check agent crashed, was skipped, or returned nothing. Failing
-  // OPEN here would let a real ownership violation sail through undetected.
-  if (!result) {
+  // ownership-check agent crashed, was skipped, or returned nothing parseable.
+  // Failing OPEN here would let a real ownership violation sail through.
+  if (result.missing) {
     return {
       ok: false,
       checkFailed: true,
-      violations: [`ownership_check_failed: ownership-check agent returned no result for ${stage} on ${taskId}`],
+      violations: [`ownership_check_failed: ownership-check batch returned no result for ${stage} on ${taskId} (${describeFailure(result, 'ownership-check')})`],
     }
   }
 
-  const parsed = typeof result === 'string'
-    ? parseAgentJson<{ files_changed?: string[] }>(result, {})
-    : result as { files_changed?: string[] }
-
-  // An unparseable result (garbage text, missing files_changed) must not
-  // silently become an empty [] that trivially passes — that is the same
-  // fail-open failure mode as the null case above, just later in the pipeline.
-  if (!parsed || !Array.isArray(parsed.files_changed)) {
+  const step = stepResult(result, 'ownership')
+  if (!step || step.exit_code !== 0) {
     return {
       ok: false,
       checkFailed: true,
-      violations: [`ownership_check_failed: could not parse files_changed from ownership-check result for ${stage} on ${taskId} (raw: ${String(result).slice(0, 200)})`],
+      violations: [`ownership_check_failed: git diff exited ${step ? step.exit_code : 'without running'} for ${stage} on ${taskId}: ${((step && (step.stderr || step.stdout)) || '').trim().split('\n').slice(-3).join(' | ')}`],
     }
   }
 
-  return verifyFileOwnershipMatch(parsed.files_changed, allowedFiles, forbiddenFiles)
+  const verdict = ownershipFromStdout(stepStdout(result, 'ownership'), allowedFiles, forbiddenFiles)
+  return verdict.ok ? verdict : { ...verdict, checkFailed: verdict.violations.some((v) => v.startsWith('ownership_check_failed')) }
 }
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────

@@ -433,11 +433,23 @@ describe('ownership check fails closed, not open (agent-based verifyFileOwnershi
     expect(body).toMatch(/ownership_check_failed/)
   })
 
-  it('an unparseable (non-JSON, no files_changed) result is also treated as a check failure, not a clean pass', () => {
+  it('reads the diff from a batch step (exit code + stdout), never from an LLM-typed files_changed JSON', () => {
+    // The legacy (hooks-not-installed) check asked a runner to run
+    // `git diff --name-only HEAD~1 HEAD` and RETURN {"files_changed": [...]}.
+    // A runner that dropped a path from that list hid a real violation with
+    // no trace. Same step builder as the deterministic post-RED/post-GREEN
+    // batches, same evaluator (ownershipFromStdout), so both modes agree.
     const body = ownershipFnBody()
-    // Must check that files_changed actually parsed as an array, not just
-    // fall through to an empty [] that trivially passes verifyFileOwnershipMatch.
-    expect(body).toMatch(/Array\.isArray\(.*files_changed/)
+    expect(body).toMatch(/ownershipCheckSteps\(wt\)/)
+    expect(body).toMatch(/batchCommandPrompt\(/)
+    expect(body).toMatch(/ownershipFromStdout\(stepStdout\(/)
+    expect(body).not.toMatch(/files_changed/)
+  })
+
+  it('an unparseable batch (missing result) is a check failure carrying describeFailure detail, not a clean pass', () => {
+    const body = ownershipFnBody()
+    expect(body).toMatch(/result\.missing/)
+    expect(body).toMatch(/ownership_check_failed: [^`]*\$\{describeFailure\(result, 'ownership-check'\)\}/)
   })
 
   it('every !ok caller distinguishes a check failure (ownership_check_failed) from a real violation (file_ownership_violation)', () => {

@@ -197,6 +197,17 @@ export function ownershipCommand(wt: string): string {
 }
 
 /**
+ * Legacy-mode ownership check (hooks not installed / agent_types off): the
+ * same single tolerant diff step the deterministic post-RED/post-GREEN
+ * batches carry, so both modes read the same command and evaluate it with
+ * ownershipFromStdout. It used to be a runner told to run the diff and
+ * RETURN {"files_changed": [...]} — a typed-back list that could drop a path.
+ */
+export function ownershipCheckSteps(wt: string): BatchStep[] {
+  return [{ name: 'ownership', command: ownershipCommand(wt), tolerant: true }]
+}
+
+/**
  * Ownership decision from the `git diff --name-only HEAD~1 HEAD` step (#368
  * item D): evaluated here, never by an LLM. A step that did not run fails
  * open, exactly like the legacy agent returning null.

@@ -54,7 +54,9 @@ function happyPathResponder(o: { pytest: boolean }): Responder {
       return batch(steps)
     }
     if (label.startsWith('ownership-check:')) {
-      return JSON.stringify({ files_changed: [label.endsWith(':GREEN') ? implFile : testFile] })
+      // Legacy-mode ownership is the same one-step batch as the deterministic
+      // post-RED/post-GREEN read: the diff's stdout, not a typed-back JSON list.
+      return batch({ ownership: `${label.endsWith(':GREEN') ? implFile : testFile}\n` })
     }
     if (label.startsWith('scope-contract:')) {
       return batch({ 'contract-preflight': '{"status":"ok","conflicts":[],"needs_write":[],"reason":""}' })
@@ -269,12 +271,31 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(result.results.T1.error).toMatch(/^ownership_check_failed:/)
   })
 
-  it('an unparseable ownership-check result (no files_changed) also fails closed', async () => {
+  it('an unparseable ownership-check result (not a batch result) also fails closed', async () => {
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => (label.startsWith('ownership-check:') ? 'not json at all' : base(label, prompt))
     const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.error).toMatch(/^ownership_check_failed:/)
+  })
+
+  it('legacy ownership-check is a batch running the same diff command as the deterministic path — never a typed-back files_changed list', async () => {
+    const { calls } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    const checks = calls.filter((c) => c.label.startsWith('ownership-check:'))
+    expect(checks).toHaveLength(2)
+    for (const c of checks) {
+      expect(c.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+      expect(c.prompt).not.toContain('files_changed')
+    }
+  })
+
+  it('legacy ownership-check: a RED diff that touched an impl file is a file_ownership_violation from the batch stdout', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => (label === 'ownership-check:T1:RED' ? batch({ ownership: 'src/a.test.ts\nsrc/a.ts\n' }) : base(label, prompt))
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('RED')
+    expect(result.results.T1.error).toMatch(/file_ownership_violation/)
   })
 
   // -------------------------------------------------------------------------

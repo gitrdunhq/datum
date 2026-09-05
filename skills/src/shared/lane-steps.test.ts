@@ -12,6 +12,7 @@ import {
   postRedSteps,
   scopeContractSteps,
   postGreenSteps,
+  ownershipCheckSteps,
   setupSteps,
   mergeSteps,
   actStartSteps,
@@ -459,6 +460,15 @@ describe('ownershipFromStdout (#368 item D — script-evaluated ownership)', () 
   })
   it('ignores blank lines and surrounding whitespace', () => {
     expect(ownershipFromStdout('\n  tests/test_a.py  \n\n', ['tests/test_a.py'], []).ok).toBe(true)
+  })
+})
+
+describe('ownershipCheckSteps (legacy-mode ownership, hooks not installed)', () => {
+  it('is the same single tolerant ownership diff step the deterministic batches carry', () => {
+    const steps = ownershipCheckSteps('/wt/T1')
+    expect(names(steps)).toEqual(['ownership'])
+    expect(steps[0].command).toBe(ownershipCommand('/wt/T1'))
+    expect(steps[0].tolerant).toBe(true)
   })
 })
 
