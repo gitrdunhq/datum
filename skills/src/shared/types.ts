@@ -108,8 +108,10 @@ export interface MergeResult {
   merged: boolean
   /** True when a merge was attempted and did not land (distinct from "nothing to merge"). */
   failed: boolean
-  /** Lanes that actually landed on the epic branch. */
+  /** Lanes that actually landed on the epic branch (also set on a partial merge). */
   mergedIds: string[]
+  /** The lane whose squash-merge did not land on a partial merge, else ''. */
+  failedLane: string
 }
 
 export interface DocsArgs {

@@ -509,6 +509,14 @@ describe('Act failures halt datum-go before Validate/Review/Closeout', () => {
     expect(goSource).toMatch(/merge_failed/)
   })
 
+  it('on a partial merge, demotes only the lanes the merge did not land (elonchesd wf_4f1e41dd-ab7 batch 3/5)', () => {
+    expect(goSource).toMatch(/const landed = new Set\(mergeResult && Array\.isArray\(mergeResult\.mergedIds\) \? mergeResult\.mergedIds : \[\]\)/)
+    expect(goSource).toMatch(/const unmerged = mergedIds\.filter\(\(?id\)? => !landed\.has\(id\)\)/)
+    expect(goSource).toMatch(/for \(const id of unmerged\) \{/)
+    expect(goSource).not.toMatch(/for \(const id of mergedIds\) \{[^}]*status: 'failed', stage: 'MERGE'/)
+    expect(goSource).toMatch(/failedLane/)
+  })
+
   it('halts at act when any lane failed or was blocked, not only when zero completed', () => {
     expect(goSource).toMatch(/actFailures\.length > 0[^\n]*\|\|[^\n]*actBlocked\.length > 0/)
   })

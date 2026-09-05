@@ -597,15 +597,23 @@ if (shouldRun('act', 3)) {
     // shipped nothing. Demote it to failed so the halt below fires and a
     // resume re-attempts the merge instead of Validate/Review/Closeout
     // running on an unmerged epic (eedom run wf_2a5ede48-358).
+    // On a partial merge the lanes that landed before the conflicting one
+    // are committed and kept (datum/worktree_manager.py LaneMergeError), so
+    // only the lanes the merge did not land are demoted.
     if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
-      const why = mergeResult ? 'squash-merge step exited non-zero' : 'merge workflow returned null'
-      for (const id of mergedIds) {
+      const failedLane = mergeResult && typeof mergeResult.failedLane === 'string' ? mergeResult.failedLane : ''
+      const why = mergeResult
+        ? (failedLane ? `squash-merge of ${failedLane} did not land` : 'squash-merge step exited non-zero')
+        : 'merge workflow returned null'
+      const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : [])
+      const unmerged = mergedIds.filter((id) => !landed.has(id))
+      for (const id of unmerged) {
         const i = actCompleted.indexOf(id)
         if (i >= 0) actCompleted.splice(i, 1)
         actFailures.push(id)
         actResults[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
       }
-      log(`Merge${batchTag} FAILED — demoted [${mergedIds.join(', ')}] from completed to failed (${why})`)
+      log(`Merge${batchTag} FAILED — demoted [${unmerged.join(', ')}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(', ')}]` : ''}`)
     }
   }
 

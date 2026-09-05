@@ -598,11 +598,22 @@ describe('mergeSteps', () => {
     expect(steps.every((s) => s.tolerant)).toBe(true)
     expect(steps[0].command).toContain(completionMarkerCommand('r1', 'T1'))
     expect(steps[0].command).toContain(completionMarkerCommand('r1', 'T2'))
-    expect(steps[1].command).toContain('datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes"')
+    expect(steps[1].command).toContain('__merge_out=$(datum worktrees merge --epic-branch "datum/e" --lane-order T1,T2 --commit-message "act(r1): merge 2 lanes")')
     expect(steps[1].command).toContain('__merge_rc=$?')
-    expect(steps[2].command).toMatch(/^if \[ "\$\{__merge_rc:-0}" -ne 0 \]; then echo SKIPPED_MERGE_FAILED; else/)
+    expect(steps[1].command).toContain(`printf '%s\\n' "$__merge_out"`)
+    // The merge JSON's `merged` list — not the exit code — decides which
+    // lanes get an epic-scoped marker: a partial merge (later lane conflicted,
+    // earlier lanes committed) still records the lanes that landed.
+    expect(steps[2].command).toMatch(/^__merged_ids=" \$\(printf '%s' "\$\{__merge_out:-\}" \| jq -r '\.merged\[\]\?' 2>\/dev\/null \| tr '\\n' ' '\)"\n/)
+    expect(steps[2].command).toContain('if [ "$__merged_ids" = " " ]; then echo SKIPPED_MERGE_FAILED; else')
     expect(steps[2].command).toContain('datum lane-state write')
     expect(steps[3].command).toBe('datum worktrees cleanup --run-id "r1" --epic-branch "datum/e"')
+  })
+
+  it('the lane-state write script skips entries the merge did not list as merged', () => {
+    // The rendered script filters on $__merged_ids when the merge step set it;
+    // without it (unset) every entry is written.
+    expect(write).toMatch(/case "\$\{__merged_ids:- \$TID \}" in \*" \$TID "\*\) ;; \*\) continue;; esac/)
   })
 
   it('skips the merge and lane-state when nothing is GREEN, but still cleans up', () => {

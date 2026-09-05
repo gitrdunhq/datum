@@ -428,18 +428,26 @@ export function mergeSteps(o: MergeStepsOpts): BatchStep[] {
     })
   }
   if (o.mergeOrder.length > 0) {
+    // The CLI prints {sha, merged, already_merged[, failed_lane, error]} on
+    // both success and a partial failure (exit 1); the JSON is captured so
+    // the lane-state step below can record exactly the lanes that landed.
     steps.push({
       name: 'merge',
       command:
-        `datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(',')} ` +
-        `--commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"; __merge_rc=$?; [ "$__merge_rc" -eq 0 ]`,
+        `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(',')} ` +
+        `--commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
       tolerant: true,
     })
   }
   if (o.laneStateWriteScript) {
+    // Markers follow the merge JSON's `merged` list, not the exit code: a
+    // partial merge (elonchesd wf_4f1e41dd-ab7 batch 3/5 — lane 1 landed,
+    // lane 2 conflicted) still records the lanes that are on the epic branch.
     steps.push({
       name: 'lane-state-write',
-      command: `if [ "\${__merge_rc:-0}" -ne 0 ]; then echo SKIPPED_MERGE_FAILED; else\n${o.laneStateWriteScript.trim()}\nfi`,
+      command:
+        `__merged_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '.merged[]?' 2>/dev/null | tr '\\n' ' ')"\n` +
+        `if [ "$__merged_ids" = " " ]; then echo SKIPPED_MERGE_FAILED; else\n${o.laneStateWriteScript.trim()}\nfi`,
       tolerant: true,
     })
   }

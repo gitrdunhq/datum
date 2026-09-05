@@ -24,3 +24,20 @@ describe('datum-tdd-act-merge — result reflects the real merge outcome', () =>
     expect(src).toMatch(/__workflowResult = \{[^}]*merged:[^,]*\bmergeOk\b[^}]*failed:[^,]*!mergeOk/)
   })
 })
+
+// Partial merges (elonchesd run wf_4f1e41dd-ab7, batch 3/5): lane 1 merged
+// cleanly, lane 2 conflicted, and datum-go demoted BOTH. `datum worktrees
+// merge` now prints {sha, merged, already_merged, failed_lane, error} even
+// when it exits 1; the workflow must pass the merged list and the failed
+// lane through so callers demote only the lane that did not land.
+describe('datum-tdd-act-merge — partial merge reporting', () => {
+  it('parses the merge step stdout JSON for mergedIds / failedLane, even when the step exited non-zero', () => {
+    expect(src).toMatch(/const mergeJson = parseAgentJson<MergeJson \| null>\(mergeStep \? mergeStep\.stdout : '', null\)/)
+    expect(src).toMatch(/mergedIds: mergeJson && Array\.isArray\(mergeJson\.merged\) \? mergeJson\.merged : \(mergeOk \? mergeOrder : \[\]\)/)
+    expect(src).toMatch(/failedLane: mergeJson && typeof mergeJson\.failed_lane === 'string' \? mergeJson\.failed_lane : ''/)
+  })
+
+  it('logs the failed lane and the lanes that still landed on a partial merge', () => {
+    expect(src).toMatch(/partial merge/)
+  })
+})

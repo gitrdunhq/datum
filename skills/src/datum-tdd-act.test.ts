@@ -56,6 +56,14 @@ describe('datum-tdd-act consumes the merge result', () => {
     expect(src).toMatch(/const merge\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-merge'\) \}/)
     expect(src).toMatch(/merge_failed/)
   })
+
+  it('on a partial merge, demotes only the lanes the merge did not land (elonchesd wf_4f1e41dd-ab7 batch 3/5)', () => {
+    expect(src).toMatch(/const landed = new Set\(mergeResult && Array\.isArray\(mergeResult\.mergedIds\) \? mergeResult\.mergedIds : \[\]\)/)
+    expect(src).toMatch(/const unmerged = mergedIds\.filter\(\(?id\)? => !landed\.has\(id\)\)/)
+    expect(src).toMatch(/for \(const id of unmerged\) \{/)
+    expect(src).not.toMatch(/for \(const id of mergedIds\) \{[^}]*status: 'failed', stage: 'MERGE'/)
+    expect(src).toMatch(/failedLane/)
+  })
 })
 
 describe('docs workflow result is consumed, not discarded', () => {
