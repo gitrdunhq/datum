@@ -1094,10 +1094,15 @@ if (shouldRun("act", 3)) {
     const actSkipped = Object.keys(actResults).filter((id) => actResults[id]?.status === "skipped");
     const actBlocked = Object.keys(actResults).filter((id) => actResults[id]?.status === "blocked");
     if (actFailures.length > 0) {
-      await workflow(
-        { scriptPath: sk("datum-tdd-act-triage") },
-        { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
-      );
+      try {
+        const triage = await workflow(
+          { scriptPath: sk("datum-tdd-act-triage") },
+          { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
+        );
+        log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`);
+      } catch (exc) {
+        log(`[warn] triage_workflow_failed: ${exc.message} \u2014 lane failures are still recorded above`);
+      }
     }
     log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? "finished with failures" : "complete"} \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
     lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };

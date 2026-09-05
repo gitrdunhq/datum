@@ -213,17 +213,18 @@ function completionMarkerCommand(runId, taskId) {
 }
 function mergeSteps(o) {
   const steps2 = [];
-  if (o.completedIds.length > 0) {
-    steps2.push({
-      name: "completion-markers",
-      command: o.completedIds.map((id) => completionMarkerCommand(o.batchRunId, id)).join("\n"),
-      tolerant: true
-    });
-  }
   if (o.mergeOrder.length > 0) {
     steps2.push({
       name: "merge",
       command: `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
+      tolerant: true
+    });
+  }
+  if (o.completedIds.length > 0) {
+    steps2.push({
+      name: "completion-markers",
+      command: `__landed_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '(.merged[]?, .already_merged[]?)' 2>/dev/null | tr '\\n' ' ')"
+` + o.completedIds.map((id) => `case "$__landed_ids" in *" ${id} "*) ${completionMarkerCommand(o.batchRunId, id)};; *) echo "SKIPPED_NOT_MERGED ${id}";; esac`).join("\n"),
       tolerant: true
     });
   }

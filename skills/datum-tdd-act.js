@@ -812,10 +812,15 @@ if (blockedLanes.length > 0) {
 log(`${"\u2550".repeat(60)}`);
 if (failures.length > 0) {
   log("\u2500\u2500 Triage \u2500\u2500");
-  await workflow(
-    { scriptPath: sk("datum-tdd-act-triage") },
-    { failures, blocked: blockedLanes.map((id) => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
-  );
+  try {
+    const triage = await workflow(
+      { scriptPath: sk("datum-tdd-act-triage") },
+      { failures, blocked: blockedLanes.map((id) => results[id]), results, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
+    );
+    log(`Triage: ${triage?.filed ?? 0} filed, ${triage?.consumer_findings ?? 0} consumer finding(s), ${triage?.skipped ?? 0} skipped`);
+  } catch (exc) {
+    log(`[warn] triage_workflow_failed: ${exc.message} \u2014 lane failures are still recorded above`);
+  }
 }
 return {
   runId,

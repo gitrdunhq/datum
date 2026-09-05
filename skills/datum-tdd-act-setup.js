@@ -193,7 +193,10 @@ function setupSteps(o) {
   return [
     {
       name: "root-wt",
-      command: `git worktree add --detach ${q(rootDir)} ${q(o.epicBranch)} 2>&1 && __root=$(cd ${q(rootDir)} && pwd) && printf '{"root": "%s"}' "$__root"`
+      command: (
+        // Idempotent: remove a root worktree left by a prior partial setup of this batch.
+        `if [ -e ${q(rootDir)} ]; then git worktree remove --force ${q(rootDir)} 2>&1 || rm -rf ${q(rootDir)}; fi && git worktree prune && git worktree add --detach ${q(rootDir)} ${q(o.epicBranch)} 2>&1 && __root=$(cd ${q(rootDir)} && pwd) && printf '{"root": "%s"}' "$__root"`
+      )
     },
     {
       name: "setup-wt",
