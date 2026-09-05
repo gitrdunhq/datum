@@ -186,11 +186,15 @@ function parseBatchResult(raw, steps) {
 function stepResult(r, name) {
   return r.steps.find((s) => s.name === name) ?? null;
 }
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
 }
 
 // skills/src/shared/gate.ts
@@ -217,13 +221,13 @@ function parseGateResult(result) {
     json = null;
   }
   if (!json || typeof json !== "object") {
-    const tail = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    const tail2 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
     return {
       passed: false,
       needsHuman: false,
       hardStop: step.exit_code === 2,
       exitCode: step.exit_code,
-      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail ? ` \u2014 ${tail}` : ""}`
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail2 ? ` \u2014 ${tail2}` : ""}`
     };
   }
   return {
@@ -233,6 +237,192 @@ function parseGateResult(result) {
     exitCode: step.exit_code,
     message: typeof json.message === "string" ? json.message : ""
   };
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
+}
+
+// skills/src/shared/write-steps.ts
+var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
+function heredocBytes(content) {
+  return content === "" || content.endsWith("\n") ? content : content + "\n";
+}
+function writeFileSteps(o) {
+  if (o.content.split("\n").some((line) => line === HEREDOC_TERMINATOR)) {
+    throw new Error(`writeFileSteps: content contains the heredoc terminator ${HEREDOC_TERMINATOR} on its own line`);
+  }
+  const names = o.names ?? DEFAULT_NAMES;
+  const slash = o.path.lastIndexOf("/");
+  const dir = slash > 0 ? o.path.slice(0, slash) : ".";
+  const body = heredocBytes(o.content);
+  const write = body === "" ? `: > ${q(o.path)}` : `cat > ${q(o.path)} <<'${HEREDOC_TERMINATOR}'
+${body.slice(0, -1)}
+${HEREDOC_TERMINATOR}`;
+  return [
+    { name: names.mkdir, command: `mkdir -p ${q(dir)}` },
+    { name: names.write, command: write },
+    { name: names.sha, command: `git hash-object ${q(o.path)}`, tolerant: true }
+  ];
+}
+function writeFileBlobSha(content) {
+  return gitBlobSha(utf8Encode(heredocBytes(content)));
+}
+function tail(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function writeFileFromSteps(result, o) {
+  const names = o.names ?? DEFAULT_NAMES;
+  if (result.missing) return { ok: false, error: `${o.prefix}_write_failed: ${describeFailure(result, names.write)}` };
+  for (const name of [names.mkdir, names.write]) {
+    const step = stepResult(result, name);
+    if (!step) return { ok: false, error: `${o.prefix}_write_failed: ${name} step did not run` };
+    if (step.exit_code !== 0) return { ok: false, error: `${o.prefix}_write_failed: ${name} exited ${step.exit_code} \u2014 ${tail(step)}` };
+  }
+  const sha = (stepResult(result, names.sha)?.stdout || "").trim();
+  if (sha !== o.expectedSha) {
+    return { ok: false, error: `${o.prefix}_write_mismatch: ${o.path} on disk is blob ${sha || "(none)"}, the script wrote ${o.expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
+  }
+  return { ok: true, error: "" };
+}
+
+// skills/src/shared/commit-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q2(o.wt);
+  const files = o.files.map(q2).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit2 = stepResult(result, "commit");
+  if (!commit2) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit2.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit2.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit2.exit_code}: ${(commit2.stderr || commit2.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
 }
 
 // skills/src/datum-review.ts
@@ -292,14 +482,30 @@ var reportLines = [
   ...deduped.map((f) => `| ${f.id} | **${f.severity}** | ${f.file} | ${f.line} | ${f.description} | ${f.suggestion} |`),
   ""
 ];
-await agent(
-  `Write this content to "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" (create dirs if needed).
-Commit: git add "docs/epics/$(git rev-parse --abbrev-ref HEAD)/REVIEW-REPORT.md" && git commit -m "review: REVIEW-REPORT.md (${deduped.length} findings)"
-
-CONTENT:
-${reportLines.join("\n")}`,
-  { label: "commit-report", model: model("fast") }
+var branchSteps = [{ name: "branch", command: "git rev-parse --abbrev-ref HEAD", tolerant: true }];
+var branchResult = parseBatchResult(
+  await agent(batchCommandPrompt(branchSteps), stageOpts("cli", { label: "read-branch", model: model("fast") })),
+  branchSteps
 );
+var branch = (stepStdout(branchResult, "branch") || "").trim();
+if (!branch) throw new Error(`review_branch_unresolved: git rev-parse printed nothing (${branchResult.missing ? "batch returned no result" : "empty stdout"})`);
+var epicDir = `docs/epics/${branch}`;
+var reportPath = `${epicDir}/REVIEW-REPORT.md`;
+var reportContent = reportLines.join("\n");
+var writeSteps = writeFileSteps({ path: reportPath, content: reportContent });
+var written = writeFileFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(writeSteps), stageOpts("cli", { label: "write-report", model: model("fast") })),
+  writeSteps
+), { path: reportPath, expectedSha: writeFileBlobSha(reportContent), prefix: "review_report" });
+if (!written.ok) throw new Error(written.error);
+var commitStepList = commitFilesSteps({ wt: ".", files: [reportPath], message: `review: REVIEW-REPORT.md (${deduped.length} findings)` });
+var commit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label: "commit-report", model: model("fast") })),
+  commitStepList
+));
+if (commit.error) throw new Error(`review_commit_failed: ${commit.error}`);
+if (commit.nothingToCommit) log("REVIEW-REPORT.md unchanged since the last review \u2014 nothing to commit");
+else log(`REVIEW-REPORT.md committed (${commit.sha})`);
 if (critical.length > 0) log(`${critical.length} high/critical \u2014 remediation needed`);
 var gateStepList = gateSteps("review", yolo ? " --approve" : "");
 var gate = parseGateResult(parseBatchResult(

@@ -277,8 +277,8 @@ function stepStdout(r, name) {
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
-  const tail3 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail3 ? ` \u2014 ${tail3}` : ""}`;
+  const tail4 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail4 ? ` \u2014 ${tail4}` : ""}`;
 }
 
 // skills/src/shared/tracker.ts
@@ -626,52 +626,85 @@ function configFromSteps(result) {
   return mergeConfig(globalCfgParsed, repoCfgParsed);
 }
 
-// skills/src/shared/plan-steps.ts
+// skills/src/shared/write-steps.ts
+var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
 var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-var HEREDOC_EOF = "DATUM_TASKS_EOF";
+var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
+function heredocBytes(content) {
+  return content === "" || content.endsWith("\n") ? content : content + "\n";
+}
+function writeFileSteps(o) {
+  if (o.content.split("\n").some((line) => line === HEREDOC_TERMINATOR)) {
+    throw new Error(`writeFileSteps: content contains the heredoc terminator ${HEREDOC_TERMINATOR} on its own line`);
+  }
+  const names = o.names ?? DEFAULT_NAMES;
+  const slash = o.path.lastIndexOf("/");
+  const dir = slash > 0 ? o.path.slice(0, slash) : ".";
+  const body = heredocBytes(o.content);
+  const write = body === "" ? `: > ${q3(o.path)}` : `cat > ${q3(o.path)} <<'${HEREDOC_TERMINATOR}'
+${body.slice(0, -1)}
+${HEREDOC_TERMINATOR}`;
+  return [
+    { name: names.mkdir, command: `mkdir -p ${q3(dir)}` },
+    { name: names.write, command: write },
+    { name: names.sha, command: `git hash-object ${q3(o.path)}`, tolerant: true }
+  ];
+}
+function writeFileBlobSha(content) {
+  return gitBlobSha(utf8Encode(heredocBytes(content)));
+}
 function tail2(step) {
   return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
 }
-function lanePlanCommand(epicDir2) {
-  return `datum lane-plan --input ${q3(`${epicDir2}/tasks.json`)} --output ${q3(`${epicDir2}/lane-plan.json`)} --md-output ${q3(`${epicDir2}/TASKS.md`)}`;
+function writeFileFromSteps(result, o) {
+  const names = o.names ?? DEFAULT_NAMES;
+  if (result.missing) return { ok: false, error: `${o.prefix}_write_failed: ${describeFailure(result, names.write)}` };
+  for (const name of [names.mkdir, names.write]) {
+    const step = stepResult(result, name);
+    if (!step) return { ok: false, error: `${o.prefix}_write_failed: ${name} step did not run` };
+    if (step.exit_code !== 0) return { ok: false, error: `${o.prefix}_write_failed: ${name} exited ${step.exit_code} \u2014 ${tail2(step)}` };
+  }
+  const sha = (stepResult(result, names.sha)?.stdout || "").trim();
+  if (sha !== o.expectedSha) {
+    return { ok: false, error: `${o.prefix}_write_mismatch: ${o.path} on disk is blob ${sha || "(none)"}, the script wrote ${o.expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
+  }
+  return { ok: true, error: "" };
 }
+
+// skills/src/shared/plan-steps.ts
+var q4 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function tail3(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function lanePlanCommand(epicDir2) {
+  return `datum lane-plan --input ${q4(`${epicDir2}/tasks.json`)} --output ${q4(`${epicDir2}/lane-plan.json`)} --md-output ${q4(`${epicDir2}/TASKS.md`)}`;
+}
+var TASKS_WRITE_NAMES = { mkdir: "mkdir", write: "write-tasks", sha: "tasks-sha" };
 function planBuildSteps(o) {
   if (o.tasksJson.includes("\n")) throw new Error("planBuildSteps: tasksJson must be a single line (JSON.stringify without indentation)");
-  if (o.tasksJson.includes(HEREDOC_EOF)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_EOF}`);
-  const tasksPath = `${o.epicDir}/tasks.json`;
+  if (o.tasksJson.includes(HEREDOC_TERMINATOR)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_TERMINATOR}`);
   return [
-    { name: "mkdir", command: `mkdir -p ${q3(o.epicDir)}` },
-    { name: "write-tasks", command: `cat > ${q3(tasksPath)} <<'${HEREDOC_EOF}'
-${o.tasksJson}
-${HEREDOC_EOF}` },
-    { name: "tasks-sha", command: `git hash-object ${q3(tasksPath)}`, tolerant: true },
+    ...writeFileSteps({ path: `${o.epicDir}/tasks.json`, content: o.tasksJson, names: TASKS_WRITE_NAMES }),
     { name: "lane-plan", command: lanePlanCommand(o.epicDir) }
   ];
 }
 function tasksJsonBlobSha(tasksJson2) {
-  return gitBlobSha(utf8Encode(tasksJson2 + "\n"));
+  return writeFileBlobSha(tasksJson2);
 }
 function planBuildFromSteps(result, expectedSha) {
   if (result.missing) return { ok: false, error: `plan_build_failed: ${describeFailure(result, "lane-plan")}` };
-  for (const name of ["mkdir", "write-tasks"]) {
-    const step = stepResult(result, name);
-    if (!step) return { ok: false, error: `plan_build_failed: ${name} step did not run` };
-    if (step.exit_code !== 0) return { ok: false, error: `plan_build_failed: ${name} exited ${step.exit_code} \u2014 ${tail2(step)}` };
-  }
-  const sha = (stepResult(result, "tasks-sha")?.stdout || "").trim();
-  if (sha !== expectedSha) {
-    return { ok: false, error: `plan_write_mismatch: tasks.json on disk is blob ${sha || "(none)"}, the script wrote ${expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
-  }
+  const written = writeFileFromSteps(result, { path: "tasks.json", expectedSha, prefix: "plan", names: TASKS_WRITE_NAMES });
+  if (!written.ok) return { ok: false, error: written.error.replace(/^plan_write_failed: /, "plan_build_failed: ") };
   const lanePlan = stepResult(result, "lane-plan");
   if (!lanePlan) return { ok: false, error: "plan_build_failed: lane-plan step did not run" };
-  if (lanePlan.exit_code !== 0) return { ok: false, error: `plan_build_failed: datum lane-plan exited ${lanePlan.exit_code} \u2014 ${tail2(lanePlan)}` };
+  if (lanePlan.exit_code !== 0) return { ok: false, error: `plan_build_failed: datum lane-plan exited ${lanePlan.exit_code} \u2014 ${tail3(lanePlan)}` };
   return { ok: true, error: "" };
 }
 function skeletonBatchSteps(o) {
   const skeletonDir2 = `${o.epicDir}/skeletons`;
   return [
-    { name: "mkdir", command: `mkdir -p ${q3(skeletonDir2)}` },
-    { name: "skeleton", command: `datum skeleton --batch --language ${o.language} --tasks ${q3(`${o.epicDir}/lane-plan.json`)} --output-dir ${q3(skeletonDir2)}` }
+    { name: "mkdir", command: `mkdir -p ${q4(skeletonDir2)}` },
+    { name: "skeleton", command: `datum skeleton --batch --language ${o.language} --tasks ${q4(`${o.epicDir}/lane-plan.json`)} --output-dir ${q4(skeletonDir2)}` }
   ];
 }
 function skeletonBatchFromSteps(result) {
@@ -679,14 +712,14 @@ function skeletonBatchFromSteps(result) {
   const step = stepResult(result, "skeleton");
   if (!step) {
     const mk = stepResult(result, "mkdir");
-    return { ok: false, error: `skeleton_batch_failed: skeleton step did not run${mk && mk.exit_code !== 0 ? ` (mkdir exited ${mk.exit_code} \u2014 ${tail2(mk)})` : ""}` };
+    return { ok: false, error: `skeleton_batch_failed: skeleton step did not run${mk && mk.exit_code !== 0 ? ` (mkdir exited ${mk.exit_code} \u2014 ${tail3(mk)})` : ""}` };
   }
-  if (step.exit_code !== 0) return { ok: false, error: `skeleton_batch_failed: datum skeleton exited ${step.exit_code} \u2014 ${tail2(step)}` };
+  if (step.exit_code !== 0) return { ok: false, error: `skeleton_batch_failed: datum skeleton exited ${step.exit_code} \u2014 ${tail3(step)}` };
   return { ok: true, error: "" };
 }
 
 // skills/src/shared/commit-steps.ts
-var q4 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var q5 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
 function commitFilesSteps(o) {
   if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
@@ -696,14 +729,14 @@ function commitFilesSteps(o) {
     throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
   }
   if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
-  const wt = q4(o.wt);
-  const files = o.files.map(q4).join(" ");
+  const wt = q5(o.wt);
+  const files = o.files.map(q5).join(" ");
   return [
     { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
     { name: "add", command: `git -C ${wt} add -- ${files}` },
     {
       name: "commit",
-      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q4(o.message)} -- ${files} && echo COMMITTED; fi`,
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q5(o.message)} -- ${files} && echo COMMITTED; fi`,
       tolerant: true
     },
     { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
@@ -764,13 +797,13 @@ function parseGateResult(result) {
     json = null;
   }
   if (!json || typeof json !== "object") {
-    const tail3 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    const tail4 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
     return {
       passed: false,
       needsHuman: false,
       hardStop: step.exit_code === 2,
       exitCode: step.exit_code,
-      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail3 ? ` \u2014 ${tail3}` : ""}`
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail4 ? ` \u2014 ${tail4}` : ""}`
     };
   }
   return {
@@ -943,14 +976,25 @@ await commitPlanFiles([skeletonDir], "plan: pre-generate RED skeletons", "commit
 log(`Skeletons pre-generated in ${skeletonDir}`);
 phase("Triage");
 var triageRaw = await agent(
-  plan_triage_default + `
-
-ADDITIONAL TASK: After deciding, write your decision as JSON to ".datum/routing.json" and commit:
-git add .datum/routing.json && git commit -m "plan: triage decision"`,
+  plan_triage_default,
   { label: "triage-decision", model: model("fast") }
 );
 var triage = parseAgentJson(triageRaw, { decision: "properties", reason: "parse failure", triggers: [] });
 log(`Triage: ${triage.decision} \u2014 ${triage.reason}`);
+var routingJson = JSON.stringify(triage, null, 2);
+var routingSteps = writeFileSteps({ path: ".datum/routing.json", content: routingJson });
+var routingWritten = writeFileFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(routingSteps), stageOpts("cli", { label: "write-routing", model: model("fast") })),
+  routingSteps
+), { path: ".datum/routing.json", expectedSha: writeFileBlobSha(routingJson), prefix: "routing" });
+if (!routingWritten.ok) throw new Error(routingWritten.error);
+await commitPlanFiles([".datum/routing.json"], "plan: triage decision", "commit-routing");
+var triageGateSteps = gateSteps("triage", "");
+var triageGate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(triageGateSteps), stageOpts("cli", { label: "gate-triage", model: model("fast") })),
+  triageGateSteps
+));
+if (!triageGate.passed) throw new Error(`Triage gate failed \u2014 routing.json rejected: ${triageGate.message || "no message"}`);
 if (triage.decision === "deepen") {
   const deepenRaw = await agent(
     plan_deepen_default,
