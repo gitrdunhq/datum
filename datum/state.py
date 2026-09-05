@@ -102,7 +102,14 @@ def ensure_feature_branch(title: str | None = None) -> str:
             "could not determine current git branch (git command failed, "
             "timed out, or repo is unavailable) — refusing to guess"
         )
-    if branch not in PROTECTED_BRANCHES:
+
+    # A foreign feature branch (feature/x) is adopted in place, title
+    # ignored (#213). A datum epic branch is different: the same name
+    # adopts it, a different name is a NEW epic chained from HEAD
+    # (elonchesd: `init --name playable-ui-shell` on datum/epic-1
+    # re-adopted epic-1 and datum-go carried on under the wrong epic).
+    on_epic = branch.startswith("datum/")
+    if branch not in PROTECTED_BRANCHES and not on_epic:
         return branch
 
     new_branch = ""
@@ -111,7 +118,12 @@ def ensure_feature_branch(title: str | None = None) -> str:
 
         slug = slugify(title)
         if slug:
-            new_branch = make_unique(f"datum/{slug}", _existing_branches())
+            wanted = f"datum/{slug}"
+            if on_epic and (branch == wanted or branch.startswith(f"{wanted}-")):
+                return branch
+            new_branch = make_unique(wanted, _existing_branches())
+    if on_epic and not new_branch:
+        return branch
 
     if not new_branch:
         if sys.stdout.isatty():

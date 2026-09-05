@@ -189,6 +189,36 @@ def test_name_reused_from_main_dedups_to_a_new_branch(git_repo):
     assert second_branch.startswith("datum/dup-title")
 
 
+def test_name_on_another_epic_branch_creates_the_named_epic_from_head(git_repo):
+    """elonchesd: `datum init --name playable-ui-shell --json` while checked
+    out on datum/epic-1 returned {"epicBranch": "datum/epic-1", "adopted":
+    false} — it re-adopted the current epic, and datum-go's freeText
+    new-epic path silently continued on the old one. A --name whose slug
+    differs from the current epic branch is a request for a NEW epic,
+    chained from HEAD (the only way to start an epic on an unmerged one)."""
+    first = _invoke("--name", "Epic One", "--json")
+    assert first.exit_code == 0, first.output
+    assert json.loads(first.stdout)["epicBranch"] == "datum/epic-one"
+    head_before = _run_git("rev-parse", "HEAD", cwd=git_repo).stdout.strip()
+
+    second = _invoke("--name", "Playable UI Shell", "--json")
+    assert second.exit_code == 0, second.output
+    payload = json.loads(second.stdout)
+    assert payload["epicBranch"] == "datum/playable-ui-shell"
+    assert payload["adopted"] is False
+    assert (
+        _run_git("branch", "--show-current", cwd=git_repo).stdout.strip()
+        == "datum/playable-ui-shell"
+    )
+    assert _run_git("rev-parse", "HEAD", cwd=git_repo).stdout.strip() == head_before
+    assert (
+        git_repo / "docs" / "epics" / "datum" / "playable-ui-shell" / "TICKET.md"
+    ).exists()
+    # Re-running init with the epic's own name on its own branch adopts in place.
+    third = _invoke("--name", "Playable UI Shell", "--json")
+    assert json.loads(third.stdout)["epicBranch"] == "datum/playable-ui-shell"
+
+
 # ---------------------------------------------------------------------------
 # --refresh: re-materialise skills/agents/hooks, byte-identical, idempotent.
 # ---------------------------------------------------------------------------
@@ -360,4 +390,6 @@ def test_init_refresh_prints_the_scriptpath_launch_line(git_repo):
     result = _invoke("--refresh")
     assert result.exit_code == 0, result.output
     cfg = json.loads((git_repo / ".datum" / "config.json").read_text())
-    assert f'Workflow({{ scriptPath: "{cfg["skills_dir"]}/datum-go.js"' in result.output, result.output
+    assert (
+        f'Workflow({{ scriptPath: "{cfg["skills_dir"]}/datum-go.js"' in result.output
+    ), result.output
