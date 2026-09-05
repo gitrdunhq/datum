@@ -5,7 +5,7 @@ import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, des
 import { actStartSteps, verifyLanePlanShape } from './shared/lane-steps'
 import { contextChunkPlan, contextChunkSteps, contextAssembleChunks } from './shared/context-relay'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
-import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
+import { parseState, detectStartFrom, isStaleState, pipelineStateSaveSteps, pipelineStateSaveFromSteps, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
@@ -244,18 +244,21 @@ function shouldRun(p: Phase, idx: number): boolean {
 }
 
 async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
-  const testsFlag = p === 'validate' ? (testsPass ? ' --tests-pass' : ' --tests-fail') : ''
-  const saved = String((await agent(
-    `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
-    stageOpts('cli', { label: `save-state:${p}`, model: model('fast') }),
-  )) ?? '')
   // pipeline-state-save verifies the phase against git/filesystem evidence
   // and refuses (verified:false, exit 1) when it finds none. Believe the
-  // CLI, not our own bookkeeping: the phase was previously pushed into
-  // completedPhases before the call and the refusal was discarded, so the
-  // orchestrator and the on-disk state disagreed.
-  if (/"verified":\s*false/.test(saved)) {
-    log(`[warn] pipeline-state-save refused to record phase "${p}" — on-disk state NOT updated: ${saved.trim().slice(0, 300)}`)
+  // CLI, not our own bookkeeping — and read the CLI from a batch step's
+  // exit code + JSON (shared/pipeline-state.ts), not from an LLM runner's
+  // echo: a runner that returned nothing, or paraphrased the refusal, used
+  // to be taken as "recorded" while nothing was written on disk. Neither a
+  // refusal nor an unverified save records the phase in memory, so a resume
+  // re-runs the phase rather than skipping it on a claim.
+  const saveSteps = pipelineStateSaveSteps({ phase: p, runId: resolvedRunId, route, testsPass })
+  const saved = pipelineStateSaveFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(saveSteps), stageOpts('cli', { label: `save-state:${p}`, model: model('fast') })),
+    saveSteps,
+  ), p)
+  if (!saved.recorded) {
+    log(`[warn] ${saved.reason} — phase "${p}" NOT recorded in .datum/pipeline-state.json`)
     return
   }
   if (!completedPhases.includes(p)) completedPhases.push(p)

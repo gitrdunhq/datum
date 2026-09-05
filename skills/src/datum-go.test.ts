@@ -534,15 +534,23 @@ describe('markPhaseComplete honours pipeline-state-save refusals', () => {
   const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
   const fn = goSource.slice(goSource.indexOf('async function markPhaseComplete'), goSource.indexOf('// New-epic detection'))
 
-  it('captures the save-state agent output and checks for a verified:false refusal', () => {
-    expect(fn).toMatch(/const \w+ = (String\(\(?)?await agent\(/)
-    expect(fn).toMatch(/verified"?:\s*\\?s?\*?false|"verified":\s*false/)
+  it('runs pipeline-state-save as a batch step and reads the verdict from its exit code + JSON, not an LLM echo', () => {
+    expect(fn).toMatch(/pipelineStateSaveSteps\(\{ phase: p, runId: resolvedRunId, route, testsPass \}\)/)
+    expect(fn).toMatch(/pipelineStateSaveFromSteps\(parseBatchResult\(/)
+    expect(fn).not.toMatch(/Run: datum pipeline-state-save/)
+    expect(fn).not.toMatch(/\/"verified"/)
   })
 
-  it('only records the phase in completedPhases after the CLI accepted it', () => {
+  it('only records the phase in completedPhases after the CLI recorded it', () => {
     const pushIdx = fn.indexOf('completedPhases.push(p)')
-    const agentIdx = fn.indexOf('await agent(')
-    expect(pushIdx).toBeGreaterThan(agentIdx)
+    const verdictIdx = fn.indexOf('pipelineStateSaveFromSteps(')
+    expect(verdictIdx).toBeGreaterThan(-1)
+    expect(pushIdx).toBeGreaterThan(verdictIdx)
+    expect(fn).toMatch(/if \(!saved\.recorded\) \{/)
+  })
+
+  it('logs the named reason (refused / unverified) and returns without recording', () => {
+    expect(fn).toMatch(/log\(`\[warn\] \$\{saved\.reason\}/)
   })
 })
 
