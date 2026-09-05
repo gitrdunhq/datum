@@ -78,6 +78,11 @@ function configureAgentTypes(opts) {
 var PREFIX_RULES = [
   // ── infrastructure: git/tooling/relay/gate plumbing the pipeline itself runs ──
   {
+    test: /\brunner_permission_denied\b/,
+    category: "infrastructure",
+    reason: "runner_permission_denied: the host permission classifier refused the datum-cli runner's batch (typically git reset --hard / clean -fd inside datum's own scratch worktree) and it replied in prose. Fix is an allow-rule for those commands on the .datum/worktrees path, not a code or plan change."
+  },
+  {
     test: /\blane_intake_failed\b/,
     category: "infrastructure",
     reason: "lane_intake_failed: the intake batch step (git/tooling) did not return a result \u2014 not a code or plan defect."

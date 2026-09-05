@@ -188,7 +188,10 @@ function asStepResult(x) {
 }
 function parseBatchResult(raw, steps) {
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  if (!Array.isArray(arr)) {
+    const text = typeof raw === "string" ? raw.trim() : "";
+    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
@@ -201,8 +204,16 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?)\b/i;
 function describeFailure(r, label) {
-  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (r.missing) {
+    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
+    const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
+    if (REFUSAL_RE.test(r.refusal)) {
+      return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
+    }
+    return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
+  }
   if (!r.failed) return `${label}: ok`;
   const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
