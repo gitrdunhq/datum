@@ -509,6 +509,24 @@ describe('Act failures halt datum-go before Validate/Review/Closeout', () => {
     expect(goSource).toMatch(/merge_failed/)
   })
 
+  // New-epic detection: the model judges SAME vs DIFFERENT; it must not also
+  // run `datum init` and echo the JSON — a fabricated or mistyped epicBranch
+  // in that echo became resolvedBranch with nothing verifying it. The
+  // bootstrap is a batch step whose stdout the script parses itself.
+  it('the new-epic agent only decides (newEpic + slug); the script runs datum init --name as a batch and reads epicBranch from it', () => {
+    const idx = goSource.indexOf("label: 'new-epic-check'")
+    expect(idx).toBeGreaterThan(-1)
+    const prompt = goSource.slice(idx - 1500, idx)
+    expect(prompt).not.toMatch(/then run exactly: datum init/)
+    expect(prompt).toMatch(/"slug"/)
+    expect(prompt).toMatch(/Do NOT run datum init/)
+    const after = goSource.slice(idx)
+    expect(after).toMatch(/newEpicBootstrapSteps\(newEpicInfo\.slug\)/)
+    expect(after).toMatch(/newEpicBootstrapFromSteps\(parseBatchResult\(/)
+    expect(after).toMatch(/throw new Error\(`new_epic_bootstrap_failed: /)
+    expect(after).toMatch(/newEpicBranch = bootstrap\.epicBranch/)
+  })
+
   it('on a partial merge, demotes only the lanes the merge did not land (elonchesd wf_4f1e41dd-ab7 batch 3/5)', () => {
     expect(goSource).toMatch(/const landed = new Set\(mergeResult && Array\.isArray\(mergeResult\.mergedIds\) \? mergeResult\.mergedIds : \[\]\)/)
     expect(goSource).toMatch(/const unmerged = mergedIds\.filter\(\(?id\)? => !landed\.has\(id\)\)/)

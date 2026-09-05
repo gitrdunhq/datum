@@ -3,7 +3,8 @@
 // tested-by: skills/src/shared/boot.test.ts
 
 import { skillPath, mergeConfig } from './models'
-import { type BatchStep, type BatchResult, stepResult, stepStdout } from './batch'
+import { type BatchStep, type BatchResult, stepResult, stepStdout, describeFailure } from './batch'
+import { parseAgentJson } from './utils'
 
 /** Repo-local, gitignored copy of skills/*.js written by `datum init` (#353). */
 export const LOCAL_SKILLS_DIR = '.datum/skills'
@@ -166,6 +167,35 @@ export function runCommandPrompt(command: string): string {
     'this prompt is the whole task.\n\n' +
     command
   )
+}
+
+// ── New-epic bootstrap: `datum init --name <slug> --json` as a batch ──
+//
+// The new-epic-check agent decides SAME vs DIFFERENT and returns a slug; the
+// bootstrap itself runs here so the script parses `datum init`'s own JSON.
+// The agent used to run init and echo the JSON — an echoed epicBranch
+// became resolvedBranch with nothing verifying the init actually ran.
+
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
+
+export function newEpicBootstrapSteps(slug: string): BatchStep[] {
+  if (!SLUG_RE.test(slug)) throw new Error(`newEpicBootstrapSteps: invalid slug ${JSON.stringify(slug)} — expected kebab-case [a-z0-9-]`)
+  return [{ name: 'init', command: `datum init --name ${slug} --json` }]
+}
+
+export function newEpicBootstrapFromSteps(result: BatchResult, slug: string): { ok: boolean; epicBranch: string; error: string } {
+  const none = { ok: false, epicBranch: '' }
+  if (result.missing) return { ...none, error: describeFailure(result, 'init') }
+  const step = stepResult(result, 'init')
+  if (!step) return { ...none, error: 'init step did not run' }
+  if (step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout || '').trim().split('\n').slice(-3).join(' | ')
+    return { ...none, error: `datum init --name ${slug} --json exited ${step.exit_code} — ${tail}` }
+  }
+  const parsed = parseAgentJson<{ epicBranch?: unknown } | null>(step.stdout || '', null)
+  const epicBranch = parsed && typeof parsed.epicBranch === 'string' ? parsed.epicBranch.trim() : ''
+  if (!epicBranch) return { ...none, error: `datum init printed no epicBranch — ${(step.stdout || '').trim().slice(0, 200)}` }
+  return { ok: true, epicBranch, error: '' }
 }
 
 /** Logged once when the launcher did not pass args.configFingerprint. */

@@ -12,6 +12,8 @@
 //        explicit run-this-and-return-stdout instruction.
 
 import { describe, it, expect } from 'vitest'
+import { newEpicBootstrapSteps, newEpicBootstrapFromSteps } from './boot'
+import { parseBatchResult } from './batch'
 import {
   LOCAL_SKILLS_DIR,
   resolveSkillPath,
@@ -26,6 +28,39 @@ function result(steps: Partial<BatchStepResult>[]): BatchResult {
   const full = steps.map((s) => ({ name: '', exit_code: 0, stdout: '', stderr: '', ...s }))
   return { steps: full, failed: full.find((s) => s.exit_code !== 0) ?? null, missing: false }
 }
+
+// New-epic bootstrap (datum-go): the model decides SAME vs DIFFERENT and
+// returns a slug; `datum init --name <slug> --json` runs as a batch step and
+// the script reads epicBranch from its stdout. The agent used to run init
+// itself and echo the JSON — an echoed epicBranch became resolvedBranch
+// with nothing verifying the init ran.
+describe('newEpicBootstrapSteps / newEpicBootstrapFromSteps', () => {
+  it('is one non-tolerant `datum init --name <slug> --json` step; the slug is validated, not quoted around', () => {
+    const steps = newEpicBootstrapSteps('add-fog-of-war')
+    expect(steps).toHaveLength(1)
+    expect(steps[0].name).toBe('init')
+    expect(steps[0].command).toBe('datum init --name add-fog-of-war --json')
+    expect(steps[0].tolerant).toBeFalsy()
+    expect(() => newEpicBootstrapSteps('Add Fog; rm -rf /')).toThrow(/slug/)
+    expect(() => newEpicBootstrapSteps('')).toThrow(/slug/)
+  })
+
+  it('reads epicBranch from the printed JSON on exit 0', () => {
+    const r = newEpicBootstrapFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'init', exit_code: 0, stdout: '{"epicBranch": "datum/add-fog-of-war", "ticketPath": "docs/epics/datum/add-fog-of-war/TICKET.md", "issueNumber": null}', stderr: '' },
+    ]), newEpicBootstrapSteps('add-fog-of-war')), 'add-fog-of-war')
+    expect(r).toEqual({ ok: true, epicBranch: 'datum/add-fog-of-war', error: '' })
+  })
+
+  it('a non-zero exit, JSON without epicBranch, or a missing batch is a named failure', () => {
+    const steps = newEpicBootstrapSteps('x')
+    expect(newEpicBootstrapFromSteps(parseBatchResult(JSON.stringify([{ name: 'init', exit_code: 1, stdout: '', stderr: 'branch exists' }]), steps), 'x').error)
+      .toMatch(/^datum init --name x --json exited 1.*branch exists/)
+    expect(newEpicBootstrapFromSteps(parseBatchResult(JSON.stringify([{ name: 'init', exit_code: 0, stdout: '{"ok": true}', stderr: '' }]), steps), 'x').error)
+      .toMatch(/printed no epicBranch/)
+    expect(newEpicBootstrapFromSteps(parseBatchResult(null, steps), 'x').ok).toBe(false)
+  })
+})
 
 describe('resolveSkillPath (#353)', () => {
   it('prefers the repo-local .datum/skills copy when it exists', () => {

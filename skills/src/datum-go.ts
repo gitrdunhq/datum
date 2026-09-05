@@ -6,7 +6,7 @@ import { actStartSteps, verifyLanePlanShape } from './shared/lane-steps'
 import { contextChunkPlan, contextChunkSteps, contextAssembleChunks } from './shared/context-relay'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, pipelineStateSaveSteps, pipelineStateSaveFromSteps, type PipelineState } from './shared/pipeline-state'
-import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
+import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING, newEpicBootstrapSteps, newEpicBootstrapFromSteps } from './shared/boot'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
@@ -283,8 +283,8 @@ ${a.freeText}
 """
 Decide: does the brief describe the SAME piece of work as the existing TICKET.md, or a CLEARLY DIFFERENT one?
 - If SAME, or you cannot confidently tell they differ: output {"newEpic": false}.
-- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief, then run exactly: datum init --name <slug> --json
-  and return the raw JSON it printed, merged with {"newEpic": true, "reason": "<why they differ>"}.
+- If CLEARLY DIFFERENT: derive a short kebab-case slug from the brief and output {"newEpic": true, "slug": "<kebab-case-slug>", "reason": "<why they differ>"}.
+Do NOT run datum init or any other command — the workflow bootstraps the new epic itself from your slug.
 Output ONLY raw JSON, no markdown fences, no explanation.`,
     { label: 'new-epic-check', model: model('balanced') },
   )
@@ -293,12 +293,22 @@ Output ONLY raw JSON, no markdown fences, no explanation.`,
   // exactly that "cannot confidently tell" case, so falling back here
   // withholds the extra new-epic bootstrap rather than enabling a check
   // skip; it never fires a spurious bootstrap since that also requires a
-  // non-empty epicBranch below.
-  const newEpicInfo = parseAgentJson(newEpicText as string, { newEpic: false }) as { newEpic: boolean; epicBranch?: string; reason?: string }
-  if (newEpicInfo.newEpic && newEpicInfo.epicBranch) {
-    log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${newEpicInfo.epicBranch}`)
-    newEpicBranch = newEpicInfo.epicBranch
-    resolvedBranch = newEpicInfo.epicBranch
+  // valid slug below.
+  const newEpicInfo = parseAgentJson(newEpicText as string, { newEpic: false }) as { newEpic: boolean; slug?: string; reason?: string }
+  if (newEpicInfo.newEpic && typeof newEpicInfo.slug === 'string' && newEpicInfo.slug.trim()) {
+    // The model only decided; the bootstrap is a batch step running
+    // `datum init --name <slug> --json` (shared/boot.ts) whose stdout the
+    // script parses — a runner-echoed epicBranch used to become
+    // resolvedBranch with nothing verifying that the init actually ran.
+    const bootstrapSteps = newEpicBootstrapSteps(newEpicInfo.slug)
+    const bootstrap = newEpicBootstrapFromSteps(parseBatchResult(
+      await agent(batchCommandPrompt(bootstrapSteps), stageOpts('cli', { label: 'new-epic-bootstrap', model: model('fast') })),
+      bootstrapSteps,
+    ), newEpicInfo.slug)
+    if (!bootstrap.ok) throw new Error(`new_epic_bootstrap_failed: ${bootstrap.error}`)
+    log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`)
+    newEpicBranch = bootstrap.epicBranch
+    resolvedBranch = bootstrap.epicBranch
   }
 }
 
