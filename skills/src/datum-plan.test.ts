@@ -44,13 +44,13 @@ describe('datum-plan-buildorder-and-context — AC1: cycle guard halts on cyclic
   })
 
   it('datum-plan.ts calls the cycle guard on the decomposed tasks before writing tasks.json/lane-plan.json', () => {
-    // GREEN must wire `assertAcyclicTasks(tasks)` in before the collapsed
-    // write-tasks-json + build-lane-plan agent call that writes
-    // "${epicDir}/tasks.json" and "${epicDir}/lane-plan.json".
+    // GREEN must wire `assertAcyclicTasks(tasks)` in before the build batch
+    // (planBuildSteps) that writes "${epicDir}/tasks.json" and runs
+    // datum lane-plan.
     expect(datumPlanSrc).toMatch(/assertAcyclicTasks\(\s*tasks\s*\)/)
 
     const guardIdx = datumPlanSrc.indexOf('assertAcyclicTasks(')
-    const writeTasksJsonIdx = datumPlanSrc.indexOf('tasks.json": ${tasksJson}')
+    const writeTasksJsonIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson })')
     expect(guardIdx).toBeGreaterThan(-1)
     expect(writeTasksJsonIdx).toBeGreaterThan(-1)
     expect(guardIdx).toBeLessThan(writeTasksJsonIdx)
@@ -224,19 +224,20 @@ describe('#352 — plan gate ordering', () => {
   // 'plan'; the FIRST such call must be the early one (--approve: structural
   // checks only, the human hold is re-checked by the final gate).
   const gateIdx = datumPlanSrc.indexOf("gateSteps('plan', ' --approve')")
-  const lanePlanIdx = datumPlanSrc.indexOf('datum lane-plan --input')
-  const skeletonIdx = datumPlanSrc.indexOf('datum skeleton --batch')
+  const lanePlanIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson })')
+  const skeletonIdx = datumPlanSrc.indexOf('skeletonBatchSteps({ epicDir, language })')
   const triageIdx = datumPlanSrc.indexOf("phase('Triage')")
 
   it('runs a plan gate after datum lane-plan and before the skeleton batch', () => {
     expect(lanePlanIdx).toBeGreaterThan(-1)
+    expect(skeletonIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeGreaterThan(lanePlanIdx)
     expect(gateIdx).toBeLessThan(skeletonIdx)
     expect(gateIdx).toBeLessThan(triageIdx)
   })
 
   it('does not commit the plan artifacts until the early gate has passed', () => {
-    const commitIdx = datumPlanSrc.indexOf('git commit -m "plan: tasks.json')
+    const commitIdx = datumPlanSrc.indexOf("'plan: tasks.json + lane-plan.json + TASKS.md'")
     expect(commitIdx).toBeGreaterThan(-1)
     expect(commitIdx).toBeGreaterThan(gateIdx)
     expect(commitIdx).toBeLessThan(skeletonIdx)
@@ -246,6 +247,61 @@ describe('#352 — plan gate ordering', () => {
     // A failing schema gate must abort the run before anything is committed.
     const earlyGateBlock = datumPlanSrc.slice(gateIdx, skeletonIdx)
     expect(earlyGateBlock).toMatch(/throw new Error\(/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The build, the plan commit, the skeleton batch and the post-deepen rebuild
+// were "Run these commands" agents: the runner was handed the whole
+// tasks.json text and trusted to write it verbatim and report {"exit_code"}.
+// A runner that abridged or re-serialised a task wrote a different plan than
+// decompose produced, and the schema gate still passed. Every one of them is
+// now a batch whose exit codes the script reads; the tasks.json write is
+// byte-verified against the blob sha of the bytes the script intended.
+// ---------------------------------------------------------------------------
+
+describe('datum-plan — build/commit/skeleton/rebuild are batches, not "Run these commands" agents', () => {
+  it('no agent prompt asks the runner to write tasks.json or to git commit', () => {
+    expect(datumPlanSrc).not.toMatch(/Write this JSON to/)
+    expect(datumPlanSrc).not.toMatch(/Do these steps in order/)
+    expect(datumPlanSrc).not.toMatch(/Run these commands in order/)
+    expect(datumPlanSrc).not.toMatch(/Commit the plan artifacts/)
+    expect(datumPlanSrc).not.toMatch(/git commit -m "plan: (tasks\.json|pre-generate|deepen)/)
+  })
+
+  it('verifies the tasks.json write against tasksJsonBlobSha and halts on plan_write_mismatch / plan_build_failed', () => {
+    expect(datumPlanSrc).toMatch(/planBuildFromSteps\(parseBatchResult\(/)
+    expect(datumPlanSrc).toMatch(/tasksJsonBlobSha\(tasksJson\)/)
+    expect(datumPlanSrc).toMatch(/if \(!build\.ok\) throw new Error\(build\.error\)/)
+  })
+
+  it('commits the plan artifacts and the skeletons through commitFilesSteps and halts on a failed commit', () => {
+    // One helper, commitPlanFiles, wraps commitFilesSteps/commitFilesFromSteps
+    // and halts by name; every plan commit goes through it.
+    expect(datumPlanSrc).toMatch(/commitFilesSteps\(\{ wt: '\.', files, message \}\)/)
+    expect(datumPlanSrc).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(datumPlanSrc).toMatch(/commitPlanFiles\(\s*\[`\$\{epicDir\}\/tasks\.json`, `\$\{epicDir\}\/lane-plan\.json`, `\$\{epicDir\}\/TASKS\.md`\],\s*'plan: tasks\.json \+ lane-plan\.json \+ TASKS\.md',/)
+    expect(datumPlanSrc).toMatch(/commitPlanFiles\(\[skeletonDir\], 'plan: pre-generate RED skeletons'/)
+    expect(datumPlanSrc).toMatch(/throw new Error\(`plan_commit_failed: /)
+  })
+
+  it('after deepen there is NO lane-plan rebuild — it regenerated TASKS.md from tasks.json and wiped the appended Research Findings', () => {
+    // plan-deepen.md is append-only to TASKS.md (tasks.json is untouched), so
+    // `datum lane-plan --md-output TASKS.md` afterwards had nothing new to
+    // build and overwrote the findings the agent had just appended — the
+    // very section `datum gate deepen` requires. The findings are committed
+    // deterministically instead, and the deepen gate (a producer nothing
+    // consumed) now runs on them.
+    const deepenIdx = datumPlanSrc.indexOf("label: 'deepen-research'")
+    expect(deepenIdx).toBeGreaterThan(-1)
+    const block = datumPlanSrc.slice(deepenIdx - 800, deepenIdx)
+    expect(block).not.toMatch(/datum lane-plan --input/)
+    expect(block).not.toMatch(/git commit/)
+    const after = datumPlanSrc.slice(deepenIdx)
+    expect(after).not.toMatch(/datum lane-plan --input/)
+    expect(after).toMatch(/commitPlanFiles\(\[`\$\{epicDir\}\/TASKS\.md`\], 'plan: deepen - research findings'/)
+    expect(after).toMatch(/gateSteps\('deepen', ''\)/)
+    expect(after).toMatch(/throw new Error\(`Deepen gate failed/)
   })
 })
 

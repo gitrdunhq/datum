@@ -5,6 +5,8 @@ import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } fr
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
+import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps } from './shared/plan-steps'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -228,26 +230,18 @@ for (const task of tasks) {
 // patterns, required fields) and refuses to write on failure; the plan gate
 // below checks the resulting lane-plan.json. Both run before anything is
 // committed so a plan that fails the schema never lands three commits first (#352).
-const buildRaw = await agent(
-  `Do these steps in order:
-1. mkdir -p "${epicDir}"
-2. Write this JSON to "${epicDir}/tasks.json": ${tasksJson}
-3. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-Do NOT git add or git commit anything in this step.
-If step 2 or step 3 fails (non-zero exit), return JSON: {"exit_code": <the exit code>, "error": "<the stdout+stderr of the failing step>"}
-Otherwise return: {"exit_code": 0}
-Output raw JSON only.`,
-  { label: 'build-lane-plan', model: model('fast') },
-)
-// Safe: the fallback defaults to exit_code 1 (failure), the opposite
-// direction of a silent pass — an unparseable result is treated as the plan
-// build having failed, not succeeded, and the throw below already catches it.
-const build = typeof buildRaw === 'string'
-  ? parseAgentJson(buildRaw as string, { exit_code: 1, error: 'build-lane-plan agent returned unparseable output' } as { exit_code: number; error?: string })
-  : (buildRaw as { exit_code: number; error?: string })
-if (!build || build.exit_code !== 0) {
-  throw new Error(`datum lane-plan failed (exit ${build?.exit_code ?? '?'}) — plan NOT committed: ${build?.error || 'no error output'}`)
-}
+//
+// Deterministic batch (shared/plan-steps.ts): the JSON goes to disk through
+// a quoted heredoc and the on-disk blob sha is compared with the sha of the
+// bytes this script intended to write. A runner that abridged or
+// re-serialised a task used to produce a different plan than decompose
+// did, silently — now that is plan_write_mismatch and the run halts.
+const buildSteps = planBuildSteps({ epicDir, tasksJson })
+const build = planBuildFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(buildSteps), stageOpts('cli', { label: 'build-lane-plan', model: model('fast') })),
+  buildSteps,
+), tasksJsonBlobSha(tasksJson))
+if (!build.ok) throw new Error(build.error)
 
 // ── Early plan gate: schema + structure, right after lane-plan and BEFORE the
 // skeleton/deepen phases (#352). `--approve` skips only the human-approval
@@ -264,25 +258,36 @@ if (!earlyGate.passed) {
 }
 log('Early plan gate PASSED (schema + structure)')
 
-await agent(
-  `Commit the plan artifacts: git add "${epicDir}/tasks.json" "${epicDir}/lane-plan.json" "${epicDir}/TASKS.md" && git commit -m "plan: tasks.json + lane-plan.json + TASKS.md"
-Return JSON: {"exit_code": 0} on success, or {"exit_code": 1, "error": "the stderr"} on failure. Output raw JSON only.`,
-  stageOpts('cli', { label: 'commit-lane-plan', model: model('fast') }),
+// Commit exactly the three plan artifacts through a commitFilesSteps batch
+// (shared/commit-steps.ts): the exit code is the verdict, no runner-typed
+// {"exit_code": 0}, and a failed or empty commit halts by name.
+async function commitPlanFiles(files: string[], message: string, label: string): Promise<string> {
+  const commitStepList = commitFilesSteps({ wt: '.', files, message })
+  const commit = commitFilesFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label, model: model('fast') })),
+    commitStepList,
+  ))
+  if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`)
+  if (commit.nothingToCommit) throw new Error(`plan_commit_failed: nothing to commit for ${label} (${files.join(', ')})`)
+  return commit.sha
+}
+
+const planCommit = await commitPlanFiles(
+  [`${epicDir}/tasks.json`, `${epicDir}/lane-plan.json`, `${epicDir}/TASKS.md`],
+  'plan: tasks.json + lane-plan.json + TASKS.md',
+  'commit-lane-plan',
 )
-log('Lane plan built, gated, and committed')
+log(`Lane plan built, gated, and committed (${planCommit})`)
 
 // ── Skeleton batch — generate test contracts while Claude still has full spec context ──
 const skeletonDir = `${epicDir}/skeletons`
-await agent(
-  `Run these commands in order:
-1. mkdir -p "${skeletonDir}"
-2. datum skeleton --batch --language ${language} --tasks "${epicDir}/lane-plan.json" --output-dir "${skeletonDir}"
-3. git add "${skeletonDir}" && git commit -m "plan: pre-generate RED skeletons"
-If step 2 fails, return JSON: {"exit_code": 1, "error": "the stderr"}
-Otherwise return: {"exit_code": 0, "skeleton_dir": "${skeletonDir}"}
-Output raw JSON only.`,
-  stageOpts('cli', { label: 'skeleton-batch', model: model('fast') }),
-)
+const skeletonSteps = skeletonBatchSteps({ epicDir, language })
+const skeleton = skeletonBatchFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(skeletonSteps), stageOpts('cli', { label: 'skeleton-batch', model: model('fast') })),
+  skeletonSteps,
+))
+if (!skeleton.ok) throw new Error(skeleton.error)
+await commitPlanFiles([skeletonDir], 'plan: pre-generate RED skeletons', 'commit-skeletons')
 log(`Skeletons pre-generated in ${skeletonDir}`)
 
 // ── Triage + Deepen + Gate (collapsed: triage writes routing.json, deepen appends + rebuilds, gate runs) ──
@@ -308,22 +313,30 @@ interface TriageDecision { decision: string; reason: string; triggers: string[] 
 const triage: TriageDecision = parseAgentJson(triageRaw as string, { decision: 'properties', reason: 'parse failure', triggers: [] } as TriageDecision)
 log(`Triage: ${triage.decision} — ${triage.reason}`)
 
-// Deepen (conditional — also rebuilds lane-plan and commits)
+// Deepen (conditional). The research agent APPENDS `## Research Findings`
+// to TASKS.md and touches nothing else (tasks.json is untouched by design).
+// This used to be followed by a `datum lane-plan` rebuild "+ commit" inside
+// the same prompt — the rebuild regenerates TASKS.md from tasks.json, which
+// wiped the findings just appended (the very section `datum gate deepen`
+// requires), and nothing ever ran that gate. Now: commit TASKS.md
+// deterministically, then run the deepen gate on it.
 if (triage.decision === 'deepen') {
   const deepenRaw = await agent(
-    planDeepenTemplate + `
-
-ADDITIONAL TASK after appending Research Findings:
-1. Run: datum lane-plan --input "${epicDir}/tasks.json" --output "${epicDir}/lane-plan.json" --md-output "${epicDir}/TASKS.md"
-2. Commit: git add "${epicDir}/TASKS.md" "${epicDir}/lane-plan.json" && git commit -m "plan: deepen + rebuild"
-Return JSON: {"tasks_researched": N, "findings_count": N}`,
+    planDeepenTemplate,
     { label: 'deepen-research', model: model('balanced') },
   )
   // Safe: pure telemetry — these counts are only logged, never used to
-  // decide anything (the lane-plan rebuild and commit already ran inside
-  // the agent's own prompt above, independent of this parse).
+  // decide anything (the commit and gate below are independent of this parse).
   const deepen = parseAgentJson(deepenRaw as string, { tasks_researched: 0, findings_count: 0 })
   log(`Deepen: ${deepen.tasks_researched} tasks, ${deepen.findings_count} findings`)
+  await commitPlanFiles([`${epicDir}/TASKS.md`], 'plan: deepen - research findings', 'commit-deepen')
+  const deepenGateSteps = gateSteps('deepen', '')
+  const deepenGate = parseGateResult(parseBatchResult(
+    await agent(batchCommandPrompt(deepenGateSteps), stageOpts('cli', { label: 'gate-deepen', model: model('fast') })),
+    deepenGateSteps,
+  ))
+  if (!deepenGate.passed) throw new Error(`Deepen gate failed — TASKS.md carries no Research Findings after the deepen agent ran: ${deepenGate.message || 'no message'}`)
+  log('Deepen gate PASSED')
 } else {
   log('Deepen skipped')
 }

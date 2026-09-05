@@ -42,8 +42,9 @@ describe('plan-deepen.md reads/writes the epic-scoped TASKS.md, not a bare filen
     expect(planDeepen).toMatch(/end of docs\/epics\/\$\(git rev-parse --abbrev-ref HEAD\)\/TASKS\.md titled/)
   })
 
-  it('commits the epic-scoped path, not a bare "TASKS.md"', () => {
-    expect(planDeepen).not.toMatch(/git add TASKS\.md/)
-    expect(planDeepen).toMatch(/git add docs\/epics\/\$\(git rev-parse --abbrev-ref HEAD\)\/TASKS\.md/)
+  it('does not commit at all — datum-plan.ts commits the epic-scoped TASKS.md through a commitFilesSteps batch', () => {
+    expect(planDeepen).not.toMatch(/git add docs\//)
+    expect(planDeepen).not.toMatch(/&& git commit -m/)
+    expect(planDeepen).toMatch(/Do NOT git add or git commit/)
   })
 })

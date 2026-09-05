@@ -32,7 +32,7 @@ Format:
 
 CRITICAL: Do NOT modify existing task content. Append-only to TASKS.md.
 
-After appending, commit: git add docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md && git commit -m "plan: deepen — research findings"
+Do NOT git add or git commit anything — the workflow commits TASKS.md after you return.
 
 Return JSON: {"tasks_researched": N, "findings_count": N}
 Output raw JSON only. No markdown fences.
