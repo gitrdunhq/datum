@@ -82,7 +82,7 @@ def _detect_swift_framework(test_file: str) -> str:
     path = Path(test_file)
     test_dir = path.parent
     # Check current dir and parents up to Tests/
-    while not test_dir.exists() and test_dir.name and test_dir.name != "Tests":
+    while test_dir.exists() and test_dir.name and test_dir.name != "Tests":
         test_dir = test_dir.parent
     if test_dir.exists():
         for f in test_dir.rglob("*.swift"):
