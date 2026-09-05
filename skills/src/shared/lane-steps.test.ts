@@ -693,9 +693,13 @@ describe('actStartSteps', () => {
     expect(steps[0].tolerant).toBeFalsy()
     expect(steps[3].command).toContain('lane-plan-final.json')
     expect(steps[3].command).toContain('echo none')
-    // digest: written to a temp file by the CLI, never printed by this step
+    // digest: written to a temp file by the CLI; its stdout (the digest on
+    // success, a JSON error on failure) is printed by this step ONLY on
+    // failure — a `>/dev/null` here hid every CLI error behind a blank tail.
     expect(steps[4].command).toContain('__digest=$(mktemp)')
-    expect(steps[4].command).toContain('datum lane-plan-digest --plan "$__plan" --out "$__digest"')
+    expect(steps[4].command).toContain('__dout=$(datum lane-plan-digest --plan "$__plan" --out "$__digest")')
+    expect(steps[4].command).toContain('if [ "$__drc" -ne 0 ]; then printf \'%s\' "$__dout"; fi')
+    expect(steps[4].command).not.toContain('>/dev/null')
     expect(steps[5].command).toContain('wc -c < "$__digest"')
     expect(steps[6].command).toContain('git hash-object "$__digest"')
     expect(steps[7].command).toContain(`-le ${LANE_PLAN_DIGEST_BUDGET_BYTES}`)
@@ -784,6 +788,17 @@ describe('lanePlanDigestFromSteps', () => {
     const r = lanePlanDigestFromSteps(res({ digest: { exit_code: 1, stdout: '{"error": "lane plan not found: p"}' }, 'digest-bytes': '', 'digest-sha': '', 'digest-cat': '' }), 'p')
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/^lane_plan_digest_failed: .*lane plan not found/)
+  })
+
+  it('under real bash, a missing plan surfaces the CLI JSON error in lane_plan_digest_failed (needs datum on PATH)', () => {
+    let hasDatum = true
+    try { execFileSync('bash', ['-c', 'command -v datum'], { stdio: 'ignore' }) } catch { hasDatum = false }
+    if (!hasDatum) return
+    const steps = actStartSteps({ branch: 'datum/e', lanePlanPath: '/nonexistent/lane-plan.json', laneStateReadScript: 'echo "{}"' })
+    const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { encoding: 'utf8' }), steps)
+    const verdict = lanePlanDigestFromSteps(r, '/nonexistent/lane-plan.json')
+    expect(verdict.ok).toBe(false)
+    expect(verdict.error).toMatch(/lane_plan_digest_failed: .*lane plan not found: \/nonexistent\/lane-plan\.json/)
   })
 
   it('a missing batch is lane_plan_digest_failed', () => {
