@@ -163,12 +163,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -187,7 +187,18 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -609,7 +620,7 @@ var toolCheckText = await agent(
   ),
   stageOpts("cli", { label: "preflight-tool-check", model: model("fast") })
 );
-var toolCheck = parseAgentJson(toolCheckText, { ok: true });
+var toolCheck = parseAgentJsonStrict(toolCheckText, "preflight-tool-check");
 if (!toolCheck.ok) {
   const installedPath = toolCheck.installed ?? "(unknown \u2014 preflight check did not return valid JSON, see raw output above)";
   const expectedPath = toolCheck.expected ?? "(unknown \u2014 preflight check did not return valid JSON, see raw output above)";
@@ -621,7 +632,7 @@ var gitignoreText = await agent(
   runCommandPrompt(`datum gitignore-check${yolo ? " --fix" : ""}`),
   stageOpts("cli", { label: "preflight-gitignore", model: model("fast") })
 );
-var gitignoreCheck = parseAgentJson(gitignoreText, { ok: true, missing: [], added: [] });
+var gitignoreCheck = parseAgentJsonStrict(gitignoreText, "preflight-gitignore");
 if (gitignoreCheck.added?.length) {
   log(`[preflight] .gitignore was missing datum scratch paths \u2014 appended (yolo): ${gitignoreCheck.added.join(", ")}`);
 }
@@ -690,9 +701,18 @@ if (priorState && !explicitStart && !newEpicBranch) {
   }
 }
 log(`datum go \u2014 route: ${route}, start: ${startFrom}${yolo ? " (yolo)" : ""}`);
+async function runPhaseWorkflow(scriptPath, args2, phaseName) {
+  try {
+    return await workflow({ scriptPath }, args2);
+  } catch (exc) {
+    const message = exc.message;
+    log(`[warn] ${phaseName}_workflow_failed: ${message}`);
+    return { gatePassed: false, gateMessage: message };
+  }
+}
 if (shouldRun("refine", 0)) {
   log("\u2500\u2500 Refine \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-refine") }, phaseArgs);
+  lastResult = await runPhaseWorkflow(sk("datum-refine"), phaseArgs, "refine");
   if (!lastResult.gatePassed) {
     haltedAt = "refine";
     log(`Refine gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Address QUESTIONS.md, then: datum go --start-from plan`);
@@ -703,7 +723,7 @@ if (shouldRun("refine", 0)) {
 }
 if (shouldRun("plan", 1)) {
   log("\u2500\u2500 Plan \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-plan") }, phaseArgs);
+  lastResult = await runPhaseWorkflow(sk("datum-plan"), phaseArgs, "plan");
   if (!lastResult.gatePassed) {
     haltedAt = "plan";
     log(`Plan gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs approval"}. Review TASKS.md, then: datum go --start-from properties`);
@@ -714,7 +734,7 @@ if (shouldRun("plan", 1)) {
 }
 if (shouldRun("properties", 2)) {
   log("\u2500\u2500 Properties \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-properties") }, phaseArgs);
+  lastResult = await runPhaseWorkflow(sk("datum-properties"), phaseArgs, "properties");
   if (!lastResult.gatePassed) {
     haltedAt = "properties";
     log(`Properties gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Review PROPERTIES.md, then: datum go --start-from act`);
@@ -905,7 +925,7 @@ if (shouldRun("act", 3)) {
 }
 if (shouldRun("validate", 4)) {
   log("\u2500\u2500 Validate \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-validate") }, phaseArgs);
+  lastResult = await runPhaseWorkflow(sk("datum-validate"), phaseArgs, "validate");
   if (!lastResult.testsPassed || !lastResult.gatePassed) {
     haltedAt = "validate";
     log(`Validate ${!lastResult.testsPassed ? "FAILED \u2014 tests are red" : `gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}`}. Pipeline halted.`);
@@ -916,7 +936,7 @@ if (shouldRun("validate", 4)) {
 }
 if (shouldRun("review", 5)) {
   log("\u2500\u2500 Review \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-review") }, phaseArgs);
+  lastResult = await runPhaseWorkflow(sk("datum-review"), phaseArgs, "review");
   if (!lastResult.gatePassed) {
     haltedAt = "review";
     log(`Review gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Fix, then: datum go --start-from validate`);
@@ -930,9 +950,15 @@ if (shouldRun("review", 5)) {
 }
 if (shouldRun("closeout", 6)) {
   log("\u2500\u2500 Closeout \u2500\u2500");
-  lastResult = await workflow({ scriptPath: sk("datum-closeout") }, { ...phaseArgs, runId: resolvedRunId });
-  log("Closeout complete");
-  await markPhaseComplete("closeout");
+  try {
+    lastResult = await workflow({ scriptPath: sk("datum-closeout") }, { ...phaseArgs, runId: resolvedRunId });
+    log("Closeout complete");
+    await markPhaseComplete("closeout");
+  } catch (exc) {
+    const message = exc.message;
+    haltedAt = "closeout";
+    log(`[warn] closeout_workflow_failed: ${message}. Fix, then: datum go --start-from closeout`);
+  }
 }
 if (haltedAt) {
   log(`

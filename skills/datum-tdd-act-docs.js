@@ -62,12 +62,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -86,7 +86,11 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
 }
 function renderPrompt(template, vars) {
   return template.replace(

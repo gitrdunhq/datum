@@ -36,12 +36,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -60,7 +60,18 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -503,7 +514,7 @@ ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), al
 3. Commit: git add ROADMAP.md && git commit -m "roadmap: triage items from refine"`,
     { label: "triage-addenda", model: model("balanced") }
   );
-  triageResult = parseAgentJson(triageRaw, triageResult);
+  triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
 } else {
   log("No addenda \u2014 single-scope TICKET");
@@ -512,7 +523,7 @@ var classifyRaw = await agent(
   renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
   { label: "classify-ambiguity", model: model("fast") }
 );
-var classify = parseAgentJson(classifyRaw, { level: "medium", reasoning: "", gaps: [], assumptions: [] });
+var classify = parseAgentJsonStrict(classifyRaw, "classify-ambiguity");
 assertReadWitness([ticketFile], classify);
 log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
 var requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;

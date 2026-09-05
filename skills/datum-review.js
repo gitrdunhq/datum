@@ -46,12 +46,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -70,7 +70,18 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -250,10 +261,9 @@ var allFindings = [];
 for (let i = 0; i < DOMAINS.length; i++) {
   const result = reviewResults[i];
   if (!result) {
-    log(`${DOMAINS[i].domain}: (null)`);
-    continue;
+    throw new Error(`agent_output_unparseable: review-${DOMAINS[i].domain.toLowerCase()} \u2014 (no result)`);
   }
-  const parsed = typeof result === "string" ? parseAgentJson(result, { domain: DOMAINS[i].domain, findings: [] }) : result;
+  const parsed = typeof result === "string" ? parseAgentJsonStrict(result, `review-${DOMAINS[i].domain.toLowerCase()}`) : result;
   log(`${parsed.domain}: ${parsed.findings.length} findings`);
   for (const f of parsed.findings) {
     log(`  [${f.severity}] ${f.id}: ${f.description.slice(0, 80)}`);

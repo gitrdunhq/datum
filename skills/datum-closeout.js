@@ -35,12 +35,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -59,7 +59,18 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -286,7 +297,10 @@ var synthResult = await agent(
   renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }),
   { label: "synthesize", model: model("balanced") }
 );
-var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
+if (!synthResult) {
+  throw new Error("agent_output_unparseable: synthesize \u2014 (no result)");
+}
+var synth = typeof synthResult === "string" ? parseAgentJsonStrict(synthResult, "synthesize") : synthResult;
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
 var epicDir = `docs/epics/${branch}`;
 var archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir });

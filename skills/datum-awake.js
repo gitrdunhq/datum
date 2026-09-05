@@ -36,12 +36,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -60,7 +60,14 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -92,18 +99,14 @@ var scanRaw = await agent(
   renderPrompt(awake_scan_default, { wt: "." }),
   { label: "scan-repo", model: model("balanced") }
 );
-var scan = parseAgentJson(scanRaw, { language: "unknown", rules: [], test_conventions: {}, code_patterns: {}, file_conventions: {} });
+var scan = parseAgentJsonStrict(scanRaw, "scan-repo");
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`);
 phase("Distill");
 var distillRaw = await agent(
   renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) }),
   { label: "distill-preamble", model: model("balanced") }
 );
-var distill = parseAgentJson(distillRaw, {
-  preamble: "# Project\n\n> No rules extracted.\n",
-  preamble_full: "# Project \u2014 Full Context\n\n> No rules extracted.\n",
-  token_estimate: { preamble: 0, full: 0 }
-});
+var distill = parseAgentJsonStrict(distillRaw, "distill-preamble");
 log(`Preamble: ~${distill.token_estimate.preamble} tokens, Full: ~${distill.token_estimate.full} tokens`);
 phase("Commit");
 var preamblePath = "skills/src/prompts/agent-preamble.md";

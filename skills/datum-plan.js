@@ -36,12 +36,12 @@ function findMatchingBracketEnd(text, start) {
   }
   return -1;
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
   const cleaned = (fenced ? fenced[1] : text).trim();
   try {
-    return JSON.parse(cleaned);
+    return { found: true, value: JSON.parse(cleaned) };
   } catch {
   }
   const openRe = /[{[]/g;
@@ -60,7 +60,18 @@ function parseAgentJson(text, fallback) {
       openRe.lastIndex = start + 1;
     }
   }
-  return found ? best : fallback;
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function parseAgentJsonStrict(text, label) {
+  const r = scanForAgentJson(text);
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} \u2014 ${String(text ?? "").slice(0, 200)}`);
+  }
+  return r.value;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -634,7 +645,7 @@ var approachesRaw = await agent(
   renderPrompt(plan_approaches_default, { specContent, currentState: currentState || "(not available)" }) + contextWitnessInstruction([specFile]),
   { label: "propose-approaches", model: model("balanced") }
 );
-var approaches = parseAgentJson(approachesRaw, { approaches: [], recommended: 0, recommendation_reason: "" });
+var approaches = parseAgentJsonStrict(approachesRaw, "propose-approaches");
 assertReadWitness([specFile], approaches);
 var chosen = approaches.approaches[approaches.recommended] || approaches.approaches[0];
 log(`Selected: ${chosen?.name || "default"} \u2014 ${approaches.recommendation_reason}`);
