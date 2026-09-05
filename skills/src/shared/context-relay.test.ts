@@ -212,6 +212,29 @@ describe('verifyReadWitness', () => {
     expect(result.ok).toBe(true)
   })
 
+  // caliper wf_181691ac-fbf task-007 (BUG K): a haiku reflect agent keyed the
+  // witness by the full sha instead of the path ({"<sha>": "<12 hex>"}). The
+  // value is the proof; the key is bookkeeping. Any entry whose value is a
+  // prefix of the file's blob sha counts for that file.
+  it('accepts a witness keyed by something other than the path when its value is the right prefix', () => {
+    expect(verifyReadWitness([deferredA], { read_witness: { 'abcdef123456789012345678901234567890abcd': 'abcdef123456' } }).ok).toBe(true)
+    expect(verifyReadWitness([deferredA], { read_witness: { 'whatever': 'ABCDEF123456' } }).ok).toBe(true)
+    // Two deferred files, both witnessed by value under wrong keys.
+    expect(verifyReadWitness([deferredA, deferredB], { read_witness: { x: 'abcdef123456', y: '111111111122' } }).ok).toBe(true)
+  })
+
+  it('a wrong-key entry with a wrong value is still missing for that file', () => {
+    const r = verifyReadWitness([deferredA], { read_witness: { 'whatever': 'deadbeefdead' } })
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(['A.md'])
+  })
+
+  it('the instruction states the key is the path and the value the prefix, with a literal example', () => {
+    const text = contextWitnessInstruction([deferredA])
+    expect(text).toMatch(/"A\.md": "<first 12 hex chars/)
+    expect(text).toMatch(/key is the file path exactly as written/i)
+  })
+
   it('flags a missing read_witness field on the parsed object', () => {
     const result = verifyReadWitness([deferredA], {})
     expect(result.ok).toBe(false)

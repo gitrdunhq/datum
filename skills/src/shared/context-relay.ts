@@ -206,6 +206,7 @@ export function contextWitnessInstruction(files: ContextFile[]): string {
     'characters of that command\'s output — taken from the first line of the file you read, computed fresh, ' +
     'never guessed or reused from memory:\n' +
     '{\n  "read_witness": {\n' + entries + '\n  }\n}\n' +
+    'The key is the file path exactly as written above; the value is the 12-character hash prefix. ' +
     'Your JSON response is invalid without this field for every file listed above.'
   )
 }
@@ -231,15 +232,17 @@ export function verifyReadWitness(
   const witness = extractWitnessMap(parsed)
   const missing: string[] = []
   const mismatched: string[] = []
+  // The VALUE is the proof (a prefix the agent can only get by hashing the
+  // file); the key is bookkeeping. A haiku reflect agent keyed by the full
+  // sha instead of the path (caliper wf_181691ac-fbf, BUG K), so any entry
+  // whose value is a prefix of this file's sha counts for it.
+  const values = Object.values(witness).filter((v): v is string => typeof v === 'string' && /^[0-9a-f]{12,}$/i.test(v))
   for (const f of deferred) {
-    const value = witness[f.path]
-    if (typeof value !== 'string' || !/^[0-9a-f]{12,}$/i.test(value)) {
-      missing.push(f.path)
-      continue
-    }
-    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
-      mismatched.push(f.path)
-    }
+    const sha = f.sha.toLowerCase()
+    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue
+    const keyed = witness[f.path]
+    if (typeof keyed === 'string' && /^[0-9a-f]{12,}$/i.test(keyed)) mismatched.push(f.path)
+    else missing.push(f.path)
   }
   return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched }
 }
