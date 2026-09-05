@@ -16,6 +16,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--tracker", default="auto")
+    # Only findings at or above this severity open tracker issues; the rest
+    # stay in the run manifest (caliper: keep the tracker quiet, keep the data).
+    parser.add_argument("--min-severity", default="high", choices=["critical", "high", "medium", "low", "info"])
     args = parser.parse_args()
 
     marker = Path(f".datum/runs/{args.run_id}/.file-followups.done")
@@ -83,10 +86,17 @@ def main() -> None:
 
     filed = []
     retained = []
+    retained_below_threshold = []
+    rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    threshold = rank[args.min_severity]
 
     for item in followups:
         if item.get("filed_url"):
             filed.append(item)
+            continue
+
+        if rank.get(str(item.get("severity")), 99) > threshold:
+            retained_below_threshold.append(item)
             continue
 
         if tracker == "github":
@@ -122,7 +132,7 @@ def main() -> None:
             retained.append(item)
 
     # Write back with filed URLs populated
-    all_items = filed + retained + invalid_items
+    all_items = filed + retained + retained_below_threshold + invalid_items
     followups_path.write_text(json.dumps(all_items, indent=2))
 
     marker.write_text("done")
@@ -130,6 +140,9 @@ def main() -> None:
         "ok": True,
         "filed": len(filed),
         "retained": len(retained),
+        "retained_below_threshold": len(retained_below_threshold),
+        "min_severity": args.min_severity,
+        "manifest": str(followups_path),
         "tracker": tracker,
     }
     if invalid:

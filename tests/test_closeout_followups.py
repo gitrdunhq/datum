@@ -83,3 +83,47 @@ def test_nothing_to_file_is_ok_and_idempotent(run_dir: Path):
     assert json.loads(res.stdout) == {"ok": True, "filed": 0, "reason": "no follow-ups"}
     res = _run()
     assert json.loads(res.stdout) == {"ok": True, "skipped": True}
+
+
+def test_medium_and_low_items_are_retained_locally_not_filed_even_with_a_tracker(run_dir: Path, monkeypatch):
+    """caliper: keep the tracker quiet — only critical/high open issues;
+    medium/low stay in the run manifest and are counted in the output."""
+    from datum.closeout import file_followups as mod
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *a, **k):
+        calls.append(cmd)
+
+        class R:
+            returncode = 0
+            stdout = "https://example/issues/1\n"
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    items = [
+        {**_item("hi", "high one"), "severity": "high"},
+        {**_item("crit", "crit one"), "severity": "critical"},
+        {**_item("med", "medium one"), "severity": "medium"},
+        {**_item("lo", "low one"), "severity": "low"},
+    ]
+    (run_dir / "follow-ups").mkdir()
+    (run_dir / "follow-ups" / "task-006.json").write_text(json.dumps(items))
+    import sys as _sys
+
+    monkeypatch.setattr(_sys, "argv", ["file_followups", "--run-id", "r1", "--tracker", "github"])
+    import io, contextlib
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        mod.main()
+    out = json.loads(buf.getvalue())
+    assert out["filed"] == 2
+    assert out["retained_below_threshold"] == 2
+    assert out["min_severity"] == "high"
+    assert len([c for c in calls if c[:3] == ["gh", "issue", "create"]]) == 2
+    merged = {i["dedup_key"]: i for i in json.loads((run_dir / "follow-ups.json").read_text())}
+    assert merged["hi"]["filed_url"] and merged["crit"]["filed_url"]
+    assert "filed_url" not in merged["med"] or not merged["med"]["filed_url"]

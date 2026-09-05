@@ -89,7 +89,10 @@ def test_valid_followup_item_with_local_tracker_is_retained(repo):
                     "dedup_key": "k1",
                     "title": "Flaky test in worker pool",
                     "body": "Details here",
-                    "severity": "medium",
+                    # high: at or above the default --min-severity, so the
+                    # local tracker "retains" it (medium/low are retained
+                    # below the threshold and counted separately).
+                    "severity": "high",
                     "source": "closeout-collector",
                 }
             ]
