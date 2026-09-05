@@ -1366,18 +1366,22 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     return { task_id: taskId, status: "failed", stage: "RED", error: "no_new_tests_written: RED agent did not append any test functions" };
   }
   log(`[${taskId}] RED: ${newTestCount} new test functions verified (${beforeCount} \u2192 ${afterCount})`);
-  const reflectResult = await agent(
+  const reflectResult = await resilientAgent(
     reflectPrompt({ wt, testFiles: testFiles.join(", "), acStr }),
-    stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA })
+    stageOpts("reflect", { label: `reflect:${taskId}`, phase: "Act", model: model("fast"), schema: REFLECT_SCHEMA, maxRetries: 1 })
   );
-  const reflectScore = reflectResult?.score || 0;
-  log(`[${taskId}] Test quality: ${reflectScore}/10 \u2014 ${reflectResult?.reasoning || "no reasoning"}`);
-  if (reflectResult?.gaps?.length) {
-    log(`[${taskId}]   gaps: ${reflectResult.gaps.join("; ")}`);
-  }
-  if (reflectScore < 4) {
-    log(`[${taskId}] RED FAILED: test quality too low (${reflectScore}/10)`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: `test quality ${reflectScore}/10` };
+  if (!reflectResult) {
+    log(`[${taskId}] reflect_no_result: reflect agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-reflect.md) \u2014 proceeding to GREEN without a quality score`);
+  } else {
+    const reflectScore = reflectResult.score || 0;
+    log(`[${taskId}] Test quality: ${reflectScore}/10 \u2014 ${reflectResult.reasoning || "no reasoning"}`);
+    if (reflectResult.gaps?.length) {
+      log(`[${taskId}]   gaps: ${reflectResult.gaps.join("; ")}`);
+    }
+    if (reflectScore < 4) {
+      log(`[${taskId}] RED FAILED: test quality too low (${reflectScore}/10)`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `test quality ${reflectScore}/10` };
+    }
   }
   const greenModel = lane.green_model || model("balanced");
   const contractSummary = extractContractSummary(lane.acceptance_criteria || []);
@@ -1611,12 +1615,16 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2) {
   log(`[${taskId}] REFACTOR: checking if needed`);
-  const preCheck = await agent(
+  const preCheck = await resilientAgent(
     refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(", ") }),
-    stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA })
+    stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
   );
-  if (!preCheck?.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${preCheck?.reason || "nothing to improve"})`);
+  if (!preCheck) {
+    log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts \u2014 skipping the optional REFACTOR stage`);
+    return { verified: true };
+  }
+  if (!preCheck.should_refactor) {
+    log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || "nothing to improve"})`);
     return { verified: true };
   }
   log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`);
