@@ -291,6 +291,44 @@ def main_checkout_root(repo_root: Path) -> Path:
     return (repo_root / common.stdout.strip()).resolve().parent
 
 
+# Per-lane installs from the tools' global content-addressable caches: each
+# lane gets its OWN node_modules / .venv (hardlinked from the store, seconds,
+# isolated from the other lanes) instead of sharing the main checkout's.
+# (lockfile in the worktree, tool on PATH, command, directory it produces)
+_INSTALLERS: tuple[tuple[str, str, list[str], str], ...] = (
+    ("pnpm-lock.yaml", "pnpm", ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], "node_modules"),
+    ("uv.lock", "uv", ["uv", "sync", "--frozen"], ".venv"),
+)
+_INSTALL_TIMEOUT_S = 600
+
+
+def install_lane_dependencies(worktree_path: Path) -> list[str]:
+    """Run each applicable per-lane installer; return the directories it
+    produced. A failure is reported on stderr as deps_install_failed and the
+    caller falls back to the symlink for that directory."""
+    import shutil
+    import sys
+
+    produced: list[str] = []
+    for lockfile, tool, cmd, out_dir in _INSTALLERS:
+        if not (worktree_path / lockfile).exists() or shutil.which(tool) is None:
+            continue
+        try:
+            res = subprocess.run(
+                cmd, cwd=worktree_path, capture_output=True, text=True, timeout=_INSTALL_TIMEOUT_S
+            )
+        except subprocess.TimeoutExpired:
+            print(f"deps_install_failed: {tool} timed out after {_INSTALL_TIMEOUT_S}s in {worktree_path}", file=sys.stderr)
+            continue
+        if res.returncode != 0:
+            tail = (res.stderr or res.stdout or "").strip().splitlines()[-3:]
+            print(f"deps_install_failed: {' '.join(cmd)} exited {res.returncode} in {worktree_path}: {' | '.join(tail)}", file=sys.stderr)
+            continue
+        if (worktree_path / out_dir).is_dir():
+            produced.append(out_dir)
+    return produced
+
+
 def link_shared_dirs(worktree_path: Path, source_root: Path, dirs: list[str] | tuple[str, ...]) -> list[str]:
     """Symlink each of `dirs` that exists under source_root into the lane
     worktree, unless the worktree already has that path (tracked content
@@ -345,7 +383,9 @@ def setup_pipeline_worktrees(
         mapping[lane_id] = create_lane_worktree(
             epic_branch, lane_id, run_id, base_sha, repo_root=repo_root
         )
-        link_shared_dirs(mapping[lane_id], source_root, link_dirs)
+        # Own install first (pnpm/uv global cache); symlink whatever remains.
+        installed = install_lane_dependencies(mapping[lane_id])
+        link_shared_dirs(mapping[lane_id], source_root, [d for d in link_dirs if d not in installed])
     return mapping
 
 

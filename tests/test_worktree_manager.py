@@ -1082,3 +1082,75 @@ class TestSharedDependencyDirs:
         assert res.exit_code == 0, res.output
         out = json.loads(res.output)
         assert (Path(out["lane-a"]) / "vendor").is_symlink()
+
+
+class TestPerLaneDependencyInstall:
+    """pnpm and uv both keep a global content-addressable cache, so a per-lane
+    `pnpm install --frozen-lockfile --prefer-offline` / `uv sync --frozen`
+    gives each lane its OWN isolated node_modules/.venv in seconds. The
+    symlink is the fallback when the lockfile or the tool is absent."""
+
+    def _fake_tool(self, repo: Path, name: str, log_name: str) -> Path:
+        bin_dir = repo.parent / "fakebin"
+        bin_dir.mkdir(exist_ok=True)
+        log = repo.parent / log_name
+        (bin_dir / name).write_text(
+            f"#!/bin/sh\nprintf '%s\\n' \"$PWD $*\" >> {log}\nmkdir -p {'node_modules' if name == 'pnpm' else '.venv'}\n"
+        )
+        (bin_dir / name).chmod(0o755)
+        return bin_dir
+
+    def test_pnpm_lockfile_and_tool_present_installs_per_lane_from_the_store(self, repo: Path, monkeypatch):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "package.json").write_text("{}\n")
+        (repo / "pnpm-lock.yaml").write_text("lockfileVersion: 9\n")
+        _git(["checkout", "-q", "epic/test"], cwd=repo)
+        _git(["add", "package.json", "pnpm-lock.yaml"], cwd=repo)
+        _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
+        (repo / "node_modules").mkdir()  # main checkout's — must NOT be linked when pnpm installs
+        bin_dir = self._fake_tool(repo, "pnpm", "pnpm.log")
+        monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+        mapping = setup_pipeline_worktrees("run-pnpm", "epic/test", ["lane-a"], repo_root=repo)
+        wt = mapping["lane-a"]
+        calls = (repo.parent / "pnpm.log").read_text().splitlines()
+        assert len(calls) == 1
+        assert calls[0].startswith(str(wt.resolve()))
+        assert "install --frozen-lockfile --prefer-offline" in calls[0]
+        assert (wt / "node_modules").is_dir() and not (wt / "node_modules").is_symlink()
+
+    def test_uv_lockfile_and_tool_present_syncs_per_lane(self, repo: Path, monkeypatch):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
+        (repo / "uv.lock").write_text("version = 1\n")
+        _git(["checkout", "-q", "epic/test"], cwd=repo)
+        _git(["add", "pyproject.toml", "uv.lock"], cwd=repo)
+        _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
+        bin_dir = self._fake_tool(repo, "uv", "uv.log")
+        monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+        mapping = setup_pipeline_worktrees("run-uv", "epic/test", ["lane-a"], repo_root=repo)
+        wt = mapping["lane-a"]
+        calls = (repo.parent / "uv.log").read_text().splitlines()
+        assert len(calls) == 1 and "sync --frozen" in calls[0]
+        assert (wt / ".venv").is_dir() and not (wt / ".venv").is_symlink()
+
+    def test_install_failure_falls_back_to_the_symlink_and_is_reported(self, repo: Path, monkeypatch, capsys):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "package.json").write_text("{}\n")
+        (repo / "pnpm-lock.yaml").write_text("lockfileVersion: 9\n")
+        _git(["checkout", "-q", "epic/test"], cwd=repo)
+        _git(["add", "package.json", "pnpm-lock.yaml"], cwd=repo)
+        _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
+        (repo / "node_modules").mkdir()
+        bin_dir = repo.parent / "fakebin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "pnpm").write_text("#!/bin/sh\necho 'ERR_PNPM_NO_OFFLINE_META' >&2\nexit 1\n")
+        (bin_dir / "pnpm").chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+        mapping = setup_pipeline_worktrees("run-fb", "epic/test", ["lane-a"], repo_root=repo)
+        wt = mapping["lane-a"]
+        assert (wt / "node_modules").is_symlink()
+        err = capsys.readouterr().err
+        assert "deps_install_failed" in err and "pnpm" in err and "ERR_PNPM_NO_OFFLINE_META" in err
