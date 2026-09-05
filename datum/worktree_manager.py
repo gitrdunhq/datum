@@ -498,7 +498,14 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
     if state_removed:
         state_path.unlink()
 
-    merged = _git(["branch", "--merged"], cwd=repo_root, check=False).stdout
+    # "Merged" means merged into the EPIC branch we were given — never into
+    # whatever HEAD happens to be (closeout can run from a detached root
+    # worktree or with the operator on main). Bare `--merged` judged against
+    # HEAD: a lane merged into the epic looked unmerged, and a lane merged
+    # into HEAD but not the epic was deleted.
+    merged = _git(
+        ["branch", "--merged", epic_branch], cwd=repo_root, check=False
+    ).stdout
     prefix = f"{epic_branch}--"
     candidates: list[str] = []
     for line in merged.splitlines():
@@ -508,7 +515,10 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
 
     deleted: list[str] = []
     if candidates:
-        result = _git(["branch", "-d", *candidates], cwd=repo_root, check=False)
+        # `-D`, not `-d`: `-d` re-checks "merged into HEAD", which is exactly
+        # the wrong reference; every candidate was verified merged into the
+        # epic above.
+        result = _git(["branch", "-D", *candidates], cwd=repo_root, check=False)
         for line in result.stdout.splitlines():
             match = re.match(r"^Deleted branch (\S+) ", line.strip())
             if match:

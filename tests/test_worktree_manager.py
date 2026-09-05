@@ -497,3 +497,50 @@ class TestMergeLaneBranches:
         status = _git(["status", "--porcelain"], cwd=repo).stdout
         assert "a.txt" not in status
         assert "A  a.txt" not in status
+
+
+class TestHousekeepEpicMergedRelativeToEpicNotHead:
+    def test_deletes_lane_merged_into_epic_even_when_head_is_another_branch(
+        self, repo: Path
+    ):
+        """`git branch --merged` with no ref means "merged into HEAD"; housekeep
+        must judge against the EPIC branch it was given. Closeout can run with
+        a different branch checked out (root worktree detached, operator on
+        main), in which case a lane fully merged into the epic looked unmerged
+        and survived — or, worse, a lane merged into HEAD but not the epic
+        could be deleted."""
+        epic_branch = "epic/test"
+        lane = _make_lane_branch(repo, epic_branch, "task-a")
+        _add_lane_commit(repo, lane, "lane_work.py")
+        # `other` forks from the epic BEFORE the lane lands, so the lane is
+        # merged into the epic but not into `other`.
+        _git(["branch", "other", epic_branch], cwd=repo)
+        _git(["checkout", "-q", epic_branch], cwd=repo)
+        _git(["merge", "-q", "--ff-only", lane], cwd=repo)
+        _git(["checkout", "-q", "other"], cwd=repo)
+
+        result = housekeep_epic(epic_branch, repo_root=repo)
+
+        assert result["deleted_branches"] == [lane]
+        check = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", lane],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert check.returncode != 0
+
+    def test_does_not_delete_lane_merged_into_head_but_not_the_epic(self, repo: Path):
+        epic_branch = "epic/test"
+        lane = _make_lane_branch(repo, epic_branch, "task-b")
+        _add_lane_commit(repo, lane, "lane_b_work.py")
+        # `other` takes the lane's commit; the epic does not.
+        _git(["branch", "other", lane], cwd=repo)
+        _git(["checkout", "-q", "other"], cwd=repo)
+
+        result = housekeep_epic(epic_branch, repo_root=repo)
+
+        assert result["deleted_branches"] == []
+        check = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", lane],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert check.returncode == 0, "lane not merged into the epic must survive"
