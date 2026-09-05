@@ -9,7 +9,7 @@ import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
 import planDeepenTemplate from './prompts/plan-deepen.md'
 import readContextTemplate from './prompts/util-read-context.md'
-import runGateTemplate from './prompts/util-run-gate.md'
+import { gateSteps, parseGateResult } from './shared/gate'
 
 export const meta = {
   name: 'datum-plan',
@@ -284,18 +284,20 @@ Return JSON: {"tasks_researched": N, "findings_count": N}`,
 }
 
 // Gate
-const gateResult = await agent(
-  renderPrompt(runGateTemplate, { phase: 'plan', flags: yolo ? ' --approve' : '' }),
-  stageOpts('cli', { label: 'gate', model: model('fast') }),
-)
-const gate = typeof gateResult === 'string' ? parseAgentJson(gateResult as string, { passed: false }) : gateResult
+// Deterministic: the verdict is `datum gate`'s exit code read from a batch
+// step (shared/gate.ts), not an LLM's echo of its JSON.
+const gateStepList = gateSteps('plan', yolo ? ' --approve' : '')
+const gate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(gateStepList), stageOpts('cli', { label: 'gate', model: model('fast') })),
+  gateStepList,
+))
 
-if (gate?.passed) log('Plan gate PASSED')
-else log(`Plan gate: ${gate?.message || 'needs approval'}`)
+if (gate.passed) log('Plan gate PASSED')
+else log(`Plan gate: ${gate.message || 'needs approval'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 
 // Publish lane-plan tasks as tracker issues (after gate passes)
 let epicIssue: string | undefined
-if (gate?.passed) {
+if (gate.passed) {
   const published = await publishLanePlan(`${epicDir}/lane-plan.json`, `[epic] ${ctx.branch}`)
   if (published) {
     epicIssue = published.epicId
@@ -307,5 +309,5 @@ export const __workflowResult = {
   branch: ctx.branch, epicDir, approach: chosen?.name,
   taskCount: tasks.length,
   tasks: tasks.map((t: { id: string; title: string }) => ({ id: t.id, title: t.title })),
-  gatePassed: !!gate?.passed, gateMessage: gate?.message || '',
+  gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman,
 }

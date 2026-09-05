@@ -309,3 +309,14 @@ describe('determinism fix — context_files relay is one verified batch, not a p
     expect(datumPlanSrc).toMatch(/exceeds relay limit/)
   })
 })
+
+describe('datum-plan — deterministic gate verdict', () => {
+  const src = readFileSync(join(__dirname, 'datum-plan.ts'), 'utf8')
+  it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {
+    expect(src).not.toMatch(/util-run-gate/)
+    expect(src).toMatch(/gateSteps\('plan', yolo \? ' --approve' : ''\)/)
+    expect(src).toMatch(/parseGateResult\(/)
+    // publishing tracker issues is still gated on the verdict
+    expect(src).toMatch(/if \(gate\.passed\) \{\s*\n\s*const published = await publishLanePlan/)
+  })
+})
