@@ -97,11 +97,34 @@ describe('contextRelayPlan', () => {
 })
 
 describe('contextInlineSteps', () => {
-  it('cats + wc -c only the inline subset, indexed by position in that subset', () => {
+  it('defines $__eb itself, then cats + wc -c only the inline subset, indexed by position in that subset', () => {
     const steps = contextInlineSteps(['A.md', 'C.md'])
-    expect(names(steps)).toEqual(['ctx-cat-0', 'ctx-wc-0', 'ctx-cat-1', 'ctx-wc-1'])
-    expect(steps[2].command).toContain('C.md')
+    expect(names(steps)).toEqual(['branch', 'ctx-cat-0', 'ctx-wc-0', 'ctx-cat-1', 'ctx-wc-1'])
+    expect(steps[0].command).toBe(`__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`)
+    expect(steps[3].command).toContain('C.md')
     expect(steps.every((s) => s.tolerant)).toBe(true)
+  })
+
+  // elonchesd wf_8913d90e-75f: the probe batch defined `__eb`, the inline
+  // batch is a NEW shell that did not, so `docs/epics/$__eb/TICKET.md`
+  // resolved to docs/epics//TICKET.md and refine halted with
+  // context_relay_mismatch on a 5940-byte file the probe had just measured.
+  it('under real bash, a $__eb-templated path resolves in the inline batch on its own', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-ctx-eb-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'datum/x'], { cwd: dir })
+      execFileSync('git', ['config', 'core.hooksPath', '/dev/null'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir })
+      execFileSync('mkdir', ['-p', join(dir, 'docs/epics/datum/x')])
+      writeFileSync(join(dir, 'docs/epics/datum/x/TICKET.md'), '# ticket\n')
+      const steps = contextInlineSteps(['docs/epics/$__eb/TICKET.md'])
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(r.steps.find((s) => s.name === 'ctx-cat-0')?.stdout).toBe('# ticket\n')
+      expect(r.steps.find((s) => s.name === 'ctx-wc-0')?.stdout.trim()).toBe('9')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

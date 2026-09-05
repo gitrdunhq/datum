@@ -100,9 +100,18 @@ export function contextRelayPlan(probe: BatchResult, files: string[], budget: nu
   return plan
 }
 
-/** Phase 2: cat + wc -c for the inline subset only (indexed by that subset). */
+/**
+ * Phase 2: cat + wc -c for the inline subset only (indexed by that subset).
+ * Every batch is a fresh shell, so this one defines `$__eb` itself: the
+ * probe's definition did not carry over, `docs/epics/$__eb/TICKET.md`
+ * resolved to docs/epics//TICKET.md, and refine halted with
+ * context_relay_mismatch on a file the probe had just measured
+ * (elonchesd wf_8913d90e-75f).
+ */
 export function contextInlineSteps(inlineFiles: string[]): BatchStep[] {
-  const steps: BatchStep[] = []
+  const steps: BatchStep[] = [
+    { name: 'branch', command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true },
+  ]
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
