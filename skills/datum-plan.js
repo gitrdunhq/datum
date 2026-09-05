@@ -208,39 +208,6 @@ function bootstrapOpts(stage, extra = {}) {
   return stageOpts(stage, extra);
 }
 
-// skills/src/shared/tracker.ts
-async function publishLanePlan(lanePlanPath, epicTitle) {
-  const result = await agent(
-    `Run: datum plan-issues --lane-plan "${lanePlanPath}" --title "${epicTitle}"
-Return the JSON output. If the command fails, return {"error": "<message>"}.
-Output raw JSON only.`,
-    stageOpts("cli", { label: "publish-issues", model: model("fast") })
-  );
-  if (!result) {
-    log("[tracker] publish failed: agent returned no result");
-    return null;
-  }
-  const parsed = typeof result === "string" ? parseAgentJson(result, null) : result;
-  if (!parsed) {
-    log(`[tracker] publish failed: unparseable output \u2014 ${String(result).slice(0, 200)}`);
-    return null;
-  }
-  if (parsed.error) {
-    log(`[tracker] publish failed: ${parsed.error}`);
-    return null;
-  }
-  if (parsed.skipped) {
-    log(`[tracker] publish skipped: ${parsed.reason || parsed.skipped}`);
-    return null;
-  }
-  return {
-    epicId: String(parsed.epic_number || ""),
-    taskIds: Object.fromEntries(
-      Object.entries(parsed.task_issues || {}).map(([k, v]) => [k, String(v)])
-    )
-  };
-}
-
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function validateBatchSteps(steps) {
@@ -310,8 +277,50 @@ function stepStdout(r, name) {
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
+}
+
+// skills/src/shared/tracker.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function publishSteps(lanePlanPath, epicTitle) {
+  return [{ name: "publish", command: `datum plan-issues --lane-plan ${q(lanePlanPath)} --title ${q(epicTitle)}`, tolerant: true }];
+}
+function tail(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function publishFromSteps(result) {
+  if (result.missing) return { ok: false, parsed: null, error: `tracker_publish_failed: ${describeFailure(result, "publish")}` };
+  const step = stepResult(result, "publish");
+  if (!step) return { ok: false, parsed: null, error: "tracker_publish_failed: publish step did not run" };
+  if (step.exit_code !== 0) return { ok: false, parsed: null, error: `tracker_publish_failed: datum plan-issues exited ${step.exit_code} \u2014 ${tail(step)}` };
+  const parsed = parseAgentJson(step.stdout || "", null);
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, parsed: null, error: `tracker_publish_failed: datum plan-issues printed no JSON \u2014 ${(step.stdout || "").trim().slice(0, 200)}` };
+  }
+  return { ok: true, parsed, error: "" };
+}
+async function publishLanePlan(lanePlanPath, epicTitle) {
+  const steps = publishSteps(lanePlanPath, epicTitle);
+  const publish = publishFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(steps), stageOpts("cli", { label: "publish-issues", model: model("fast") })),
+    steps
+  ));
+  if (!publish.ok || !publish.parsed) {
+    log(`[tracker] ${publish.error}`);
+    return null;
+  }
+  const parsed = publish.parsed;
+  if (parsed.skipped) {
+    log(`[tracker] publish skipped: ${parsed.reason || parsed.skipped}`);
+    return null;
+  }
+  return {
+    epicId: String(parsed.epic_number || ""),
+    taskIds: Object.fromEntries(
+      Object.entries(parsed.task_issues || {}).map(([k, v]) => [k, String(v)])
+    )
+  };
 }
 
 // skills/src/shared/utf8.ts
@@ -335,7 +344,7 @@ function utf8ByteLength(s) {
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
-function q(p) {
+function q2(p) {
   return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
 }
 function contextProbeSteps(o) {
@@ -346,12 +355,12 @@ function contextProbeSteps(o) {
   o.files.forEach((relPath, i) => {
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-sha-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then git hash-object ${q(relPath)}; else printf ''; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then git hash-object ${q2(relPath)}; else printf ''; fi`,
       tolerant: true
     });
   });
@@ -392,12 +401,12 @@ function contextInlineSteps(inlineFiles) {
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then cat ${q(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then cat ${q2(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q(relPath)} ]; then wc -c < ${q(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
   });
@@ -557,13 +566,13 @@ function parseGateResult(result) {
     json = null;
   }
   if (!json || typeof json !== "object") {
-    const tail = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    const tail2 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
     return {
       passed: false,
       needsHuman: false,
       hardStop: step.exit_code === 2,
       exitCode: step.exit_code,
-      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail ? ` \u2014 ${tail}` : ""}`
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail2 ? ` \u2014 ${tail2}` : ""}`
     };
   }
   return {

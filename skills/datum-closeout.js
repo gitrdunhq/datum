@@ -200,6 +200,19 @@ function describeFailure(r, label) {
 
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function housekeepSteps(epicBranch) {
+  return [{ name: "housekeep", command: `datum housekeep-epic ${q(epicBranch)}`, tolerant: true }];
+}
+function housekeepFromSteps(result) {
+  if (result.missing) return { ok: false, summary: "", error: `housekeep_failed: ${describeFailure(result, "housekeep")}` };
+  const step = stepResult(result, "housekeep");
+  if (!step) return { ok: false, summary: "", error: "housekeep_failed: housekeep step did not run" };
+  if (step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+    return { ok: false, summary: "", error: `housekeep_failed: datum housekeep-epic exited ${step.exit_code} \u2014 ${tail}` };
+  }
+  return { ok: true, summary: (step.stdout || "").trim(), error: "" };
+}
 function closeoutCollectSteps(o) {
   return [
     {
@@ -320,10 +333,13 @@ for (const step of archiveResult.steps) {
 var commitStep = archiveResult.steps.find((s) => s.name === "commit");
 var archived = !archiveResult.missing && !!commitStep && commitStep.exit_code === 0;
 var archiveCommit = archived ? (stepStdout(archiveResult, "commit-sha") || "").trim() : "";
-await agent(
-  `Run: datum housekeep-epic ${branch}`,
-  stageOpts("cli", { label: "housekeep", model: model("fast") })
-);
+var housekeepStepList = housekeepSteps(branch);
+var housekeep = housekeepFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(housekeepStepList), stageOpts("cli", { label: "housekeep", model: model("fast") })),
+  housekeepStepList
+));
+if (housekeep.ok) log(`housekeep: ${housekeep.summary || "done"}`);
+else log(`housekeep: ${housekeep.error}`);
 return {
   branch,
   runId: rid,
@@ -331,5 +347,6 @@ return {
   followUps: synth?.follow_up_count || 0,
   archived,
   archiveCommit,
-  archiveFailures
+  archiveFailures,
+  housekeepError: housekeep.error
 };

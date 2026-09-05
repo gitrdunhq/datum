@@ -476,8 +476,8 @@ function stepStdout(r, name) {
 function describeFailure(r, label) {
   if (r.missing) return `${label}: batch agent returned no parseable result`;
   if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
 }
 
 // skills/src/shared/commit-steps.ts
@@ -498,8 +498,8 @@ function worktreeDirtyFromSteps(result) {
   }
   const step = stepResult(result, "status");
   if (!step || step.exit_code !== 0) {
-    const tail = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
-    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail ? ` \u2014 ${tail}` : ""}` };
+    const tail2 = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail2 ? ` \u2014 ${tail2}` : ""}` };
   }
   const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
   return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
@@ -596,18 +596,31 @@ async function resilientAgent(prompt, opts, deps) {
 }
 
 // skills/src/shared/tracker.ts
+function tail(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function stageSteps(issueId, stage, commitSha) {
+  const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
+  return [{ name: "stage", command: `datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}`, tolerant: true }];
+}
+function stageFromSteps(result) {
+  if (result.missing) return { ok: false, error: `tracker_stage_failed: ${describeFailure(result, "stage")}` };
+  const step = stepResult(result, "stage");
+  if (!step) return { ok: false, error: "tracker_stage_failed: stage step did not run" };
+  if (step.exit_code !== 0) return { ok: false, error: `tracker_stage_failed: datum issue-stage exited ${step.exit_code} \u2014 ${tail(step)}` };
+  const parsed = parseAgentJson(step.stdout || "", null);
+  if (!parsed || parsed.ok !== true) return { ok: false, error: `tracker_stage_failed: datum issue-stage exited 0 without ok:true \u2014 ${(step.stdout || "").trim().slice(0, 200)}` };
+  return { ok: true, error: "" };
+}
 async function updateStage(issueId, stage, commitSha) {
   if (!issueId) return false;
-  const shaFlag = commitSha ? ` --commit ${commitSha}` : "";
-  const result = await agent(
-    `Run: datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}
-Return ONLY the command's JSON output. If it fails, return {"ok": false, "error": "<last lines of output>"}.
-Output raw JSON only.`,
-    stageOpts("cli", { label: `tracker:${issueId}:${stage}`, model: model("fast") })
-  );
-  const parsed = result ? parseAgentJson(String(result), null) : null;
-  if (!parsed || parsed.ok === false) {
-    log(`[tracker] issue-stage failed for #${issueId} \u2192 ${stage}: ${parsed?.error || (result ? String(result).slice(0, 200) : "agent returned no result")}`);
+  const steps = stageSteps(issueId, stage, commitSha);
+  const outcome = stageFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(steps), stageOpts("cli", { label: `tracker:${issueId}:${stage}`, model: model("fast") })),
+    steps
+  ));
+  if (!outcome.ok) {
+    log(`[tracker] ${outcome.error} (issue #${issueId} \u2192 ${stage})`);
     return false;
   }
   return true;
@@ -735,8 +748,8 @@ function depMergeFromSteps(result, branches) {
       return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} \u2014 merge step did not run` };
     }
     if (step.exit_code !== 0) {
-      const tail = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
-      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) \u2014 ${tail}` };
+      const tail2 = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) \u2014 ${tail2}` };
     }
   }
   return { ok: true, error: "" };
