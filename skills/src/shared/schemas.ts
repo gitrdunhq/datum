@@ -24,6 +24,8 @@ export const STAGE_RESULT_SCHEMA = {
     status: { type: 'string', enum: ['ok', 'blocked'] },
     needs_write: { type: 'array', items: { type: 'string' } },
     reason: { type: 'string' },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['success', 'tests_pass', 'committed'],
 } as const
@@ -34,6 +36,8 @@ export const REFLECT_SCHEMA = {
     reasoning: { type: 'string' },
     gaps: { type: 'array', items: { type: 'string' } },
     score: { type: 'number' },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['reasoning', 'score'],
 } as const
@@ -52,6 +56,8 @@ export const SKEPTIC_SCHEMA = {
     }},
     confidence: { type: 'number' },
     verdict: { type: 'string', enum: ['PASS', 'FRAGILE', 'BROKEN'] },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['bugs_found', 'confidence', 'verdict'],
 } as const

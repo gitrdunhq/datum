@@ -4,8 +4,8 @@ Working directory: "{{wt}}"
 Implementation files: {{implFiles}}
 Test files: {{testFiles}}
 Test command: {{testCommand}}
-Acceptance criteria:
-{{acStr}}
+Acceptance criteria — the `acceptance_criteria` array in the lane spec file:
+{{laneSpecSlot}}
 
 TOOLS (use before manual reading):
 1. `ast-grep --pattern '<pattern>' {{implFiles}}` — find structural anti-patterns:

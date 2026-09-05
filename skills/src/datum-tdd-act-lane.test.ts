@@ -686,7 +686,9 @@ describe('reflect and refactor-check never crash the lane on a prose reply', () 
 
   it('reflect goes through resilientAgent (throw → null, one retry), and a null result is reflect_no_result, not a 0/10 failure', () => {
     const reflectCall = laneFn.slice(laneFn.indexOf('reflectPrompt('), laneFn.indexOf('reflectPrompt(') + 400)
-    expect(laneFn).toMatch(/await resilientAgent\(\s*reflectPrompt\(/)
+    // witnessedAgent is resilientAgent plus the lane-spec read witness check.
+    expect(laneFn).toMatch(/await witnessedAgent\(\s*reflectPrompt\(/)
+    expect(laneSrc).toMatch(/async function witnessedAgent<T>\([\s\S]{0,300}await resilientAgent<T>\(prompt, opts\)[\s\S]{0,120}assertReadWitness\(\[specFile\], result\)/)
     expect(reflectCall).toMatch(/maxRetries: 1/)
     expect(laneFn).toMatch(/reflect_no_result/)
     // The score must only be read once a non-null result is established.
@@ -712,10 +714,10 @@ describe('reflect and refactor-check never crash the lane on a prose reply', () 
         for (let j = i; j >= Math.max(0, i - 60); j--) {
           // On the schema line itself only a same-line parallel() counts; the
           // call that OWNS the schema opts sits on or above that line.
-          const m = lines[j].match(j === i ? /\bparallel/ : /\b(resilientAgent|agent)\(|\bparallel/)
+          const m = lines[j].match(j === i ? /\bparallel/ : /\b(witnessedAgent|resilientAgent|agent)\(|\bparallel/)
           if (m) { enclosing = m[0]; break }
         }
-        if (enclosing !== 'resilientAgent(' && enclosing !== 'parallel') offenders.push(`${i + 1}: ${line.trim()} (enclosing: ${enclosing || 'none'})`)
+        if (enclosing !== 'resilientAgent(' && enclosing !== 'witnessedAgent(' && enclosing !== 'parallel') offenders.push(`${i + 1}: ${line.trim()} (enclosing: ${enclosing || 'none'})`)
       }
     })
     expect(offenders).toEqual([])
@@ -780,8 +782,8 @@ describe('lane intake: the REFACTOR-resume shortcut is gated on an independent t
 
   it('feeds the green_stale hint into the first GREEN dispatch as a retry-style failure reason', () => {
     const greenDispatch = laneSrc.slice(
-      laneSrc.indexOf('let green: StageResult | null = await resilientAgent('),
-      laneSrc.indexOf('let green: StageResult | null = await resilientAgent(') + 500,
+      laneSrc.indexOf('let green: StageResult | null = await witnessedAgent('),
+      laneSrc.indexOf('let green: StageResult | null = await witnessedAgent(') + 500,
     )
     expect(greenDispatch).toMatch(/greenStaleHint/)
     expect(greenDispatch).toMatch(/greenRetryPrompt\(/)
@@ -847,30 +849,58 @@ describe('GREEN contract check runs through the scope-contract batch, not a "Run
   })
 })
 
-// The lane runner receives the DIGEST (no acceptance criteria) and fetches
-// its own full spec at intake, byte-checked and cross-checked against the
-// digest's spec_hash — the plan never travels through an LLM turn.
-describe('runLane fetches the lane spec at intake from the worktree plan', () => {
+// The lane runner receives the DIGEST (no acceptance criteria). At intake,
+// `datum lane-spec-export` writes the full lane to <wt>/.datum/lane-spec.json
+// and returns only short fields; every agent that needs the criteria reads
+// the file by path and proves it with a read_witness (blob sha prefix).
+describe('runLane exports the lane spec to a worktree file at intake', () => {
   const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
   const start = laneSource.indexOf('async function runLane(')
-  const body = laneSource.slice(start, laneSource.indexOf('// ── Per-lane TDD saga', start) > 0 ? laneSource.length : laneSource.length)
+  const body = laneSource.slice(start)
 
-  it('passes laneSpec (worktree plan path + task id) to laneIntakeSteps and parses it with laneSpecFromSteps', () => {
-    expect(body).toMatch(/laneSpec: \{ planPath: `\$\{wt\}\/\.datum\/lane-plan\.json`, taskId \}/)
-    expect(body).toMatch(/laneSpecFromSteps\(intakeResult, taskId, digestSpecHash\(lanePlan, taskId\)\)/)
+  it('passes planPath/taskId/outPath/expectHash to laneIntakeSteps and parses the summary with laneSpecFromSteps', () => {
+    expect(body).toMatch(/laneSpec: \{ planPath: `\$\{wt\}\/\.datum\/lane-plan\.json`, taskId, outPath: `\$\{wt\}\/\.datum\/lane-spec\.json`, expectHash: digestSpecHash\(lanePlan, taskId\) \}/)
+    expect(body).toMatch(/laneSpecFromSteps\(intakeResult, taskId\)/)
+    expect(body).not.toMatch(/laneSpecFromSteps\(intakeResult, taskId, digestSpecHash/)
   })
 
-  it('a failed spec fetch fails the lane by its named reason before any stage agent runs', () => {
+  it('a failed export fails the lane by its named reason before any stage agent runs', () => {
     const fetchIdx = body.indexOf('laneSpecFromSteps(intakeResult')
     const redIdx = body.indexOf("label: `red:${taskId}`")
     expect(fetchIdx).toBeGreaterThan(-1)
     expect(fetchIdx).toBeLessThan(redIdx)
-    expect(body).toMatch(/if \(!spec\.ok \|\| !spec\.lane\) \{[\s\S]{0,200}status: 'failed', stage: 'CRASH', error: spec\.error/)
+    expect(body).toMatch(/if \(!spec\.ok \|\| !spec\.spec\) \{[\s\S]{0,200}status: 'failed', stage: 'CRASH', error: spec\.error/)
   })
 
-  it('acceptance criteria come from the fetched spec, never from the digest lane', () => {
-    expect(body).toMatch(/acStr = \(spec\.lane\.acceptance_criteria \|\| \[\]\)\.join\('\\n'\)/)
-    expect(body).not.toMatch(/const acStr: string = \(lane\.acceptance_criteria/)
+  it('the criteria text never enters the script: no acStr, no acceptance_criteria read, ac_count from the export summary', () => {
+    expect(body).not.toMatch(/acStr/)
+    expect(body).not.toMatch(/acceptance_criteria/)
+    expect(body).not.toMatch(/extractContractSummary/)
+    expect(body).toMatch(/const acCount = spec\.spec\.ac_count/)
+  })
+
+  it('every stage prompt that needs the criteria gets the deferred spec file, and their results are witness-checked', () => {
+    const specFile = 'const specFile = laneSpecContextFile(spec.spec)'
+    expect(body).toContain(specFile)
+    // RED/GREEN packets, reflect and skeptic all carry the file reference.
+    expect(body).toMatch(/buildPacket\(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', specFile/)
+    expect(body).toMatch(/buildPacket\(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', specFile/)
+    expect(body).toMatch(/reflectPrompt\(\{ wt, testFiles: testFiles\.join\(', '\), laneSpec: specFile \}\)/)
+    expect(body).toMatch(/runSkepticPanel\(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile\)/)
+    // The prompt builders carry the file reference so the witness paragraph is part of the prompt.
+    expect(body).toMatch(/laneSpec: specFile,?\s*\n\s*\}\s*\n\s*(let|const) red/)
+    // No stage call inside runLane goes through bare resilientAgent any more
+    // (the first GREEN call picks its prompt with a ternary, so match the
+    // call, not the prompt name): the witnessed wrapper throws
+    // context_read_unverified on a missing/forged witness.
+    const runLaneOnly = body.slice(0, body.indexOf('async function runSkepticPanel'))
+    expect(runLaneOnly.match(/await resilientAgent\(/g) || []).toEqual([])
+    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(9)
+    expect(laneSource).toMatch(/assertReadWitness\(\[?specFile\]?, /)
+  })
+
+  it('a thrown context_read_unverified reaches the outcome as its own message, not "Error: ..."', () => {
+    expect(laneSource).toMatch(/error: e instanceof Error \? e\.message : String\(e\)/)
   })
 })
 

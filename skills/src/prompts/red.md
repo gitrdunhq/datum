@@ -12,6 +12,9 @@ dependencies of the target your test file belongs to. DO NOT import modules from
 
 TASK PACKET: {{redPacketStr}}
 
+LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
 FRAMEWORK DETECTION:
 Before writing any test code, read ONE existing test file from the same directory as your target test files. Match its:
 - Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)
@@ -22,7 +25,7 @@ If no existing test files exist, fall back to the test_framework field in the ta
 GOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.
 
 APPROACH:
-1. Read the acceptance_criteria from the task packet
+1. Read the acceptance_criteria (and red_note) from the lane spec file
 2. For each AC, write a test that calls the method described in the AC
 3. Assert specific expected values — not just "doesn't crash"
 4. Call methods that don't exist yet — the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure

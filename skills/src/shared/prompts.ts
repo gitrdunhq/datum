@@ -18,38 +18,57 @@ import laneStateWriteTemplate from '../prompts/lane-state-write.md'
 import { renderPrompt } from './utils'
 import type { SkepticLens } from './types'
 import { fencedScript } from './lane-steps'
+import { contextSlot, contextWitnessInstruction, type ContextFile } from './context-relay'
 
 const PREAMBLE = preambleTemplate + '\n\n---\n\n'
 
 type PromptVars = { [key: string]: string }
 
+/**
+ * Render a stage template whose criteria live in the exported lane-spec
+ * file: `{{laneSpecSlot}}` becomes the mandatory Read instruction for that
+ * file and the read-witness paragraph is appended, so the agent's JSON must
+ * carry the file's blob-sha prefix (verified by assertReadWitness).
+ */
+function withLaneSpec(template: string, vars: PromptVars, laneSpec: ContextFile): string {
+  return PREAMBLE + renderPrompt(template, { ...vars, laneSpecSlot: contextSlot(laneSpec) }) + contextWitnessInstruction([laneSpec])
+}
+
 export function redPrompt(vars: {
   wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testRunCmd: string; testFilesList: string; commitPrefix: string; commitCmd: string
   testFuncPattern?: string
+  laneSpec: ContextFile
 }): string {
-  return PREAMBLE + renderPrompt(redTemplate, vars as PromptVars)
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(redTemplate, rest as PromptVars, laneSpec)
 }
 
 export function redRetryPrompt(vars: {
   wt: string; failureReason: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testRunCmd: string; testFilesList: string; commitPrefix: string; commitCmd: string
+  laneSpec: ContextFile
 }): string {
-  return PREAMBLE + renderPrompt(redRetryTemplate, vars as PromptVars)
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(redRetryTemplate, rest as PromptVars, laneSpec)
 }
 
 export function greenPrompt(vars: {
   greenCtxCmd: string; greenPacketStr: string
   testCommand: string; testRunCmd: string; implFilesList: string; commitPrefix: string; commitCmd: string; wt: string
+  laneSpec: ContextFile
 }): string {
-  return PREAMBLE + renderPrompt(greenTemplate, vars as PromptVars)
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(greenTemplate, rest as PromptVars, laneSpec)
 }
 
 export function greenRetryPrompt(vars: {
   wt: string; failureReason: string; greenCtxCmd: string; greenRetryPacketStr: string
   testCommand: string; testRunCmd: string; implFilesList: string; commitPrefix: string; commitCmd: string
+  laneSpec: ContextFile
 }): string {
-  return PREAMBLE + renderPrompt(greenRetryTemplate, vars as PromptVars)
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(greenRetryTemplate, rest as PromptVars, laneSpec)
 }
 
 export function refactorPrompt(vars: {
@@ -59,12 +78,14 @@ export function refactorPrompt(vars: {
   return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
 }
 
-export function reflectPrompt(vars: { wt: string; testFiles: string; acStr: string }): string {
-  return PREAMBLE + renderPrompt(reflectTemplate, vars as PromptVars)
+export function reflectPrompt(vars: { wt: string; testFiles: string; laneSpec: ContextFile }): string {
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(reflectTemplate, rest as PromptVars, laneSpec)
 }
 
-export function skepticBasePrompt(vars: { wt: string; implFiles: string; testFiles: string; testCommand: string; acStr: string }): string {
-  return PREAMBLE + renderPrompt(skepticBaseTemplate, vars as PromptVars)
+export function skepticBasePrompt(vars: { wt: string; implFiles: string; testFiles: string; testCommand: string; laneSpec: ContextFile }): string {
+  const { laneSpec, ...rest } = vars
+  return withLaneSpec(skepticBaseTemplate, rest as PromptVars, laneSpec)
 }
 
 export function skepticLenses(): SkepticLens[] {

@@ -322,8 +322,10 @@ export interface TaskPacket {
   title: string
   working_directory: string
   test_command: string
-  acceptance_criteria: string[]
-  red_note: string
+  /** The lane's acceptance criteria, red_note and contract_summary live in
+   *  this worktree file (written by `datum lane-spec-export`); the agent
+   *  reads it and proves the read with read_witness = sha prefix. */
+  lane_spec_file: { path: string; bytes: number; sha: string }
   allowed_write_files: string[]
   forbidden_write_files: string[]
   commit_prefix: string

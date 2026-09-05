@@ -13,8 +13,6 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { laneSpecHash } from './shared/utils'
-import { utf8ByteLength, utf8Encode } from './shared/utf8'
-import { gitBlobSha } from './shared/sha1'
 
 const bundlePath = join(__dirname, '..', 'datum-tdd-act-lane.js')
 
@@ -31,6 +29,11 @@ function batch(steps: Record<string, string | { stdout?: string; exit_code?: num
   )))
 }
 
+const SPEC_PATH = '/wt/T1/.datum/lane-spec.json'
+const SPEC_SHA = 'c0ffee'.repeat(6) + 'abcd'
+/** What every agent that read the lane-spec file must carry (assertReadWitness). */
+const witness = { read_witness: { [SPEC_PATH]: SPEC_SHA.slice(0, 12) } }
+
 /** The full lane as lane-plan.json holds it (acceptance criteria included). */
 function fullLane(o: { pytest: boolean }) {
   const files = o.pytest ? ['tests/test_a.py', 'src/a.py'] : ['src/a.test.ts', 'src/a.ts']
@@ -40,18 +43,17 @@ function fullLane(o: { pytest: boolean }) {
 function happyPathResponder(o: { pytest: boolean }): Responder {
   const testFile = o.pytest ? 'tests/test_a.py' : 'src/a.test.ts'
   const implFile = o.pytest ? 'src/a.py' : 'src/a.ts'
-  // The lane fetches its full spec at intake: jq output, its byte count and
-  // its blob sha must agree with each other and with the digest's spec_hash.
-  const specText = JSON.stringify(fullLane(o)) + '\n'
-  const specBytes = utf8ByteLength(specText)
-  const specSha = gitBlobSha(utf8Encode(specText))
+  // The lane exports its full spec to a worktree file at intake; the runner
+  // returns only the short summary. Stage agents evidence the read with the
+  // file's blob sha prefix (read_witness), which the script verifies.
+  const specSummary = { task_id: 'T1', path: SPEC_PATH, bytes: 321, sha: SPEC_SHA, spec_hash: laneSpecHash(fullLane(o)), ac_count: 2 }
   return (label, prompt) => {
     if (label.startsWith('completion-check:')) return 'MISSING'
     if (label.startsWith('lane-intake:')) {
-      return batch({ 'lane-spec': specText, 'lane-spec-bytes': `${specBytes}\n`, 'lane-spec-sha': `${specSha}\n`, history: '', cleanup: '', 'skeleton-gen': '{}' })
+      return batch({ 'lane-spec': JSON.stringify(specSummary) + '\n', history: '', cleanup: '', 'skeleton-gen': '{}' })
     }
     if (label.startsWith('red:')) {
-      return { success: true, tests_pass: false, committed: true, commit_sha: 'aaa111', files_written: [testFile], test_exit_code: 1, test_errors: ['AttributeError'] }
+      return { ...witness, success: true, tests_pass: false, committed: true, commit_sha: 'aaa111', files_written: [testFile], test_exit_code: 1, test_errors: ['AttributeError'] }
     }
     if (label.startsWith('post-red:')) {
       const steps: Record<string, string> = {
@@ -75,13 +77,13 @@ function happyPathResponder(o: { pytest: boolean }): Responder {
     if (label.startsWith('scope-contract:')) {
       return batch({ 'contract-preflight': '{"status":"ok","conflicts":[],"needs_write":[],"reason":""}' })
     }
-    if (label.startsWith('reflect:')) return { score: 8, reasoning: 'covers both ACs', gaps: [] }
+    if (label.startsWith('reflect:')) return { ...witness, score: 8, reasoning: 'covers both ACs', gaps: [] }
     if (label.startsWith('green:')) {
-      return { success: true, tests_pass: true, committed: true, commit_sha: 'bbb222', files_written: [implFile], test_exit_code: 0 }
+      return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'bbb222', files_written: [implFile], test_exit_code: 0 }
     }
     if (label.startsWith('post-green-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
     if (label.startsWith('post-green:')) return batch({ ownership: `${implFile}\n` })
-    if (label.startsWith('skeptic-')) return { bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+    if (label.startsWith('skeptic-')) return { ...witness, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
     if (label.startsWith('refactor-check:')) return { should_refactor: false, reason: 'clean' }
     return null
   }
@@ -316,6 +318,65 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
   })
 
   // -------------------------------------------------------------------------
+  // Lane spec as a worktree file: the intake batch runs datum lane-spec-export,
+  // the stage prompts point at the file, and a result without the read
+  // witness fails the lane as context_read_unverified.
+  // -------------------------------------------------------------------------
+
+  it('intake runs datum lane-spec-export with the digest hash; RED/GREEN/reflect/skeptic prompts carry the file path, blob sha and the witness demand, never the criteria', async () => {
+    const { calls, result } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    const intake = calls.find((c) => c.label.startsWith('lane-intake:'))!
+    expect(intake.prompt).toContain(`datum lane-spec-export --plan "/wt/T1/.datum/lane-plan.json" --task "T1" --out "${SPEC_PATH}" --expect-hash "${laneSpecHash(fullLane({ pytest: false }))}"`)
+    expect(intake.prompt).not.toMatch(/jq -c --arg id/)
+    for (const prefix of ['red:', 'green:', 'reflect:', 'skeptic-']) {
+      const call = calls.find((c) => c.label.startsWith(prefix))!
+      expect(call.prompt, prefix).toContain(SPEC_PATH)
+      expect(call.prompt, prefix).toContain(`git blob ${SPEC_SHA}`)
+      expect(call.prompt, prefix).toMatch(/MANDATORY READ WITNESS/)
+      expect(call.prompt, prefix).not.toContain('does a')
+    }
+    const red = calls.find((c) => c.label.startsWith('red:'))!
+    expect(red.prompt).toContain(`"lane_spec_file":{"path":"${SPEC_PATH}","bytes":321,"sha":"${SPEC_SHA}"}`)
+    expect(red.prompt).not.toContain('"acceptance_criteria"')
+  })
+
+  it('a RED result without the read witness fails the lane as context_read_unverified before any gate', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('red:')) return { success: true, tests_pass: false, committed: true, commit_sha: 'aaa111', files_written: ['src/a.test.ts'], test_exit_code: 1 }
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^context_read_unverified: \/wt\/T1\/\.datum\/lane-spec\.json/)
+    expect(calls.some((c) => c.label.startsWith('post-red:'))).toBe(false)
+  })
+
+  it('a forged witness (wrong sha prefix) on GREEN is context_read_unverified too', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('green:')) return { read_witness: { [SPEC_PATH]: 'deadbeefdead' }, success: true, tests_pass: true, committed: true, commit_sha: 'bbb222', files_written: ['src/a.ts'], test_exit_code: 0 }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^context_read_unverified: .*expected blob c0ffee/)
+  })
+
+  it('a lane-spec-export failure (hash mismatch) fails the lane by the CLI\'s own reason and dispatches no stage agent', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) return batch({ 'lane-spec': { exit_code: 1, stdout: '{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake"}\n' }, history: '' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^lane_spec_export_failed: T1 — lane_spec_hash_mismatch: T1/)
+    expect(calls.some((c) => c.label.startsWith('red:'))).toBe(false)
+  })
+
+  // -------------------------------------------------------------------------
   // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
   // GREEN once with the confirmed bugs, then independently re-verify.
   // -------------------------------------------------------------------------
@@ -327,12 +388,12 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
       if (label.startsWith('skeptic-')) {
         skepticCalls++
         if (skepticCalls <= 3) {
-          return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+          return { ...witness, bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
         }
-        return { bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+        return { ...witness, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
       }
       if (label.startsWith('green-skeptic-retry:')) {
-        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+        return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
       }
       if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
       return base(label, prompt)
@@ -351,10 +412,10 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => {
       if (label.startsWith('skeptic-')) {
-        return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+        return { ...witness, bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
       }
       if (label.startsWith('green-skeptic-retry:')) {
-        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+        return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
       }
       if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
       return base(label, prompt)
@@ -371,10 +432,10 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const respond: Responder = (label, prompt) => {
       if (label.startsWith('skeptic-')) {
         skepticCalls++
-        return { bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
+        return { ...witness, bugs_found: [{ description: 'off-by-one in loop bound', evidence: 'line 12', severity: 'high' }], confidence: 0.9, verdict: 'BROKEN' }
       }
       if (label.startsWith('green-skeptic-retry:')) {
-        return { success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+        return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
       }
       if (label.startsWith('post-green-skeptic-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=1\n' })
       return base(label, prompt)

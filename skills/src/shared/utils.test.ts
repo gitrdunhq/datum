@@ -4,7 +4,8 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, extractContractSummary, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
+import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
+import type { ContextFile } from './context-relay'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
 // ---------------------------------------------------------------------------
@@ -923,106 +924,6 @@ describe('joinPosix (via extractRequiredScopeFiles)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// extractContractSummary — function signature extraction from AC text
-// ---------------------------------------------------------------------------
-
-describe('extractContractSummary', () => {
-  it('extracts function name and arguments from a simple AC', () => {
-    const acs = ['The function frobnicate(x, y) should multiply them']
-    const result = extractContractSummary(acs)
-    expect(result).toHaveLength(1)
-    expect(result[0].function).toBe('frobnicate')
-    expect(result[0].args).toEqual(['x', 'y'])
-  })
-
-  it('trims whitespace from argument list', () => {
-    const acs = ['function  processData ( a , b , c ) does the thing']
-    const result = extractContractSummary(acs)
-    expect(result[0].args).toEqual(['a', 'b', 'c'])
-  })
-
-  it('captures return type when present', () => {
-    const acs = ['getData() returns a string']
-    const result = extractContractSummary(acs)
-    expect(result[0].returns).toBe('string')
-  })
-
-  it('captures exception type when present', () => {
-    const acs = ['risky() raises ValueError']
-    const result = extractContractSummary(acs)
-    expect(result[0].raises).toBe('ValueError')
-  })
-
-  it('filters out builtin function names (Python)', () => {
-    const acs = ['print("hello")', 'len(items)', 'myFunc(x)']
-    const result = extractContractSummary(acs)
-    // print and len are filtered; only myFunc remains
-    expect(result).toHaveLength(1)
-    expect(result[0].function).toBe('myFunc')
-  })
-
-  it('filters out builtin function names (TypeScript/JavaScript)', () => {
-    const acs = ['console.log(x)', 'JSON.stringify(o)', 'myFunc(x)']
-    const result = extractContractSummary(acs)
-    // console, JSON are filtered; only myFunc remains
-    const funcs = result.map((r) => r.function)
-    expect(funcs).toContain('myFunc')
-    expect(funcs).not.toContain('console')
-    expect(funcs).not.toContain('JSON')
-  })
-
-  it('handles empty acceptance criteria list', () => {
-    const result = extractContractSummary([])
-    expect(result).toEqual([])
-  })
-
-  it('handles null/undefined acceptance criteria', () => {
-    const result = extractContractSummary(null as any)
-    expect(result).toEqual([])
-  })
-
-  it('truncates AC text to 120 characters', () => {
-    const longAc = 'myFunction() does something very long and we need to make sure it is truncated properly so it does not take up too much space in the output'
-    const result = extractContractSummary([longAc])
-    expect(result[0].ac.length).toBeLessThanOrEqual(120)
-  })
-
-  it('does not match function names with special character immediately before (but may match partial words inside strings)', () => {
-    // The regex uses negative lookbehind (?<!['"-]) which only prevents matches
-    // if ' or " or - is immediately before the word. It will still match partial words like "unc" from "func()" text.
-    // To fully filter quoted strings would require more complex parsing.
-    const acs = ['func() should work', '"func()" in quotes', "func'() won't match"]
-    const result = extractContractSummary(acs)
-    // func() from first AC matches, and partial words might match from others
-    expect(result.length).toBeGreaterThan(0)
-    expect(result.some((e) => e.function === 'func')).toBe(true)
-  })
-
-  it('extracts multiple functions from different ACs', () => {
-    const acs = [
-      'funcA(x) returns int',
-      'funcB(y) returns string',
-    ]
-    const result = extractContractSummary(acs)
-    expect(result).toHaveLength(2)
-    expect(result[0].function).toBe('funcA')
-    expect(result[1].function).toBe('funcB')
-  })
-
-  it('handles empty argument list', () => {
-    const acs = ['noArgs() does something']
-    const result = extractContractSummary(acs)
-    expect(result[0].args).toEqual([])
-  })
-
-  it('captures "raises" with capital R', () => {
-    const acs = ['dangerous() Raises MyError']
-    const result = extractContractSummary(acs)
-    expect(result[0].raises).toBe('MyError')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // crossValidateBugs — merges skeptic results across lenses
 // ---------------------------------------------------------------------------
 
@@ -1204,9 +1105,10 @@ describe('buildPacket', () => {
     testCommand: 'npm test',
     test_framework: 'vitest',
   } as PipelineConfig
+  const specFile: ContextFile = { path: '/wt/.datum/lane-spec.json', exists: true, inlined: false, bytes: 300, sha: 'f'.repeat(40), content: null }
 
   it('builds a packet for RED stage with test files allowed and impl files forbidden', () => {
-    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'RED')
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.stage).toBe('RED')
     expect(packet.allowed_write_files).toEqual(['tests/test.ts'])
     expect(packet.forbidden_write_files).toEqual(['src/impl.ts'])
@@ -1214,7 +1116,7 @@ describe('buildPacket', () => {
   })
 
   it('builds a packet for GREEN stage with impl files allowed and test files forbidden', () => {
-    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'GREEN')
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'GREEN', specFile)
     expect(packet.stage).toBe('GREEN')
     expect(packet.allowed_write_files).toEqual(['src/impl.ts'])
     expect(packet.forbidden_write_files).toEqual(['tests/test.ts'])
@@ -1222,7 +1124,7 @@ describe('buildPacket', () => {
   })
 
   it('builds a packet for REFACTOR stage with both files allowed and none forbidden', () => {
-    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'REFACTOR')
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'REFACTOR', specFile)
     expect(packet.stage).toBe('REFACTOR')
     expect(packet.allowed_write_files).toEqual(['tests/test.ts', 'src/impl.ts'])
     expect(packet.forbidden_write_files).toEqual([])
@@ -1230,45 +1132,47 @@ describe('buildPacket', () => {
   })
 
   it('includes schema version and task_id', () => {
-    const packet = buildPacket('task-456', [], [], testLane, '/wt', cfg, 'RED')
+    const packet = buildPacket('task-456', [], [], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.schema_version).toBe('1.0')
     expect(packet.task_id).toBe('task-456')
   })
 
-  it('copies title and red_note from lane', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+  it('copies title from lane', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.title).toBe('Test Lane')
-    expect(packet.red_note).toBe('This is tricky')
   })
 
-  it('includes acceptance criteria unchanged', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
-    expect(packet.acceptance_criteria).toEqual(['AC1', 'AC2'])
+  it('carries the lane spec FILE reference, never the criteria or red_note text', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.lane_spec_file).toEqual({ path: '/wt/.datum/lane-spec.json', bytes: 300, sha: 'f'.repeat(40) })
+    expect((packet as any).acceptance_criteria).toBeUndefined()
+    expect((packet as any).red_note).toBeUndefined()
+    expect(JSON.stringify(packet)).not.toContain('AC1')
   })
 
   it('sets working_directory from wt parameter', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/my/wt', cfg, 'RED')
+    const packet = buildPacket('task-123', [], [], testLane, '/my/wt', cfg, 'RED', specFile)
     expect(packet.working_directory).toBe('/my/wt')
   })
 
   it('includes test_command from config', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.test_command).toBe('npm test')
   })
 
   it('includes test_framework from config when present', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED')
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.test_framework).toBe('vitest')
   })
 
   it('omits test_framework when config does not have it', () => {
     const minCfg = { testCommand: 'npm test' }
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', minCfg as any, 'RED')
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', minCfg as any, 'RED', specFile)
     expect((packet as any).test_framework).toBeUndefined()
   })
 
   it('merges extras into the packet', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile, {
       custom_field: 'custom_value',
       upstream_source: 'main',
     })
@@ -1277,7 +1181,7 @@ describe('buildPacket', () => {
   })
 
   it('extras do not override core fields (schema_version, task_id, stage, etc.)', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile, {
       stage: 'GREEN',
       schema_version: '2.0',
       task_id: 'wrong-id',
@@ -1288,20 +1192,20 @@ describe('buildPacket', () => {
   })
 
   it('handles empty test and impl file lists', () => {
-    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'REFACTOR')
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'REFACTOR', specFile)
     expect(packet.allowed_write_files).toEqual([])
     expect(packet.forbidden_write_files).toEqual([])
   })
 
   it('preserves order of test files when allowed', () => {
     const testFiles = ['test1.ts', 'test2.ts', 'test3.ts']
-    const packet = buildPacket('task-123', testFiles, [], testLane, '/wt', cfg, 'RED')
+    const packet = buildPacket('task-123', testFiles, [], testLane, '/wt', cfg, 'RED', specFile)
     expect(packet.allowed_write_files).toEqual(testFiles)
   })
 
   it('preserves order of impl files when allowed', () => {
     const implFiles = ['impl1.ts', 'impl2.ts', 'impl3.ts']
-    const packet = buildPacket('task-123', [], implFiles, testLane, '/wt', cfg, 'GREEN')
+    const packet = buildPacket('task-123', [], implFiles, testLane, '/wt', cfg, 'GREEN', specFile)
     expect(packet.allowed_write_files).toEqual(implFiles)
   })
 })

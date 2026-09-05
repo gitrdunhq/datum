@@ -4,6 +4,7 @@
 // actual file reads (e.g. for context_files) must happen via the agent()
 // API at the call site — this module only renders already-fetched content.
 
+import type { ContextFile } from './context-relay'
 import type {
   LanePlan,
   Lane,
@@ -20,14 +21,6 @@ import type { TddStage, Severity } from './models'
 // ---------------------------------------------------------------------------
 // Local types
 // ---------------------------------------------------------------------------
-
-export interface ContractEntry {
-  function: string
-  args: string[]
-  returns: string | null
-  raises: string | null
-  ac: string
-}
 
 // ---------------------------------------------------------------------------
 // buildWaves — Kahn's algorithm BFS wave grouping
@@ -649,101 +642,6 @@ export function laneCtxCmd(packet: TaskPacket, wt: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// extractContractSummary — extracts function signatures from AC text
-// ---------------------------------------------------------------------------
-
-const BUILTIN_SKIP = new Set([
-  // Python
-  'print',
-  'len',
-  'str',
-  'int',
-  'dict',
-  'list',
-  'set',
-  'isinstance',
-  'type',
-  'exit',
-  'round',
-  'sorted',
-  'filter',
-  'map',
-  'any',
-  'all',
-  'range',
-  'enumerate',
-  'zip',
-  'open',
-  'input',
-  'format',
-  'repr',
-  'hash',
-  'id',
-  'dir',
-  'vars',
-  'super',
-  'property',
-  'staticmethod',
-  'classmethod',
-  // Swift
-  'fatalError',
-  'precondition',
-  'debugPrint',
-  'String',
-  'Int',
-  'Array',
-  'Dictionary',
-  'Bool',
-  'Optional',
-  // Go
-  'fmt',
-  'Println',
-  'Printf',
-  'Sprintf',
-  'make',
-  'append',
-  'delete',
-  'panic',
-  'recover',
-  // TypeScript / JavaScript
-  'console',
-  'log',
-  'parseInt',
-  'parseFloat',
-  'Number',
-  'Object',
-  'Boolean',
-  'Promise',
-  'setTimeout',
-  'JSON',
-])
-
-export function extractContractSummary(
-  acceptanceCriteria: string[],
-): ContractEntry[] {
-  return (acceptanceCriteria || [])
-    .map((ac): ContractEntry | null => {
-      const funcMatch = ac.match(/(?<!['"-])(\w+)\s*\(([^)]*)\)/)
-      const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i)
-      const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/)
-      if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null
-      return {
-        function: funcMatch[1],
-        args: funcMatch[2]
-          ? funcMatch[2]
-              .split(',')
-              .map((a) => a.trim())
-              .filter(Boolean)
-          : [],
-        returns: retMatch ? retMatch[1] : null,
-        raises: raiseMatch ? raiseMatch[1] : null,
-        ac: ac.slice(0, 120),
-      }
-    })
-    .filter((entry): entry is ContractEntry => entry !== null)
-}
-
-// ---------------------------------------------------------------------------
 // crossValidateBugs — cross-validates bugs across skeptic lenses
 // ---------------------------------------------------------------------------
 
@@ -796,6 +694,7 @@ export function buildPacket(
   wt: string,
   cfg: PipelineConfig,
   stage: TddStage,
+  specFile: ContextFile,
   extras: Record<string, unknown> = {},
 ): TaskPacket {
   // Extras first, then core fields override to prevent callers from accidentally
@@ -808,8 +707,10 @@ export function buildPacket(
     title: lane.title,
     working_directory: wt,
     test_command: cfg.testCommand,
-    acceptance_criteria: lane.acceptance_criteria || [],
-    red_note: lane.red_note || '',
+    // The criteria/red_note/contract_summary are in this file, not in the
+    // packet: nothing an LLM turn relayed is trusted as content (see
+    // datum/lane_spec_export.py). The agent reads it and witnesses the read.
+    lane_spec_file: { path: specFile.path, bytes: specFile.bytes, sha: specFile.sha },
     allowed_write_files:
       stage === 'RED'
         ? testFiles

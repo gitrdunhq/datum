@@ -7,7 +7,8 @@
 
 import type { BatchStep, BatchResult } from './batch'
 import { stepStdout, stepResult, describeFailure } from './batch'
-import { verifyFileOwnership, testRunCommand, laneSpecHash, parseAgentJson } from './utils'
+import { verifyFileOwnership, testRunCommand, parseAgentJson } from './utils'
+import type { ContextFile } from './context-relay'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
 import type { Lane, LanePlanDigest } from './types'
@@ -64,21 +65,25 @@ export interface LaneIntakeOpts {
    */
   verifyTestCmd?: string | null
   /**
-   * Fetch this lane's full spec (acceptance criteria included) from the
-   * worktree copy of the plan as the FIRST steps — the scheduler only holds
-   * the digest. Evaluated by laneSpecFromSteps. Null/omitted skips it.
+   * Export this lane's full spec (acceptance criteria included) from the
+   * worktree copy of the plan to `outPath` as the FIRST step — the scheduler
+   * only holds the digest, and no LLM turn relays the criteria. Evaluated by
+   * laneSpecFromSteps. Null/omitted skips it.
    */
-  laneSpec?: { planPath: string; taskId: string } | null
+  laneSpec?: LaneSpecExportOpts | null
+}
+
+export interface LaneSpecExportOpts {
+  planPath: string
+  taskId: string
+  outPath: string
+  /** The digest's spec_hash; the CLI refuses (exit 1) if the plan lane hashes differently. */
+  expectHash: string
 }
 
 export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
   const steps: BatchStep[] = []
-  if (o.laneSpec) {
-    const spec = laneSpecCommand(o.laneSpec.planPath, o.laneSpec.taskId)
-    steps.push({ name: 'lane-spec', command: spec, tolerant: true })
-    steps.push({ name: 'lane-spec-bytes', command: `${spec} | wc -c | tr -d ' '`, tolerant: true })
-    steps.push({ name: 'lane-spec-sha', command: `${spec} | git hash-object --stdin`, tolerant: true })
-  }
+  if (o.laneSpec) steps.push({ name: 'lane-spec', command: laneSpecExportCommand(o.laneSpec), tolerant: true })
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
   steps.push({ name: 'history', command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true })
   if (!o.structural) {
@@ -591,42 +596,59 @@ export function digestSpecHash(digest: LanePlanDigest, taskId: string): string {
   return lane.spec_hash
 }
 
-// ── Per-lane spec fetch (inside laneIntakeSteps): jq the full lane out of the
-// worktree copy of the plan, byte-checked and cross-checked against the
-// digest's spec_hash. Small enough (one lane) for a runner to echo verbatim.
+// ── Per-lane spec export (inside laneIntakeSteps): `datum lane-spec-export`
+// writes the full lane to a file in the worktree, checks it against the
+// digest's spec_hash, and prints ONLY short fields. Echoing the lane through
+// the runner was not viable — it rewrote backticks as \` (wf_47c507cf-1e5).
+// The stage agents read the file by path and witness the read (blob sha).
 
-export function laneSpecCommand(planPath: string, taskId: string): string {
-  return `jq -c --arg id ${q(taskId)} '.lanes[$id]' ${q(planPath)}`
+export interface LaneSpecSummary {
+  task_id: string
+  path: string
+  bytes: number
+  /** git blob sha of the written file — the read_witness the agents must reproduce. */
+  sha: string
+  spec_hash: string
+  ac_count: number
+}
+
+export function laneSpecExportCommand(o: LaneSpecExportOpts): string {
+  return `datum lane-spec-export --plan ${q(o.planPath)} --task ${q(o.taskId)} --out ${q(o.outPath)} --expect-hash ${q(o.expectHash)}`
 }
 
 export function laneSpecFromSteps(
   result: BatchResult,
   taskId: string,
-  expectedSpecHash: string,
-): { ok: boolean; lane: Lane | null; error: string } {
-  const none = { ok: false, lane: null }
-  if (result.missing) return { ...none, error: `lane_spec_relay_failed: ${taskId} — ${describeFailure(result, 'lane-spec')}` }
+): { ok: boolean; spec: LaneSpecSummary | null; error: string } {
+  const none = { ok: false, spec: null }
+  if (result.missing) return { ...none, error: `lane_spec_export_failed: ${taskId} — ${describeFailure(result, 'lane-spec')}` }
   const step = stepResult(result, 'lane-spec')
-  if (!step || step.exit_code !== 0) {
-    return { ...none, error: `lane_spec_relay_failed: ${taskId} — jq exited ${step ? step.exit_code : 'without running'}: ${((step && (step.stderr || step.stdout)) || '').trim().slice(0, 200)}` }
+  if (!step) return { ...none, error: `lane_spec_export_failed: ${taskId} — the lane-spec step never ran` }
+  if (step.exit_code !== 0) {
+    // The CLI prints {"error": "<named reason>"} — surface it verbatim.
+    const cliErr = parseAgentJson<{ error?: string } | null>(step.stdout || '', null)
+    const why = (cliErr && typeof cliErr.error === 'string' && cliErr.error) || (step.stderr || step.stdout || '').trim().slice(0, 300) || `exit ${step.exit_code}`
+    return { ...none, error: `lane_spec_export_failed: ${taskId} — ${why}` }
   }
-  const text = step.stdout || ''
-  const bytes = parseInt((stepStdout(result, 'lane-spec-bytes') || '').trim(), 10)
-  const sha = (stepStdout(result, 'lane-spec-sha') || '').trim()
-  const gotBytes = utf8ByteLength(text)
-  const gotSha = gitBlobSha(utf8Encode(text))
-  if (!Number.isFinite(bytes) || gotBytes !== bytes || !sha || gotSha !== sha) {
-    return { ...none, error: `lane_spec_relay_mismatch: ${taskId} — expected ${bytes} bytes / blob ${sha}, got ${gotBytes} bytes / blob ${gotSha} — the runner did not return the lane spec verbatim` }
+  const parsed = parseAgentJson<Partial<LaneSpecSummary> | null>(step.stdout || '', null)
+  const bad = (what: string) => ({ ...none, error: `lane_spec_export_unparseable: ${taskId} — ${what}: ${(step.stdout || '').trim().slice(0, 200)}` })
+  if (!parsed || typeof parsed !== 'object') return bad('datum lane-spec-export printed no JSON object')
+  if (parsed.task_id !== taskId) return bad(`summary is for ${String(parsed.task_id)}`)
+  if (typeof parsed.path !== 'string' || !parsed.path) return bad('no path')
+  if (typeof parsed.bytes !== 'number' || !Number.isInteger(parsed.bytes) || parsed.bytes <= 0) return bad('bytes is not a positive integer')
+  if (typeof parsed.sha !== 'string' || !/^[0-9a-f]{40}$/.test(parsed.sha)) return bad('sha is not a 40-hex blob id')
+  if (typeof parsed.spec_hash !== 'string' || !parsed.spec_hash) return bad('no spec_hash')
+  if (typeof parsed.ac_count !== 'number' || !Number.isInteger(parsed.ac_count) || parsed.ac_count < 0) return bad('ac_count is not a non-negative integer')
+  return {
+    ok: true,
+    spec: { task_id: parsed.task_id, path: parsed.path, bytes: parsed.bytes, sha: parsed.sha, spec_hash: parsed.spec_hash, ac_count: parsed.ac_count },
+    error: '',
   }
-  const parsed = parseAgentJson<Lane | null>(text, null)
-  if (parsed === null || typeof parsed !== 'object') {
-    return { ...none, error: `lane_spec_missing: ${taskId} is not in the worktree lane plan (jq printed ${text.trim().slice(0, 40) || 'nothing'})` }
-  }
-  const got = laneSpecHash(parsed)
-  if (got !== expectedSpecHash) {
-    return { ...none, error: `lane_spec_hash_mismatch: ${taskId} — the worktree lane plan hashes to ${got} but the digest says ${expectedSpecHash}; the plan changed between digest and intake` }
-  }
-  return { ok: true, lane: parsed, error: '' }
+}
+
+/** The exported lane file as a deferred ContextFile: contextSlot() tells the agent to read it, assertReadWitness() proves it did. */
+export function laneSpecContextFile(spec: LaneSpecSummary): ContextFile {
+  return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null }
 }
 
 // ── Closeout collect: branch/shas/config + the four collectors + data-exists ──

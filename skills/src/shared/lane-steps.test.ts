@@ -34,11 +34,11 @@ import {
   lanePlanDigestFromSteps,
   digestSpecHash,
   laneSpecFromSteps,
+  laneSpecContextFile,
   LANE_PLAN_DIGEST_BUDGET_BYTES,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
-import { laneSpecHash } from './utils'
 import type { LanePlanDigest } from './types'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -813,56 +813,69 @@ describe('lanePlanDigestFromSteps', () => {
   })
 })
 
-// Each lane fetches its OWN full spec (acceptance criteria included) at
-// intake with one jq step in its worktree, byte-checked (wc -c + git
-// hash-object --stdin) and cross-checked against the digest's spec_hash.
-describe('laneIntakeSteps lane-spec fetch + laneSpecFromSteps', () => {
-  const fullLane = { title: 'one', files: ['src/a.py', 'tests/test_a.py'], depends_on: [], acceptance_criteria: ['a() returns 1 for §4.1'] }
-  const specText = JSON.stringify(fullLane) + '\n'
-  const bytes = utf8ByteLength(specText)
-  const sha = gitBlobSha(utf8Encode(specText))
-  const expectedHash = laneSpecHash(fullLane)
+// Each lane's full spec becomes a FILE in its worktree: one intake step runs
+// `datum lane-spec-export`, which writes <wt>/.datum/lane-spec.json, checks
+// the lane against the digest's spec_hash, and prints only short fields. No
+// LLM turn relays the criteria (the runner rewrote backticks as \` — elonchesd
+// run wf_47c507cf-1e5); the stage agents read the file and witness the read.
+describe('laneIntakeSteps lane-spec export + laneSpecFromSteps', () => {
+  const laneSpec = { planPath: '/wt/T1/.datum/lane-plan.json', taskId: 'T1', outPath: '/wt/T1/.datum/lane-spec.json', expectHash: 'fnv1a64:0000000000000001' }
+  const summary = { task_id: 'T1', path: '/wt/T1/.datum/lane-spec.json', bytes: 412, sha: 'a'.repeat(40), spec_hash: 'fnv1a64:0000000000000001', ac_count: 2 }
 
-  it('prepends lane-spec, lane-spec-bytes and lane-spec-sha steps over the worktree copy of the plan', () => {
+  it('prepends one tolerant lane-spec step that runs datum lane-spec-export with the digest hash', () => {
     const steps = laneIntakeSteps({
       wt: '/wt/T1', epicBranch: 'e', completionPath: null, structural: true, cleanupCmd: null,
-      planSkeletonPath: '', skeletonCmd: '', preflightPath: '', laneSpec: { planPath: '/wt/T1/.datum/lane-plan.json', taskId: 'T1' },
+      planSkeletonPath: '', skeletonCmd: '', preflightPath: '', laneSpec,
     })
-    expect(names(steps).slice(0, 3)).toEqual(['lane-spec', 'lane-spec-bytes', 'lane-spec-sha'])
-    expect(steps[0].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json"`)
-    expect(steps[1].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json" | wc -c | tr -d ' '`)
-    expect(steps[2].command).toBe(`jq -c --arg id "T1" '.lanes[$id]' "/wt/T1/.datum/lane-plan.json" | git hash-object --stdin`)
-    for (const s of steps.slice(0, 3)) expect(s.tolerant).toBe(true)
+    expect(names(steps)[0]).toBe('lane-spec')
+    expect(steps[0].command).toBe('datum lane-spec-export --plan "/wt/T1/.datum/lane-plan.json" --task "T1" --out "/wt/T1/.datum/lane-spec.json" --expect-hash "fnv1a64:0000000000000001"')
+    expect(steps[0].tolerant).toBe(true)
+    expect(names(steps)).not.toContain('lane-spec-bytes')
+    expect(steps.map((s) => s.command).join('\n')).not.toMatch(/jq/)
   })
 
-  const res = (over: Record<string, string>) => parseBatchResult(JSON.stringify(
-    Object.entries({ 'lane-spec': specText, 'lane-spec-bytes': `${bytes}\n`, 'lane-spec-sha': `${sha}\n`, history: '', ...over })
-      .map(([name, v]) => ({ name, exit_code: 0, stdout: v, stderr: '' })),
-  ), [{ name: 'lane-spec', command: '' }, { name: 'lane-spec-bytes', command: '' }, { name: 'lane-spec-sha', command: '' }, { name: 'history', command: '' }])
+  const res = (stdout: string, exit = 0) => parseBatchResult(JSON.stringify(
+    [{ name: 'lane-spec', exit_code: exit, stdout, stderr: '' }, { name: 'history', exit_code: 0, stdout: '', stderr: '' }],
+  ), [{ name: 'lane-spec', command: '' }, { name: 'history', command: '' }])
 
-  it('returns the full lane when bytes, sha and spec_hash all agree', () => {
-    const r = laneSpecFromSteps(res({}), 'T1', expectedHash)
+  it('returns the short summary (path, bytes, blob sha, ac_count) — never the criteria', () => {
+    const r = laneSpecFromSteps(res(JSON.stringify(summary) + '\n'), 'T1')
     expect(r.ok).toBe(true)
-    expect(r.lane?.acceptance_criteria).toEqual(['a() returns 1 for §4.1'])
+    expect(r.spec).toEqual(summary)
+    expect(r.error).toBe('')
   })
 
-  it('a normalised echo is lane_spec_relay_mismatch', () => {
-    const r = laneSpecFromSteps(res({ 'lane-spec': specText.replace('§4', '§ 4') }), 'T1', expectedHash)
+  it('laneSpecContextFile is the deferred ContextFile the witness helpers consume', () => {
+    expect(laneSpecContextFile(summary)).toEqual({ path: summary.path, exists: true, inlined: false, bytes: 412, sha: 'a'.repeat(40), content: null })
+  })
+
+  it("the CLI's named errors (hash mismatch, missing lane) surface verbatim as lane_spec_export_failed", () => {
+    const r = laneSpecFromSteps(res('{"error":"lane_spec_hash_mismatch: T1 hashes to fnv1a64:2 but the digest says fnv1a64:1; the plan changed between digest and intake","spec_hash":"fnv1a64:2","expected":"fnv1a64:1"}\n', 1), 'T1')
     expect(r.ok).toBe(false)
-    expect(r.error).toMatch(/^lane_spec_relay_mismatch: T1/)
+    expect(r.spec).toBeNull()
+    expect(r.error).toMatch(/^lane_spec_export_failed: T1 — lane_spec_hash_mismatch: T1 hashes to fnv1a64:2/)
+    expect(laneSpecFromSteps(res('{"error":"lane_spec_missing: T9 is not in the lane plan"}\n', 1), 'T9').error).toMatch(/^lane_spec_export_failed: T9 — lane_spec_missing: T9/)
   })
 
-  it('a lane whose spec no longer matches the digest hash is lane_spec_hash_mismatch', () => {
-    const r = laneSpecFromSteps(res({}), 'T1', 'fnv1a64:ffffffffffffffff')
-    expect(r.ok).toBe(false)
-    expect(r.error).toMatch(/^lane_spec_hash_mismatch: T1/)
+  it('a missing batch or a step that never ran is lane_spec_export_failed', () => {
+    expect(laneSpecFromSteps(parseBatchResult(null, [{ name: 'lane-spec', command: '' }]), 'T1').error).toMatch(/^lane_spec_export_failed: T1/)
+    const noStep = parseBatchResult(JSON.stringify([{ name: 'history', exit_code: 0, stdout: '', stderr: '' }]), [{ name: 'lane-spec', command: '' }, { name: 'history', command: '' }])
+    expect(laneSpecFromSteps(noStep, 'T1').error).toMatch(/^lane_spec_export_failed: T1/)
   })
 
-  it('jq printing null (id not in the worktree plan) is lane_spec_missing; a missing batch is lane_spec_relay_failed', () => {
-    const nullText = 'null\n'
-    const r = laneSpecFromSteps(res({ 'lane-spec': nullText, 'lane-spec-bytes': `${utf8ByteLength(nullText)}\n`, 'lane-spec-sha': `${gitBlobSha(utf8Encode(nullText))}\n` }), 'T1', expectedHash)
-    expect(r.error).toMatch(/^lane_spec_missing: T1/)
-    expect(laneSpecFromSteps(parseBatchResult(null, [{ name: 'lane-spec', command: '' }]), 'T1', expectedHash).error).toMatch(/^lane_spec_relay_failed: T1/)
+  it('a summary the runner rewrote (wrong task, bad sha, non-numeric bytes) is lane_spec_export_unparseable', () => {
+    for (const bad of [
+      { ...summary, task_id: 'T2' },
+      { ...summary, sha: 'abc' },
+      { ...summary, bytes: 'many' },
+      { ...summary, ac_count: -1 },
+      { ...summary, path: '' },
+    ]) {
+      const r = laneSpecFromSteps(res(JSON.stringify(bad) + '\n'), 'T1')
+      expect(r.ok).toBe(false)
+      expect(r.error).toMatch(/^lane_spec_export_unparseable: T1/)
+    }
+    expect(laneSpecFromSteps(res('not json'), 'T1').error).toMatch(/^lane_spec_export_unparseable: T1/)
   })
 })
 

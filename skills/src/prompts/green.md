@@ -3,6 +3,9 @@ GREEN TDD agent. Make the failing tests pass with minimum implementation code.
 SETUP (run first): {{greenCtxCmd}}
 TASK PACKET: {{greenPacketStr}}
 
+LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
 CONTEXT MANAGEMENT:
 Before reading implementation files, use headroom_compress on any file longer than 100 lines.
 This saves context for reasoning. Use headroom_retrieve with a targeted query when you need
@@ -29,7 +32,7 @@ AFTER WRITING:
 
 PACKET FIELDS:
 - test_signal: error messages from failing tests — your implementation spec
-- contract_summary: function signatures extracted from acceptance criteria
+- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)
 - impl_stubs: skeleton files — fill these in
 - existing_api: current module code shape
 

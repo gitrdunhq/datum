@@ -5,6 +5,9 @@ First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclud
 SETUP: {{greenCtxCmd}}
 TASK PACKET: {{greenRetryPacketStr}}
 
+LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
 CONTEXT MANAGEMENT:
 Use headroom_compress on any file or test output longer than 100 lines.
 Use headroom_retrieve with a targeted query to pull back only what you need.

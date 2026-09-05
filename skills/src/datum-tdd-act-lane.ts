@@ -19,9 +19,11 @@ import {
   ownershipFromStdout,
   testExitCode,
   laneSpecFromSteps,
+  laneSpecContextFile,
   digestSpecHash,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps } from './shared/commit-steps'
+import { assertReadWitness, type ContextFile } from './shared/context-relay'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -47,7 +49,6 @@ import {
 import {
   classifyFiles,
   laneCtxCmd,
-  extractContractSummary,
   crossValidateBugs,
   buildPacket,
   parseAgentJson,
@@ -146,6 +147,23 @@ async function verifyFileOwnership(
 
 // ── Per-lane TDD saga ───────────────────────────────────────────────────────
 
+/**
+ * resilientAgent + read witness: a RED/GREEN/reflect result that does not
+ * carry the lane-spec file's blob-sha prefix in read_witness THROWS
+ * context_read_unverified (caught by the lane's outer handler, which fails
+ * the lane by that name). No stage may act on criteria it never read.
+ */
+async function witnessedAgent<T>(
+  prompt: string,
+  opts: Parameters<typeof resilientAgent>[1],
+  specFile: ContextFile,
+): Promise<T | null> {
+  const result = await resilientAgent<T>(prompt, opts)
+  if (result !== null) assertReadWitness([specFile], result)
+  return result
+}
+
+
 async function runLane(
   taskId: string,
   lanePlan: LanePlanDigest,
@@ -155,7 +173,7 @@ async function runLane(
   // The digest lane: files/deps/kind/test_command/spec_hash, NO acceptance
   // criteria. The full spec is fetched at intake (laneSpecFromSteps) and
   // replaces this once byte-checked and hash-matched.
-  let lane: Lane = lanePlan.lanes[taskId]
+  const lane: Lane = lanePlan.lanes[taskId]
   const wt: string = worktreePaths[taskId]
   // A lane without an absolute worktree path must never run — agents would fall
   // back to the main checkout and commit RED/partial work onto the epic branch.
@@ -173,8 +191,6 @@ async function runLane(
   // ("queued"...), so comparing it to 'structural' made this path dead (#369).
   const isStructural: boolean = lane.kind === 'structural'
   const { testFiles, implFiles } = classifyFiles(lane.files)
-  // Assigned from the fetched spec after intake — the digest carries none.
-  let acStr = ''
    const laneTestCmd: string = cfg.testCommand
    const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
 
@@ -316,7 +332,7 @@ No markdown fences, no explanation.`,
 
   const intakeSteps = laneIntakeSteps({
     wt, epicBranch: cfg.epicBranch, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
-    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId },
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan, taskId) },
   })
   const intakeRaw = await agent(
     batchCommandPrompt(intakeSteps),
@@ -348,17 +364,17 @@ No markdown fences, no explanation.`,
     }
   }
 
-  // The full lane spec, fetched from the worktree copy of the plan by the
-  // intake batch: byte-checked (wc -c + git hash-object --stdin) and
-  // cross-checked against the digest's spec_hash. The plan never travels
-  // through an LLM turn as a whole; this one lane is small enough to.
-  const spec = laneSpecFromSteps(intakeResult, taskId, digestSpecHash(lanePlan, taskId))
-  if (!spec.ok || !spec.lane) {
-    log(`[${taskId}] LANE SPEC FETCH FAILED: ${spec.error}`)
+  // The full lane spec was written to <wt>/.datum/lane-spec.json by the
+  // intake batch (`datum lane-spec-export`, hash-checked against the digest);
+  // only its path/bytes/blob sha/ac_count come back. The criteria text never
+  // enters the script or any runner turn: each stage agent reads the file
+  // and proves it with a read_witness (assertReadWitness → context_read_unverified).
+  const spec = laneSpecFromSteps(intakeResult, taskId)
+  if (!spec.ok || !spec.spec) {
+    log(`[${taskId}] LANE SPEC EXPORT FAILED: ${spec.error}`)
     return { task_id: taskId, status: 'failed', stage: 'CRASH', error: spec.error }
   }
-  lane = spec.lane
-  acStr = (spec.lane.acceptance_criteria || []).join('\n')
+  const specFile = laneSpecContextFile(spec.spec)
 
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
@@ -384,7 +400,7 @@ No markdown fences, no explanation.`,
   // datum-cli call as the squash merge (#368) — not by a per-lane agent here.
 
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
     if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
     await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
@@ -424,7 +440,7 @@ No markdown fences, no explanation.`,
 
     if (intakeVerifyExit === 0) {
       log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
-      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
       if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
       await updateStage(issueId, 'done')
       return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
@@ -519,7 +535,7 @@ No markdown fences, no explanation.`,
   }
 
   const redExtras: Record<string, unknown> = targetContext ? { target_context: targetContext } : {}
-  const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', redExtras)
+  const redPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', specFile, redExtras)
   const redCtxCmd: string = laneCtxCmd(redPacket, wt)
 
   const testFuncLabel: string = laneLanguage === 'swift'
@@ -544,6 +560,7 @@ No markdown fences, no explanation.`,
     commitCmd: laneCommitCommand({ wt, taskId, stage: 'RED', runId }),
     taskId,
     testFuncPattern: testFuncLabel,
+    laneSpec: specFile,
   }
 
   let red: StageResult | null = null
@@ -564,9 +581,10 @@ No markdown fences, no explanation.`,
       files_written: testFiles,
     }
   } else {
-    red = await resilientAgent(
+    red = await witnessedAgent(
       redPrompt(promptVars),
       stageOpts('red', { label: `red:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile,
     )
 
     if (!red) {
@@ -583,9 +601,10 @@ No markdown fences, no explanation.`,
       )
       const redLeftover = (stepStdout(redResetResult, 'status') || '').trim()
       log(`[${taskId}] RED attempt 1: ${redFirstFailure}; worktree reset to HEAD before retry${redLeftover ? ` (WARNING: still dirty: ${redLeftover.split('\n').length} paths)` : ''}`)
-      red = await resilientAgent(
+      red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: redFirstFailure }),
         stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile,
       )
       if (!red) {
         return {
@@ -618,9 +637,10 @@ No markdown fences, no explanation.`,
         }
       } else {
         log(`[${taskId}] RED: agent did not commit on first attempt — retrying (independent check: ${check.detail})`)
-        red = await resilientAgent(
+        red = await witnessedAgent(
           redRetryPrompt({ ...promptVars, failureReason: 'agent did not commit test files' }),
           stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+          specFile,
         )
         // Re-run the same commit-check gate (not around it) so a retry that still didn't
         // commit doesn't fall through to the count gate and produce a misleading '0' error (#245).
@@ -646,9 +666,10 @@ No markdown fences, no explanation.`,
 
     if (!red || !red.success) {
       log(`[${taskId}] RED attempt 1 failed: ${red?.failure_reason || 'unknown'}, retrying`)
-      red = await resilientAgent(
+      red = await witnessedAgent(
         redRetryPrompt({ ...promptVars, failureReason: red?.failure_reason || 'unknown' }),
         stageOpts('red', { label: `red-retry:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile,
       )
     }
   }
@@ -666,7 +687,7 @@ No markdown fences, no explanation.`,
   // after an earlier failure has no side effects. Patterns still go through
   // quoted heredocs (#288/#289); the deterministic script, not the fast
   // agent, now writes the JSON the checks are parsed from.
-  const acCount = (lane.acceptance_criteria || []).length
+  const acCount = spec.spec.ac_count
   const sgPatterns: { pattern: string; name: string }[] = laneLanguage === 'swift'
     ? [
         { pattern: 'XCTFail', name: 'XCTFail' },
@@ -877,9 +898,10 @@ No markdown fences, no explanation.`,
   // with a fresh agent. Left bare, that throw escaped to the lane's outer
   // catch as stage=CRASH and blocked every dependent lane although RED's
   // commit was fine (elonchesd run wf_949ca712-b07, #415).
-  const reflectResult: ReflectResult | null = await resilientAgent(
-    reflectPrompt({ wt, testFiles: testFiles.join(', '), acStr }),
+  const reflectResult: ReflectResult | null = await witnessedAgent(
+    reflectPrompt({ wt, testFiles: testFiles.join(', '), laneSpec: specFile }),
     stageOpts('reflect', { label: `reflect:${taskId}`, phase: 'Act', model: model('fast'), schema: REFLECT_SCHEMA, maxRetries: 1 }),
+    specFile,
   )
 
   if (!reflectResult) {
@@ -902,15 +924,13 @@ No markdown fences, no explanation.`,
 
   // ── GREEN (writes implementation + verifies tests pass + commits) ──
   const greenModel = (lane.green_model || model('balanced')) as ModelName
-  const contractSummary = extractContractSummary(lane.acceptance_criteria || [])
   log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`)
 
   const greenExtras: Record<string, unknown> = {
     test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
-    contract_summary: contractSummary,
     ...(targetContext ? { target_context: targetContext } : {}),
   }
-  const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
+  const greenPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', specFile, greenExtras)
   const greenCtxCmd: string = laneCtxCmd(greenPacket, wt)
 
   const greenVars = {
@@ -922,9 +942,10 @@ No markdown fences, no explanation.`,
     implFilesList: implFiles.join(' '),
     commitPrefix: greenPacket.commit_prefix,
     commitCmd: laneCommitCommand({ wt, taskId, stage: 'GREEN', runId }),
+    laneSpec: specFile,
   }
 
-  let green: StageResult | null = await resilientAgent(
+  let green: StageResult | null = await witnessedAgent(
     greenStaleHint
       ? greenRetryPrompt({
           ...greenVars,
@@ -933,6 +954,7 @@ No markdown fences, no explanation.`,
         })
       : greenPrompt(greenVars),
     stageOpts('green', { label: `green:${taskId}`, phase: 'Act', model: greenModel, schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+    specFile,
   )
 
   if (green?.success) {
@@ -971,8 +993,8 @@ No markdown fences, no explanation.`,
       if (cfg.yolo && widen.length > 0 && rejected.length === 0) {
         for (const f of widen) if (!implFiles.includes(f)) implFiles.push(f)
         log(`[${taskId}] GREEN blocked — yolo auto-widened allowed_write_files with [${widen.join(', ')}] (all inside src/); re-running GREEN once`)
-        const widenedPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
-        green = await resilientAgent(
+        const widenedPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', specFile, greenExtras)
+        green = await witnessedAgent(
           greenRetryPrompt({
             ...greenVars,
             greenCtxCmd: laneCtxCmd(widenedPacket, wt),
@@ -981,6 +1003,7 @@ No markdown fences, no explanation.`,
             greenRetryPacketStr: JSON.stringify({ ...widenedPacket, retry_hint: decision.reason }),
           }),
           stageOpts('green', { label: `green-widened:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+          specFile,
         )
       } else {
         const refusal = cfg.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(', ')}] not inside src/)` : ''
@@ -1007,13 +1030,14 @@ No markdown fences, no explanation.`,
         log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''}`)
       }
       log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${firstFailure}, escalating to opus`)
-      green = await resilientAgent(
+      green = await witnessedAgent(
         greenRetryPrompt({
           ...greenVars,
           failureReason: firstFailure,
           greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure }),
         }),
         stageOpts('green', { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile,
       )
     }
   }
@@ -1108,21 +1132,22 @@ No markdown fences, no explanation.`,
   // green-retry path), and the retry is independently re-verified (test-verify
   // + a second skeptic pass) before the lane is allowed into REFACTOR as if
   // GREEN were sound. FRAGILE stays log-only, unchanged.
-  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr)
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile)
 
   if (skeptic.brokenCount >= 2) {
     const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
     const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join('\n') || 'no bug detail available'
     log(`[${taskId}] SKEPTIC VERDICT: ${skeptic.brokenCount}/3 BROKEN — retrying GREEN once with ${confirmedBugs.length} confirmed bug(s)`)
 
-    const skepticRetryPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', greenExtras)
-    green = await resilientAgent(
+    const skepticRetryPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', specFile, greenExtras)
+    green = await witnessedAgent(
       greenRetryPrompt({
         ...greenVars,
         failureReason: `The skeptic panel found confirmed bugs in the GREEN implementation. Fix them without breaking the tests.\nSKEPTIC FINDINGS:\n${bugSummary}`,
         greenRetryPacketStr: JSON.stringify({ ...skepticRetryPacket, retry_hint: 'skeptic_broken', skeptic_bugs: confirmedBugs }),
       }),
       stageOpts('green', { label: `green-skeptic-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+      specFile,
     )
 
     // Independent re-verification of the retry — never trust the retry
@@ -1147,7 +1172,7 @@ No markdown fences, no explanation.`,
     }
 
     // A second, independent skeptic pass over the retried implementation.
-    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, acStr)
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile)
     if (skeptic.brokenCount >= 2) {
       const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
       const first = stillConfirmed[0]
@@ -1166,7 +1191,7 @@ No markdown fences, no explanation.`,
   }
 
   // ── REFACTOR (writes + verifies + commits in one agent) ──
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg)
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
   // Must check `.verified`, not just truthiness: runRefactor returns a
   // `{ verified: false, error }` OBJECT (truthy) for a real REFACTOR failure,
   // not null — a bare `!refResult` check here would have treated that as
@@ -1196,11 +1221,11 @@ async function runSkepticPanel(
   implFiles: string[],
   testFiles: string[],
   scopedTestCmd: string,
-  acStr: string,
+  specFile: ContextFile,
 ): Promise<SkepticPanelResult> {
   const base: string = skepticBasePrompt({
     wt, implFiles: implFiles.join(', '), testFiles: testFiles.join(', '),
-    testCommand: scopedTestCmd, acStr,
+    testCommand: scopedTestCmd, laneSpec: specFile,
   })
   const lenses = skepticLenses()
   const skepticResults = await parallel<SkepticResult>(
@@ -1209,6 +1234,9 @@ async function runSkepticPanel(
     ),
   )
 
+  // A lens that answered without reading the spec file did not review against
+  // the criteria: fail by name rather than count its verdict.
+  for (const r of skepticResults) if (r !== null) assertReadWitness([specFile], r)
   const { allBugs, brokenCount, crossValidated } = crossValidateBugs(skepticResults, lenses)
   for (let i = 0; i < lenses.length; i++) {
     const s = skepticResults[i]
@@ -1230,6 +1258,7 @@ async function runRefactor(
   implFiles: string[],
   wt: string,
   cfg: PipelineConfig,
+  specFile: ContextFile,
 ): Promise<{ verified: boolean; error?: string } | null> {
   log(`[${taskId}] REFACTOR: checking if needed`)
 
@@ -1253,7 +1282,7 @@ async function runRefactor(
 
   log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`)
 
-  const refactorPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', {})
+  const refactorPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', specFile, {})
   const refactorCtxCmd: string = laneCtxCmd(refactorPacket, wt)
 
   const refactor: StageResult | null = await resilientAgent(
@@ -1436,7 +1465,7 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
       const r = await runLane(taskId, lanePlan, worktreePaths, cfg)
       result = r || { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: 'null result' }
     } catch (e) {
-      result = { task_id: taskId, status: 'failed', stage: 'CRASH', error: String(e) }
+      result = { task_id: taskId, status: 'failed', stage: 'CRASH', error: e instanceof Error ? e.message : String(e) }
     }
     depResolvers[taskId](result)
     return result
