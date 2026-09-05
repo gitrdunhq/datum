@@ -130,5 +130,28 @@ export function worktreeResetToSteps(wt: string, sha: string): BatchStep[] {
     { name: 'reset', command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },
     { name: 'clean', command: `git -C ${q(wt)} clean -fd`, tolerant: true },
     { name: 'status', command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
+    { name: 'head', command: `git -C ${q(wt)} rev-parse HEAD`, tolerant: true },
   ]
+}
+
+/**
+ * Did the reset actually land? A refused `git reset` (host permission
+ * classifier) still comes back as a parsed batch with a non-zero tolerant
+ * step, so "the batch parsed" is no evidence (elonchesd wf_2b0230c2-f41
+ * task-016 dispatched RED on the un-reset worktree). The gate is: HEAD is
+ * the requested sha and the tree is clean.
+ */
+export function worktreeResetToFromSteps(result: BatchResult, sha: string): { ok: boolean; error: string } {
+  if (result.missing) return { ok: false, error: `worktree_reset_failed: ${describeFailure(result, 'reset-to-red')}` }
+  const head = stepStdout(result, 'head')
+  if (head === null) return { ok: false, error: 'worktree_reset_failed: the head step did not run — cannot confirm where the worktree is' }
+  const got = head.trim()
+  if (got !== sha) {
+    const reset = stepResult(result, 'reset')
+    const why = reset && reset.exit_code !== 0 ? ` (reset exited ${reset.exit_code}: ${(reset.stderr || reset.stdout || '').trim().slice(0, 200)})` : ''
+    return { ok: false, error: `worktree_reset_failed: HEAD is ${got || '?'}, expected ${sha}${why}` }
+  }
+  const dirty = (stepStdout(result, 'status') || '').trim()
+  if (dirty) return { ok: false, error: `worktree_reset_failed: worktree still dirty after reset to ${sha}: ${dirty.split('\n').length} path(s)` }
+  return { ok: true, error: '' }
 }

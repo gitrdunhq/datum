@@ -774,6 +774,14 @@ describe('lane intake: the REFACTOR-resume shortcut is gated on an independent t
     expect(staleBranch).toMatch(/worktreeResetToSteps\(wt,\s*redCommitInfo\.commitSha\)/)
   })
 
+  it('gates the fall-through on worktreeResetToFromSteps (HEAD == RED sha, clean), not on the batch merely parsing', () => {
+    const staleBranch = bothCommittedBlock.slice(bothCommittedBlock.indexOf('intakeVerifyExit === 0'))
+    expect(staleBranch).toMatch(/const resetToRed = worktreeResetToFromSteps\(resetToRedResult, redCommitInfo\.commitSha\)/)
+    expect(staleBranch).toMatch(/if \(!resetToRed\.ok\) \{[\s\S]{0,300}lane_intake_failed: could not reset worktree to RED commit/)
+    expect(staleBranch).not.toMatch(/if \(resetToRedResult\.missing\)/)
+    expect(staleBranch.indexOf('if (!resetToRed.ok)')).toBeLessThan(staleBranch.indexOf('redAlreadyCommitted = true'))
+  })
+
   it('sets redAlreadyCommitted/greenAlreadyCommitted so the reset lane falls through to the existing RED-only resume path', () => {
     const staleBranch = bothCommittedBlock.slice(bothCommittedBlock.indexOf('intakeVerifyExit === 0'))
     expect(staleBranch).toMatch(/redAlreadyCommitted = true/)

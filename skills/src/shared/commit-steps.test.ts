@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { batchScript, parseBatchResult, type BatchResult } from './batch'
-import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps, worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
+import { commitFilesSteps, commitFilesFromSteps, worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
 function fake(stdouts: Record<string, string>, exits: Record<string, number> = {}): BatchResult {
   const steps = Object.entries(stdouts).map(([name, stdout]) => ({ name, exit_code: exits[name] ?? 0, stdout, stderr: '' }))
@@ -126,9 +126,10 @@ describe('worktreeDirtySteps / worktreeDirtyFromSteps', () => {
 })
 
 describe('worktreeResetToSteps', () => {
-  it('resets to the given sha (not HEAD) then cleans and reports status — sibling of worktreeResetSteps', () => {
+  it('resets to the given sha (not HEAD) then cleans, reports status and the resulting HEAD — sibling of worktreeResetSteps', () => {
     const steps = worktreeResetToSteps('/wt', 'abc1234')
-    expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status'])
+    expect(steps.map((s) => s.name)).toEqual(['reset', 'clean', 'status', 'head'])
+    expect(steps[3].command).toBe('git -C "/wt" rev-parse HEAD')
     expect(steps[0].command).toContain('git -C "/wt" reset --hard "abc1234"')
     expect(steps[0].command).not.toContain('HEAD')
     expect(steps[1].command).toContain('git -C "/wt" clean -fd')
@@ -187,5 +188,35 @@ describe('end-to-end under real bash', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// elonchesd wf_2b0230c2-f41 task-016: the host classifier refused the reset
+// batch but the runner still returned a JSON array (reset step non-zero,
+// tolerant), so `resetToRedResult.missing` was false and RED was dispatched
+// on the un-reset worktree; task-013's runner answered in prose and stopped.
+// The gate must be "HEAD is the RED sha and the tree is clean", not "the
+// batch parsed".
+describe('worktreeResetToFromSteps', () => {
+  const sha = 'a'.repeat(40)
+  const mk = (over: Record<string, { exit_code?: number; stdout?: string }>) => parseBatchResult(JSON.stringify(
+    ['reset', 'clean', 'status', 'head'].map((name) => ({ name, exit_code: over[name]?.exit_code ?? 0, stdout: over[name]?.stdout ?? (name === 'head' ? sha + '\n' : ''), stderr: '' })),
+  ), worktreeResetToSteps('/wt', sha))
+
+  it('ok only when HEAD equals the target sha and status is empty', () => {
+    expect(worktreeResetToFromSteps(mk({}), sha)).toEqual({ ok: true, error: '' })
+  })
+
+  it('a refused/failed reset that left HEAD elsewhere is worktree_reset_failed naming both shas', () => {
+    const r = worktreeResetToFromSteps(mk({ reset: { exit_code: 1, stdout: 'blocked' }, head: { stdout: 'b'.repeat(40) + '\n' } }), sha)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(new RegExp(`^worktree_reset_failed: HEAD is ${'b'.repeat(40)}, expected ${sha}`))
+  })
+
+  it('a dirty tree after the reset, a missing head step, or a missing batch are all worktree_reset_failed', () => {
+    expect(worktreeResetToFromSteps(mk({ status: { stdout: ' M a.py\n' } }), sha).error).toMatch(/^worktree_reset_failed: .*still dirty/)
+    const noHead = parseBatchResult(JSON.stringify([{ name: 'reset', exit_code: 0, stdout: '', stderr: '' }]), worktreeResetToSteps('/wt', sha))
+    expect(worktreeResetToFromSteps(noHead, sha).error).toMatch(/^worktree_reset_failed: .*head step/)
+    expect(worktreeResetToFromSteps(parseBatchResult('I cannot run destructive git commands', worktreeResetToSteps('/wt', sha)), sha).error).toMatch(/^worktree_reset_failed: .*runner_permission_denied/)
   })
 })

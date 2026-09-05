@@ -22,7 +22,7 @@ import {
   laneSpecContextFile,
   digestSpecHash,
 } from './shared/lane-steps'
-import { worktreeResetSteps, worktreeResetToSteps } from './shared/commit-steps'
+import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps } from './shared/commit-steps'
 import { assertReadWitness, type ContextFile } from './shared/context-relay'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
@@ -474,8 +474,11 @@ No markdown fences, no explanation.`,
       await agent(batchCommandPrompt(resetToRedSteps), stageOpts('cli', { label: `reset-to-red:${taskId}`, phase: 'Act', model: model('fast') })),
       resetToRedSteps,
     )
-    if (resetToRedResult.missing) {
-      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${describeFailure(resetToRedResult, 'reset-to-red')})` }
+    // HEAD must BE the RED sha before RED is re-dispatched: a refused reset
+    // still parses as a batch (elonchesd wf_2b0230c2-f41 task-016).
+    const resetToRed = worktreeResetToFromSteps(resetToRedResult, redCommitInfo.commitSha)
+    if (!resetToRed.ok) {
+      return { task_id: taskId, status: 'failed', stage: 'UNKNOWN', error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${resetToRed.error})` }
     }
     redAlreadyCommitted = true
     greenAlreadyCommitted = false
