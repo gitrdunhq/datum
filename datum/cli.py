@@ -212,6 +212,17 @@ def lane_plan_digest_cmd(
     typer.echo(text, nl=False)
 
 
+@app.command(name="permissions-snippet")
+def permissions_snippet_cmd():
+    """Print the Claude Code auto-mode allow rules a consumer repo needs (JSON
+    to merge into .claude/settings.local.json). datum prints these; it never
+    writes them — see SKILL.md "Permissions".
+    """
+    from datum.permissions import permissions_snippet
+
+    typer.echo(permissions_snippet())
+
+
 @app.command(name="lane-spec-export")
 def lane_spec_export_cmd(
     plan: str = typer.Option(
@@ -788,6 +799,9 @@ def _print_launch_line(skills_dir: str) -> None:
         "Launch (scriptPath, never name — the registry copy can be stale for the session):\n"
         "  FP=$(datum config-fingerprint)\n"
         f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>" }} }})'
+        "\nPermissions: the pipeline resets its own scratch worktrees; a host permission classifier may refuse that.\n"
+        "  `datum permissions-snippet` prints the allow rules to paste into .claude/settings.local.json (datum never writes them);\n"
+        "  add the file before the session starts (or run /hooks), and consider `/auto-mode-setup` at user level too. See SKILL.md \"Permissions\"."
     )
 
 
