@@ -450,6 +450,49 @@ function bootstrapOpts(stage, extra = {}) {
   return stageOpts(stage, extra);
 }
 
+// skills/src/shared/commit-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q2(o.wt);
+  const files = o.files.map(q2).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -505,6 +548,16 @@ var triageResult = {
   roadmap_items: [],
   merged_requirements: []
 };
+async function commitRefineFiles(files, message, label) {
+  const commitStepList = commitFilesSteps({ wt: ".", files, message });
+  const commit = commitFilesFromSteps(parseBatchResult(
+    await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
+    commitStepList
+  ));
+  if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`);
+  if (commit.nothingToCommit) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);
+  return commit.sha;
+}
 if (hasAddenda) {
   const triageRaw = await agent(
     renderPrompt(refine_triage_default, { ticketPath }) + `
@@ -512,11 +565,15 @@ if (hasAddenda) {
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
-3. Commit: git add ROADMAP.md && git commit -m "roadmap: triage items from refine"`,
+Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`,
     { label: "triage-addenda", model: model("balanced") }
   );
   triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
+  if (triageResult.roadmap_items.length > 0) {
+    const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap");
+    log(`ROADMAP.md committed (${roadmapCommit})`);
+  }
 } else {
   log("No addenda \u2014 single-scope TICKET");
 }
@@ -536,7 +593,9 @@ var scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw
 phase("Write");
 var timestamp = stepStdout(readBatch, "timestamp") || "";
 var today = timestamp ? timestamp.slice(0, 10) : "(date unavailable)";
-await agent(
+var specPath = `${epicDir}/SPEC.md`;
+var questionsPath = `${epicDir}/QUESTIONS.md`;
+var specRaw = await agent(
   `You have TWO tasks. Do them in order.
 
 TASK 1 \u2014 Write SPEC.md:
@@ -548,7 +607,7 @@ ${renderPrompt(refine_spec_default, {
     assumptions: classify.assumptions.join("\n")
   })}
 
-Write the SPEC to "${epicDir}/SPEC.md" (create dirs if needed).
+Write the SPEC to "${specPath}" (create dirs if needed).
 
 TASK 2 \u2014 Write QUESTIONS.md:
 ${renderPrompt(refine_questions_default, {
@@ -558,13 +617,21 @@ ${renderPrompt(refine_questions_default, {
     date: today
   })}
 
-Write the QUESTIONS to "${epicDir}/QUESTIONS.md".
+Write the QUESTIONS to "${questionsPath}".
 
-TASK 3 \u2014 Commit both:
-git add "${epicDir}/SPEC.md" "${epicDir}/QUESTIONS.md" && git commit -m "refine: write SPEC.md + QUESTIONS.md"`,
+Do NOT git add or git commit anything \u2014 the workflow commits both files after you return.
+Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile]),
   { label: "write-spec-and-questions", model: model("balanced") }
 );
-log(`SPEC.md + QUESTIONS.md written to ${epicDir}`);
+var spec = parseAgentJsonStrict(specRaw, "write-spec-and-questions");
+assertReadWitness([ticketFile], spec);
+for (const p of [specPath, questionsPath]) {
+  if (!Array.isArray(spec.written) || !spec.written.includes(p)) {
+    throw new Error(`refine_write_failed: agent did not report writing ${p} (reported: ${JSON.stringify(spec.written)})`);
+  }
+}
+var specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], "refine: write SPEC.md + QUESTIONS.md", "commit-spec");
+log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`);
 var gateStepList = gateSteps("refine", yolo ? " --approve" : "");
 var gate = parseGateResult(parseBatchResult(
   await agent(batchCommandPrompt(gateStepList), stageOpts("cli", { label: "gate", model: model("fast") })),

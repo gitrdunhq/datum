@@ -1424,10 +1424,6 @@ No markdown fences, no explanation.`,
     }
   }
   const scopeGaps = findScopeGaps([...requiredScopeFiles], [...testFiles, ...implFiles]);
-  const contractPreflightCmd = (allowed) => `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` + testFiles.map((f) => `--test-file "${f}"`).join(" ") + (allowed.length > 0 ? " " + allowed.map((f) => `--allowed "${f}"`).join(" ") : "");
-  const contractPreflightPrompt = (allowed) => `Run: ${contractPreflightCmd(allowed)}
-The command exits 1 when it finds a conflict \u2014 that is expected, not an error; still return its output.
-Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`;
   const isPytestLane = laneLanguage === "python" && /pytest/.test(scopedTestCmd);
   const scopeContract = scopeContractSteps({
     wt,
@@ -1530,12 +1526,16 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     let greenPreflight = null;
     const selfReportedBlock = !!green && (green.status === "blocked" || /scope_exceeded/i.test(green.failure_reason || ""));
     if (green && isPytestLane && !selfReportedBlock) {
-      const raw = await agent(contractPreflightPrompt(implFiles), stageOpts("cli", {
-        label: `contract-check:${taskId}`,
-        phase: "Act",
-        model: model("fast")
-      }));
-      greenPreflight = parseContractPreflight(raw);
+      const checkSteps = scopeContractSteps({ wt, scopeGaps: [], contractPreflight: { testFiles, implFiles, scopedTestCmd } });
+      const checkResult = parseBatchResult(
+        await agent(batchCommandPrompt(checkSteps), stageOpts("cli", {
+          label: `contract-check:${taskId}`,
+          phase: "Act",
+          model: model("fast")
+        })),
+        checkSteps
+      );
+      greenPreflight = parseContractPreflight(stepStdout(checkResult, "contract-preflight"));
     }
     const decision = decideGreenBlock(green, greenPreflight);
     if (decision.blocked) {
