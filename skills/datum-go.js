@@ -714,7 +714,7 @@ if (shouldRun("act", 3)) {
     }
     log(`Act${batchTag} done: ${batchLaneIds.filter((id) => actCompleted.includes(id)).length}/${batchLaneIds.length} succeeded`);
     const mergedIds = batchLaneIds.filter((id) => actCompleted.includes(id));
-    await workflow(
+    const mergeResult = await workflow(
       { scriptPath: sk("datum-tdd-act-merge") },
       {
         epicBranch,
@@ -727,6 +727,16 @@ if (shouldRun("act", 3)) {
         laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
       }
     );
+    if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+      const why = mergeResult ? "squash-merge step exited non-zero" : "merge workflow returned null";
+      for (const id of mergedIds) {
+        const i = actCompleted.indexOf(id);
+        if (i >= 0) actCompleted.splice(i, 1);
+        actFailures.push(id);
+        actResults[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+      }
+      log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
+    }
   }
   await workflow(
     { scriptPath: sk("datum-tdd-act-docs") },
@@ -740,12 +750,13 @@ if (shouldRun("act", 3)) {
       { failures: actFailures, blocked: actBlocked.map((id) => actResults[id]), results: actResults, lanePlan, runId, epicBranch, agentTypes: agentTypeArgs() }
     );
   }
-  await markPhaseComplete("act");
-  log(`Act complete \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
+  log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? "finished with failures" : "complete"} \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
-  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+  if (actCompleted.length === 0 && lanePlan.total_lanes > 0 || actFailures.length > 0 || actBlocked.length > 0) {
     haltedAt = "act";
-    log(`Act produced 0/${lanePlan.total_lanes} completed lanes \u2014 halting before validate/review/closeout to avoid reporting false completion.`);
+    log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged \u2014 not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`);
+  } else {
+    await markPhaseComplete("act");
   }
 } else if (activePhases.includes("act")) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false \u2014 startIdx=${startIdx} haltedAt=${haltedAt}`);

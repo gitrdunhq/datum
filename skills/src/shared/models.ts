@@ -35,7 +35,7 @@ export type Phase = 'refine' | 'plan' | 'properties' | 'act' | 'validate' | 'rev
 export const PHASES: readonly Phase[] = ['refine', 'plan', 'properties', 'act', 'validate', 'review', 'closeout'] as const
 
 export type TddStage = 'RED' | 'GREEN' | 'REFACTOR'
-export type FailureStage = TddStage | 'SKIPPED' | 'UNKNOWN' | 'CRASH'
+export type FailureStage = TddStage | 'MERGE' | 'SKIPPED' | 'UNKNOWN' | 'CRASH'
 
 // 'blocked' = never dispatched because a dependency failed or was itself blocked;
 // carries the root-cause lane in error. Distinct from 'skipped' (dep never ran).

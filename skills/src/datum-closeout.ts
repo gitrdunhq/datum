@@ -50,7 +50,11 @@ const ctx = typeof collectResult === 'string'
 // #368: args (from datum-go) win, else the agent_types field the collect agent pulled from config.
 configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: ctx.agent_types !== false })
 
-const rid: string = ctx.run_id || runId
+// The run id datum-go passes is the one Act actually produced; the collect
+// agent is only asked to echo it. Prefer the deterministic value — a model
+// that "generated" a fresh timestamp instead of echoing sent Closeout to a
+// run dir that never existed (eedom run wf_2a5ede48-358).
+const rid: string = runId || ctx.run_id
 log(`Branch: ${ctx.branch}, run: ${rid}`)
 
 // ── Synthesize + archive (collapsed into one agent) ──

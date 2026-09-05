@@ -1,4 +1,4 @@
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult, GoArgs, RepoConfig } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -459,7 +459,7 @@ if (shouldRun('act', 3)) {
     // markers (so future runs/sessions skip these lanes) are written by the
     // merge workflow in the same datum-cli call as the squash merge (#368).
     const mergedIds = batchLaneIds.filter(id => actCompleted.includes(id))
-    await workflow(
+    const mergeResult = await workflow(
       { scriptPath: sk('datum-tdd-act-merge') },
       {
         epicBranch,
@@ -473,7 +473,22 @@ if (shouldRun('act', 3)) {
           ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
           : null,
       },
-    )
+    ) as MergeResult | null
+
+    // A lane the runner completed but whose squash-merge did not land has
+    // shipped nothing. Demote it to failed so the halt below fires and a
+    // resume re-attempts the merge instead of Validate/Review/Closeout
+    // running on an unmerged epic (eedom run wf_2a5ede48-358).
+    if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+      const why = mergeResult ? 'squash-merge step exited non-zero' : 'merge workflow returned null'
+      for (const id of mergedIds) {
+        const i = actCompleted.indexOf(id)
+        if (i >= 0) actCompleted.splice(i, 1)
+        actFailures.push(id)
+        actResults[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
+      }
+      log(`Merge${batchTag} FAILED — demoted [${mergedIds.join(', ')}] from completed to failed (${why})`)
+    }
   }
 
   // Docs — direct child workflow
@@ -493,16 +508,20 @@ if (shouldRun('act', 3)) {
     )
   }
 
-  await markPhaseComplete('act')
-  log(`Act complete — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
+  log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? 'finished with failures' : 'complete'} — ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`)
   lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked }
 
-  // A run where nothing landed must not fall through to validate/review/closeout —
-  // those phases would otherwise report/mark success for an epic that shipped no
-  // code, even in yolo mode where the per-phase gates above are bypassed.
-  if (actCompleted.length === 0 && lanePlan.total_lanes > 0) {
+  // Any failed, blocked, or unmerged lane means the epic is incomplete. Halt
+  // here — in yolo mode too — rather than let Validate/Review/Closeout report
+  // (and Closeout's housekeeping delete lane branches and pipeline-state) for
+  // an epic that did not land. Act is deliberately NOT marked complete on halt
+  // so a resume re-enters Act, where cross-run completion markers skip the
+  // lanes that did merge (#331).
+  if ((actCompleted.length === 0 && lanePlan.total_lanes > 0) || actFailures.length > 0 || actBlocked.length > 0) {
     haltedAt = 'act'
-    log(`Act produced 0/${lanePlan.total_lanes} completed lanes — halting before validate/review/closeout to avoid reporting false completion.`)
+    log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged — not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`)
+  } else {
+    await markPhaseComplete('act')
   }
 } else if (activePhases.includes('act' as Phase)) {
   log(`[warn] Act phase was in activePhases but shouldRun returned false — startIdx=${startIdx} haltedAt=${haltedAt}`)

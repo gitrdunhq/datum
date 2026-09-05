@@ -1,5 +1,5 @@
 import { model, setModelTiers } from './shared/models'
-import type { LanePlan, LaneOutcome, SetupResult, LaneResult, TddActArgs, RepoConfig } from './shared/types'
+import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -207,7 +207,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   // datum-cli call as the squash merge (#368).
   log('── Merge ──')
   const mergedIds = batchLaneIds.filter(id => completedLanes.includes(id))
-  await workflow(
+  const mergeResult = await workflow(
     { scriptPath: sk('datum-tdd-act-merge') },
     {
       epicBranch,
@@ -221,7 +221,20 @@ for (let bi = 0; bi < batches.length; bi++) {
         ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
         : null,
     }
-  )
+  ) as MergeResult | null
+
+  // Same rule as datum-go: a completed lane whose squash-merge did not land
+  // shipped nothing — demote it so the summary and triage tell the truth.
+  if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+    const why = mergeResult ? 'squash-merge step exited non-zero' : 'merge workflow returned null'
+    for (const id of mergedIds) {
+      const i = completedLanes.indexOf(id)
+      if (i >= 0) completedLanes.splice(i, 1)
+      failures.push(id)
+      results[id] = { task_id: id, status: 'failed', stage: 'MERGE', error: `merge_failed: ${why}${batchTag}` }
+    }
+    log(`Merge${batchTag} FAILED — demoted [${mergedIds.join(', ')}] from completed to failed (${why})`)
+  }
 }
 
 // ── Docs ──

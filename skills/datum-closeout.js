@@ -138,7 +138,7 @@ Include "collected": true in the response if you ran collectors.`
 );
 var ctx = typeof collectResult === "string" ? parseAgentJson(collectResult, {}) : collectResult;
 configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
-var rid = ctx.run_id || runId;
+var rid = runId || ctx.run_id;
 log(`Branch: ${ctx.branch}, run: ${rid}`);
 phase("Synthesize");
 var synthResult = await agent(

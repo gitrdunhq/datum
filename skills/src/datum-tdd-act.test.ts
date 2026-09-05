@@ -42,3 +42,18 @@ describe('datum-tdd-act.ts — batch size respects MAX_BATCH', () => {
     expect(src).toMatch(/packWaves\(remainingWaves,\s*MAX_BATCH,\s*lanePlan\)/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// A completed lane whose squash-merge did not land shipped nothing — the
+// merge workflow result must be consumed and such lanes demoted to failed
+// (eedom dogfooding, run wf_2a5ede48-358).
+// ---------------------------------------------------------------------------
+
+describe('datum-tdd-act consumes the merge result', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act.ts'), 'utf8')
+
+  it('captures the merge workflow result and demotes unmerged lanes to merge_failed', () => {
+    expect(src).toMatch(/const merge\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-merge'\) \}/)
+    expect(src).toMatch(/merge_failed/)
+  })
+})

@@ -525,7 +525,7 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
   }
   log("\u2500\u2500 Merge \u2500\u2500");
   const mergedIds = batchLaneIds.filter((id) => completedLanes.includes(id));
-  await workflow(
+  const mergeResult = await workflow(
     { scriptPath: sk("datum-tdd-act-merge") },
     {
       epicBranch,
@@ -538,6 +538,16 @@ LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed
       laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) } : null
     }
   );
+  if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+    const why = mergeResult ? "squash-merge step exited non-zero" : "merge workflow returned null";
+    for (const id of mergedIds) {
+      const i = completedLanes.indexOf(id);
+      if (i >= 0) completedLanes.splice(i, 1);
+      failures.push(id);
+      results[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+    }
+    log(`Merge${batchTag} FAILED \u2014 demoted [${mergedIds.join(", ")}] from completed to failed (${why})`);
+  }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
 await workflow(

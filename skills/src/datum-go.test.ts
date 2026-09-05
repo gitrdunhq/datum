@@ -460,3 +460,35 @@ describe('shouldRun — phase gating logic', () => {
     expect(shouldRun('act', 1)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Act failure must halt the pipeline (eedom dogfooding, run wf_2a5ede48-358):
+// a lane the runner marked completed had its squash-merge fail, another lane
+// was blocked, yet datum-go marked Act complete, ran Validate/Review/Closeout
+// on an unmerged epic, Closeout's housekeeping deleted the surviving lane
+// branches and pipeline-state, and the final result said "complete".
+// ---------------------------------------------------------------------------
+
+describe('Act failures halt datum-go before Validate/Review/Closeout', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('captures the merge workflow result instead of discarding it', () => {
+    expect(goSource).toMatch(/const merge\w* = await workflow\(\s*\{ scriptPath: sk\('datum-tdd-act-merge'\) \}/)
+  })
+
+  it('demotes lanes whose merge failed from completed to failed', () => {
+    expect(goSource).toMatch(/merge_failed/)
+  })
+
+  it('halts at act when any lane failed or was blocked, not only when zero completed', () => {
+    expect(goSource).toMatch(/actFailures\.length > 0[^\n]*\|\|[^\n]*actBlocked\.length > 0/)
+  })
+
+  it('does not record Act as a completed phase when it halted', () => {
+    const haltIdx = goSource.indexOf("haltedAt = 'act'")
+    const markIdx = goSource.indexOf("markPhaseComplete('act')")
+    expect(haltIdx).toBeGreaterThan(-1)
+    expect(markIdx).toBeGreaterThan(haltIdx)
+    expect(goSource).toMatch(/else \{\s*await markPhaseComplete\('act'\)/)
+  })
+})

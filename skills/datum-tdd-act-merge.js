@@ -257,12 +257,13 @@ var mergeRaw = await agent(
 );
 var merge = parseBatchResult(mergeRaw, steps);
 if (merge.missing) log(`Merge${a.batchTag}: ${describeFailure(merge, "merge batch")}`);
+var mergeStep = mergeOrder.length > 0 ? stepResult(merge, "merge") : null;
+var mergeOk = mergeOrder.length === 0 || !!mergeStep && mergeStep.exit_code === 0;
 if (mergeOrder.length > 0) {
-  const m = stepResult(merge, "merge");
-  if (m && m.exit_code === 0) {
+  if (mergeOk) {
     log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
   } else {
-    log(`Merge${a.batchTag} FAILED: ${m ? (m.stderr || m.stdout).trim().split("\n").slice(-5).join("\n") : "step did not run"}`);
+    log(`Merge${a.batchTag} FAILED: ${mergeStep ? (mergeStep.stderr || mergeStep.stdout).trim().split("\n").slice(-5).join("\n") : "step did not run"}`);
   }
 }
 if (laneState) {
@@ -278,4 +279,8 @@ if (laneState) {
 phase("Cleanup");
 var cleanup = stepResult(merge, "cleanup");
 log(`Cleanup${a.batchTag}: ${cleanup ? cleanup.exit_code === 0 ? "done" : `exited ${cleanup.exit_code}` : "step did not run"}`);
-return { merged: a.completedIds.length > 0 };
+return {
+  merged: mergeOrder.length > 0 && mergeOk,
+  failed: mergeOrder.length > 0 && !mergeOk,
+  mergedIds: mergeOk ? mergeOrder : []
+};

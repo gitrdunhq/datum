@@ -95,7 +95,12 @@ export interface MergeArgs {
   laneState?: { epicSlug: string; entries: Array<{ task_id: string; spec_hash: string }> } | null
 }
 export interface MergeResult {
+  /** True only when the squash-merge step exited 0 for a non-empty order. */
   merged: boolean
+  /** True when a merge was attempted and did not land (distinct from "nothing to merge"). */
+  failed: boolean
+  /** Lanes that actually landed on the epic branch. */
+  mergedIds: string[]
 }
 
 export interface DocsArgs {
