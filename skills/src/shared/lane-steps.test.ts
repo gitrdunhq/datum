@@ -218,6 +218,42 @@ describe('postRedSteps', () => {
     baseRef: 'datum/e',
   }
 
+  // caliper wf_181691ac-fbf task-006 (BUG I): the grep fallback of the
+  // placeholder scan matched `assert True` INSIDE a quoted fixture string in
+  // a test that exercises test-detection, and failed a sound RED as
+  // placeholder_assertions. The fallback is anchored to a statement start.
+  it('assert-check grep fallback is anchored to the statement start and escapes regex metacharacters', () => {
+    const steps = postRedSteps({ ...opts, sgPatterns: [{ pattern: 'assert True', name: 'assert True' }, { pattern: 'expect(true).toBe(false)', name: 'forced failure' }] })
+    const cmd = steps.find((s) => s.name === 'assert-check')!.command
+    expect(cmd).toContain(`grep -nE '^[[:space:]]*assert True' "/wt/T1/tests/test_a.py"`)
+    expect(cmd).toContain(`grep -nE '^[[:space:]]*expect\\(true\\)\\.toBe\\(false\\)' "/wt/T1/tests/test_a.py"`)
+    expect(cmd).not.toMatch(/grep -n 'assert True'/)
+  })
+
+  it('under real bash: a placeholder inside a string literal is not reported, a real one is', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-assert-'))
+    try {
+      mkdirSync(join(dir, 'tests'))
+      writeFileSync(join(dir, 'tests', 'test_a.py'), [
+        'def test_detects():',
+        '    text = "def test_x():\\n    assert True\\n"',
+        '    assert looks_like_test(text) is True',
+        '',
+        'def test_placeholder():',
+        '    assert True',
+        '',
+      ].join('\n'))
+      const steps = postRedSteps({ ...opts, wt: dir, testFiles: ['tests/test_a.py'], ownership: false, sgPatterns: [{ pattern: 'assert True', name: 'assert True' }] })
+      const cmd = steps.find((s) => s.name === 'assert-check')!.command
+      // The real batch runs this step tolerant; a no-match grep exits 1, so end with true.
+      const out = execFileSync('bash', ['-c', `PATH=/usr/bin:/bin\n${cmd}\ntrue`], { cwd: dir, encoding: 'utf8' })
+      expect(out).toContain('6:    assert True')
+      expect(out).not.toContain('text = ')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('count gate diffs from the merge-base with the epic branch, not HEAD~1, so a resumed lane still counts its RED tests', () => {
     const steps = postRedSteps(opts)
     expect(steps[0].command).toContain('--base "datum/e"')

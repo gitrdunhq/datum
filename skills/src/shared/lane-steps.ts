@@ -14,6 +14,8 @@ import { gitBlobSha } from './sha1'
 import type { Lane, LanePlanDigest } from './types'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
+/** Escape a literal for grep -E (the pattern strings are literals, not regexes). */
+const ereEscape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** The bash inside the first fenced block of a rendered prompt template. */
 export function fencedScript(rendered: string): string {
@@ -173,7 +175,11 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
     name: 'assert-check',
     command:
       o.testFiles.map((f) => o.sgPatterns.map((p) =>
-        `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -n '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null`,
+        // The grep fallback (no ast-grep, or ast-grep errored) is anchored to
+        // a statement start: an unanchored grep matched `assert True` inside a
+        // quoted fixture string of a test-detection test and failed a sound
+        // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
+        `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${ereEscape(p.pattern)}' ${q(`${o.wt}/${f}`)} 2>/dev/null`,
       ).join('\n')).join('\n') +
       `\nBODYPATFILE=$(mktemp)\ncat > "$BODYPATFILE" <<'PATTERN_EOF'\n${o.testFuncBodyRegex}\nPATTERN_EOF\n` +
       o.testFiles.map((f) =>
