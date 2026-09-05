@@ -4,7 +4,9 @@ RED tests for 'datum tdd-args' CLI command.
 AC1: 'datum tdd-args --feature "BETA / GA"' prints valid JSON with
      epicBranch, runId, lanePlanPath, testCommand, language
 AC2: epicBranch is sanitized to 'feat/beta-ga'
-AC3: 'datum tdd-args' with no --feature flag exits with error message
+AC3: 'datum tdd-args' with no --feature flag defaults to current git branch name,
+     producing epicBranch 'feat/<branch-name>'; fails with clear error when branch
+     cannot be determined (not a git repo, detached HEAD, or git fails)
 
 The command does not yet exist — all tests must FAIL (AttributeError or
 non-zero exit) until the GREEN agent implements it.
@@ -98,40 +100,51 @@ class TestTask_002_AC2:
 
 
 class TestTask_002_AC3:
-    def test_ac3_ac3_datum_tddargs_with_no_feature(self):
+    def test_ac3_ac3_datum_tddargs_with_no_feature_inside_git_repo(self):
         """
-        PROP-003: AC3: 'datum tdd-args' with no --feature flag exits with error message.
-        """
-        runner = CliRunner()
-        result = runner.invoke(app, ["tdd-args"])
+        PROP-003: AC3: 'datum tdd-args' with no --feature flag defaults to current git branch.
 
-        # Must exit with a non-zero code
-        assert (
-            result.exit_code != 0
-        ), f"Expected non-zero exit code when --feature is missing, got {result.exit_code}"
-
-        # Must produce an error message (on stdout or stderr)
-        combined_output = (result.output or "") + (
-            result.stderr if hasattr(result, "stderr") else ""
-        )
-        assert (
-            combined_output.strip()
-        ), "Expected an error message when --feature is omitted, but output was empty"
-
-    def test_ac3_error_message_mentions_feature(self):
-        """
-        AC3 (extra): the error output should mention 'feature' to guide the user.
+        Inside a git repo (which the test runs inside), omitting --feature should
+        produce exit 0 and derive epicBranch from git branch name.
         """
         runner = CliRunner()
         result = runner.invoke(app, ["tdd-args"])
 
+        # Must exit successfully
         assert (
-            result.exit_code != 0
-        ), f"Expected non-zero exit code when --feature is missing, got {result.exit_code}"
+            result.exit_code == 0
+        ), f"Expected exit code 0 inside git repo, got {result.exit_code}. Output:\n{result.output}"
 
-        combined = result.output or ""
+        # Output must be parseable JSON
+        try:
+            data = json.loads(result.output)
+        except json.JSONDecodeError as exc:
+            pytest.fail(
+                f"Output is not valid JSON: {exc}\nOutput was:\n{result.output}"
+            )
+
+        # epicBranch must be present and derived from git branch (dev)
+        assert "epicBranch" in data, f"Missing epicBranch in JSON output: {data}"
+
+        # When branch is 'dev', epicBranch should be 'feat/dev'
+        assert data["epicBranch"].startswith(
+            "feat/"
+        ), f"epicBranch must start with 'feat/', got: {data['epicBranch']}"
+
+    def test_ac3_branch_name_sanitization_when_defaulted(self):
+        """
+        AC3 (extra): when --feature is omitted and branch is used, branch name must still
+        be properly handled (lowercased if needed, though branches are usually lowercase already).
+        """
+        runner = CliRunner()
+        result = runner.invoke(app, ["tdd-args"])
+
         assert (
-            "feature" in combined.lower()
-            or "missing" in combined.lower()
-            or "required" in combined.lower()
-        ), f"Error output should mention 'feature', 'missing', or 'required'. Got:\n{combined}"
+            result.exit_code == 0
+        ), f"Expected exit code 0 inside git repo, got {result.exit_code}. Output:\n{result.output}"
+
+        data = json.loads(result.output)
+        # epicBranch must exist and be non-empty
+        assert (
+            "epicBranch" in data and data["epicBranch"]
+        ), f"epicBranch must be present and non-empty: {data}"

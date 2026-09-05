@@ -2382,14 +2382,18 @@ def tdd_args_cmd(
     """
     from datetime import datetime
 
-    # Resolve feature name: --feature is required.
+    from datum.tdd_args import CannotDetermineBranchError, _get_current_branch
+
+    # Resolve repo root early for git operations
+    repo_root = Path(repo).resolve()
+
+    # Resolve feature name: if not provided, default to current git branch.
     if not feature:
-        typer.echo(
-            "Error: --feature is required. Provide the feature name, e.g.:\n"
-            '  datum tdd-args --feature "My Feature"',
-            err=False,
-        )
-        raise typer.Exit(code=1)
+        try:
+            feature = _get_current_branch(str(repo_root))
+        except CannotDetermineBranchError as e:
+            typer.echo(f"Error: {e}", err=False)
+            raise typer.Exit(code=1)
 
     # Sanitize feature name into a git branch slug.
     slug = feature.lower()
@@ -2404,7 +2408,6 @@ def tdd_args_cmd(
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     # Detect test command.
-    repo_root = Path(repo).resolve()
     pyproject_path = repo_root / "pyproject.toml"
     test_command = "uv run pytest -x -q"
     if pyproject_path.exists():
