@@ -630,6 +630,7 @@ if (!epicBranch) throw new Error(`args.epicBranch is required and auto-detect fa
 if (!runId) throw new Error(`args.runId is required and auto-detect failed (${describeFailure(actStartResult, "act-start")}). Pass {epicBranch, runId} or "yolo" to auto-detect.`);
 var epicDir = `docs/epics/${epicBranch}`;
 var lanePlanPath = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
+var skeletonDir = `docs/epics/${epicBranch}/skeletons`;
 phase("Topology");
 var digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
 if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);
@@ -696,76 +697,86 @@ ${"=".repeat(60)}`);
     log(`Batch ${bi} fully skipped \u2014 all lanes have unmet deps`);
     continue;
   }
-  log("\u2500\u2500 Setup \u2500\u2500");
-  const setup = await workflow(
-    { scriptPath: sk("datum-tdd-act-setup") },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" }
-  );
-  log("\u2500\u2500 Act \u2500\u2500");
-  const act = await workflow(
-    { scriptPath: sk("datum-tdd-act-lane") },
-    {
-      batchLaneIds: runnableBatchIds,
-      lanePlan,
-      worktreePaths: setup.worktreePaths,
-      batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" },
-      priorFailures: failures,
-      priorCompleted: completedLanes
+  try {
+    log("\u2500\u2500 Setup \u2500\u2500");
+    const setup = await workflow(
+      { scriptPath: sk("datum-tdd-act-setup") },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" }
+    );
+    log("\u2500\u2500 Act \u2500\u2500");
+    const act = await workflow(
+      { scriptPath: sk("datum-tdd-act-lane") },
+      {
+        batchLaneIds: runnableBatchIds,
+        lanePlan,
+        worktreePaths: setup.worktreePaths,
+        batchTag,
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "" },
+        priorFailures: failures,
+        priorCompleted: completedLanes
+      }
+    );
+    for (const [id, r] of Object.entries(act.results || {})) {
+      results[id] = r;
+      if (!r || r.status === "failed") {
+        failures.push(id);
+        log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
+      } else if (r.status === "skipped" || r.status === "blocked") {
+        log(`  ${r.status.toUpperCase()} ${id}: ${r.error || "dependency failed"}`);
+      } else {
+        completedLanes.push(id);
+      }
     }
-  );
-  for (const [id, r] of Object.entries(act.results || {})) {
-    results[id] = r;
-    if (!r || r.status === "failed") {
-      failures.push(id);
-      log(`  FAILED ${id}: ${r ? `${r.stage} \u2014 ${r.error}` : "null result"}`);
-    } else if (r.status === "skipped" || r.status === "blocked") {
-      log(`  ${r.status.toUpperCase()} ${id}: ${r.error || "dependency failed"}`);
-    } else {
-      completedLanes.push(id);
-    }
-  }
-  log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
-  const approvals = Object.values(act.results || {}).filter(
-    (r) => !!r && r.status === "blocked" && r.stage === "GREEN" && Array.isArray(r.needs_write)
-  );
-  if (approvals.length > 0) {
-    log(`
+    log(`Act${batchTag} done: ${batchLaneIds.filter((id) => completedLanes.includes(id)).length}/${batchLaneIds.length} succeeded`);
+    const approvals = Object.values(act.results || {}).filter(
+      (r) => !!r && r.status === "blocked" && r.stage === "GREEN" && Array.isArray(r.needs_write)
+    );
+    if (approvals.length > 0) {
+      log(`
 LEAD APPROVAL NEEDED${batchTag} \u2014 GREEN is blocked on files outside allowed_write_files:`);
-    for (const r of approvals) {
-      log(`  ${r.task_id}: needs_write=[${(r.needs_write || []).join(", ")}]`);
-      log(`    ${r.error}`);
+      for (const r of approvals) {
+        log(`  ${r.task_id}: needs_write=[${(r.needs_write || []).join(", ")}]`);
+        log(`    ${r.error}`);
+      }
+      log("  To approve: add the listed paths to that lane's `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.");
     }
-    log("  To approve: add the listed paths to that lane's `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.");
-  }
-  log("\u2500\u2500 Merge \u2500\u2500");
-  const mergedIds = batchLaneIds.filter((id) => completedLanes.includes(id));
-  const mergeResult = await workflow(
-    { scriptPath: sk("datum-tdd-act-merge") },
-    {
-      epicBranch,
-      completedIds: mergedIds,
-      results,
-      batchRunId,
-      topoOrder: lanePlan.topological_order,
-      batchTag,
-      agentTypes: agentTypeArgs(),
-      configFingerprint: a.configFingerprint || "",
-      laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) } : null
+    log("\u2500\u2500 Merge \u2500\u2500");
+    const mergedIds = batchLaneIds.filter((id) => completedLanes.includes(id));
+    const mergeResult = await workflow(
+      { scriptPath: sk("datum-tdd-act-merge") },
+      {
+        epicBranch,
+        completedIds: mergedIds,
+        results,
+        batchRunId,
+        topoOrder: lanePlan.topological_order,
+        batchTag,
+        agentTypes: agentTypeArgs(),
+        configFingerprint: a.configFingerprint || "",
+        laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) } : null
+      }
+    );
+    if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
+      const failedLane = mergeResult && typeof mergeResult.failedLane === "string" ? mergeResult.failedLane : "";
+      const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : "squash-merge step exited non-zero" : "merge workflow returned null";
+      const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : []);
+      const unmerged = mergedIds.filter((id) => !landed.has(id));
+      for (const id of unmerged) {
+        const i = completedLanes.indexOf(id);
+        if (i >= 0) completedLanes.splice(i, 1);
+        failures.push(id);
+        results[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+      }
+      log(`Merge${batchTag} FAILED \u2014 demoted [${unmerged.join(", ")}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(", ")}]` : ""}`);
     }
-  );
-  if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
-    const failedLane = mergeResult && typeof mergeResult.failedLane === "string" ? mergeResult.failedLane : "";
-    const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : "squash-merge step exited non-zero" : "merge workflow returned null";
-    const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : []);
-    const unmerged = mergedIds.filter((id) => !landed.has(id));
-    for (const id of unmerged) {
-      const i = completedLanes.indexOf(id);
-      if (i >= 0) completedLanes.splice(i, 1);
-      failures.push(id);
-      results[id] = { task_id: id, status: "failed", stage: "MERGE", error: `merge_failed: ${why}${batchTag}` };
+  } catch (exc) {
+    const message = exc.message;
+    log(`act_batch_failed: batch ${bi + 1}/${batches.length} \u2014 ${message}`);
+    for (const id of runnableBatchIds) {
+      if (results[id] && results[id].status === "completed") continue;
+      results[id] = { task_id: id, status: "failed", stage: "CRASH", error: `act_batch_failed: ${message}` };
+      if (!failures.includes(id)) failures.push(id);
     }
-    log(`Merge${batchTag} FAILED \u2014 demoted [${unmerged.join(", ")}] from completed to failed (${why})${landed.size > 0 ? `; landed: [${[...landed].join(", ")}]` : ""}`);
   }
 }
 log("\u2500\u2500 Docs \u2500\u2500");
@@ -829,9 +840,12 @@ return {
   completed: completedLanes.length,
   failed: failures.length,
   skipped: skippedLanes.length,
-  blocked: blockedLanes.length,
+  blocked: blockedLanes.filter((id) => !laneNeedsWrite.includes(id)).length,
+  approval: laneNeedsWrite.length,
   failedLanes: failures,
   skippedLanes,
+  approvalLanes: laneNeedsWrite,
+  needsApproval: Object.fromEntries(laneNeedsWrite.map((id) => [id, results[id]?.error || "green_blocked_needs_write"])),
   blockedLanes,
   completedLanes
 };

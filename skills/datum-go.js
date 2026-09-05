@@ -751,7 +751,10 @@ var yolo = !!a.yolo;
 var startFrom = (a.startFrom || "refine").toLowerCase();
 var explicitStart = !!a.startFrom;
 var route = (a.route || "feature").toLowerCase();
-var activePhases = a.phases && a.phases.length > 0 ? a.phases : [...PHASES];
+var activePhases = a.phases && a.phases.length > 0 ? a.phases.map((p) => String(p).toLowerCase()).map((p) => {
+  if (!PHASES.includes(p)) throw new Error(`invalid_phase: ${JSON.stringify(p)} is not a phase. Valid: ${PHASES.join(", ")}`);
+  return p;
+}) : [...PHASES];
 var startIdx = PHASES.indexOf(startFrom);
 if (startIdx === -1) {
   throw new Error(`Unknown phase: ${startFrom}. Valid: ${PHASES.join(", ")}`);
@@ -873,6 +876,7 @@ Output ONLY raw JSON, no markdown fences, no explanation.`,
     log(`New epic detected \u2014 brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || "no reason given"}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`);
     newEpicBranch = bootstrap.epicBranch;
     resolvedBranch = bootstrap.epicBranch;
+    resolvedRunId = "";
   }
 }
 if (priorState && !explicitStart && !newEpicBranch) {
@@ -1115,7 +1119,10 @@ if (shouldRun("act", 3)) {
       }
     }
     log(`Act ${actFailures.length > 0 || actBlocked.length > 0 ? "finished with failures" : "complete"} \u2014 ${actCompleted.length}/${lanePlan.total_lanes} succeeded, ${actFailures.length} failed, ${actSkipped.length} skipped, ${actBlocked.length} blocked`);
-    lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actBlocked.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actBlocked };
+    const actDepBlocked = actBlocked.filter((id) => !actNeedsWrite.includes(id));
+    const needsApproval = {};
+    for (const id of actNeedsWrite) needsApproval[id] = actResults[id]?.error || "green_blocked_needs_write";
+    lastResult = { completed: actCompleted.length, failed: actFailures.length, skipped: actSkipped.length, blocked: actDepBlocked.length, approval: actNeedsWrite.length, failedLanes: actFailures, skippedLanes: actSkipped, blockedLanes: actDepBlocked, approvalLanes: actNeedsWrite, needsApproval };
     if (actCompleted.length === 0 && lanePlan.total_lanes > 0 || actFailures.length > 0 || actBlocked.length > 0) {
       haltedAt = "act";
       log(`Act halted: ${actFailures.length} failed, ${actBlocked.length} blocked, ${actCompleted.length}/${lanePlan.total_lanes} merged \u2014 not continuing to validate/review/closeout. Fix the failed lanes, then re-run datum go (Act resumes from the lanes that have not merged).`);
