@@ -285,7 +285,7 @@ Concrete divergences in the current code, each naming the principle it violates.
 ### Open
 
 1. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion, the refactor pre-check decides whether REFACTOR runs at all, and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts`). Each is defensible as a *proposal*; none is re-verified. Violates (2). Accepted for now: the outcomes they gate (GREEN, REFACTOR, docs commit) are each independently verified afterwards.
-2. **Deferred files depend on the consuming agent reading them** — a file over the relay budget reaches the plan/refine/properties agents as a Read instruction, not as content. Nothing verifies the agent read it. Violates (2), mitigated by the hash in the instruction; a witness (the agent echoing the blob hash it read) would close it.
+2. **Two deferred-file consumers still have no witness** — plan's decompose-tasks returns a bare JSON array (no slot for `read_witness` without changing the tasks.json contract) and properties' derive agent's output is discarded (it writes and commits PROPERTIES.md itself). Both can receive a deferred SPEC. Violates (2). The classify and approaches agents are gated (840becd).
 3. **Dead producers with no consumer** (#394) — `datum gate red`, `datum verify-stage`, `commit_queue.py`, and the dedupe/render helpers have no call site in `skills/src/` or `datum/`. Violates (1). Decision pending: delete, or wire.
 
 ### Closed
@@ -304,6 +304,9 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Main-sync and standalone config read via LLM** — closed in 337f3a8: `mainSyncSteps`/`mainSyncFromSteps` and `configReadSteps`/`configFromSteps`; `mainSyncPrompt` and `READ_CONFIG_PROMPT` are gone.
 - **Resume replayed stale gates** — closed in dcda394: the inputs fingerprint (configs, epic docs, pipeline state) is stamped into every batch prompt.
 - **Large-file relays fabricated by the runner** — closed in 84607b8: two-phase budgeted relay; files over 16 KB are read by the consuming agent.
+- **Deferred reads unverified** — closed for the JSON-returning consumers in 840becd: `contextWitnessInstruction`/`assertReadWitness`, `context_read_unverified`.
+- **Docs commit via a 3-turn agent; docs failure aborted the run** — closed in 800e9dd: `commitFilesSteps` with the exact message (trailers refused), `docs_workflow_failed` fails soft in both orchestrators.
+- **GREEN turn-cap left a dirty worktree and an "unknown" failure** — closed in 887c6aa: `green_no_result`, `worktreeResetSteps` before the escalation retry, stage caps 80/60/60.
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
