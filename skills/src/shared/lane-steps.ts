@@ -382,6 +382,60 @@ export function actStartSteps(o: ActStartOpts): BatchStep[] {
   return steps
 }
 
+// ── Closeout collect: branch/shas/config + the four collectors + data-exists ──
+
+export interface CloseoutCollectOpts {
+  /** Deterministic run id from datum-go/Act, or '' to generate one via
+   *  `date +%Y%m%d-%H%M%S` (standalone `datum-closeout` runs). */
+  runId: string
+  /** Epic branch already resolved by the caller — skips the `git rev-parse`
+   *  call. Omit/empty to derive it from HEAD. */
+  branchHint?: string | null
+}
+
+/**
+ * Batched, deterministic replacement for the LLM-relayed closeout collect
+ * prompt (#368 follow-up). The old prompt handed an agent
+ * `... 2>/dev/null || true` for every collector — every failure was
+ * swallowed, the model decided what to report, and nothing in the run said
+ * WHICH collector failed or why (eedom run wf_2a5ede48-358). Each collector
+ * here is its own step so its exit code and stderr are individually visible
+ * to the caller; none of them silence a non-zero exit.
+ */
+export function closeoutCollectSteps(o: CloseoutCollectOpts): BatchStep[] {
+  return [
+    {
+      name: 'branch',
+      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : 'git rev-parse --abbrev-ref HEAD',
+      tolerant: true,
+    },
+    {
+      name: 'timestamp',
+      command: o.runId
+        ? `__rid=${q(o.runId)} && printf '%s' "$__rid"`
+        : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
+      tolerant: true,
+    },
+    { name: 'base-sha', command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
+    { name: 'merge-sha', command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
+    { name: 'config', command: `cat .datum/config.json || echo '{}'`, tolerant: true },
+    { name: 'mkdir', command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    {
+      name: 'collect-git',
+      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
+      tolerant: true,
+    },
+    { name: 'collect-tasks', command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
+    { name: 'collect-token-metrics', command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
+    { name: 'collate', command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
+    {
+      name: 'data-exists',
+      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
+      tolerant: true,
+    },
+  ]
+}
+
 /**
  * Prompt for a dedicated read-only agent call that fetches the lane plan's
  * exact JSON content (#524 dogfooding).

@@ -25,6 +25,7 @@ import {
   ownershipFromStdout,
   readLanePlanPrompt,
   testExitCode,
+  closeoutCollectSteps,
 } from './lane-steps'
 import { batchScript, parseBatchResult, stepStdout, stepResult } from './batch'
 import { renderPrompt } from './utils'
@@ -424,6 +425,79 @@ describe('actStartSteps', () => {
       expect(stepStdout(r, 'branch')).toBe('datum/e')
       expect(stepStdout(r, 'timestamp')).toMatch(/^\d{8}-\d{6}\n$/)
       expect(stepResult(r, 'lane-state-read')?.stdout).toBe('{}\n')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collect)', () => {
+  it('produces one step per collector, in order, all tolerant, no || true / 2>/dev/null swallowing', () => {
+    const steps = closeoutCollectSteps({ runId: 'r1' })
+    expect(names(steps)).toEqual([
+      'branch', 'timestamp', 'base-sha', 'merge-sha', 'config',
+      'mkdir', 'collect-git', 'collect-tasks', 'collect-token-metrics', 'collate', 'data-exists',
+    ])
+    for (const s of steps) expect(s.tolerant).toBe(true)
+    for (const s of steps) {
+      expect(s.command).not.toMatch(/\|\|\s*true\b/)
+      expect(s.command).not.toContain('2>/dev/null')
+    }
+  })
+
+  it('uses the given runId verbatim instead of generating a fresh timestamp', () => {
+    const steps = closeoutCollectSteps({ runId: 'r1' })
+    const ts = steps.find((s) => s.name === 'timestamp')!
+    expect(ts.command).toContain('r1')
+    expect(ts.command).not.toContain('date +%Y%m%d')
+  })
+
+  it('generates a run id via date(1) only when none is given', () => {
+    const steps = closeoutCollectSteps({ runId: '' })
+    const ts = steps.find((s) => s.name === 'timestamp')!
+    expect(ts.command).toContain('date +%Y%m%d-%H%M%S')
+  })
+
+  it('honours branchHint instead of shelling out to git rev-parse', () => {
+    const withHint = closeoutCollectSteps({ runId: 'r1', branchHint: 'datum/e' })
+    expect(withHint[0].command).toContain('datum/e')
+    expect(withHint[0].command).not.toContain('git rev-parse --abbrev-ref')
+    const withoutHint = closeoutCollectSteps({ runId: 'r1' })
+    expect(withoutHint[0].command).toContain('git rev-parse --abbrev-ref HEAD')
+  })
+
+  it('each collector references the run id and prior shas through shell state, not literals baked at call time', () => {
+    const steps = closeoutCollectSteps({ runId: 'r1' })
+    const byName = (n: string) => steps.find((s) => s.name === n)!.command
+    expect(byName('mkdir')).toContain('$__rid')
+    expect(byName('collect-git')).toContain('closeout-collect-git')
+    expect(byName('collect-git')).toContain('$__rid')
+    expect(byName('collect-git')).toContain('$__base')
+    expect(byName('collect-git')).toContain('$__merge')
+    expect(byName('collect-tasks')).toContain('closeout-collect-tasks')
+    expect(byName('collect-tasks')).toContain('$__rid')
+    expect(byName('collect-token-metrics')).toContain('closeout-collect-token-metrics')
+    expect(byName('collate')).toContain('closeout-collate')
+    expect(byName('collate')).toContain('$__merge')
+    expect(byName('data-exists')).toContain('closeout-data.json')
+    expect(byName('data-exists')).toContain('$__rid')
+  })
+
+  it('runs under bash and reports data-exists=no when collate never wrote the file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-closeout-'))
+    try {
+      const steps = closeoutCollectSteps({ runId: 'r1' })
+      // Replace the real `datum` collector calls with no-ops so this runs
+      // without the CLI installed — this test is about the shell plumbing
+      // (var threading, mkdir, data-exists check), not the collectors.
+      const script = batchScript(steps).replace(/datum closeout-collect[a-z-]*[^\n]*/g, 'true')
+      const r = parseBatchResult(
+        execFileSync('bash', ['-c', `cd ${JSON.stringify(dir)} && git init -q && git commit --allow-empty -q -m x && ${script}`], { encoding: 'utf8' }),
+        steps,
+      )
+      expect(r.failed).toBeNull()
+      expect(stepStdout(r, 'timestamp')).toBe('r1')
+      expect(stepStdout(r, 'data-exists')).toBe('no\n')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

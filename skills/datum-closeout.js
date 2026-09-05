@@ -82,16 +82,6 @@ function model(tier) {
 // skills/src/prompts/closeout-synthesize.md
 var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\n\nEvery factual claim must be grounded in that file. Do not read source files for fresh data.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. CHANGELOG.md \u2014 append entries for what shipped\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact:\n- Write the file\n- Commit: git add <file> && git commit -m "closeout: write <artifact>"\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
-// skills/src/prompts/util-read-context.md
-var util_read_context_default = `Return a JSON object with:
-1. "branch": output of \`git rev-parse --abbrev-ref HEAD\`
-2. "epic_dir": "docs/epics/" + the branch name
-{{extraFields}}
-If any field embeds full multi-line file contents, do NOT hand-type the JSON \u2014 build it programmatically with a command that guarantees correct escaping, e.g.:
-\`python3 -c "import json; print(json.dumps({'branch': ..., 'epic_dir': ..., 'spec_content': open('path/SPEC.md').read(), ...}))"\`
-Hand-escaping large files reliably produces invalid JSON (stray backslashes, unescaped control chars). Run that command, then output only its stdout \u2014 no markdown fences, no commentary.
-`;
-
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -113,42 +103,146 @@ function stageOpts(stage, extra = {}) {
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
 
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function closeoutCollectSteps(o) {
+  return [
+    {
+      name: "branch",
+      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
+      tolerant: true
+    },
+    {
+      name: "timestamp",
+      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
+      tolerant: true
+    },
+    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
+    { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
+    { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
+    { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    {
+      name: "collect-git",
+      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
+      tolerant: true
+    },
+    { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
+    { name: "collect-token-metrics", command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
+    { name: "collate", command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
+    {
+      name: "data-exists",
+      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
+      tolerant: true
+    }
+  ];
+}
+
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
 // skills/src/datum-closeout.ts
+var COLLECTOR_STEPS = ["collect-git", "collect-tasks", "collect-token-metrics", "collate"];
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
 var runId = a.runId || "";
 phase("Collect");
-var collectResult = await agent(
-  renderPrompt(util_read_context_default, {
-    extraFields: `3. "merge_sha": output of \`git rev-parse HEAD\`
-4. "base_sha": output of \`git merge-base HEAD origin/main\`
-5. "run_id": "${runId}" if non-empty, else generate from \`date +%Y%m%d-%H%M%S\`
-6. "closeout_data_exists": whether .datum/runs/<run_id>/closeout-data.json exists
-7. "agent_types": the value of the agent_types key in .datum/config.json (true if the file or key is missing; false only when it is literally false)
-
-ADDITIONAL: If closeout_data_exists is false, also run these collectors (skip failures):
-mkdir -p .datum/runs/<run_id>
-datum closeout-collect-git --run-id <run_id> --base-sha <base_sha> --merge-sha <merge_sha> 2>/dev/null || true
-datum closeout-collect-tasks --run-id <run_id> 2>/dev/null || true
-datum closeout-collect-token-metrics --run-id <run_id> 2>/dev/null || true
-datum closeout-collate --run-id <run_id> --merge-sha <merge_sha> 2>/dev/null || true
-Include "collected": true in the response if you ran collectors.`
-  }),
-  { label: "collect", model: model("fast") }
+var collectSteps = closeoutCollectSteps({ runId });
+var collectRaw = await agent(
+  batchCommandPrompt(collectSteps),
+  stageOpts("cli", { label: "closeout-collect", model: model("fast") })
 );
-var ctx = typeof collectResult === "string" ? parseAgentJson(collectResult, {}) : collectResult;
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: ctx.agent_types !== false });
-var rid = runId || ctx.run_id;
-log(`Branch: ${ctx.branch}, run: ${rid}`);
+var collectResult = parseBatchResult(collectRaw, collectSteps);
+for (const name of COLLECTOR_STEPS) {
+  const step = collectResult.steps.find((s) => s.name === name);
+  if (step && step.exit_code !== 0) {
+    const tail = (step.stderr || step.stdout).trim().split("\n").slice(-5).join("\n");
+    log(`[closeout] collector "${name}" exited ${step.exit_code}${tail ? ` \u2014 ${tail}` : ""}`);
+  }
+}
+var branch = (stepStdout(collectResult, "branch") || "").trim();
+var cfg = parseAgentJson(stepStdout(collectResult, "config") || "{}", {});
+configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : { agentTypes: cfg.agent_types !== false });
+var rid = runId || (stepStdout(collectResult, "timestamp") || "").trim();
+var dataExists = (stepStdout(collectResult, "data-exists") || "").trim() === "yes";
+log(`Branch: ${branch}, run: ${rid}`);
+if (!dataExists) {
+  throw new Error(
+    `Closeout: .datum/runs/${rid}/closeout-data.json is missing after collect \u2014 refusing to hand a synthesis agent a missing file. ${describeFailure(collectResult, "closeout-collect")}`
+  );
+}
 phase("Synthesize");
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch: ctx.branch, runId: rid }) + `
+  renderPrompt(closeout_synthesize_default, { closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`, branch, runId: rid }) + `
 
 AFTER writing artifacts, also:
-1. Tag: git tag "epic/${ctx.branch}/${rid}" HEAD 2>/dev/null || true
+1. Tag: git tag "epic/${branch}/${rid}" HEAD 2>/dev/null || true
 2. Archive: datum closeout-archive --run-id ${rid} 2>/dev/null || true
 3. Clean up root pipeline artifacts \u2014 move them to the epic archive dir:
-   EPIC_DIR="docs/epics/${ctx.branch}"
+   EPIC_DIR="docs/epics/${branch}"
    mkdir -p "$EPIC_DIR"
    for f in SPEC.md TASKS.md QUESTIONS.md PROPERTIES.md TICKET.md tasks.json; do
      [ -f "$f" ] && mv "$f" "$EPIC_DIR/" && echo "archived $f \u2192 $EPIC_DIR/"
@@ -160,11 +254,11 @@ AFTER writing artifacts, also:
 var synth = typeof synthResult === "string" ? parseAgentJson(synthResult, { artifacts_written: [], follow_up_count: 0 }) : synthResult;
 log(`Closeout complete: ${(synth?.artifacts_written || []).join(", ")}`);
 await agent(
-  `Run: datum housekeep-epic ${ctx.branch}`,
+  `Run: datum housekeep-epic ${branch}`,
   stageOpts("cli", { label: "housekeep", model: model("fast") })
 );
 return {
-  branch: ctx.branch,
+  branch,
   runId: rid,
   artifacts: synth?.artifacts_written || [],
   followUps: synth?.follow_up_count || 0
