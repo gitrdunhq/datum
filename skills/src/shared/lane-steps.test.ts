@@ -215,6 +215,7 @@ describe('scripts/test-count-gate --base — resumed lane whose RED commit is no
     try {
       const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
       git('init', '-q', '-b', 'epic')
+      git('config', 'core.hooksPath', '/dev/null') // hermetic: neutralise machine-global hooks
       git('config', 'user.email', 't@t')
       git('config', 'user.name', 't')
       mkdirSync(join(dir, 'tests'))
@@ -246,6 +247,7 @@ describe('postRedSteps — executed against a real git worktree', () => {
     try {
       const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
       git('init', '-q')
+      git('config', 'core.hooksPath', '/dev/null') // hermetic: neutralise machine-global hooks
       git('config', 'user.email', 't@t')
       git('config', 'user.name', 't')
       mkdirSync(join(dir, 'tests'))

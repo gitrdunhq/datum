@@ -35,6 +35,10 @@ function run(cmd: string, args: string[], cwd: string): { status: number; stdout
 
 function initRepo(dir: string): void {
   run('git', ['init', '-q', '-b', 'main'], dir)
+  // Hermetic: a machine-global core.hooksPath (post-commit/post-checkout
+  // hooks) otherwise writes into this temp repo, `git add .` picks that up,
+  // and the AC2 merge-conflict scenario silently stops conflicting.
+  run('git', ['config', 'core.hooksPath', '/dev/null'], dir)
   run('git', ['config', 'user.email', 'test@example.com'], dir)
   run('git', ['config', 'user.name', 'Test User'], dir)
   writeFileSync(join(dir, 'README.md'), '# fixture repo\n')
