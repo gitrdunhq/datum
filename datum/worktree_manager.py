@@ -65,6 +65,19 @@ def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.Completed
     )
 
 
+def _only_deletions(worktree_path: Path) -> bool:
+    """True when the worktree's only uncommitted changes are deleted tracked
+    files (every `git status --porcelain` line is ` D`/`D `). Such a
+    checkout holds nothing that is not already on its branch."""
+    if not worktree_path.is_dir():
+        return False
+    st = _git(["status", "--porcelain"], cwd=worktree_path, check=False)
+    if st.returncode != 0:
+        return False
+    lines = [ln for ln in st.stdout.splitlines() if ln.strip()]
+    return bool(lines) and all(ln[:2] in (" D", "D ") for ln in lines)
+
+
 def create_lane_worktree(
     epic_branch: str,
     lane_id: str,
@@ -140,6 +153,16 @@ def create_lane_worktree(
                     cwd=repo_root,
                     check=False,
                 )
+                if remove_result.returncode != 0 and _only_deletions(Path(stale_path)):
+                    # A hollowed-out worktree: still registered, tracked files
+                    # gone from disk (caliper BUG O — 557 ` D` lines and
+                    # nothing else after a half-finished cleanup). Its branch
+                    # keeps every commit; the checkout holds no work to lose.
+                    remove_result = _git(
+                        ["worktree", "remove", "--force", stale_path],
+                        cwd=repo_root,
+                        check=False,
+                    )
                 if remove_result.returncode != 0:
                     raise RuntimeError(
                         f"lane branch {lane_branch} is locked to stale worktree "
@@ -167,11 +190,15 @@ def remove_lane_worktree(
     *,
     repo_root: Path | None = None,
     force: bool = True,
+    worktree_path: Path | None = None,
 ) -> dict:
     """Remove a lane worktree; delete its sub-branch only if safe to do so.
 
     The worktree directory is always removed (it holds no commits of its
-    own — the branch does). The lane sub-branch (<epic_branch>--<lane_id>)
+    own — the branch does). It is `<repo_root>/.datum/worktrees/<run>/<lane>`
+    unless `worktree_path` names where git actually has it registered (the
+    setup batch creates lanes from inside the batch's root worktree, so
+    they nest under it). The lane sub-branch (<epic_branch>--<lane_id>)
     is force-deleted ONLY when it has zero commits beyond the point it was
     forked from the epic branch (checked via `git merge-base`, matching how
     create_lane_worktree() establishes base_sha). If the branch has real
@@ -195,7 +222,8 @@ def remove_lane_worktree(
         return {"lane_id": lane_id, "branch": "", "deleted": False, "preserved": False}
 
     repo_root = (repo_root or Path(".")).resolve()
-    worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
+    if worktree_path is None:
+        worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
     lane_branch = f"{epic_branch}--{lane_id}"
 
     flags = ["--force"] if force else []
@@ -296,7 +324,12 @@ def main_checkout_root(repo_root: Path) -> Path:
 # isolated from the other lanes) instead of sharing the main checkout's.
 # (lockfile in the worktree, tool on PATH, command, directory it produces)
 _INSTALLERS: tuple[tuple[str, str, list[str], str], ...] = (
-    ("pnpm-lock.yaml", "pnpm", ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"], "node_modules"),
+    (
+        "pnpm-lock.yaml",
+        "pnpm",
+        ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"],
+        "node_modules",
+    ),
     ("uv.lock", "uv", ["uv", "sync", "--frozen"], ".venv"),
 )
 _INSTALL_TIMEOUT_S = 600
@@ -315,21 +348,33 @@ def install_lane_dependencies(worktree_path: Path) -> list[str]:
             continue
         try:
             res = subprocess.run(
-                cmd, cwd=worktree_path, capture_output=True, text=True, timeout=_INSTALL_TIMEOUT_S
+                cmd,
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=_INSTALL_TIMEOUT_S,
             )
         except subprocess.TimeoutExpired:
-            print(f"deps_install_failed: {tool} timed out after {_INSTALL_TIMEOUT_S}s in {worktree_path}", file=sys.stderr)
+            print(
+                f"deps_install_failed: {tool} timed out after {_INSTALL_TIMEOUT_S}s in {worktree_path}",
+                file=sys.stderr,
+            )
             continue
         if res.returncode != 0:
             tail = (res.stderr or res.stdout or "").strip().splitlines()[-3:]
-            print(f"deps_install_failed: {' '.join(cmd)} exited {res.returncode} in {worktree_path}: {' | '.join(tail)}", file=sys.stderr)
+            print(
+                f"deps_install_failed: {' '.join(cmd)} exited {res.returncode} in {worktree_path}: {' | '.join(tail)}",
+                file=sys.stderr,
+            )
             continue
         if (worktree_path / out_dir).is_dir():
             produced.append(out_dir)
     return produced
 
 
-def link_shared_dirs(worktree_path: Path, source_root: Path, dirs: list[str] | tuple[str, ...]) -> list[str]:
+def link_shared_dirs(
+    worktree_path: Path, source_root: Path, dirs: list[str] | tuple[str, ...]
+) -> list[str]:
     """Symlink each of `dirs` that exists under source_root into the lane
     worktree, unless the worktree already has that path (tracked content
     wins). Returns the names linked. This is how a fresh lane worktree gets
@@ -385,7 +430,9 @@ def setup_pipeline_worktrees(
         )
         # Own install first (pnpm/uv global cache); symlink whatever remains.
         installed = install_lane_dependencies(mapping[lane_id])
-        link_shared_dirs(mapping[lane_id], source_root, [d for d in link_dirs if d not in installed])
+        link_shared_dirs(
+            mapping[lane_id], source_root, [d for d in link_dirs if d not in installed]
+        )
     return mapping
 
 
@@ -533,12 +580,16 @@ def merge_lane_branches(
     leftover_tmp = 0
     while True:
         subject = _git(
-            ["log", "-1", "--format=%s", f"HEAD~{leftover_tmp}"], cwd=repo_root, check=False
+            ["log", "-1", "--format=%s", f"HEAD~{leftover_tmp}"],
+            cwd=repo_root,
+            check=False,
         ).stdout.strip()
         if not subject.startswith("tmp(datum): squash lane "):
             break
         leftover_tmp += 1
-    start_sha = _git(["rev-parse", f"HEAD~{leftover_tmp}"], cwd=repo_root).stdout.strip()
+    start_sha = _git(
+        ["rev-parse", f"HEAD~{leftover_tmp}"], cwd=repo_root
+    ).stdout.strip()
     if leftover_tmp:
         any_new_changes = True
 
@@ -671,8 +722,14 @@ def cleanup_run_worktrees(
     (see remove_lane_worktree()); branches with real RED/GREEN commits are
     preserved and reported so nothing is silently discarded.
 
-    The directory scan under run_dir is the sole authority for what gets
-    *deleted* — only lanes with a worktree directory are ever touched here.
+    Lanes are discovered two ways and the union is what gets *deleted*: the
+    directory scan under `<repo_root>/.datum/worktrees/<run_id>/`, and every
+    worktree git has registered under a `.datum/worktrees/<run_id>/<lane>`
+    path anywhere — the setup batch runs `datum worktrees setup` from
+    INSIDE the batch's root worktree, so the lanes nest under it and the
+    main checkout's run_dir never exists (caliper BUG O: cleanup from the
+    main checkout found no lanes, never deleted their empty branches, and
+    left a lane registered with its files gone).
     But a lane's worktree directory can already be gone by the time cleanup
     runs (a prior partial cleanup, an agent removing its own worktree, a
     crash right after `git worktree remove`) while its branch — with real
@@ -699,18 +756,38 @@ def cleanup_run_worktrees(
     removed: list[str] = []
     preserved_with_commits: list[str] = []
     accounted_for: set[str] = set()
+    lane_paths: dict[str, Path] = {}
     if run_dir.exists():
         for lane_dir in sorted(run_dir.iterdir()):
             if lane_dir.is_dir():
-                lane_id = lane_dir.name
-                accounted_for.add(lane_id)
-                result = remove_lane_worktree(
-                    lane_id, run_id, epic_branch, repo_root=repo_root
-                )
-                if result["preserved"]:
-                    preserved_with_commits.append(lane_id)
-                else:
-                    removed.append(lane_id)
+                lane_paths[lane_dir.name] = lane_dir
+    marker = f"/{WORKTREE_ROOT}/{run_id}/"
+    for wt in list_worktrees(repo_root):
+        wt_path = wt["path"].replace("\\", "/")
+        if marker not in wt_path:
+            continue
+        lane_id = wt_path.split(marker, 1)[1].strip("/")
+        if "/" in lane_id or not lane_id:
+            continue
+        lane_paths.setdefault(lane_id, Path(wt["path"]))
+    for lane_id in sorted(lane_paths):
+        try:
+            _validate_path_component(lane_id, "lane_id")
+        except ValueError:
+            continue
+        accounted_for.add(lane_id)
+        result = remove_lane_worktree(
+            lane_id,
+            run_id,
+            epic_branch,
+            repo_root=repo_root,
+            worktree_path=lane_paths[lane_id],
+        )
+        if result["preserved"]:
+            preserved_with_commits.append(lane_id)
+        else:
+            removed.append(lane_id)
+    if run_dir.exists():
         try:
             run_dir.rmdir()
         except OSError:
@@ -722,6 +799,9 @@ def cleanup_run_worktrees(
             ["worktree", "remove", str(root_dir), "--force"], cwd=repo_root, check=False
         )
         removed.append(f"{run_id}-root")
+    # Registrations whose directory is gone (a lane nested under the root
+    # just removed) must not survive to block the next run's `-b` checkout.
+    _git(["worktree", "prune"], cwd=repo_root, check=False)
 
     # Reporting-only cross-check: lane branches still alive with real
     # commits, whose worktree directory was already gone before this call.

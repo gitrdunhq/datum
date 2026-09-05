@@ -212,6 +212,61 @@ class TestCleanupRunWorktreesDiscoversPreservedBranchesWithoutDirs:
             assert check.returncode == 0, f"{branch} must survive"
 
 
+class TestCleanupNestedLaneWorktrees:
+    """caliper BUG O (wf_7686c0cf-f7e): the setup batch runs `datum worktrees
+    setup` from INSIDE the batch's root worktree, so every lane worktree lives
+    at <root-wt>/.datum/worktrees/<run>/<lane>. The merge batch then runs
+    `datum worktrees cleanup` from the MAIN checkout, whose
+    .datum/worktrees/<run>/ never existed — the lane loop found nothing, the
+    lane branches with no commits were never deleted, and the lanes were only
+    deregistered as collateral of the root removal (or not at all: run 12
+    left --task-009 registered with its tracked files gone, and the next
+    run's setup died on "already used by worktree")."""
+
+    def test_cleanup_from_main_checkout_deregisters_lanes_set_up_inside_the_root_worktree(
+        self, repo: Path
+    ):
+        from datum.worktree_manager import list_worktrees, setup_pipeline_worktrees
+
+        epic_branch = "epic/test"
+        run_id = "r1"
+        root_wt = repo / ".datum" / "worktrees" / f"{run_id}-root"
+        _git(["worktree", "add", "--detach", str(root_wt), epic_branch], cwd=repo)
+
+        mapping = setup_pipeline_worktrees(
+            run_id, epic_branch, ["task-1", "task-2"], repo_root=root_wt, link_dirs=[]
+        )
+        assert str(mapping["task-1"]).startswith(str(root_wt))
+        # task-2 did real work; task-1 never advanced past the fork point.
+        (mapping["task-2"] / "work.py").write_text("x = 1\n")
+        _git(["add", "work.py"], cwd=mapping["task-2"])
+        _git(["commit", "-q", "-m", "GREEN"], cwd=mapping["task-2"])
+
+        result = cleanup_run_worktrees(run_id, epic_branch, repo_root=repo)
+
+        assert result["removed"] == ["task-1", f"{run_id}-root"]
+        assert result["preserved_with_commits"] == ["task-2"]
+        assert not root_wt.exists()
+        registered = [w["path"] for w in list_worktrees(repo)]
+        assert not any(
+            f"/{run_id}/" in p or p.endswith(f"{run_id}-root") for p in registered
+        ), registered
+        task1 = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{epic_branch}--task-1"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        assert task1.returncode != 0, "empty lane branch must be deleted"
+        # And the same lanes can be set up again from a fresh root.
+        root2 = repo / ".datum" / "worktrees" / "r2-root"
+        _git(["worktree", "add", "--detach", str(root2), epic_branch], cwd=repo)
+        again = setup_pipeline_worktrees(
+            "r2", epic_branch, ["task-1", "task-2"], repo_root=root2, link_dirs=[]
+        )
+        assert set(again) == {"task-1", "task-2"}
+
+
 class TestHousekeepEpic:
     def test_batches_branch_deletion_for_multiple_merged_lanes(self, repo: Path):
         epic_branch = "epic/test"
@@ -365,6 +420,45 @@ class TestCreateLaneWorktree:
         # left dangling.
         registered = _git(["worktree", "list", "--porcelain"], cwd=repo).stdout
         assert str(stale_path) not in registered
+
+    def test_reclaims_lane_branch_from_a_hollowed_stale_worktree(self, repo: Path):
+        """caliper BUG O: run 12's stale lane worktree was still registered
+        but its tracked files were gone from disk — `git status` showed
+        557 ` D` lines and nothing else. Non-force `git worktree remove`
+        refuses that ("contains modified or untracked files") and setup
+        died. A worktree whose only changes are deletions holds no work to
+        lose: reclaim it."""
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        stale_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        (stale_path / "README.md").unlink()
+        assert _git(["status", "--porcelain"], cwd=stale_path).stdout.startswith(" D ")
+
+        new_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-2", base_sha, repo_root=repo
+        )
+        assert new_path != stale_path
+        assert (new_path / "README.md").exists()
+        registered = _git(["worktree", "list", "--porcelain"], cwd=repo).stdout
+        assert str(stale_path) not in registered
+
+    def test_stale_worktree_with_an_uncommitted_edit_is_still_refused(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        stale_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        (stale_path / "README.md").write_text("edited, never committed\n")
+
+        with pytest.raises(RuntimeError, match="uncommitted changes"):
+            create_lane_worktree(
+                "epic/test", "lane-a", "run-2", base_sha, repo_root=repo
+            )
+        assert (stale_path / "README.md").read_text() == "edited, never committed\n"
 
 
 class TestMergeLaneBranches:
@@ -1040,14 +1134,18 @@ class TestSharedDependencyDirs:
         (repo / "node_modules" / ".bin").mkdir()
         (repo / "node_modules" / ".bin" / "vitest").write_text("#!/bin/sh\necho ok\n")
         (repo / ".venv").mkdir()
-        mapping = setup_pipeline_worktrees("run-deps", "epic/test", ["lane-a"], repo_root=repo)
+        mapping = setup_pipeline_worktrees(
+            "run-deps", "epic/test", ["lane-a"], repo_root=repo
+        )
         wt = mapping["lane-a"]
         assert (wt / "node_modules").is_symlink()
         assert (wt / "node_modules").resolve() == (repo / "node_modules").resolve()
         assert (wt / "node_modules" / ".bin" / "vitest").exists()
         assert (wt / ".venv").is_symlink()
 
-    def test_setup_from_a_root_worktree_links_the_main_checkout_not_the_root_worktree(self, repo: Path):
+    def test_setup_from_a_root_worktree_links_the_main_checkout_not_the_root_worktree(
+        self, repo: Path
+    ):
         """The setup batch runs `cd <root worktree> && datum worktrees setup`;
         the shared dirs must come from the main checkout (git common dir)."""
         from datum.worktree_manager import setup_pipeline_worktrees
@@ -1055,16 +1153,26 @@ class TestSharedDependencyDirs:
         (repo / "node_modules").mkdir()
         root_wt = repo.parent / "root-wt"
         _git(["worktree", "add", "--detach", str(root_wt), "epic/test"], cwd=repo)
-        mapping = setup_pipeline_worktrees("run-root", "epic/test", ["lane-a"], repo_root=root_wt)
+        mapping = setup_pipeline_worktrees(
+            "run-root", "epic/test", ["lane-a"], repo_root=root_wt
+        )
         wt = mapping["lane-a"]
         assert (wt / "node_modules").is_symlink()
         assert (wt / "node_modules").resolve() == (repo / "node_modules").resolve()
 
-    def test_setup_skips_absent_dirs_and_never_overwrites_a_tracked_path(self, repo: Path):
+    def test_setup_skips_absent_dirs_and_never_overwrites_a_tracked_path(
+        self, repo: Path
+    ):
         from datum.worktree_manager import setup_pipeline_worktrees
 
         (repo / ".venv").mkdir()  # exists in the main checkout but not in link_dirs
-        mapping = setup_pipeline_worktrees("run-skip", "epic/test", ["lane-a"], repo_root=repo, link_dirs=["node_modules", "vendor"])
+        mapping = setup_pipeline_worktrees(
+            "run-skip",
+            "epic/test",
+            ["lane-a"],
+            repo_root=repo,
+            link_dirs=["node_modules", "vendor"],
+        )
         wt = mapping["lane-a"]
         assert not (wt / "node_modules").exists()
         assert not (wt / "vendor").exists()
@@ -1078,7 +1186,21 @@ class TestSharedDependencyDirs:
 
         (repo / "vendor").mkdir()
         monkeypatch.chdir(repo)
-        res = CliRunner().invoke(app, ["worktrees", "setup", "--run-id", "run-cli", "--epic-branch", "epic/test", "--lane-ids", "lane-a", "--link-dirs", "vendor"])
+        res = CliRunner().invoke(
+            app,
+            [
+                "worktrees",
+                "setup",
+                "--run-id",
+                "run-cli",
+                "--epic-branch",
+                "epic/test",
+                "--lane-ids",
+                "lane-a",
+                "--link-dirs",
+                "vendor",
+            ],
+        )
         assert res.exit_code == 0, res.output
         out = json.loads(res.output)
         assert (Path(out["lane-a"]) / "vendor").is_symlink()
@@ -1100,7 +1222,9 @@ class TestPerLaneDependencyInstall:
         (bin_dir / name).chmod(0o755)
         return bin_dir
 
-    def test_pnpm_lockfile_and_tool_present_installs_per_lane_from_the_store(self, repo: Path, monkeypatch):
+    def test_pnpm_lockfile_and_tool_present_installs_per_lane_from_the_store(
+        self, repo: Path, monkeypatch
+    ):
         from datum.worktree_manager import setup_pipeline_worktrees
 
         (repo / "package.json").write_text("{}\n")
@@ -1108,10 +1232,14 @@ class TestPerLaneDependencyInstall:
         _git(["checkout", "-q", "epic/test"], cwd=repo)
         _git(["add", "package.json", "pnpm-lock.yaml"], cwd=repo)
         _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
-        (repo / "node_modules").mkdir()  # main checkout's — must NOT be linked when pnpm installs
+        (
+            repo / "node_modules"
+        ).mkdir()  # main checkout's — must NOT be linked when pnpm installs
         bin_dir = self._fake_tool(repo, "pnpm", "pnpm.log")
         monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
-        mapping = setup_pipeline_worktrees("run-pnpm", "epic/test", ["lane-a"], repo_root=repo)
+        mapping = setup_pipeline_worktrees(
+            "run-pnpm", "epic/test", ["lane-a"], repo_root=repo
+        )
         wt = mapping["lane-a"]
         calls = (repo.parent / "pnpm.log").read_text().splitlines()
         assert len(calls) == 1
@@ -1129,13 +1257,17 @@ class TestPerLaneDependencyInstall:
         _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
         bin_dir = self._fake_tool(repo, "uv", "uv.log")
         monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
-        mapping = setup_pipeline_worktrees("run-uv", "epic/test", ["lane-a"], repo_root=repo)
+        mapping = setup_pipeline_worktrees(
+            "run-uv", "epic/test", ["lane-a"], repo_root=repo
+        )
         wt = mapping["lane-a"]
         calls = (repo.parent / "uv.log").read_text().splitlines()
         assert len(calls) == 1 and "sync --frozen" in calls[0]
         assert (wt / ".venv").is_dir() and not (wt / ".venv").is_symlink()
 
-    def test_install_failure_falls_back_to_the_symlink_and_is_reported(self, repo: Path, monkeypatch, capsys):
+    def test_install_failure_falls_back_to_the_symlink_and_is_reported(
+        self, repo: Path, monkeypatch, capsys
+    ):
         from datum.worktree_manager import setup_pipeline_worktrees
 
         (repo / "package.json").write_text("{}\n")
@@ -1146,11 +1278,19 @@ class TestPerLaneDependencyInstall:
         (repo / "node_modules").mkdir()
         bin_dir = repo.parent / "fakebin"
         bin_dir.mkdir(exist_ok=True)
-        (bin_dir / "pnpm").write_text("#!/bin/sh\necho 'ERR_PNPM_NO_OFFLINE_META' >&2\nexit 1\n")
+        (bin_dir / "pnpm").write_text(
+            "#!/bin/sh\necho 'ERR_PNPM_NO_OFFLINE_META' >&2\nexit 1\n"
+        )
         (bin_dir / "pnpm").chmod(0o755)
         monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
-        mapping = setup_pipeline_worktrees("run-fb", "epic/test", ["lane-a"], repo_root=repo)
+        mapping = setup_pipeline_worktrees(
+            "run-fb", "epic/test", ["lane-a"], repo_root=repo
+        )
         wt = mapping["lane-a"]
         assert (wt / "node_modules").is_symlink()
         err = capsys.readouterr().err
-        assert "deps_install_failed" in err and "pnpm" in err and "ERR_PNPM_NO_OFFLINE_META" in err
+        assert (
+            "deps_install_failed" in err
+            and "pnpm" in err
+            and "ERR_PNPM_NO_OFFLINE_META" in err
+        )
