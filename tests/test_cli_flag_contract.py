@@ -44,7 +44,7 @@ SCRIPT_WRAPPERS: dict[str, Path] = {
 _CMD_RE = re.compile(
     r"datum ("
     r"lane-state (?:write|read|rehash)|worktrees (?:setup|merge|cleanup)|dev [a-z0-9-]+"
-    r"|gate|skeleton|contract-preflight|closeout-[a-z-]+|lane-plan-distribute|lane-plan-digest|lane-plan|lane-spec-export|lane-cleanup"
+    r"|gate|skeleton|contract-preflight|closeout-[a-z-]+|lane-plan-distribute|lane-plan-digest|lane-plan|lane-spec-export|lane-cleanup|init"
     r"|pipeline-state-save|config-fingerprint|gitignore-check|plan-issues|issue-stage|ticket-from-issue"
     r"|housekeep-epic"
     r")\b([^\n`'\"]*)"
