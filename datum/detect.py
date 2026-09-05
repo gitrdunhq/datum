@@ -146,6 +146,7 @@ def _detect_test_command(root: Path, lang: str, framework: str) -> str:
         ("python", "pytest"): "uv run pytest -x -q",
         ("typescript", "vitest"): "npx vitest run",
         ("typescript", "jest"): "npx jest",
+        ("typescript", "mocha"): "npx mocha",
         ("javascript", "vitest"): "npx vitest run",
         ("javascript", "jest"): "npx jest",
         ("javascript", "mocha"): "npx mocha",
