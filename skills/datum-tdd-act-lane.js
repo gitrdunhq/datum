@@ -78,6 +78,17 @@ function classifyFiles(files) {
   const implFiles = (files || []).filter((f) => !isTest(f));
   return { testFiles, implFiles };
 }
+function preflightTestPaths(outputs, testFiles) {
+  const registered = [];
+  const skipped = [];
+  for (const output of outputs || []) {
+    const p = output.path;
+    if (!p || testFiles.includes(p) || registered.includes(p)) continue;
+    if (classifyFiles([p]).testFiles.length > 0) registered.push(p);
+    else if (!skipped.includes(p)) skipped.push(p);
+  }
+  return { registered, skipped };
+}
 var FIRST_PARTY_PY_PACKAGES = ["datum", "scripts", "tests"];
 function joinPosix(baseDir, rel) {
   const baseParts = baseDir.split("/").filter((p) => p !== "" && p !== ".");
@@ -513,6 +524,9 @@ function worktreeDirtyFromSteps(result) {
   }
   const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
   return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
+}
+function preserveHeadRefSteps(wt, ref) {
+  return [{ name: "preserve", command: `git -C ${q(wt)} branch -f ${q(ref)} HEAD`, tolerant: true }];
 }
 function worktreeResetToSteps(wt, sha) {
   return [
@@ -990,10 +1004,18 @@ function scopeGapsFromSteps(scopeGaps, exitOf) {
 }
 function postGreenSteps(o) {
   const steps = [{ name: "ownership", command: ownershipCommand(o.wt), tolerant: true }];
+  if (o.redSha) {
+    steps.push({ name: "red-files", command: `git -C ${q2(o.wt)} diff-tree --no-commit-id --name-only -r ${q2(o.redSha)}`, tolerant: true });
+  }
   if (o.verifyTestCmd) {
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
   }
   return steps;
+}
+function redCommittedFilesFromSteps(r) {
+  const rec = stepResult(r, "red-files");
+  if (!rec || rec.exit_code !== 0) return null;
+  return rec.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
@@ -1533,7 +1555,6 @@ No markdown fences, no explanation.`,
     preflightRaw = generated && generated.trim() && generated.trim() !== "SKIPPED_PLAN_SKELETON" ? generated : null;
   }
   let preflightFramework;
-  let preflightTestPaths = [];
   if (preflightRaw) {
     const preflightData = parseAgentJson(preflightRaw, {});
     if (preflightData.target_context) {
@@ -1542,14 +1563,13 @@ No markdown fences, no explanation.`,
     }
     preflightFramework = preflightData.framework;
     if (preflightData.outputs && preflightData.outputs.length > 0) {
-      for (const output of preflightData.outputs) {
-        if (output.path && !testFiles.includes(output.path)) {
-          testFiles.push(output.path);
-          preflightTestPaths.push(output.path);
-        }
+      const reg = preflightTestPaths(preflightData.outputs, testFiles);
+      testFiles.push(...reg.registered);
+      if (reg.registered.length > 0) {
+        log(`[${taskId}] preflight registered ${reg.registered.length} test file(s): ${reg.registered.join(", ")}`);
       }
-      if (preflightTestPaths.length > 0) {
-        log(`[${taskId}] preflight registered ${preflightTestPaths.length} test file(s): ${preflightTestPaths.join(", ")}`);
+      if (reg.skipped.length > 0) {
+        log(`[${taskId}] preflight_output_not_test: [${reg.skipped.join(", ")}] not registered as test files`);
       }
       if (testFiles.length === 0) {
         return { task_id: taskId, status: "failed", stage: "RED", error: "no_test_files: classifyFiles produced empty testFiles and preflight has no registered test paths" };
@@ -1982,21 +2002,28 @@ No markdown fences, no explanation.`,
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `GREEN agent did not commit (independent check: ${check.detail})` };
     }
   }
+  let redCommitted = null;
   const checkGreenOwnership = async (labelSuffix) => {
     if (deterministic) {
-      const postGreen = postGreenSteps({ wt });
+      const postGreen = postGreenSteps({ wt, redSha: red.commit_sha || null });
       const postGreenRaw = await runBatch(postGreen, stageOpts("cli", { label: `post-green${labelSuffix}:${taskId}`, phase: "Act", model: model("fast") }));
+      redCommitted = redCommittedFilesFromSteps(postGreenRaw);
       return ownershipFromStdout(stepStdout(postGreenRaw, "ownership"), implFiles, testFiles);
     }
     return verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
   };
   let greenOwnership = await checkGreenOwnership("");
-  const ownTestsOnly = (o) => !o.checkFailed && o.violations.length > 0 && o.violations.every((v) => testFiles.some((t) => v.startsWith(`${t} `)));
+  const ownTestsOnly = (o) => {
+    if (o.checkFailed || o.violations.length === 0) return false;
+    const files = o.violations.map((v) => v.split(" ")[0]);
+    return files.every((f) => testFiles.includes(f) && (redCommitted === null || redCommitted.includes(f)));
+  };
   if (!greenOwnership.ok && ownTestsOnly(greenOwnership) && red.commit_sha) {
     const touched = [...new Set(greenOwnership.violations.map((v) => v.split(" ")[0]))];
     const hint = `green_edited_tests: GREEN modified the lane's test files [${touched.join(", ")}]; write only the implementation files and never amend or rewrite the RED commit`;
-    log(`[${taskId}] ${hint} \u2014 resetting to the RED commit ${red.commit_sha} and re-running GREEN once`);
-    const testsResetSteps = worktreeResetToSteps(wt, red.commit_sha);
+    const discardedRef = `${cfg2.epicBranch}--${taskId}--discarded-green`;
+    log(`[${taskId}] ${hint} \u2014 pinning the GREEN commit to ${discardedRef}, resetting to the RED commit ${red.commit_sha} and re-running GREEN once`);
+    const testsResetSteps = [...preserveHeadRefSteps(wt, discardedRef), ...worktreeResetToSteps(wt, red.commit_sha)];
     const testsReset = worktreeResetToFromSteps(
       await runBatch(testsResetSteps, stageOpts("cli", { label: `green-tests-reset:${taskId}`, phase: "Act", model: model("fast") })),
       red.commit_sha
@@ -2004,6 +2031,7 @@ No markdown fences, no explanation.`,
     if (!testsReset.ok) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} (could not reset for the retry: ${testsReset.error})` };
     }
+    log(`[${taskId}] green_discarded_ref: ${discardedRef} keeps the discarded GREEN commit ${green?.commit_sha || "(HEAD before reset)"}`);
     green = await witnessedAgent(
       greenRetryPrompt({
         ...greenVars,
