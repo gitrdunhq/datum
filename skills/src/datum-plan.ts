@@ -4,6 +4,7 @@ import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
 import { readContextSteps, contextFromSteps } from './shared/lane-steps'
+import { utf8ByteLength } from './shared/utf8'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -150,7 +151,7 @@ if (contextFilesList.length > 0) {
       contextFilesWarnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_RELAY_LIMIT_BYTES} bytes)`)
       return
     }
-    const actualBytes = Buffer.byteLength(raw, 'utf8')
+    const actualBytes = utf8ByteLength(raw)
     if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
       throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`)
     }

@@ -300,8 +300,9 @@ describe('determinism fix — context_files relay is one verified batch, not a p
     expect(datumPlanSrc).toMatch(/wc -c/)
   })
 
-  it('verifies declared vs actual byte length using Buffer.byteLength and fails loud on mismatch', () => {
-    expect(datumPlanSrc).toMatch(/Buffer\.byteLength\(/)
+  it('verifies declared vs actual byte length with the sandbox-safe utf8ByteLength (no Buffer/TextEncoder in the vm) and fails loud on mismatch', () => {
+    expect(datumPlanSrc).toMatch(/utf8ByteLength\(raw\)/)
+    expect(datumPlanSrc).not.toMatch(/Buffer\.byteLength\(/)
     expect(datumPlanSrc).toMatch(/context_relay_mismatch/)
   })
 

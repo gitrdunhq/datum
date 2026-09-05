@@ -8,6 +8,7 @@
 import type { BatchStep, BatchResult } from './batch'
 import { stepStdout } from './batch'
 import { verifyFileOwnership, testRunCommand } from './utils'
+import { utf8ByteLength } from './utf8'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
 
@@ -514,7 +515,7 @@ export function closeoutCollectSteps(o: CloseoutCollectOpts): BatchStep[] {
  * back as 6.7 KB of "successful" abridged content in dogfooding — and
  * nothing verified it. This mirrors the fix already applied to datum-plan.ts
  * (commit a7093d2): one datum-cli batch `cat`s each file alongside `wc -c`,
- * and contextFromSteps() below verifies `Buffer.byteLength(content) ===
+ * and contextFromSteps() below verifies `utf8ByteLength(content) ===
  * declared` before trusting it.
  */
 export const CONTEXT_FILE_RELAY_LIMIT_BYTES = 64 * 1024 // mirrors datum-plan.ts's own CONTEXT_RELAY_LIMIT_BYTES (not exported from there)
@@ -583,7 +584,7 @@ export function contextFromSteps(
       contents[relPath] = null
       return
     }
-    const actualBytes = Buffer.byteLength(raw, 'utf8')
+    const actualBytes = utf8ByteLength(raw)
     if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
       throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`)
     }
