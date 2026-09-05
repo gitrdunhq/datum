@@ -349,7 +349,7 @@ function contextWitnessInstruction(files) {
   const deferred = files.filter((f) => f.exists && !f.inlined);
   if (deferred.length === 0) return "";
   const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
-  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nYour JSON response is invalid without this field for every file listed above.";
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nThe key is the file path exactly as written above; the value is the 12-character hash prefix. Your JSON response is invalid without this field for every file listed above.";
 }
 function extractWitnessMap(parsed) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -362,15 +362,13 @@ function verifyReadWitness(files, parsed) {
   const witness = extractWitnessMap(parsed);
   const missing = [];
   const mismatched = [];
+  const values = Object.values(witness).filter((v) => typeof v === "string" && /^[0-9a-f]{12,}$/i.test(v));
   for (const f of deferred) {
-    const value = witness[f.path];
-    if (typeof value !== "string" || !/^[0-9a-f]{12,}$/i.test(value)) {
-      missing.push(f.path);
-      continue;
-    }
-    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
-      mismatched.push(f.path);
-    }
+    const sha = f.sha.toLowerCase();
+    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
+    const keyed = witness[f.path];
+    if (typeof keyed === "string" && /^[0-9a-f]{12,}$/i.test(keyed)) mismatched.push(f.path);
+    else missing.push(f.path);
   }
   return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
 }
