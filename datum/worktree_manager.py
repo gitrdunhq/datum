@@ -446,7 +446,20 @@ def merge_lane_branches(
     merged: list[str] = []
     already_merged: list[str] = []
     any_new_changes = False
-    start_sha = _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+    # A crash between a lane's temporary squash commit and the fold leaves
+    # `tmp(datum): squash lane <id>` commits at HEAD. Start the fold below
+    # them so a retry still lands ONE commit (Python core review).
+    leftover_tmp = 0
+    while True:
+        subject = _git(
+            ["log", "-1", "--format=%s", f"HEAD~{leftover_tmp}"], cwd=repo_root, check=False
+        ).stdout.strip()
+        if not subject.startswith("tmp(datum): squash lane "):
+            break
+        leftover_tmp += 1
+    start_sha = _git(["rev-parse", f"HEAD~{leftover_tmp}"], cwd=repo_root).stdout.strip()
+    if leftover_tmp:
+        any_new_changes = True
 
     def fold_failed(what: str) -> LaneMergeError:
         """The fold (soft reset + one commit) failed: nothing has landed.
