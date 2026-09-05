@@ -480,9 +480,12 @@ export function setupSteps(o: SetupStepsOpts): BatchStep[] {
     },
     {
       name: 'setup-wt',
+      // Captured unconditionally: `$(...) && printf` lost the CLI's JSON
+      // error on exit 1 (the printf never ran) and the workflow died with
+      // "CLI output was not JSON — " and nothing after it (caliper BUG O).
       command:
-        `__setup=$(cd "$__root" && datum worktrees setup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)} --lane-ids ${o.laneIds.join(',')}) && ` +
-        `printf '%s' "$__setup"`,
+        `__setup=$(cd "$__root" && datum worktrees setup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)} --lane-ids ${o.laneIds.join(',')}); __setup_rc=$?; ` +
+        `printf '%s' "$__setup"; [ "$__setup_rc" -eq 0 ]`,
     },
     {
       name: 'distribute',
@@ -492,6 +495,42 @@ export function setupSteps(o: SetupStepsOpts): BatchStep[] {
         `datum lane-plan-distribute "$__root/${o.lanePlanPath}" "\${__targets[@]}"`,
     },
   ]
+}
+
+export interface SetupWorktreesSummary {
+  /** lane id → absolute worktree path, only the well-formed entries. */
+  paths: Record<string, string>
+  /** Entries the CLI returned that are not absolute paths (logged, never used). */
+  dropped: { laneId: string; value: unknown }[]
+  /** `setup_worktrees_failed: <CLI error verbatim>` or null when setup ran clean. */
+  error: string | null
+}
+
+/**
+ * The lane worktree map from the setup-wt step. The CLI prints
+ * `{"error": "..."}` with exit 1 for every setup failure (a locked stale
+ * worktree, a missing epic branch); that message is the diagnosis and is
+ * surfaced verbatim — before this, the step's `&&` shape dropped it and the
+ * workflow died with "CLI output was not JSON — " (caliper BUG O).
+ */
+export function laneWorktreePathsFromSteps(r: BatchResult): SetupWorktreesSummary {
+  const text = stepStdout(r, 'setup-wt')
+  const rec = stepResult(r, 'setup-wt')
+  const parsed = text ? parseAgentJson(text, null) as Record<string, unknown> | null : null
+  if (!parsed || typeof parsed !== 'object') {
+    // `text || ...`, not `??`: an empty stdout is '' and the old `??` kept
+    // it, which is why the error read "CLI output was not JSON — " (nothing).
+    return { paths: {}, dropped: [], error: `setup_worktrees_failed: CLI output was not JSON — ${String(text || describeFailure(r, 'setup')).slice(0, 300)}` }
+  }
+  if (typeof parsed.error === 'string') return { paths: {}, dropped: [], error: `setup_worktrees_failed: ${parsed.error}` }
+  if (rec && rec.exit_code !== 0) return { paths: {}, dropped: [], error: `setup_worktrees_failed: ${describeFailure(r, 'setup')}` }
+  const paths: Record<string, string> = {}
+  const dropped: { laneId: string; value: unknown }[] = []
+  for (const [laneId, value] of Object.entries(parsed)) {
+    if (typeof value === 'string' && value.startsWith('/')) paths[laneId] = value
+    else dropped.push({ laneId, value })
+  }
+  return { paths, dropped, error: null }
 }
 
 // ── Merge: completion markers, squash merge, epic-scoped lane-state, cleanup ──

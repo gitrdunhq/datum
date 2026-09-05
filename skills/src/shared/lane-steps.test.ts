@@ -18,6 +18,7 @@ import {
   housekeepSteps,
   housekeepFromSteps,
   setupSteps,
+  laneWorktreePathsFromSteps,
   mergeSteps,
   actStartSteps,
   ownershipCommand,
@@ -610,6 +611,61 @@ describe('setupSteps', () => {
     expect(steps[1].command).toContain('cd "$__root" && datum worktrees setup --run-id "r1-b0" --epic-branch "datum/e" --lane-ids T1,T2')
     expect(steps[2].command).toContain('select(type=="string" and startswith("/"))')
     expect(steps[2].command).toContain('datum lane-plan-distribute "$__root/docs/epics/datum/e/lane-plan.json" "${__targets[@]}"')
+  })
+
+  // caliper BUG O (wf_7686c0cf-f7e): `__setup=$(datum worktrees setup ...) &&
+  // printf` dropped the CLI's JSON error whenever it exited 1 — the printf
+  // never ran, the step record had empty stdout AND stderr, and the workflow
+  // died with "CLI output was not JSON — " (nothing) instead of the real
+  // "lane branch ... is locked to stale worktree ..." message.
+  it('the setup-wt step prints the CLI output even when the CLI exits 1, and still fails the step', () => {
+    const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1'], lanePlanPath: 'x' })
+    expect(steps[1].command).toContain('__setup=$(cd "$__root" && datum worktrees setup --run-id "r1-b0" --epic-branch "datum/e" --lane-ids T1); __setup_rc=$?')
+    expect(steps[1].command).toContain(`printf '%s' "$__setup"; [ "$__setup_rc" -eq 0 ]`)
+    expect(steps[1].command).not.toContain(') && printf')
+  })
+
+  it('under real bash, a failing `datum worktrees setup` leaves its JSON error in the setup-wt step record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-setupwt-'))
+    try {
+      const bin = join(dir, 'bin')
+      mkdirSync(bin)
+      writeFileSync(join(bin, 'datum'), '#!/bin/bash\nprintf \'{"error": "lane branch datum/e--T1 is locked to stale worktree /x"}\'\nexit 1\n', { mode: 0o755 })
+      const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1'], lanePlanPath: 'x' })
+      const script = `__root=${JSON.stringify(dir)}\n` + batchScript([steps[1]])
+      const out = execFileSync('bash', ['-c', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+      const parsed = parseBatchResult(out, [steps[1]])
+      expect(parsed.failed?.name).toBe('setup-wt')
+      expect(stepResult(parsed, 'setup-wt')?.exit_code).toBe(1)
+      expect(stepStdout(parsed, 'setup-wt')).toContain('"error": "lane branch datum/e--T1 is locked to stale worktree /x"')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('laneWorktreePathsFromSteps surfaces the CLI JSON error verbatim as setup_worktrees_failed, else the absolute paths', () => {
+    const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1', 'T2'], lanePlanPath: 'x' })
+    const failed = laneWorktreePathsFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'root-wt', exit_code: 0, stdout: '{"root": "/r"}', stderr: '' },
+      { name: 'setup-wt', exit_code: 1, stdout: '{"error": "lane branch datum/e--T1 is locked to stale worktree /x, which has uncommitted changes"}', stderr: '' },
+    ]), steps))
+    expect(failed.paths).toEqual({})
+    expect(failed.error).toBe('setup_worktrees_failed: lane branch datum/e--T1 is locked to stale worktree /x, which has uncommitted changes')
+
+    const empty = laneWorktreePathsFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'root-wt', exit_code: 0, stdout: '{"root": "/r"}', stderr: '' },
+      { name: 'setup-wt', exit_code: 1, stdout: '', stderr: 'Traceback: boom' },
+    ]), steps))
+    expect(empty.error).toMatch(/^setup_worktrees_failed: CLI output was not JSON — setup: step "setup-wt" exited 1.*boom/)
+
+    const ok = laneWorktreePathsFromSteps(parseBatchResult(JSON.stringify([
+      { name: 'root-wt', exit_code: 0, stdout: '{"root": "/r"}', stderr: '' },
+      { name: 'setup-wt', exit_code: 0, stdout: '{"T1": "/r/.datum/worktrees/r1-b0/T1", "T2": "relative/garbage"}', stderr: '' },
+      { name: 'distribute', exit_code: 0, stdout: '', stderr: '' },
+    ]), steps))
+    expect(ok.error).toBeNull()
+    expect(ok.paths).toEqual({ T1: '/r/.datum/worktrees/r1-b0/T1' })
+    expect(ok.dropped).toEqual([{ laneId: 'T2', value: 'relative/garbage' }])
   })
 
   it('under real bash, the root-wt step succeeds twice in a row for the same batch id', () => {

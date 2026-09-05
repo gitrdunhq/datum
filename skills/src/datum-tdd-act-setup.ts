@@ -3,7 +3,7 @@ import type { SetupArgs } from './shared/types'
 import { parseAgentJson } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { setupSteps } from './shared/lane-steps'
+import { setupSteps, laneWorktreePathsFromSteps } from './shared/lane-steps'
 
 export const meta = {
   name: 'datum-tdd-act-setup',
@@ -49,24 +49,16 @@ const rootWt = rootWtInfo.root
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId} (${describeFailure(setup, 'setup')})`)
 log(`Root worktree${a.batchTag}: ${rootWt}`)
 
-// Safe: an unparseable result yields null, which the throw immediately
-// below already catches.
-const setupText = stepStdout(setup, 'setup-wt')
-const rawPaths = setupText ? parseAgentJson(setupText, null) as Record<string, string> | null : null
-if (!rawPaths || typeof rawPaths !== 'object') {
-  throw new Error(`Setup failed for ${a.batchRunId}: CLI output was not JSON — ${String(setupText ?? describeFailure(setup, 'setup')).slice(0, 300)}`)
+// The CLI's own error JSON ({"error": ...}, exit 1) is the diagnosis and is
+// thrown verbatim (caliper BUG O). Only absolute paths are kept — a lane with
+// a missing/garbage entry must be dropped here so it fails fast in the lane
+// scheduler instead of running in the main checkout.
+const setupSummary = laneWorktreePathsFromSteps(setup)
+if (setupSummary.error) throw new Error(`Setup failed for ${a.batchRunId}: ${setupSummary.error}`)
+for (const d of setupSummary.dropped) {
+  log(`  [warn] dropping ${d.laneId}: setup returned invalid worktree path ${JSON.stringify(d.value)}`)
 }
-
-// Keep only absolute paths — a lane with a missing/garbage entry must be dropped
-// here so it fails fast in the lane scheduler instead of running in the main checkout.
-const worktreePaths: Record<string, string> = {}
-for (const [lid, wtp] of Object.entries(rawPaths)) {
-  if (typeof wtp === 'string' && wtp.startsWith('/')) {
-    worktreePaths[lid] = wtp
-  } else {
-    log(`  [warn] dropping ${lid}: setup returned invalid worktree path ${JSON.stringify(wtp)}`)
-  }
-}
+const worktreePaths = setupSummary.paths
 
 const validPaths = Object.values(worktreePaths)
 if (validPaths.length === 0) throw new Error(`Setup failed: no worktree paths for ${a.batchRunId}`)
