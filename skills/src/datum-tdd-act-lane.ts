@@ -24,6 +24,7 @@ import {
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps } from './shared/commit-steps'
 import { assertReadWitness, type ContextFile } from './shared/context-relay'
+import { writeFileSteps, writeFileBlobSha, writeFileFromSteps } from './shared/write-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -49,6 +50,8 @@ import {
 import {
   classifyFiles,
   laneCtxCmd,
+  skepticMinorityFindings,
+  minorityFollowUps,
   crossValidateBugs,
   buildPacket,
   parseAgentJson,
@@ -1203,6 +1206,26 @@ No markdown fences, no explanation.`,
     log(`[${taskId}] SKEPTIC VERDICT: PASS (${skeptic.crossValidated.length} cross-validated)`)
   }
 
+  // ── Skeptic minority findings (caliper#564) ──
+  // A critical/high finding one lens evidenced and the others did not
+  // corroborate is not a retry trigger, but it must not vanish into the
+  // journal: name it in the log and write it as a FollowUpIssue under the
+  // run directory, where `datum closeout-file-followups` files it.
+  const minority = skepticMinorityFindings(skeptic.allBugs, skeptic.crossValidated)
+  let followUps = 0
+  if (minority.length > 0) {
+    for (const b of minority) log(`[${taskId}] skeptic_minority_finding: ${taskId} — ${b.description.replace(/\s+/g, ' ').slice(0, 160)} (${b.lens}: ${b.evidence.replace(/\s+/g, ' ').slice(0, 120)})`)
+    const followUpPath = `.datum/runs/${runId}/follow-ups/${taskId}.json`
+    const followUpText = JSON.stringify(minorityFollowUps(taskId, green.commit_sha || '', minority), null, 2)
+    const fuSteps = writeFileSteps({ path: followUpPath, content: followUpText })
+    const fuWrite = writeFileFromSteps(
+      await runBatch(fuSteps, stageOpts('cli', { label: `followups-write:${taskId}`, phase: 'Act', model: model('fast') })),
+      { path: followUpPath, expectedSha: writeFileBlobSha(followUpText), prefix: 'followups' },
+    )
+    if (!fuWrite.ok) log(`[${taskId}] ${fuWrite.error} — ${minority.length} skeptic minority finding(s) stay in this log only`)
+    else followUps = minority.length
+  }
+
   // ── REFACTOR (writes + verifies + commits in one agent) ──
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
   // Must check `.verified`, not just truthiness: runRefactor returns a
@@ -1215,7 +1238,9 @@ No markdown fences, no explanation.`,
 
   log(`[${taskId}] === LANE COMPLETE ===`)
   await updateStage(issueId, 'done')
-  return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
+  return followUps > 0
+    ? { task_id: taskId, status: 'completed', stage: 'REFACTOR', follow_ups: followUps }
+    : { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
 }
 
 // ── Adversarial skeptic panel ────────────────────────────────────────────────

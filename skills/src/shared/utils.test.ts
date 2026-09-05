@@ -4,7 +4,7 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
+import { skepticMinorityFindings, minorityFollowUps, verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash } from './utils'
 import type { ContextFile } from './context-relay'
 import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
@@ -1250,5 +1250,25 @@ describe('verifyFileOwnership names forbidden files by stage, not as another lan
     expect(r.ok).toBe(false)
     expect(r.violations[0]).toBe('src/a.ts is forbidden at this stage (the other stage of this lane owns it, or another lane does)')
     expect(r.violations.join(' ')).not.toContain('owned by another lane')
+  })
+})
+
+describe('skepticMinorityFindings / minorityFollowUps (caliper#564)', () => {
+  const hi = { description: 'thresholds dropped on --serve path', evidence: 'part_cmd.py:345 vs 368', severity: 'high' as const, lens: 'edge' }
+  const lo = { description: 'style nit', evidence: 'x', severity: 'low' as const, lens: 'error' }
+  const noEv = { description: 'might break', evidence: '', severity: 'critical' as const, lens: 'contract' }
+  it('keeps critical/high single-lens bugs with evidence, drops cross-validated, low and evidence-less ones', () => {
+    const out = skepticMinorityFindings([hi, lo, noEv], [])
+    expect(out).toEqual([hi])
+    expect(skepticMinorityFindings([hi], [hi])).toEqual([])
+  })
+  it('renders FollowUpIssue entries with a stable dedup key and lane/sha traceability', () => {
+    const [f] = minorityFollowUps('task-007', 'bc6f34d', [hi])
+    expect(f.dedup_key).toBe('skeptic-minority:task-007:bc6f34d:0')
+    expect(f.title).toBe('[skeptic] task-007: thresholds dropped on --serve path')
+    expect(f.body).toContain('GREEN bc6f34d')
+    expect(f.body).toContain('part_cmd.py:345 vs 368')
+    expect(f.source).toBe('act.skeptic-minority')
+    expect(f.severity).toBe('high')
   })
 })

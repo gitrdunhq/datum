@@ -147,6 +147,13 @@ const archiveRaw = await agent(
 )
 const archiveResult = parseBatchResult(archiveRaw, archiveSteps)
 
+// Follow-ups (synthesis manifest + Act's skeptic minority findings): say what was filed.
+const filedRaw = stepStdout(archiveResult, 'file-followups')
+const filed = parseAgentJson<{ ok?: boolean; filed?: number; retained?: number; tracker?: string; skipped?: boolean; reason?: string } | null>(filedRaw || '', null)
+if (!filed) log(`[closeout] follow-ups: filer returned no JSON (${(filedRaw || '').trim().slice(0, 120) || 'nothing'})`)
+else if (filed.skipped) log('[closeout] follow-ups: already filed for this run')
+else log(`[closeout] follow-ups: ${filed.filed ?? 0} filed, ${filed.retained ?? 0} retained in .datum/runs/${rid}/follow-ups.json${filed.tracker ? ` (tracker ${filed.tracker})` : ''}${filed.reason ? ` — ${filed.reason}` : ''}`)
+
 const archiveFailures: string[] = []
 for (const step of archiveResult.steps) {
   if (step.exit_code !== 0) {

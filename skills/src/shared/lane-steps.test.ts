@@ -1039,7 +1039,7 @@ describe('closeoutArchiveSteps', () => {
   it('tags, archives, moves every pipeline artifact via git mv, then commits and reads the sha — all tolerant', () => {
     const steps = closeoutArchiveSteps(opts)
     expect(names(steps)).toEqual([
-      'tag', 'archive',
+      'file-followups', 'tag', 'archive',
       'move-spec-md', 'move-tasks-md', 'move-questions-md', 'move-properties-md', 'move-ticket-md',
       'move-tasks-json', 'move-lane-plan-json',
       'commit', 'commit-sha',
@@ -1049,7 +1049,8 @@ describe('closeoutArchiveSteps', () => {
 
   it('tags HEAD with epic/<branch>/<runId>, no || true and no 2>/dev/null anywhere', () => {
     const steps = closeoutArchiveSteps(opts)
-    expect(steps[0].command).toBe('git tag "epic/datum/e/r1" HEAD')
+    expect(steps[0].command).toBe('datum closeout-file-followups --run-id "r1"')
+    expect(steps[1].command).toBe('git tag "epic/datum/e/r1" HEAD')
     for (const s of steps) {
       expect(s.command).not.toMatch(/\|\|\s*true\b/)
       expect(s.command).not.toContain('2>/dev/null')
@@ -1058,7 +1059,7 @@ describe('closeoutArchiveSteps', () => {
 
   it('runs datum closeout-archive with the run id', () => {
     const steps = closeoutArchiveSteps(opts)
-    expect(steps[1].command).toBe('datum closeout-archive --run-id "r1"')
+    expect(steps[2].command).toBe('datum closeout-archive --run-id "r1"')
   })
 
   it('moves each root artifact into the epic dir via git mv when present, ABSENT otherwise', () => {

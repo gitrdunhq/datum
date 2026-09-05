@@ -13,12 +13,22 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { laneSpecHash } from './shared/utils'
+import { utf8Encode } from './shared/utf8'
+import { gitBlobSha } from './shared/sha1'
 
 const bundlePath = join(__dirname, '..', 'datum-tdd-act-lane.js')
 
 interface Call { label: string; agentType?: string; prompt: string }
 
 type Responder = (label: string, prompt: string) => unknown
+
+
+/** The bytes a writeFileSteps heredoc puts on disk (content + one trailing newline). */
+function extractHeredoc(prompt: string): string {
+  const m = /<<'DATUM_WRITE_EOF'\n([\s\S]*?)\nDATUM_WRITE_EOF/.exec(prompt)
+  if (!m) throw new Error('no heredoc in prompt')
+  return m[1] + '\n'
+}
 
 /** JSON array a batched datum-cli script would print. */
 function batch(steps: Record<string, string | { stdout?: string; exit_code?: number }>): string {
@@ -93,7 +103,7 @@ async function runLane(opts: {
   respond: Responder
   agentTypes: { agentTypes: boolean; hooksInstalled: boolean }
   pytest: boolean
-}): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string }> } }> {
+}): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }> {
   const bundle = readFileSync(bundlePath, 'utf8')
   const body = bundle.replace(/^export const meta = /m, 'const meta = ')
   const AsyncFunction = Object.getPrototypeOf(async function () { /* */ }).constructor as new (...a: string[]) => (...b: unknown[]) => Promise<unknown>
@@ -129,7 +139,7 @@ async function runLane(opts: {
     batchTag: '',
   }
   const result = await script(agent, parallel, () => undefined, () => undefined, args, async () => ({}), { total: null, spent: () => 0, remaining: () => 0 })
-  return { calls, result: result as { results: Record<string, { status: string; stage?: string; error?: string }> } }
+  return { calls, result: result as { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }
 }
 
 const cliCalls = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-cli')
@@ -467,6 +477,32 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.error).toMatch(/lane_intake_failed: .*runner_permission_denied/)
+  })
+
+  // caliper#564: a single-lens critical/high finding is not a retry trigger,
+  // but it is named in the log and written as a FollowUpIssue for Closeout.
+  it('a single-lens high finding on a PASS panel is written to .datum/runs/<run>/follow-ups/<lane>.json and counted on the outcome', async () => {
+    const base = happyPathResponder({ pytest: false })
+    let skepticCalls = 0
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('skeptic-')) {
+        skepticCalls++
+        if (skepticCalls === 2) return { ...witness, bugs_found: [{ description: 'thresholds dropped on --serve path', evidence: 'part_cmd.py:345 calls serve_part before _apply_rename_thresholds at 368', severity: 'high' }], confidence: 0.8, verdict: 'FRAGILE' }
+        return { ...witness, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+      }
+      if (label.startsWith('followups-write:')) {
+        return batch({ mkdir: '', write: '', sha: `${gitBlobSha(utf8Encode(extractHeredoc(prompt)))}\n` })
+      }
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(result.results.T1.follow_ups).toBe(1)
+    const write = calls.find((c) => c.label.startsWith('followups-write:'))!
+    expect(write.prompt).toContain('.datum/runs/r1/follow-ups/T1.json')
+    expect(write.prompt).toContain('"dedup_key": "skeptic-minority:T1:bbb222:0"')
+    expect(write.prompt).toContain('thresholds dropped on --serve path')
+    expect(calls.some((c) => c.label.startsWith('green-skeptic-retry:'))).toBe(false)
   })
 
   // -------------------------------------------------------------------------

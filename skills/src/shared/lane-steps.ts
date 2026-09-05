@@ -783,6 +783,8 @@ function moveIntoEpicDirCommand(src: string, epicDir: string, base: string): str
  */
 export function closeoutArchiveSteps(o: CloseoutArchiveOpts): BatchStep[] {
   const steps: BatchStep[] = [
+    // File the run's follow-ups (synthesis manifest + per-lane skeptic minority findings) before archiving.
+    { name: 'file-followups', command: `datum closeout-file-followups --run-id ${q(o.runId)}`, tolerant: true },
     { name: 'tag', command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
     { name: 'archive', command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true },
   ]

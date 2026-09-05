@@ -221,6 +221,8 @@ export interface LaneOutcome {
    *  a `blocked` GREEN outcome; the orchestrator surfaces it once as a single
    *  lead-approval question. */
   needs_write?: string[]
+  /** Skeptic single-lens findings written to .datum/runs/<run>/follow-ups/<lane>.json for Closeout to file (caliper#564). */
+  follow_ups?: number
 }
 
 // Agent result types
