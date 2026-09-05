@@ -42,6 +42,33 @@ export const REFLECT_SCHEMA = {
   required: ['reasoning', 'score'],
 } as const
 
+// Review lens result. A schema, not a "return raw JSON" instruction: the
+// correctness lens answered in markdown and Review halted on a strict parse
+// with no retry (elonchesd wf_22ad6b36-dec). StructuredOutput validates at
+// the tool layer and the model retries on mismatch.
+export const REVIEW_LENS_SCHEMA = {
+  type: 'object',
+  properties: {
+    domain: { type: 'string' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          severity: { type: 'string' },
+          file: { type: 'string' },
+          line: { type: 'number' },
+          description: { type: 'string' },
+          suggestion: { type: 'string' },
+        },
+        required: ['id', 'severity', 'file', 'description'],
+      },
+    },
+  },
+  required: ['domain', 'findings'],
+} as const
+
 export const SKEPTIC_SCHEMA = {
   type: 'object',
   properties: {

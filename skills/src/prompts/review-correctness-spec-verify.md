@@ -11,7 +11,7 @@ evidence exist to stop that impression from becoming the answer.
 
 ## Step 1 — resolve the diff
 
-`git diff $(git merge-base HEAD main)...HEAD` (fall back to `git diff main...HEAD`
+`git diff $(git merge-base HEAD {{baseBranch}})...HEAD` — `{{baseBranch}}` is the epic's recorded parent branch, so a chained epic is judged on its own commits only (fall back to `git diff {{baseBranch}}...HEAD`
 or the working tree if no merge-base is found — note which in your report).
 
 ## Step 2 — read SPEC.md

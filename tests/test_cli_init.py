@@ -219,6 +219,40 @@ def test_name_on_another_epic_branch_creates_the_named_epic_from_head(git_repo):
     assert json.loads(third.stdout)["epicBranch"] == "datum/playable-ui-shell"
 
 
+def test_init_records_the_epics_base_branch_and_epic_base_reports_it(git_repo):
+    """elonchesd wf_22ad6b36-dec: datum/playable-ui-shell was chained from
+    datum/epic-1, but review diffed from `git merge-base HEAD main` and
+    re-reviewed all of epic-1. init records the parent at creation;
+    `datum epic-base` is what review and closeout ask for the base."""
+    first = _invoke("--name", "Epic One", "--json")
+    assert first.exit_code == 0, first.output
+    base1 = git_repo / ".datum" / "epics" / "datum-epic-one" / "base.json"
+    assert json.loads(base1.read_text())["base_branch"] == "main"
+
+    second = _invoke("--name", "Playable UI Shell", "--json")
+    assert second.exit_code == 0, second.output
+    base2 = git_repo / ".datum" / "epics" / "datum-playable-ui-shell" / "base.json"
+    assert json.loads(base2.read_text())["base_branch"] == "datum/epic-one"
+
+    shown = runner.invoke(app, ["epic-base"])
+    assert shown.exit_code == 0, shown.output
+    assert shown.stdout.strip() == "datum/epic-one"
+    as_json = json.loads(runner.invoke(app, ["epic-base", "--json"]).stdout)
+    assert as_json == {"base_branch": "datum/epic-one", "source": "recorded"}
+
+
+def test_epic_base_falls_back_to_a_local_default_branch_when_nothing_is_recorded(
+    git_repo,
+):
+    _run_git("checkout", "-q", "-b", "feature/x", cwd=git_repo)
+    shown = runner.invoke(app, ["epic-base", "--json"])
+    assert shown.exit_code == 0, shown.output
+    assert json.loads(shown.stdout) == {
+        "base_branch": "main",
+        "source": "local-default",
+    }
+
+
 # ---------------------------------------------------------------------------
 # --refresh: re-materialise skills/agents/hooks, byte-identical, idempotent.
 # ---------------------------------------------------------------------------

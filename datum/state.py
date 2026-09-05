@@ -85,6 +85,60 @@ def _existing_branches() -> set[str]:
         return set()
 
 
+def epic_base_path(branch: str) -> Path:
+    """`.datum/epics/<slug>/base.json` for an epic branch (the pipeline-state slug)."""
+    from datum.pipeline_state import epic_state_slug
+
+    return (
+        Path(".datum") / "epics" / (epic_state_slug(branch) or "unknown") / "base.json"
+    )
+
+
+def record_epic_base(branch: str, base_branch: str) -> None:
+    """Persist the branch this epic was created from. Fails open: a
+    recording problem must never block branch creation."""
+    try:
+        path = epic_base_path(branch)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"base_branch": base_branch}, indent=2) + "\n")
+    except OSError:
+        return
+
+
+def resolve_epic_base(branch: str | None = None) -> tuple[str, str]:
+    """(base_branch, source) for the current epic: the recorded parent, else
+    origin/HEAD, else origin/main|master, else a local main|master, else
+    'main' assumed. Source names which."""
+    import subprocess
+
+    branch = branch or current_branch() or ""
+    path = epic_base_path(branch) if branch else None
+    if path is not None and path.exists():
+        try:
+            recorded = json.loads(path.read_text()).get("base_branch")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            recorded = None
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded.strip(), "recorded"
+
+    def git(*args: str) -> str:
+        res = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=5, check=False
+        )
+        return res.stdout.strip() if res.returncode == 0 else ""
+
+    head = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if head:
+        return head.removeprefix("origin/"), "origin-head"
+    for name in ("main", "master"):
+        if git("show-ref", "--verify", f"refs/remotes/origin/{name}"):
+            return f"origin/{name}", "origin-default"
+    for name in ("main", "master"):
+        if git("show-ref", "--verify", f"refs/heads/{name}"):
+            return name, "local-default"
+    return "main", "assumed"
+
+
 def ensure_feature_branch(title: str | None = None) -> str:
     """Switch off protected branches onto a feature branch (issue #55).
 
@@ -147,6 +201,12 @@ def ensure_feature_branch(title: str | None = None) -> str:
         capture_output=True,
         text=True,
     )
+    if result.returncode == 0:
+        # The epic's parent, recorded at creation: review and closeout diff
+        # from it (`datum epic-base`), so an epic chained from another epic
+        # is judged on its own commits, not its parent's (elonchesd
+        # wf_22ad6b36-dec re-reviewed all of epic-1 from `merge-base main`).
+        record_epic_base(new_branch, branch)
     if result.returncode != 0:
         print(
             json.dumps(

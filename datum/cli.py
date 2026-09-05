@@ -2249,6 +2249,24 @@ def worktrees_list_cmd(
     typer.echo(json.dumps(worktrees, indent=2))
 
 
+@app.command(name="epic-base")
+def epic_base_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Print {base_branch, source}"),
+):
+    """Print the branch this epic diffs against: its recorded parent
+    (written by `datum init --name` when the epic was chained from another
+    epic), else origin/HEAD, else origin/main|master, else a local
+    main|master, else main. Review and closeout use it as the merge base.
+    """
+    from datum.state import resolve_epic_base
+
+    base_branch, source = resolve_epic_base()
+    if as_json:
+        typer.echo(json.dumps({"base_branch": base_branch, "source": source}))
+    else:
+        typer.echo(base_branch)
+
+
 @app.command(name="review-accept")
 def review_accept_cmd(
     finding_id: str = typer.Argument(

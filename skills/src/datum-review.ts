@@ -6,6 +6,8 @@ import { configureAgentTypes, stageOpts } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { findingKey } from './shared/review-keys'
+import { REVIEW_LENS_SCHEMA } from './shared/schemas'
+import { describeFailure } from './shared/batch'
 import { runBatch } from './shared/agents'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -62,13 +64,30 @@ function normaliseSeverity(raw: unknown, where: string): Finding['severity'] {
   return 'high'
 }
 
+// The diff base is the epic's recorded parent (`datum epic-base`: written by
+// `datum init --name` when the epic was chained from another epic, else the
+// repo default). A chained epic diffed from `merge-base HEAD main`
+// re-reviewed all of its parent (elonchesd wf_22ad6b36-dec).
+const baseSteps = [{ name: 'base-branch', command: 'datum epic-base', tolerant: true }]
+const baseResult = parseBatchResult(
+  await agent(batchCommandPrompt(baseSteps), stageOpts('cli', { label: 'read-base', model: model('fast') })),
+  baseSteps,
+)
+const baseBranch = (stepStdout(baseResult, 'base-branch') || '').trim()
+if (!baseBranch || /\s/.test(baseBranch)) {
+  throw new Error(`review_base_unresolved: datum epic-base printed ${JSON.stringify(baseBranch)} (${baseResult.missing ? 'batch returned no result' : describeFailure(baseResult, 'read-base')})`)
+}
+log(`Review diff base: ${baseBranch}`)
+
+// Schema-validated at the tool layer: a lens that answers in prose is
+// retried by the runtime instead of halting Review on a strict parse.
 const reviewResults = await parallel<DomainResult>(
   DOMAINS.map((d) => () =>
     agent(
       d.domain === 'Correctness'
-        ? reviewCorrectnessSpecVerifyTemplate
-        : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus }),
-      { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model },
+        ? renderPrompt(reviewCorrectnessSpecVerifyTemplate, { baseBranch })
+        : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch }),
+      { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA },
     ),
   ),
 )

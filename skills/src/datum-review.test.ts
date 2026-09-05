@@ -225,3 +225,34 @@ describe('stable finding keys and the gate runner', () => {
     })
   }
 })
+
+// elonchesd wf_22ad6b36-dec: the correctness lens answered in markdown, the
+// strict parse threw, and Review halted with no retry. Lens calls carry a
+// schema: StructuredOutput validates at the tool layer and the model
+// retries on mismatch, so the prose-to-JSON failure class disappears. The
+// same run showed a chained epic diffed from `merge-base HEAD main`, which
+// re-reviewed all of its parent epic: the diff base is the recorded parent.
+describe('review lenses are schema-validated and diff from the epic base', () => {
+  const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+  it('every lens agent call passes REVIEW_LENS_SCHEMA', () => {
+    expect(src).toMatch(/import \{[^}]*REVIEW_LENS_SCHEMA[^}]*\} from '\.\/shared\/schemas'/)
+    expect(src).toMatch(/\{ label: `review-\$\{d\.domain\.toLowerCase\(\)\}`, phase: 'Review', model: d\.model, schema: REVIEW_LENS_SCHEMA \}/)
+  })
+  it('reads the epic base from `datum epic-base` before the lenses run and hands it to both prompts', () => {
+    const baseIdx = src.indexOf("{ name: 'base-branch', command: 'datum epic-base', tolerant: true }")
+    const lensIdx = src.indexOf('DOMAINS.map((d) => () =>')
+    expect(baseIdx).toBeGreaterThan(-1)
+    expect(baseIdx).toBeLessThan(lensIdx)
+    expect(src).toMatch(/renderPrompt\(reviewCorrectnessSpecVerifyTemplate, \{ baseBranch \}\)/)
+    expect(src).toMatch(/renderPrompt\(reviewDomainTemplate, \{ domain: d\.domain, domainPrefix: d\.prefix, domainFocus: d\.focus, baseBranch \}\)/)
+    expect(src).toMatch(/review_base_unresolved/)
+  })
+  it('neither prompt hard-codes main as the diff base', () => {
+    for (const f of ['review-domain.md', 'review-correctness-spec-verify.md']) {
+      const p = readFileSync(join(__dirname, 'prompts', f), 'utf8')
+      expect(p, f).toContain('{{baseBranch}}')
+      expect(p, f).not.toMatch(/merge-base HEAD main\b/)
+      expect(p, f).not.toMatch(/diff main\.\.\./)
+    }
+  })
+})

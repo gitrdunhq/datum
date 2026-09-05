@@ -1156,6 +1156,10 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
   it('resolves the base branch (origin/HEAD, origin/main|master, local main|master) instead of hard-coding origin/main', () => {
     const base = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
     expect(base.command).not.toContain('merge-base HEAD origin/main')
+    // The epic's recorded parent first (`datum epic-base`, elonchesd: a chained
+    // epic diffed against master re-reviewed its whole parent epic), then the
+    // shell chain when the CLI is unavailable.
+    expect(base.command).toMatch(/^BASE=\$\(datum epic-base 2>&1\)/)
     expect(base.command).toContain('git symbolic-ref --short refs/remotes/origin/HEAD')
     expect(base.command).toContain('refs/remotes/origin/$b')
     expect(base.command).toContain('refs/heads/$b')
