@@ -2,7 +2,7 @@ import { model } from './shared/models'
 import type { MergeArgs } from './shared/types'
 import { filterGreenLanes } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import { mergeSteps } from './shared/lane-steps'
 import { laneStateWriteScript } from './shared/prompts'
 
@@ -14,6 +14,7 @@ export const meta = {
 
 const a = args as MergeArgs
 configureAgentTypes(a.agentTypes || {})
+setBatchCacheKey(a.configFingerprint || '')
 
 // ── Merge ──
 phase('Merge')

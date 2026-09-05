@@ -3,7 +3,7 @@ import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, verifyCommitIndependently } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import {
   laneIntakeSteps,
   postRedSteps,
@@ -72,6 +72,15 @@ export const meta = {
   description: 'DAG-scheduled TDD execution: RED->GREEN->REFACTOR per lane',
   phases: [{ title: 'Act' }],
 }
+
+// Args + per-bundle module state first, before any function below can run:
+// #368 this bundle has its own copy of the agent-types state — configure it
+// from the switches the parent read out of .datum/config.json; #354 the
+// resume cache key is stamped into every batch prompt.
+const a = args as LaneArgs
+const { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a
+configureAgentTypes(cfg.agentTypes || {})
+setBatchCacheKey(cfg.configFingerprint || '')
 
 // ── File ownership verification ─────────────────────────────────────────────
 
@@ -1134,13 +1143,8 @@ async function runRefactor(
 
 // ── DAG scheduler ───────────────────────────────────────────────────────────
 
-const a = args as LaneArgs
 phase('Act')
 
-const { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a
-// #368: this bundle has its own copy of the agent-types state — configure it
-// from the switches the parent read out of .datum/config.json.
-configureAgentTypes(cfg.agentTypes || {})
 const lanes = lanePlan.lanes
 const depResolvers: Record<string, (value: LaneOutcome) => void> = {}
 const depPromises: Record<string, Promise<LaneOutcome>> = {}

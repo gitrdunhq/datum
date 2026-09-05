@@ -19,6 +19,78 @@ def _write(path, payload):
     path.write_text(json.dumps(payload))
 
 
+# ---------------------------------------------------------------------------
+# Resume replays EVERY cached agent whose prompt is unchanged — not just the
+# boot read. A dogfooding run halted at the Refine gate on 5 unanswered
+# questions; the human answered QUESTIONS.md, resumed, and the cached gate
+# replayed "5 unanswered" in 18 ms. The fingerprint is therefore over every
+# human-editable pipeline input (config, epic docs, pipeline state), and the
+# scripts stamp it into every batch prompt.
+# ---------------------------------------------------------------------------
+
+
+def test_fingerprint_changes_when_an_epic_doc_changes(tmp_path):
+    repo, home = tmp_path / "repo", tmp_path / "home"
+    epic = repo / "docs" / "epics" / "datum" / "x"
+    _write(repo / ".datum" / "config.json", {"skills_dir": "/a"})
+    (epic).mkdir(parents=True)
+    (epic / "QUESTIONS.md").write_text("Q1: ?\n")
+    before = config_fingerprint(repo, home, epic_dir=epic)
+    (epic / "QUESTIONS.md").write_text("Q1: answered\n")
+    after = config_fingerprint(repo, home, epic_dir=epic)
+    assert before != after
+    # A new doc appearing is a change too.
+    (epic / "SPEC.md").write_text("# spec\n")
+    assert config_fingerprint(repo, home, epic_dir=epic) != after
+
+
+def test_fingerprint_changes_when_pipeline_state_changes(tmp_path):
+    repo, home = tmp_path / "repo", tmp_path / "home"
+    _write(repo / ".datum" / "config.json", {"skills_dir": "/a"})
+    before = config_fingerprint(repo, home)
+    _write(repo / ".datum" / "pipeline-state.json", {"completedPhases": ["refine"]})
+    after = config_fingerprint(repo, home)
+    assert before != after
+
+
+def test_fingerprint_ignores_files_outside_the_epic_dir(tmp_path):
+    repo, home = tmp_path / "repo", tmp_path / "home"
+    epic = repo / "docs" / "epics" / "datum" / "x"
+    epic.mkdir(parents=True)
+    before = config_fingerprint(repo, home, epic_dir=epic)
+    (repo / "docs" / "epics" / "datum" / "other.md").write_text("noise\n")
+    (repo / "README.md").write_text("noise\n")
+    assert config_fingerprint(repo, home, epic_dir=epic) == before
+
+
+def test_cli_hashes_the_current_branch_epic_dir(tmp_path, monkeypatch):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "datum/x"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", "/dev/null"], cwd=repo, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "t@example.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    # `git rev-parse --abbrev-ref HEAD` needs a commit to name the branch.
+    subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "init"], cwd=repo, check=True
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "home")
+    monkeypatch.chdir(repo)
+    before = CliRunner().invoke(app, ["config-fingerprint"]).stdout.strip()
+    epic = repo / "docs" / "epics" / "datum" / "x"
+    epic.mkdir(parents=True)
+    (epic / "QUESTIONS.md").write_text("Q1: answered\n")
+    after = CliRunner().invoke(app, ["config-fingerprint"]).stdout.strip()
+    assert before.startswith("sha256:") and after.startswith("sha256:")
+    assert before != after
+
+
 def test_fingerprint_is_deterministic_for_same_contents(tmp_path):
     repo, home = tmp_path / "repo", tmp_path / "home"
     _write(repo / ".datum" / "config.json", {"skills_dir": "/a"})

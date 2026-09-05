@@ -10,20 +10,14 @@
 // `configureAgentTypes(` call, and any agent() call that has to happen
 // before configuration (the config/context read) must use bootstrapOpts().
 //
-// datum-tdd-act-lane.ts is exempt: its stageOpts calls sit inside lane
-// functions that the DAG scheduler invokes after the module-level
-// configureAgentTypes(cfg.agentTypes) at the bottom of the file, so the
-// textual order is misleading and the runtime guard covers it.
-
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const srcDir = join(__dirname, '..')
-const EXEMPT = new Set(['datum-tdd-act-lane.ts'])
 
 const scripts = readdirSync(srcDir)
-  .filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts') && !EXEMPT.has(f))
+  .filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))
 
 function firstCallIndex(src: string, fn: string): number {
   // Skip the import line: find the first occurrence that is followed by `(`
@@ -49,6 +43,23 @@ describe('configureAgentTypes runs before the first stageOpts in every top-level
         stageAt,
         `${file}: stageOpts( at ${stageAt} precedes configureAgentTypes( at ${configureAt} — use bootstrapOpts() for the pre-config read`,
       ).toBeGreaterThan(configureAt)
+    })
+  }
+})
+
+// Same ordering discipline for the resume cache key: every script that runs
+// batches must stamp the inputs fingerprint (setBatchCacheKey) before its
+// first batchCommandPrompt, or a resumed run replays stale file reads and
+// stale gate verdicts (see batch.test.ts).
+describe('setBatchCacheKey runs before the first batchCommandPrompt in every script', () => {
+  for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
+    it(file, () => {
+      const src = readFileSync(join(srcDir, file), 'utf8')
+      const firstBatch = firstCallIndex(src, 'batchCommandPrompt')
+      if (firstBatch === -1) return
+      const keyAt = firstCallIndex(src, 'setBatchCacheKey')
+      expect(keyAt, `${file}: never calls setBatchCacheKey`).not.toBe(-1)
+      expect(keyAt, `${file}: first batchCommandPrompt( at ${firstBatch} precedes setBatchCacheKey( at ${keyAt}`).toBeLessThan(firstBatch)
     })
   }
 })

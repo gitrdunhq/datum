@@ -4,7 +4,7 @@ import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
-import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 
 /** Collector steps whose non-zero exit is logged individually — #368 follow-up. */
@@ -28,6 +28,8 @@ const runId: string = a.runId || ''
 // with `agent_types: false` the collect batch below must not itself go out
 // as agentType 'datum-cli' (a dogfooding run died right here).
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+// Resume cache key (#354): collectors re-run when state or docs changed.
+setBatchCacheKey(a.configFingerprint || '')
 
 // ── Collect: one deterministic batched datum-cli call, no LLM judgement ──
 //

@@ -74,6 +74,21 @@ export function batchScript(steps: BatchStep[]): string {
   return lines.join('\n') + '\n'
 }
 
+// Resume cache key. `Workflow({resumeFromRunId})` replays every agent()
+// whose (prompt, opts) is unchanged — including deterministic batches that
+// read files the human edited between runs (an answered QUESTIONS.md, a
+// fixed SPEC.md) and the gate that judged them. The launcher computes
+// `datum config-fingerprint` (config + epic docs + pipeline state) on every
+// launch and each script stamps it into every batch prompt via
+// setBatchCacheKey, so an edit is a cache miss and an unchanged input still
+// hits. Module state, one copy per bundle — every script sets it from args
+// before its first batchCommandPrompt (agent-types-ordering.test.ts).
+let cacheKey = ''
+
+export function setBatchCacheKey(key: string): void {
+  cacheKey = typeof key === 'string' ? key : ''
+}
+
 /** Prompt for the datum-cli agent: run the script once, return its stdout. */
 export function batchCommandPrompt(steps: BatchStep[]): string {
   return (
@@ -82,6 +97,7 @@ export function batchCommandPrompt(steps: BatchStep[]): string {
     'do not message anyone, do not summarise or explain — this prompt is the whole task. ' +
     'The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); ' +
     'a non-zero exit_code is data to return, not a problem to solve.\n\n' +
+    (cacheKey ? `(inputs fingerprint ${cacheKey} — informational, do not act on it)\n\n` : '') +
     batchScript(steps)
   )
 }

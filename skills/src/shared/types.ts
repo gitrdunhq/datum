@@ -36,6 +36,9 @@ export interface PhaseArgs {
   agentTypes?: AgentTypeConfig
   freeText?: string
   issueNumber?: number | null
+  /** Resume cache key (`datum config-fingerprint`): stamped into every
+   *  batch prompt so a human edit between runs is a cache miss. */
+  configFingerprint?: string
 }
 
 export interface CloseoutArgs extends PhaseArgs {
@@ -51,6 +54,8 @@ export interface TddActArgs {
   epicBranch?: string
   runId?: string
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
 }
 
 // Cross-workflow arg/result contracts
@@ -64,6 +69,8 @@ export interface SetupArgs {
   batchTag: string
   /** #368: agent_types / hooks_installed switches from the parent's config. */
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
 }
 export interface SetupResult {
   worktreePaths: Record<string, string>
@@ -90,6 +97,8 @@ export interface MergeArgs {
   topoOrder: string[]
   batchTag: string
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
   /** #368: epic-scoped completion markers to record after a successful
    *  merge (folded into the merge batch; was a separate agent call). */
   laneState?: { epicSlug: string; entries: Array<{ task_id: string; spec_hash: string }> } | null
@@ -180,6 +189,8 @@ export interface PipelineConfig {
    *  so the lane bundle (its own copy of the agent-types state) can
    *  configure itself. */
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
 }
 
 export interface LaneOutcome {

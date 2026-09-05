@@ -331,8 +331,9 @@ def config_fingerprint_cmd(
     run re-reads config when (and only when) it changed.
     """
     from datum.config_fingerprint import config_fingerprint
+    from datum.gate import resolve_epic_dir
 
-    fp = config_fingerprint(Path.cwd(), Path.home())
+    fp = config_fingerprint(Path.cwd(), Path.home(), epic_dir=resolve_epic_dir())
     if json_output:
         print(json.dumps({"configFingerprint": fp}))
     else:

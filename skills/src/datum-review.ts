@@ -3,7 +3,7 @@ import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
-import { batchCommandPrompt, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
 import type { PhaseArgs } from './shared/types'
 
@@ -26,6 +26,8 @@ const yolo: boolean = !!a.yolo
 // other phases (a later mapping only has to add stageOpts at the call site).
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 else configureAgentTypes({})
+// Resume cache key (#354): the review gate re-runs after a human edit.
+setBatchCacheKey(a.configFingerprint || '')
 
 const DOMAINS = [
   { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: model('balanced') },

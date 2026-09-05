@@ -1,7 +1,7 @@
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
@@ -79,13 +79,16 @@ interface PhaseResult {
 // (#368 follow-up; mirrors the datum-plan.ts config-batch conversion,
 // commit a7093d2). ('' rather than undefined: esbuild emits `void 0`, which
 // trips the build's leaked-TypeScript grep.)
-// #354: configFingerprint used to be embedded in the boot prompt as the
-// cache key that let a resumed run notice an edited config. The read is no
-// longer a cached agent() prompt, so there is nothing left to key — but the
-// warning stays: an unset fingerprint still means the launcher isn't
-// wiring `datum config-fingerprint` through, which callers should fix.
+// #354: the boot batch below is an agent() call like any other, so on
+// `Workflow({resumeFromRunId})` it replays from cache unless its prompt
+// changed. configFingerprint (`datum config-fingerprint`: config + epic
+// docs + pipeline state) is stamped into EVERY batch prompt of this run and
+// of every child, so a human edit between runs — an answered QUESTIONS.md,
+// a fixed SPEC.md — re-runs the deterministic layer and the gates instead
+// of replaying the stale verdict. Unset means the launcher isn't wiring it.
 const configFingerprint: string = typeof a.configFingerprint === 'string' ? a.configFingerprint : ''
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING)
+setBatchCacheKey(configFingerprint)
 const bootBatch = parseBatchResult(
   // bootstrapOpts: the switches live in the config this very read fetches.
   await agent(batchCommandPrompt(bootSteps()), bootstrapOpts('cli', { label: 'boot', model: model('fast') })),
@@ -108,6 +111,7 @@ log(`Agent types: ${agentTypeArgs().agentTypes ? 'on' : 'off'}, hooks_installed:
 const phaseArgs = {
   yolo,
   agentTypes: agentTypeArgs(),
+  configFingerprint,
   freeText: typeof a.freeText === 'string' ? a.freeText : '',
   issueNumber: typeof a.issueNumber === 'number' ? a.issueNumber : null,
 }
@@ -474,7 +478,7 @@ if (shouldRun('act', 3)) {
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint },
     ) as SetupResult
 
     // Lane execution — direct child workflow
@@ -484,7 +488,7 @@ if (shouldRun('act', 3)) {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs() },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
@@ -518,6 +522,7 @@ if (shouldRun('act', 3)) {
         topoOrder: lanePlan.topological_order,
         batchTag,
         agentTypes: agentTypeArgs(),
+        configFingerprint,
         laneState: mergedIds.length > 0
           ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
           : null,

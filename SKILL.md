@@ -71,14 +71,14 @@ After each phase: `datum gate <phase> [--approve]`
 
 ## Launching `datum-go`
 
-Compute the config fingerprint first and pass it in `args` — the boot agent that reads `.datum/config.json` is replay-cached on `Workflow({resumeFromRunId})`, and the fingerprint in its prompt is what makes an edited config invalidate that cache (#354). Recompute it on every launch, including resumes.
+Compute the inputs fingerprint first and pass it in `args`. `Workflow({resumeFromRunId})` replays every agent call whose prompt is unchanged — the config read, every deterministic batch that reads an epic doc, and every gate. The fingerprint (`.datum/config.json`, `~/.datum/config.json`, every `*.md`/`*.json` in the current epic dir, `.datum/pipeline-state.json`) is stamped into every batch prompt, so a human edit between runs — an answered QUESTIONS.md, a fixed SPEC.md — is a cache miss and an unchanged input still hits (#354). **Recompute it on every launch, resumes included**; a resume with the old value replays the stale gate verdict.
 
 ```
 FP=$(datum config-fingerprint)
 Workflow({ name: "datum-go", args: { yolo: true, configFingerprint: "<FP>" } })
 ```
 
-Without `configFingerprint` the script logs a warning and a resumed run replays the stale config read.
+Without `configFingerprint` the script logs a warning and a resumed run replays every stale read.
 
 ### Agent types and batched command runners (#368)
 

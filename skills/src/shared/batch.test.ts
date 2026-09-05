@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process'
 import {
   batchScript,
   batchCommandPrompt,
+  setBatchCacheKey,
   parseBatchResult,
   stepStdout,
   stepResult,
@@ -115,6 +116,25 @@ describe('batchCommandPrompt', () => {
     expect(p).toMatch(/do not ask/i)
     expect(p).toMatch(/not a problem to solve/)
     expect(p).toContain('echo a')
+  })
+
+  // Workflow resume replays every agent() whose (prompt, opts) is unchanged.
+  // A batch that reads a file the human edited between runs (QUESTIONS.md
+  // answered, SPEC.md fixed) has a byte-identical prompt, so the stale result
+  // replays — a dogfooding run could never get past the Refine gate. The
+  // inputs fingerprint stamped into the prompt is what makes an edit a miss.
+  it('stamps the inputs fingerprint into the prompt without changing the script', () => {
+    const steps = [{ name: 'a', command: 'echo a' }]
+    setBatchCacheKey('')
+    const bare = batchCommandPrompt(steps)
+    setBatchCacheKey('sha256:abc123')
+    const keyed = batchCommandPrompt(steps)
+    expect(keyed).toContain('sha256:abc123')
+    expect(keyed).not.toBe(bare)
+    expect(batchScript(steps)).toBe(batchScript(steps))
+    expect(keyed).toContain(batchScript(steps))
+    setBatchCacheKey('')
+    expect(batchCommandPrompt(steps)).toBe(bare)
   })
 })
 

@@ -2,7 +2,7 @@ import { model, setModelTiers } from './shared/models'
 import type { LanePlan, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, laneSpecHash, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { DEFAULT_CONFIG, skillPath } from './shared/models'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
@@ -21,6 +21,9 @@ const rawArgs: string = typeof args === 'string' ? args.trim().replace(/^"|"$/g,
 const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})) as TddActArgs
+
+// Resume cache key (#354): stamped into every batch prompt of this run.
+setBatchCacheKey(a.configFingerprint || '')
 
 // Read config from .datum/config.json if not passed as args
 let repoCfg: RepoConfig = {} as RepoConfig
@@ -166,7 +169,7 @@ for (let bi = 0; bi < batches.length; bi++) {
   log('── Setup ──')
   const setup = await workflow(
     { scriptPath: sk('datum-tdd-act-setup') },
-    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs() }
+    { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' }
   ) as SetupResult
 
   // Act
@@ -175,7 +178,7 @@ for (let bi = 0; bi < batches.length; bi++) {
     { scriptPath: sk('datum-tdd-act-lane') },
     {
       batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs() },
+      cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' },
       priorFailures: failures,
       priorCompleted: completedLanes,
     }
@@ -224,6 +227,7 @@ for (let bi = 0; bi < batches.length; bi++) {
       topoOrder: lanePlan.topological_order,
       batchTag,
       agentTypes: agentTypeArgs(),
+      configFingerprint: a.configFingerprint || '',
       laneState: mergedIds.length > 0
         ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: laneSpecHash(lanePlan.lanes[id]) })) }
         : null,
