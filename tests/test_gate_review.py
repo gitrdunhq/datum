@@ -310,6 +310,30 @@ def test_a_reworded_refinding_matches_the_prior_decision_by_lens_file_and_line(
     assert "matched prior decision 33334444" in message
 
 
+def test_a_prior_decision_matches_across_lenses_when_file_line_and_requirement_id_agree(
+    epic_repo, capsys
+):
+    """caliper: the reviewer re-derives a finding from the requirement
+    (R2.1); when a restatement lands under another lens at the same place
+    and both cite the same requirement id, it is the same finding."""
+    _write_report(
+        epic_repo,
+        "# Review Report\n\n## Findings\n\n"
+        "| ID | Severity | File | Line | Description | Suggestion | Key |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| ARCH-002 | **high** | AGENTS.md | 133 | R2.1 scope rule restated under architecture | fix | 0049f593 |\n",
+    )
+    (epic_repo / "REVIEW-RESPONSE.md").write_text(
+        "- DEFER 746f2805 (CORR-005 AGENTS.md:133) -> datum/next: R2.1 belongs to the next epic\n"
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_review(True, {})
+
+    assert exc.value.code == 0
+    assert "0049f593 matched prior decision 746f2805" in _fail_json(capsys)["message"]
+
+
 def test_a_prior_decision_on_another_line_or_lens_does_not_match(epic_repo, capsys):
     _write_report(
         epic_repo,

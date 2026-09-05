@@ -425,6 +425,16 @@ def _lens_of(finding_id: str) -> str:
     return finding_id.split("-", 1)[0].upper() if finding_id else ""
 
 
+_REQUIREMENT_ID_RE = re.compile(
+    r"\b(R\d+(?:\.\d+)*|(?:SAFE|LIVE|INV|BOUND|IDEM|ORD|ISOL|PERF|SEC|OBS|COMPAT)-\d+)\b"
+)
+
+
+def _requirement_ids(text: str) -> set[str]:
+    """Requirement / property ids cited in free text (R2.1, INV-003)."""
+    return {m.group(1).upper() for m in _REQUIREMENT_ID_RE.finditer(text or "")}
+
+
 def review_report_rows(content: str) -> list[dict[str, str]]:
     """The report's finding rows as {id, severity, file, line, key} in report
     order. `key` is '' for a report without a Key column (pre-key reports)."""
@@ -454,6 +464,7 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
                 "severity": match.group(2).lower(),
                 "file": cell("file"),
                 "line": cell("line"),
+                "description": cell("description"),
                 "key": key.lower() if _KEY_RE.match(key) else "",
             }
         )
@@ -490,13 +501,20 @@ def _blocking_review_findings(
             continue
         if not keyed and r["id"] in accepted:
             continue
+        # Same place and same lens; or same place and a shared requirement
+        # id (R2.1, INV-003, ...) — the identity the reviewer re-derives a
+        # finding from, which can land under another lens (caliper).
+        row_reqs = _requirement_ids(r.get("description", ""))
         prior = next(
             (
                 d
                 for d in placed
                 if d["file"] == r["file"]
                 and d["line"] == r["line"]
-                and _lens_of(d["id"]) == _lens_of(r["id"])
+                and (
+                    _lens_of(d["id"]) == _lens_of(r["id"])
+                    or bool(row_reqs & _requirement_ids(d["reason"]))
+                )
             ),
             None,
         )
