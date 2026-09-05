@@ -24,7 +24,8 @@ const yolo: boolean = !!a.yolo
 // #368: review-domain agents and the report writer stay on the runtime default —
 // no datum-* definition fits them — but honour the switch for parity with the
 // other phases (a later mapping only has to add stageOpts at the call site).
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : {})
+if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+else configureAgentTypes({})
 
 const DOMAINS = [
   { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: model('balanced') },

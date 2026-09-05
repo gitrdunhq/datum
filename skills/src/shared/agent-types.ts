@@ -41,6 +41,20 @@ export interface AgentTypeConfig {
 }
 
 const state: AgentTypeConfig = { agentTypes: true, hooksInstalled: false }
+// Nothing may route through stageOpts() until a script has said where its
+// switches come from. The old default ("on") let the very first agent()
+// call of a script — the config read — go out with agentType 'datum-cli'
+// in a repo whose config said `agent_types: false` (agents not registered
+// until the Claude Code session restarts), killing the run before the
+// switch was ever read.
+let configured = false
+
+/** Test seam: forget the switches so ordering tests start unconfigured. */
+export function resetAgentTypesForTests(): void {
+  state.agentTypes = true
+  state.hooksInstalled = false
+  configured = false
+}
 
 /** Read the two switches out of a raw .datum/config.json object. */
 export function readAgentTypeConfig(cfg: unknown): AgentTypeConfig {
@@ -54,6 +68,7 @@ export function readAgentTypeConfig(cfg: unknown): AgentTypeConfig {
 export function configureAgentTypes(opts: Partial<AgentTypeConfig>): void {
   if (typeof opts.agentTypes === 'boolean') state.agentTypes = opts.agentTypes
   if (typeof opts.hooksInstalled === 'boolean') state.hooksInstalled = opts.hooksInstalled
+  configured = true
 }
 
 export function agentTypesEnabled(): boolean {
@@ -76,8 +91,25 @@ export function deterministicChecks(): boolean {
 
 /** Build agent() opts for a stage: `extra` plus the table's agentType (when enabled). */
 export function stageOpts<T extends AgentOpts>(stage: StageKind, extra: T = {} as T): T & { agentType?: string } {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${(extra as { label?: string }).label ? `, ${(extra as { label?: string }).label}` : ''}) called before configureAgentTypes() — ` +
+      'configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration',
+    )
+  }
   if (!state.agentTypes) return { ...extra }
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] }
+}
+
+/**
+ * For the ONE agent() call a script may need before its switches are known
+ * (reading .datum/config.json itself). Unconfigured → plain opts, no
+ * agentType, so the read works whether or not the datum-* agents are
+ * registered; once configured it is exactly stageOpts().
+ */
+export function bootstrapOpts<T extends AgentOpts>(stage: StageKind, extra: T = {} as T): T & { agentType?: string } {
+  if (!configured) return { ...extra }
+  return stageOpts(stage, extra)
 }
 
 /** Current config as a plain object, for passing to child workflows via args. */

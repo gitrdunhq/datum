@@ -1,7 +1,7 @@
 import { renderPrompt, parseAgentJson } from './shared/utils'
 import { model } from './shared/models'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
-import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
@@ -24,6 +24,10 @@ const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})) as CloseoutArgs
 const runId: string = a.runId || ''
+// #368: the parent's switches are honoured BEFORE the first agent() call —
+// with `agent_types: false` the collect batch below must not itself go out
+// as agentType 'datum-cli' (a dogfooding run died right here).
+if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 
 // ── Collect: one deterministic batched datum-cli call, no LLM judgement ──
 //
@@ -41,7 +45,7 @@ phase('Collect')
 const collectSteps = closeoutCollectSteps({ runId })
 const collectRaw = await agent(
   batchCommandPrompt(collectSteps),
-  stageOpts('cli', { label: 'closeout-collect', model: model('fast') }),
+  bootstrapOpts('cli', { label: 'closeout-collect', model: model('fast') }),
 )
 const collectResult = parseBatchResult(collectRaw, collectSteps)
 
@@ -56,8 +60,8 @@ for (const name of COLLECTOR_STEPS) {
 const branch = (stepStdout(collectResult, 'branch') || '').trim()
 const cfg = parseAgentJson<Record<string, unknown>>(stepStdout(collectResult, 'config') || '{}', {})
 
-// #368: args (from datum-go) win, else the agent_types key read straight out of .datum/config.json.
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: cfg.agent_types !== false })
+// #368: standalone run (no parent args) — the agent_types key read straight out of .datum/config.json.
+if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes({ agentTypes: cfg.agent_types !== false })
 
 // The run id datum-go passes is the one Act actually produced; the collect
 // batch only generates a fresh timestamp when none was given (standalone

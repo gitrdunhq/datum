@@ -1,7 +1,7 @@
 import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
 import { model, DEFAULT_CONFIG, mergeConfig } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
-import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
 import { readContextSteps, contextFromSteps } from './shared/lane-steps'
 import type { PhaseArgs } from './shared/types'
@@ -26,6 +26,9 @@ const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
+// #368: the parent's switches are honoured BEFORE the first agent() call —
+// with `agent_types: false` the reads below must not go out as 'datum-cli'.
+if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 
 // ── Read (deterministic batch: branch/epic-dir + byte-verified SPEC.md
 // relay, replacing the LLM `reader` echo of util-read-context.md — an LLM
@@ -49,7 +52,7 @@ const readSteps = readContextSteps({
   ],
 })
 const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), stageOpts('cli', { label: 'read-context', model: model('fast') })),
+  await agent(batchCommandPrompt(readSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
   readSteps,
 )
 if (readBatch.missing) {
@@ -80,7 +83,7 @@ const configSteps: BatchStep[] = [
   { name: 'repo-config', command: 'cat .datum/config.json' },
   { name: 'global-config', command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true },
 ]
-const configBatchRaw = await agent(batchCommandPrompt(configSteps), stageOpts('cli', { label: 'read-config', model: model('fast') }))
+const configBatchRaw = await agent(batchCommandPrompt(configSteps), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
 const configBatch = parseBatchResult(configBatchRaw, configSteps)
 if (configBatch.missing || configBatch.failed) {
   throw new Error('missing .datum/config.json — run datum init first')
@@ -99,7 +102,8 @@ try {
 }
 const repoCfg = { ...DEFAULT_CONFIG, ...mergeConfig(globalCfgParsed, repoCfgParsed) } as Record<string, unknown>
 // #368: args (from datum-go) win, else the repo config, else the defaults.
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : readAgentTypeConfig(repoCfg))
+// Standalone run (no parent args): switches come from the repo config just read.
+if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
 const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
 const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
 

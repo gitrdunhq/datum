@@ -72,7 +72,9 @@ function findCallSites(file: string, src: string): CallSite[] {
 }
 
 function stageOf(site: CallSite): string | null {
-  const m = site.args.match(/stageOpts\(\s*'([a-z]+)'/)
+  // bootstrapOpts is the same table lookup for the one pre-config read;
+  // once configured it IS stageOpts, so it counts as a mapped site.
+  const m = site.args.match(/(?:stageOpts|bootstrapOpts)\(\s*'([a-z]+)'/)
   return m ? m[1] : null
 }
 

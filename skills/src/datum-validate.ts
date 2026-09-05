@@ -1,7 +1,7 @@
 import { renderPrompt, parseAgentJson, parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
 import type { MainSyncResult } from './shared/utils'
 import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
-import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
@@ -23,13 +23,15 @@ export const meta = {
 const a = parseValidateArgs(args)
 const yolo: boolean = a.yolo
 const noMergeMain: boolean = a.noMergeMain
+// #368: the parent's switches are honoured BEFORE the first agent() call.
+if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes as Record<string, boolean>)
 
 const cfgText = !a.testCommand
-  ? await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
+  ? await agent(READ_CONFIG_PROMPT, bootstrapOpts('reader', { label: 'read-config', model: model('fast') }))
   : null
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as unknown as Record<string, string> : {}
-// #368: args (from datum-go) win, else the repo config, else the defaults.
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes as Record<string, boolean> : readAgentTypeConfig(repoCfg))
+// Standalone run (no parent args): the repo config, else the defaults.
+if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──

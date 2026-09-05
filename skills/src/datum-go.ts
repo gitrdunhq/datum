@@ -6,7 +6,7 @@ import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
 import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
-import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-go',
@@ -87,7 +87,8 @@ interface PhaseResult {
 const configFingerprint: string = typeof a.configFingerprint === 'string' ? a.configFingerprint : ''
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING)
 const bootBatch = parseBatchResult(
-  await agent(batchCommandPrompt(bootSteps()), stageOpts('cli', { label: 'boot', model: model('fast') })),
+  // bootstrapOpts: the switches live in the config this very read fetches.
+  await agent(batchCommandPrompt(bootSteps()), bootstrapOpts('cli', { label: 'boot', model: model('fast') })),
   bootSteps(),
 )
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))

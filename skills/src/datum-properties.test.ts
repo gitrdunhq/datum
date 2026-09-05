@@ -25,12 +25,17 @@ describe('datum-properties — args parsing', () => {
 })
 
 describe('datum-properties — agent_types precedence (#368)', () => {
-  it('args.agentTypes (from datum-go) wins over the config.json agent_types field read via the deterministic batch', () => {
-    const idx = propertiesSrc.indexOf('configureAgentTypes(')
-    expect(idx).toBeGreaterThan(-1)
-    const call = propertiesSrc.slice(idx, propertiesSrc.indexOf('\n', idx))
-    expect(call).toMatch(/a\.agentTypes/)
-    expect(call).toMatch(/agentTypesRaw/)
+  it('args.agentTypes (from datum-go) is applied first; the config.json agent_types field is only the standalone fallback', () => {
+    const fromArgs = propertiesSrc.indexOf('configureAgentTypes(a.agentTypes)')
+    expect(fromArgs).toBeGreaterThan(-1)
+    // The fallback configure is guarded on the parent switches being absent
+    // and reads the batch's agent-types step.
+    const fallback = propertiesSrc.indexOf("configureAgentTypes({ agentTypes: agentTypesRaw !== 'false' })")
+    expect(fallback).toBeGreaterThan(fromArgs)
+    const guard = propertiesSrc.slice(propertiesSrc.lastIndexOf('if (', fallback), fallback)
+    expect(guard).toMatch(/!\(a\.agentTypes && typeof a\.agentTypes === 'object'\)/)
+    // And the read that precedes configuration never carries an agentType on its own.
+    expect(propertiesSrc).toMatch(/bootstrapOpts\('cli', \{ label: 'read-context'/)
   })
 })
 

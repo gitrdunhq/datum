@@ -11,8 +11,13 @@
 // sandbox runtime. Production call sites never pass deps, so behavior for
 // real callers is unchanged.
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { resilientAgent } from './agents'
+import { configureAgentTypes } from './agent-types'
+
+// resilientAgent's dirty-worktree guard routes through stageOpts('cli'),
+// which refuses to run before a script has configured the switches.
+beforeEach(() => configureAgentTypes({}))
 
 describe('resilientAgent', () => {
   it('recovers when agent() throws on the first attempt and succeeds on retry', async () => {

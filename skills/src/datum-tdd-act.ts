@@ -5,7 +5,7 @@ import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { READ_CONFIG_PROMPT, DEFAULT_CONFIG, skillPath } from './shared/models'
-import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
   name: 'datum-tdd-act',
@@ -23,7 +23,7 @@ const a = ((typeof args === 'string')
 
 // Read config from .datum/config.json if not passed as args
 const cfgText = (!a.testCommand || !a.language)
-  ? await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
+  ? await agent(READ_CONFIG_PROMPT, bootstrapOpts('reader', { label: 'read-config', model: model('fast') }))
   : null
 const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as RepoConfig : {} as RepoConfig
 if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.models)

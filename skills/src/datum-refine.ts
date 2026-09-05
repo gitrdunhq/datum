@@ -8,7 +8,7 @@ import refineQuestionsTemplate from './prompts/refine-questions.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { batchCommandPrompt, parseBatchResult, stepStdout } from './shared/batch'
 import { readContextSteps, contextFromSteps } from './shared/lane-steps'
-import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
 export const meta = {
@@ -43,6 +43,11 @@ const freeText: string = typeof a.freeText === 'string' ? a.freeText : ''
 // abridged content in dogfooding), and nothing verified it. Mirrors the fix
 // already applied to datum-plan.ts's context_files relay (commit a7093d2). ──
 
+// #368: the parent's switches are honoured BEFORE the first agent() call —
+// with `agent_types: false` the config read below must not itself go out
+// as agentType 'datum-cli' (a dogfooding run died right here).
+if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
+
 phase('Read')
 
 const TICKET_REL = 'docs/epics/$__eb/TICKET.md'
@@ -54,7 +59,7 @@ const readSteps = readContextSteps({
   ],
 })
 const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(readSteps), stageOpts('cli', { label: 'read-context', model: model('fast') })),
+  await agent(batchCommandPrompt(readSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
   readSteps,
 )
 if (readBatch.missing) {
@@ -63,9 +68,11 @@ if (readBatch.missing) {
 const ctx = contextFromSteps(readBatch, [TICKET_REL])
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
-// #368: args (from datum-go) win, else the agent_types field the batch pulled from config.
-const agentTypesRaw = (stepStdout(readBatch, 'agent-types') || '').trim()
-configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : { agentTypes: agentTypesRaw !== 'false' })
+// #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
+if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
+  const agentTypesRaw = (stepStdout(readBatch, 'agent-types') || '').trim()
+  configureAgentTypes({ agentTypes: agentTypesRaw !== 'false' })
+}
 
 const epicDir: string = ctx.epicDir
 const ticketPath: string = `${epicDir}/TICKET.md`
