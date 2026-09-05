@@ -60,6 +60,10 @@ export function publishFromSteps(result: BatchResult): { ok: boolean; parsed: Pu
 }
 
 export function stageSteps(issueId: string, stage: TrackerStage, commitSha?: string): BatchStep[] {
+  // Interpolated raw into the command: refuse anything but an issue number
+  // and a hex sha rather than quoting around them (review finding).
+  if (!/^\d+$/.test(issueId)) throw new Error(`stageSteps: issue id must be numeric, got ${JSON.stringify(issueId)}`)
+  if (commitSha && !/^[0-9a-f]{4,40}$/i.test(commitSha)) throw new Error(`stageSteps: commit sha must be hex, got ${JSON.stringify(commitSha)}`)
   const shaFlag = commitSha ? ` --commit ${commitSha}` : ''
   return [{ name: 'stage', command: `datum issue-stage --issue ${issueId} --stage ${stage}${shaFlag}`, tolerant: true }]
 }

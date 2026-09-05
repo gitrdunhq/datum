@@ -653,6 +653,12 @@ describe('mergeSteps', () => {
     expect(names(steps)).toEqual(['cleanup'])
   })
 
+  it('completionMarkerCommand refuses a task id that is not a plain identifier (review: single-quote breakout)', () => {
+    expect(() => completionMarkerCommand('r1', "lane1'; touch /tmp/PWNED; echo '")).toThrow(/task id/)
+    expect(() => completionMarkerCommand("r1'; echo x; '", 'T1')).toThrow(/run id/)
+    expect(completionMarkerCommand('20260905-101010', 'task-001')).toContain('"task_id": "task-001"')
+  })
+
   it('completionMarkerCommand writes the same file the lane completion-check reads', () => {
     const cmd = completionMarkerCommand('r1', 'T1')
     expect(cmd).toContain('mkdir -p ".datum/runs/r1/lane-state"')

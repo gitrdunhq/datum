@@ -26,6 +26,12 @@ describe('tracker batch steps', () => {
     expect(steps[0].command).toBe('datum plan-issues --lane-plan "docs/epics/x/lane-plan.json" --title "Epic: add \\$thing"')
   })
 
+  it('stageSteps refuses a non-numeric issue id or a non-hex sha instead of interpolating them raw', () => {
+    expect(() => stageSteps('12; rm -rf x', 'green')).toThrow(/issue id/)
+    expect(() => stageSteps('12', 'green', 'abc 123')).toThrow(/sha/)
+    expect(() => stageSteps('', 'green')).toThrow(/issue id/)
+  })
+
   it('stageSteps is one tolerant `datum issue-stage` step, with --commit only when a sha is given', () => {
     expect(stageSteps('12', 'green', 'abc123')[0].command).toBe('datum issue-stage --issue 12 --stage green --commit abc123')
     expect(stageSteps('12', 'red')[0].command).toBe('datum issue-stage --issue 12 --stage red')

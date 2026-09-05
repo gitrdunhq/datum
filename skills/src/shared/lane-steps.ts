@@ -413,7 +413,14 @@ export interface MergeStepsOpts {
   laneStateWriteScript: string | null
 }
 
+const PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/
+
 export function completionMarkerCommand(runId: string, taskId: string): string {
+  // Both ids are interpolated inside a single-quoted printf argument; a
+  // quote in either would break out of it (review finding). Task ids are
+  // schema-constrained upstream (task-NNN) — refuse anything else here too.
+  if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`)
+  if (!PLAIN_ID_RE.test(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`)
   const dir = `.datum/runs/${runId}/lane-state`
   return `mkdir -p ${q(dir)} && printf '%s\\n' '{"task_id": "${taskId}", "status": "completed"}' > ${q(`${dir}/${taskId}.json`)}`
 }
