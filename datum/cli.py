@@ -282,10 +282,21 @@ def issue_stage_cmd(
     ),
     commit: str = typer.Option("", "--commit", help="Commit SHA"),
 ):
-    """Update a GitHub issue's datum stage label."""
-    from datum.github_issues import update_issue_stage
+    """Update a GitHub issue's datum stage label.
 
-    update_issue_stage(issue, stage, commit or None)
+    Stdout is read as JSON by the tracker batch (skills/src/shared/tracker.ts
+    stageFromSteps): a failure is {"ok": false, "error"} with exit 1, never a
+    traceback.
+    """
+    from datum import github_issues
+
+    try:
+        github_issues.update_issue_stage(issue, stage, commit or None)
+    except (github_issues.GitHubRepoUnresolvedError, RuntimeError, OSError) as exc:
+        typer.echo(
+            json.dumps({"ok": False, "issue": issue, "stage": stage, "error": str(exc)})
+        )
+        raise typer.Exit(code=1) from None
     typer.echo(json.dumps({"ok": True, "issue": issue, "stage": stage}))
 
 

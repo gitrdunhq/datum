@@ -129,3 +129,26 @@ def test_issue_operations_raise_a_named_error_when_repo_is_unresolved(monkeypatc
         gi.fetch_issue(1)
     with pytest.raises(gi.GitHubRepoUnresolvedError, match="github_repo_unresolved"):
         gi.update_issue_stage(1, "done")
+
+
+def test_issue_stage_cli_prints_json_error_exit_1_when_the_repo_is_unresolved(monkeypatch):
+    """The tracker batch (skills/src/shared/tracker.ts stageFromSteps) reads
+    this command's stdout as JSON; an uncaught GitHubRepoUnresolvedError was
+    a traceback on stderr instead of a named error. Same contract as
+    plan-issues: JSON with "error", exit 1, no traceback."""
+    from typer.testing import CliRunner
+
+    from datum import github_issues
+    from datum.cli import app
+
+    def _boom(*_a, **_k):
+        raise github_issues.GitHubRepoUnresolvedError("no GitHub remote for this checkout")
+
+    monkeypatch.setattr(github_issues, "update_issue_stage", _boom)
+    res = CliRunner().invoke(app, ["issue-stage", "--issue", "7", "--stage", "red"])
+    assert res.exit_code == 1
+    assert "Traceback" not in res.output
+    err = json.loads(res.output)
+    assert err["ok"] is False
+    assert err["issue"] == 7
+    assert "no GitHub remote" in err["error"]
