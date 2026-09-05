@@ -2125,13 +2125,30 @@ def worktrees_setup(
     run_id: str = typer.Option(..., "--run-id", help="Unique pipeline run identifier"),
     epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
     lane_ids: str = typer.Option(..., "--lane-ids", help="Comma-separated lane IDs"),
+    link_dirs: str = typer.Option(
+        "",
+        "--link-dirs",
+        help="Comma-separated dependency dirs to symlink from the main checkout into each lane worktree (default: worktree_link_dirs in .datum/config.json, else node_modules,.venv)",
+    ),
 ):
     """Create one worktree per lane for parallel ACT execution."""
-    from datum.worktree_manager import setup_pipeline_worktrees
+    from datum.worktree_manager import DEFAULT_LINK_DIRS, setup_pipeline_worktrees
 
     ids = [lid.strip() for lid in lane_ids.split(",") if lid.strip()]
+    dirs: list[str] = list(DEFAULT_LINK_DIRS)
+    if link_dirs:
+        dirs = [d.strip() for d in link_dirs.split(",") if d.strip()]
+    else:
+        cfg_path = Path(".datum/config.json")
+        if cfg_path.exists():
+            try:
+                cfg_dirs = json.loads(cfg_path.read_text()).get("worktree_link_dirs")
+                if isinstance(cfg_dirs, list):
+                    dirs = [str(d) for d in cfg_dirs]
+            except (OSError, ValueError):
+                pass
     try:
-        mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+        mapping = setup_pipeline_worktrees(run_id, epic_branch, ids, link_dirs=dirs)
     except RuntimeError as exc:
         # A missing epic branch or a failed worktree add is JSON on stdout
         # with exit 1 — the setup batch parses stdout, never a traceback.

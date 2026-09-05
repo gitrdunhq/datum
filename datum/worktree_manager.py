@@ -275,12 +275,51 @@ def list_worktrees(repo_root: Path | None = None) -> list[dict]:
     return worktrees
 
 
+DEFAULT_LINK_DIRS: tuple[str, ...] = ("node_modules", ".venv")
+
+
+def main_checkout_root(repo_root: Path) -> Path:
+    """The MAIN checkout for this repository (parent of the common git dir).
+
+    Setup runs inside the batch's root worktree, which is itself a
+    `git worktree add` and carries no installed dependencies; the shared
+    dependency directories live only in the main checkout.
+    """
+    common = _git(["rev-parse", "--git-common-dir"], cwd=repo_root, check=False)
+    if common.returncode != 0 or not common.stdout.strip():
+        return repo_root
+    return (repo_root / common.stdout.strip()).resolve().parent
+
+
+def link_shared_dirs(worktree_path: Path, source_root: Path, dirs: list[str] | tuple[str, ...]) -> list[str]:
+    """Symlink each of `dirs` that exists under source_root into the lane
+    worktree, unless the worktree already has that path (tracked content
+    wins). Returns the names linked. This is how a fresh lane worktree gets
+    a test environment (elonchesd wf_eb0f9f9b-7b1: `pnpm test` in a bare
+    worktree exited 1 with "vitest: command not found" and every GREEN read
+    as green_stale at the next intake).
+    """
+    linked: list[str] = []
+    for name in dirs:
+        name = name.strip()
+        if not name or "/" in name or name in (".", ".."):
+            continue
+        src = source_root / name
+        dst = worktree_path / name
+        if not src.is_dir() or dst.exists() or dst.is_symlink():
+            continue
+        dst.symlink_to(src, target_is_directory=True)
+        linked.append(name)
+    return linked
+
+
 def setup_pipeline_worktrees(
     run_id: str,
     epic_branch: str,
     lane_ids: list[str],
     *,
     repo_root: Path | None = None,
+    link_dirs: list[str] | tuple[str, ...] = DEFAULT_LINK_DIRS,
 ) -> dict[str, Path]:
     """Create one worktree per lane and return a mapping of lane_id → worktree path.
 
@@ -301,10 +340,12 @@ def setup_pipeline_worktrees(
     base_sha = result.stdout.strip()
 
     mapping: dict[str, Path] = {}
+    source_root = main_checkout_root(repo_root)
     for lane_id in lane_ids:
         mapping[lane_id] = create_lane_worktree(
             epic_branch, lane_id, run_id, base_sha, repo_root=repo_root
         )
+        link_shared_dirs(mapping[lane_id], source_root, link_dirs)
     return mapping
 
 

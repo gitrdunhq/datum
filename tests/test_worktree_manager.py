@@ -1024,3 +1024,61 @@ class TestArgumentInjectionValidation:
         result = remove_lane_worktree("lane-a", "run-1", "--merged", repo_root=repo)
         assert result["deleted"] is False
         assert result["preserved"] is False
+
+
+class TestSharedDependencyDirs:
+    """elonchesd wf_eb0f9f9b-7b1: lane worktrees never had dependencies, so
+    `pnpm test` exited 1 in every fresh worktree and every GREEN read as
+    green_stale at the next intake. Setup now symlinks the MAIN checkout's
+    dependency directories (node_modules, .venv by default) into each lane
+    worktree — the root worktree is itself a `git worktree add` and has none."""
+
+    def test_setup_links_main_checkout_dependency_dirs_into_each_lane(self, repo: Path):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "node_modules").mkdir()
+        (repo / "node_modules" / ".bin").mkdir()
+        (repo / "node_modules" / ".bin" / "vitest").write_text("#!/bin/sh\necho ok\n")
+        (repo / ".venv").mkdir()
+        mapping = setup_pipeline_worktrees("run-deps", "epic/test", ["lane-a"], repo_root=repo)
+        wt = mapping["lane-a"]
+        assert (wt / "node_modules").is_symlink()
+        assert (wt / "node_modules").resolve() == (repo / "node_modules").resolve()
+        assert (wt / "node_modules" / ".bin" / "vitest").exists()
+        assert (wt / ".venv").is_symlink()
+
+    def test_setup_from_a_root_worktree_links_the_main_checkout_not_the_root_worktree(self, repo: Path):
+        """The setup batch runs `cd <root worktree> && datum worktrees setup`;
+        the shared dirs must come from the main checkout (git common dir)."""
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "node_modules").mkdir()
+        root_wt = repo.parent / "root-wt"
+        _git(["worktree", "add", "--detach", str(root_wt), "epic/test"], cwd=repo)
+        mapping = setup_pipeline_worktrees("run-root", "epic/test", ["lane-a"], repo_root=root_wt)
+        wt = mapping["lane-a"]
+        assert (wt / "node_modules").is_symlink()
+        assert (wt / "node_modules").resolve() == (repo / "node_modules").resolve()
+
+    def test_setup_skips_absent_dirs_and_never_overwrites_a_tracked_path(self, repo: Path):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / ".venv").mkdir()  # exists in the main checkout but not in link_dirs
+        mapping = setup_pipeline_worktrees("run-skip", "epic/test", ["lane-a"], repo_root=repo, link_dirs=["node_modules", "vendor"])
+        wt = mapping["lane-a"]
+        assert not (wt / "node_modules").exists()
+        assert not (wt / "vendor").exists()
+
+    def test_cli_accepts_link_dirs_and_reports_them(self, repo: Path, monkeypatch):
+        import json
+
+        from typer.testing import CliRunner
+
+        from datum.cli import app
+
+        (repo / "vendor").mkdir()
+        monkeypatch.chdir(repo)
+        res = CliRunner().invoke(app, ["worktrees", "setup", "--run-id", "run-cli", "--epic-branch", "epic/test", "--lane-ids", "lane-a", "--link-dirs", "vendor"])
+        assert res.exit_code == 0, res.output
+        out = json.loads(res.output)
+        assert (Path(out["lane-a"]) / "vendor").is_symlink()
