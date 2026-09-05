@@ -539,6 +539,24 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(result.results.T1.error).toMatch(/^context_read_unverified: .*no skeptic lens evidenced reading/)
   })
 
+  // caliper wf_2a6b91bb-bb4 (BUG L): a GREEN that stopped as {status:"blocked",
+  // needs_write:[...]} had implemented three of four criteria; the lane
+  // reported blocked, cleanup removed the worktree and the edits were gone.
+  it('a blocked GREEN commits its partial implementation edits as a wip commit before the lane returns blocked', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('green:')) return { ...witness, success: false, tests_pass: false, committed: false, status: 'blocked', needs_write: ['tests/other.test.ts'], reason: 'a pre-existing strict assertion outside my files', files_written: ['src/a.ts'] }
+      if (label.startsWith('green-wip-commit:')) return batch({ status: ' M src/a.ts\n', add: '', commit: '', sha: 'wip111\n' })
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('blocked')
+    expect(result.results.T1.error).toMatch(/^green_blocked_needs_write: \[tests\/other\.test\.ts\]/)
+    const wip = calls.find((c) => c.label.startsWith('green-wip-commit:'))!
+    expect(wip.prompt).toContain('git -C "/wt/T1" add -- "src/a.ts"')
+    expect(wip.prompt).toContain('wip(T1): GREEN partial - blocked on tests/other.test.ts')
+  })
+
   // -------------------------------------------------------------------------
   // Skeptic verdict consumption: a cross-validated BROKEN verdict must retry
   // GREEN once with the confirmed bugs, then independently re-verify.

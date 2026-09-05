@@ -22,7 +22,7 @@ import {
   laneSpecContextFile,
   digestSpecHash,
 } from './shared/lane-steps'
-import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps } from './shared/commit-steps'
+import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { assertReadWitness, verifyReadWitness, type ContextFile } from './shared/context-relay'
 import { writeFileSteps, writeFileBlobSha, writeFileFromSteps } from './shared/write-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
@@ -997,8 +997,20 @@ No markdown fences, no explanation.`,
         )
       } else {
         const refusal = cfg.yolo && rejected.length > 0 ? ` (yolo auto-widen refused: [${rejected.join(', ')}] not inside src/)` : ''
-        const err = `needs_approval: GREEN blocked — needs write access to [${decision.needsWrite.join(', ') || 'unspecified'}]: ${decision.reason}${refusal}`
+        const err = `green_blocked_needs_write: [${decision.needsWrite.join(', ') || 'unspecified'}] — ${decision.reason}${refusal}`
         log(`[${taskId}] ${err}`)
+        // Keep the partial implementation (caliper BUG L: three of four
+        // criteria were done, cleanup removed the worktree, the work was
+        // gone). A `wip(` commit is invisible to the RED/GREEN resume
+        // detection, so the next GREEN starts from these edits.
+        const partial = (green?.files_written || []).filter((f) => implFiles.includes(f))
+        if (partial.length > 0) {
+          const wipMsg = `wip(${taskId}): GREEN partial - blocked on ${decision.needsWrite.join(' ') || 'unspecified'}`.replace(/["`$\\]/g, '')
+          const wipSteps = commitFilesSteps({ wt, files: partial, message: wipMsg })
+          const wip = commitFilesFromSteps(await runBatch(wipSteps, stageOpts('cli', { label: `green-wip-commit:${taskId}`, phase: 'Act', model: model('fast') })))
+          if (wip.committed) log(`[${taskId}] green_partial_committed: ${wip.sha} — [${partial.join(', ')}] kept on the lane branch as a wip commit`)
+          else log(`[${taskId}] green_partial_not_committed: ${wip.nothingToCommit ? 'nothing to commit' : wip.error} — partial edits in [${partial.join(', ')}] will be lost at cleanup`)
+        }
         return { task_id: taskId, status: 'blocked', stage: 'GREEN', error: err, needs_write: decision.needsWrite }
       }
     } else {
