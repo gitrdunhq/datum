@@ -204,3 +204,36 @@ describe('datum-refine — triage-addenda and classify-ambiguity use the strict 
     expect(src).not.toMatch(/\bparseAgentJson\b/)
   })
 })
+
+// elonchesd wf_230050d5-e9e: the previous run's refine gate batch was
+// classifier-refused, so the phase was never recorded; the relaunch re-ran
+// refine from scratch, rewrote SPEC.md, regenerated QUESTIONS.md with five
+// different questions and discarded the five answered ones. Refine must
+// record itself complete when the gate already passes, and when it does
+// re-run, answered questions are operator decisions carried forward.
+describe('datum-refine — an already-complete refine is not regenerated; answered questions survive a re-run', () => {
+  const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
+  it('runs a structural early gate right after the Read phase and skips Analyze/Write when it passes', () => {
+    const early = src.indexOf("gateSteps('refine', ' --approve')")
+    expect(early).toBeGreaterThan(0)
+    expect(early).toBeLessThan(src.indexOf("phase('Analyze')"))
+    expect(src).toMatch(/refine_already_complete/)
+    expect(src).toMatch(/async function refineFromTicket\(/)
+    expect(src).toMatch(/alreadyComplete \? null : await refineFromTicket\(\)/)
+  })
+  it('probes QUESTIONS.md alongside TICKET.md and hands the existing questions to the writer', () => {
+    expect(src).toMatch(/const QUESTIONS_REL = 'docs\/epics\/\$__eb\/QUESTIONS\.md'/)
+    expect(src).toMatch(/files: \[TICKET_REL, QUESTIONS_REL\]/)
+    expect(src).toMatch(/existingQuestions/)
+    const prompt = readFileSync(join(__dirname, 'prompts', 'refine-questions.md'), 'utf8')
+    expect(prompt).toContain('{{existingQuestions}}')
+    expect(prompt).toMatch(/verbatim/i)
+  })
+  it('verifies every previously answered question survived the rewrite before committing', () => {
+    const check = src.indexOf('answersKeptFromSteps(')
+    const commit = src.indexOf("'refine: write SPEC.md + QUESTIONS.md'")
+    expect(check).toBeGreaterThan(0)
+    expect(check).toBeLessThan(commit)
+    expect(src).toMatch(/answeredQuestions\(/)
+  })
+})

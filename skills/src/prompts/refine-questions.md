@@ -8,6 +8,15 @@ Assumptions to validate:
 
 Ambiguity level: {{ambiguityLevel}}
 
+Existing QUESTIONS.md (empty if none):
+{{existingQuestions}}
+
+CARRY-FORWARD RULE — answered questions are operator decisions:
+- Keep every existing section, question, context block and `[Answer]:` line VERBATIM, in place. Never rewrite, renumber or drop an answered question.
+- Do not ask again anything an existing answer already settles; treat those answers as facts.
+- Add only genuinely new questions, under a new `## Refine — {{date}}` heading appended after the existing content, numbered after the highest existing Qn.
+- The workflow verifies every previously answered line still exists before committing; a dropped answer fails the phase.
+
 Write a QUESTIONS.md following this format:
 
 ## Refine — {{date}}

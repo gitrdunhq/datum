@@ -11,6 +11,7 @@ import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, typ
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
+import { answeredQuestions, answersKeptSteps, answersKeptFromSteps } from './shared/questions-steps'
 import type { PhaseArgs } from './shared/types'
 
 export const meta = {
@@ -57,8 +58,11 @@ phase('Read')
 // Two-phase relay (shared/context-relay.ts): probe sizes first, inline only
 // what fits the budget, hand anything larger to the agents by path + hash.
 const TICKET_REL = 'docs/epics/$__eb/TICKET.md'
+// QUESTIONS.md rides along so a re-run carries answered questions forward
+// (operator decisions) instead of regenerating over them.
+const QUESTIONS_REL = 'docs/epics/$__eb/QUESTIONS.md'
 const probeSteps = contextProbeSteps({
-  files: [TICKET_REL],
+  files: [TICKET_REL, QUESTIONS_REL],
   extraCommands: [
     { name: 'timestamp', command: 'date +%Y-%m-%dT%H:%M:%S' },
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
@@ -70,7 +74,7 @@ const readBatch = parseBatchResult(
   await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
   probeSteps,
 )
-const relayPlan = contextRelayPlan(readBatch, [TICKET_REL])
+const relayPlan = contextRelayPlan(readBatch, [TICKET_REL, QUESTIONS_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
@@ -107,13 +111,26 @@ if (!ticketFile.exists) {
 const ticketContent: string = contextSlot(ticketFile)
 log(`Branch: ${ctx.branch}, TICKET: ${ticketFile.bytes} bytes${ticketFile.inlined ? '' : ' (over relay budget — agents read it themselves)'}`)
 
-// ── Analyze (collapsed: triage + classify + scan run in sequence, no mechanical agents) ──
+// ── Early gate: is refine already complete? ────────────────────────────────
+// A refused or crashed gate batch on the previous run left the phase
+// unrecorded although SPEC.md and an answered QUESTIONS.md were committed;
+// the relaunch then regenerated both and threw the operator's answers away
+// (elonchesd wf_230050d5-e9e). `--approve` skips only the human hold, every
+// structural check still runs; the final gate below re-applies the policy.
+const questionsFile = ctx.files[QUESTIONS_REL]
+const earlyGateSteps = gateSteps('refine', ' --approve')
+const earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts('cli', { label: 'gate-early', model: model('fast') })))
+const alreadyComplete: boolean = earlyGate.passed
+if (alreadyComplete) {
+  log(`refine_already_complete: SPEC.md and QUESTIONS.md in ${epicDir} pass the refine gate — not regenerating (answered questions are operator decisions)`)
+}
 
-phase('Analyze')
-
-// Triage addenda (only if addenda exist) — counted by the probe batch, so it
-// holds whether or not the TICKET was inlined.
-const hasAddenda: boolean = parseInt((stepStdout(readBatch, 'has-addenda') || '0').trim(), 10) > 0
+interface ClassifyResult {
+  level: string
+  reasoning: string
+  gaps: string[]
+  assumptions: string[]
+}
 
 interface TriageResult {
   original_scope: string
@@ -121,6 +138,17 @@ interface TriageResult {
   roadmap_items: string[]
   merged_requirements: string[]
 }
+
+interface RefineOutcome { classify: ClassifyResult; triageResult: TriageResult }
+
+async function refineFromTicket(): Promise<RefineOutcome> {
+// ── Analyze (collapsed: triage + classify + scan run in sequence, no mechanical agents) ──
+
+phase('Analyze')
+
+// Triage addenda (only if addenda exist) — counted by the probe batch, so it
+// holds whether or not the TICKET was inlined.
+const hasAddenda: boolean = parseInt((stepStdout(readBatch, 'has-addenda') || '0').trim(), 10) > 0
 
 let triageResult: TriageResult = {
   original_scope: '',
@@ -193,13 +221,6 @@ const classifyRaw = await agent(
   { label: 'classify-ambiguity', model: model('fast') },
 )
 
-interface ClassifyResult {
-  level: string
-  reasoning: string
-  gaps: string[]
-  assumptions: string[]
-}
-
 // Strict: silently defaulting to a 'medium' ambiguity classification on an
 // unparseable response is exactly the "an LLM proposes; it never asserts"
 // violation FLOW.md warns about — SPEC.md/QUESTIONS.md would be written from
@@ -256,6 +277,7 @@ ${renderPrompt(refineQuestionsTemplate, {
     assumptions: classify.assumptions.join('\n'),
     ambiguityLevel: classify.level,
     date: today,
+    existingQuestions: questionsFile.exists ? contextSlot(questionsFile) : '(none)',
   })}
 
 Write the QUESTIONS to "${questionsPath}".
@@ -275,11 +297,33 @@ for (const p of [specPath, questionsPath]) {
   }
 }
 
+// Answered questions are operator decisions: the prompt's carry-forward rule
+// is a proposal, this is the gate. Every `[Answer]:` line that existed
+// before the write must still be in the rewritten file, or the phase halts
+// by name BEFORE committing (the files stay in the tree for inspection).
+// A QUESTIONS.md over the relay budget was not inlined, so its answers
+// cannot be enumerated here; say so rather than pretend the check ran.
+if (questionsFile.exists && !questionsFile.inlined) {
+  log(`refine_answers_unchecked: ${questionsPath} (${questionsFile.bytes} bytes) was over the relay budget — answered questions could not be verified against the rewrite`)
+}
+const answered = questionsFile.exists && questionsFile.inlined ? answeredQuestions(questionsFile.content || '') : []
+if (answered.length > 0) {
+  const keptSteps = answersKeptSteps(questionsPath, answered)
+  const kept = answersKeptFromSteps(await runBatch(keptSteps, stageOpts('cli', { label: 'answers-kept', model: model('fast') })), answered)
+  if (!kept.ok) throw new Error(kept.error)
+  log(`${answered.length} previously answered question(s) carried forward verbatim`)
+}
+
 const specCommit = await commitRefineFiles([`${epicDir}/SPEC.md`, `${epicDir}/QUESTIONS.md`], 'refine: write SPEC.md + QUESTIONS.md', 'commit-spec')
 log(`SPEC.md + QUESTIONS.md written to ${epicDir} and committed (${specCommit})`)
+return { classify, triageResult }
+}
+
+const outcome: RefineOutcome | null = alreadyComplete ? null : await refineFromTicket()
 
 // Gate — deterministic: the verdict is `datum gate`'s exit code read from a
-// batch step (shared/gate.ts), not an LLM's echo of its JSON.
+// batch step (shared/gate.ts), not an LLM's echo of its JSON. Runs on the
+// skip path too: the early gate skipped the human hold, this one applies it.
 const gateStepList = gateSteps('refine', yolo ? ' --approve' : '')
 const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
 
@@ -289,9 +333,10 @@ else log(`Refine gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (n
 export const __workflowResult = {
   branch: ctx.branch,
   epicDir,
-  ambiguity: classify.level,
-  gaps: classify.gaps,
-  roadmapItems: triageResult.roadmap_items,
+  ambiguity: outcome ? outcome.classify.level : 'unchanged',
+  gaps: outcome ? outcome.classify.gaps : [],
+  roadmapItems: outcome ? outcome.triageResult.roadmap_items : [],
+  alreadyComplete,
   gatePassed: gate.passed,
   gateMessage: gate.message,
   gateNeedsHuman: gate.needsHuman,
