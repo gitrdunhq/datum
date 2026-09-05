@@ -448,19 +448,35 @@ def merge_lane_branches(
     any_new_changes = False
     start_sha = _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
 
+    def fold_failed(what: str) -> LaneMergeError:
+        """The fold (soft reset + one commit) failed: nothing has landed.
+
+        The lanes' work is intact on their lane branches, so the checkout
+        is hard-reset to start_sha — clean, exactly as before the call —
+        and the error says merged=[] so every lane is demoted and retried.
+        Leaving the squashed changes staged with HEAD already moved back
+        was a dirty, half-merged checkout with no payload (review finding).
+        """
+        _git(["reset", "--hard", start_sha], cwd=repo_root, check=False)
+        return LaneMergeError(
+            f"Merge fold failed — no lane landed: {what}",
+            failed_lane="",
+            merged=[],
+            already_merged=[],
+            sha=start_sha,
+        )
+
     def fold_into_one_commit() -> str:
         """Fold the temporary per-lane commits since start_sha into one commit."""
         if not any_new_changes:
             return _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
         soft = _git(["reset", "--soft", start_sha], cwd=repo_root, check=False)
         if soft.returncode != 0:
-            raise RuntimeError(
-                f"Merge fold failed: git reset --soft {start_sha}: {soft.stderr.strip()}"
-            )
+            raise fold_failed(f"git reset --soft {start_sha}: {soft.stderr.strip()}")
         commit = _git(["commit", "-m", commit_message], cwd=repo_root, check=False)
         if commit.returncode != 0:
-            raise RuntimeError(
-                f"Merge commit failed: {commit.stderr.strip()}\n{commit.stdout.strip()}"
+            raise fold_failed(
+                f"git commit: {commit.stderr.strip()} {commit.stdout.strip()}".strip()
             )
         return _git(["rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
 

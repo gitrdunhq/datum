@@ -2043,6 +2043,27 @@ def worktrees_merge(
     except LaneMergeError as exc:
         typer.echo(json.dumps(exc.payload()))
         raise typer.Exit(code=1) from None
+    except RuntimeError as exc:
+        # Precondition failures (untracked-file collision, bad checkout, ...)
+        # land nothing; report them in the same JSON shape so the batch
+        # never has to parse a traceback.
+        import subprocess
+
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+        ).stdout.strip()
+        typer.echo(
+            json.dumps(
+                {
+                    "sha": head,
+                    "merged": [],
+                    "already_merged": [],
+                    "failed_lane": "",
+                    "error": str(exc),
+                }
+            )
+        )
+        raise typer.Exit(code=1) from None
     typer.echo(json.dumps(result))
 
 

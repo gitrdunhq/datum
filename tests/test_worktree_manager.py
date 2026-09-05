@@ -583,6 +583,82 @@ class TestMergeLaneBranches:
         assert _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip() == head_before
         assert _git(["status", "--porcelain"], cwd=repo).stdout == ""
 
+    def test_fold_commit_failure_restores_a_clean_checkout_and_is_a_lane_merge_error(
+        self, repo: Path
+    ):
+        """Review finding: when the final fold commit failed (e.g. a commit-msg
+        hook rejected the message) a bare RuntimeError escaped, HEAD had
+        already been reset --soft to the start sha, and the squashed lane
+        changes were left STAGED on the root checkout — a dirty, half-merged
+        state with no payload saying what landed. The lanes' work is safe on
+        their lane branches, so the right outcome is: hard-reset to the start
+        sha (clean checkout, nothing landed) and a LaneMergeError whose
+        payload says merged=[] so every lane is demoted and retried."""
+        from datum.worktree_manager import LaneMergeError, merge_lane_branches
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+        hook = repo / ".git" / "hooks" / "commit-msg"
+        hook.write_text(
+            '#!/usr/bin/env bash\ngrep -q "^tmp(datum)" "$1" || { echo "rejected: only tmp commits" >&2; exit 1; }\n'
+        )
+        hook.chmod(0o755)
+        _git(["config", "core.hooksPath", ".git/hooks"], cwd=repo)
+        _git(["checkout", "epic/test"], cwd=repo)
+        start = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+
+        with pytest.raises(LaneMergeError) as excinfo:
+            merge_lane_branches(
+                "epic/test", ["lane-a"], "merge: hooked", repo_root=repo
+            )
+
+        err = excinfo.value
+        assert err.merged == []
+        assert err.failed_lane == ""
+        assert err.sha == start
+        assert "rejected: only tmp commits" in str(err)
+        assert _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip() == start
+        assert _git(["status", "--porcelain"], cwd=repo).stdout == ""
+        assert not (repo / "a.txt").exists()
+
+    def test_worktrees_merge_cli_reports_any_merge_runtime_error_as_json(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Every RuntimeError out of merge_lane_branches (untracked-file
+        collision, checkout failure, ...) must reach the workflow as JSON on
+        stdout with exit 1, never as a traceback the batch cannot parse."""
+        import json
+
+        from typer.testing import CliRunner
+
+        from datum.cli import app
+
+        lane_a = _make_lane_branch(repo, "epic/test", "lane-a")
+        _add_lane_commit(repo, lane_a, "a.txt")
+        _git(["checkout", "epic/test"], cwd=repo)
+        (repo / "a.txt").write_text("untracked collision\n")  # untracked at a lane path
+        monkeypatch.chdir(repo)
+
+        res = CliRunner().invoke(
+            app,
+            [
+                "worktrees",
+                "merge",
+                "--epic-branch",
+                "epic/test",
+                "--lane-order",
+                "lane-a",
+                "--commit-message",
+                "m",
+            ],
+        )
+        assert res.exit_code == 1, res.output
+        payload = json.loads(res.output.strip().splitlines()[-1])
+        assert payload["merged"] == []
+        assert payload["failed_lane"] == ""
+        assert "Untracked working tree files" in payload["error"]
+        assert payload["sha"] == _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+
     def test_worktrees_merge_cli_reports_a_partial_merge_as_json_with_exit_1(
         self, repo: Path, monkeypatch: pytest.MonkeyPatch
     ):
