@@ -1,9 +1,10 @@
-import { renderPrompt } from './shared/utils'
+import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -89,20 +90,41 @@ log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? ''
 
 phase('Derive')
 
-// Derive agent also writes and commits (collapsed commit-properties)
-// Not read-witness-gated (FLOW.md open gap 2): this agent's return value is
-// discarded — it writes PROPERTIES.md and commits directly rather than
-// returning parsed JSON — so there is no JSON field to carry a read_witness
-// for specContent/tasksContent in.
-await agent(
+// Derive agent writes PROPERTIES.md and returns a JSON receipt; the script
+// gates the receipt and commits deterministically.
+// Read-witness-gated (FLOW.md open gap 2): the receipt is where a deferred
+// specContent/tasksContent read is evidenced (contextWitnessInstruction is
+// '' when both were inlined, so the common-case prompt only gains the
+// receipt contract). The commit moved out of the agent for the same reason
+// docs sync did (800e9dd): a commitFilesSteps batch cannot pick up trailers
+// or stray files, and its exit code — not an LLM's say-so — is the verdict.
+const propertiesPath = `${epicDir}/PROPERTIES.md`
+const deriveRaw = await agent(
   renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent })
-  + `\n\nAFTER WRITING THE PROPERTIES CONTENT:
-1. Write the output to "${epicDir}/PROPERTIES.md" (create dirs if needed)
-2. Commit: git add "${epicDir}/PROPERTIES.md" && git commit -m "properties: derive PROPERTIES.md"`,
-  { label: 'derive-and-commit', model: model('balanced') },
+  + `\n\nAFTER DERIVING THE PROPERTIES CONTENT:
+1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
+2. Do NOT git add or git commit anything in this step — the workflow commits.
+3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}`
+  + contextWitnessInstruction([specFile, tasksFile]),
+  { label: 'derive', model: model('balanced') },
 )
 
-log('PROPERTIES.md written and committed')
+interface DeriveReceipt { written: string; read_witness?: Record<string, string> }
+const derive = parseAgentJsonStrict<DeriveReceipt>(deriveRaw as string, 'derive')
+assertReadWitness([specFile, tasksFile], derive)
+if (derive.written !== propertiesPath) {
+  throw new Error(`properties_derive_failed: agent reported writing ${JSON.stringify(derive.written)}, expected ${propertiesPath}`)
+}
+
+const commitStepList = commitFilesSteps({ wt: '.', files: [`${epicDir}/PROPERTIES.md`], message: 'properties: derive PROPERTIES.md' })
+const commit = commitFilesFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label: 'commit-properties', model: model('fast') })),
+  commitStepList,
+))
+if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`)
+if (commit.nothingToCommit) throw new Error(`properties_commit_failed: nothing to commit at ${propertiesPath} — the derive agent did not write it`)
+
+log(`PROPERTIES.md written and committed (${commit.sha})`)
 
 // Gate
 // Deterministic: the verdict is `datum gate`'s exit code read from a batch

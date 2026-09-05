@@ -29,6 +29,8 @@ import {
   contextFromRelay,
   contextSlot,
   contextWitnessInstruction,
+  contextWitnessWrapInstruction,
+  unwrapWitnessedArray,
   verifyReadWitness,
   assertReadWitness,
   contextChunkPlan,
@@ -263,6 +265,48 @@ describe('assertReadWitness', () => {
 
   it('throws naming "missing" when the field is absent entirely', () => {
     expect(() => assertReadWitness([deferredA], {})).toThrow(/context_read_unverified: A\.md .*got missing/)
+  })
+})
+
+// FLOW.md open gap 2, array-contract consumers: decompose-tasks returns a
+// bare JSON array (its tasks.json contract), which has no slot for a
+// read_witness. The wrap instruction asks for {read_witness, <key>: [...]}
+// only when something is deferred, and unwrapWitnessedArray accepts both
+// shapes so the array contract on disk is unchanged.
+describe('contextWitnessWrapInstruction', () => {
+  const inlined: ContextFile = { path: 'A.md', exists: true, inlined: true, bytes: 5, sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', content: 'hello' }
+  const deferred: ContextFile = { path: 'docs/epics/x/SPEC.md', exists: true, inlined: false, bytes: 31133, sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', content: null }
+
+  it('is empty when nothing is deferred — the bare-array prompt stays byte-identical', () => {
+    expect(contextWitnessWrapInstruction([inlined], 'tasks')).toBe('')
+    expect(contextWitnessWrapInstruction([], 'tasks')).toBe('')
+  })
+
+  it('carries the plain witness instruction plus a wrap-as-object instruction naming the array key', () => {
+    const instruction = contextWitnessWrapInstruction([deferred], 'tasks')
+    expect(instruction).toContain(contextWitnessInstruction([deferred]))
+    expect(instruction).toContain('"read_witness"')
+    expect(instruction).toContain('"tasks"')
+    expect(instruction).toMatch(/single JSON object/)
+  })
+})
+
+describe('unwrapWitnessedArray', () => {
+  it('returns a bare array unchanged', () => {
+    const arr = [{ id: 'task-001' }]
+    expect(unwrapWitnessedArray(arr, 'tasks')).toBe(arr)
+  })
+
+  it('returns the keyed array from a wrapped object', () => {
+    const arr = [{ id: 'task-001' }]
+    expect(unwrapWitnessedArray({ read_witness: { 'A.md': 'abcdef123456' }, tasks: arr }, 'tasks')).toBe(arr)
+  })
+
+  it('returns null for anything else — an object without the key, a non-array value, a string', () => {
+    expect(unwrapWitnessedArray({ read_witness: {} }, 'tasks')).toBeNull()
+    expect(unwrapWitnessedArray({ tasks: 'nope' }, 'tasks')).toBeNull()
+    expect(unwrapWitnessedArray('[]', 'tasks')).toBeNull()
+    expect(unwrapWitnessedArray(null, 'tasks')).toBeNull()
   })
 })
 

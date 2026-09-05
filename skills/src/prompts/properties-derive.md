@@ -25,9 +25,9 @@ Format: PROPERTY(TYPE-NNN): <testable predicate>
 Then build a traceability table mapping each property to the task(s) that must prove it.
 Every task must have at least one property. If a task has no testable property, flag it.
 
-Return the full PROPERTIES.md content as markdown with:
+The full PROPERTIES.md content is markdown with:
 1. Property list grouped by category
 2. Traceability table: Property ID | Category | Predicate | Task IDs
 3. Per-task property assignments
 
-Output as markdown. No JSON wrapping.
+Write that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.

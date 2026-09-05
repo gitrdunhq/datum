@@ -394,10 +394,27 @@ describe('datum-plan — read-witness gate on propose-approaches (FLOW.md open g
     expect(assertIdx).toBeLessThan(chosenIdx)
   })
 
-  it('does not require a read_witness field from decompose-tasks — its output is a bare JSON array, not an object', () => {
-    const tasksParseIdx = datumPlanSrc.indexOf('const tasks = typeof tasksRaw')
-    expect(tasksParseIdx).toBeGreaterThan(-1)
-    expect(datumPlanSrc.slice(tasksParseIdx, tasksParseIdx + 200)).not.toMatch(/assertReadWitness/)
+  it('appends contextWitnessWrapInstruction(decomposeFiles, "tasks") to the decompose-tasks prompt', () => {
+    const idx = datumPlanSrc.indexOf("label: 'decompose-tasks'")
+    expect(idx).toBeGreaterThan(-1)
+    const block = datumPlanSrc.slice(Math.max(0, idx - 500), idx)
+    expect(block).toMatch(/contextWitnessWrapInstruction\(decomposeFiles, 'tasks'\)/)
+  })
+
+  it('decomposeFiles covers the SPEC and every existing context_file — all of them can be deferred', () => {
+    expect(datumPlanSrc).toMatch(/const decomposeFiles: ContextFile\[\] = \[specFile, \.\.\.contextFileEntries\]/)
+    expect(datumPlanSrc).toMatch(/contextFileEntries\.push\(f\)/)
+  })
+
+  it('gates the parsed decompose result with assertReadWitness, then unwraps the array, before the cycle check', () => {
+    const parseIdx = datumPlanSrc.indexOf('const tasksParsed')
+    const assertIdx = datumPlanSrc.indexOf('assertReadWitness(decomposeFiles, tasksParsed)')
+    const unwrapIdx = datumPlanSrc.indexOf("unwrapWitnessedArray(tasksParsed, 'tasks')")
+    const acyclicIdx = datumPlanSrc.indexOf('assertAcyclicTasks(tasks)')
+    expect(parseIdx).toBeGreaterThan(-1)
+    expect(assertIdx).toBeGreaterThan(parseIdx)
+    expect(unwrapIdx).toBeGreaterThan(assertIdx)
+    expect(acyclicIdx).toBeGreaterThan(unwrapIdx)
   })
 
   it('the named failure lives in shared/context-relay.ts, not a bespoke throw here', () => {

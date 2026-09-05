@@ -102,8 +102,8 @@ describe('datum-properties — SPEC.md/TASKS.md relay is a byte-verified batch, 
 })
 
 describe('datum-properties — Derive phase ordering', () => {
-  it('writes and commits PROPERTIES.md before running the properties gate', () => {
-    const commitIdx = propertiesSrc.indexOf('git commit -m "properties: derive PROPERTIES.md"')
+  it('commits PROPERTIES.md (deterministic commitFilesSteps batch) before running the properties gate', () => {
+    const commitIdx = propertiesSrc.indexOf("commitFilesSteps({ wt: '.', files: [`${epicDir}/PROPERTIES.md`], message: 'properties: derive PROPERTIES.md' })")
     const gateIdx = propertiesSrc.indexOf("gateSteps('properties'")
     expect(commitIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeGreaterThan(-1)
@@ -112,6 +112,46 @@ describe('datum-properties — Derive phase ordering', () => {
 
   it('the gate flags carry --approve only in yolo mode, matching datum-plan.ts', () => {
     expect(propertiesSrc).toMatch(/gateSteps\('properties', yolo \? ' --approve' : ''\)/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FLOW.md open gap 2 — the derive agent consumed a possibly-deferred SPEC.md
+// / TASKS.md and its return value was discarded (it wrote AND committed
+// PROPERTIES.md itself), so nothing could carry a read_witness. Now: the
+// agent writes the file and returns JSON (with the witness when anything was
+// deferred); the script gates the witness and commits deterministically.
+// ---------------------------------------------------------------------------
+
+describe('datum-properties — read-witness gate on derive (FLOW.md open gap 2)', () => {
+  it('appends contextWitnessInstruction([specFile, tasksFile]) to the derive prompt', () => {
+    const idx = propertiesSrc.indexOf("label: 'derive'")
+    expect(idx).toBeGreaterThan(-1)
+    const block = propertiesSrc.slice(Math.max(0, idx - 900), idx)
+    expect(block).toMatch(/contextWitnessInstruction\(\[specFile, tasksFile\]\)/)
+  })
+
+  it('the derive agent no longer commits — the prompt forbids git and asks for a JSON receipt', () => {
+    const idx = propertiesSrc.indexOf("label: 'derive'")
+    const block = propertiesSrc.slice(Math.max(0, idx - 900), idx)
+    expect(block).not.toMatch(/&& git commit -m/)
+    expect(block).toMatch(/Do NOT git add or git commit/)
+    expect(block).toMatch(/"written"/)
+  })
+
+  it('parses the receipt strictly and gates it with assertReadWitness before committing', () => {
+    const parseIdx = propertiesSrc.indexOf("parseAgentJsonStrict<DeriveReceipt>(deriveRaw as string, 'derive')")
+    const assertIdx = propertiesSrc.indexOf('assertReadWitness([specFile, tasksFile], derive)')
+    const commitIdx = propertiesSrc.indexOf('commitFilesSteps(')
+    expect(parseIdx).toBeGreaterThan(-1)
+    expect(assertIdx).toBeGreaterThan(parseIdx)
+    expect(commitIdx).toBeGreaterThan(assertIdx)
+  })
+
+  it('a commit that fails or finds nothing to commit is a named properties_commit_failed halt, not a log line', () => {
+    expect(propertiesSrc).toMatch(/commitFilesFromSteps\(/)
+    expect(propertiesSrc).toMatch(/throw new Error\(`properties_commit_failed: /)
+    expect(propertiesSrc).toMatch(/nothingToCommit/)
   })
 })
 

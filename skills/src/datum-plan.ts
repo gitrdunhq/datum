@@ -3,7 +3,7 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
@@ -112,6 +112,9 @@ const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_
 // ones stay null so buildContextFilesSection warns about them.
 const contextFilesList: string[] = (repoCfg.context_files as string[] | undefined) || []
 const contextFileContents: Record<string, string | null> = {}
+// The relay records for the context_files that exist — the decompose read
+// witness (below) covers every one of them that ended up deferred.
+const contextFileEntries: ContextFile[] = []
 const contextFilesWarnings: string[] = []
 if (contextFilesList.length > 0) {
   const cfProbeSteps = contextProbeSteps({ files: contextFilesList })
@@ -133,6 +136,7 @@ if (contextFilesList.length > 0) {
   for (const relPath of contextFilesList) {
     const f = cf.files[relPath]
     contextFileContents[relPath] = f.exists ? contextSlot(f) : null
+    if (f.exists) contextFileEntries.push(f)
   }
 }
 const contextFilesSection: string = buildContextFilesSection(
@@ -182,26 +186,32 @@ const impactRaw = await agent(
 const impactStr: string = typeof impactRaw === 'string' ? impactRaw : JSON.stringify(impactRaw)
 
 // Decompose (opus for complex)
-// Not read-witness-gated: decompose-tasks' contract is a bare JSON array of
-// tasks (tasksRaw below feeds datum lane-plan's schema validation directly),
-// not a JSON object — there is no top-level slot to carry a "read_witness"
-// field without changing that contract. specContent/contextFilesSection can
-// still be deferred here; the mismatch this leaves open is a real gap, but
-// closing it means renegotiating the tasks.json array contract, out of
-// scope for this change.
+// Read-witness-gated (FLOW.md open gap 2): decompose-tasks' contract is a
+// bare JSON array (it feeds datum lane-plan's schema validation directly),
+// which has no slot for a read_witness. So when — and only when — the SPEC
+// or a context_file was deferred, contextWitnessWrapInstruction asks for
+// `{read_witness, tasks: [...]}` and unwrapWitnessedArray takes the array
+// back out; tasks.json on disk is the same bare array as before. When
+// nothing is deferred the prompt and the parse are byte-identical to before.
 const isComplex: boolean = (chosen?.blast_radius === 'high') || ((chosen?.estimated_tasks || 0) > 5)
 const decomposeModel = isComplex ? model('deep') : model('balanced')
 if (isComplex) log('Complex epic — using opus for decomposition')
 
+const decomposeFiles: ContextFile[] = [specFile, ...contextFileEntries]
 const tasksRaw = await agent(
-  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection }),
+  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection })
+    + contextWitnessWrapInstruction(decomposeFiles, 'tasks'),
   { label: 'decompose-tasks', model: decomposeModel },
 )
 
 // Safe: an unparseable result yields [], which the throw immediately below
 // already catches (0 tasks is refused regardless of whether it came from a
-// real empty decomposition or a parse failure).
-const tasks = typeof tasksRaw === 'string' ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[]) : tasksRaw
+// real empty decomposition or a parse failure). With something deferred, a
+// bare array (no witness) fails assertReadWitness — context_read_unverified.
+const tasksParsed: unknown = typeof tasksRaw === 'string' ? parseAgentJson(tasksRaw as string, [] as Record<string, unknown>[]) : tasksRaw
+assertReadWitness(decomposeFiles, tasksParsed)
+interface PlanTask { id: string; title: string; depends_on?: string[]; [key: string]: unknown }
+const tasks = unwrapWitnessedArray(tasksParsed, 'tasks') as PlanTask[] | null
 if (!Array.isArray(tasks) || tasks.length === 0) {
   throw new Error(`Task decomposition returned 0 tasks — refusing to write an empty lane plan. Raw output: ${String(tasksRaw).slice(0, 300)}`)
 }
@@ -209,7 +219,7 @@ assertAcyclicTasks(tasks)
 const tasksJson: string = JSON.stringify(tasks)
 log(`Decomposed into ${tasks.length} tasks`)
 for (const task of tasks) {
-  const deps = task.depends_on?.length > 0 ? ` (depends: ${task.depends_on.join(', ')})` : ''
+  const deps = task.depends_on && task.depends_on.length > 0 ? ` (depends: ${task.depends_on.join(', ')})` : ''
   log(`  ${task.id}: ${task.title}${deps}`)
 }
 

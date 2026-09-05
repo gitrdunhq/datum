@@ -263,6 +263,37 @@ export function assertReadWitness(files: ContextFile[], parsed: unknown): void {
   throw new Error(`context_read_unverified: ${badPath} — agent did not evidence reading the deferred file (expected blob ${f ? f.sha : '?'}, got ${gotStr})`)
 }
 
+/**
+ * Witness instruction for an agent whose contract is a bare JSON ARRAY
+ * (decompose-tasks → tasks.json): an array has no slot for read_witness, so
+ * when — and only when — something is deferred, the agent is told to wrap
+ * its array as `{ "read_witness": {...}, "<key>": [...] }`. Returns '' when
+ * nothing is deferred, so the bare-array prompt stays byte-identical.
+ * Pair with unwrapWitnessedArray(), which accepts both shapes.
+ */
+export function contextWitnessWrapInstruction(files: ContextFile[], key: string): string {
+  const base = contextWitnessInstruction(files)
+  if (base === '') return ''
+  return (
+    base +
+    `\nBecause this response would otherwise be a bare JSON array, return a single JSON object instead: ` +
+    `{"read_witness": {...}, "${key}": <the array described above, unchanged>}. ` +
+    `The array itself keeps exactly the schema above.`
+  )
+}
+
+/**
+ * Pure: the array an array-contract agent returned, whether bare or wrapped
+ * by contextWitnessWrapInstruction(). null when neither shape is present —
+ * callers treat that exactly like an empty result.
+ */
+export function unwrapWitnessedArray(parsed: unknown, key: string): unknown[] | null {
+  if (Array.isArray(parsed)) return parsed
+  if (!parsed || typeof parsed !== 'object') return null
+  const inner = (parsed as Record<string, unknown>)[key]
+  return Array.isArray(inner) ? inner : null
+}
+
 // ── CHUNKED inline mode — a file that MUST be in-script (the lane plan) but
 // is over the relay budget: no deferring it to a consuming agent, because
 // the caller (not an LLM) needs the parsed JSON to schedule lanes.
