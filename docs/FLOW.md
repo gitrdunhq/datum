@@ -317,6 +317,7 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **A throw inside the inline Act phase bypassed the halt record** — closed in 41d0a79: the Act body is one try/catch, `act_phase_failed` halts at Act with state preserved.
 - **Intake trusted a rejected GREEN commit; REFACTOR swallowed its reason** — closed in a8879a2: intake runs the suite before resuming at REFACTOR, `green_stale` resets to RED and re-runs GREEN, `refactor_failed: <reason>` surfaces.
 - **Triage filed consumer-code findings into datum's tracker** — closed in 11e3b6f: `triageDestination` routes only infrastructure/workflow failures to datum; consumer findings are logged and counted.
+- **A re-merge re-stamped completed markers; a conflicting squash left the checkout dirty** — closed in 55df693: `lane-state write` refuses to overwrite a completed marker without `--force`, `lane-state rehash` repairs from the on-disk plan (Python port of `laneSpecHash` pinned by shared vectors), `git reset --merge` before raising. The chunked relay is verified against the git blob sha (7ecf5af).
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
