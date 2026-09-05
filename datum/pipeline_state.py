@@ -16,6 +16,7 @@ Verification per phase:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,9 +35,14 @@ def verify_phase(
     phase: str, *, run_id: str = "", tests_pass: bool = False
 ) -> tuple[bool, str]:
     if phase == "act":
-        pattern = f"^act({run_id}):"
+        # The squash-merge subject is `act(<batchRunId>): merge N lanes`
+        # (skills/src/shared/lane-steps.ts mergeSteps) and batchRunId is
+        # `<run_id>-b<N>` whenever the epic needed more than one batch — so
+        # match the optional batch suffix, or every large epic fails here.
+        # Extended regexp: `(`/`)` must be escaped to be literal.
+        pattern = rf"^act\({re.escape(run_id)}(-b[0-9]+)?\):"
         result = subprocess.run(
-            ["git", "log", "--oneline", "--grep", pattern],
+            ["git", "log", "--oneline", "--extended-regexp", "--grep", pattern],
             capture_output=True,
             text=True,
         )

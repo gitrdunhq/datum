@@ -203,12 +203,21 @@ function shouldRun(p: Phase, idx: number): boolean {
 }
 
 async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
-  if (!completedPhases.includes(p)) completedPhases.push(p)
   const testsFlag = p === 'validate' ? (testsPass ? ' --tests-pass' : ' --tests-fail') : ''
-  await agent(
+  const saved = String((await agent(
     `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     stageOpts('cli', { label: `save-state:${p}`, model: model('fast') }),
-  )
+  )) ?? '')
+  // pipeline-state-save verifies the phase against git/filesystem evidence
+  // and refuses (verified:false, exit 1) when it finds none. Believe the
+  // CLI, not our own bookkeeping: the phase was previously pushed into
+  // completedPhases before the call and the refusal was discarded, so the
+  // orchestrator and the on-disk state disagreed.
+  if (/"verified":\s*false/.test(saved)) {
+    log(`[warn] pipeline-state-save refused to record phase "${p}" — on-disk state NOT updated: ${saved.trim().slice(0, 300)}`)
+    return
+  }
+  if (!completedPhases.includes(p)) completedPhases.push(p)
 }
 
 // New-epic detection (#213 follow-up): a branch can already carry a

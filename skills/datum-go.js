@@ -524,12 +524,16 @@ function shouldRun(p, idx) {
   return !haltedAt && startIdx <= idx && activePhases.includes(p);
 }
 async function markPhaseComplete(p, testsPass) {
-  if (!completedPhases.includes(p)) completedPhases.push(p);
   const testsFlag = p === "validate" ? testsPass ? " --tests-pass" : " --tests-fail" : "";
-  await agent(
+  const saved = String(await agent(
     `Run: datum pipeline-state-save --phase "${p}" --run-id "${resolvedRunId}" --route "${route}"${testsFlag}`,
     stageOpts("cli", { label: `save-state:${p}`, model: model("fast") })
-  );
+  ) ?? "");
+  if (/"verified":\s*false/.test(saved)) {
+    log(`[warn] pipeline-state-save refused to record phase "${p}" \u2014 on-disk state NOT updated: ${saved.trim().slice(0, 300)}`);
+    return;
+  }
+  if (!completedPhases.includes(p)) completedPhases.push(p);
 }
 var newEpicBranch = "";
 if (a.freeText && priorState && !explicitStart) {

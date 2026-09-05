@@ -492,3 +492,27 @@ describe('Act failures halt datum-go before Validate/Review/Closeout', () => {
     expect(goSource).toMatch(/else \{\s*await markPhaseComplete\('act'\)/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// markPhaseComplete must not believe a phase was recorded when
+// `datum pipeline-state-save` refused it (verified:false, exit 1). It pushed
+// the phase into the in-memory completedPhases BEFORE running the CLI and
+// discarded the CLI output, so the orchestrator and the on-disk state
+// disagreed (eedom run wf_2a5ede48-358: act-verify returned verified:false).
+// ---------------------------------------------------------------------------
+
+describe('markPhaseComplete honours pipeline-state-save refusals', () => {
+  const goSource = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+  const fn = goSource.slice(goSource.indexOf('async function markPhaseComplete'), goSource.indexOf('// New-epic detection'))
+
+  it('captures the save-state agent output and checks for a verified:false refusal', () => {
+    expect(fn).toMatch(/const \w+ = (String\(\(?)?await agent\(/)
+    expect(fn).toMatch(/verified"?:\s*\\?s?\*?false|"verified":\s*false/)
+  })
+
+  it('only records the phase in completedPhases after the CLI accepted it', () => {
+    const pushIdx = fn.indexOf('completedPhases.push(p)')
+    const agentIdx = fn.indexOf('await agent(')
+    expect(pushIdx).toBeGreaterThan(agentIdx)
+  })
+})

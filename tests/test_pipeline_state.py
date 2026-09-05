@@ -303,3 +303,34 @@ def test_verify_phase_unknown_phase_fails_with_reason(tmp_path, monkeypatch):
     found, reason = verify_phase("not-a-real-phase")
     assert found is False
     assert "unknown phase" in reason
+
+
+def test_verify_phase_act_matches_batched_merge_commit(tmp_path, monkeypatch):
+    """Multi-batch runs (>5 lanes) write `act(<run_id>-b<N>): merge ...`
+    (skills/src/shared/lane-steps.ts mergeSteps, batchRunId = `${runId}-b${bi}`).
+    verify_phase must recognise those as Act evidence for run_id, or every
+    large epic fails `pipeline-state-save --phase act`."""
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "g.txt").write_text("y\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "act(20260904-190313-b0): merge 5 lanes"], cwd=repo)
+    (repo / "h.txt").write_text("z\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "act(20260904-190313-b1): merge 3 lanes"], cwd=repo)
+
+    found, reason = verify_phase("act", run_id="20260904-190313")
+    assert found is True, reason
+
+
+def test_verify_phase_act_does_not_match_a_different_run_with_the_same_prefix(
+    tmp_path, monkeypatch
+):
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "g.txt").write_text("y\n")
+    _git(["add", "."], cwd=repo)
+    _git(["commit", "-q", "-m", "act(20260904-1903131): merge 2 lanes"], cwd=repo)
+
+    found, _ = verify_phase("act", run_id="20260904-190313")
+    assert found is False
