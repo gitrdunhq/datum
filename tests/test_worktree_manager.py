@@ -266,6 +266,27 @@ class TestCleanupNestedLaneWorktrees:
         )
         assert set(again) == {"task-1", "task-2"}
 
+    def test_cleanup_deletes_an_orphan_root_dir_git_no_longer_registers(
+        self, repo: Path
+    ):
+        """caliper BUG O: .datum/worktrees held run dirs (212926-b3, 093240-b0)
+        that git no longer registered. `git worktree remove` fails on an
+        unregistered path, so cleanup left them on disk forever."""
+        run_id = "r9"
+        root_dir = repo / ".datum" / "worktrees" / f"{run_id}-root"
+        (root_dir / "sub").mkdir(parents=True)
+        (root_dir / "sub" / "leftover.txt").write_text("stale\n")
+        run_dir = repo / ".datum" / "worktrees" / run_id
+        (run_dir / "task-1").mkdir(parents=True)
+        (run_dir / "task-1" / "leftover.txt").write_text("stale\n")
+
+        result = cleanup_run_worktrees(run_id, "epic/test", repo_root=repo)
+
+        assert not root_dir.exists()
+        assert not run_dir.exists()
+        assert f"{run_id}-root" in result["removed"]
+        assert result["preserved_with_commits"] == []
+
 
 class TestHousekeepEpic:
     def test_batches_branch_deletion_for_multiple_merged_lanes(self, repo: Path):

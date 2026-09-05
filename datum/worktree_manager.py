@@ -15,6 +15,7 @@ See: references/git-workflows.md and GitHub issue #137.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -787,17 +788,20 @@ def cleanup_run_worktrees(
             preserved_with_commits.append(lane_id)
         else:
             removed.append(lane_id)
+    # Whatever git did not take (an orphan directory git no longer registers,
+    # a lane dir with leftovers) is deleted outright: every lane's branch is
+    # already settled above, so the directories hold nothing to keep
+    # (caliper BUG O: orphan run dirs accumulated under .datum/worktrees).
     if run_dir.exists():
-        try:
-            run_dir.rmdir()
-        except OSError:
-            pass
+        shutil.rmtree(run_dir, ignore_errors=True)
 
     root_dir = repo_root / WORKTREE_ROOT / f"{run_id}-root"
     if root_dir.exists():
         _git(
             ["worktree", "remove", str(root_dir), "--force"], cwd=repo_root, check=False
         )
+        if root_dir.exists():
+            shutil.rmtree(root_dir, ignore_errors=True)
         removed.append(f"{run_id}-root")
     # Registrations whose directory is gone (a lane nested under the root
     # just removed) must not survive to block the next run's `-b` checkout.
