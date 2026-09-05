@@ -16,6 +16,7 @@ import {
   ownershipFromStdout,
   testExitCode,
 } from './shared/lane-steps'
+import { worktreeResetSteps } from './shared/commit-steps'
 // datum-tdd-act-lane.ts — Act phase: RED->GREEN->REFACTOR per lane with DAG scheduling.
 // Consolidated agents: each TDD stage writes code, verifies, and commits in one agent call.
 
@@ -849,15 +850,41 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
         return { task_id: taskId, status: 'blocked', stage: 'GREEN', error: err, needs_write: decision.needsWrite }
       }
     } else {
-      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${green?.failure_reason || 'unknown'}, escalating to opus`)
+      // A null result is NOT "unknown": the agent returned nothing — turn cap
+      // (agents/datum-green.md maxTurns), API error, or skipped — and may
+      // have left half-applied edits in the worktree (wf_b1c88e09-036 BUG F:
+      // 30 calls on a 555-line file, then a retry from the dirty tree). Name
+      // it, and reset the worktree to the lane's last commit so the retry
+      // starts from RED's state, not from an unknown partial edit.
+      let firstFailure: string = green?.failure_reason || 'unknown'
+      if (!green) {
+        firstFailure = 'green_no_result: GREEN agent returned nothing (likely the maxTurns cap in agents/datum-green.md, an API error, or a skip)'
+        const resetStepList = worktreeResetSteps(wt)
+        const resetResult = parseBatchResult(
+          await agent(batchCommandPrompt(resetStepList), stageOpts('cli', { label: `green-reset:${taskId}`, phase: 'Act', model: model('fast') })),
+          resetStepList,
+        )
+        const leftover = (stepStdout(resetResult, 'status') || '').trim()
+        log(`[${taskId}] GREEN attempt 1: ${firstFailure}; worktree reset to HEAD before retry${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''}`)
+      }
+      log(`[${taskId}] GREEN attempt 1 failed (${greenModel}): ${firstFailure}, escalating to opus`)
       green = await resilientAgent(
         greenRetryPrompt({
           ...greenVars,
-          failureReason: green?.failure_reason || 'unknown',
-          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: green?.failure_reason }),
+          failureReason: firstFailure,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: firstFailure }),
         }),
         stageOpts('green', { label: `green-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
       )
+    }
+  }
+
+  if (!green) {
+    return {
+      task_id: taskId,
+      status: 'failed',
+      stage: 'GREEN',
+      error: 'green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md — the lane may need a smaller scope, or the cap raised)',
     }
   }
 

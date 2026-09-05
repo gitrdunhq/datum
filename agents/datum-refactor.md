@@ -3,7 +3,7 @@ name: datum-refactor
 description: Use for the REFACTOR stage of a TDD lane to clean up the implementation without changing behaviour or touching tests, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-maxTurns: 30
+maxTurns: 60
 hooks:
   PreToolUse:
     - matcher: "Write"

@@ -3,7 +3,7 @@ name: datum-red
 description: Use for the RED stage of a TDD lane to append failing tests for the acceptance criteria, verify they fail, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-maxTurns: 30
+maxTurns: 60
 hooks:
   PreToolUse:
     - matcher: "Write"

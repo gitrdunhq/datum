@@ -26,7 +26,10 @@ CHEAP_AGENTS = {
     "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 3},
 }
 STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
-STAGE_MAX_TURNS = 30
+# wf_b1c88e09-036: a GREEN on a 555-line file spent 30 calls (7 Edits + Reads)
+# and was cut off before running tests or committing; the retry hit 30
+# again. GREEN needs the most headroom (read → edit → test → commit).
+STAGE_MAX_TURNS = {"datum-red": 60, "datum-green": 80, "datum-refactor": 60}
 REQUIRED_KEYS = ("name", "description", "tools", "model")
 
 
@@ -105,7 +108,7 @@ def test_cli_body_is_at_most_15_lines_and_says_run_exactly_and_return_json():
 def test_stage_agents_keep_tools_and_get_max_turns(name: str):
     data, _ = _split(AGENTS_DIR / f"{name}.md")
     assert (
-        data.get("maxTurns") == STAGE_MAX_TURNS
+        data.get("maxTurns") == STAGE_MAX_TURNS[name]
     ), f"{name}: maxTurns {data.get('maxTurns')}"
     for tool in ("Read", "Write", "Edit", "Bash"):
         assert tool in _tools(data), f"{name}: lost {tool}"

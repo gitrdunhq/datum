@@ -3,7 +3,7 @@ name: datum-green
 description: Use for the GREEN stage of a TDD lane to write the minimum implementation that makes the failing tests pass, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-maxTurns: 30
+maxTurns: 80
 hooks:
   PreToolUse:
     - matcher: "Edit|Write"

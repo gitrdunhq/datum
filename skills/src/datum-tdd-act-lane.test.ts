@@ -546,3 +546,28 @@ describe('REFACTOR is independently verified (deterministic)', () => {
     expect(fn).toMatch(/refactorVerifyExit\s*(!==|===)\s*0/)
   })
 })
+
+// wf_b1c88e09-036 BUG F: a GREEN agent hit its 30-turn cap mid-edit (7 Edits
+// + ~20 Reads on a 555-line file) and returned nothing; the opus retry then
+// started from the dirty worktree the first attempt left behind, hit the cap
+// again, and the lane failed with "unknown". A null stage result must be a
+// NAMED failure that says what a null means, and the retry must start from
+// the lane's last commit, not from half-applied edits.
+describe('GREEN null result — named error and clean-slate retry (BUG F)', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const greenFn = laneSrc.slice(laneSrc.indexOf('async function runLane'), laneSrc.indexOf('async function runSkepticPanel'))
+
+  it('names a null GREEN result green_no_result and mentions the turn cap as a likely cause', () => {
+    expect(greenFn).toMatch(/green_no_result/)
+    expect(greenFn).toMatch(/maxTurns/)
+  })
+
+  it('resets the worktree to HEAD (worktreeResetSteps) before the escalation retry when the first attempt returned nothing', () => {
+    expect(laneSrc).toMatch(/from '\.\/shared\/commit-steps'/)
+    const resetAt = greenFn.indexOf('worktreeResetSteps(')
+    const retryAt = greenFn.indexOf('green-retry:')
+    expect(resetAt).toBeGreaterThan(-1)
+    expect(retryAt).toBeGreaterThan(-1)
+    expect(resetAt).toBeLessThan(retryAt)
+  })
+})
