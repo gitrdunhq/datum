@@ -21,13 +21,38 @@ from pathlib import Path
 WORKTREE_ROOT = ".datum/worktrees"
 
 _PATH_COMPONENT_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+_REF_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _validate_path_component(value: str, label: str) -> None:
     """Reject values that could escape WORKTREE_ROOT via '..'/'/' segments
-    when interpolated into a `WORKTREE_ROOT / value / ...` path."""
-    if not value or not _PATH_COMPONENT_RE.match(value) or ".." in value:
+    when interpolated into a `WORKTREE_ROOT / value / ...` path, or that
+    could be mistaken for a git command-line option (leading '-') once
+    embedded — bare or as part of a `<epic_branch>--<lane_id>` string — in
+    a git argv."""
+    if (
+        not value
+        or not _PATH_COMPONENT_RE.match(value)
+        or ".." in value
+        or value.startswith("-")
+    ):
         raise ValueError(f"{label} must be a safe path component: {value!r}")
+
+
+def _validate_ref_arg(value: str, label: str) -> None:
+    """Reject values unsafe to pass as a bare positional argv element to
+    `git` (a branch name, base commit-ish, etc.). Unlike
+    _validate_path_component this allows '/' (branch names routinely
+    contain it), but still rejects a leading '-' (would be parsed as a
+    git option instead of a ref), control characters/newlines, and '..'
+    segments."""
+    if (
+        not value
+        or value.startswith("-")
+        or ".." in value
+        or _REF_CONTROL_CHARS_RE.search(value)
+    ):
+        raise ValueError(f"{label} must be a safe git ref: {value!r}")
 
 
 def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
@@ -59,6 +84,8 @@ def create_lane_worktree(
     """
     _validate_path_component(run_id, "run_id")
     _validate_path_component(lane_id, "lane_id")
+    _validate_ref_arg(epic_branch, "epic_branch")
+    _validate_ref_arg(base_sha, "base_sha")
     repo_root = (repo_root or Path(".")).resolve()
     worktree_path = repo_root / WORKTREE_ROOT / run_id / lane_id
     lane_branch = f"{epic_branch}--{lane_id}"
@@ -161,6 +188,7 @@ def remove_lane_worktree(
     try:
         _validate_path_component(run_id, "run_id")
         _validate_path_component(lane_id, "lane_id")
+        _validate_ref_arg(epic_branch, "epic_branch")
     except ValueError:
         # Fails open (see docstring): refuse to touch anything rather than
         # raise, but never resolve a traversal-crafted path.
@@ -261,6 +289,7 @@ def setup_pipeline_worktrees(
 
     Raises RuntimeError if the epic branch does not exist.
     """
+    _validate_ref_arg(epic_branch, "epic_branch")
     repo_root = (repo_root or Path(".")).resolve()
 
     result = _git(["rev-parse", epic_branch], cwd=repo_root, check=False)
@@ -302,6 +331,9 @@ def merge_lane_branches(
     Returns the SHA of the resulting merge commit.
     Raises RuntimeError on any git failure.
     """
+    _validate_ref_arg(epic_branch, "epic_branch")
+    for lane_id in lane_order:
+        _validate_path_component(lane_id, "lane_id")
     repo_root = (repo_root or Path(".")).resolve()
 
     checkout = _git(["checkout", epic_branch], cwd=repo_root, check=False)
@@ -420,6 +452,7 @@ def cleanup_run_worktrees(
         }
     """
     _validate_path_component(run_id, "run_id")
+    _validate_ref_arg(epic_branch, "epic_branch")
     repo_root = (repo_root or Path(".")).resolve()
     run_dir = repo_root / WORKTREE_ROOT / run_id
 
@@ -491,6 +524,7 @@ def housekeep_epic(epic_branch: str, *, repo_root: Path | None = None) -> dict:
     needs a raw `git branch --merged | xargs git branch -d` pipeline in an
     agent prompt.
     """
+    _validate_ref_arg(epic_branch, "epic_branch")
     repo_root = (repo_root or Path(".")).resolve()
 
     state_path = repo_root / ".datum" / "pipeline-state.json"

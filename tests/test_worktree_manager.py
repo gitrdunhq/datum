@@ -524,7 +524,9 @@ class TestHousekeepEpicMergedRelativeToEpicNotHead:
         assert result["deleted_branches"] == [lane]
         check = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", lane],
-            cwd=repo, capture_output=True, text=True,
+            cwd=repo,
+            capture_output=True,
+            text=True,
         )
         assert check.returncode != 0
 
@@ -541,6 +543,105 @@ class TestHousekeepEpicMergedRelativeToEpicNotHead:
         assert result["deleted_branches"] == []
         check = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", lane],
-            cwd=repo, capture_output=True, text=True,
+            cwd=repo,
+            capture_output=True,
+            text=True,
         )
         assert check.returncode == 0, "lane not merged into the epic must survive"
+
+
+class TestArgumentInjectionValidation:
+    """Security: values that originate from lane-plan.json / tasks.json / CLI
+    args (epic_branch, run_id, lane_id, base_sha) must never reach `git` as a
+    bare positional argv element that starts with '-' — git would parse it
+    as an OPTION instead of a ref/path, changing command semantics (e.g.
+    epic_branch="--merged" turned into `git branch --merged --merged`-style
+    reinterpretation, or run_id="-D" landing next to `git branch -D`).
+    Every such value must be rejected with ValueError/RuntimeError BEFORE any
+    git subprocess runs, while ordinary values with '/' and '.' still work."""
+
+    def test_create_lane_worktree_rejects_dash_prefixed_run_id(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        with pytest.raises(ValueError):
+            create_lane_worktree("epic/test", "lane-a", "-D", base_sha, repo_root=repo)
+
+    def test_create_lane_worktree_rejects_dash_prefixed_lane_id(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        with pytest.raises(ValueError):
+            create_lane_worktree("epic/test", "-D", "run-1", base_sha, repo_root=repo)
+
+    def test_create_lane_worktree_rejects_dash_prefixed_epic_branch(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        with pytest.raises(ValueError):
+            create_lane_worktree(
+                "--merged", "lane-a", "run-1", base_sha, repo_root=repo
+            )
+
+    def test_create_lane_worktree_rejects_dash_prefixed_base_sha(self, repo: Path):
+        from datum.worktree_manager import create_lane_worktree
+
+        with pytest.raises(ValueError):
+            create_lane_worktree(
+                "epic/test", "lane-a", "run-1", "--upload-pack=evil", repo_root=repo
+            )
+
+    def test_create_lane_worktree_allows_slashes_and_dots_in_epic_branch(
+        self, repo: Path
+    ):
+        from datum.worktree_manager import create_lane_worktree
+
+        base_sha = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        wt_path = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base_sha, repo_root=repo
+        )
+        assert wt_path.is_dir()
+
+    def test_setup_pipeline_worktrees_rejects_dash_prefixed_epic_branch(
+        self, repo: Path
+    ):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        with pytest.raises(ValueError):
+            setup_pipeline_worktrees("run-1", "--merged", ["lane-a"], repo_root=repo)
+
+    def test_merge_lane_branches_rejects_dash_prefixed_epic_branch(self, repo: Path):
+        from datum.worktree_manager import merge_lane_branches
+
+        with pytest.raises(ValueError):
+            merge_lane_branches("--force", ["task-a"], "msg", repo_root=repo)
+
+    def test_merge_lane_branches_rejects_dash_prefixed_lane_id(self, repo: Path):
+        from datum.worktree_manager import merge_lane_branches
+
+        with pytest.raises(ValueError):
+            merge_lane_branches("epic/test", ["-D"], "msg", repo_root=repo)
+
+    def test_cleanup_run_worktrees_rejects_dash_prefixed_epic_branch(self, repo: Path):
+        from datum.worktree_manager import cleanup_run_worktrees
+
+        with pytest.raises(ValueError):
+            cleanup_run_worktrees("run-1", "--merged", repo_root=repo)
+
+    def test_housekeep_epic_rejects_dash_prefixed_epic_branch(self, repo: Path):
+        from datum.worktree_manager import housekeep_epic
+
+        with pytest.raises(ValueError):
+            housekeep_epic("--merged", repo_root=repo)
+
+    def test_remove_lane_worktree_fails_open_on_dash_prefixed_epic_branch(
+        self, repo: Path
+    ):
+        """remove_lane_worktree fails OPEN (returns a not-deleted dict rather
+        than raising) for run_id/lane_id per its docstring; a hostile
+        epic_branch must be refused the same way, never reach `git`."""
+        from datum.worktree_manager import remove_lane_worktree
+
+        result = remove_lane_worktree("lane-a", "run-1", "--merged", repo_root=repo)
+        assert result["deleted"] is False
+        assert result["preserved"] is False
