@@ -16,9 +16,16 @@ import {
   LOCAL_SKILLS_DIR,
   resolveSkillPath,
   skillsDirHint,
-  bootPrompt,
+  bootSteps,
+  bootFromSteps,
   runCommandPrompt,
 } from './boot'
+import type { BatchResult, BatchStepResult } from './batch'
+
+function result(steps: Partial<BatchStepResult>[]): BatchResult {
+  const full = steps.map((s) => ({ name: '', exit_code: 0, stdout: '', stderr: '', ...s }))
+  return { steps: full, failed: full.find((s) => s.exit_code !== 0) ?? null, missing: false }
+}
 
 describe('resolveSkillPath (#353)', () => {
   it('prefers the repo-local .datum/skills copy when it exists', () => {
@@ -86,51 +93,111 @@ describe('skillsDirHint (#353)', () => {
   })
 })
 
-describe('bootPrompt (#353, #354)', () => {
-  it('embeds the config fingerprint so a config change changes the cache key', () => {
-    const a = bootPrompt('sha256:aaaa')
-    const b = bootPrompt('sha256:bbbb')
-    expect(a).toContain('sha256:aaaa')
-    expect(a).not.toBe(b)
+// bootSteps / bootFromSteps (#368 follow-up): deterministic replacement for
+// the old bootPrompt LLM relay — one datum-cli batch cats both config files,
+// pipeline state, lists .datum/skills, and reports repo root + branch; every
+// one of those facts was previously trusted verbatim from an LLM's JSON echo.
+
+describe('bootSteps', () => {
+  const steps = bootSteps()
+  const names = steps.map((s) => s.name)
+
+  it('has the six expected step names in order', () => {
+    expect(names).toEqual(['global-config', 'repo-config', 'state', 'local-skills', 'repo-root', 'branch'])
   })
 
-  it('is stable for the same fingerprint (resume still cache-hits on unchanged config)', () => {
-    expect(bootPrompt('sha256:aaaa')).toBe(bootPrompt('sha256:aaaa'))
+  it('marks every step tolerant except repo-config (its absence is fatal)', () => {
+    for (const s of steps) {
+      if (s.name === 'repo-config') expect(s.tolerant).toBeFalsy()
+      else expect(s.tolerant).toBe(true)
+    }
   })
 
-  it('still produces a usable prompt without a fingerprint', () => {
-    const p = bootPrompt('')
-    expect(p).toContain('.datum/config.json')
-    expect(p).toContain('.datum/pipeline-state.json')
+  it('repo-config reads .datum/config.json with no fallback', () => {
+    const s = steps.find((s) => s.name === 'repo-config')!
+    expect(s.command).toContain('.datum/config.json')
+    expect(s.command).not.toMatch(/\|\|/)
   })
 
-  it('asks for the repo-local skills listing and repo root the resolver needs', () => {
-    const p = bootPrompt('sha256:aaaa')
-    expect(p).toContain('.datum/config.json')
-    expect(p).toContain('.datum/pipeline-state.json')
-    expect(p).toContain(LOCAL_SKILLS_DIR)
-    expect(p).toContain('"localSkills"')
-    expect(p).toContain('"repoRoot"')
-  })
-
-  // #524 dogfooding: leftover .datum/pipeline-state.json from an unrelated
-  // epic was silently trusted by datum-go's auto-resume, jumping straight to
-  // Act with no SPEC/lane-plan ever written for the actual current branch.
-  // The boot agent must report the real checked-out branch so the caller can
-  // compare it against state.branch before trusting completedPhases.
-  it('asks for the currently checked-out git branch (#524 stale-state guard)', () => {
-    const p = bootPrompt('sha256:aaaa')
-    expect(p).toContain('"currentBranch"')
-    expect(p).toMatch(/git branch --show-current/)
+  it('local-skills lists LOCAL_SKILLS_DIR', () => {
+    const s = steps.find((s) => s.name === 'local-skills')!
+    expect(s.command).toContain(LOCAL_SKILLS_DIR)
   })
 })
 
-describe('bootPrompt (#355)', () => {
-  it('gives an explicit task instead of a bare command', () => {
-    const p = bootPrompt('sha256:aaaa')
-    expect(p).toMatch(/Bash tool/)
-    expect(p).toMatch(/raw JSON only/i)
-    expect(p).toMatch(/do not ask/i)
+describe('bootFromSteps', () => {
+  const ok = (overrides: Partial<Record<string, string>> = {}) =>
+    result([
+      { name: 'global-config', exit_code: 0, stdout: overrides['global-config'] ?? '{}' },
+      { name: 'repo-config', exit_code: 0, stdout: overrides['repo-config'] ?? '{"language":"python"}' },
+      { name: 'state', exit_code: 0, stdout: overrides['state'] ?? 'null' },
+      { name: 'local-skills', exit_code: 0, stdout: overrides['local-skills'] ?? 'datum-go\ndatum-plan' },
+      { name: 'repo-root', exit_code: 0, stdout: overrides['repo-root'] ?? '/Users/me/repo' },
+      { name: 'branch', exit_code: 0, stdout: overrides['branch'] ?? 'main' },
+    ])
+
+  it('merges global/repo config via mergeConfig (repo wins)', () => {
+    const boot = bootFromSteps(
+      ok({ 'global-config': '{"language":"python","test_command":"pytest"}', 'repo-config': '{"test_command":"go test ./..."}' }),
+    )
+    expect(boot.config.language).toBe('python')
+    expect(boot.config.test_command).toBe('go test ./...')
+  })
+
+  it('throws when the repo-config step is missing/failed', () => {
+    const r = ok()
+    r.steps = r.steps.filter((s) => s.name !== 'repo-config')
+    expect(() => bootFromSteps(r)).toThrow(/missing \.datum\/config\.json — run datum init first/)
+  })
+
+  it('throws when repo-config stdout is not valid JSON', () => {
+    expect(() => bootFromSteps(ok({ 'repo-config': 'not json' }))).toThrow(/missing \.datum\/config\.json/)
+  })
+
+  it('falls back to {} when global-config is missing/unparseable', () => {
+    const boot = bootFromSteps(ok({ 'global-config': 'not json' }))
+    expect(boot.config.language).toBe('python')
+  })
+
+  it('parses null state as no prior state', () => {
+    expect(bootFromSteps(ok({ state: 'null' })).state).toBeNull()
+  })
+
+  it('parses a real pipeline-state.json', () => {
+    const boot = bootFromSteps(ok({ state: '{"branch":"main","runId":"r1","completedPhases":["refine"]}' }))
+    expect(boot.state).toEqual({ branch: 'main', runId: 'r1', completedPhases: ['refine'] })
+  })
+
+  // Mirrors datum/pipeline_state.py's PipelineStateCorruptError: a corrupt
+  // pipeline-state.json must never be silently treated the same as "no
+  // state" — that would discard tracked pipeline progress on file corruption.
+  it('throws pipeline_state_corrupt on unparseable non-null state, never treating it as null', () => {
+    expect(() => bootFromSteps(ok({ state: '{not valid json' }))).toThrow(/pipeline_state_corrupt/)
+  })
+
+  it('parses local-skills basenames back into "<name>.js" filenames', () => {
+    expect(bootFromSteps(ok({ 'local-skills': 'datum-go\ndatum-plan' })).localSkills).toEqual([
+      'datum-go.js',
+      'datum-plan.js',
+    ])
+  })
+
+  it('returns [] for localSkills when the step stdout is empty', () => {
+    expect(bootFromSteps(ok({ 'local-skills': '' })).localSkills).toEqual([])
+  })
+
+  it('trims repoRoot/currentBranch', () => {
+    const boot = bootFromSteps(ok({ 'repo-root': '/Users/me/repo\n', branch: 'main\n' }))
+    expect(boot.repoRoot).toBe('/Users/me/repo')
+    expect(boot.currentBranch).toBe('main')
+  })
+
+  it('throws when repoRoot is empty (not a git repo)', () => {
+    expect(() => bootFromSteps(ok({ 'repo-root': '' }))).toThrow(/repo root/)
+  })
+
+  it('throws when currentBranch is empty (detached HEAD)', () => {
+    expect(() => bootFromSteps(ok({ branch: '' }))).toThrow(/current branch/)
   })
 })
 

@@ -5,7 +5,7 @@ import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } fro
 import { actStartSteps, readLanePlanPrompt, verifyLanePlanShape } from './shared/lane-steps'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, type PipelineState } from './shared/pipeline-state'
-import { resolveSkillPath, skillsDirHint, bootPrompt, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
+import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING } from './shared/boot'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
@@ -73,20 +73,25 @@ interface PhaseResult {
   [key: string]: unknown
 }
 
-// Read config + pipeline state in one agent call (single haiku, no routing overhead)
-// #354: the fingerprint in the prompt is the cache key that lets a resumed
-// run notice an edited config. Warn once when the launcher omitted it.
-// ('' rather than undefined: esbuild emits `void 0`, which trips the
-// build's leaked-TypeScript grep.)
+// Deterministic config + pipeline-state read: one datum-cli batch (cat both
+// config files, pipeline state, list .datum/skills, resolve repo root +
+// branch) instead of an LLM relay asked to read/merge/echo those facts back
+// (#368 follow-up; mirrors the datum-plan.ts config-batch conversion,
+// commit a7093d2). ('' rather than undefined: esbuild emits `void 0`, which
+// trips the build's leaked-TypeScript grep.)
+// #354: configFingerprint used to be embedded in the boot prompt as the
+// cache key that let a resumed run notice an edited config. The read is no
+// longer a cached agent() prompt, so there is nothing left to key — but the
+// warning stays: an unset fingerprint still means the launcher isn't
+// wiring `datum config-fingerprint` through, which callers should fix.
 const configFingerprint: string = typeof a.configFingerprint === 'string' ? a.configFingerprint : ''
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING)
-const bootText = await agent(
-  bootPrompt(configFingerprint),
-  { label: 'read-config+state', model: model('fast') },
+const bootBatch = parseBatchResult(
+  await agent(batchCommandPrompt(bootSteps()), stageOpts('cli', { label: 'boot', model: model('fast') })),
+  bootSteps(),
 )
-const boot = parseAgentJson(bootText as string, { config: {}, state: null, localSkills: [], repoRoot: '', currentBranch: '' }) as {
-  config: Record<string, string>; state: unknown; localSkills?: string[]; repoRoot?: string; currentBranch?: string
-}
+if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))
+const boot = bootFromSteps(bootBatch)
 const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as RepoConfig
 // #368: agent_types (default true) / hooks_installed (default false) switches.
 // Every child workflow gets them via args — each bundle has its own copy.

@@ -2,7 +2,8 @@
 // Pure functions — no sandbox globals — so vitest covers them directly.
 // tested-by: skills/src/shared/boot.test.ts
 
-import { skillPath } from './models'
+import { skillPath, mergeConfig } from './models'
+import { type BatchStep, type BatchResult, stepResult, stepStdout } from './batch'
 
 /** Repo-local, gitignored copy of skills/*.js written by `datum init` (#353). */
 export const LOCAL_SKILLS_DIR = '.datum/skills'
@@ -52,24 +53,105 @@ export function skillsDirHint(skillsDir: string): string {
 }
 
 /**
- * Prompt for the single boot agent that reads config + pipeline state.
+ * Deterministic replacement for the old boot-agent relay (bootPrompt, #353/
+ * #354/#355/#524): an LLM was asked to read two config files, pipeline
+ * state, list a directory, and report the repo root and current branch —
+ * six deterministic facts that drive test_command/language/models,
+ * auto-resume, the stale-state guard, and which workflow bundles run.
+ * Every one of those is now a plain shell command run in one datum-cli
+ * batch (see shared/batch.ts) and parsed by bootFromSteps below, matching
+ * the datum-plan.ts config-batch conversion (commit a7093d2).
  *
- * `configFingerprint` (#354) is the output of `datum config-fingerprint`,
- * passed by the launcher via args. Workflow resume replays any agent()
- * call whose (prompt, opts) is unchanged, so embedding the fingerprint is
- * what makes an edited config invalidate the cached read — scripts have no
- * filesystem access and Date.now() is unavailable, so it cannot be derived
- * in here.
+ * `repo-config` is the only non-tolerant step: its absence is fatal (no
+ * `.datum/config.json` means `datum init` was never run) and must stop the
+ * batch rather than silently proceeding on a half-read state. Every other
+ * step degrades to an empty/null value on failure and is validated by
+ * bootFromSteps instead.
  */
-export function bootPrompt(configFingerprint: string = ''): string {
-  const stamp = configFingerprint ? `\n(config fingerprint: ${configFingerprint})` : ''
-  return `Your task: read files with the Read tool and run commands with the Bash tool, then return a JSON object with five fields:
-1. "config": contents of .datum/config.json (or {} if missing)
-2. "state": contents of .datum/pipeline-state.json (or null if missing)
-3. "localSkills": the file names (basename only, e.g. "datum-plan.js") inside ${LOCAL_SKILLS_DIR}/ (or [] if that directory is missing)
-4. "repoRoot": the absolute path printed by \`git rev-parse --show-toplevel\` (or "" if not a git repo)
-5. "currentBranch": the output of \`git branch --show-current\` (or "" if not a git repo / detached HEAD)
-Do not ask for clarification and do not message anyone — this prompt is the whole task. Output raw JSON only.${stamp}`
+export function bootSteps(): BatchStep[] {
+  return [
+    { name: 'global-config', command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true },
+    { name: 'repo-config', command: 'cat .datum/config.json' },
+    { name: 'state', command: 'cat .datum/pipeline-state.json 2>/dev/null || echo null', tolerant: true },
+    {
+      name: 'local-skills',
+      command: `for f in ${LOCAL_SKILLS_DIR}/*.js; do [ -e "$f" ] && basename "$f" .js; done`,
+      tolerant: true,
+    },
+    { name: 'repo-root', command: 'git rev-parse --show-toplevel', tolerant: true },
+    { name: 'branch', command: 'git rev-parse --abbrev-ref HEAD', tolerant: true },
+  ]
+}
+
+export interface BootResult {
+  config: Record<string, unknown>
+  state: unknown
+  localSkills: string[]
+  repoRoot: string
+  currentBranch: string
+}
+
+/**
+ * Pure reduction of a bootSteps() BatchResult into the shape datum-go.ts
+ * already consumes (`boot.config`, `boot.state`, `boot.localSkills`,
+ * `boot.repoRoot`, `boot.currentBranch`).
+ *
+ * Throws (never returns a half-valid result) when:
+ *  - the repo-config step is missing/failed, or its stdout isn't valid
+ *    JSON — "missing .datum/config.json — run datum init first"
+ *  - the state step's stdout is present but not valid JSON — a corrupt
+ *    pipeline-state.json must never be silently treated as "no state"
+ *    (mirrors datum/pipeline_state.py's PipelineStateCorruptError)
+ *  - repoRoot or currentBranch come back empty (not a git repo / detached
+ *    HEAD) — every caller of these needs a real value, not ""
+ */
+export function bootFromSteps(result: BatchResult): BootResult {
+  const repoConfigStep = stepResult(result, 'repo-config')
+  if (!repoConfigStep || repoConfigStep.exit_code !== 0) {
+    throw new Error('missing .datum/config.json — run datum init first')
+  }
+  let repoCfgParsed: Record<string, unknown>
+  try {
+    repoCfgParsed = JSON.parse(repoConfigStep.stdout || '')
+  } catch {
+    throw new Error('missing .datum/config.json — run datum init first')
+  }
+  let globalCfgParsed: Record<string, unknown> = {}
+  try {
+    globalCfgParsed = JSON.parse(stepStdout(result, 'global-config') || '{}')
+  } catch {
+    globalCfgParsed = {}
+  }
+  const config = mergeConfig(globalCfgParsed, repoCfgParsed)
+
+  const stateRaw = (stepStdout(result, 'state') || 'null').trim()
+  let state: unknown = null
+  if (stateRaw && stateRaw !== 'null') {
+    try {
+      state = JSON.parse(stateRaw)
+    } catch (exc) {
+      throw new Error(
+        `pipeline_state_corrupt: .datum/pipeline-state.json exists but could not be parsed as JSON: ${(exc as Error).message}`,
+      )
+    }
+  }
+
+  const localSkills = (stepStdout(result, 'local-skills') || '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.endsWith('.js') ? s : `${s}.js`))
+
+  const repoRoot = (stepStdout(result, 'repo-root') || '').trim()
+  const currentBranch = (stepStdout(result, 'branch') || '').trim()
+  if (!repoRoot) {
+    throw new Error('boot: could not determine repo root (`git rev-parse --show-toplevel` failed — not a git repo?)')
+  }
+  if (!currentBranch) {
+    throw new Error('boot: could not determine current branch (`git rev-parse --abbrev-ref HEAD` failed)')
+  }
+
+  return { config, state, localSkills, repoRoot, currentBranch }
 }
 
 /**

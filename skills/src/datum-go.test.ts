@@ -270,6 +270,31 @@ describe('preflight tool-install check (#327)', () => {
 // never been written.
 // ---------------------------------------------------------------------------
 
+// #368 follow-up: the boot read (config + pipeline state + local skills +
+// repo root + branch) used to be a single LLM relay (bootPrompt) trusted
+// verbatim. It is now a deterministic datum-cli batch, matching the
+// datum-plan.ts config-batch conversion (commit a7093d2).
+describe('boot read is a deterministic batch, not an LLM relay (#368 follow-up)', () => {
+  const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
+
+  it('uses bootSteps()/bootFromSteps() instead of an LLM relay prompt', () => {
+    expect(src).toMatch(/bootSteps\(\)/)
+    expect(src).toMatch(/bootFromSteps\(/)
+  })
+
+  it('never calls agent(bootPrompt(...))', () => {
+    expect(src).not.toMatch(/agent\(\s*bootPrompt/)
+  })
+
+  it('does not import bootPrompt at all (retired — no remaining consumer)', () => {
+    expect(src).not.toMatch(/bootPrompt/)
+  })
+
+  it('still warns when configFingerprint is not passed by the launcher', () => {
+    expect(src).toMatch(/NO_FINGERPRINT_WARNING/)
+  })
+})
+
 describe('stale pipeline-state guard (#524)', () => {
   const src = readFileSync(join(__dirname, 'datum-go.ts'), 'utf8')
 
