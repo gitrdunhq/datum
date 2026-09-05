@@ -2503,6 +2503,45 @@ for _cmd_name, _script_name in _DEV_PYTHON_SCRIPTS.items():
     )(_make_python_wrapper(_script_name))
 
 
+# ── Closeout collectors as top-level commands ────────────────────────────────
+# The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps /
+# closeoutArchiveSteps) invokes these by name. They did not exist: every step
+# failed under `tolerant: true`, closeout-data.json was never written and the
+# synthesis agent "refused on missing data" — a consumer with no producer.
+# Each forwards its args to the module's argparse main in the tool's own
+# interpreter (consumer repos have no importable `datum`), so the exit code
+# and JSON stdout the batch reads are the module's own.
+# tested-by: tests/test_closeout_cli.py
+_CLOSEOUT_MODULES = {
+    "closeout-collect-git": "collect_git",
+    "closeout-collect-tasks": "collect_tasks",
+    "closeout-collect-token-metrics": "collect_token_metrics",
+    "closeout-collate": "collate",
+    "closeout-archive": "archive",
+}
+
+
+def _make_closeout_wrapper(module_name: str):
+    def _wrapper(ctx: typer.Context):
+        import subprocess
+        import sys
+
+        res = subprocess.run(
+            [sys.executable, "-m", f"datum.closeout.{module_name}"] + ctx.args
+        )
+        raise typer.Exit(res.returncode)
+
+    return _wrapper
+
+
+for _cmd_name, _module_name in _CLOSEOUT_MODULES.items():
+    app.command(
+        name=_cmd_name,
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=f"Closeout step: run datum.closeout.{_module_name} with the given args.",
+    )(_make_closeout_wrapper(_module_name))
+
+
 lane_tools_app = typer.Typer(
     name="lane-tools", help="Lane-tools scripts (scripts/lane-tools/*), manifest-gated."
 )
