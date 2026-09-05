@@ -286,7 +286,8 @@ Concrete divergences in the current code, each naming the principle it violates.
 
 1. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion, the refactor pre-check decides whether REFACTOR runs at all, and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts`). Each is defensible as a *proposal*; none is re-verified. Violates (2). Accepted for now: the outcomes they gate (GREEN, REFACTOR, docs commit) are each independently verified afterwards.
 2. **Two deferred-file consumers still have no witness** — plan's decompose-tasks returns a bare JSON array (no slot for `read_witness` without changing the tasks.json contract) and properties' derive agent's output is discarded (it writes and commits PROPERTIES.md itself). Both can receive a deferred SPEC. Violates (2). The classify and approaches agents are gated (840becd).
-3. **Dead producers with no consumer** (#394) — `datum gate red`, `datum verify-stage`, `commit_queue.py`, and the dedupe/render helpers have no call site in `skills/src/` or `datum/`. Violates (1). Decision pending: delete, or wire.
+3. **A throw inside datum-go's inline Act phase bypasses the halt record** — phase children are folded into the halt path (`runPhaseWorkflow`), but the Act loop runs inline in datum-go, so a thrown `lane_plan_relay_mismatch` or `context_relay_mismatch` there ends the run with no halt record. Violates (4).
+4. **Dead producers with no consumer** (#394) — `datum gate red`, `datum verify-stage`, `commit_queue.py`, and the dedupe/render helpers have no call site in `skills/src/` or `datum/`. Violates (1). Decision pending: delete, or wire.
 
 ### Closed
 
@@ -313,6 +314,7 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **Issue filer defaulted to datum's own tracker** — closed in c74f2c9: an unresolved GitHub repo is `github_repo_unresolved`; `plan-issues` skips and the tracker logs it.
 - **Closeout scripts ignored git/gh exit codes** — closed in dc00821; the triage classifier learned every named lane failure with a completeness test in 3772a62.
 - **Prose reply to a schema'd reflect/refactor-check crashed the lane** — closed in 2864a90: both route through `resilientAgent`; `reflect_no_result` proceeds without a score, `refactor_check_no_result` skips the optional stage; a test rejects schema calls outside `resilientAgent`/`parallel`.
+- **Lane plan relayed by an LLM echo drifted and broke resume hashes; re-merging an already-merged lane crashed** — closed in b823892 (chunked base64 relay) and `cc83935` (empty squash is "already merged").
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
 ## 6. Runtime contract for bundled scripts
