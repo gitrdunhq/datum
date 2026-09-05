@@ -21,6 +21,7 @@ import {
   skeletonBatchFromSteps,
 } from './plan-steps'
 import { batchScript, parseBatchResult } from './batch'
+import { HEREDOC_TERMINATOR } from './write-steps'
 
 const names = (steps: { name: string }[]) => steps.map((s) => s.name)
 const tasksJson = JSON.stringify([{ id: 'task-001', slug: 'a', title: 'A "quoted" $title `x`', files: ['src/a.py'], depends_on: [] }])
@@ -35,13 +36,11 @@ describe('planBuildSteps', () => {
 
   it('writes the JSON verbatim through a quoted heredoc (no expansion of $ or backticks) ending in a newline', () => {
     const write = steps[1].command
-    expect(write).toMatch(/^cat > "docs\/epics\/x\/tasks\.json" <<'DATUM_TASKS_EOF'\n/)
-    expect(write).toContain(tasksJson)
-    expect(write).toMatch(/\nDATUM_TASKS_EOF$/)
+    expect(write).toBe(`cat > "docs/epics/x/tasks.json" <<'${HEREDOC_TERMINATOR}'\n${tasksJson}\n${HEREDOC_TERMINATOR}`)
   })
 
   it('refuses a tasksJson that contains the heredoc terminator or is not a single line', () => {
-    expect(() => planBuildSteps({ epicDir: 'x', tasksJson: '[{"a":"DATUM_TASKS_EOF"}]' })).toThrow(/heredoc terminator/)
+    expect(() => planBuildSteps({ epicDir: 'x', tasksJson: `[{"a":"${HEREDOC_TERMINATOR}"}]` })).toThrow(/heredoc terminator/)
     expect(() => planBuildSteps({ epicDir: 'x', tasksJson: '[\n]' })).toThrow(/single line/)
   })
 

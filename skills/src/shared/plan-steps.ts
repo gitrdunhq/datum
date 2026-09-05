@@ -10,11 +10,9 @@
 // tested-by: skills/src/shared/plan-steps.test.ts
 
 import { stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'
-import { utf8Encode } from './utf8'
-import { gitBlobSha } from './sha1'
+import { writeFileSteps, writeFileBlobSha, writeFileFromSteps, HEREDOC_TERMINATOR } from './write-steps'
 
 const q = (s: string): string => `"${s.replace(/(["\\`$])/g, '\\$1')}"`
-const HEREDOC_EOF = 'DATUM_TASKS_EOF'
 
 function tail(step: { stdout: string; stderr: string }): string {
   return (step.stderr || step.stdout || '').trim().split('\n').slice(-3).join(' | ')
@@ -30,34 +28,26 @@ export function lanePlanCommand(epicDir: string): string {
   return `datum lane-plan --input ${q(`${epicDir}/tasks.json`)} --output ${q(`${epicDir}/lane-plan.json`)} --md-output ${q(`${epicDir}/TASKS.md`)}`
 }
 
+const TASKS_WRITE_NAMES = { mkdir: 'mkdir', write: 'write-tasks', sha: 'tasks-sha' }
+
 export function planBuildSteps(o: PlanBuildOpts): BatchStep[] {
   if (o.tasksJson.includes('\n')) throw new Error('planBuildSteps: tasksJson must be a single line (JSON.stringify without indentation)')
-  if (o.tasksJson.includes(HEREDOC_EOF)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_EOF}`)
-  const tasksPath = `${o.epicDir}/tasks.json`
+  if (o.tasksJson.includes(HEREDOC_TERMINATOR)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_TERMINATOR}`)
   return [
-    { name: 'mkdir', command: `mkdir -p ${q(o.epicDir)}` },
-    { name: 'write-tasks', command: `cat > ${q(tasksPath)} <<'${HEREDOC_EOF}'\n${o.tasksJson}\n${HEREDOC_EOF}` },
-    { name: 'tasks-sha', command: `git hash-object ${q(tasksPath)}`, tolerant: true },
+    ...writeFileSteps({ path: `${o.epicDir}/tasks.json`, content: o.tasksJson, names: TASKS_WRITE_NAMES }),
     { name: 'lane-plan', command: lanePlanCommand(o.epicDir) },
   ]
 }
 
 /** The git blob sha of what the heredoc writes: the JSON bytes plus a trailing newline. */
 export function tasksJsonBlobSha(tasksJson: string): string {
-  return gitBlobSha(utf8Encode(tasksJson + '\n'))
+  return writeFileBlobSha(tasksJson)
 }
 
 export function planBuildFromSteps(result: BatchResult, expectedSha: string): { ok: boolean; error: string } {
   if (result.missing) return { ok: false, error: `plan_build_failed: ${describeFailure(result, 'lane-plan')}` }
-  for (const name of ['mkdir', 'write-tasks']) {
-    const step = stepResult(result, name)
-    if (!step) return { ok: false, error: `plan_build_failed: ${name} step did not run` }
-    if (step.exit_code !== 0) return { ok: false, error: `plan_build_failed: ${name} exited ${step.exit_code} — ${tail(step)}` }
-  }
-  const sha = (stepResult(result, 'tasks-sha')?.stdout || '').trim()
-  if (sha !== expectedSha) {
-    return { ok: false, error: `plan_write_mismatch: tasks.json on disk is blob ${sha || '(none)'}, the script wrote ${expectedSha} — the runner did not copy the heredoc verbatim` }
-  }
+  const written = writeFileFromSteps(result, { path: 'tasks.json', expectedSha, prefix: 'plan', names: TASKS_WRITE_NAMES })
+  if (!written.ok) return { ok: false, error: written.error.replace(/^plan_write_failed: /, 'plan_build_failed: ') }
   const lanePlan = stepResult(result, 'lane-plan')
   if (!lanePlan) return { ok: false, error: 'plan_build_failed: lane-plan step did not run' }
   if (lanePlan.exit_code !== 0) return { ok: false, error: `plan_build_failed: datum lane-plan exited ${lanePlan.exit_code} — ${tail(lanePlan)}` }
