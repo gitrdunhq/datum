@@ -69,15 +69,17 @@ Epic artifacts always live at `docs/epics/<branch>/`.
 
 After each phase: `datum gate <phase> [--approve]`
 
-Outside the pipeline, `datum-awake` (`Workflow({ name: "datum-awake" })`) rescans the repo and regenerates the agent preamble; it is not dispatched by `datum-go`.
+Outside the pipeline, `datum-awake` (`Workflow({ scriptPath: "<skills_dir>/datum-awake.js" })`) rescans the repo and regenerates the agent preamble; it is not dispatched by `datum-go`.
 
 ## Launching `datum-go`
+
+**Always launch by `scriptPath`, never by `name`.** `Workflow({ name: "datum-go" })` resolves the copy registered in `~/.claude/workflows/`, and the harness can hold that copy for the whole session — a run launched right after `datum init --refresh` still executed the previous bundle (its persisted script had none of the new code while `.datum/skills/datum-go.js` had all of it). Sub-workflows are loaded by `scriptPath` from `.datum/skills/`, so they never drift; the top-level launch must do the same. `datum init` (and `--refresh`) prints the exact line for this repo — `<skills_dir>` is the `skills_dir` value in `.datum/config.json` (`<repo>/.datum/skills` in consumer repos).
 
 Compute the inputs fingerprint first and pass it in `args`. `Workflow({resumeFromRunId})` replays every agent call whose prompt is unchanged — the config read, every deterministic batch that reads an epic doc, and every gate. The fingerprint (`.datum/config.json`, `~/.datum/config.json`, every `*.md`/`*.json` in the current epic dir, `.datum/pipeline-state.json`) is stamped into every batch prompt, so a human edit between runs — an answered QUESTIONS.md, a fixed SPEC.md — is a cache miss and an unchanged input still hits (#354). **Recompute it on every launch, resumes included**; a resume with the old value replays the stale gate verdict.
 
 ```
 FP=$(datum config-fingerprint)
-Workflow({ name: "datum-go", args: { yolo: true, configFingerprint: "<FP>" } })
+Workflow({ scriptPath: "<skills_dir>/datum-go.js", args: { yolo: true, configFingerprint: "<FP>" } })
 ```
 
 Without `configFingerprint` the script logs a warning and a resumed run replays every stale read.
@@ -101,13 +103,13 @@ Because a custom agent definition replaces the default subagent system prompt an
 
 Act is handled by the `datum-tdd-act` TypeScript workflow (`skills/src/datum-tdd-act.ts`).
 
-**Invocation:**
+**Invocation** (by `scriptPath`, same reason as `datum-go` above):
 ```
-Workflow({ name: "datum-tdd-act", args: "yolo" })
+Workflow({ scriptPath: "<skills_dir>/datum-tdd-act.js", args: "yolo" })
 ```
 Yolo mode auto-detects the current branch and generates a run ID. Or pass explicit args:
 ```
-Workflow({ name: "datum-tdd-act", args: { epicBranch: "datum/epic-17", runId: "20260614-010000" } })
+Workflow({ scriptPath: "<skills_dir>/datum-tdd-act.js", args: { epicBranch: "datum/epic-17", runId: "20260614-010000" } })
 ```
 
 **Pipeline stages per lane:**

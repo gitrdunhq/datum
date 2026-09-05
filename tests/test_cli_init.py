@@ -331,3 +331,33 @@ def test_init_refuses_on_unresolved_merge_conflict(git_repo):
     payload = json.loads(result.stdout)
     assert payload["error"] == "unsafe_branch_state"
     assert "conflict" in payload["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Launch by scriptPath, never by name. `Workflow({name: "datum-go"})` resolves
+# the ~/.claude/workflows registry copy, which the harness can cache for the
+# session — a peer refreshed to a bundle with the lane-plan digest and still
+# ran the old chunk relay (run wf_d95d30ed-366: the persisted script had 0
+# digest refs while .datum/skills/datum-go.js had 9). Sub-workflows load via
+# scriptPath from .datum/skills, which is why every sub-workflow fix took
+# effect and every top-level datum-go fix silently did not. `datum init`
+# prints the exact scriptPath launch line so the registry can never drift.
+# ---------------------------------------------------------------------------
+
+
+def test_init_prints_the_scriptpath_launch_line(git_repo):
+    result = _invoke("--name", "first")
+    assert result.exit_code == 0, result.output
+    cfg = json.loads((git_repo / ".datum" / "config.json").read_text())
+    expected = f'Workflow({{ scriptPath: "{cfg["skills_dir"]}/datum-go.js"'
+    assert expected in result.output, result.output
+    assert 'Workflow({ name: "datum-go"' not in result.output
+    assert "configFingerprint" in result.output
+
+
+def test_init_refresh_prints_the_scriptpath_launch_line(git_repo):
+    _invoke("--name", "first")
+    result = _invoke("--refresh")
+    assert result.exit_code == 0, result.output
+    cfg = json.loads((git_repo / ".datum" / "config.json").read_text())
+    assert f'Workflow({{ scriptPath: "{cfg["skills_dir"]}/datum-go.js"' in result.output, result.output

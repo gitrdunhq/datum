@@ -597,6 +597,7 @@ def init(
             console.print(f"[dim]Skills refreshed → {resolved}[/dim]")
             _print_agent_install(installed)
             console.print(f"[dim]config updated at {config_path}[/dim]")
+            _print_launch_line(str(resolved))
         return
 
     # In --json mode, downstream helpers still write their own human status
@@ -723,6 +724,27 @@ def init(
                 }
             )
         )
+    else:
+        cfg_now = json.loads(config_path.read_text()) if config_path.exists() else {}
+        skills_dir_now = cfg_now.get("skills_dir")
+        if isinstance(skills_dir_now, str) and skills_dir_now:
+            _print_launch_line(skills_dir_now)
+
+
+def _print_launch_line(skills_dir: str) -> None:
+    """The exact launch line for this repo — by scriptPath, never by name.
+
+    `Workflow({name: "datum-go"})` resolves the ~/.claude/workflows registry
+    copy, which the harness can hold for the whole session: a peer refreshed
+    to a new bundle and still ran the old one (run wf_d95d30ed-366). The
+    sub-workflows load by scriptPath from skills_dir and never drift; the
+    top-level launch must do the same. Plain echo: rich would soft-wrap it.
+    """
+    typer.echo(
+        "Launch (scriptPath, never name — the registry copy can be stale for the session):\n"
+        "  FP=$(datum config-fingerprint)\n"
+        f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>" }} }})'
+    )
 
 
 @app.command()
