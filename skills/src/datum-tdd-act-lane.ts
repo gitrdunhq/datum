@@ -788,14 +788,6 @@ No markdown fences, no explanation.`,
   // GREEN cannot write (GREEN's allowed set is implFiles). Without this the
   // lane burned three identical GREEN attempts before a human noticed the
   // RED test had constructed a dataclass without one of its required fields.
-  const contractPreflightCmd = (allowed: string[]): string =>
-    `datum contract-preflight --repo "${wt}" --test-command ${JSON.stringify(scopedTestCmd)} ` +
-    testFiles.map((f) => `--test-file "${f}"`).join(' ') +
-    (allowed.length > 0 ? ' ' + allowed.map((f) => `--allowed "${f}"`).join(' ') : '')
-  const contractPreflightPrompt = (allowed: string[]): string =>
-    `Run: ${contractPreflightCmd(allowed)}
-The command exits 1 when it finds a conflict — that is expected, not an error; still return its output.
-Return ONLY the raw JSON the command printed on stdout. No markdown fences, no explanation.`
   const isPytestLane: boolean = laneLanguage === 'python' && /pytest/.test(scopedTestCmd)
 
   // Scope-gap existence checks and the contract preflight share ONE datum-cli
@@ -937,10 +929,18 @@ Return ONLY the raw JSON the command printed on stdout. No markdown fences, no e
     let greenPreflight: ContractPreflight | null = null
     const selfReportedBlock = !!green && (green.status === 'blocked' || /scope_exceeded/i.test(green.failure_reason || ''))
     if (green && isPytestLane && !selfReportedBlock) {
-      const raw = await agent(contractPreflightPrompt(implFiles), stageOpts('cli', {
-        label: `contract-check:${taskId}`, phase: 'Act', model: model('fast'),
-      }))
-      greenPreflight = parseContractPreflight(raw as string)
+      // Same scope-contract batch the RED side runs (no scope gaps here):
+      // the preflight JSON comes from the step's stdout, not from a runner
+      // told to "Run:" the command and echo it — a summarised echo parsed
+      // as "skipped" and turned a real contract_conflict into a blind retry.
+      const checkSteps = scopeContractSteps({ wt, scopeGaps: [], contractPreflight: { testFiles, implFiles, scopedTestCmd } })
+      const checkResult = parseBatchResult(
+        await agent(batchCommandPrompt(checkSteps), stageOpts('cli', {
+          label: `contract-check:${taskId}`, phase: 'Act', model: model('fast'),
+        })),
+        checkSteps,
+      )
+      greenPreflight = parseContractPreflight(stepStdout(checkResult, 'contract-preflight'))
     }
     const decision = decideGreenBlock(green, greenPreflight)
 

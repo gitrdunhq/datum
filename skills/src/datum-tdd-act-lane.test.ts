@@ -822,6 +822,31 @@ describe('REFACTOR failures surface the real reason, never a bare "refactor fail
   })
 })
 
+// The GREEN-side contract check (#356: is this GREEN failure fixable inside
+// allowed_write_files at all?) was a runner told to "Run: datum
+// contract-preflight ..." and return the JSON — the same relay the RED side
+// already replaced with the scope-contract batch. parseContractPreflight
+// treats a non-JSON echo as "skipped", so a runner that summarised the
+// output turned a contract_conflict into a blind opus retry.
+describe('GREEN contract check runs through the scope-contract batch, not a "Run:" echo', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('no longer builds a contract-preflight prompt for an LLM runner', () => {
+    expect(laneSource).not.toMatch(/contractPreflightPrompt/)
+    expect(laneSource).not.toMatch(/contractPreflightCmd/)
+    expect(laneSource).not.toMatch(/Run: \$\{contractPreflight/)
+  })
+
+  it('the contract-check call is scopeContractSteps with no scope gaps, parsed from the contract-preflight step stdout', () => {
+    const idx = laneSource.indexOf("label: `contract-check:${taskId}`")
+    expect(idx).toBeGreaterThan(-1)
+    const block = laneSource.slice(idx - 600, idx + 400)
+    expect(block).toMatch(/scopeContractSteps\(\{ wt, scopeGaps: \[\], contractPreflight: \{ testFiles, implFiles, scopedTestCmd \} \}\)/)
+    expect(block).toMatch(/parseContractPreflight\(stepStdout\(/)
+    expect(block).toMatch(/'contract-preflight'/)
+  })
+})
+
 describe('triage-classify — refactor_failed is a known deterministic prefix', () => {
   it('classifyLaneError classifies refactor_failed as agent_behavior deterministically', () => {
     const result = classifyLaneError('refactor_failed: suite red after REFACTOR wrote a broken helper', 'REFACTOR')
