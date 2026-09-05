@@ -924,3 +924,11 @@ describe('triage-classify — refactor_failed is a known deterministic prefix', 
     expect(result.confidence).toBe('deterministic')
   })
 })
+
+describe('post-RED scope reads: a truncated read is logged by name, never silently partial', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('logs scope_read_truncated with file, size and cap', () => {
+    expect(src).toMatch(/scopeReadTruncations\(testFiles, \(n\) => stepStdout\(postRedResult, n\), scopeReadCap\(testFiles\.length\)\)/)
+    expect(src).toMatch(/scope_read_truncated: \$\{t\.file\} is \$\{t\.bytes\} bytes, scope-gap analysis used the first \$\{t\.cap\}/)
+  })
+})

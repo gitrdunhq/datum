@@ -11,6 +11,8 @@ import {
   isMissing,
   newTestCountFromSteps,
   scopeContentsFromSteps,
+  scopeReadTruncations,
+  scopeReadCap,
   scopeGapsFromSteps,
   postGreenSteps,
   ownershipCheckSteps,
@@ -824,6 +826,9 @@ No markdown fences, no explanation.`,
   // implFiles, or fail loud now — before GREEN burns an attempt on a lane
   // that structurally cannot pass.
   const scopeTestContents = scopeContentsFromSteps(testFiles, (n) => stepStdout(postRedResult, n))
+  for (const t of scopeReadTruncations(testFiles, (n) => stepStdout(postRedResult, n), scopeReadCap(testFiles.length))) {
+    log(`[${taskId}] scope_read_truncated: ${t.file} is ${t.bytes} bytes, scope-gap analysis used the first ${t.cap} (imports and early assertions only)`)
+  }
 
   const requiredScopeFiles = new Set<string>()
   for (const tf of testFiles) {

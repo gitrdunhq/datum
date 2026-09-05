@@ -23,6 +23,9 @@ import {
   ownershipCommand,
   sumCounts,
   newTestCountFromSteps,
+  scopeReadCap,
+  scopeReadTruncations,
+  SCOPE_READ_BUDGET_BYTES,
   scopeContentsFromSteps,
   scopeGapsFromSteps,
   completionMarkerCommand,
@@ -262,10 +265,30 @@ describe('postRedSteps', () => {
   it('orders count gate, placeholder scan, ownership, per-file scope reads, then test counts — all tolerant', () => {
     const steps = postRedSteps(opts)
     expect(names(steps)).toEqual([
-      'count-gate', 'assert-check', 'ownership', 'scope-read-0', 'scope-read-1',
+      'count-gate', 'assert-check', 'ownership', 'scope-size-0', 'scope-read-0', 'scope-size-1', 'scope-read-1',
       'test-count-pattern', 'test-count-after', 'test-count-before',
     ])
     expect(steps.every((s) => s.tolerant)).toBe(true)
+  })
+
+  // caliper wf_a082eead-829 (BUG N): the scope reads cat every lane test file
+  // into the same batch stdout as the count gate; a 300-line test file put
+  // the batch over the harness spill threshold, the runner burned its turns
+  // on the spilled stub and the lane failed count_gate_no_output although
+  // the gate had run. Reads are capped so the batch stays under budget, and
+  // the size step tells the script when a read was truncated.
+  it('scope reads are capped per file (budget split across files, 2 KB floor) and report the real size', () => {
+    const steps = postRedSteps(opts)
+    const cap = scopeReadCap(2)
+    expect(cap).toBe(Math.floor(SCOPE_READ_BUDGET_BYTES / 2))
+    expect(scopeReadCap(100)).toBe(2048)
+    expect(steps.find((s) => s.name === 'scope-read-0')!.command).toBe(`head -c ${cap} "/wt/T1/tests/test_a.py" 2>/dev/null`)
+    expect(steps.find((s) => s.name === 'scope-size-0')!.command).toBe(`wc -c < "/wt/T1/tests/test_a.py" 2>/dev/null | tr -d ' '`)
+  })
+
+  it('scopeReadTruncations names every file whose size exceeds the cap', () => {
+    const out = scopeReadTruncations(['a.py', 'b.py'], (n) => (n === 'scope-size-0' ? '40000\n' : n === 'scope-size-1' ? '100\n' : null), 8192)
+    expect(out).toEqual([{ file: 'a.py', bytes: 40000, cap: 8192 }])
   })
 
   it('writes grep patterns through quoted heredocs (never inline-quoted)', () => {
@@ -276,7 +299,7 @@ describe('postRedSteps', () => {
     // and `datum init --refresh` does not materialise it (exit 127 in the field).
     expect(steps[0].command).toContain('datum dev test-count-gate --repo "/wt/T1" --files "tests/test_a.py" "tests/test_b.py" --pattern-file "$PATFILE" --required 2')
     expect(steps[0].command).not.toContain('bash scripts/test-count-gate')
-    expect(steps[5].command).toContain("<<'PATTERN_EOF'\ndef test_|async def test_\nPATTERN_EOF")
+    expect(steps.find((s) => s.name === 'test-count-pattern')!.command).toContain("<<'PATTERN_EOF'\ndef test_|async def test_\nPATTERN_EOF")
   })
 
   it('drops the count gate when the lane has no acceptance criteria and the ownership read when not deterministic', () => {

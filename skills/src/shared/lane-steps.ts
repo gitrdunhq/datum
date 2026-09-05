@@ -190,8 +190,14 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
     tolerant: true,
   })
   if (o.ownership) steps.push({ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true })
+  // Capped: one batch is one tool result and the harness spills results over
+  // ~25 KB to a file the runner cannot echo (caliper BUG N — a 300-line test
+  // file made the whole post-RED batch unreadable and the count gate looked
+  // like it never ran). The size step lets the script name a truncation.
+  const cap = scopeReadCap(o.testFiles.length)
   o.testFiles.forEach((f, i) => {
-    steps.push({ name: `scope-read-${i}`, command: `cat ${q(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true })
+    steps.push({ name: `scope-size-${i}`, command: `wc -c < ${q(`${o.wt}/${f}`)} 2>/dev/null | tr -d ' '`, tolerant: true })
+    steps.push({ name: `scope-read-${i}`, command: `head -c ${cap} ${q(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true })
   })
   steps.push({
     name: 'test-count-pattern',
@@ -340,6 +346,28 @@ export function sumCounts(raw: string | null | undefined): number {
 }
 
 /** Per-file test contents from the scope-read-<i> steps, keyed by path. */
+/** Total bytes the post-RED scope reads may add to the batch stdout. */
+export const SCOPE_READ_BUDGET_BYTES = 16 * 1024
+
+/** Per-file read cap: the budget split across the lane's test files, 2 KB floor. */
+export function scopeReadCap(fileCount: number): number {
+  return Math.max(2048, Math.floor(SCOPE_READ_BUDGET_BYTES / Math.max(1, fileCount)))
+}
+
+/** Files whose on-disk size exceeded the read cap (the read was truncated). */
+export function scopeReadTruncations(
+  testFiles: string[],
+  stdoutOf: (name: string) => string | null,
+  cap: number,
+): { file: string; bytes: number; cap: number }[] {
+  const out: { file: string; bytes: number; cap: number }[] = []
+  testFiles.forEach((f, i) => {
+    const bytes = parseInt((stdoutOf(`scope-size-${i}`) || '').trim(), 10)
+    if (Number.isFinite(bytes) && bytes > cap) out.push({ file: f, bytes, cap })
+  })
+  return out
+}
+
 export function scopeContentsFromSteps(testFiles: string[], stdoutOf: (name: string) => string | null): Record<string, string> {
   const out: Record<string, string> = {}
   testFiles.forEach((f, i) => {
