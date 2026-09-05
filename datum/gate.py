@@ -921,13 +921,24 @@ def gate_properties(yolo: bool, config: dict) -> None:
 
 
 def gate_validate(yolo: bool, config: dict) -> None:
-    # Check test signal from most recent run
+    # The test signal is PRODUCED by the Validate phase's independent test
+    # run (skills/src/shared/validate-steps.ts write-signal step). It used to
+    # be read-if-present and the gate passed silently when it was absent —
+    # a consumer with no producer. Absent or unreadable is now a failure.
     signal_path = Path(".datum/last-test-signal.json")
-    if signal_path.exists():
-        with signal_path.open() as f:
-            signal = json.load(f)
-        if signal.get("status") not in ("pass",):
-            fail(f"Test suite not green: {signal.get('status')}")
+    if not signal_path.exists():
+        fail(
+            f"{signal_path} not found — no independent test run recorded a signal; "
+            "run the Validate phase (datum validate) before this gate"
+        )
+    try:
+        signal = json.loads(signal_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        fail(f"{signal_path} is unreadable: {exc}")
+    if not isinstance(signal, dict) or signal.get("status") != "pass":
+        status = signal.get("status") if isinstance(signal, dict) else "malformed"
+        exit_code = signal.get("exit_code") if isinstance(signal, dict) else None
+        fail(f"Test suite not green: status={status} exit_code={exit_code}")
 
     policy = gate_policy(config, "validate_human_review")
     if policy == "required" and not yolo:

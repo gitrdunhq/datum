@@ -4,6 +4,7 @@ import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode } from './shared/lane-steps'
+import { validateVerifySteps } from './shared/validate-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import readContextTemplate from './prompts/util-read-context.md'
 import { gateSteps, parseGateResult } from './shared/gate'
@@ -79,7 +80,9 @@ const check = typeof checkResult === 'string'
 // gate of the whole pipeline. Re-run the exact same test command
 // independently as one deterministic datum-cli batch step and trust ONLY
 // that exit code, never the agent's self-report.
-const verifySteps = [{ name: 'test-verify', command: testRunCommand(testCommand, '.', 'validate-verify') }]
+// The batch also PRODUCES .datum/last-test-signal.json from the same shell
+// (`datum gate validate` consumes it — it had no producer before).
+const verifySteps = validateVerifySteps(testCommand, '.')
 const verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
   stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }),

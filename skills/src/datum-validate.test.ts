@@ -147,3 +147,11 @@ describe('datum-validate — deterministic gate verdict', () => {
     expect(src).toMatch(/parseGateResult\(/)
   })
 })
+
+describe('datum-validate produces the test signal the validate gate consumes', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('runs the independent test run through validateVerifySteps (test-verify + write-signal)', () => {
+    expect(src).toMatch(/validateVerifySteps\(/)
+    expect(src).not.toMatch(/name: 'test-verify', command: testRunCommand/)
+  })
+})
