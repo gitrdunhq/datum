@@ -970,37 +970,6 @@ def _distill_rules_text(repo_dir) -> str | None:
     return strip_invisible_unicode(strip_special_tokens(text))[:2000]
 
 
-def load_project_rules(repo_dir) -> str:
-    """Read the target repo's agent rules — AGENTS.md preferred, CLAUDE.md
-    fallback — and distill to rule-like lines: bullets and numbered items
-    first, then `#` headers (#60: headers are de-prioritized context, they
-    only consume whatever cap budget the real rules leave over).
-
-    Capped at 2000 chars so project rules can't crowd out the loop's own
-    instructions on a small model.
-
-    S0: the distilled text is sanitized (special tokens + invisible Unicode
-    stripped) and pinned via hash_pin_rules to .datum/rules-hash.json under
-    repo_dir. The first load pins; a later load whose rules differ raises
-    ValueError — the tampering tripwire. Episodes delete the stale pin at
-    start so only MID-EPISODE mutation trips it, never cross-run changes.
-
-    #85: agent_loop's per-step tripwire does NOT use this disk pin — the
-    store is agent-writable, so the loop verifies against an in-memory hash
-    captured at episode start. The disk store remains useful for cross-call
-    pinning by trusted callers and as an audit artifact.
-    """
-    repo_dir = Path(repo_dir)
-    text = _distill_rules_text(repo_dir)
-    if text is None:
-        return ""
-
-    store = repo_dir / ".datum" / "rules-hash.json"
-    store.parent.mkdir(exist_ok=True)
-    hash_pin_rules(text, store)
-    return text
-
-
 def _catalog_lines(allowed_tools: list[str], progressive: bool = False) -> str:
     lines = []
     for name in allowed_tools:

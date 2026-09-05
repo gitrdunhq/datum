@@ -176,26 +176,6 @@ def load_config() -> dict:
     return tomllib.loads(config_path.read_text())
 
 
-def resolve_tier(phase: str, run_state: dict | None = None) -> dict:
-    config = load_config()
-    models = config.get("models", {})
-    phases = models.get("phases", {})
-
-    tier_name = phases.get(phase, "standard")
-
-    if (
-        config.get("pipeline", {}).get("deepen_downshift", False)
-        and run_state
-        and run_state.get("phases", {}).get("deepen", {}).get("status") == "completed"
-        and phase in ("act_red", "act_green", "act_refactor")
-    ):
-        tier_name = "fast"
-
-    model_id = models.get(tier_name, tier_name)
-
-    return {"phase": phase, "tier": tier_name, "model": model_id}
-
-
 def init_db():
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_FILE) as conn:

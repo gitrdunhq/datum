@@ -960,9 +960,9 @@ def gate_review(yolo: bool, config: dict) -> None:
     # #368 producer/consumer fix: review-packets/unified.json (and its
     # unified.schema.json validation) is dropped from this gate. No phase in
     # the pipeline ever produces it — datum-review.ts writes
-    # docs/epics/<branch>/REVIEW-REPORT.md directly, and datum/dedupe.py /
-    # datum/render.py (the scripts that would build review-packets/unified.json)
-    # are standalone tools nothing calls. A gate requiring an artifact nothing
+    # docs/epics/<branch>/REVIEW-REPORT.md directly, and the script that would
+    # have built review-packets/unified.json (datum/dedupe.py) was deleted as a
+    # dead producer (#394). A gate requiring an artifact nothing
     # produces can never pass, so the check below is against the report
     # content only. REVIEW-REPORT.md is resolved the same epic-scoped way
     # every other gate resolves its artifact (resolve_artifact), so it finds
@@ -1136,29 +1136,6 @@ def gate_validate_profiles(config: dict) -> None:
     pass_gate("Profiles valid")
 
 
-def gate_red(yolo: bool, config: dict) -> None:
-    from datum.tdd_driver import GreenBlindnessError, verify_red_stage
-
-    print("--- [GATE] RED Test Verification ---")
-
-    if not config.get("green_blindness_strict", True):
-        print("green_blindness_strict is false, skipping verification.")
-        pass_gate("RED test verification skipped")
-        return
-
-    test_cmd = config.get("tests", {}).get("command", ["pytest", "-q"])
-    if isinstance(test_cmd, str):
-        import shlex
-
-        test_cmd = shlex.split(test_cmd)
-
-    try:
-        verify_red_stage(Path("."), test_command=test_cmd)
-        pass_gate("RED tests are failing as expected")
-    except GreenBlindnessError as e:
-        fail(str(e), hard=True)
-
-
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 
 
@@ -1172,7 +1149,6 @@ GATES = {
     "validate": gate_validate,
     "review": gate_review,
     "pr-comments": gate_pr_comments,
-    "red": gate_red,
 }
 
 

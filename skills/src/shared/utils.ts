@@ -1016,7 +1016,7 @@ export function testRunCommand(testCommand: string, wt: string, stage: string): 
 // lane commit is attributable to (run, lane, stage) by a human or an agent
 // reading `git log`, regardless of which model made it.
 //
-// Author matches datum/commit_queue.py (`datum/<run_id>` <datum@local>).
+// Author is `datum/<run_id>` <datum@local>.
 // The subject stays `<prefix>: <STAGE> complete` so detectExistingLaneCommits
 // and verifyCommitIndependently keep matching.
 // ---------------------------------------------------------------------------

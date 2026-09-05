@@ -901,19 +901,6 @@ def contract_preflight(ctx: typer.Context):
     raise typer.Exit(res.returncode)
 
 
-@app.command(
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-    name="commit-queue",
-)
-def commit_queue(ctx: typer.Context):
-    """Run DATUM commit queue manager (internal)."""
-    import subprocess
-    import sys
-
-    res = subprocess.run([sys.executable, "-m", "datum.commit_queue"] + ctx.args)
-    raise typer.Exit(res.returncode)
-
-
 @app.command()
 def bugfile(
     module: str = typer.Argument(
@@ -2453,54 +2440,6 @@ def lane_state_rehash(
         f"[dim]lane-state rehash: recomputed spec_hash from {plan_path}[/dim]"
     )
     typer.echo(json.dumps(marker, indent=2, sort_keys=True))
-
-
-# ── TDD stage verification (#133) ────────────────────────────────────────────
-
-
-@app.command(name="verify-stage")
-def verify_stage_cmd(
-    stage: str = typer.Argument(
-        ..., help="Stage to verify: 'red', 'green', or 'baseline'"
-    ),
-    repo_path: str = typer.Option(".", "--repo", help="Repository root path"),
-    test_command: str = typer.Option(
-        "pytest -q", "--test-command", help="Test runner command"
-    ),
-):
-    """Verify TDD stage gate: RED tests must fail, GREEN tests must pass."""
-    import shlex
-
-    from datum.tdd_driver import (
-        DirtyBaselineError,
-        GreenBlindnessError,
-        verify_green_baseline,
-        verify_red_stage,
-    )
-
-    cmd = shlex.split(test_command)
-    path = Path(repo_path).resolve()
-
-    try:
-        if stage == "red":
-            signal = verify_red_stage(path, test_command=cmd)
-            typer.echo(
-                json.dumps({"verified": True, "stage": "red", "test_signal": signal})
-            )
-        elif stage in ("green", "baseline"):
-            verify_green_baseline(path, test_command=cmd)
-            typer.echo(json.dumps({"verified": True, "stage": stage}))
-        else:
-            typer.echo(
-                json.dumps({"verified": False, "error": f"Unknown stage: {stage}"})
-            )
-            raise typer.Exit(1)
-    except GreenBlindnessError as e:
-        typer.echo(json.dumps({"verified": False, "stage": "red", "error": str(e)}))
-        raise typer.Exit(1) from None
-    except DirtyBaselineError as e:
-        typer.echo(json.dumps({"verified": False, "stage": stage, "error": str(e)}))
-        raise typer.Exit(1) from None
 
 
 @app.command(name="tdd-args")

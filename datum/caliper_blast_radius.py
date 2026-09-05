@@ -30,11 +30,6 @@ _DEFAULT_DB_NAME = "caliper-graph.sqlite"
 _RUN_CHECKS_TIMEOUT_S = 1.0
 
 
-def caliper_available() -> bool:
-    """Return True if caliper is installed and importable."""
-    return _CALIPER_AVAILABLE
-
-
 def init_code_graph(
     repo_dir: str | Path,
     db_name: str = _DEFAULT_DB_NAME,

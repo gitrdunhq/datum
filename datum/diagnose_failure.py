@@ -197,7 +197,7 @@ def log_unknown(log_text: str, run_id: str | None) -> None:
     Called from parallel lane agents that can hit an UNKNOWN classification
     around the same time — an unlocked read-modify-write here lost entries
     and crashed readers on torn writes under real concurrency. Locked with
-    the same fcntl.flock pattern commit_queue.py already uses, and written
+    an fcntl.flock advisory lock, and written
     via temp-file + atomic replace so a reader never observes a partial file.
     """
     import fcntl

@@ -187,7 +187,6 @@ datum/
 │   ├── archive.py
 │   ├── lane_plan.py           Builds DAG from TASKS.md; outputs lane-plan.json
 │   ├── pipeline_scheduler.py  Runs lanes, enforces concurrency cap and conflict gates
-│   ├── commit_queue.py        Serializes commits to work branch via advisory lock
 │   ├── diff_normalize.py      Tool-adapter outputs → unified diff for commit queue
 │   ├── test_signal.py         Redacts test runner output for GREEN; fail-closed
 │   ├── test_signal_self_test.py   Canary self-test for redactor; runs on every test_signal commit

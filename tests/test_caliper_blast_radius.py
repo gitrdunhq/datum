@@ -7,39 +7,11 @@ agent_loop observation.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 # ── Unit tests for caliper_blast_radius module ────────────────────────────────
-
-
-def test_caliper_available_when_installed():
-    """When caliper is importable, caliper_available() returns True."""
-    # This test runs in the datum venv; caliper may or may not be installed.
-    # We mock the module-level flag to test the function logic.
-    import datum.caliper_blast_radius as mod
-    from datum.caliper_blast_radius import caliper_available
-
-    original = mod._CALIPER_AVAILABLE
-    try:
-        mod._CALIPER_AVAILABLE = True
-        assert mod.caliper_available() is True
-    finally:
-        mod._CALIPER_AVAILABLE = original
-
-
-def test_caliper_available_when_not_installed():
-    """When caliper is NOT importable, caliper_available() returns False."""
-    import datum.caliper_blast_radius as mod
-
-    original = mod._CALIPER_AVAILABLE
-    try:
-        mod._CALIPER_AVAILABLE = False
-        assert mod.caliper_available() is False
-    finally:
-        mod._CALIPER_AVAILABLE = original
 
 
 def test_init_code_graph_returns_none_when_unavailable():

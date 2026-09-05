@@ -62,12 +62,6 @@ def test_imports_state_load_state():
     assert "load_state" in src, "Template must import datum.state.load_state"
 
 
-def test_imports_state_resolve_tier():
-    """AC3.1: template imports datum.state.resolve_tier."""
-    src = _template_source()
-    assert "resolve_tier" in src, "Template must import datum.state.resolve_tier"
-
-
 def test_imports_state_phases():
     """AC3.1: template imports datum.state.PHASES."""
     src = _template_source()
@@ -181,14 +175,6 @@ def test_asserts_load_state_signature():
     assert re.search(
         r"load_state.*sign|sign.*load_state", src, re.DOTALL
     ), "Template must perform a signature assertion on load_state"
-
-
-def test_asserts_resolve_tier_signature():
-    """resolve_tier(phase, run_state=None) — template must check param names."""
-    src = _template_source()
-    assert "resolve_tier" in src
-    # Parameter names from TASKS.md Research Findings
-    assert "phase" in src, "Template must reference 'phase' param in resolve_tier check"
 
 
 def test_asserts_run_phase_signature():

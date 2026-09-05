@@ -171,58 +171,6 @@ class TestHooks(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr or result.stdout)
 
 
-class TestCommitQueue(unittest.TestCase):
-    def test_requires_clean_tree(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-            (repo / "dirty.txt").write_text("untracked\n")
-            patch = _write_patch()
-            try:
-                result = run_module(
-                    "datum.commit_queue",
-                    [
-                        "--run-id",
-                        "epic-1-20260101-120000",
-                        "--apply-patch",
-                        str(patch),
-                        "--message",
-                        "green(task-001): update app",
-                    ],
-                    cwd=repo,
-                )
-            finally:
-                patch.unlink(missing_ok=True)
-            self.assertNotEqual(result.returncode, 0)
-            payload = json.loads(result.stdout)
-            self.assertEqual(payload["error"], "dirty_working_tree")
-
-    def test_applies_declared_patch(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-            patch = _write_patch()
-            try:
-                result = run_module(
-                    "datum.commit_queue",
-                    [
-                        "--run-id",
-                        "epic-1-20260101-120000",
-                        "--apply-patch",
-                        str(patch),
-                        "--message",
-                        "green(task-001): update app",
-                    ],
-                    cwd=repo,
-                )
-            finally:
-                patch.unlink(missing_ok=True)
-            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            payload = json.loads(result.stdout)
-            self.assertTrue(payload["ok"])
-            self.assertEqual((repo / "app.txt").read_text(), "hello\nworld\n")
-
-
 class TestSkillAssets(unittest.TestCase):
     def test_skill_md_exists(self) -> None:
         self.assertTrue((ROOT / "SKILL.md").exists())
