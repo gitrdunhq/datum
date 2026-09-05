@@ -57,7 +57,7 @@ function verifyFileOwnership(changed, allowedFiles, forbiddenFiles = []) {
   const violations = [];
   for (const f of changed) {
     if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
-      violations.push(`${f} is owned by another lane`);
+      violations.push(`${f} is forbidden at this stage (the other stage of this lane owns it, or another lane does)`);
     }
     if (allowedFiles.length > 0 && !allowedFiles.some((a2) => pathBoundaryMatch(f, a2))) {
       violations.push(`${f} is not in allowed files list [${allowedFiles.join(", ")}]`);
@@ -400,7 +400,7 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?)\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
@@ -443,8 +443,23 @@ function worktreeResetToSteps(wt, sha) {
   return [
     { name: "reset", command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },
     { name: "clean", command: `git -C ${q(wt)} clean -fd`, tolerant: true },
-    { name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }
+    { name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true },
+    { name: "head", command: `git -C ${q(wt)} rev-parse HEAD`, tolerant: true }
   ];
+}
+function worktreeResetToFromSteps(result, sha) {
+  if (result.missing) return { ok: false, error: `worktree_reset_failed: ${describeFailure(result, "reset-to-red")}` };
+  const head = stepStdout(result, "head");
+  if (head === null) return { ok: false, error: "worktree_reset_failed: the head step did not run \u2014 cannot confirm where the worktree is" };
+  const got = head.trim();
+  if (got !== sha) {
+    const reset = stepResult(result, "reset");
+    const why = reset && reset.exit_code !== 0 ? ` (reset exited ${reset.exit_code}: ${(reset.stderr || reset.stdout || "").trim().slice(0, 200)})` : "";
+    return { ok: false, error: `worktree_reset_failed: HEAD is ${got || "?"}, expected ${sha}${why}` };
+  }
+  const dirty = (stepStdout(result, "status") || "").trim();
+  if (dirty) return { ok: false, error: `worktree_reset_failed: worktree still dirty after reset to ${sha}: ${dirty.split("\n").length} path(s)` };
+  return { ok: true, error: "" };
 }
 
 // skills/src/shared/agents.ts
@@ -1281,8 +1296,9 @@ No markdown fences, no explanation.`,
       await agent(batchCommandPrompt(resetToRedSteps), stageOpts("cli", { label: `reset-to-red:${taskId}`, phase: "Act", model: model("fast") })),
       resetToRedSteps
     );
-    if (resetToRedResult.missing) {
-      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${describeFailure(resetToRedResult, "reset-to-red")})` };
+    const resetToRed = worktreeResetToFromSteps(resetToRedResult, redCommitInfo.commitSha);
+    if (!resetToRed.ok) {
+      return { task_id: taskId, status: "failed", stage: "UNKNOWN", error: `lane_intake_failed: could not reset worktree to RED commit ${redCommitInfo.commitSha} (${resetToRed.error})` };
     }
     redAlreadyCommitted = true;
     greenAlreadyCommitted = false;

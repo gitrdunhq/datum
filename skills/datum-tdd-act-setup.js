@@ -171,7 +171,7 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?)\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
 function describeFailure(r, label) {
   if (r.missing) {
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
