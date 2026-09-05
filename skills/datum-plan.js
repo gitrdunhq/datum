@@ -426,7 +426,9 @@ function contextRelayPlan(probe, files, budget = CONTEXT_RELAY_BUDGET_BYTES) {
   return plan;
 }
 function contextInlineSteps(inlineFiles) {
-  const steps = [];
+  const steps = [
+    { name: "branch", command: `__eb=$(git rev-parse --abbrev-ref HEAD) && printf '%s' "$__eb"`, tolerant: true }
+  ];
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
