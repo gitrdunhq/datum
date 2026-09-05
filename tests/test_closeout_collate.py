@@ -123,6 +123,53 @@ def test_collate_fails_loudly_on_missing_required_collectors(repo):
     assert not out_path.exists(), "must not write a malformed artifact"
 
 
+def test_collate_fails_open_on_a_missing_tasks_collector_and_names_it(repo):
+    """caliper BUG S: a missing OPTIONAL collector output (tasks) was a hard
+    schema failure, so git.json + token_metrics.json — both fine — never
+    reached synthesis. tasks becomes null with a named collector warning
+    the synthesis agent can read; git stays required."""
+    run_id = "run-003"
+    raw_dir = _write_collector_outputs(repo, run_id)
+    (raw_dir / "tasks.json").unlink()
+    merge_sha = _merge_sha(repo)
+
+    result = _run_collate(repo, run_id, merge_sha)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    out_path = repo / ".datum" / "runs" / run_id / "closeout-data.json"
+    data = json.loads(out_path.read_text())
+    assert data["tasks"] is None
+    assert data["collector_warnings"] == [
+        "tasks: no closeout-raw/tasks.json — collector did not run or failed"
+    ]
+    from datum.models.closeout_data_schema import CloseoutData
+
+    CloseoutData(**data)
+
+
+def test_collate_lifts_lanes_out_of_tasks(repo):
+    run_id = "run-004"
+    raw_dir = _write_collector_outputs(repo, run_id)
+    (raw_dir / "tasks.json").write_text(
+        json.dumps(
+            {
+                "total": 1,
+                "completed": 1,
+                "failed_terminal": 0,
+                "say_do_ratio": 1.0,
+                "lanes": [{"task_id": "task-001", "final_status": "completed"}],
+            }
+        )
+    )
+    result = _run_collate(repo, run_id, _merge_sha(repo))
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
+    assert data["lanes"] == [{"task_id": "task-001", "final_status": "completed"}]
+    assert "lanes" not in data["tasks"]
+
+
 def test_collate_resolves_the_epic_number_from_the_branch_when_the_flag_is_absent(repo):
     """The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps)
     never passed --epic-number, so argparse exited 2 with a usage message and
@@ -133,12 +180,24 @@ def test_collate_resolves_the_epic_number_from_the_branch_when_the_flag_is_absen
     run_id = "r-nb"
     _write_collector_outputs(repo, run_id)
     res = subprocess.run(
-        [sys.executable, "-m", "datum.closeout.collate", "--run-id", run_id, "--merge-sha", _merge_sha(repo)],
-        cwd=repo, capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "datum.closeout.collate",
+            "--run-id",
+            run_id,
+            "--merge-sha",
+            _merge_sha(repo),
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
     assert res.returncode == 0, res.stderr + res.stdout
     assert json.loads(res.stdout)["ok"] is True
-    data = json.loads((repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text())
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
     assert data["epic_number"] == 23
 
 
@@ -149,9 +208,21 @@ def test_collate_without_a_parseable_branch_uses_the_unknown_sentinel(repo):
     run_id = "r-nb2"
     _write_collector_outputs(repo, run_id)
     res = subprocess.run(
-        [sys.executable, "-m", "datum.closeout.collate", "--run-id", run_id, "--merge-sha", _merge_sha(repo)],
-        cwd=repo, capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "datum.closeout.collate",
+            "--run-id",
+            run_id,
+            "--merge-sha",
+            _merge_sha(repo),
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
     assert res.returncode == 0, res.stderr + res.stdout
-    data = json.loads((repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text())
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
     assert data["epic_number"] == UNKNOWN_EPIC_NUMBER

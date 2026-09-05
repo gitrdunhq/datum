@@ -52,7 +52,11 @@ def repo(tmp_path, monkeypatch):
 
 
 def test_collect_tasks_forwards_args_and_writes_its_raw_file(repo):
-    Path(".datum/state.json").write_text('{"phases": {}, "lanes": {}}\n')
+    # The collector reads the lane plan and lane-state markers (BUG S), not
+    # the retired state.json.
+    Path(".datum/lane-plan.json").write_text(
+        '{"lanes": {"task-001": {}}, "topological_order": ["task-001"], "total_lanes": 1}\n'
+    )
     result = CliRunner().invoke(app, ["closeout-collect-tasks", "--run-id", "r1"])
     assert result.exit_code == 0, result.output
     out = Path(".datum/runs/r1/closeout-raw/tasks.json")

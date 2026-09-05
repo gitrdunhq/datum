@@ -235,26 +235,48 @@ class TestCollectGit:
         assert output.get("skipped") is True
 
 
+def _write_lane_plan(repo_dir: Path, branch: str, lane_ids: list[str]) -> None:
+    plan_dir = repo_dir / "docs" / "epics" / branch
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / "lane-plan.json").write_text(
+        json.dumps(
+            {
+                "lanes": {lid: {"task_id": lid, "files": []} for lid in lane_ids},
+                "topological_order": lane_ids,
+                "total_lanes": len(lane_ids),
+            }
+        )
+    )
+
+
+def _write_epic_marker(repo_dir: Path, slug: str, task: str, status: str) -> None:
+    d = repo_dir / ".datum" / "epics" / slug / "lane-state"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{task}.json").write_text(json.dumps({"task_id": task, "status": status}))
+
+
 class TestCollectTasks:
-    """Test collect_tasks.py collector."""
+    """caliper BUG S (eedom wf_8240c0f1-6e1): collect_tasks read a
+    `.datum/runs/<run>/state.json` with a `lanes` map that nothing in the
+    current Act writes — a collector whose producer was retired — so every
+    closeout died at collate. The producers that exist: the lane plan
+    (total) and the lane-state markers (epic-scoped under
+    .datum/epics/<slug>/lane-state/, per-run under .datum/runs/*/lane-state/),
+    which is also what survives an Act spread over many run ids."""
 
-    def test_basic_collection_with_state(self, env_with_repo):
-        """collect_tasks reads state.json and produces metrics."""
+    def test_collects_from_the_lane_plan_and_lane_state_markers(self, env_with_repo):
         repo = env_with_repo
-
-        # Create a minimal state.json
-        state = {
-            "run_id": repo["run_id"],
-            "lanes": {
-                "task-001": {"stage": "completed", "stages": {"RED": {"retries": 1}}},
-                "task-002": {"stage": "completed", "stages": {"GREEN": {"retries": 0}}},
-            },
-            "brief_defects": [],
-            "lane_tools_added": [],
-        }
-        state_file = repo["runs_dir"] / "state.json"
-        state_file.parent.mkdir(parents=True, exist_ok=True)
-        state_file.write_text(json.dumps(state, indent=2))
+        _write_lane_plan(
+            repo["repo_dir"], "datum/epic-123", ["task-001", "task-002", "task-003"]
+        )
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-001", "completed")
+        # A lane merged by an EARLIER run: only its per-run marker exists.
+        older = repo["repo_dir"] / ".datum" / "runs" / "run-000" / "lane-state"
+        older.mkdir(parents=True)
+        (older / "task-002.json").write_text(
+            json.dumps({"task_id": "task-002", "status": "completed"})
+        )
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-003", "failed")
 
         result = subprocess.run(
             [
@@ -269,23 +291,27 @@ class TestCollectTasks:
             text=True,
         )
 
-        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert (
+            result.returncode == 0
+        ), f"stdout: {result.stdout} stderr: {result.stderr}"
         output = json.loads(result.stdout)
         assert output.get("ok") is True
-
-        # Verify the written file
-        tasks_file = repo["runs_dir"] / "closeout-raw" / "tasks.json"
-        assert tasks_file.exists()
-
-        data = json.loads(tasks_file.read_text())
-        assert data["total"] == 2
+        data = json.loads(
+            (repo["runs_dir"] / "closeout-raw" / "tasks.json").read_text()
+        )
+        assert data["total"] == 3
         assert data["completed"] == 2
-        assert data["say_do_ratio"] == 1.0
-        assert "per_stage_retries" in data
-        assert data["per_stage_retries"]["RED"] == 1
+        assert data["failed_terminal"] == 1
+        assert data["say_do_ratio"] == 0.667
+        assert data["per_stage_retries"] is None
+        assert data["lanes"] == [
+            {"task_id": "task-001", "final_status": "completed"},
+            {"task_id": "task-002", "final_status": "completed"},
+            {"task_id": "task-003", "final_status": "failed"},
+        ]
+        assert data["source"] == "lane-plan.json + lane-state markers"
 
-    def test_missing_state_fails_gracefully(self, env_with_repo):
-        """collect_tasks fails with clear error when state.json is missing."""
+    def test_no_lane_plan_and_no_markers_is_a_named_failure(self, env_with_repo):
         repo = env_with_repo
 
         result = subprocess.run(
@@ -301,9 +327,10 @@ class TestCollectTasks:
             text=True,
         )
 
-        assert result.returncode != 0, "Should fail when state.json is missing"
+        assert result.returncode != 0
         output = json.loads(result.stdout)
-        assert "error" in output
+        assert "lane-plan.json" in output["error"] and "lane-state" in output["error"]
+        assert "state.json" not in output["error"]
 
     def test_skip_on_marker(self, env_with_repo):
         """collect_tasks skips if .collect-tasks.done marker exists."""
@@ -735,16 +762,8 @@ class TestEdgeCases:
         """collect_tasks handles zero lanes gracefully (division by zero check)."""
         repo = env_with_repo
 
-        # Create state with zero lanes
-        state = {
-            "run_id": repo["run_id"],
-            "lanes": {},  # Empty lanes
-            "brief_defects": [],
-            "lane_tools_added": [],
-        }
-        state_file = repo["runs_dir"] / "state.json"
-        state_file.parent.mkdir(parents=True, exist_ok=True)
-        state_file.write_text(json.dumps(state, indent=2))
+        # A lane plan with zero lanes and no markers.
+        _write_lane_plan(repo["repo_dir"], "datum/epic-123", [])
 
         result = subprocess.run(
             [

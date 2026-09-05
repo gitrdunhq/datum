@@ -89,7 +89,10 @@ class CloseoutData(BaseModel):
     merge_sha: str
     merge_timestamp: AwareDatetime
     git: Git
-    tasks: Tasks
+    # Optional: a missing tasks collector is named in collector_warnings
+    # rather than sinking the collectors that did run (caliper BUG S).
+    tasks: Tasks | None = None
+    collector_warnings: list[str] | None = None
     lanes: list[Lane] | None = None
     platform: Platform | None = None
     lane_tools: list[LaneTool] | None = None

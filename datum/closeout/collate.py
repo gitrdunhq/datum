@@ -75,19 +75,35 @@ def main() -> None:
         "merge_timestamp": merge_timestamp.isoformat() if merge_timestamp else None,
     }
 
+    # A missing OPTIONAL collector output is a named warning the synthesis
+    # agent reads, never a schema failure that hides the collectors that did
+    # run (caliper BUG S: git.json and token_metrics.json were fine). git
+    # stays required — the schema says so.
+    warnings: list[str] = []
     for collector in COLLECTORS:
         collector_file = raw_dir / f"{collector}.json"
         if collector_file.exists():
             data[collector] = json.loads(collector_file.read_text())
         else:
             data[collector] = None
+            if collector in ("tasks", "token_metrics"):
+                warnings.append(
+                    f"{collector}: no closeout-raw/{collector}.json — collector did not run or failed"
+                )
+    data["collector_warnings"] = warnings
 
     # Flatten well-known keys
     if data.get("git"):
         data["git"] = data["git"]
     if data.get("tasks"):
         task_data = data["tasks"]
-        data["tasks"] = {k: v for k, v in task_data.items() if k != "brief_defects"}
+        data["tasks"] = {
+            k: v
+            for k, v in task_data.items()
+            if k not in ("brief_defects", "lane_tools_added", "lanes", "source")
+        }
+        if isinstance(task_data.get("lanes"), list):
+            data["lanes"] = task_data["lanes"]
         if "brief_defects" not in data or not data["brief_defects"]:
             data["brief_defects"] = task_data.get("brief_defects", [])
         if "lane_tools_added" not in data or not data["lane_tools_added"]:

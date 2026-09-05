@@ -1137,6 +1137,34 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
     }
   })
 
+  // Same class as the main-sync hard-code (be0cd7fc): a repo with no origin
+  // or a master default has no origin/main, so collect-git had no base.
+  it('resolves the base branch (origin/HEAD, origin/main|master, local main|master) instead of hard-coding origin/main', () => {
+    const base = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+    expect(base.command).not.toContain('merge-base HEAD origin/main')
+    expect(base.command).toContain('git symbolic-ref --short refs/remotes/origin/HEAD')
+    expect(base.command).toContain('refs/remotes/origin/$b')
+    expect(base.command).toContain('refs/heads/$b')
+    expect(base.command).toContain('__base=$(git merge-base HEAD "$BASE")')
+  })
+
+  it('under real git with no remote and a master default, base-sha resolves to the merge-base with master', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-closeout-base-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'master'], { cwd: dir })
+      execFileSync('git', ['config', 'core.hooksPath', '/dev/null'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir })
+      const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()
+      execFileSync('git', ['checkout', '-q', '-b', 'datum/e'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'work'], { cwd: dir })
+      const step = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+      const out = execFileSync('bash', ['-c', batchScript([step])], { cwd: dir, encoding: 'utf8' })
+      expect(stepStdout(parseBatchResult(out, [step]), 'base-sha')?.trim()).toBe(baseSha)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('uses the given runId verbatim instead of generating a fresh timestamp', () => {
     const steps = closeoutCollectSteps({ runId: 'r1' })
     const ts = steps.find((s) => s.name === 'timestamp')!
