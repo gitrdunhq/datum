@@ -71,6 +71,35 @@ export const READ_CONFIG_PROMPT = `Read TWO config files and merge them (global 
 Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
 Return the merged JSON. Output raw JSON only.`
 
+/**
+ * Deterministic replacement for the LLM "read two configs and merge them by
+ * hand" relay described by READ_CONFIG_PROMPT above (datum-plan.ts used to
+ * ask an agent to do this; a hand-merged config with one wrong field — e.g.
+ * test_command — silently poisons every downstream lane). Pure: callers get
+ * the two files' parsed JSON via a deterministic batch step (cat + parse),
+ * not an LLM relay, then call this to merge.
+ *
+ * Semantics mirror READ_CONFIG_PROMPT: start with global, overlay repo on
+ * top (repo wins on top-level conflicts); for nested "models", merge keys
+ * (repo overrides individual tiers) instead of replacing the whole object.
+ */
+export function mergeConfig(
+  globalCfg: Record<string, unknown> | null | undefined,
+  repoCfg: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const g = globalCfg && typeof globalCfg === 'object' ? globalCfg : {}
+  const r = repoCfg && typeof repoCfg === 'object' ? repoCfg : {}
+  const merged: Record<string, unknown> = { ...g, ...r }
+
+  const gModels: Record<string, unknown> = g.models && typeof g.models === 'object' ? (g.models as Record<string, unknown>) : {}
+  const rModels: Record<string, unknown> = r.models && typeof r.models === 'object' ? (r.models as Record<string, unknown>) : {}
+  if (g.models || r.models) {
+    merged.models = { ...gModels, ...rModels }
+  }
+
+  return merged
+}
+
 export function skillPath(skillsDir: string, name: string): string {
   if (skillsDir) return `${skillsDir}/${name}.js`
   return `skills/${name}.js`

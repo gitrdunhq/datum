@@ -247,3 +247,65 @@ describe('#352 — plan gate ordering', () => {
     expect(earlyGateBlock).toMatch(/throw new Error\(/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Determinism fix — datum-plan.ts must no longer relay config/context files
+// through an LLM "read this file back to me" agent call. A 90KB relay came
+// back abridged in eedom dogfooding, and nothing verified the relay. Config
+// merge is now a deterministic batch (cat + parse) + mergeConfig(); context
+// files are read via one batch with a byte-count check per file, failing
+// loud on mismatch instead of silently planning on an abridged file.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — config read is a deterministic batch, not an LLM relay', () => {
+  it('no longer calls agent(READ_CONFIG_PROMPT ...)', () => {
+    expect(datumPlanSrc).not.toMatch(/agent\(\s*READ_CONFIG_PROMPT/)
+  })
+
+  it('imports mergeConfig from shared/models and batch helpers from shared/batch', () => {
+    expect(datumPlanSrc).toMatch(/import\s*\{[^}]*mergeConfig[^}]*\}\s*from\s*'\.\/shared\/models'/)
+    expect(datumPlanSrc).toMatch(/import\s*\{[^}]*\}\s*from\s*'\.\/shared\/batch'/)
+    expect(datumPlanSrc).toMatch(/batchCommandPrompt/)
+    expect(datumPlanSrc).toMatch(/parseBatchResult/)
+    expect(datumPlanSrc).toMatch(/stepStdout/)
+  })
+
+  it('reads repo config and global config as two named batch steps', () => {
+    expect(datumPlanSrc).toMatch(/['"`]repo-config['"`]/)
+    expect(datumPlanSrc).toMatch(/['"`]global-config['"`]/)
+    expect(datumPlanSrc).toMatch(/cat \.datum\/config\.json/)
+  })
+
+  it('fails loud with the promised message when repo config is missing', () => {
+    expect(datumPlanSrc).toMatch(/missing \.datum\/config\.json — run datum init first/)
+  })
+
+  it('calls mergeConfig with parsed global/repo config before deriving language/test_framework', () => {
+    const mergeIdx = datumPlanSrc.indexOf('mergeConfig(')
+    const languageIdx = datumPlanSrc.indexOf("repoCfg.language")
+    expect(mergeIdx).toBeGreaterThan(-1)
+    expect(languageIdx).toBeGreaterThan(-1)
+    expect(mergeIdx).toBeLessThan(languageIdx)
+  })
+})
+
+describe('determinism fix — context_files relay is one verified batch, not a per-file LLM echo', () => {
+  it('no longer issues a per-file "Read the file at path" agent prompt in a loop', () => {
+    expect(datumPlanSrc).not.toMatch(/Read the file at path/)
+    expect(datumPlanSrc).not.toMatch(/read-context-file:\$\{relPath\}/)
+  })
+
+  it('uses a wc -c byte-count step alongside the cat step for each context file', () => {
+    expect(datumPlanSrc).toMatch(/wc -c/)
+  })
+
+  it('verifies declared vs actual byte length using Buffer.byteLength and fails loud on mismatch', () => {
+    expect(datumPlanSrc).toMatch(/Buffer\.byteLength\(/)
+    expect(datumPlanSrc).toMatch(/context_relay_mismatch/)
+  })
+
+  it('caps relay at 64KB and skips (with a size warning) oversized context files instead of relaying an abridged copy', () => {
+    expect(datumPlanSrc).toMatch(/64\s*\*\s*1024|65536/)
+    expect(datumPlanSrc).toMatch(/exceeds relay limit/)
+  })
+})

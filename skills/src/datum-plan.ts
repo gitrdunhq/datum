@@ -1,7 +1,8 @@
 import { renderPrompt, parseAgentJson, assertAcyclicTasks, buildContextFilesSection } from './shared/utils'
-import { model, READ_CONFIG_PROMPT, DEFAULT_CONFIG } from './shared/models'
+import { model, DEFAULT_CONFIG, mergeConfig } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
+import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -52,24 +53,87 @@ log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 
 const priorFailures: string = [ctx.prior_defects || '', ctx.error_history || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
-const cfgText = await agent(READ_CONFIG_PROMPT, stageOpts('reader', { label: 'read-config', model: model('fast') }))
-const repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) as Record<string, unknown> : { ...DEFAULT_CONFIG }
+// Deterministic config read: two `cat` steps in one datum-cli batch, parsed
+// and merged in TS — replaces the old LLM "read two JSON files and merge
+// them by hand" relay (nothing verified that relay; a wrong merged field,
+// e.g. test_command, silently poisoned every downstream lane).
+const configSteps: BatchStep[] = [
+  { name: 'repo-config', command: 'cat .datum/config.json' },
+  { name: 'global-config', command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true },
+]
+const configBatchRaw = await agent(batchCommandPrompt(configSteps), stageOpts('cli', { label: 'read-config', model: model('fast') }))
+const configBatch = parseBatchResult(configBatchRaw, configSteps)
+if (configBatch.missing || configBatch.failed) {
+  throw new Error('missing .datum/config.json — run datum init first')
+}
+let repoCfgParsed: Record<string, unknown>
+try {
+  repoCfgParsed = JSON.parse(stepStdout(configBatch, 'repo-config') || '')
+} catch {
+  throw new Error('missing .datum/config.json — run datum init first')
+}
+let globalCfgParsed: Record<string, unknown> = {}
+try {
+  globalCfgParsed = JSON.parse(stepStdout(configBatch, 'global-config') || '{}')
+} catch {
+  globalCfgParsed = {}
+}
+const repoCfg = { ...DEFAULT_CONFIG, ...mergeConfig(globalCfgParsed, repoCfgParsed) } as Record<string, unknown>
 // #368: args (from datum-go) win, else the repo config, else the defaults.
 configureAgentTypes(a.agentTypes && typeof a.agentTypes === 'object' ? a.agentTypes : readAgentTypeConfig(repoCfg))
 const language = (repoCfg.language as string) || DEFAULT_CONFIG.language
 const testFramework = (repoCfg.test_framework as string) || DEFAULT_CONFIG.test_framework
 
+// Deterministic context_files relay: one batch (cat + wc -c per file)
+// instead of an LLM "read this file back to me" per-file loop — an LLM
+// echoing a file is lossy (a 90KB relay came back as 6.7KB of "successful"
+// abridged content in dogfooding). Every relayed file's actual byte count
+// is checked against `wc -c`'s declared count; a mismatch fails loud rather
+// than silently planning on an abridged file. Files over the relay cap are
+// not relayed at all — logged as skipped for size instead.
+const CONTEXT_RELAY_LIMIT_BYTES = 64 * 1024
 const contextFilesList: string[] = (repoCfg.context_files as string[] | undefined) || []
 const contextFileContents: Record<string, string | null> = {}
-for (const relPath of contextFilesList) {
-  const raw = await agent(
-    `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
-    stageOpts('reader', { label: `read-context-file:${relPath}`, model: model('fast') }),
-  )
-  const content = typeof raw === 'string' ? raw : JSON.stringify(raw)
-  contextFileContents[relPath] = content.trim() === 'NOT_FOUND' ? null : content
-}
 const contextFilesWarnings: string[] = []
+if (contextFilesList.length > 0) {
+  const NOT_FOUND_MARKER = '__DATUM_CTXFILE_NOT_FOUND__'
+  const fileSteps: BatchStep[] = []
+  contextFilesList.forEach((relPath, i) => {
+    fileSteps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f "${relPath}" ]; then cat "${relPath}"; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      tolerant: true,
+    })
+    fileSteps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f "${relPath}" ]; then wc -c < "${relPath}" | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true,
+    })
+  })
+  const filesBatchRaw = await agent(batchCommandPrompt(fileSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') }))
+  const filesBatch = parseBatchResult(filesBatchRaw, fileSteps)
+  if (filesBatch.missing) {
+    throw new Error('context_relay_mismatch: batch agent returned no parseable result for context_files')
+  }
+  contextFilesList.forEach((relPath, i) => {
+    const raw = stepStdout(filesBatch, `ctx-cat-${i}`)
+    const declaredRaw = stepStdout(filesBatch, `ctx-wc-${i}`)
+    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN
+    if (raw === null || raw === NOT_FOUND_MARKER || declaredBytes === -1) {
+      contextFileContents[relPath] = null
+      return
+    }
+    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_RELAY_LIMIT_BYTES) {
+      contextFilesWarnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_RELAY_LIMIT_BYTES} bytes)`)
+      return
+    }
+    const actualBytes = Buffer.byteLength(raw, 'utf8')
+    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`)
+    }
+    contextFileContents[relPath] = raw
+  })
+}
 const contextFilesSection: string = buildContextFilesSection(
   contextFileContents,
   (msg: string) => contextFilesWarnings.push(msg),

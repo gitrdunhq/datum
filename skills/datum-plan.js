@@ -146,11 +146,17 @@ var DEFAULT_CONFIG = {
   /** #368: written by `datum init` once the datum-* PreToolUse hooks are materialised. */
   hooks_installed: false
 };
-var READ_CONFIG_PROMPT = `Read TWO config files and merge them (global defaults, repo overrides):
-1. Global: ~/.datum/config.json (may not exist \u2014 skip if missing)
-2. Repo: .datum/config.json (required \u2014 if missing, return {"error": "missing .datum/config.json \u2014 run datum init first"})
-Merge: start with global, overlay repo on top (repo wins on conflict). For nested objects like "models", merge keys (repo overrides individual tiers).
-Return the merged JSON. Output raw JSON only.`;
+function mergeConfig(globalCfg, repoCfg2) {
+  const g = globalCfg && typeof globalCfg === "object" ? globalCfg : {};
+  const r = repoCfg2 && typeof repoCfg2 === "object" ? repoCfg2 : {};
+  const merged = { ...g, ...r };
+  const gModels = g.models && typeof g.models === "object" ? g.models : {};
+  const rModels = r.models && typeof r.models === "object" ? r.models : {};
+  if (g.models || r.models) {
+    merged.models = { ...gModels, ...rModels };
+  }
+  return merged;
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -202,6 +208,67 @@ Output raw JSON only.`,
   };
 }
 
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+
 // skills/src/prompts/plan-approaches.md
 var plan_approaches_default = 'Architect. Read the SPEC and propose 2-3 implementation approaches.\n\nSPEC content:\n{{specContent}}\n\nCodebase context (CURRENT_STATE.md):\n{{currentState}}\n\nFor each approach:\n- One-sentence strategy description\n- Key tradeoffs (speed vs safety, complexity vs flexibility)\n- Which existing modules/files it touches most\n- Estimated task count and blast radius (low/medium/high)\n\nReturn JSON:\n{\n  "approaches": [\n    {\n      "name": "approach name",\n      "description": "one sentence",\n      "tradeoffs": "what you gain / give up",\n      "modules_touched": ["src/module/file1", "src/module/file2"],\n      "estimated_tasks": 3,\n      "blast_radius": "low|medium|high"\n    }\n  ],\n  "recommended": 0,\n  "recommendation_reason": "why this approach is simplest/safest"\n}\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -250,22 +317,74 @@ var specContent = ctx.spec_content || "";
 if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`);
 log(`Branch: ${ctx.branch}, SPEC: ${specContent.split("\n").length} lines`);
 var priorFailures = [ctx.prior_defects || "", ctx.error_history || ""].filter(Boolean).join("\n") || "(no prior failure data)";
-var cfgText = await agent(READ_CONFIG_PROMPT, stageOpts("reader", { label: "read-config", model: model("fast") }));
-var repoCfg = cfgText ? parseAgentJson(cfgText, { ...DEFAULT_CONFIG }) : { ...DEFAULT_CONFIG };
+var configSteps = [
+  { name: "repo-config", command: "cat .datum/config.json" },
+  { name: "global-config", command: "cat ~/.datum/config.json 2>/dev/null || echo '{}'", tolerant: true }
+];
+var configBatchRaw = await agent(batchCommandPrompt(configSteps), stageOpts("cli", { label: "read-config", model: model("fast") }));
+var configBatch = parseBatchResult(configBatchRaw, configSteps);
+if (configBatch.missing || configBatch.failed) {
+  throw new Error("missing .datum/config.json \u2014 run datum init first");
+}
+var repoCfgParsed;
+try {
+  repoCfgParsed = JSON.parse(stepStdout(configBatch, "repo-config") || "");
+} catch {
+  throw new Error("missing .datum/config.json \u2014 run datum init first");
+}
+var globalCfgParsed = {};
+try {
+  globalCfgParsed = JSON.parse(stepStdout(configBatch, "global-config") || "{}");
+} catch {
+  globalCfgParsed = {};
+}
+var repoCfg = { ...DEFAULT_CONFIG, ...mergeConfig(globalCfgParsed, repoCfgParsed) };
 configureAgentTypes(a.agentTypes && typeof a.agentTypes === "object" ? a.agentTypes : readAgentTypeConfig(repoCfg));
 var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
+var CONTEXT_RELAY_LIMIT_BYTES = 64 * 1024;
 var contextFilesList = repoCfg.context_files || [];
 var contextFileContents = {};
-for (const relPath of contextFilesList) {
-  const raw = await agent(
-    `Read the file at path "${relPath}" relative to the project root and return its exact raw contents as plain text, with no commentary, no code fences, and no other text. If the file does not exist, return exactly the string NOT_FOUND with no other text.`,
-    stageOpts("reader", { label: `read-context-file:${relPath}`, model: model("fast") })
-  );
-  const content = typeof raw === "string" ? raw : JSON.stringify(raw);
-  contextFileContents[relPath] = content.trim() === "NOT_FOUND" ? null : content;
-}
 var contextFilesWarnings = [];
+if (contextFilesList.length > 0) {
+  const NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
+  const fileSteps = [];
+  contextFilesList.forEach((relPath, i) => {
+    fileSteps.push({
+      name: `ctx-cat-${i}`,
+      command: `if [ -f "${relPath}" ]; then cat "${relPath}"; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      tolerant: true
+    });
+    fileSteps.push({
+      name: `ctx-wc-${i}`,
+      command: `if [ -f "${relPath}" ]; then wc -c < "${relPath}" | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+  });
+  const filesBatchRaw = await agent(batchCommandPrompt(fileSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") }));
+  const filesBatch = parseBatchResult(filesBatchRaw, fileSteps);
+  if (filesBatch.missing) {
+    throw new Error("context_relay_mismatch: batch agent returned no parseable result for context_files");
+  }
+  contextFilesList.forEach((relPath, i) => {
+    const raw = stepStdout(filesBatch, `ctx-cat-${i}`);
+    const declaredRaw = stepStdout(filesBatch, `ctx-wc-${i}`);
+    const declaredBytes = declaredRaw !== null ? parseInt(declaredRaw.trim(), 10) : NaN;
+    if (raw === null || raw === NOT_FOUND_MARKER || declaredBytes === -1) {
+      contextFileContents[relPath] = null;
+      return;
+    }
+    if (Number.isFinite(declaredBytes) && declaredBytes > CONTEXT_RELAY_LIMIT_BYTES) {
+      contextFilesWarnings.push(`context file ${relPath} omitted: ${declaredBytes} bytes exceeds relay limit (${CONTEXT_RELAY_LIMIT_BYTES} bytes)`);
+      return;
+    }
+    const actualBytes = Buffer.byteLength(raw, "utf8");
+    if (Number.isFinite(declaredBytes) && actualBytes !== declaredBytes) {
+      throw new Error(`context_relay_mismatch: ${relPath} expected ${declaredBytes} bytes, got ${actualBytes} bytes`);
+    }
+    contextFileContents[relPath] = raw;
+  });
+}
 var contextFilesSection = buildContextFilesSection(
   contextFileContents,
   (msg) => contextFilesWarnings.push(msg)
