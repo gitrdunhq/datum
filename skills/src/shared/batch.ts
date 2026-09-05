@@ -147,7 +147,7 @@ export function stepStdout(r: BatchResult, name: string): string | null {
 
 /** One-line summary of a failed step for log/error messages. */
 /** A runner reply that reads as a host permission refusal (elonchesd wf_2bf3cc14-899). */
-const REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?)\b/i
+const REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i
 
 export function describeFailure(r: BatchResult, label: string): string {
   if (r.missing) {

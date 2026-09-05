@@ -172,6 +172,12 @@ describe('parseBatchResult', () => {
     expect(d.length).toBeLessThan(500)
   })
 
+  it('"I cannot run / unable to execute" phrasings are refusals too', () => {
+    for (const reply of ['I cannot run destructive git commands in this worktree.', "I'm unable to execute this script."]) {
+      expect(describeFailure(parseBatchResult(reply, steps), 'x')).toMatch(/^x: runner_permission_denied/)
+    }
+  })
+
   it('other prose replies are runner_no_json, quoting the reply; null stays "no parseable result"', () => {
     const r = parseBatchResult('Here is a summary of what I did: everything went fine.', steps)
     expect(r.missing).toBe(true)
