@@ -280,15 +280,36 @@ The rules underneath: **Act is not marked complete on halt**, so a resume always
 
 ## 5. Gaps vs the ideal
 
-Concrete divergences in the current code. Each names the principle it violates.
+Concrete divergences in the current code, each naming the principle it violates. Items are kept once closed so the reasoning survives; the commit that closed each is named.
 
-1. **Skeptic verdicts are advisory** — `skills/src/datum-tdd-act-lane.ts:921-925` logs `brokenCount >= 2` and proceeds to REFACTOR anyway. Three adversarial agents run, produce `SkepticResult`, and nothing consumes the verdict. Violates (1) and (2).
-2. **Review's `canMerge` is LLM-judged** — `skills/src/datum-review.ts:105` computes `canMerge: critical.length === 0` from severities the domain agents assigned themselves. `datum gate review` is never invoked from any workflow script. Violates (2).
-3. **`gate_validate` has a consumer with no producer** — `datum/gate.py:925-930` reads `.datum/last-test-signal.json`, and when the file is absent skips the check and passes. Nothing in `skills/src/` or `datum/` writes that file. Violates (1) and (3).
-4. **`gate_review` is unreachable and would fail if reached** — `datum/gate.py:949` reads `Path("REVIEW-REPORT.md")` at the repo root while `datum-review.ts:94` writes `docs/epics/<branch>/REVIEW-REPORT.md`, and it requires `review-packets/unified.json` (`gate.py:957`) which no producer in `skills/src/` ever writes. Violates (1).
-5. **Properties has no halt** — `datum-properties.ts:76` returns `gatePassed`, and `datum-go.ts:318-323` never reads it: the phase is marked complete unconditionally. Violates (1) and (4).
-6. **Closeout still swallows tag and archive failures** — `datum-closeout.ts:83-84` embeds `2>/dev/null || true` for `git tag` and `datum closeout-archive` in the synthesis prompt, surviving the collect-batch de-silencing in 62e0e81. Violates (3).
-7. **`context_files` are relayed unbounded** — `datum-plan.ts:64-71` spawns one reader agent per configured file to echo its exact contents back, with no size bound and no truncation-detection. Violates (5).
-8. **Phase gate verdicts arrive through an LLM relay** — Refine/Plan/Properties/Validate all run `datum gate <phase>` via `util-run-gate.md` and parse the agent's echoed JSON (`parseAgentJson(..., { passed: false })`) rather than reading the CLI's exit code from a batch step, the way Validate's test re-run now does. Violates (2).
-9. **Ownership checks fail open** — `shared/lane-steps.ts:183`: `ownershipFromStdout` returns `{ ok: true }` when the step produced no output, deliberately mirroring the legacy null-agent behaviour. A step that never ran is indistinguishable from a clean diff. Violates (3).
-10. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion (`datum-tdd-act-lane.ts:734`), the refactor pre-check decides whether REFACTOR runs at all (`:950-958`), and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts:34`). Each is defensible as a *proposal*; none is re-verified. Violates (2).
+### Open
+
+1. **Three remaining LLM-judged gates** — reflect `score < 4` fails a lane on a model's opinion, the refactor pre-check decides whether REFACTOR runs at all, and docs sync is gated on `should_refactor` (`datum-tdd-act-docs.ts`). Each is defensible as a *proposal*; none is re-verified. Violates (2). Accepted for now: the outcomes they gate (GREEN, REFACTOR, docs commit) are each independently verified afterwards.
+2. **Two remaining LLM relays** — Validate's main-sync (`mainSyncPrompt`, an agent fetches/merges main and reports `behind`/`merged`) and the `READ_CONFIG_PROMPT` reader that datum-validate / datum-tdd-act use when launched standalone without parent args. Both are bounded and the results are consumed by name, but neither is byte- or exit-code-verified. Violates (2).
+3. **Dead producers with no consumer** (#394) — `datum gate red`, `datum verify-stage`, `commit_queue.py`, and the dedupe/render helpers have no call site in `skills/src/` or `datum/`. Violates (1). Decision pending: delete, or wire.
+
+### Closed
+
+- **Skeptic verdicts advisory** — closed in 3b5b480: BROKEN triggers one verified GREEN retry, then `skeptic_broken` fails the lane.
+- **Review's `canMerge` LLM-judged; `gate_review` unreachable** — closed in b5528aa: `datum gate review` resolves the report via `resolve_artifact`, drops the packets requirement, and datum-review/datum-go run `gateSteps('review')` and halt on it.
+- **`gate_validate` consumer with no producer** — closed in 5f8a485: the Validate verify batch writes `.datum/last-test-signal.json` from the same shell as the test run and the gate requires it.
+- **Properties has no halt** — closed in e4f2e2f: gate failures halt in yolo too, Properties included.
+- **Closeout swallows tag/archive failures** — closed in 2038047/5d2ea00: `closeoutArchiveSteps` (tag, archive, `git mv` per artifact, commit only staged) with per-step exit codes.
+- **`context_files` relayed unbounded** — closed in a7093d2 (64 KB cap, `wc -c` byte verification, `context_relay_mismatch`), extended to TICKET/SPEC/TASKS in 5ff0b36 and to datum-plan's own SPEC read in a4c50da; `util-read-context.md` is gone.
+- **Phase gate verdicts via LLM relay** — closed in a6929b0/8b1dd82/65839ab/e4f2e2f: `shared/gate.ts` reads the CLI exit code from a batch step; `util-run-gate.md` removed.
+- **Ownership checks fail open** — closed in 51adbf4/3b5b480: `ownership_check_failed` when the step produced nothing.
+- **Boot via LLM relay** — closed in a3e9dab: `bootSteps()`/`bootFromSteps()` read both configs, pipeline state, local skills, repo root and branch as one batch; corrupt state is `pipeline_state_corrupt`, not `null`.
+- **Triage re-guessed pipeline-known failures** — closed in 00c3892: `classifyLaneError` maps every named failure prefix to a category deterministically; dependency failures are never filed.
+- **Agent-type switch read after first use** — closed in 8a23f0b: `stageOpts` throws `agent_types_unconfigured` before `configureAgentTypes`; `bootstrapOpts` is the explicit pre-config read; a static test checks the order in every script.
+- **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
+
+## 6. Runtime contract for bundled scripts
+
+`skills/*.js` run inside the Workflow tool's Node `vm` context, not in Node proper. From the authoring reference, and confirmed by dogfooding failures:
+
+- No filesystem or Node API: no `Buffer`, `TextEncoder`, `process`, `require`. Pure helpers in `skills/src/shared/` only.
+- `Date.now()`, `Math.random()` and argless `new Date()` throw (they would break resume). Timestamps come from a `datum-cli` step (`date`); randomness is spread by index.
+- `args` arrives verbatim; a stringified object is a string. Every script parses `args` first and calls `configureAgentTypes` before its first `agent()`.
+- `agent()` returns `null` when skipped or terminally failed; every consumer treats `null` as a named failure, never as "ok".
+
+`skills/src/shared/utf8.test.ts` and `agent-types-ordering.test.ts` enforce the first three statically.
