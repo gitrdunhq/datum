@@ -90,6 +90,10 @@ log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? ''
 phase('Derive')
 
 // Derive agent also writes and commits (collapsed commit-properties)
+// Not read-witness-gated (FLOW.md open gap 2): this agent's return value is
+// discarded — it writes PROPERTIES.md and commits directly rather than
+// returning parsed JSON — so there is no JSON field to carry a read_witness
+// for specContent/tasksContent in.
 await agent(
   renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent })
   + `\n\nAFTER WRITING THE PROPERTIES CONTENT:

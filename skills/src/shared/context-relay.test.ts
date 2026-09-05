@@ -27,6 +27,10 @@ import {
   contextInlineSteps,
   contextFromRelay,
   contextSlot,
+  contextWitnessInstruction,
+  verifyReadWitness,
+  assertReadWitness,
+  type ContextFile,
 } from './context-relay'
 
 const names = (steps: BatchStep[]) => steps.map((s) => s.name)
@@ -155,6 +159,104 @@ describe('contextSlot', () => {
 
   it('throws for a missing file — callers must check exists first', () => {
     expect(() => contextSlot({ path: 'X.md', exists: false, inlined: false, bytes: -1, sha: '', content: null })).toThrow(/X\.md/)
+  })
+})
+
+describe('contextWitnessInstruction', () => {
+  const inlined: ContextFile = { path: 'A.md', exists: true, inlined: true, bytes: 5, sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', content: 'hello' }
+  const deferred: ContextFile = { path: 'docs/epics/x/SPEC.md', exists: true, inlined: false, bytes: 31133, sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', content: null }
+  const missing: ContextFile = { path: 'X.md', exists: false, inlined: false, bytes: -1, sha: '', content: null }
+
+  it('is empty when every file is inlined — prompts stay byte-identical when nothing is deferred', () => {
+    expect(contextWitnessInstruction([inlined])).toBe('')
+  })
+
+  it('is empty when there are no files at all', () => {
+    expect(contextWitnessInstruction([])).toBe('')
+  })
+
+  it('ignores missing (non-existent) files — only deferred files need a witness', () => {
+    expect(contextWitnessInstruction([missing])).toBe('')
+  })
+
+  it('appends a read_witness instruction naming the path and the git hash-object command, for deferred files only', () => {
+    const instruction = contextWitnessInstruction([inlined, deferred])
+    expect(instruction).not.toBe('')
+    expect(instruction).toContain('read_witness')
+    expect(instruction).toContain(deferred.path)
+    expect(instruction).toContain(`git hash-object ${deferred.path}`)
+    expect(instruction).not.toContain(inlined.path)
+  })
+})
+
+describe('verifyReadWitness', () => {
+  const deferredA: ContextFile = { path: 'A.md', exists: true, inlined: false, bytes: 100, sha: 'abcdef123456789012345678901234567890abcd', content: null }
+  const deferredB: ContextFile = { path: 'B.md', exists: true, inlined: false, bytes: 200, sha: '1111111111222222222233333333334444444444', content: null }
+  const inlined: ContextFile = { path: 'C.md', exists: true, inlined: true, bytes: 5, sha: 'ffffffffffffffffffffffffffffffffffffffff', content: 'hello' }
+
+  it('is ok with no missing/mismatched when every deferred file has a matching read_witness prefix', () => {
+    const result = verifyReadWitness([deferredA, inlined], { read_witness: { 'A.md': 'abcdef123456' } })
+    expect(result).toEqual({ ok: true, missing: [], mismatched: [] })
+  })
+
+  it('does not require a witness entry for an inlined file', () => {
+    const result = verifyReadWitness([inlined], {})
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts any prefix of at least 12 hex chars, not just an exact-length match', () => {
+    const result = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef123456789012' } })
+    expect(result.ok).toBe(true)
+  })
+
+  it('flags a missing read_witness field on the parsed object', () => {
+    const result = verifyReadWitness([deferredA], {})
+    expect(result.ok).toBe(false)
+    expect(result.missing).toEqual(['A.md'])
+    expect(result.mismatched).toEqual([])
+  })
+
+  it('flags a missing entry for one deferred path while another is present', () => {
+    const result = verifyReadWitness([deferredA, deferredB], { read_witness: { 'A.md': 'abcdef123456' } })
+    expect(result.ok).toBe(false)
+    expect(result.missing).toEqual(['B.md'])
+  })
+
+  it('flags a wrong hash as mismatched, not missing', () => {
+    const result = verifyReadWitness([deferredA], { read_witness: { 'A.md': '000000000000' } })
+    expect(result.ok).toBe(false)
+    expect(result.missing).toEqual([])
+    expect(result.mismatched).toEqual(['A.md'])
+  })
+
+  it('treats a non-object parsed value as if no witness were provided', () => {
+    expect(verifyReadWitness([deferredA], null).ok).toBe(false)
+    expect(verifyReadWitness([deferredA], 'not json').ok).toBe(false)
+    expect(verifyReadWitness([deferredA], undefined).ok).toBe(false)
+    expect(verifyReadWitness([deferredA], []).ok).toBe(false)
+  })
+
+  it('treats a too-short witness value as missing, not a mismatch', () => {
+    const result = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abc' } })
+    expect(result.missing).toEqual(['A.md'])
+    expect(result.mismatched).toEqual([])
+  })
+})
+
+describe('assertReadWitness', () => {
+  const deferredA: ContextFile = { path: 'A.md', exists: true, inlined: false, bytes: 100, sha: 'abcdef123456789012345678901234567890abcd', content: null }
+
+  it('does not throw when the witness matches', () => {
+    expect(() => assertReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef123456' } })).not.toThrow()
+  })
+
+  it('throws a named context_read_unverified error naming the path and expected/got hash on mismatch', () => {
+    expect(() => assertReadWitness([deferredA], { read_witness: { 'A.md': '000000000000' } }))
+      .toThrow(/context_read_unverified: A\.md — agent did not evidence reading the deferred file \(expected blob abcdef123456789012345678901234567890abcd, got 000000000000\)/)
+  })
+
+  it('throws naming "missing" when the field is absent entirely', () => {
+    expect(() => assertReadWitness([deferredA], {})).toThrow(/context_read_unverified: A\.md .*got missing/)
   })
 })
 

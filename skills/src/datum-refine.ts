@@ -7,7 +7,7 @@ import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
 
@@ -145,8 +145,13 @@ ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), al
 }
 
 // Classify ambiguity
+// FLOW.md open gap 2: nothing verified that a deferred ticketContent (over
+// the relay budget) was actually read rather than skipped. contextWitnessInstruction
+// is '' when TICKET.md was inlined, so this is a no-op prompt change in the
+// common case; when deferred, it demands a git-hash-object witness in the
+// agent's JSON output, and assertReadWitness gates it below.
 const classifyRaw = await agent(
-  renderPrompt(refineClassifyTemplate, { ticketContent }),
+  renderPrompt(refineClassifyTemplate, { ticketContent }) + contextWitnessInstruction([ticketFile]),
   { label: 'classify-ambiguity', model: model('fast') },
 )
 
@@ -158,9 +163,14 @@ interface ClassifyResult {
 }
 
 const classify: ClassifyResult = parseAgentJson(classifyRaw as string, { level: 'medium', reasoning: '', gaps: [], assumptions: [] })
+assertReadWitness([ticketFile], classify)
 log(`Ambiguity: ${classify.level} — ${classify.reasoning}`)
 
 // Scan codebase
+// Not read-witness-gated: scanRaw's output is kept as free-form text
+// (scanResults below), never parsed as JSON, so there is no JSON field to
+// carry a read_witness in. Same reasoning applies to write-spec-and-questions
+// further down — its return value is discarded (it only writes files).
 const requirements: string = triageResult.merged_requirements.length > 0
   ? triageResult.merged_requirements.join('\n')
   : ticketContent

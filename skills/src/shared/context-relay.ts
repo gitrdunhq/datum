@@ -182,3 +182,81 @@ export function contextSlot(f: ContextFile): string {
     `Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`
   )
 }
+
+/**
+ * FLOW.md open gap 2 — a deferred contextSlot() instruction tells the agent
+ * to read a file, but nothing verifies it did. This is the deterministic
+ * witness: for the deferred files only, an appended prompt paragraph that
+ * requires the agent's JSON output to carry the file's blob hash — a hash
+ * it can only produce by running `git hash-object` itself, which it can
+ * only do usefully after actually reading the path. Returns '' when every
+ * file is inlined, so prompts stay byte-identical to today's when nothing
+ * is deferred.
+ */
+export function contextWitnessInstruction(files: ContextFile[]): string {
+  const deferred = files.filter((f) => f.exists && !f.inlined)
+  if (deferred.length === 0) return ''
+  const entries = deferred
+    .map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash — run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`)
+    .join(',\n')
+  return (
+    '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, ' +
+    'then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. ' +
+    'Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex ' +
+    'characters of that command\'s output — taken from the first line of the file you read, computed fresh, ' +
+    'never guessed or reused from memory:\n' +
+    '{\n  "read_witness": {\n' + entries + '\n  }\n}\n' +
+    'Your JSON response is invalid without this field for every file listed above.'
+  )
+}
+
+function extractWitnessMap(parsed: unknown): Record<string, unknown> {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  const w = (parsed as Record<string, unknown>).read_witness
+  if (!w || typeof w !== 'object' || Array.isArray(w)) return {}
+  return w as Record<string, unknown>
+}
+
+/**
+ * Pure check: does `parsed` (an agent's parsed JSON output) carry a
+ * `read_witness` entry for every deferred file, whose value is a ≥12-hex-char
+ * prefix of that file's actual blob sha? Inlined files are not required —
+ * the relay already byte-verified their content.
+ */
+export function verifyReadWitness(
+  files: ContextFile[],
+  parsed: unknown,
+): { ok: boolean; missing: string[]; mismatched: string[] } {
+  const deferred = files.filter((f) => f.exists && !f.inlined)
+  const witness = extractWitnessMap(parsed)
+  const missing: string[] = []
+  const mismatched: string[] = []
+  for (const f of deferred) {
+    const value = witness[f.path]
+    if (typeof value !== 'string' || !/^[0-9a-f]{12,}$/i.test(value)) {
+      missing.push(f.path)
+      continue
+    }
+    if (!f.sha.toLowerCase().startsWith(value.toLowerCase())) {
+      mismatched.push(f.path)
+    }
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched }
+}
+
+/**
+ * Throwing wrapper around verifyReadWitness for call sites that must not
+ * silently continue on a failed witness (FLOW.md open gap 2). Names the
+ * first offending path so the error is actionable.
+ */
+export function assertReadWitness(files: ContextFile[], parsed: unknown): void {
+  const result = verifyReadWitness(files, parsed)
+  if (result.ok) return
+  const witness = extractWitnessMap(parsed)
+  const byPath = new Map(files.map((f) => [f.path, f]))
+  const badPath = (result.missing[0] ?? result.mismatched[0]) as string
+  const got = witness[badPath]
+  const gotStr = typeof got === 'string' && got.length > 0 ? got : 'missing'
+  const f = byPath.get(badPath)
+  throw new Error(`context_read_unverified: ${badPath} — agent did not evidence reading the deferred file (expected blob ${f ? f.sha : '?'}, got ${gotStr})`)
+}

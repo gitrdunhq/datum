@@ -95,6 +95,36 @@ describe('datum-refine — TICKET.md relay is a byte-verified batch, not an LLM 
 // ran `datum gate` and echoed the JSON back.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// FLOW.md open gap 2 — a deferred ticketContent (contextSlot's Read
+// instruction) is never verified as actually read. classify-ambiguity is the
+// only agent call that both consumes ticketContent and parses a JSON object
+// back — that's the one wired to the read-witness gate.
+// ---------------------------------------------------------------------------
+
+describe('datum-refine — read-witness gate on classify-ambiguity (FLOW.md open gap 2)', () => {
+  it('appends contextWitnessInstruction([ticketFile]) to the classify-ambiguity prompt', () => {
+    expect(src).toMatch(/from '\.\/shared\/context-relay'/)
+    expect(src).toMatch(/contextWitnessInstruction\(\[ticketFile\]\)/)
+    const idx = src.indexOf("label: 'classify-ambiguity'")
+    const block = src.slice(Math.max(0, idx - 400), idx)
+    expect(block).toMatch(/contextWitnessInstruction\(\[ticketFile\]\)/)
+  })
+
+  it('gates the parsed classify result with assertReadWitness before using it', () => {
+    expect(src).toMatch(/assertReadWitness\(\[ticketFile\], classify\)/)
+    const parseIdx = src.indexOf('const classify: ClassifyResult')
+    const assertIdx = src.indexOf('assertReadWitness([ticketFile], classify)')
+    expect(parseIdx).toBeGreaterThan(-1)
+    expect(assertIdx).toBeGreaterThan(parseIdx)
+  })
+
+  it('the named failure lives in shared/context-relay.ts, not a bespoke throw here', () => {
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/context_read_unverified/)
+  })
+})
+
 describe('datum-refine — deterministic gate verdict', () => {
   const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
   it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {

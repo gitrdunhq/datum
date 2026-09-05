@@ -3,7 +3,7 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
@@ -148,8 +148,13 @@ import planDecomposeTemplate from './prompts/plan-decompose.md'
 phase('Decompose')
 
 // Approach
+// FLOW.md open gap 2: nothing verified that a deferred specContent (over the
+// relay budget) was actually read rather than skipped. contextWitnessInstruction
+// is '' when SPEC.md was inlined, so this is a no-op prompt change in the
+// common case; when deferred, it demands a git-hash-object witness in the
+// agent's JSON output, and assertReadWitness gates it below.
 const approachesRaw = await agent(
-  renderPrompt(planApproachesTemplate, { specContent, currentState: currentState || '(not available)' }),
+  renderPrompt(planApproachesTemplate, { specContent, currentState: currentState || '(not available)' }) + contextWitnessInstruction([specFile]),
   { label: 'propose-approaches', model: model('balanced') },
 )
 
@@ -157,10 +162,14 @@ interface Approach { name: string; description: string; tradeoffs: string; modul
 interface ApproachResult { approaches: Approach[]; recommended: number; recommendation_reason: string }
 
 const approaches: ApproachResult = parseAgentJson(approachesRaw as string, { approaches: [], recommended: 0, recommendation_reason: '' } as ApproachResult)
+assertReadWitness([specFile], approaches)
 const chosen: Approach = approaches.approaches[approaches.recommended] || approaches.approaches[0]
 log(`Selected: ${chosen?.name || 'default'} — ${approaches.recommendation_reason}`)
 
 // Impact
+// Not read-witness-gated: impactRaw is kept as free-form text (impactStr
+// below), never parsed as JSON, so there is no JSON field to carry a
+// read_witness in.
 const impactRaw = await agent(
   renderPrompt(planImpactTemplate, { wt: '.', filesList: (chosen?.modules_touched || []).join('\n') || specContent }),
   { label: 'impact-analysis', model: model('balanced') },
@@ -168,6 +177,13 @@ const impactRaw = await agent(
 const impactStr: string = typeof impactRaw === 'string' ? impactRaw : JSON.stringify(impactRaw)
 
 // Decompose (opus for complex)
+// Not read-witness-gated: decompose-tasks' contract is a bare JSON array of
+// tasks (tasksRaw below feeds datum lane-plan's schema validation directly),
+// not a JSON object — there is no top-level slot to carry a "read_witness"
+// field without changing that contract. specContent/contextFilesSection can
+// still be deferred here; the mismatch this leaves open is a real gap, but
+// closing it means renegotiating the tasks.json array contract, out of
+// scope for this change.
 const isComplex: boolean = (chosen?.blast_radius === 'high') || ((chosen?.estimated_tasks || 0) > 5)
 const decomposeModel = isComplex ? model('deep') : model('balanced')
 if (isComplex) log('Complex epic — using opus for decomposition')

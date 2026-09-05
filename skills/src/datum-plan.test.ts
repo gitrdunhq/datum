@@ -361,3 +361,47 @@ describe('datum-plan — deterministic gate verdict', () => {
     expect(src).toMatch(/if \(gate\.passed\) \{\s*\n\s*const published = await publishLanePlan/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FLOW.md open gap 2 — a deferred specContent (contextSlot's Read
+// instruction) is never verified as actually read. propose-approaches is the
+// only decompose-phase agent that both consumes specContent directly and
+// parses a JSON object back — that's the one wired to the read-witness gate.
+// decompose-tasks is NOT gated: its contract is a bare JSON array (feeds
+// datum lane-plan's schema validation), with no object slot for a
+// read_witness field without changing that contract.
+// ---------------------------------------------------------------------------
+
+describe('datum-plan — read-witness gate on propose-approaches (FLOW.md open gap 2)', () => {
+  it('imports contextWitnessInstruction and assertReadWitness from shared/context-relay', () => {
+    expect(datumPlanSrc).toMatch(/contextWitnessInstruction/)
+    expect(datumPlanSrc).toMatch(/assertReadWitness/)
+  })
+
+  it('appends contextWitnessInstruction([specFile]) to the propose-approaches prompt', () => {
+    const idx = datumPlanSrc.indexOf("label: 'propose-approaches'")
+    expect(idx).toBeGreaterThan(-1)
+    const block = datumPlanSrc.slice(Math.max(0, idx - 400), idx)
+    expect(block).toMatch(/contextWitnessInstruction\(\[specFile\]\)/)
+  })
+
+  it('gates the parsed approaches result with assertReadWitness before it is used to choose an approach', () => {
+    const parseIdx = datumPlanSrc.indexOf('const approaches: ApproachResult')
+    const assertIdx = datumPlanSrc.indexOf('assertReadWitness([specFile], approaches)')
+    const chosenIdx = datumPlanSrc.indexOf('const chosen: Approach')
+    expect(parseIdx).toBeGreaterThan(-1)
+    expect(assertIdx).toBeGreaterThan(parseIdx)
+    expect(assertIdx).toBeLessThan(chosenIdx)
+  })
+
+  it('does not require a read_witness field from decompose-tasks — its output is a bare JSON array, not an object', () => {
+    const tasksParseIdx = datumPlanSrc.indexOf('const tasks = typeof tasksRaw')
+    expect(tasksParseIdx).toBeGreaterThan(-1)
+    expect(datumPlanSrc.slice(tasksParseIdx, tasksParseIdx + 200)).not.toMatch(/assertReadWitness/)
+  })
+
+  it('the named failure lives in shared/context-relay.ts, not a bespoke throw here', () => {
+    const relaySrc = readFileSync(join(__dirname, 'shared', 'context-relay.ts'), 'utf8')
+    expect(relaySrc).toMatch(/context_read_unverified/)
+  })
+})
