@@ -5,10 +5,19 @@
 // evaluateMainSync (shared/utils.ts) then judged. Nothing verified that
 // self-report was honest.
 //
-// mainSyncSteps() builds the same three shell operations as ONE datum-cli
-// batch (shared/batch.ts); mainSyncFromSteps() reduces the batch's real exit
+// mainSyncSteps() builds the shell operations as ONE datum-cli batch
+// (shared/batch.ts); mainSyncFromSteps() reduces the batch's real exit
 // codes into the SAME MainSyncResult shape evaluateMainSync already
 // consumes, so evaluateMainSync itself — and its tests — are unchanged.
+//
+// Data-driven (elonchesd wf_c17266bb-33a): a repo with no origin remote is a
+// supported local-only init, and its base branch is whatever origin/HEAD
+// says (master, not a hard-coded main). `remote` records whether origin
+// exists; `base` resolves the branch (an explicit main_branch from
+// .datum/config.json wins, then origin/HEAD, then origin/main or
+// origin/master, then main). With no remote, fetch/behind print
+// SKIPPED_NO_REMOTE and mainSyncFromSteps returns a NAMED skip — never a
+// fabricated "0 behind".
 //
 // `fetch` and `behind` are non-tolerant: a batch that never reaches them, or
 // whose fetch fails, must never be read as "0 behind" (a silent "treat as
@@ -27,17 +36,33 @@ import type { BatchStep, BatchResult } from './batch'
 import { stepResult, stepStdout, describeFailure } from './batch'
 import type { MainSyncResult } from './utils'
 
-export function mainSyncSteps(noMergeMain: boolean): BatchStep[] {
+const SKIP_MARKER = 'SKIPPED_NO_REMOTE'
+const BRANCH_RE = /^[A-Za-z0-9._\/-]+$/
+
+export function mainSyncSteps(noMergeMain: boolean, mainBranch?: string | null): BatchStep[] {
+  const explicit = typeof mainBranch === 'string' && mainBranch.trim() && BRANCH_RE.test(mainBranch.trim()) && !mainBranch.trim().startsWith('-')
+    ? mainBranch.trim()
+    : null
+  const baseCommand = explicit
+    ? `BASE="${explicit}"; echo "$BASE"`
+    : [
+        'BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed "s#^origin/##")',
+        'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then BASE="$b"; break; fi; done; fi',
+        '[ -n "$BASE" ] || BASE=main',
+        'echo "$BASE"',
+      ].join('\n')
   const steps: BatchStep[] = [
-    { name: 'fetch', command: 'git fetch origin main' },
-    { name: 'behind', command: 'BEHIND=$(git rev-list --count HEAD..origin/main); echo "$BEHIND"' },
+    { name: 'remote', command: `if git remote get-url origin >/dev/null 2>&1; then HAS_REMOTE=1; echo HAS_REMOTE; else HAS_REMOTE=0; echo NO_REMOTE; fi`, tolerant: true },
+    { name: 'base', command: baseCommand, tolerant: true },
+    { name: 'fetch', command: `if [ "\${HAS_REMOTE:-0}" -eq 1 ]; then git fetch origin "$BASE"; else echo ${SKIP_MARKER}; fi` },
+    { name: 'behind', command: `if [ "\${HAS_REMOTE:-0}" -eq 1 ]; then BEHIND=$(git rev-list --count HEAD.."origin/$BASE"); echo "$BEHIND"; else BEHIND=0; echo ${SKIP_MARKER}; fi` },
   ]
   if (!noMergeMain) {
     steps.push({
       name: 'merge',
       command: [
         'if [ "${BEHIND:-0}" -gt 0 ]; then',
-        '  if git merge --no-edit origin/main; then',
+        '  if git merge --no-edit "origin/$BASE"; then',
         '    true',
         '  else',
         '    git merge --abort',
@@ -56,21 +81,26 @@ export function mainSyncSteps(noMergeMain: boolean): BatchStep[] {
 /**
  * Reduce a mainSyncSteps() BatchResult into MainSyncResult. Throws a named
  * `main_sync_failed:` error (never a fabricated "in sync" result) when the
- * batch produced nothing parseable, `fetch` failed, or `behind`'s output
- * isn't a real integer. A real merge conflict is NOT thrown here — it comes
- * back as `{ conflict: true }`, exactly as evaluateMainSync already expects.
+ * batch produced nothing parseable (a runner refusal is named as
+ * runner_permission_denied), `fetch` failed, or `behind`'s output isn't a
+ * real integer. No origin remote is a named skip. A real merge conflict is
+ * NOT thrown here — it comes back as `{ conflict: true }`, exactly as
+ * evaluateMainSync already expects.
  */
 export function mainSyncFromSteps(result: BatchResult, noMergeMain: boolean): MainSyncResult {
   if (result.missing) {
-    throw new Error('main_sync_failed: batch agent returned no parseable result for main-sync')
+    throw new Error(`main_sync_failed: ${describeFailure(result, 'main-sync')}`)
   }
   if (result.failed) {
     throw new Error(`main_sync_failed: ${describeFailure(result, 'main-sync')}`)
   }
   const behindRaw = (stepStdout(result, 'behind') || '').trim()
+  if (behindRaw === SKIP_MARKER && (stepStdout(result, 'remote') || '').trim() === 'NO_REMOTE') {
+    return { behind: 0, merged: false, conflict: false, skipped: 'no origin remote' }
+  }
   const behind = parseInt(behindRaw, 10)
   if (!Number.isFinite(behind)) {
-    throw new Error(`main_sync_failed: could not parse behind-count output from \`git rev-list --count HEAD..origin/main\` ("${behindRaw}")`)
+    throw new Error(`main_sync_failed: could not parse behind-count output from \`git rev-list --count HEAD..origin/<base>\` ("${behindRaw}")`)
   }
   if (noMergeMain || behind === 0) {
     return { behind, merged: false, conflict: false }

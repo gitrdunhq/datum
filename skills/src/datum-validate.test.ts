@@ -98,12 +98,12 @@ describe('determinism fix — main sync is a deterministic batch, not an LLM rel
     expect(validateSrc).toMatch(/import\s*\{[^}]*mainSyncSteps[^}]*mainSyncFromSteps[^}]*\}\s*from\s*'\.\/shared\/main-sync-steps'/)
   })
 
-  it('runs the sync steps through batchCommandPrompt/parseBatchResult like every other cli batch', () => {
+  it('runs the sync steps through runBatch (batchCommandPrompt/parseBatchResult with the refusal retry) like every other cli batch', () => {
     const syncIdx = validateSrc.indexOf('mainSyncSteps(')
     const block = validateSrc.slice(syncIdx, syncIdx + 400)
-    expect(block).toMatch(/batchCommandPrompt\(/)
-    expect(block).toMatch(/parseBatchResult\(/)
+    expect(block).toMatch(/await runBatch\(syncSteps/)
     expect(block).toMatch(/stageOpts\(\s*'cli'/)
+    expect(block).not.toMatch(/agent\(batchCommandPrompt\(syncSteps/)
   })
 })
 

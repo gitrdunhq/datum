@@ -6,6 +6,7 @@ import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, des
 import { testExitCode } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
+import { runBatch } from './shared/agents'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import { gateSteps, parseGateResult } from './shared/gate'
@@ -49,9 +50,11 @@ phase('Validate')
 // the epic branch itself — a bug introduced on the epic and already fixed on
 // main was never seen. Fetch main and merge it in (default), or fail loudly
 // when --no-merge-main is set and the epic is behind.
-const syncSteps = mainSyncSteps(noMergeMain)
-const syncBatchRaw = await agent(batchCommandPrompt(syncSteps), stageOpts('cli', { label: 'main-sync', model: model('fast') }))
-const syncBatch = parseBatchResult(syncBatchRaw, syncSteps)
+// Data-driven: no origin remote is a named skip, the base branch comes from
+// origin/HEAD (or main_branch in .datum/config.json), and a runner refusal
+// is retried once and named (elonchesd wf_c17266bb-33a).
+const syncSteps = mainSyncSteps(noMergeMain, repoCfg.main_branch)
+const syncBatch = await runBatch(syncSteps, stageOpts('cli', { label: 'main-sync', model: model('fast') }))
 let syncResult: MainSyncResult | null = null
 let mainSync: { ok: boolean; message: string }
 try {

@@ -927,11 +927,16 @@ export interface MainSyncResult {
   conflict: boolean
   output?: string
   error?: string
+  /** Named reason the sync did not run (e.g. 'no origin remote'); never a fabricated 0-behind. */
+  skipped?: string
 }
 
 export function evaluateMainSync(result: MainSyncResult | null | undefined, noMergeMain: boolean): { ok: boolean; message: string } {
   if (!result || typeof result !== 'object' || typeof result.behind !== 'number') {
     return { ok: false, message: `could not determine whether the epic is behind main: ${result?.error || 'no sync result (git fetch origin main failed or returned unparseable output)'}` }
+  }
+  if (result.skipped) {
+    return { ok: true, message: `main sync skipped: ${result.skipped}` }
   }
   if (result.conflict) {
     return { ok: false, message: `merging origin/main into the epic branch hit a conflict (epic was ${result.behind} commits behind main); merge aborted — resolve by hand, then re-run validate: ${result.output || ''}`.trim() }

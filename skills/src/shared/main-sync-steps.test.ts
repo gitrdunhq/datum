@@ -6,11 +6,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { mainSyncSteps, mainSyncFromSteps } from './main-sync-steps'
-import { batchScript, parseBatchResult, type BatchResult } from './batch'
+import { evaluateMainSync } from './utils'
+import { batchScript, parseBatchResult, stepStdout, type BatchResult } from './batch'
 
 function run(cmd: string, args: string[], cwd: string): { status: number; stdout: string; stderr: string } {
   try {
@@ -82,15 +83,22 @@ function runSync(noMergeMain: boolean): BatchResult {
 }
 
 describe('mainSyncSteps', () => {
-  it('always includes fetch and behind; includes merge only when !noMergeMain', () => {
-    expect(mainSyncSteps(false).map((s) => s.name)).toEqual(['fetch', 'behind', 'merge'])
-    expect(mainSyncSteps(true).map((s) => s.name)).toEqual(['fetch', 'behind'])
+  it('checks the remote and resolves the base branch before fetch and behind; includes merge only when !noMergeMain', () => {
+    expect(mainSyncSteps(false).map((s) => s.name)).toEqual(['remote', 'base', 'fetch', 'behind', 'merge'])
+    expect(mainSyncSteps(true).map((s) => s.name)).toEqual(['remote', 'base', 'fetch', 'behind'])
+    const remote = mainSyncSteps(false).find((s) => s.name === 'remote')!
+    expect(remote.tolerant).toBe(true)
+    expect(remote.command).toContain('git remote get-url origin')
+    // fetch and behind stay non-tolerant when a remote exists; with none they
+    // print the skip marker and exit 0 so the batch still completes.
+    expect(mainSyncSteps(false).find((s) => s.name === 'fetch')!.tolerant).toBeFalsy()
+    expect(mainSyncSteps(false).find((s) => s.name === 'fetch')!.command).toContain('SKIPPED_NO_REMOTE')
   })
 
   it('the merge step is tolerant and runs git merge --abort on failure', () => {
     const merge = mainSyncSteps(false).find((s) => s.name === 'merge')!
     expect(merge.tolerant).toBe(true)
-    expect(merge.command).toContain('git merge --no-edit origin/main')
+    expect(merge.command).toContain('git merge --no-edit "origin/$BASE"')
     expect(merge.command).toContain('git merge --abort')
     expect(merge.command).not.toMatch(/\bexit\b/)
   })
@@ -147,10 +155,66 @@ describe('mainSyncFromSteps — real git fixtures', () => {
     expect(mergeInProgress.status).not.toBe(0)
   })
 
-  it('fetch failure: no origin remote configured — named main_sync_failed, never "treat as in sync"', () => {
+  // elonchesd wf_c17266bb-33a: a repo with NO remote (a supported, local-only
+  // init) could never pass main-sync — the fetch failed by construction and
+  // the halt read as a classifier refusal. No remote is a named skip, not a
+  // failure and not a fabricated "in sync".
+  it('no origin remote: skipped by name, evaluateMainSync accepts it, nothing is fetched or merged', () => {
     run('git', ['remote', 'remove', 'origin'], repoDir)
     const result = runSync(false)
+    const sync = mainSyncFromSteps(result, false)
+    expect(sync).toEqual({ behind: 0, merged: false, conflict: false, skipped: 'no origin remote' })
+    expect(evaluateMainSync(sync, false)).toEqual({ ok: true, message: 'main sync skipped: no origin remote' })
+  })
+
+  it('a remote whose fetch fails is still main_sync_failed, never "treat as in sync"', () => {
+    run('git', ['remote', 'set-url', 'origin', join(tmpdir(), 'datum-mainsync-does-not-exist')], repoDir)
+    const result = runSync(false)
     expect(() => mainSyncFromSteps(result, false)).toThrow(/main_sync_failed/)
+  })
+
+  it('resolves the base branch from origin/HEAD when it is master, not a hard-coded main', () => {
+    // A master-only origin: rebuild the fixture remote under that name.
+    run('git', ['branch', '-m', 'main', 'master'], cloneDir)
+    run('git', ['push', '-q', 'origin', 'master'], cloneDir)
+    run('git', ['push', '-q', 'origin', '--delete', 'main'], cloneDir)
+    run('git', ['symbolic-ref', 'HEAD', 'refs/heads/master'], bareDir)
+    run('git', ['fetch', '-q', '--prune', 'origin'], repoDir)
+    run('git', ['remote', 'set-head', 'origin', '-a'], repoDir)
+    run('git', ['branch', '-m', 'main', 'epic'], repoDir)
+    writeFileSync(join(cloneDir, 'm.txt'), 'm\n')
+    run('git', ['add', '.'], cloneDir)
+    run('git', ['commit', '-q', '-m', 'advance master'], cloneDir)
+    run('git', ['push', '-q', 'origin', 'master'], cloneDir)
+
+    const result = runSync(false)
+    expect((stepStdout(result, 'base') || '').trim()).toBe('master')
+    const sync = mainSyncFromSteps(result, false)
+    expect(sync.behind).toBe(1)
+    expect(sync.merged).toBe(true)
+    expect(run('git', ['log', '--oneline'], repoDir).stdout).toMatch(/advance master/)
+  })
+
+  it('an explicit mainBranch (config main_branch) overrides detection', () => {
+    const steps = mainSyncSteps(false, 'release')
+    const base = steps.find((s) => s.name === 'base')!
+    expect(base.command).toContain('BASE="release"')
+    expect(steps.find((s) => s.name === 'fetch')!.command).toContain('git fetch origin "$BASE"')
+    expect(steps.find((s) => s.name === 'behind')!.command).toContain('HEAD.."origin/$BASE"')
+    expect(steps.find((s) => s.name === 'merge')!.command).toContain('git merge --no-edit "origin/$BASE"')
+    expect(steps.find((s) => s.name === 'merge')!.command).not.toContain('origin/main')
+  })
+
+  it('a missing batch names the runner refusal instead of "no parseable result"', () => {
+    const missing = parseBatchResult('I cannot run this script: the Bash tool is blocked by the auto mode classifier.', mainSyncSteps(false))
+    expect(() => mainSyncFromSteps(missing, false)).toThrow(/main_sync_failed: main-sync: runner_permission_denied/)
+  })
+
+  it('datum-validate runs the sync batch through runBatch and passes the repo config main_branch', () => {
+    const src = readFileSync(join(__dirname, '..', 'datum-validate.ts'), 'utf8')
+    expect(src).toMatch(/mainSyncSteps\(noMergeMain, repoCfg\.main_branch\)/)
+    expect(src).toMatch(/await runBatch\(syncSteps, stageOpts\('cli', \{ label: 'main-sync'/)
+    expect(src).not.toMatch(/agent\(batchCommandPrompt\(syncSteps\)/)
   })
 
   it('a missing/unparseable batch throws main_sync_failed, never a fabricated result', () => {
