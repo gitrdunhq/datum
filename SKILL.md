@@ -153,6 +153,8 @@ Workflow({ scriptPath: "<skills_dir>/datum-tdd-act.js", args: { epicBranch: "dat
 
 Hard stops never bypass: `tests_red_after_3x_retry`, `hook_blocked_write`, `merge_conflict`, `schema_validation_failed`, `file_ownership_violation`.
 
+**Review findings.** `datum gate review` blocks on every high/critical row in `docs/epics/<branch>/REVIEW-REPORT.md` and names the blocking ids. A reviewer's severity is a calibration, not a verdict: record a reasoned accept per finding with `datum review-accept <ID> --reason "..."`, which appends `- ACCEPT <ID>: <reason>` to `docs/epics/<branch>/REVIEW-RESPONSE.md` next to the report (commit it). Accepted ids do not block and are named in the gate's pass message; an accept with no reason does not count. After three blocked iterations the gate hard-stops for an architectural review.
+
 ## Error Recovery
 
 - `ENVIRONMENTAL` -> fix in place, same tier, counter not incremented
