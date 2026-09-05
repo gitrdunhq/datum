@@ -311,6 +311,40 @@ describe('determinism fix — context_files relay is one verified batch, not a p
   })
 })
 
+// ---------------------------------------------------------------------------
+// Determinism fix (#368 follow-up) — the top-of-file "Read" phase relayed
+// SPEC.md / CURRENT_STATE.md / prior-failure data through an LLM `reader`
+// agent echoing util-read-context.md's JSON contract back verbatim. That
+// relay is replaced with the deterministic readContextSteps/contextFromSteps
+// batch already used by datum-refine.ts / datum-properties.ts; SPEC.md is
+// byte-verified, current_state/prior_defects/error_history ride along as
+// tolerant extraCommands.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — top-of-file Read phase is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports the util-read-context.md LLM relay prompt', () => {
+    expect(datumPlanSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
+  })
+
+  it('reads SPEC.md and derives branch/epic-dir via readContextSteps/contextFromSteps', () => {
+    expect(datumPlanSrc).toMatch(/import\s*\{\s*readContextSteps,\s*contextFromSteps\s*\}\s*from\s*'\.\/shared\/lane-steps'/)
+    expect(datumPlanSrc).toMatch(/readContextSteps\(/)
+    expect(datumPlanSrc).toMatch(/contextFromSteps\(/)
+  })
+
+  it('fails loud with context_relay_mismatch, not a silent fallback, when the batch agent returns nothing parseable', () => {
+    expect(datumPlanSrc).toMatch(/context_relay_mismatch/)
+  })
+
+  it('carries current_state / prior_defects / error_history as extraCommands, not through the LLM relay', () => {
+    expect(datumPlanSrc).toMatch(/name:\s*'current-state'/)
+    expect(datumPlanSrc).toMatch(/name:\s*'prior-defects'/)
+    expect(datumPlanSrc).toMatch(/name:\s*'error-history'/)
+    expect(datumPlanSrc).toMatch(/CURRENT_STATE\.md/)
+    expect(datumPlanSrc).toMatch(/\.datum\/ERRORS\.md/)
+  })
+})
+
 describe('datum-plan — deterministic gate verdict', () => {
   const src = readFileSync(join(__dirname, 'datum-plan.ts'), 'utf8')
   it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {

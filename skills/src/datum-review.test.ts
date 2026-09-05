@@ -102,3 +102,22 @@ describe('datum-review — deterministic gate verdict (#368)', () => {
     expect(criticalIdx).toBeGreaterThan(-1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Determinism fix (#368 follow-up) — util-read-context.md and
+// util-commit-artifact.md were imported but never referenced anywhere in
+// this file: every domain agent reads its own context (SPEC.md, diffs, etc.)
+// directly via its own prompt/tool calls, and the report commit is its own
+// inline agent() call. Both imports are dead weight, removed alongside the
+// retirement of the util-read-context.md LLM relay.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — dead util-read-context.md / util-commit-artifact.md imports removed', () => {
+  it('no longer imports the unused util-read-context.md template', () => {
+    expect(datumReviewSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
+  })
+
+  it('no longer imports the unused util-commit-artifact.md template', () => {
+    expect(datumReviewSrc).not.toMatch(/from '\.\/prompts\/util-commit-artifact\.md'/)
+  })
+})

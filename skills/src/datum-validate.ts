@@ -6,7 +6,6 @@ import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure } fro
 import { testExitCode } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
-import readContextTemplate from './prompts/util-read-context.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 
 export const meta = {

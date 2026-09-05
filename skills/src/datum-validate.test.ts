@@ -3,7 +3,7 @@
 // masked the exit code.
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
 
@@ -153,5 +153,44 @@ describe('datum-validate produces the test signal the validate gate consumes', (
   it('runs the independent test run through validateVerifySteps (test-verify + write-signal)', () => {
     expect(src).toMatch(/validateVerifySteps\(/)
     expect(src).not.toMatch(/name: 'test-verify', command: testRunCommand/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix (#368 follow-up) — util-read-context.md was an unused
+// import in datum-validate.ts (this script already derives branch/epic_dir
+// deterministically inline via `git rev-parse --abbrev-ref HEAD` embedded in
+// its own prompt text; nothing here ever called agent(readContextTemplate,
+// ...)). The dead import is removed, and now that no script under skills/src
+// imports the LLM relay template any more, the file itself is deleted.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — util-read-context.md LLM relay is fully retired', () => {
+  it('datum-validate.ts no longer imports the unused util-read-context.md template', () => {
+    expect(validateSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
+  })
+
+  it('no file under skills/src imports util-read-context.md any more', () => {
+    const srcDir = join(__dirname)
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+        } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+          const contents = readFileSync(full, 'utf8')
+          if (/from ['"][^'"]*prompts\/util-read-context\.md['"]/.test(contents)) {
+            offenders.push(full)
+          }
+        }
+      }
+    }
+    walk(srcDir)
+    expect(offenders).toEqual([])
+  })
+
+  it('the util-read-context.md prompt file itself no longer exists', () => {
+    expect(existsSync(join(__dirname, 'prompts', 'util-read-context.md'))).toBe(false)
   })
 })

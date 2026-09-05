@@ -3,12 +3,12 @@ import { model, DEFAULT_CONFIG, mergeConfig } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, type BatchStep } from './shared/batch'
+import { readContextSteps, contextFromSteps } from './shared/lane-steps'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
 import planDeepenTemplate from './prompts/plan-deepen.md'
-import readContextTemplate from './prompts/util-read-context.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 
 export const meta = {
@@ -27,31 +27,50 @@ const a = ((typeof args === 'string')
   : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
 
-// ── Read (one agent reads everything) ──
+// ── Read (deterministic batch: branch/epic-dir + byte-verified SPEC.md
+// relay, replacing the LLM `reader` echo of util-read-context.md — an LLM
+// echoing a file is lossy (a 90 KB relay came back as 6.7 KB of "successful"
+// abridged content in dogfooding), and nothing verified it. current_state /
+// prior_defects / error_history are auxiliary (already-truncated) reads, so
+// they ride along as extraCommands rather than through the byte-verified
+// file relay. Mirrors the fix already applied to datum-refine.ts /
+// datum-properties.ts (#368 follow-up). ──
 
 phase('Read')
 
-const context = await agent(
-  renderPrompt(readContextTemplate, {
-    extraFields: `3. "spec_content": full contents of docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md
-4. "current_state": read CURRENT_STATE.md if it exists (first 80 lines), else null
-5. "prior_defects": run \`jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null\` — return as string, empty if none
-6. "error_history": read .datum/ERRORS.md if it exists (first 40 lines), else null`,
-  }),
-  { label: 'read-context', model: model('balanced') },
+const NOT_FOUND_MARKER = '__DATUM_CTXFIELD_NOT_FOUND__'
+const SPEC_REL = 'docs/epics/$__eb/SPEC.md'
+const readSteps = readContextSteps({
+  files: [SPEC_REL],
+  extraCommands: [
+    { name: 'current-state', command: `if [ -f CURRENT_STATE.md ]; then head -80 CURRENT_STATE.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` },
+    { name: 'prior-defects', command: `jq -r '.brief_defects[]? | "\\(.surfaced_by_stage)\\t\\(.missing_ac)"' .datum/runs/*/closeout-data.json 2>/dev/null` },
+    { name: 'error-history', command: `if [ -f .datum/ERRORS.md ]; then head -40 .datum/ERRORS.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` },
+  ],
+})
+const readBatch = parseBatchResult(
+  await agent(batchCommandPrompt(readSteps), stageOpts('cli', { label: 'read-context', model: model('fast') })),
+  readSteps,
 )
+if (readBatch.missing) {
+  throw new Error('context_relay_mismatch: batch agent returned no parseable result for read-context')
+}
+const ctx = contextFromSteps(readBatch, [SPEC_REL])
+for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
-const ctx = typeof context === 'string'
-  ? parseAgentJson(context as string, {} as Record<string, unknown>)
-  : context
-
-const epicDir: string = ctx.epic_dir || `docs/epics/${ctx.branch || 'unknown'}`
-const specContent: string = ctx.spec_content || ''
+const epicDir: string = ctx.epicDir
+const specContent: string = ctx.contents[SPEC_REL] || ''
 if (!specContent) throw new Error(`SPEC.md not found at ${epicDir}/SPEC.md. Run datum-refine first.`)
 
 log(`Branch: ${ctx.branch}, SPEC: ${specContent.split('\n').length} lines`)
 
-const priorFailures: string = [ctx.prior_defects || '', ctx.error_history || ''].filter(Boolean).join('\n') || '(no prior failure data)'
+const currentStateRaw = stepStdout(readBatch, 'current-state')
+const currentState: string | null = (currentStateRaw === null || currentStateRaw === NOT_FOUND_MARKER) ? null : currentStateRaw
+const priorDefects: string = stepStdout(readBatch, 'prior-defects') || ''
+const errorHistoryRaw = stepStdout(readBatch, 'error-history')
+const errorHistory: string | null = (errorHistoryRaw === null || errorHistoryRaw === NOT_FOUND_MARKER) ? null : errorHistoryRaw
+
+const priorFailures: string = [priorDefects, errorHistory || ''].filter(Boolean).join('\n') || '(no prior failure data)'
 
 // Deterministic config read: two `cat` steps in one datum-cli batch, parsed
 // and merged in TS — replaces the old LLM "read two JSON files and merge
@@ -148,7 +167,7 @@ phase('Decompose')
 
 // Approach
 const approachesRaw = await agent(
-  renderPrompt(planApproachesTemplate, { specContent, currentState: ctx.current_state || '(not available)' }),
+  renderPrompt(planApproachesTemplate, { specContent, currentState: currentState || '(not available)' }),
   { label: 'propose-approaches', model: model('balanced') },
 )
 

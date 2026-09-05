@@ -2,8 +2,6 @@ import { model, type ReviewDomain, type Severity, type ModelName } from './share
 import { renderPrompt, parseAgentJson } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
-import readContextTemplate from './prompts/util-read-context.md'
-import commitArtifactTemplate from './prompts/util-commit-artifact.md'
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
 import { batchCommandPrompt, parseBatchResult } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
