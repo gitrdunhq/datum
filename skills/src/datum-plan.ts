@@ -7,6 +7,7 @@ import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRel
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps } from './shared/plan-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
+import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import type { PhaseArgs } from './shared/types'
 import planApproachesTemplate from './prompts/plan-approaches.md'
 import planImpactTemplate from './prompts/plan-impact.md'
@@ -290,16 +291,16 @@ if (!skeleton.ok) throw new Error(skeleton.error)
 await commitPlanFiles([skeletonDir], 'plan: pre-generate RED skeletons', 'commit-skeletons')
 log(`Skeletons pre-generated in ${skeletonDir}`)
 
-// ── Triage + Deepen + Gate (collapsed: triage writes routing.json, deepen appends + rebuilds, gate runs) ──
+// ── Triage + Deepen + Gate (triage decides, deepen appends findings; the script writes, commits and gates) ──
 
 phase('Triage')
 
-// Triage (also writes routing.json and commits — collapsed write-routing)
+// Triage: the agent only decides. The script writes the decision to the
+// routing file (byte-verified batch), commits it, and runs `datum gate
+// triage` on it — the agent used to write and commit the file itself with
+// its reply discarded, and that gate had no caller.
 const triageRaw = await agent(
-  planTriageTemplate + `
-
-ADDITIONAL TASK: After deciding, write your decision as JSON to ".datum/routing.json" and commit:
-git add .datum/routing.json && git commit -m "plan: triage decision"`,
+  planTriageTemplate,
   { label: 'triage-decision', model: model('fast') },
 )
 
@@ -312,6 +313,21 @@ interface TriageDecision { decision: string; reason: string; triggers: string[] 
 // ('parse failure') makes the degraded path visible in the log below.
 const triage: TriageDecision = parseAgentJson(triageRaw as string, { decision: 'properties', reason: 'parse failure', triggers: [] } as TriageDecision)
 log(`Triage: ${triage.decision} — ${triage.reason}`)
+
+const routingJson = JSON.stringify(triage, null, 2)
+const routingSteps = writeFileSteps({ path: '.datum/routing.json', content: routingJson })
+const routingWritten = writeFileFromSteps(parseBatchResult(
+  await agent(batchCommandPrompt(routingSteps), stageOpts('cli', { label: 'write-routing', model: model('fast') })),
+  routingSteps,
+), { path: '.datum/routing.json', expectedSha: writeFileBlobSha(routingJson), prefix: 'routing' })
+if (!routingWritten.ok) throw new Error(routingWritten.error)
+await commitPlanFiles(['.datum/routing.json'], 'plan: triage decision', 'commit-routing')
+const triageGateSteps = gateSteps('triage', '')
+const triageGate = parseGateResult(parseBatchResult(
+  await agent(batchCommandPrompt(triageGateSteps), stageOpts('cli', { label: 'gate-triage', model: model('fast') })),
+  triageGateSteps,
+))
+if (!triageGate.passed) throw new Error(`Triage gate failed — routing.json rejected: ${triageGate.message || 'no message'}`)
 
 // Deepen (conditional). The research agent APPENDS `## Research Findings`
 // to TASKS.md and touches nothing else (tasks.json is untouched by design).

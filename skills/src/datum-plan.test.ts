@@ -260,6 +260,35 @@ describe('#352 — plan gate ordering', () => {
 // byte-verified against the blob sha of the bytes the script intended.
 // ---------------------------------------------------------------------------
 
+// Triage: the agent decided AND wrote .datum/routing.json AND committed it,
+// reply discarded — and `datum gate triage`, the check that routing.json
+// exists with a valid decision, had no caller. Now the agent only decides;
+// the script writes routing.json from the parsed decision (byte-verified),
+// commits it, and runs the triage gate.
+describe('datum-plan — triage decision is written, committed and gated by the script', () => {
+  it('the triage prompt no longer asks the agent to write routing.json or commit', () => {
+    const idx = datumPlanSrc.indexOf("label: 'triage-decision'")
+    expect(idx).toBeGreaterThan(-1)
+    const block = datumPlanSrc.slice(idx - 600, idx)
+    expect(block).not.toMatch(/routing\.json/)
+    expect(block).not.toMatch(/git commit/)
+  })
+
+  it('writes .datum/routing.json from the parsed decision through writeFileSteps, commits it, then runs gateSteps("triage")', () => {
+    const triageIdx = datumPlanSrc.indexOf('const triage: TriageDecision')
+    const writeIdx = datumPlanSrc.indexOf("writeFileSteps({ path: '.datum/routing.json', content: routingJson })")
+    const commitIdx = datumPlanSrc.indexOf("commitPlanFiles(['.datum/routing.json'], 'plan: triage decision'")
+    const gateIdx = datumPlanSrc.indexOf("gateSteps('triage', '')")
+    const deepenIdx = datumPlanSrc.indexOf("if (triage.decision === 'deepen')")
+    expect(triageIdx).toBeGreaterThan(-1)
+    expect(writeIdx).toBeGreaterThan(triageIdx)
+    expect(commitIdx).toBeGreaterThan(writeIdx)
+    expect(gateIdx).toBeGreaterThan(commitIdx)
+    expect(deepenIdx).toBeGreaterThan(gateIdx)
+    expect(datumPlanSrc).toMatch(/throw new Error\(`Triage gate failed/)
+  })
+})
+
 describe('datum-plan — build/commit/skeleton/rebuild are batches, not "Run these commands" agents', () => {
   it('no agent prompt asks the runner to write tasks.json or to git commit', () => {
     expect(datumPlanSrc).not.toMatch(/Write this JSON to/)
