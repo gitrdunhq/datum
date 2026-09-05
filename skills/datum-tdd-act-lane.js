@@ -480,6 +480,38 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/commit-steps.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function worktreeResetSteps(wt) {
+  return [
+    { name: "reset", command: `git -C ${q(wt)} reset --hard HEAD`, tolerant: true },
+    { name: "clean", command: `git -C ${q(wt)} clean -fd`, tolerant: true },
+    { name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }
+  ];
+}
+function worktreeDirtySteps(wt) {
+  return [{ name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }];
+}
+function worktreeDirtyFromSteps(result) {
+  if (result.missing) {
+    return { dirty: true, known: false, detail: `retry_guard_unverified: ${describeFailure(result, "status")}` };
+  }
+  const step = stepResult(result, "status");
+  if (!step || step.exit_code !== 0) {
+    const tail = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail ? ` \u2014 ${tail}` : ""}` };
+  }
+  const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
+  return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
+}
+function worktreeResetToSteps(wt, sha) {
+  return [
+    { name: "reset", command: `git -C ${q(wt)} reset --hard ${q(sha)}`, tolerant: true },
+    { name: "clean", command: `git -C ${q(wt)} clean -fd`, tolerant: true },
+    { name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }
+  ];
+}
+
 // skills/src/shared/agents.ts
 var RATE_LIMIT_MAX_RETRIES = 4;
 var RATE_LIMIT_BASE_DELAY_MS = 5e3;
@@ -539,13 +571,17 @@ async function resilientAgent(prompt, opts, deps) {
       logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
     }
     if (attempt < maxRetries && opts?.worktree) {
-      const dirty = await agentFn(
-        `Run: git -C "${opts.worktree}" status --porcelain
-Return ONLY the raw output, no explanation.`,
-        stageOpts("cli", { label: "retry-guard", model: "haiku" })
-      );
-      if (dirty && String(dirty).trim().length > 0) {
-        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes`);
+      const guardSteps = worktreeDirtySteps(opts.worktree);
+      const guard = worktreeDirtyFromSteps(parseBatchResult(
+        await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),
+        guardSteps
+      ));
+      if (!guard.known) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} and the worktree state is unknown (${guard.detail}) \u2014 aborting retry to prevent duplicate writes`);
+        return lastResult;
+      }
+      if (guard.dirty) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes (${guard.detail})`);
         return lastResult;
       }
     }
@@ -582,9 +618,9 @@ function getIssueId(lanePlan2, taskId) {
 }
 
 // skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function catOrMissing(path) {
-  return `cat ${q(path)} 2>/dev/null || echo MISSING`;
+  return `cat ${q2(path)} 2>/dev/null || echo MISSING`;
 }
 function isMissing(raw) {
   return !raw || raw.trim() === "" || raw.trim() === "MISSING";
@@ -592,17 +628,17 @@ function isMissing(raw) {
 function laneIntakeSteps(o) {
   const steps = [];
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
-  steps.push({ name: "history", command: `git -C ${q(o.wt)} log --format="%H %s" ${q(o.epicBranch)}..HEAD`, tolerant: true });
+  steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
   if (!o.structural) {
     if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
     if (o.planSkeletonPath) {
       steps.push({ name: "skeleton-plan", command: catOrMissing(o.planSkeletonPath), tolerant: true });
     }
     const gen = `${o.skeletonCmd}
-cat ${q(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q(o.preflightPath)} 2>/dev/null || echo "{}"`;
+cat ${q2(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q2(o.preflightPath)} 2>/dev/null || echo "{}"`;
     steps.push({
       name: "skeleton-gen",
-      command: o.planSkeletonPath ? `if [ -s ${q(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else
+      command: o.planSkeletonPath ? `if [ -s ${q2(o.planSkeletonPath)} ]; then echo SKIPPED_PLAN_SKELETON; else
 ${gen}
 fi` : gen,
       tolerant: true
@@ -628,27 +664,27 @@ function postRedSteps(o) {
 cat > "$PATFILE" <<'PATTERN_EOF'
 ${o.testFuncDiffRegex}
 PATTERN_EOF
-datum dev test-count-gate --repo ${q(o.wt)} --files ${o.testFiles.map(q).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}` + (o.baseRef ? ` --base ${q(o.baseRef)}` : ""),
+datum dev test-count-gate --repo ${q2(o.wt)} --files ${o.testFiles.map(q2).join(" ")} --pattern-file "$PATFILE" --required ${o.acCount}` + (o.baseRef ? ` --base ${q2(o.baseRef)}` : ""),
       tolerant: true
     });
   }
   steps.push({
     name: "assert-check",
     command: o.testFiles.map((f) => o.sgPatterns.map(
-      (p) => `ast-grep --pattern '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null || grep -n '${p.pattern}' ${q(`${o.wt}/${f}`)} 2>/dev/null`
+      (p) => `ast-grep --pattern '${p.pattern}' ${q2(`${o.wt}/${f}`)} 2>/dev/null || grep -n '${p.pattern}' ${q2(`${o.wt}/${f}`)} 2>/dev/null`
     ).join("\n")).join("\n") + `
 BODYPATFILE=$(mktemp)
 cat > "$BODYPATFILE" <<'PATTERN_EOF'
 ${o.testFuncBodyRegex}
 PATTERN_EOF
 ` + o.testFiles.map(
-      (f) => `grep -A1 -f "$BODYPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f) => `grep -A1 -f "$BODYPATFILE" ${q2(`${o.wt}/${f}`)} 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n"),
     tolerant: true
   });
   if (o.ownership) steps.push({ name: "ownership", command: ownershipCommand(o.wt), tolerant: true });
   o.testFiles.forEach((f, i) => {
-    steps.push({ name: `scope-read-${i}`, command: `cat ${q(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true });
+    steps.push({ name: `scope-read-${i}`, command: `cat ${q2(`${o.wt}/${f}`)} 2>/dev/null`, tolerant: true });
   });
   steps.push({
     name: "test-count-pattern",
@@ -661,14 +697,14 @@ cat "$GREPPATFILE"`,
   });
   steps.push({
     name: "test-count-after",
-    command: o.testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" ${q(`${o.wt}/${f}`)} 2>/dev/null || echo 0`).join("\n"),
+    command: o.testFiles.map((f) => `grep -c -E -f "$GREPPATFILE" ${q2(`${o.wt}/${f}`)} 2>/dev/null || echo 0`).join("\n"),
     tolerant: true
   });
-  const beforeRef = o.baseRef ? `$(git -C ${q(o.wt)} merge-base HEAD ${q(o.baseRef)})` : "HEAD~1";
+  const beforeRef = o.baseRef ? `$(git -C ${q2(o.wt)} merge-base HEAD ${q2(o.baseRef)})` : "HEAD~1";
   steps.push({
     name: "test-count-before",
     command: o.testFiles.map(
-      (f) => `__before=${beforeRef}; git -C ${q(o.wt)} rev-parse "$__before" >/dev/null 2>&1 && git -C ${q(o.wt)} show "$__before":${q(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`
+      (f) => `__before=${beforeRef}; git -C ${q2(o.wt)} rev-parse "$__before" >/dev/null 2>&1 && git -C ${q2(o.wt)} show "$__before":${q2(f)} 2>/dev/null | grep -c -E -f "$GREPPATFILE" || echo 0`
     ).join("\n"),
     tolerant: true
   });
@@ -678,10 +714,32 @@ cat "$GREPPATFILE"`,
   return steps;
 }
 function ownershipCommand(wt) {
-  return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`;
+  return `git -C ${q2(wt)} diff --name-only HEAD~1 HEAD`;
 }
 function ownershipCheckSteps(wt) {
   return [{ name: "ownership", command: ownershipCommand(wt), tolerant: true }];
+}
+function depMergeSteps(wt, branches) {
+  return branches.map((b, i) => ({
+    name: `merge-${i}`,
+    command: `git -C ${q2(wt)} merge --no-edit ${q2(b)} || { git -C ${q2(wt)} merge --abort >/dev/null 2>&1; false; }`
+  }));
+}
+function depMergeFromSteps(result, branches) {
+  if (result.missing) {
+    return { ok: false, error: `dep_merge_failed: could not merge [${branches.join(", ")}] \u2014 ${describeFailure(result, "merge-0")}` };
+  }
+  for (let i = 0; i < branches.length; i++) {
+    const step = stepResult(result, `merge-${i}`);
+    if (!step) {
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} \u2014 merge step did not run` };
+    }
+    if (step.exit_code !== 0) {
+      const tail = (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+      return { ok: false, error: `dep_merge_failed: could not merge ${branches[i]} (exit ${step.exit_code}, merge aborted) \u2014 ${tail}` };
+    }
+  }
+  return { ok: true, error: "" };
 }
 function ownershipFromStdout(raw, allowedFiles, forbiddenFiles) {
   if (raw === null || raw === void 0) {
@@ -705,16 +763,16 @@ function scopeContentsFromSteps(testFiles, stdoutOf) {
 function scopeContractSteps(o) {
   const steps = [];
   o.scopeGaps.forEach((f, i) => {
-    steps.push({ name: `scope-exists-${i}`, command: `test -f ${q(`${o.wt}/${f}`)}`, tolerant: true });
+    steps.push({ name: `scope-exists-${i}`, command: `test -f ${q2(`${o.wt}/${f}`)}`, tolerant: true });
   });
   if (o.contractPreflight) {
     const c = o.contractPreflight;
-    const gapLoop = o.scopeGaps.length > 0 ? `for __f in ${o.scopeGaps.map(q).join(" ")}; do [ -f ${q(o.wt)}/"$__f" ] && __extra+=(--allowed "$__f"); done
+    const gapLoop = o.scopeGaps.length > 0 ? `for __f in ${o.scopeGaps.map(q2).join(" ")}; do [ -f ${q2(o.wt)}/"$__f" ] && __extra+=(--allowed "$__f"); done
 ` : "";
     steps.push({
       name: "contract-preflight",
       command: `__extra=()
-${gapLoop}datum contract-preflight --repo ${q(o.wt)} --test-command ${JSON.stringify(c.scopedTestCmd)} ` + c.testFiles.map((f) => `--test-file ${q(f)}`).join(" ") + (c.implFiles.length > 0 ? " " + c.implFiles.map((f) => `--allowed ${q(f)}`).join(" ") : "") + ' "${__extra[@]}"',
+${gapLoop}datum contract-preflight --repo ${q2(o.wt)} --test-command ${JSON.stringify(c.scopedTestCmd)} ` + c.testFiles.map((f) => `--test-file ${q2(f)}`).join(" ") + (c.implFiles.length > 0 ? " " + c.implFiles.map((f) => `--allowed ${q2(f)}`).join(" ") : "") + ' "${__extra[@]}"',
       tolerant: true
     });
   }
@@ -736,23 +794,6 @@ function postGreenSteps(o) {
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
   }
   return steps;
-}
-
-// skills/src/shared/commit-steps.ts
-var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-function worktreeResetSteps(wt) {
-  return [
-    { name: "reset", command: `git -C ${q2(wt)} reset --hard HEAD`, tolerant: true },
-    { name: "clean", command: `git -C ${q2(wt)} clean -fd`, tolerant: true },
-    { name: "status", command: `git -C ${q2(wt)} status --porcelain`, tolerant: true }
-  ];
-}
-function worktreeResetToSteps(wt, sha) {
-  return [
-    { name: "reset", command: `git -C ${q2(wt)} reset --hard ${q2(sha)}`, tolerant: true },
-    { name: "clean", command: `git -C ${q2(wt)} clean -fd`, tolerant: true },
-    { name: "status", command: `git -C ${q2(wt)} status --porcelain`, tolerant: true }
-  ];
 }
 
 // skills/src/shared/schemas.ts
@@ -1814,15 +1855,14 @@ var dagResults = await parallel(
       const wt = worktreePaths[taskId];
       if (typeof wt === "string" && wt.startsWith("/")) {
         const depBranches = inBatchDeps.map((d) => `${cfg.epicBranch}--${d}`);
-        const mergeOut = await resilientAgent(
-          `Run these commands in order in "${wt}". If any command fails, stop and return its full output including stderr. Otherwise return ONLY the raw combined output, no explanation, no markdown fences.
-` + depBranches.map((b) => `git -C "${wt}" merge --no-edit "${b}"`).join("\n"),
-          stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })
-        );
-        if (mergeOut === null || /CONFLICT|Automatic merge failed|error:|fatal:/i.test(String(mergeOut))) {
-          const err = `dep_merge_failed: could not merge [${depBranches.join(", ")}] into ${taskId} worktree \u2014 ${String(mergeOut).slice(0, 300)}`;
-          log(`[${taskId}] ${err}`);
-          const failResult = { task_id: taskId, status: "failed", stage: "CRASH", error: err };
+        const depMergeStepList = depMergeSteps(wt, depBranches);
+        const depMerge = depMergeFromSteps(parseBatchResult(
+          await resilientAgent(batchCommandPrompt(depMergeStepList), stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })),
+          depMergeStepList
+        ), depBranches);
+        if (!depMerge.ok) {
+          log(`[${taskId}] ${depMerge.error}`);
+          const failResult = { task_id: taskId, status: "failed", stage: "CRASH", error: depMerge.error };
           depResolvers[taskId](failResult);
           return failResult;
         }

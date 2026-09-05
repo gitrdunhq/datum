@@ -254,6 +254,79 @@ var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u
 // skills/src/prompts/lane-state-read.md
 var lane_state_read_default = 'Report which lanes of epic {{epicBranch}} already have epic-scoped completion markers.\n\nRun this exact script from the repo root and return ONLY its stdout \u2014 raw JSON, no markdown fences, no commentary. It calls `datum lane-state read` (the deterministic CLI, not hand-written file parsing) once per task id:\n\n```\nOUT=\'{}\'\nfor TID in {{taskIdsSpace}}; do\n  R=$(datum lane-state read --epic "{{epicBranch}}" --task "$TID")\n  STATUS=$(echo "$R" | jq -r \'.status // "not_found"\')\n  if [ "$STATUS" = "not_found" ]; then continue; fi\n  MC=$(echo "$R" | jq -r \'.merge_commit // ""\')\n  SHASH=$(echo "$R" | jq -r \'.spec_hash // ""\')\n  ANC=false\n  if [ -n "$MC" ] && git merge-base --is-ancestor "$MC" "{{epicBranch}}" 2>/dev/null; then\n    ANC=true\n  fi\n  OUT=$(echo "$OUT" | jq --arg tid "$TID" --arg status "$STATUS" --arg spec_hash "$SHASH" --argjson ancestor "$ANC" \\\n    \'. + {($tid): {status: $status, spec_hash: $spec_hash, ancestor: $ancestor}}\')\ndone\necho "$OUT"\n```\n\nIf no markers exist for any task id, the script prints `{}` \u2014 that is the correct output. Do not create any files or directories.\n';
 
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  validateBatchSteps(steps);
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+function describeFailure(r, label) {
+  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {
@@ -336,79 +409,6 @@ function laneStateReadPrompt(vars) {
 }
 function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
-}
-
-// skills/src/shared/batch.ts
-var NAME_RE = /^[a-z][a-z0-9-]*$/;
-function validateBatchSteps(steps) {
-  if (steps.length === 0) throw new Error("batch: no steps");
-  const seen = /* @__PURE__ */ new Set();
-  for (const s of steps) {
-    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
-    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
-    seen.add(s.name);
-    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
-  }
-}
-function batchScript(steps) {
-  validateBatchSteps(steps);
-  const lines = [
-    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
-    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
-    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
-  ];
-  steps.forEach((s, i) => {
-    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
-    lines.push("{");
-    lines.push(s.command.replace(/\n+$/, ""));
-    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
-    lines.push(`__rec '${s.name}' "$__c"`);
-    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
-  });
-  lines.push("__end");
-  return lines.join("\n") + "\n";
-}
-var cacheKey = "";
-function setBatchCacheKey(key) {
-  cacheKey = typeof key === "string" ? key : "";
-}
-function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
-
-` : "") + batchScript(steps);
-}
-function asStepResult(x) {
-  if (!x || typeof x !== "object") return null;
-  const o = x;
-  if (typeof o.name !== "string") return null;
-  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
-  return {
-    name: o.name,
-    exit_code: Number.isFinite(code) ? code : 1,
-    stdout: typeof o.stdout === "string" ? o.stdout : "",
-    stderr: typeof o.stderr === "string" ? o.stderr : ""
-  };
-}
-function parseBatchResult(raw, steps) {
-  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
-  const results = arr.map(asStepResult).filter((r) => r !== null);
-  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
-  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
-  return { steps: results, failed, missing: false };
-}
-function stepResult(r, name) {
-  return r.steps.find((s) => s.name === name) ?? null;
-}
-function stepStdout(r, name) {
-  const s = stepResult(r, name);
-  return s ? s.stdout : null;
-}
-function describeFailure(r, label) {
-  if (r.missing) return `${label}: batch agent returned no parseable result`;
-  if (!r.failed) return `${label}: ok`;
-  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
 // skills/src/shared/utf8.ts

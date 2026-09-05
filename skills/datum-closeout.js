@@ -125,68 +125,6 @@ function bootstrapOpts(stage, extra = {}) {
   return stageOpts(stage, extra);
 }
 
-// skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
-function closeoutCollectSteps(o) {
-  return [
-    {
-      name: "branch",
-      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
-      tolerant: true
-    },
-    {
-      name: "timestamp",
-      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
-      tolerant: true
-    },
-    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
-    { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
-    { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
-    { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
-    {
-      name: "collect-git",
-      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
-      tolerant: true
-    },
-    { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
-    { name: "collect-token-metrics", command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
-    { name: "collate", command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
-    {
-      name: "data-exists",
-      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
-      tolerant: true
-    }
-  ];
-}
-var ARCHIVE_ROOT_FILES = ["SPEC.md", "TASKS.md", "QUESTIONS.md", "PROPERTIES.md", "TICKET.md", "tasks.json"];
-function moveStepName(fileName) {
-  return `move-${fileName.toLowerCase().replace(/\./g, "-")}`;
-}
-function moveIntoEpicDirCommand(src, epicDir2, base) {
-  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(`${epicDir2}/${base}`)}; else echo ABSENT; fi`;
-}
-function closeoutArchiveSteps(o) {
-  const steps = [
-    { name: "tag", command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
-    { name: "archive", command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true }
-  ];
-  for (const f of ARCHIVE_ROOT_FILES) {
-    steps.push({ name: moveStepName(f), command: moveIntoEpicDirCommand(f, o.epicDir, f), tolerant: true });
-  }
-  steps.push({
-    name: "move-lane-plan-json",
-    command: moveIntoEpicDirCommand(".datum/lane-plan.json", o.epicDir, "lane-plan.json"),
-    tolerant: true
-  });
-  steps.push({
-    name: "commit",
-    command: `git diff --cached --quiet || git commit -m ${q(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
-    tolerant: true
-  });
-  steps.push({ name: "commit-sha", command: "git rev-parse --short HEAD", tolerant: true });
-  return steps;
-}
-
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function validateBatchSteps(steps) {
@@ -258,6 +196,68 @@ function describeFailure(r, label) {
   if (!r.failed) return `${label}: ok`;
   const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/lane-steps.ts
+var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+function closeoutCollectSteps(o) {
+  return [
+    {
+      name: "branch",
+      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
+      tolerant: true
+    },
+    {
+      name: "timestamp",
+      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
+      tolerant: true
+    },
+    { name: "base-sha", command: `__base=$(git merge-base HEAD origin/main) && printf '%s' "$__base"`, tolerant: true },
+    { name: "merge-sha", command: `__merge=$(git rev-parse HEAD) && printf '%s' "$__merge"`, tolerant: true },
+    { name: "config", command: `cat .datum/config.json || echo '{}'`, tolerant: true },
+    { name: "mkdir", command: `mkdir -p ".datum/runs/$__rid"`, tolerant: true },
+    {
+      name: "collect-git",
+      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
+      tolerant: true
+    },
+    { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },
+    { name: "collect-token-metrics", command: `datum closeout-collect-token-metrics --run-id "$__rid"`, tolerant: true },
+    { name: "collate", command: `datum closeout-collate --run-id "$__rid" --merge-sha "$__merge"`, tolerant: true },
+    {
+      name: "data-exists",
+      command: `test -s ".datum/runs/$__rid/closeout-data.json" && echo yes || echo no`,
+      tolerant: true
+    }
+  ];
+}
+var ARCHIVE_ROOT_FILES = ["SPEC.md", "TASKS.md", "QUESTIONS.md", "PROPERTIES.md", "TICKET.md", "tasks.json"];
+function moveStepName(fileName) {
+  return `move-${fileName.toLowerCase().replace(/\./g, "-")}`;
+}
+function moveIntoEpicDirCommand(src, epicDir2, base) {
+  return `if [ -f ${q(src)} ]; then mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(`${epicDir2}/${base}`)}; else echo ABSENT; fi`;
+}
+function closeoutArchiveSteps(o) {
+  const steps = [
+    { name: "tag", command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
+    { name: "archive", command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true }
+  ];
+  for (const f of ARCHIVE_ROOT_FILES) {
+    steps.push({ name: moveStepName(f), command: moveIntoEpicDirCommand(f, o.epicDir, f), tolerant: true });
+  }
+  steps.push({
+    name: "move-lane-plan-json",
+    command: moveIntoEpicDirCommand(".datum/lane-plan.json", o.epicDir, "lane-plan.json"),
+    tolerant: true
+  });
+  steps.push({
+    name: "commit",
+    command: `git diff --cached --quiet || git commit -m ${q(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
+    tolerant: true
+  });
+  steps.push({ name: "commit-sha", command: "git rev-parse --short HEAD", tolerant: true });
+  return steps;
 }
 
 // skills/src/datum-closeout.ts
