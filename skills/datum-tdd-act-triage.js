@@ -97,6 +97,19 @@ var PREFIX_RULES = [
     category: "infrastructure",
     reason: "runner_permission_denied: the host permission classifier refused the datum-cli runner's batch (typically git reset --hard / clean -fd inside datum's own scratch worktree) and it replied in prose. Fix is an allow-rule for those commands on the .datum/worktrees path, not a code or plan change."
   },
+  // Batch wrapper failures come BEFORE lane_intake_failed: they surface
+  // through it ("lane_intake_failed: ...: batch_script_corrupt ...") and the
+  // more specific name is the one the operator needs.
+  {
+    test: /\bbatch_script_corrupt\b/,
+    category: "infrastructure",
+    reason: "batch_script_corrupt: the datum-cli runner re-typed the batch script and the hash check refused to run it, twice (caliper eedom wf_4f739141-c8c: a dropped quote). Nothing in the batch ran; a runner transcription failure, not a code or plan defect."
+  },
+  {
+    test: /\bbatch_root_missing\b/,
+    category: "infrastructure",
+    reason: "batch_root_missing: the repo root recorded at boot no longer exists, so the batch refused to run anywhere else (elonchesd wf_29721006-d27: a batch that ran in a second worktree). Nothing in the batch ran; a pipeline/environment failure, not a code or plan defect."
+  },
   {
     test: /\blane_intake_failed\b/,
     category: "infrastructure",
