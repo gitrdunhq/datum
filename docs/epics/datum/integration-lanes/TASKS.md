@@ -1,0 +1,166 @@
+# Implementation Plan (TASKS.md)
+
+## Dependency Graph
+```mermaid
+graph TD
+  task-001 --> task-002
+  task-001 --> task-004
+  task-003 --> task-005
+  task-004 --> task-005
+  task-001 --> task-005
+  task-002 --> task-006
+  task-004 --> task-006
+  task-001 --> task-006
+  task-004 --> task-008
+  task-002 --> task-009
+  task-005 --> task-009
+  task-006 --> task-009
+```
+
+## task-001: Parse the `## Integration Invariants` table out of PROPERTIES.md
+- **Slug**: parse-integration-invariants-table
+New pure-logic module `datum/integration_invariants.py` that locates the `## Integration Invariants` heading in PROPERTIES.md text, parses its `ID | Invariant | Covers | Source` markdown table into structured records, and raises a named structured error on malformed rows. No gate, lane-plan, or skeleton wiring in this lane.
+
+- **Acceptance Criteria**:
+  - `parse_integration_invariants(md_text)` returns a list of dicts with keys `id`, `invariant`, `covers` (list[str]), `source` (str), one per table row, preserving table order
+  - `parse_integration_invariants` on text whose table columns are not exactly `ID | Invariant | Covers | Source` in that order raises `IntegrationInvariantError` with a message starting `malformed_invariant_table:`
+  - `parse_integration_invariants` on a row whose cell count differs from 4 raises `IntegrationInvariantError` with a message starting `malformed_invariant_row:` and naming the row's ID
+  - `parse_integration_invariants` on a row whose `Source` matches neither `spec:<section>` nor `question:Q<N>` raises `IntegrationInvariantError` with a message starting `malformed_invariant_source:` and naming the row's ID
+  - `parse_integration_invariants` on text with the `## Integration Invariants` heading present but zero data rows returns `[]` (no exception)
+  - `has_integration_invariants_section(md_text)` returns False when the `## Integration Invariants` heading is absent and True when present, so callers can distinguish 'absent heading' from 'empty table'
+  - `parse_integration_invariants` splits `Covers` on commas and strips whitespace, so `task-001, task-002` yields `['task-001', 'task-002']`
+- **Files**: datum/integration_invariants.py, tests/test_integration_invariants_parse.py
+- **RED Note**: pytest. The failing test must call `parse_integration_invariants` with literal PROPERTIES.md-shaped markdown strings and assert on the returned list-of-dicts and on `pytest.raises(IntegrationInvariantError)` message prefixes — not on gate exit codes. MODULE PATH NOTE: the SPEC's §9 `new_public_api` places the merge-frontier helper in `lane_plan.py`; the chosen approach overrides that with a dedicated module, and the epic's existing `tasks.json` already names it `datum/integration_invariants.py` — use exactly that path, every downstream lane references it. This lane owns the `malformed_invariant_*` message strings; do NOT assert `invariant_missing_for_question` (task-002) or `invariant_covers_unknown_task` (task-006) here.
+- **Estimated LOC**: 110
+
+## task-002: gate_properties enforces the Integration Invariants table and per-question coverage
+- **Slug**: gate-properties-invariant-checks
+Extend `gate_properties` in datum/gate.py to parse PROPERTIES.md's Integration Invariants table via the new module, fail on a missing heading or malformed rows, and fail when an answered QUESTIONS.md question has no matching invariant row. Reuses the existing `check_questions_answered` regex rather than adding a second parser.
+
+- **Acceptance Criteria**:
+  - `gate_properties` fails when PROPERTIES.md lacks the `## Integration Invariants` heading, emitting `missing_integration_invariants_section` (AC1.4)
+  - `gate_properties` fails and surfaces the `IntegrationInvariantError` message verbatim when the table has malformed rows/columns/source (AC1.4)
+  - `answered_question_ids(questions_md_text)` returns the list of `Q<N>` ids whose block has a non-empty `[Answer]:` line, using the same regex `check_questions_answered` already uses, and excludes questions with an empty or absent `[Answer]:`
+  - `gate_properties` fails with `invariant_missing_for_question: Q<N>` (one message per offending question) when an answered question has no invariant row whose `Source` equals `question:Q<N>` (AC2.5)
+  - `gate_properties` fails with `invariant_duplicate_for_question: Q<N>` when more than one invariant row carries the same `question:Q<N>` source, so 'exactly one' from AC2.1 is enforced in both directions
+  - `gate_properties` passes when every answered question has exactly one matching row and every row is well formed
+  - A PROPERTIES.md whose invariant `Covers` list has fewer than 2 entries and whose `Source` is `spec:<section>` fails; the same row with `Source` `question:Q<N>` passes (AC1.2)
+  - PROPERTIES.md and QUESTIONS.md are each read and parsed once per `gate_properties` invocation (no repeated re-parsing), per the gate-performance NFR
+- **Files**: datum/gate.py, tests/test_gate_properties_integration.py
+- **Depends on**: task-001
+- **RED Note**: pytest, using tmp_path epic fixtures the way tests/test_gate_properties.py already does. The failing test must drive `gate_properties` end-to-end and assert on the specific new message strings (`invariant_missing_for_question: Q2`, `missing_integration_invariants_section`) plus a non-zero/raising outcome — the existing 11-category and traceability-table checks must keep passing unchanged. This lane owns the `invariant_missing_for_question` / `invariant_duplicate_for_question` / `missing_integration_invariants_section` strings; do NOT assert `invariant_covers_unknown_task` here (task-006 owns it). datum/gate.py is also edited by task-006, which depends on this lane — keep the diff additive and localized to `gate_properties`.
+- **Estimated LOC**: 120
+
+## task-003: Widen lane-plan schema id patterns to accept `task-INT-<n>`
+- **Slug**: widen-lane-plan-schema-int-ids
+Change the three `constr(pattern=r'^task-\d+$')` sites in datum/models/lane_plan_schema.py (`Lanes.id`, `TopologicalOrderItem.root`, `DatumLanePlan.file_ownership` values) to `^task-(\d+|INT-\d+)$` so INT lanes validate, without loosening validation for ordinary task ids.
+
+- **Acceptance Criteria**:
+  - A lane-plan payload whose `lanes` contains a lane with `id` `task-INT-1` validates successfully through `datum.contracts.validate_payload` for the `lane-plan` schema key
+  - `topological_order` containing `task-INT-2` validates successfully
+  - `file_ownership` mapping `tests/integration/test_int_1.py` -> `task-INT-1` validates successfully
+  - A plan containing only ordinary `task-001`-style ids validates exactly as before (same accepted set)
+  - Malformed ids still fail: `task-abc`, `task-INT-`, `task-INT-x`, `taskINT-1`, `TASK-001`, and `task-INT-1-extra` each raise a pydantic ValidationError (schema-safety NFR: the widening must not weaken ordinary task-id validation)
+- **Files**: datum/models/lane_plan_schema.py, tests/test_lane_plan_schema_int_ids.py
+- **RED Note**: pytest. The failing test must call the pydantic models (or `datum.contracts.validate_payload`) directly with minimal in-memory plan dicts and assert both the newly-accepted INT ids AND the still-rejected malformed ids — the negative cases are the point, since a lazy `.*` widening would pass the positive ones. Do not edit datum/contracts.py; it is read-only context for the schema key name.
+- **Estimated LOC**: 45
+
+## task-004: Group invariants into merge frontiers and build synthetic INT lane dicts
+- **Slug**: group-invariants-into-int-lanes
+Add the pure merge-frontier grouping to datum/integration_invariants.py: group parsed invariants by the sorted tuple of their `Covers` task ids, order groups topologically with a deterministic tie-break, number them from 1, and emit one fully-formed INT lane dict per group. No lane_plan.py wiring here.
+
+- **Acceptance Criteria**:
+  - `derive_integration_lanes(invariants, tasks, test_command)` returns a list of lane dicts, one per distinct sorted `Covers` tuple, with all invariants sharing a tuple merged into one lane
+  - Each returned lane has `id` == `task-INT-<n>` numbered from 1, `kind` == `'integration'`, `expect_tests_pass` is True, `depends_on` == the sorted list of the group's covered task ids, and `acceptance_criteria` == the group's invariant texts in table order (AC3.3)
+  - Each returned lane's `files` is exactly one path: `tests/integration/test_int_<n>.py` when `test_command` targets pytest, and `src/integration/int-<n>.test.ts` when it targets a TypeScript/JS runner (AC3.3)
+  - Group numbering is topological: a group whose covered tasks are all ancestors (per each task's `depends_on` in tasks) of another group's covered tasks is numbered first; ties break on ascending covered-task-id order (AC3.2)
+  - Calling `derive_integration_lanes` twice on the same inputs, and on inputs whose invariant/task dicts were constructed in a different insertion order, returns identical lane lists (determinism NFR — no unsorted dict/set iteration)
+  - `derive_integration_lanes` with an empty invariant list returns `[]` (AC8.1)
+  - `unknown_covered_tasks(invariants, tasks)` returns an ordered list of `(invariant_id, task_id)` pairs for every `Covers` entry absent from tasks, and `[]` when all are present — it returns data, it does not raise or format a gate message
+  - Each returned lane also carries `title` and `red_note` keys with non-empty strings so the lane satisfies the lane-plan schema's required fields
+- **Files**: datum/integration_invariants.py, tests/test_integration_invariants_frontier.py
+- **Depends on**: task-001
+- **RED Note**: pytest. The failing test must call `derive_integration_lanes` with hand-built invariant and task lists and assert on the exact returned lane dicts — including the id numbering under a deliberately non-topological input order, and a determinism assertion that shuffled-input runs produce an equal result. This lane shares datum/integration_invariants.py with task-001 (dependency edge declared) but must have its own test file. It owns no gate message strings: `unknown_covered_tasks` returns pairs, and task-006 formats them as `invariant_covers_unknown_task: <ID> -> <task>`.
+- **Estimated LOC**: 150
+
+## task-005: build_lane_plan emits INT lanes, ownership, and topological order
+- **Slug**: wire-int-lanes-into-lane-plan
+Thread an optional PROPERTIES.md path through `build_lane_plan`/`main` in datum/lane_plan.py, call the grouping helper, and merge the resulting INT lanes into `lanes`, `topological_order`, `file_ownership`, and `total_lanes`. The default (no properties path, or a PROPERTIES.md with no invariants) must be a byte-identical no-op.
+
+- **Acceptance Criteria**:
+  - `build_lane_plan(..., properties_path=None)` returns a plan byte-identical to the current pre-slice output for the same tasks (default-None keeps every existing caller and test green)
+  - With a PROPERTIES.md containing invariants, the returned plan's `lanes` gains one `task-INT-<n>` entry per merge frontier, each with `kind` == `'integration'` and `expect_tests_pass` True
+  - Each INT lane id is appended to `topological_order` after all of its covered task ids
+  - Each INT lane's single test file is added to `file_ownership` mapped to that INT lane's id
+  - `total_lanes` equals `len(lanes)` including the INT lanes
+  - A PROPERTIES.md whose `## Integration Invariants` table is present but empty produces zero `task-INT-*` lanes and a plan byte-identical to the `properties_path=None` output (AC8.1)
+  - The plan produced with INT lanes validates against the widened lane-plan pydantic schema (no new top-level plan keys — `DatumLanePlan` is `extra='forbid'`)
+  - `main()` accepts an optional `--properties` argument and passes it through; omitting it preserves current CLI behavior exactly
+- **Files**: datum/lane_plan.py, tests/test_lane_plan_integration_lanes.py
+- **Depends on**: task-003, task-004, task-001
+- **RED Note**: pytest. The failing test must call `build_lane_plan` directly with in-memory tasks plus a tmp_path PROPERTIES.md and assert on the returned plan dict (lanes/topological_order/file_ownership/total_lanes), and must include an explicit no-op regression assertion that `properties_path=None` output equals the pre-slice output. AC4.1 CONFLICT — READ THIS: AC4.1's clause 'a plan written before this slice digests every lane as kind: "task"' contradicts the backward-compatibility NFR ('zero regression in _LANE_FIELDS output'), and synthesizing a `task` default provably changes digest JSON for pre-slice plans. The failing test MUST assert that a pre-slice plan (no `kind` on any lane) digests byte-identically with NO synthesized `kind` key, and MUST NOT assert a `task` default. Do not edit datum/lane_plan_digest.py — it is read-only here; `kind` is already in its `_LANE_FIELDS`, so INT lanes get it for free once build_lane_plan writes the key.
+- **Estimated LOC**: 130
+
+## task-006: gate_plan validates INT lane coverage, dependency direction, and the zero-invariant warning
+- **Slug**: gate-plan-integration-lane-checks
+Add the integration-lane checks to `gate_plan` in datum/gate.py: unknown covered tasks fail, INT `depends_on` must equal the union of covered tasks, task lanes must never depend on an INT lane, and a zero-invariant epic warns on stderr while exiting 0.
+
+- **Acceptance Criteria**:
+  - `gate_plan` fails with `invariant_covers_unknown_task: <ID> -> <task>`, one message per offending covers-entry, when an invariant's `Covers` names a task id absent from tasks.json (AC3.4)
+  - `gate_plan` fails when a `task-INT-<n>` lane's `depends_on` as a set is not exactly the union of its invariants' `Covers` task ids (AC9.1)
+  - `gate_plan` fails when a lane with `kind` absent or `'task'`/`'behavioral'`/`'structural'` has a `task-INT-*` id in its `depends_on` (AC9.2)
+  - `gate_plan` writes `no_integration_invariants` to stderr and exits 0 when the plan has zero `task-INT-*` lanes and PROPERTIES.md's invariant table is empty (AC8.2)
+  - `check_zero_lanes`'s existing all-lanes-empty hard failure is unchanged and still fires only when there are zero lanes of any kind
+  - Existing `gate_plan` behaviors — schema validation, per-lane field checks, `depends_on` referential integrity, file-overlap-vs-dependency, assumption audit, topological_order/lanes equality — produce identical results for a plan with no INT lanes
+  - tasks.json and PROPERTIES.md are each parsed once per `gate_plan` invocation (gate-performance NFR)
+- **Files**: datum/gate.py, tests/test_gate_plan_integration_lanes.py
+- **Depends on**: task-002, task-004, task-001
+- **RED Note**: pytest, tmp_path epic fixture in the style of tests/test_gate_plan_transitive_deps.py. The failing test must run `gate_plan` over hand-built lane-plan.json + tasks.json + PROPERTIES.md fixtures and assert on the exact new strings and the exit/raise behavior, including the exit-0-with-stderr case for `no_integration_invariants` (a warning, not a failure). This lane owns `invariant_covers_unknown_task` and `no_integration_invariants`; do NOT re-assert `invariant_missing_for_question` (task-002 owns it). datum/gate.py is shared with task-002 — that edge is declared, so rebase on its landed `gate_properties` changes and keep this diff confined to `gate_plan`.
+- **Estimated LOC**: 140
+
+## task-007: Exported INT lane spec carries the tests-must-pass note and expect_tests_pass
+- **Slug**: export-integration-contract-summary
+In datum/lane_spec_export.py, prepend an integration-specific note entry to the exported `contract_summary` when the lane's `kind` is `'integration'`, without changing `contract_summary()`'s signature or its output for task lanes.
+
+- **Acceptance Criteria**:
+  - For a lane dict with `kind == 'integration'`, the body written by `export_lane_spec` has `contract_summary[0] == {'note': 'This is an integration lane: its tests are expected to PASS against the already-merged code and must not be written to fail.'}` and `contract_summary[1:] == contract_summary(criteria)` unchanged (AC5.1, AC5.2)
+  - `contract_summary()`'s signature and return value for any given `acceptance_criteria` list are unchanged — the note is injected by `export_lane_spec`, never by `contract_summary` itself (AC5.2)
+  - For a lane with `kind` absent or `'task'`/`'behavioral'`/`'structural'`, the exported `contract_summary` is byte-identical to the current pre-slice output with no note entry (AC5.3)
+  - The exported body for an integration lane includes `expect_tests_pass: true`, carried by the existing `**lane` spread with no additional export code (AC4.2)
+  - The exported body for a task lane does not include an `expect_tests_pass` key (AC4.3)
+  - `ac_count` in the returned summary for an integration lane equals `len(lane['acceptance_criteria'])`, i.e. the invariant count, via the existing unchanged computation (AC7.1)
+- **Files**: datum/lane_spec_export.py, tests/test_lane_spec_export_integration.py
+- **RED Note**: pytest. `contract_summary()` returns `list[dict]`, NOT a string — the SPEC's 'includes a sentence' is realized as a leading `{'note': ...}` dict entry, pinned verbatim in AC1 above; assert that exact dict, do not invent a different shape. The failing test builds a hand-written plan dict in memory (no dependency on build_lane_plan), calls `export_lane_spec` to a tmp_path, reads the JSON back, and asserts both the integration and the task-lane (byte-identical, no note, no expect_tests_pass) cases. Must NOT reuse tests/test_lane_spec_export.py — that file belongs to no lane in this epic and must stay unedited.
+- **Estimated LOC**: 70
+
+## task-008: Skeleton creator emits one shared INT test file with invariant-id-named functions
+- **Slug**: skeleton-int-lane-single-file
+Route integration-lane skeletons in datum/skeleton_creator.py into the lane's single designated test file (`lane['files'][0]`) with one skeleton function per acceptance criterion, named from the invariant ID, while leaving the task-lane one-file-per-AC path and `make_function_name`'s existing behavior untouched.
+
+- **Acceptance Criteria**:
+  - `run_preflight` for a lane whose `kind` is `'integration'` emits every skeleton with `path` equal to the lane's `files[0]`, not per-AC derived paths (AC6.1)
+  - The INT lane's skeleton bodies use the same placeholder shape task-lane skeletons already produce (e.g. `pytest.fail("not implemented")` for python) — no new placeholder form
+  - `make_function_name(ac_id, ac_text, language)` keeps its current three-positional-argument call contract working identically for every existing caller and returns the same names as today for non-integration ACs (AC6.3)
+  - `make_function_name(..., invariant_id='II3')` (new default-None keyword) returns `test_ii3` for python and an `II3`-derived name for typescript/javascript, preferring the invariant id over the slugified AC text (AC6.2)
+  - An INT lane with N acceptance criteria produces exactly N skeleton functions in one file, so the existing one-test-function-per-AC count expectation is satisfied without changing that gate's logic (AC7.2)
+  - `run_batch` over a lane plan containing both task lanes and INT lanes produces unchanged output for the task lanes
+  - The parent directory of the INT lane's test file is created on demand when skeletons are applied and it does not already exist
+- **Files**: datum/skeleton_creator.py, tests/test_skeleton_integration_lane.py
+- **Depends on**: task-004
+- **RED Note**: pytest. The failing test must call `run_preflight`/`run_batch` with a tmp_path lane-plan fixture containing one `kind: 'integration'` lane and one ordinary lane, then assert every INT skeleton's `path` equals the lane's single `files[0]`, that there are exactly N skeletons for N ACs, and that the function names derive from the invariant ids. BACKWARD-COMPAT TRAP: `make_function_name`'s new parameter must be keyword-with-default so tests/test_make_function_name.py and tests/test_skeleton_naming.py need no edits — if you find you must edit either of those files, stop and reconsider the signature. AC7.2 NOTE: the gate that enforces 'one test function per AC' was not located in the Python tree (it may live in the TS lane runner, which this Python-only slice must not touch); treat AC7.2 as a no-change, verification-only assertion on the skeleton count and do not add a speculative gate file to this lane.
+- **Estimated LOC**: 120
+
+## task-009: Document integration lanes in FLOW.md, SKILL.md, and the properties-derive prompt
+- **Slug**: document-integration-lanes
+Prose-only deliverables: a docs/FLOW.md section on RED-only integration lanes, SKILL.md coverage of the `integration` lane kind and the new gate error/warning names, and the per-question invariant instruction added to the properties-derive prompt template.
+
+- **Acceptance Criteria**:
+  - docs/FLOW.md gains a section describing integration lanes: RED-only in this slice (no GREEN), scheduled at merge frontiers, with failures routed to the covered tasks rather than the INT lane (AC10.1)
+  - SKILL.md documents `kind: "integration"` as a lane kind alongside `structural`/`behavioral` (AC10.2)
+  - SKILL.md names `invariant_missing_for_question`, `invariant_covers_unknown_task`, and `no_integration_invariants`, and notes `integration_failed` as the slice-2 triage-facing name reserved for later (AC10.2)
+  - skills/src/prompts/properties-derive.md instructs the model to emit one Integration Invariant per answered question in QUESTIONS.md with Source `question:Q<N>`, and to emit the `## Integration Invariants` table with columns `ID | Invariant | Covers | Source` in that order (AC2.4, AC1.1)
+  - The properties-derive prompt states that an invariant's `Invariant` text must be a checkable, testable expectation rather than a restatement of the question, and that an unanswered question yields no row (AC2.2, AC2.3)
+- **Files**: docs/FLOW.md, SKILL.md, skills/src/prompts/properties-derive.md
+- **Depends on**: task-002, task-005, task-006
+- **RED Note**: Documentation and prompt-template only — no testable behavior, so this lane runs a single commit stage with no RED/GREEN. Edit the TypeScript-side prompt SOURCE at skills/src/prompts/properties-derive.md; never touch the generated skills/*.js bundles (they carry an @generated banner and are rebuilt from source after merge). Depends on the gate and lane-plan lanes so the documented error names match what actually shipped.
+- **Estimated LOC**: 90
