@@ -408,8 +408,8 @@ function asStepResult(x) {
 function parseBatchResult(raw, steps) {
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
   if (!Array.isArray(arr)) {
-    const text = typeof raw === "string" ? raw.trim() : "";
-    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true };
+    const text = typeof raw === "string" ? raw.replace(/```[a-z]*/gi, "").trim() : "";
+    return text ? { steps: [], failed: null, missing: true, refusal: raw.trim() } : { steps: [], failed: null, missing: true };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
