@@ -337,17 +337,64 @@ _INSTALLERS: tuple[tuple[str, str, list[str], str], ...] = (
 _INSTALL_TIMEOUT_S = 600
 
 
-def install_lane_dependencies(worktree_path: Path) -> list[str]:
+def disable_worktree_hooks(worktree_path: Path, repo_root: Path) -> None:
+    """Turn git hooks off for ONE worktree through per-worktree config.
+
+    datum self-hosted wf_96fa4660-133: the developer's global hooks
+    (core.hooksPath in ~/.config/git) fired inside every lane worktree — a
+    post-checkout graph rebuild wrote graphify-out/ into the worktree and a
+    later step left unmerged index entries, so a sound GREEN could not
+    commit. Lane worktrees are datum's scratch checkouts; nothing a hook
+    does there is wanted. The developer's own repo-level and global values
+    are untouched: `extensions.worktreeConfig` is enabled once and the
+    override lives in the worktree's own config.
+    """
+    _git(["config", "extensions.worktreeConfig", "true"], cwd=repo_root, check=False)
+    _git(
+        ["config", "--worktree", "core.hooksPath", "/dev/null"],
+        cwd=worktree_path,
+        check=False,
+    )
+
+
+def sync_args_from_config(config_path: Path | None = None) -> dict[str, list[str]]:
+    """`worktree_sync_args` from .datum/config.json: extra args per installer
+    tool, e.g. {"uv": ["--frozen", "--all-extras"]} when the main checkout
+    carries extras the mandated test suite imports (numpy in [memory] here:
+    a lane synced with --frozen alone failed pytest at collection)."""
+    path = config_path or Path(".datum/config.json")
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text()).get("worktree_sync_args", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(tool): [str(a) for a in args]
+        for tool, args in raw.items()
+        if isinstance(args, list)
+    }
+
+
+def install_lane_dependencies(
+    worktree_path: Path, sync_args: dict[str, list[str]] | None = None
+) -> list[str]:
     """Run each applicable per-lane installer; return the directories it
     produced. A failure is reported on stderr as deps_install_failed and the
-    caller falls back to the symlink for that directory."""
+    caller falls back to the symlink for that directory. `sync_args` replaces
+    the tool's default arguments (after the subcommand) when it names the tool."""
     import shutil
     import sys
 
     produced: list[str] = []
-    for lockfile, tool, cmd, out_dir in _INSTALLERS:
+    for lockfile, tool, default_cmd, out_dir in _INSTALLERS:
         if not (worktree_path / lockfile).exists() or shutil.which(tool) is None:
             continue
+        cmd = default_cmd
+        if sync_args and tool in sync_args:
+            cmd = default_cmd[:2] + sync_args[tool]
         try:
             res = subprocess.run(
                 cmd,
@@ -426,12 +473,14 @@ def setup_pipeline_worktrees(
 
     mapping: dict[str, Path] = {}
     source_root = main_checkout_root(repo_root)
+    sync_args = sync_args_from_config()
     for lane_id in lane_ids:
         mapping[lane_id] = create_lane_worktree(
             epic_branch, lane_id, run_id, base_sha, repo_root=repo_root
         )
+        disable_worktree_hooks(mapping[lane_id], repo_root)
         # Own install first (pnpm/uv global cache); symlink whatever remains.
-        installed = install_lane_dependencies(mapping[lane_id])
+        installed = install_lane_dependencies(mapping[lane_id], sync_args)
         link_shared_dirs(
             mapping[lane_id], source_root, [d for d in link_dirs if d not in installed]
         )

@@ -595,7 +595,11 @@ export function setupSteps(o: SetupStepsOpts): BatchStep[] {
         // Idempotent: remove a root worktree left by a prior partial setup of this batch.
         `if [ -e ${q(rootDir)} ]; then git worktree remove --force ${q(rootDir)} 2>&1 || rm -rf ${q(rootDir)}; fi && git worktree prune && ` +
         `git worktree add --detach ${q(rootDir)} ${q(o.epicBranch)} 2>&1 && ` +
-        `__root=$(cd ${q(rootDir)} && pwd) && printf '{"root": "%s"}' "$__root"`,
+        `__root=$(cd ${q(rootDir)} && pwd) && ` +
+        // Hooks off for this scratch worktree only (per-worktree config; the
+        // developer's global post-checkout hook rebuilt a graph inside it).
+        `git config extensions.worktreeConfig true && git -C "$__root" config --worktree core.hooksPath /dev/null && ` +
+        `printf '{"root": "%s"}' "$__root"`,
     },
     {
       name: 'setup-wt',

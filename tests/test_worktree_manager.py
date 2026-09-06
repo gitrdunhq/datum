@@ -1383,3 +1383,56 @@ class TestPerLaneDependencyInstall:
             and "pnpm" in err
             and "ERR_PNPM_NO_OFFLINE_META" in err
         )
+
+
+class TestLaneWorktreeHooksAndSyncArgs:
+    """datum self-hosted wf_96fa4660-133: the developer's global git hooks
+    (core.hooksPath in ~/.config/git) fired inside every lane worktree — a
+    post-checkout graph rebuild wrote graphify-out/ into the worktree and a
+    later step left unmerged index entries, so a sound GREEN could not
+    commit. And `uv sync --frozen` gave the lane an env without the extras
+    the main checkout has (numpy, in [memory]), so the mandated full suite
+    failed at collection. Lane worktrees run with hooks off (per-worktree
+    config, never the developer's repo config) and sync with the args the
+    repo's datum config names."""
+
+    def test_lane_and_root_worktrees_get_hooks_disabled_per_worktree(self, repo: Path):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        # The fixture neutralises hooks at REPO level; make the repo config
+        # point at a real hooks dir again so only the per-worktree value can
+        # be what turns them off.
+        hooks = repo.parent / "hooks"
+        hooks.mkdir(exist_ok=True)
+        _git(["config", "core.hooksPath", str(hooks)], cwd=repo)
+        mapping = setup_pipeline_worktrees("run-hooks", "epic/test", ["lane-a"], repo_root=repo)
+        wt = mapping["lane-a"]
+        ext = _git(["config", "--get", "extensions.worktreeConfig"], cwd=repo).stdout.strip()
+        assert ext == "true"
+        per_wt = _git(["config", "--worktree", "--get", "core.hooksPath"], cwd=wt).stdout.strip()
+        assert per_wt == "/dev/null"
+        # the developer's own repo-level value is untouched
+        assert _git(["config", "--get", "core.hooksPath"], cwd=repo).stdout.strip() == str(hooks)
+
+    def test_uv_sync_uses_the_args_named_in_datum_config(self, repo: Path, monkeypatch):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
+        (repo / "uv.lock").write_text("version = 1\n")
+        (repo / ".datum").mkdir(exist_ok=True)
+        (repo / ".datum" / "config.json").write_text(
+            json.dumps({"worktree_sync_args": {"uv": ["--frozen", "--all-extras"]}})
+        )
+        _git(["checkout", "-q", "epic/test"], cwd=repo)
+        _git(["add", "pyproject.toml", "uv.lock"], cwd=repo)
+        _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
+        bin_dir = repo.parent / "fakebin"
+        bin_dir.mkdir(exist_ok=True)
+        log = repo.parent / "uv-args.log"
+        (bin_dir / "uv").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n")
+        (bin_dir / "uv").chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+        monkeypatch.chdir(repo)
+        setup_pipeline_worktrees("run-uv-args", "epic/test", ["lane-a"], repo_root=repo)
+        calls = log.read_text().splitlines()
+        assert calls == ["sync --frozen --all-extras"]

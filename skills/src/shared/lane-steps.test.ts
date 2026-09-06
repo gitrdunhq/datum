@@ -1618,3 +1618,16 @@ describe('strayCleanSteps leaves .datum/ and .temp/ alone', () => {
     }
   })
 })
+
+// datum self-hosted wf_96fa4660-133: the developer's global git hooks fired
+// inside the batch's root worktree too (a post-checkout graph rebuild). The
+// root-wt step turns hooks off for that worktree only, through per-worktree
+// config, never the developer's repo config.
+describe('setupSteps root-wt disables hooks for the root worktree', () => {
+  it('enables extensions.worktreeConfig and sets core.hooksPath /dev/null on the root worktree', () => {
+    const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1'], lanePlanPath: 'x' })
+    const rootWt = steps.find((s) => s.name === 'root-wt')!.command
+    expect(rootWt).toContain('git config extensions.worktreeConfig true')
+    expect(rootWt).toMatch(/git -C "\$__rootwt" config --worktree core\.hooksPath \/dev\/null|config --worktree core\.hooksPath \/dev\/null/)
+  })
+})
