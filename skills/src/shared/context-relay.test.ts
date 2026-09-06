@@ -329,7 +329,35 @@ describe('verifyReadWitness', () => {
 
   it('is ok with no missing/mismatched when every deferred file has a matching read_witness prefix', () => {
     const result = verifyReadWitness([deferredA, inlined], { read_witness: { 'A.md': 'abcdef123456' } })
-    expect(result).toEqual({ ok: true, missing: [], mismatched: [], tooShort: [] })
+    expect(result).toEqual({ ok: true, missing: [], mismatched: [], tooShort: [], nearMiss: [] })
+  })
+
+  // caliper eedom wf_751ea0e4-653 task-002 (#566): the RED agent cited
+  // "8cc9785049da" for blob 8cc97850499dbaa7… — ten correct hex chars, then
+  // one dropped "9" while transcribing. A valid committed RED failed the lane
+  // and blocked four descendants. Ten correct leading hex chars cannot be
+  // produced without hashing the file; the evidence standard is the same as
+  // BUG K2's seven-char prefix, and a trailing transcription slip after it
+  // is tolerated and named, never an unverified read.
+  it('accepts a value whose leading >= 7 hex chars match the sha even when later chars do not, and names it a near miss', () => {
+    const r = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef1234da' } })
+    expect(r.ok).toBe(true)
+    expect(r.nearMiss).toEqual(['A.md'])
+    expect(r.mismatched).toEqual([])
+    // exact prefixes are not near misses
+    expect(verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef123456' } }).nearMiss).toEqual([])
+  })
+
+  it('a value with fewer than 7 correct leading hex chars is still mismatched, whatever its length', () => {
+    const r = verifyReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef987654' } })
+    expect(r.ok).toBe(false)
+    expect(r.mismatched).toEqual(['A.md'])
+    expect(() => assertReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef987654' } })).toThrow(/context_read_unverified: A\.md/)
+  })
+
+  it('assertReadWitness returns the verdict so a caller can log the near miss', () => {
+    const r = assertReadWitness([deferredA], { read_witness: { 'A.md': 'abcdef1234da' } })
+    expect(r.nearMiss).toEqual(['A.md'])
   })
 
   it('does not require a witness entry for an inlined file', () => {

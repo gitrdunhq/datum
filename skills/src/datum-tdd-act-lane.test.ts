@@ -950,3 +950,15 @@ describe('every independent test-verify names a missing test environment before 
     expect(src).toMatch(/error: `test_env_missing: \$\{/)
   })
 })
+
+// caliper eedom wf_751ea0e4-653 task-002: a witness with ten correct leading
+// hex chars and one dropped digit failed a valid committed RED. The witness
+// check accepts it as a near miss; the lane names it in the log.
+describe('a near-miss read witness is accepted and named, not a lane failure', () => {
+  const laneSrc = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('assertStageWitness logs read_witness_near_miss from the verdict', () => {
+    const fn = laneSrc.slice(laneSrc.indexOf('function assertStageWitness'), laneSrc.indexOf('async function runLane'))
+    expect(fn).toMatch(/read_witness_near_miss/)
+    expect(fn).toMatch(/nearMiss/)
+  })
+})

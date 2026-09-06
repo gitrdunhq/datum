@@ -302,34 +302,60 @@ function extractWitnessMap(parsed: unknown): Record<string, unknown> {
 /** Shortest accepted witness prefix — git's own short-sha floor. The prompt asks for 12. */
 export const WITNESS_MIN_HEX = 7
 
+export interface ReadWitnessVerdict {
+  ok: boolean
+  missing: string[]
+  mismatched: string[]
+  tooShort: string[]
+  /** Accepted on >= WITNESS_MIN_HEX correct leading hex chars although the
+   *  cited value goes on to differ (a transcription slip after the proof). */
+  nearMiss: string[]
+}
+
+/** Length of the common leading run of two lowercase strings. */
+function commonPrefixLen(a: string, b: string): number {
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  return i
+}
+
 export function verifyReadWitness(
   files: ContextFile[],
   parsed: unknown,
-): { ok: boolean; missing: string[]; mismatched: string[]; tooShort: string[] } {
+): ReadWitnessVerdict {
   const deferred = files.filter((f) => f.exists && !f.inlined)
   const witness = extractWitnessMap(parsed)
   const missing: string[] = []
   const mismatched: string[] = []
   const tooShort: string[] = []
+  const nearMiss: string[] = []
   // The VALUE is the proof (a prefix the agent can only get by hashing the
   // file); the key is bookkeeping. A haiku reflect agent keyed by the full
   // sha instead of the path (caliper wf_181691ac-fbf, BUG K), so any entry
   // whose value is a prefix of this file's sha counts for it. Agents also
   // returned correct 8/9-char prefixes (BUG K2): >= 7 hex chars is accepted.
   // Keys count too: a haiku lens returned {"<prefix>": "true"} (caliper BUG K3).
+  // And a value whose LEADING >= 7 hex chars are right but which then
+  // diverges (caliper eedom wf_751ea0e4-653: "8cc9785049da" for
+  // 8cc97850499d…, one digit dropped while transcribing) is the same
+  // evidence with a slip after it — accepted, and named a near miss.
   const candidates = [...Object.values(witness), ...Object.keys(witness)]
   const hexValues = candidates.filter((v): v is string => typeof v === 'string' && /^[0-9a-f]+$/i.test(v))
   const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX)
   for (const f of deferred) {
     const sha = f.sha.toLowerCase()
     if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue
+    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
+      nearMiss.push(f.path)
+      continue
+    }
     const keyed = witness[f.path]
     if (typeof keyed === 'string' && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path)
     else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path)
     else if (typeof keyed === 'string' && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path)
     else missing.push(f.path)
   }
-  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort }
+  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss }
 }
 
 /**
@@ -337,9 +363,9 @@ export function verifyReadWitness(
  * silently continue on a failed witness (FLOW.md open gap 2). Names the
  * first offending path so the error is actionable.
  */
-export function assertReadWitness(files: ContextFile[], parsed: unknown): void {
+export function assertReadWitness(files: ContextFile[], parsed: unknown): ReadWitnessVerdict {
   const result = verifyReadWitness(files, parsed)
-  if (result.ok) return
+  if (result.ok) return result
   const witness = extractWitnessMap(parsed)
   const byPath = new Map(files.map((f) => [f.path, f]))
   const badPath = (result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0]) as string

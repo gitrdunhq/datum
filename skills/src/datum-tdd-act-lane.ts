@@ -172,7 +172,11 @@ async function witnessedAgent<T>(
 /** assertReadWitness that names the stage, so the outer handler records it instead of CRASH. */
 function assertStageWitness(specFile: ContextFile, parsed: unknown, stage: LaneOutcome['stage']): void {
   try {
-    assertReadWitness([specFile], parsed)
+    const verdict = assertReadWitness([specFile], parsed)
+    // caliper eedom wf_751ea0e4-653 task-002: ten correct hex chars then a
+    // dropped digit failed a valid committed RED. The proof is the leading
+    // run; the slip after it is named, not fatal.
+    if (verdict.nearMiss.length > 0) log(`read_witness_near_miss: ${stage} cited a witness whose leading hex matches ${verdict.nearMiss.join(', ')} but diverges after the proof — accepted (transcription slip after a genuine read)`)
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e))
     ;(err as Error & { stage?: LaneOutcome['stage'] }).stage = stage
