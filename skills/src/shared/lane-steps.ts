@@ -170,6 +170,33 @@ export function testEnvMissing(stdout: string | null | undefined): string | null
   return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, '') : null
 }
 
+/**
+ * The verdict of an independent test-verify batch, in three NAMED states.
+ * `failed` always carries a non-zero exit code; a batch that returned
+ * nothing, or whose test-verify step did not run, is `unavailable` with the
+ * batch's own reason — never a claim that the suite was red (elonchesd
+ * wf_dee84cc2-e64: exit=null reported as green_verify_failed, triaged as
+ * "GREEN lied", while the committed GREEN passed 434/434).
+ */
+export type VerifyVerdict =
+  | { kind: 'passed'; exit: 0; why: '' }
+  | { kind: 'failed'; exit: number; why: '' }
+  | { kind: 'unavailable'; exit: null; why: string }
+
+export function verifyVerdict(result: BatchResult, label: string): VerifyVerdict {
+  const exit = testExitCode(stepStdout(result, 'test-verify'))
+  if (exit === null) {
+    const why = result.missing
+      ? describeFailure(result, label)
+      : stepResult(result, 'test-verify')
+        ? `${label}: test-verify step ran but printed no TEST_EXIT line`
+        : `${label}: test-verify step did not run (${result.failed ? `stopped at "${result.failed.name}"` : 'not in the batch result'})`
+    return { kind: 'unavailable', exit: null, why }
+  }
+  if (exit === 0) return { kind: 'passed', exit: 0, why: '' }
+  return { kind: 'failed', exit, why: '' }
+}
+
 export function testExitCode(stdout: string | null | undefined): number | null {
   if (!stdout) return null
   const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)]

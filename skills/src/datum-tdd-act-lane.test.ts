@@ -499,12 +499,12 @@ describe('deterministic GREEN green-blindness gate (#386)', () => {
     expect(laneSource).toMatch(/postGreenSteps\(\{[\s\S]{0,200}verifyTestCmd:\s*scopedTestCmd/)
   })
 
-  it('computes greenVerifyExit from the test-verify step, not just the agent self-report', () => {
-    expect(laneSource).toMatch(/greenVerifyExit\s*=\s*testExitCode\(/)
+  it('computes the GREEN verdict from the test-verify step through verifyVerdict (property-tested), not just the agent self-report', () => {
+    expect(laneSource).toMatch(/greenVerdict\s*=\s*verifyVerdict\(postGreenVerifyResult, 'post-green-verify'\)/)
   })
 
   it('fails GREEN on a non-zero/null independent exit even when green.tests_pass is true, before the final self-report trust that settles pass/fail after retries', () => {
-    const exitCheckIdx = laneSource.indexOf('greenVerifyExit !== 0')
+    const exitCheckIdx = laneSource.indexOf("greenVerdict.kind === 'failed'")
     // The final settle-point (post-retries) that trusts the self-report and
     // returns a GREEN-failed result — distinct from the earlier retry-decision
     // check, which only decides whether to retry, not the final verdict.
