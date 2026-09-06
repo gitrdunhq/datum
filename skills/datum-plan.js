@@ -868,6 +868,24 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/routing-steps.ts
+var ROUTING_PATH = ".datum/routing.json";
+function routingRestoreSteps() {
+  return [
+    {
+      name: "routing-restore",
+      command: `if git ls-files --error-unmatch ${ROUTING_PATH} >/dev/null 2>&1; then git checkout -- ${ROUTING_PATH} && printf 'tracked\\n'; else printf 'untracked\\n'; fi`
+    }
+  ];
+}
+function routingRestoreFromSteps(result) {
+  const out = stepStdout(result, "routing-restore");
+  if (out === null) return { tracked: null, note: "routing_restore_unchecked" };
+  if (out.trim() === "tracked") return { tracked: true, note: "routing_json_tracked" };
+  if (out.trim() === "untracked") return { tracked: false, note: "routing_json_untracked" };
+  return { tracked: null, note: "routing_restore_unchecked" };
+}
+
 // skills/src/shared/agents.ts
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
@@ -1070,6 +1088,9 @@ if (!routingWritten.ok) throw new Error(routingWritten.error);
 var triageGateSteps = gateSteps("triage", "");
 var triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts("cli", { label: "gate-triage", model: model("fast") })));
 if (!triageGate.passed) throw new Error(`Triage gate failed \u2014 routing.json rejected: ${triageGate.message || "no message"}`);
+var routingRestore = routingRestoreFromSteps(await runBatch(routingRestoreSteps(), stageOpts("cli", { label: "routing-restore", model: model("fast") })));
+if (routingRestore.tracked === true) log(`routing_json_tracked: ${ROUTING_PATH} is committed in this repo and was restored after the triage gate \u2014 untrack it (git rm --cached ${ROUTING_PATH}) so plan runs leave the tree clean`);
+else if (routingRestore.tracked === null) log(`routing_restore_unchecked: could not tell whether ${ROUTING_PATH} is tracked; a committed copy may show as modified`);
 if (triage.decision === "deepen") {
   const deepenRaw = await agent(
     plan_deepen_default,
