@@ -29,5 +29,6 @@ The full PROPERTIES.md content is markdown with:
 1. Property list grouped by category
 2. Traceability table: Property ID | Category | Predicate | Task IDs
 3. Per-task property assignments
+4. A required `## Integration Invariants` section — a table with header `| ID | Invariant | Covers | Source |`, a separator row, and one row per cross-task invariant. `ID` is a short unique tag; `Invariant` is a testable predicate spanning two or more tasks; `Covers` is a comma-separated list of the task ids it spans; `Source` is either `spec:<requirement>` (must cover 2+ tasks) or `question:Q<n>` for an invariant that answers a specific QUESTIONS.md id (exactly one row per answered question id). This table is mandatory — the gate fails without it, even if there are no genuine cross-task invariants (in that case still include the heading with a header/separator row and zero data rows).
 
 Write that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.

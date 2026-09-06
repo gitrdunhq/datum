@@ -120,10 +120,10 @@ Handoff to Plan: `docs/epics/<branch>/SPEC.md` exists, is committed, and its acc
 |---|---|
 | Inputs | SPEC.md, CURRENT_STATE.md, prior defects (`.datum/runs/*/closeout-data.json`), `.datum/ERRORS.md`, `config.context_files` |
 | Steps | propose approaches → impact analysis → decompose (opus when blast radius is high) → `assertAcyclicTasks` → write `tasks.json` → `datum lane-plan` → **early gate** → *then* commit → pre-generate RED skeletons → triage → optional deepen |
-| Gate | `datum gate plan --approve` runs *before* any commit (schema, `topological_order` matches lanes exactly and has no duplicates, every lane has `files` / `red_note` / `acceptance_criteria`, deps resolve, no zero-lane plan); the final `datum gate plan` re-checks with the human hold |
+| Gate | `datum gate plan --approve` runs *before* any commit (schema, `topological_order` matches lanes exactly and has no duplicates, every lane has `files` / `red_note` / `acceptance_criteria`, deps resolve, no zero-lane plan); if `PROPERTIES.md` carries an `## Integration Invariants` table, `gate_plan` also checks every `task-INT-<n>` lane's `depends_on` against the invariant's `Covers` union, rejects a non-integration lane that depends on one, and rejects an invariant covering an unknown task id; the final `datum gate plan` re-checks with the human hold |
 | Output contract | `LanePlan { lanes: Record<string, Lane>, topological_order: string[], total_lanes: number }` |
 
-Ordering here *is* the contract: schema-invalid plans must never leave three commits behind. `Lane.kind` (`'structural' \| 'behavioral'`, from tasks.json `kind`) decides whether Act runs RED/GREEN at all — a structural lane goes straight to REFACTOR.
+Ordering here *is* the contract: schema-invalid plans must never leave three commits behind. `Lane.kind` (`'structural' \| 'behavioral' \| 'integration'`, from tasks.json `kind`) decides whether Act runs RED/GREEN at all — a structural lane goes straight to REFACTOR. An `integration` lane (`task-INT-<n>`) is synthesized by `build_lane_plan` from `PROPERTIES.md`'s Integration Invariants table, not authored by the decomposer: invariants that name the same `Covers` task set become one lane, depending on those tasks, with a shared test file (`tests/integration/test_int_<n>.py` or `src/integration/int-<n>.test.ts` depending on `test_command`) and one acceptance criterion per invariant.
 
 Handoff to Act:
 
@@ -140,7 +140,7 @@ Handoff to Act:
 |---|---|
 | Inputs | SPEC.md, TASKS.md |
 | Steps | derive invariants across 11 categories, write + commit `properties: ...` |
-| Gate | `datum gate properties` — all 11 categories present (SAFETY, LIVENESS, INVARIANT, BOUNDARY, IDEMPOTENT, ORDERING, ISOLATION, PERFORMANCE, SECURITY, OBSERVABILITY, COMPATIBILITY) and a task traceability table |
+| Gate | `datum gate properties` — all 11 categories present (SAFETY, LIVENESS, INVARIANT, BOUNDARY, IDEMPOTENT, ORDERING, ISOLATION, PERFORMANCE, SECURITY, OBSERVABILITY, COMPATIBILITY), a task traceability table, and a required `## Integration Invariants` table (`ID \| Invariant \| Covers \| Source`, `Source` one of `spec:...`/`question:Q<n>`): every `spec:` row must cover 2+ tasks, and every answered QUESTIONS.md id must have exactly one matching invariant row |
 | Output contract | `{ branch, gatePassed }` — *ideally* consumed as a halt condition; see Gap 5 |
 
 Handoff to Act: `PROPERTIES.md` as the invariant reference the skeptic panel and Review reason against.

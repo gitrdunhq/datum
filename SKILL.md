@@ -172,7 +172,7 @@ Hard stops never bypass: `tests_red_after_3x_retry`, `hook_blocked_write`, `merg
 | `SPEC.md` | Refine | Refined requirements |
 | `TASKS.md` | Plan | Implementation plan |
 | `.datum/lane-plan.json` | Plan | Machine-readable task DAG for Act |
-| `PROPERTIES.md` | Properties | 11-category invariant set |
+| `PROPERTIES.md` | Properties | 11-category invariant set + `## Integration Invariants` table (drives synthetic `task-INT-<n>` lanes in Plan) |
 
 ## Cross-Tool
 
