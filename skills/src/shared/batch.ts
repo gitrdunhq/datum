@@ -86,8 +86,18 @@ export function batchScript(steps: BatchStep[]): string {
   const rootGuard = batchRoot
     ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`]
     : []
+  // The runner's shell may lack the tool prefixes (datum self-hosted
+  // wf_c296b6b0-721: no /opt/homebrew/bin, jq not found, the runner invented
+  // a `__script` row; caliper's ast-grep fallback had the same cause). The
+  // usual prefixes are appended (never prepended: the caller's PATH wins),
+  // overridable through DATUM_BATCH_TOOL_PREFIXES, and jq — which every step
+  // record depends on — is named when still missing, before anything runs.
+  const toolPath = 'export PATH="$PATH:${DATUM_BATCH_TOOL_PREFIXES:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}"'
+  const jqGuard = `if ! jq --version >/dev/null 2>&1; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_tool_missing: jq is not on the runner PATH (set DATUM_BATCH_TOOL_PREFIXES or install jq)"}]\\n'; exit 0; fi`
   return [
     ...rootGuard,
+    toolPath,
+    jqGuard,
     '__f=$(mktemp); trap \'rm -f "$__f"\' EXIT',
     `cat > "$__f" <<'${BATCH_EOF}'`,
     inner.replace(/\n$/, ''),

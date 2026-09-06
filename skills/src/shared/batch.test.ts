@@ -264,7 +264,7 @@ describe('setBatchRoot — every batch starts at the recorded repo root', () => 
     const steps = [{ name: 'a', command: 'echo a' }]
     setBatchRoot('')
     const script = batchScript(steps)
-    expect(script.startsWith('__f=$(mktemp)')).toBe(true)
+    expect(script.startsWith('export PATH=')).toBe(true)
     expect(script).not.toContain('batch_root_missing')
   })
 
@@ -286,6 +286,48 @@ describe('setBatchRoot — every batch starts at the recorded repo root', () => 
       expect(describeFailure(missing, 'boot')).toMatch(/^boot: batch_root_missing: /)
     } finally {
       setBatchRoot('')
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// datum self-hosted wf_c296b6b0-721: the boot batch's runner shell had no
+// /opt/homebrew/bin on its PATH, jq was not found, __rec produced nothing
+// and the runner invented a `__script` row ("jq: command not found or exec
+// error"). Caliper's ast-grep fallback (bceded3c) had the same cause. The
+// wrapper extends PATH with the usual tool prefixes itself and names a
+// missing jq before anything runs, never a fabricated row from the runner.
+describe('batchScript — tool prefixes on PATH and a named missing jq', () => {
+  it('extends PATH with the homebrew/local prefixes and guards jq before the heredoc', () => {
+    const script = batchScript([{ name: 'a', command: 'echo a' }])
+    const pathAt = script.indexOf('export PATH=')
+    const guardAt = script.indexOf('batch_tool_missing: jq')
+    expect(pathAt).toBeGreaterThan(-1)
+    expect(script.slice(pathAt, pathAt + 120)).toMatch(/\/opt\/homebrew\/bin/)
+    expect(script.slice(pathAt, pathAt + 120)).toMatch(/\/usr\/local\/bin/)
+    expect(guardAt).toBeGreaterThan(pathAt)
+    expect(guardAt).toBeLessThan(script.indexOf('__f=$(mktemp)'))
+  })
+
+  it('under real bash: a minimal PATH still finds jq through the prefixes; with none reachable, the row is batch_tool_missing', () => {
+    const steps = [{ name: 'a', command: 'echo a' }]
+    const found = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { encoding: 'utf8', env: { ...process.env, PATH: '/usr/bin:/bin' } }), steps)
+    expect(found.missing).toBe(false)
+    expect(stepStdout(found, 'a')).toBe('a\n')
+
+    // Hide every jq by pointing the prefixes at empty dirs: PATH minimal and
+    // the script's own prefixes shadowed via a bogus HOMEBREW/local layout is
+    // not possible from outside, so simulate with a wrapper dir whose `jq`
+    // refuses to execute (exit 127) placed FIRST on PATH.
+    const dir = mkdtempSync(join(tmpdir(), 'datum-nojq-'))
+    try {
+      execFileSync('bash', ['-c', `mkdir -p "${dir}/bin" && printf '#!/bin/bash\\nexit 127\\n' > "${dir}/bin/jq" && chmod +x "${dir}/bin/jq"`])
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}/bin:/usr/bin:/bin`, DATUM_BATCH_TOOL_PREFIXES: `${dir}/none` } })
+      const r = parseBatchResult(out, steps)
+      expect(r.missing).toBe(true)
+      expect(r.scriptError).toMatch(/^batch_tool_missing: jq/)
+      expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_tool_missing: jq/)
+    } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   })

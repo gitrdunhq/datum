@@ -328,3 +328,13 @@ describe('classifyLaneError — green_verify_unavailable (verify batch returned 
     expect(triageDestination(r, error)).toBe('datum')
   })
 })
+
+describe('classifyLaneError — batch_tool_missing (runner shell has no jq)', () => {
+  it('classifies as infrastructure and routes to datum', () => {
+    const error = 'lane_intake_failed: lane intake: batch_tool_missing: jq is not on the runner PATH (set DATUM_BATCH_TOOL_PREFIXES or install jq)'
+    const r = classifyLaneError(error, 'RED')
+    expect(r.category).toBe('infrastructure')
+    expect(r.reason).toContain('batch_tool_missing')
+    expect(triageDestination(r, error)).toBe('datum')
+  })
+})

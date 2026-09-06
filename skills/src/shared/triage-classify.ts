@@ -65,6 +65,11 @@ const PREFIX_RULES: PrefixRule[] = [
     reason: 'batch_script_corrupt: the datum-cli runner re-typed the batch script and the hash check refused to run it, twice (caliper eedom wf_4f739141-c8c: a dropped quote). Nothing in the batch ran; a runner transcription failure, not a code or plan defect.',
   },
   {
+    test: /\bbatch_tool_missing\b/,
+    category: 'infrastructure',
+    reason: 'batch_tool_missing: the runner shell has no jq on its PATH even after the usual tool prefixes were appended (datum self-hosted wf_c296b6b0-721), so no batch can record its steps. Nothing ran; install jq or set DATUM_BATCH_TOOL_PREFIXES — an environment failure, not a code or plan defect.',
+  },
+  {
     test: /\bbatch_root_missing\b/,
     category: 'infrastructure',
     reason: 'batch_root_missing: the repo root recorded at boot no longer exists, so the batch refused to run anywhere else (elonchesd wf_29721006-d27: a batch that ran in a second worktree). Nothing in the batch ran; a pipeline/environment failure, not a code or plan defect.',
