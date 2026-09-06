@@ -297,3 +297,21 @@ describe('classifyLaneError — unknown fallback', () => {
     expect(result.confidence).toBe('heuristic')
   })
 })
+
+// The batch wrapper's own failures (d71dfb8d, 4377792d): the runner mistyped
+// the script, or the recorded repo root is gone. Nothing in the batch ran, so
+// the lane never got a fair run — infrastructure, filed to datum, never a
+// finding about the lane's code.
+describe('classifyLaneError — batch wrapper failures (batch_script_corrupt, batch_root_missing)', () => {
+  const cases: Array<[string, string]> = [
+    ['batch_script_corrupt', 'lane_intake_failed: lane intake: batch_script_corrupt — the runner did not run the script it was given (batch_script_corrupt: expected 0123456789abcdef0123456789abcdef01234567, got 89abcdef0123456789abcdef0123456789abcdef)'],
+    ['batch_root_missing', 'lane_intake_failed: lane intake: batch_root_missing: /Volumes/Extra/repos/elonChesd'],
+  ]
+  it.each(cases)('%s classifies as infrastructure with deterministic confidence and routes to datum', (_label, error) => {
+    const result = classifyLaneError(error, 'RED')
+    expect(result.category).toBe('infrastructure')
+    expect(result.confidence).toBe('deterministic')
+    expect(result.reason).toContain(_label)
+    expect(triageDestination(result, error)).toBe('datum')
+  })
+})
