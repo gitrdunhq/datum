@@ -19,7 +19,7 @@
 // construction, no relay to verify.
 // tested-by: skills/src/shared/context-relay.test.ts
 
-import { stepStdout, type BatchResult, type BatchStep } from './batch'
+import { stepStdout, batchCommandPrompt, type BatchResult, type BatchStep } from './batch'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
 
@@ -142,13 +142,28 @@ export interface RelayedContext {
   epicDir: string
   files: Record<string, ContextFile>
   warnings: string[]
+  /** Inline files whose relayed bytes did not verify: deferred, and the
+   *  caller's cue to re-fetch once (contextInlineRetryPrompt + mergeRelayRetry). */
+  mismatched: string[]
 }
 
+/**
+ * The runner transcribes the batch RESULT as well as the script (caliper
+ * eedom wf_9bf2c994-801, #566: one contiguous 340-byte span dropped from the
+ * middle of an 8.4 KB QUESTIONS.md, the 6 KB TICKET beside it intact). The
+ * script hash (batch.ts) guards what the runner executes, not what it hands
+ * back, so every inlined file is verified against the probe's blob sha —
+ * a same-length corruption passes a byte count — and one that does not
+ * verify is DEFERRED to the consuming agent (path + bytes + mandatory Read
+ * with a witness: exact bytes by construction), the path every over-budget
+ * file already takes. Never a halt: the caller re-fetches once first.
+ */
 export function contextFromRelay(probe: BatchResult, inline: BatchResult | null, plan: ContextRelayPlan): RelayedContext {
   const branch = stepStdout(probe, 'branch') || ''
   const epicDir = stepStdout(probe, 'epic-dir') || `docs/epics/${branch}`
   const files: Record<string, ContextFile> = {}
   const warnings: string[] = []
+  const mismatched: string[] = []
 
   if (plan.inline.length > 0 && (inline === null || inline.missing)) {
     throw new Error(`context_relay_mismatch: inline batch returned no parseable result for ${plan.inline.join(', ')}`)
@@ -161,14 +176,21 @@ export function contextFromRelay(probe: BatchResult, inline: BatchResult | null,
     files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null }
     warnings.push(`context file ${relPath}: ${plan.bytes[relPath]} bytes, deferred to the consuming agent (relay budget ${plan.budget} bytes)`)
   }
+  const defer = (relPath: string, why: string): void => {
+    mismatched.push(relPath)
+    files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null }
+    warnings.push(`context_relay_mismatch: ${why} — deferred to the consuming agent`)
+  }
   plan.inline.forEach((relPath, i) => {
     const raw = stepStdout(inline as BatchResult, `ctx-cat-${i}`)
     const declaredRaw = stepStdout(inline as BatchResult, `ctx-wc-${i}`)
     const declared = declaredRaw === null ? NaN : parseInt(declaredRaw.trim(), 10)
     if (raw === null || raw === NOT_FOUND_MARKER || declared === -1) {
-      throw new Error(`context_relay_mismatch: ${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`)
+      defer(relPath, `${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`)
+      return
     }
     const expected = plan.bytes[relPath]
+    const sha = plan.sha[relPath]
     let content = raw
     let actual = utf8ByteLength(raw)
     // The runner trimmed the LAST cat step's trailing newline (caliper eedom
@@ -176,17 +198,49 @@ export function contextFromRelay(probe: BatchResult, inline: BatchResult | null,
     // probe recorded the blob sha, which proves the bytes where a count only
     // measures them: a read one byte short is restored when content + "\n"
     // hashes to that sha, and rejected otherwise.
-    if (actual === expected - 1 && plan.sha[relPath] && gitBlobSha(utf8Encode(raw + '\n')) === plan.sha[relPath]) {
+    if (actual === expected - 1 && sha && gitBlobSha(utf8Encode(raw + '\n')) === sha) {
       content = raw + '\n'
       actual = expected
       warnings.push(`context file ${relPath}: trailing newline restored (runner returned ${expected - 1} of ${expected} bytes; blob sha verified)`)
     }
     if (actual !== expected || (Number.isFinite(declared) && declared !== expected)) {
-      throw new Error(`context_relay_mismatch: ${relPath} expected ${expected} bytes, got ${actual} bytes`)
+      defer(relPath, `${relPath} expected ${expected} bytes, got ${actual} bytes`)
+      return
     }
-    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha: plan.sha[relPath], content }
+    if (sha && gitBlobSha(utf8Encode(content)) !== sha) {
+      defer(relPath, `${relPath} relayed ${actual} bytes as expected but the blob sha differs from the probe's (content rewritten in transit)`)
+      return
+    }
+    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha, content }
   })
-  return { branch, epicDir, files, warnings }
+  return { branch, epicDir, files, warnings, mismatched }
+}
+
+/** The second inline attempt: same script, a distinct prompt (a cache miss on resume). */
+export function contextInlineRetryPrompt(steps: BatchStep[]): string {
+  return `${batchCommandPrompt(steps)}\n\n# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`
+}
+
+/**
+ * Fold a re-fetch into the first relay: a file that mismatched on attempt 1
+ * takes attempt 2's content when that verified; one that mismatched twice
+ * stays deferred, and says so. Files that verified on attempt 1 are kept.
+ */
+export function mergeRelayRetry(first: RelayedContext, second: RelayedContext): RelayedContext {
+  const files = { ...first.files }
+  const warnings = [...first.warnings]
+  const mismatched: string[] = []
+  for (const relPath of first.mismatched) {
+    const retried = second.files[relPath]
+    if (retried && retried.inlined && retried.content !== null) {
+      files[relPath] = retried
+      warnings.push(`context file ${relPath}: re-fetched intact on attempt 2 (blob sha verified)`)
+    } else {
+      mismatched.push(relPath)
+      warnings.push(`context file ${relPath}: mismatched on both attempts — deferred to the consuming agent (path + bytes + mandatory Read with a witness)`)
+    }
+  }
+  return { branch: first.branch, epicDir: first.epicDir, files, warnings, mismatched }
 }
 
 /**

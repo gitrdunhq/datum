@@ -3,7 +3,7 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps } from './shared/plan-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -71,14 +71,25 @@ const readBatch = parseBatchResult(
 )
 const relayPlan = contextRelayPlan(readBatch, [SPEC_REL])
 let inlineBatch: BatchResult | null = null
+const inlineSteps = contextInlineSteps(relayPlan.inline)
 if (relayPlan.inline.length > 0) {
-  const inlineSteps = contextInlineSteps(relayPlan.inline)
   inlineBatch = parseBatchResult(
     await agent(batchCommandPrompt(inlineSteps), bootstrapOpts('cli', { label: 'read-context-files', model: model('fast') })),
     inlineSteps,
   )
 }
-const ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+// A relayed file the runner rewrote in transit (caliper eedom
+// wf_9bf2c994-801) is re-fetched once with a fresh runner; what still
+// mismatches is deferred to the consuming agent, never a halt.
+if (ctx.mismatched.length > 0) {
+  log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(', ')} — re-fetching once with a fresh runner`)
+  const retryBatch = parseBatchResult(
+    await agent(contextInlineRetryPrompt(inlineSteps), bootstrapOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
+    inlineSteps,
+  )
+  ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan))
+}
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
 const epicDir: string = ctx.epicDir
@@ -130,14 +141,22 @@ if (contextFilesList.length > 0) {
   )
   const cfPlan = contextRelayPlan(cfProbe, contextFilesList)
   let cfInline: BatchResult | null = null
+  const cfInlineSteps = contextInlineSteps(cfPlan.inline)
   if (cfPlan.inline.length > 0) {
-    const cfInlineSteps = contextInlineSteps(cfPlan.inline)
     cfInline = parseBatchResult(
       await agent(batchCommandPrompt(cfInlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
       cfInlineSteps,
     )
   }
-  const cf = contextFromRelay(cfProbe, cfInline, cfPlan)
+  let cf = contextFromRelay(cfProbe, cfInline, cfPlan)
+  if (cf.mismatched.length > 0) {
+    log(`context_files: context_relay_mismatch on ${cf.mismatched.join(', ')} — re-fetching once with a fresh runner`)
+    const cfRetry = parseBatchResult(
+      await agent(contextInlineRetryPrompt(cfInlineSteps), stageOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
+      cfInlineSteps,
+    )
+    cf = mergeRelayRetry(cf, contextFromRelay(cfProbe, cfRetry, cfPlan))
+  }
   for (const warning of cf.warnings) contextFilesWarnings.push(warning)
   for (const relPath of contextFilesList) {
     const f = cf.files[relPath]

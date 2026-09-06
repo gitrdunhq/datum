@@ -19,13 +19,15 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { batchScript, parseBatchResult, type BatchResult, type BatchStep } from './batch'
+import { batchScript, batchCommandPrompt, parseBatchResult, type BatchResult, type BatchStep } from './batch'
 import {
   CONTEXT_RELAY_BUDGET_BYTES,
   contextProbeSteps,
   contextRelayPlan,
   contextInlineSteps,
+  contextInlineRetryPrompt,
   contextFromRelay,
+  mergeRelayRetry,
   contextSlot,
   contextWitnessInstruction,
   contextWitnessWrapInstruction,
@@ -150,17 +152,91 @@ describe('contextFromRelay restores a trimmed trailing newline by blob sha', () 
     expect(ctx.warnings.some((w) => /QUESTIONS\.md.*trailing newline restored/.test(w))).toBe(true)
   })
 
-  it('still rejects a one-byte-short read whose restored bytes do not match the sha', () => {
+  it('still rejects a one-byte-short read whose restored bytes do not match the sha: deferred, named', () => {
     const inline = fake({ 'ctx-cat-0': content.slice(0, -1).replace('yes', 'no,'), 'ctx-wc-0': String(bytes.length) })
-    expect(() => contextFromRelay(probe, inline, plan)).toThrow(/context_relay_mismatch: QUESTIONS\.md expected \d+ bytes, got \d+ bytes/)
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.mismatched).toEqual(['QUESTIONS.md'])
+    expect(ctx.files['QUESTIONS.md'].inlined).toBe(false)
+    expect(ctx.files['QUESTIONS.md'].content).toBeNull()
+    expect(ctx.warnings.join(' ')).toMatch(/context_relay_mismatch: QUESTIONS\.md expected \d+ bytes, got \d+ bytes/)
+  })
+})
+
+// caliper eedom wf_9bf2c994-801 (#566): the runner transcribes the batch
+// RESULT too, and dropped one contiguous 340-byte span from the middle of an
+// 8.4 KB QUESTIONS.md; the 6 KB TICKET in the same batch came back intact.
+// The script hash guards what the runner executes, not what it hands back.
+// A mismatched inline file is not a halt: it is re-fetched once with a
+// fresh runner, and what still mismatches is DEFERRED to the consuming
+// agent (path + bytes + mandatory Read with a witness), the path every
+// over-budget file already takes. The verification is the blob sha, not
+// the byte count: a same-length corruption passes a count.
+describe('contextFromRelay defers a mismatched inline file instead of halting; the check is the blob sha', () => {
+  const content = '# Q\n\nQ1: a\nQ2: b\nQ3: the long one\n'
+  const sha = gitBlobSha(utf8Encode(content))
+  const probe = fake({ branch: 'b', 'epic-dir': 'docs/epics/b', 'ctx-wc-0': String(content.length), 'ctx-sha-0': sha, 'ctx-wc-1': '4', 'ctx-sha-1': gitBlobSha(utf8Encode('tick')) })
+  const plan = contextRelayPlan(probe, ['QUESTIONS.md', 'TICKET.md'])
+
+  it('a mid-file deletion (wrong byte count) defers that file only; the intact file stays inlined', () => {
+    const inline = fake({ 'ctx-cat-0': content.replace('the long one', 'one'), 'ctx-wc-0': String(content.length), 'ctx-cat-1': 'tick', 'ctx-wc-1': '4' })
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.mismatched).toEqual(['QUESTIONS.md'])
+    expect(ctx.files['QUESTIONS.md']).toEqual({ path: 'QUESTIONS.md', exists: true, inlined: false, bytes: content.length, sha, content: null })
+    expect(ctx.files['TICKET.md'].inlined).toBe(true)
+    expect(ctx.warnings.join(' ')).toMatch(/context_relay_mismatch: QUESTIONS\.md expected \d+ bytes, got \d+ bytes/)
+  })
+
+  it('a same-length corruption fails the sha even though the count matches', () => {
+    const inline = fake({ 'ctx-cat-0': content.replace('Q2: b', 'Q2: c'), 'ctx-wc-0': String(content.length), 'ctx-cat-1': 'tick', 'ctx-wc-1': '4' })
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.mismatched).toEqual(['QUESTIONS.md'])
+    expect(ctx.warnings.join(' ')).toMatch(/context_relay_mismatch: QUESTIONS\.md .*blob sha/)
+  })
+
+  it('a file the inline read did not find is deferred by name, not a halt', () => {
+    const inline = fake({ 'ctx-cat-0': '__DATUM_CTXFILE_NOT_FOUND__', 'ctx-wc-0': '-1', 'ctx-cat-1': 'tick', 'ctx-wc-1': '4' })
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.mismatched).toEqual(['QUESTIONS.md'])
+    expect(ctx.files['QUESTIONS.md'].inlined).toBe(false)
+    expect(ctx.files['QUESTIONS.md'].exists).toBe(true)
+  })
+
+  it('mergeRelayRetry takes the retry\'s verified content for a mismatched file and keeps the first result otherwise', () => {
+    const first = contextFromRelay(probe, fake({ 'ctx-cat-0': content.replace('the long one', 'one'), 'ctx-wc-0': String(content.length), 'ctx-cat-1': 'tick', 'ctx-wc-1': '4' }), plan)
+    const second = contextFromRelay(probe, fake({ 'ctx-cat-0': content, 'ctx-wc-0': String(content.length), 'ctx-cat-1': 'tock', 'ctx-wc-1': '4' }), plan)
+    const merged = mergeRelayRetry(first, second)
+    expect(merged.files['QUESTIONS.md'].inlined).toBe(true)
+    expect(merged.files['QUESTIONS.md'].content).toBe(content)
+    expect(merged.files['TICKET.md'].content).toBe('tick')
+    expect(merged.mismatched).toEqual([])
+    expect(merged.warnings.join(' ')).toMatch(/QUESTIONS\.md.*re-fetched intact on attempt 2/)
+  })
+
+  it('mergeRelayRetry leaves a file that mismatched twice deferred and says so', () => {
+    const bad = fake({ 'ctx-cat-0': content.replace('the long one', 'one'), 'ctx-wc-0': String(content.length), 'ctx-cat-1': 'tick', 'ctx-wc-1': '4' })
+    const merged = mergeRelayRetry(contextFromRelay(probe, bad, plan), contextFromRelay(probe, bad, plan))
+    expect(merged.files['QUESTIONS.md'].inlined).toBe(false)
+    expect(merged.mismatched).toEqual(['QUESTIONS.md'])
+    expect(merged.warnings.join(' ')).toMatch(/QUESTIONS\.md.*mismatched on both attempts.*deferred to the consuming agent/)
+  })
+
+  it('the retry prompt differs from the first (a cache miss on resume), and names the attempt', () => {
+    const steps = contextInlineSteps(['QUESTIONS.md'])
+    const retry = contextInlineRetryPrompt(steps)
+    expect(retry).not.toBe(batchCommandPrompt(steps))
+    expect(retry).toContain(batchScript(steps))
+    expect(retry).toMatch(/attempt 2 of 2/)
+    expect(retry).toMatch(/copy .*exactly|verbatim/i)
   })
 })
 
 describe('contextFromRelay', () => {
   const files = ['A.md', 'B.md', 'D.md']
+  // A real blob sha: an inlined file is verified against it now.
+  const shaA = gitBlobSha(utf8Encode('hello'))
   const probe = fake({
     branch: 'datum/x', 'epic-dir': 'docs/epics/datum/x',
-    'ctx-wc-0': '5', 'ctx-sha-0': 'aaa',
+    'ctx-wc-0': '5', 'ctx-sha-0': shaA,
     'ctx-wc-1': '31133', 'ctx-sha-1': 'bbb',
     'ctx-wc-2': '-1', 'ctx-sha-2': '',
   })
@@ -171,17 +247,20 @@ describe('contextFromRelay', () => {
     const ctx = contextFromRelay(probe, inline, plan)
     expect(ctx.branch).toBe('datum/x')
     expect(ctx.epicDir).toBe('docs/epics/datum/x')
-    expect(ctx.files['A.md']).toEqual({ path: 'A.md', exists: true, inlined: true, bytes: 5, sha: 'aaa', content: 'hello' })
+    expect(ctx.files['A.md']).toEqual({ path: 'A.md', exists: true, inlined: true, bytes: 5, sha: shaA, content: 'hello' })
     expect(ctx.files['B.md']).toEqual({ path: 'B.md', exists: true, inlined: false, bytes: 31133, sha: 'bbb', content: null })
     expect(ctx.files['D.md'].exists).toBe(false)
     expect(ctx.files['D.md'].content).toBeNull()
     expect(ctx.warnings.join(' ')).toMatch(/B\.md.*31133 bytes.*deferred/)
   })
 
-  it('throws context_relay_mismatch when an inlined file\'s bytes differ from the probe', () => {
+  it('names context_relay_mismatch and defers the file when an inlined file\'s bytes differ from the probe', () => {
     const plan = contextRelayPlan(probe, files)
     const inline = fake({ 'ctx-cat-0': 'hell', 'ctx-wc-0': '5' })
-    expect(() => contextFromRelay(probe, inline, plan)).toThrow(/context_relay_mismatch: A\.md expected 5 bytes, got 4 bytes/)
+    const ctx = contextFromRelay(probe, inline, plan)
+    expect(ctx.mismatched).toEqual(['A.md'])
+    expect(ctx.files['A.md'].inlined).toBe(false)
+    expect(ctx.warnings.join(' ')).toMatch(/context_relay_mismatch: A\.md expected 5 bytes, got 4 bytes/)
   })
 
   it('throws context_relay_mismatch when the inline batch is missing but the plan needed it', () => {

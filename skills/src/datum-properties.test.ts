@@ -181,3 +181,17 @@ describe('datum-properties — deterministic gate verdict', () => {
     expect(src).toMatch(/parseGateResult\(/)
   })
 })
+
+// caliper eedom wf_9bf2c994-801 (#566): the runner dropped a 340-byte span
+// from the middle of a relayed QUESTIONS.md. A mismatched inline file is
+// re-fetched once with a fresh runner (a distinct prompt, so a resume does
+// not replay the corrupted result) and merged; what still mismatches is
+// deferred to the consuming agent, never a halt.
+describe('a mismatched inline relay is re-fetched once, then deferred', () => {
+  const src = readFileSync(join(__dirname, 'datum-properties.ts'), 'utf8')
+  it('retries with contextInlineRetryPrompt and merges with mergeRelayRetry', () => {
+    expect(src).toMatch(/contextInlineRetryPrompt\(/)
+    expect(src).toMatch(/mergeRelayRetry\(/)
+    expect(src).toMatch(/context_relay_mismatch on /)
+  })
+})

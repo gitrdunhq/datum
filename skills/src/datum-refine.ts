@@ -8,7 +8,7 @@ import refineQuestionsTemplate from './prompts/refine-questions.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { runBatch } from './shared/agents'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { answeredQuestions, answersKeptSteps, answersKeptFromSteps } from './shared/questions-steps'
@@ -84,14 +84,26 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
 }
 
 let inlineBatch: BatchResult | null = null
+const inlineSteps = contextInlineSteps(relayPlan.inline)
 if (relayPlan.inline.length > 0) {
-  const inlineSteps = contextInlineSteps(relayPlan.inline)
   inlineBatch = parseBatchResult(
     await agent(batchCommandPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
     inlineSteps,
   )
 }
-const ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
+// caliper eedom wf_9bf2c994-801: the runner dropped 340 bytes from the middle
+// of QUESTIONS.md. One re-fetch with a fresh runner (distinct prompt, so a
+// resume does not replay the corrupted result); what still mismatches is
+// deferred to the writer, which reads it itself with a witness.
+if (ctx.mismatched.length > 0) {
+  log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(', ')} — re-fetching once with a fresh runner`)
+  const retryBatch = parseBatchResult(
+    await agent(contextInlineRetryPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
+    inlineSteps,
+  )
+  ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan))
+}
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)
 
 const epicDir: string = ctx.epicDir
