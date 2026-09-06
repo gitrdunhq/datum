@@ -139,3 +139,18 @@ def test_missing_or_malformed_plan_is_json_error_exit_1(tmp_path: Path):
     res = _run(["--plan", str(no_lanes)])
     assert res.exit_code == 1
     assert "lanes" in json.loads(res.output)["error"]
+
+
+def test_pre_slice_lane_without_kind_stays_without_kind():
+    """A plan from before lane kinds digests byte-identically: no `kind` is
+    invented (the SPEC's compatibility row; every consumer reads absent as
+    task, AC4.3/AC9.2). Review CORR-001 asked for a `task` default and was
+    accepted-as-is on this ground."""
+    from datum.lane_plan_digest import build_digest
+
+    plan = {
+        "lanes": {"task-001": {"title": "t", "files": ["a.py"], "depends_on": []}},
+        "topological_order": ["task-001"],
+        "total_lanes": 1,
+    }
+    assert "kind" not in build_digest(plan, "sha")["lanes"]["task-001"]

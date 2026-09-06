@@ -138,7 +138,8 @@ def derive_integration_lanes(
     groups: dict[tuple, list[str]] = {}
     for inv in invariants:
         key = tuple(sorted(set(inv["covers"])))
-        groups.setdefault(key, []).append(inv["invariant"])
+        # The id leads the AC text: the skeleton names the test after it.
+        groups.setdefault(key, []).append(f"{inv['id']}: {inv['invariant']}")
 
     memo: dict = {}
     ancestors: dict = {}

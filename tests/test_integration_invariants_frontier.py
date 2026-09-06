@@ -67,9 +67,11 @@ class TestDeriveIntegrationLanesGroupsByCoversTuple:
         lanes = derive_integration_lanes(invariants, TASKS, PYTEST_CMD)
         assert len(lanes) == 3
         task1_lane = next(l for l in lanes if l["depends_on"] == ["task-001"])
+        # The id leads each AC so the skeleton names the test after the
+        # invariant (AC6.2; review CORR-002).
         assert task1_lane["acceptance_criteria"] == [
-            "Task 1 output is unique",
-            "Task 1 output stays unique across reruns",
+            "INV-020: Task 1 output is unique",
+            "INV-021: Task 1 output stays unique across reruns",
         ]
 
 
@@ -87,7 +89,7 @@ class TestDeriveIntegrationLanesFieldsAndNumbering:
         assert lanes[0]["depends_on"] == ["task-001"]
         assert lanes[1]["depends_on"] == ["task-003"]
         assert lanes[2]["depends_on"] == ["task-004"]
-        assert lanes[0]["acceptance_criteria"] == ["Task 1 output is unique"]
+        assert lanes[0]["acceptance_criteria"] == ["INV-020: Task 1 output is unique"]
 
 
 class TestDeriveIntegrationLanesFilesRunnerSelection:

@@ -138,6 +138,8 @@ Workflow({ scriptPath: "<skills_dir>/datum-tdd-act.js", args: { epicBranch: "dat
 5. **REFACTOR** — optional cleanup if haiku pre-check finds improvements
 6. **File ownership** — verify each commit only touches allowed files (`git diff --name-only` evaluated by the script when `agent_types && hooks_installed`, an LLM check otherwise)
 
+**Lane kinds** (`kind` in tasks.json / lane-plan.json): `behavioral` runs the full RED→GREEN→REFACTOR lane; `structural` goes straight to REFACTOR; `kind: "integration"` is a `task-INT-<n>` lane Plan synthesises from PROPERTIES.md's `## Integration Invariants` table, RED-only, scheduled after every task its invariants cover. Plan's gate names `invariant_missing_for_question` (an answered QUESTIONS id with no invariant row), `invariant_covers_unknown_task` (a Covers entry naming no task) and `no_integration_invariants` (the table is absent or empty). `integration_failed` is reserved for the lane runner's verdict on an integration lane whose tests stay red.
+
 **Source:** `skills/src/` (TypeScript) -> `skills/*.js` (generated via `bash scripts/build-workflows.sh`)
 
 **Prompt templates:** `skills/src/prompts/*.md` with `{{placeholder}}` syntax

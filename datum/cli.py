@@ -166,6 +166,11 @@ def lane_plan_cmd(
         ".datum/lane-plan.json", "--output", help="Output lane plan JSON"
     ),
     md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD"),
+    properties: str | None = typer.Option(
+        None,
+        "--properties",
+        help="PROPERTIES.md whose Integration Invariants become task-INT lanes",
+    ),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
@@ -179,6 +184,8 @@ def lane_plan_cmd(
     args.extend(
         ["--input", input_file, "--output", output_file, "--md-output", md_output]
     )
+    if properties is not None:
+        args.extend(["--properties", properties])
 
     with patch.object(sys, "argv", args):
         lane_plan_main()

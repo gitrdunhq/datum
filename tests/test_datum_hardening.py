@@ -175,6 +175,18 @@ class TestSkillAssets(unittest.TestCase):
     def test_skill_md_exists(self) -> None:
         self.assertTrue((ROOT / "SKILL.md").exists())
 
+    def test_skill_md_documents_integration_lanes(self) -> None:
+        # AC10.2 of the integration-lanes epic (review CORR-003).
+        text = (ROOT / "SKILL.md").read_text()
+        for name in (
+            'kind: "integration"',
+            "invariant_missing_for_question",
+            "invariant_covers_unknown_task",
+            "no_integration_invariants",
+            "integration_failed",
+        ):
+            self.assertIn(name, text)
+
     def test_flow_md_exists(self) -> None:
         self.assertTrue((ROOT / "docs/FLOW.md").exists())
 

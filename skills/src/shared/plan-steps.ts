@@ -25,7 +25,9 @@ export interface PlanBuildOpts {
 }
 
 export function lanePlanCommand(epicDir: string): string {
-  return `datum lane-plan --input ${q(`${epicDir}/tasks.json`)} --output ${q(`${epicDir}/lane-plan.json`)} --md-output ${q(`${epicDir}/TASKS.md`)}`
+  // --properties is what makes PROPERTIES.md's Integration Invariants table
+  // reach the planner; without it no task-INT-<n> lane is ever synthesised.
+  return `datum lane-plan --input ${q(`${epicDir}/tasks.json`)} --output ${q(`${epicDir}/lane-plan.json`)} --md-output ${q(`${epicDir}/TASKS.md`)} --properties ${q(`${epicDir}/PROPERTIES.md`)}`
 }
 
 const TASKS_WRITE_NAMES = { mkdir: 'mkdir', write: 'write-tasks', sha: 'tasks-sha' }

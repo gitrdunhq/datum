@@ -46,7 +46,8 @@ describe('planBuildSteps', () => {
 
   it('runs datum lane-plan with the epic-scoped input, output and md-output paths', () => {
     expect(steps[3].command).toBe(
-      'datum lane-plan --input "docs/epics/x/tasks.json" --output "docs/epics/x/lane-plan.json" --md-output "docs/epics/x/TASKS.md"',
+      // --properties: without it PROPERTIES.md is never read and no integration lane is ever synthesised (review ARCH-001).
+      'datum lane-plan --input "docs/epics/x/tasks.json" --output "docs/epics/x/lane-plan.json" --md-output "docs/epics/x/TASKS.md" --properties "docs/epics/x/PROPERTIES.md"',
     )
     expect(steps[2].command).toBe('git hash-object "docs/epics/x/tasks.json"')
   })

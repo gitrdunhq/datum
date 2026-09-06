@@ -272,3 +272,13 @@ class TestIntegrationLaneParentDirCreatedOnDemand:
 
         assert target_dir.exists()
         assert (target_dir / "lane_checks.py").exists()
+
+
+def test_extract_invariant_id_accepts_hyphenated_ids():
+    """derive_integration_lanes leads each AC with the row id; PROPERTIES tables
+    use both `II3` and `INV-020` shapes, and both must name the skeleton test."""
+    from datum.skeleton_creator import _extract_invariant_id
+
+    assert _extract_invariant_id("II3: output is unique") == "II3"
+    assert _extract_invariant_id("INV-020: output is unique") == "INV-020"
+    assert _extract_invariant_id("output is unique") is None

@@ -482,8 +482,8 @@ def make_function_name(
 
 
 def _extract_invariant_id(ac_text: str) -> str | None:
-    """Pull a leading `II1:`-style invariant id off an AC's text, if present."""
-    m = re.match(r"\s*([A-Za-z]{1,6}\d+)\s*:", ac_text)
+    """Pull a leading `II1:` or `INV-020:` invariant id off an AC's text, if present."""
+    m = re.match(r"\s*([A-Za-z]{1,6}-?\d+)\s*:", ac_text)
     return m.group(1) if m else None
 
 
