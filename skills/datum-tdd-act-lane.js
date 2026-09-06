@@ -994,6 +994,18 @@ cat "$GREPPATFILE"`,
   }
   return steps;
 }
+function codeTellSteps(o) {
+  const base = o.baseRef ? ` --base ${q2(o.baseRef)}` : "";
+  return [{ name: "tell-scan", command: `datum code-tells --repo ${q2(o.wt)}${base} --files ${o.files.map(q2).join(" ")}`, tolerant: true }];
+}
+function parseTellScan(stdout) {
+  const out = [];
+  for (const row of (stdout || "").split("\n")) {
+    const m = /^([^:]+):(\d+):([a-z_]+):(.*)$/.exec(row);
+    if (m) out.push({ file: m[1], line: Number(m[2]), tag: m[3], text: m[4] });
+  }
+  return out;
+}
 function ownershipCommand(wt) {
   return `git -C ${q2(wt)} diff --name-only HEAD~1 HEAD`;
 }
@@ -1385,7 +1397,7 @@ var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum i
 var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\nIf the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.\n';
 
 // skills/src/prompts/refactor.md
-var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
+var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCANNER FINDINGS on the lines this lane added (remove every one, or mark a deliberate line `unslop-ignore`):\n{{tellsSlot}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Remove machine-written tells: narrating comments that restate the code, chat phrases, emoji, placeholder stubs, generic names (process_data), abstractions with one caller, tutorial shape where a plain if/else does the job\n- Match the level the surrounding code operates at. Do not add a check, a comment, a type annotation or a layer the neighboring code would not have; trying to look careful is its own tell\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
 
 // skills/src/prompts/reflect.md
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
@@ -1403,7 +1415,7 @@ var skeptic_error_default = "LENS: Error paths.\nCheck these failure modes again
 var skeptic_contract_default = "LENS: Behavioral contracts.\nCompare implementation behavior against the acceptance criteria:\n- Does the implementation satisfy the AC intent, not just the specific test inputs?\n- Are there inputs that satisfy the AC literally but produce wrong results?\n- Do the tests only cover the happy path while the AC implies broader coverage?\nFor each finding: cite the AC, the gap, and a concrete input that exposes it.\n";
 
 // skills/src/prompts/refactor-check.md
-var refactor_check_default = 'CODE QUALITY gate. Decide if the implementation needs refactoring \u2014 be conservative.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these files in "{{wt}}": {{allFiles}}\n\nReturn should_refactor=true ONLY if you find one of these concrete problems:\n- Duplicated logic (same code block copy-pasted in 2+ places)\n- Function longer than 50 lines that could be split at a clear seam\n- Dead code introduced by this task (unused imports, unreachable branches)\n- Misleading names that contradict what the code does\n\nMinor style issues (single variable name, one extra blank line) are NOT worth refactoring.\nIf the code works and reads clearly, return should_refactor=false.\n\nIf should_refactor=true, the reason must name the specific file and problem.\n';
+var refactor_check_default = 'CODE QUALITY gate. Decide if the implementation needs refactoring \u2014 be conservative.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these files in "{{wt}}": {{allFiles}}\n\nSCANNER FINDINGS on the lines this lane added (deterministic; each is a real problem the refactor must remove):\n{{tellsSlot}}\n\nReturn should_refactor=true ONLY if you find one of these concrete problems:\n- Duplicated logic (same code block copy-pasted in 2+ places)\n- Function longer than 50 lines that could be split at a clear seam\n- Dead code introduced by this task (unused imports, unreachable branches)\n- Misleading names that contradict what the code does, or generic names (process_data, handle_item) that hide what a function does\n- Tutorial-shaped code: sample-app structure, dummy data, or a textbook pattern where a plain if/else does the job\n- An abstraction with one caller: an interface, factory, wrapper or helper introduced for a single use\n- Code that ignores the surrounding module: a new way to log, validate, name or structure things next to code that already does it one way\n- Narrating comments that restate the next line or walk through steps ("# Step 1", "// Now we ...")\n\nDo NOT flag: defensive checks or validation (the data does not support them as a tell, and half the complaints run the other way), log lines, single variable names, blank lines, import order, missing docstrings or type hints.\nIf the code works, reads clearly, and matches the level of the code around it, return should_refactor=false.\n\nIf should_refactor=true, the reason must name the specific file and problem.\n';
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
@@ -1603,7 +1615,7 @@ No markdown fences, no explanation.`,
   }
   let greenStaleHint = null;
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, []);
     if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
@@ -1635,7 +1647,7 @@ No markdown fences, no explanation.`,
     }
     if (intakeVerifyExit === 0) {
       log(`[${taskId}] RED and GREEN commits already exist on lane branch \u2014 lane already satisfied, resuming from REFACTOR (#331)`);
-      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, []);
       if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
       await updateStage(issueId, "done");
       return { task_id: taskId, status: "completed", stage: "REFACTOR" };
@@ -2304,10 +2316,15 @@ ${bugSummary}`,
     if (!fuWrite.ok) log(`[${taskId}] ${fuWrite.error} \u2014 ${minority.length} skeptic minority finding(s) stay in this log only`);
     else followUps = minority.length;
   }
-  const strayOutcome = strayFilesFromSteps(await runBatch(strayCleanSteps(wt), stageOpts("cli", { label: `stray-clean:${taskId}`, phase: "Act", model: model("fast") })));
+  const preRefactor = await runBatch(
+    [...strayCleanSteps(wt), ...codeTellSteps({ wt, files: [...implFiles, ...testFiles], baseRef: scopedLaneCfg.epicBranch })],
+    stageOpts("cli", { label: `stray-clean:${taskId}`, phase: "Act", model: model("fast") })
+  );
+  const strayOutcome = strayFilesFromSteps(preRefactor);
   if (strayOutcome.cleaned === null) log(`[${taskId}] stray_clean_unchecked: could not list untracked files in the worktree before REFACTOR`);
   else if (strayOutcome.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${strayOutcome.strays.length} untracked file(s) left by a prior stage ${strayOutcome.cleaned ? "removed" : "NOT removed"} before REFACTOR: ${strayOutcome.strays.join(", ")}`);
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
+  const tells = tellLines(stepStdout(preRefactor, "tell-scan"));
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, tells);
   if (!refResult || !refResult.verified) {
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: refResult?.error || "refactor failed" };
   }
@@ -2360,21 +2377,27 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
   }
   return { allBugs, brokenCount, crossValidated };
 }
-async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFile) {
+async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFile, tells) {
   log(`[${taskId}] REFACTOR: checking if needed`);
-  const preCheck = await resilientAgent(
-    refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(", ") }),
-    stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
-  );
-  if (!preCheck) {
-    log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts \u2014 skipping the optional REFACTOR stage`);
-    return { verified: true };
+  const laneFiles = [...implFiles, ...testFiles];
+  const tellsSlot = tells.length > 0 ? tells.join("\n") : "(none)";
+  let reason = tells.length > 0 ? `code_tells: ${tells.length} on added lines (${tells.slice(0, 3).join("; ")}${tells.length > 3 ? "; \u2026" : ""})` : "";
+  if (tells.length === 0) {
+    const preCheck = await resilientAgent(
+      refactorCheckPrompt({ wt, allFiles: laneFiles.join(", "), tellsSlot }),
+      stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
+    );
+    if (!preCheck) {
+      log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts \u2014 skipping the optional REFACTOR stage`);
+      return { verified: true };
+    }
+    if (!preCheck.should_refactor) {
+      log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || "nothing to improve"})`);
+      return { verified: true };
+    }
+    reason = preCheck.reason || "checker asked for it";
   }
-  if (!preCheck.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || "nothing to improve"})`);
-    return { verified: true };
-  }
-  log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`);
+  log(`[${taskId}] REFACTOR: proceeding (${reason})`);
   const refactorPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, "REFACTOR", specFile, {});
   const refactorCtxCmd = laneCtxCmd(refactorPacket, wt);
   const refactor = await resilientAgent(
@@ -2388,7 +2411,8 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
       commitPrefix: refactorPacket.commit_prefix,
       // Same author/trailer scheme as RED and GREEN (#357) — a REFACTOR commit
       // under the user's identity was being read as a stray concurrent writer.
-      commitCmd: laneCommitCommand({ wt, taskId, stage: "REFACTOR", runId: cfg2.runId })
+      commitCmd: laneCommitCommand({ wt, taskId, stage: "REFACTOR", runId: cfg2.runId }),
+      tellsSlot
     }),
     stageOpts("refactor", { label: `refactor:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
   );
@@ -2403,15 +2427,17 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
       return { verified: true };
     }
     if (!refactor.committed) {
-      const reason = `refactor_skipped: ${refactor.failure_reason || (refactor.status === "blocked" ? "REFACTOR reported blocked" : "REFACTOR reported no success")}`;
-      log(`[${taskId}] REFACTOR: ${reason}${refactor.status === "blocked" && (refactor.needs_write?.length ?? 0) > 0 ? ` (needs_write: ${refactor.needs_write.join(", ")})` : ""} \u2014 treating as no refactor applied (optional stage)`);
-      return verifyWithoutRefactor(taskId, wt, cfg2, reason);
+      const reason2 = `refactor_skipped: ${refactor.failure_reason || (refactor.status === "blocked" ? "REFACTOR reported blocked" : "REFACTOR reported no success")}`;
+      log(`[${taskId}] REFACTOR: ${reason2}${refactor.status === "blocked" && (refactor.needs_write?.length ?? 0) > 0 ? ` (needs_write: ${refactor.needs_write.join(", ")})` : ""} \u2014 treating as no refactor applied (optional stage)`);
+      return verifyWithoutRefactor(taskId, wt, cfg2, reason2);
     }
     log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason || "unknown"}`);
     return { verified: false, error: `refactor_failed: ${refactor.failure_reason || "unknown"}` };
   }
   const verifySteps = [
-    { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true }
+    { name: "test-verify", command: testRunCommand(cfg2.testCommand, wt, "refactor-verify"), tolerant: true },
+    // Rescan in the same batch when there were hits: what survived is named.
+    ...tells.length > 0 ? codeTellSteps({ wt, files: laneFiles, baseRef: cfg2.epicBranch }) : []
   ];
   const verifyRaw = await runBatch(verifySteps, stageOpts("cli", { label: `post-refactor-verify:${taskId}`, phase: "Act", model: model("fast") }));
   let refactorVerifyExit = testExitCode(stepStdout(verifyRaw, "test-verify"));
@@ -2433,7 +2459,14 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
     return { verified: true };
   }
   log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || "n/a"}; independent verify exit=0)`);
+  if (tells.length > 0) {
+    const left = tellLines(stepStdout(verifyRaw, "tell-scan"));
+    if (left.length > 0) log(`[${taskId}] code_tells_remaining: ${left.length} of ${tells.length} tell(s) survived REFACTOR \u2014 ${left.slice(0, 5).join("; ")}`);
+  }
   return { verified: true };
+}
+function tellLines(stdout) {
+  return parseTellScan(stdout).map((t) => `${t.file}:${t.line} ${t.tag}: ${t.text.trim()}`);
 }
 async function verifyWithoutRefactor(taskId, wt, cfg2, why) {
   const resetResult = await runBatch(worktreeResetSteps(wt), stageOpts("cli", { label: `refactor-reset:${taskId}`, phase: "Act", model: model("fast") }));
