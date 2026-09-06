@@ -525,9 +525,13 @@ export function extractRequiredScopeFiles(
     while ((m = importRe.exec(content))) modules.push(m[1])
 
     for (const mod of modules) {
-      const top = mod.split('.')[0]
-      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue
-      required.add(`${mod.split('.').join('/')}.py`)
+      const parts = mod.split('.')
+      if (!FIRST_PARTY_PY_PACKAGES.includes(parts[0])) continue
+      // A bare package import (`import datum`) needs no lane file: the
+      // package is a directory, and demanding `datum.py` failed a sound RED
+      // as scope_gap on a phantom (datum self-hosted wf_498d1f29-3f9).
+      if (parts.length === 1) continue
+      required.add(`${parts.join('/')}.py`)
     }
   }
 

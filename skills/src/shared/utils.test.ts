@@ -1323,3 +1323,19 @@ describe('preflightTestPaths', () => {
     expect(r.skipped).toEqual(['docs/CAPABILITIES.md', 'tests/fixtures/part_corpus/baseline.json'])
   })
 })
+
+// datum self-hosted wf_498d1f29-3f9 task-002: the RED test did `import datum`
+// (the package, for `datum.__file__`) and the scope check demanded a lane
+// file `datum.py`, which cannot exist — the lane failed `scope_gap` on a
+// phantom. A first-party PACKAGE import needs no lane file; only a module
+// path below the package maps to a file.
+describe('extractRequiredScopeFiles — python package imports', () => {
+  it('a bare first-party package import maps to no file; a submodule still maps to its .py', () => {
+    const content = 'import datum\nimport datum.gate\nfrom datum.lane_plan import build_lane_plan\nimport json\n'
+    const required = extractRequiredScopeFiles(content, 'tests/test_x.py', 'python')
+    expect(required).not.toContain('datum.py')
+    expect(required).toContain('datum/gate.py')
+    expect(required).toContain('datum/lane_plan.py')
+    expect(required).not.toContain('json.py')
+  })
+})
