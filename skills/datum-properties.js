@@ -548,6 +548,7 @@ function contextFromRelay(probe, inline, plan) {
   const epicDir2 = stepStdout(probe, "epic-dir") || `docs/epics/${branch}`;
   const files = {};
   const warnings = [];
+  const mismatched = [];
   if (plan.inline.length > 0 && (inline === null || inline.missing)) {
     throw new Error(`context_relay_mismatch: inline batch returned no parseable result for ${plan.inline.join(", ")}`);
   }
@@ -558,27 +559,60 @@ function contextFromRelay(probe, inline, plan) {
     files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null };
     warnings.push(`context file ${relPath}: ${plan.bytes[relPath]} bytes, deferred to the consuming agent (relay budget ${plan.budget} bytes)`);
   }
+  const defer = (relPath, why) => {
+    mismatched.push(relPath);
+    files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null };
+    warnings.push(`context_relay_mismatch: ${why} \u2014 deferred to the consuming agent`);
+  };
   plan.inline.forEach((relPath, i) => {
     const raw = stepStdout(inline, `ctx-cat-${i}`);
     const declaredRaw = stepStdout(inline, `ctx-wc-${i}`);
     const declared = declaredRaw === null ? NaN : parseInt(declaredRaw.trim(), 10);
     if (raw === null || raw === NOT_FOUND_MARKER || declared === -1) {
-      throw new Error(`context_relay_mismatch: ${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`);
+      defer(relPath, `${relPath} existed at probe time (${plan.bytes[relPath]} bytes) but the inline read found nothing`);
+      return;
     }
     const expected = plan.bytes[relPath];
+    const sha = plan.sha[relPath];
     let content = raw;
     let actual = utf8ByteLength(raw);
-    if (actual === expected - 1 && plan.sha[relPath] && gitBlobSha(utf8Encode(raw + "\n")) === plan.sha[relPath]) {
+    if (actual === expected - 1 && sha && gitBlobSha(utf8Encode(raw + "\n")) === sha) {
       content = raw + "\n";
       actual = expected;
       warnings.push(`context file ${relPath}: trailing newline restored (runner returned ${expected - 1} of ${expected} bytes; blob sha verified)`);
     }
     if (actual !== expected || Number.isFinite(declared) && declared !== expected) {
-      throw new Error(`context_relay_mismatch: ${relPath} expected ${expected} bytes, got ${actual} bytes`);
+      defer(relPath, `${relPath} expected ${expected} bytes, got ${actual} bytes`);
+      return;
     }
-    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha: plan.sha[relPath], content };
+    if (sha && gitBlobSha(utf8Encode(content)) !== sha) {
+      defer(relPath, `${relPath} relayed ${actual} bytes as expected but the blob sha differs from the probe's (content rewritten in transit)`);
+      return;
+    }
+    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha, content };
   });
-  return { branch, epicDir: epicDir2, files, warnings };
+  return { branch, epicDir: epicDir2, files, warnings, mismatched };
+}
+function contextInlineRetryPrompt(steps) {
+  return `${batchCommandPrompt(steps)}
+
+# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`;
+}
+function mergeRelayRetry(first, second) {
+  const files = { ...first.files };
+  const warnings = [...first.warnings];
+  const mismatched = [];
+  for (const relPath of first.mismatched) {
+    const retried = second.files[relPath];
+    if (retried && retried.inlined && retried.content !== null) {
+      files[relPath] = retried;
+      warnings.push(`context file ${relPath}: re-fetched intact on attempt 2 (blob sha verified)`);
+    } else {
+      mismatched.push(relPath);
+      warnings.push(`context file ${relPath}: mismatched on both attempts \u2014 deferred to the consuming agent (path + bytes + mandatory Read with a witness)`);
+    }
+  }
+  return { branch: first.branch, epicDir: first.epicDir, files, warnings, mismatched };
 }
 function contextSlot(f) {
   if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
@@ -662,14 +696,22 @@ if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
 }
 var inlineBatch = null;
+var inlineSteps = contextInlineSteps(relayPlan.inline);
 if (relayPlan.inline.length > 0) {
-  const inlineSteps = contextInlineSteps(relayPlan.inline);
   inlineBatch = parseBatchResult(
     await agent(batchCommandPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") })),
     inlineSteps
   );
 }
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
+if (ctx.mismatched.length > 0) {
+  log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(", ")} \u2014 re-fetching once with a fresh runner`);
+  const retryBatch = parseBatchResult(
+    await agent(contextInlineRetryPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files:retry", model: model("fast") })),
+    inlineSteps
+  );
+  ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan));
+}
 for (const warning of ctx.warnings) log(`read-context: ${warning}`);
 var specFile = ctx.files[SPEC_REL];
 var tasksFile = ctx.files[TASKS_REL];
