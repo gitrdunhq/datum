@@ -1062,9 +1062,25 @@ function postGreenSteps(o) {
     steps.push({ name: "red-files", command: `git -C ${q2(o.wt)} diff-tree --no-commit-id --name-only -r ${q2(o.redSha)}`, tolerant: true });
   }
   if (o.verifyTestCmd) {
+    steps.push(...strayCleanSteps(o.wt));
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
   }
   return steps;
+}
+function strayCleanSteps(wt) {
+  const list = `git -C ${q2(wt)} status --porcelain --untracked-files=all 2>/dev/null | sed -n 's/^?? //p'`;
+  return [
+    { name: "stray-list", command: list, tolerant: true },
+    { name: "stray-clean", command: `git -C ${q2(wt)} clean -fdq 2>&1`, tolerant: true },
+    { name: "stray-confirm", command: list, tolerant: true }
+  ];
+}
+function strayFilesFromSteps(result) {
+  const listed = stepStdout(result, "stray-list");
+  const confirm = stepStdout(result, "stray-confirm");
+  if (listed === null || confirm === null) return { strays: [], cleaned: null };
+  const strays = listed.split("\n").map((l) => l.trim()).filter(Boolean).sort();
+  return { strays, cleaned: confirm.trim() === "" };
 }
 function redCommittedFilesFromSteps(r) {
   const rec = stepResult(r, "red-files");
@@ -1327,7 +1343,7 @@ var refactor_default = 'REFACTOR agent. Clean up the implementation without chan
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
 
 // skills/src/prompts/skeptic-base.md
-var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n";
+var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n\nLeave the worktree exactly as you found it: do not create files in it. Reproduce a finding with an inline command (`python -c`, `node -e`, a heredoc piped to the interpreter) and quote that command as the evidence. Any file you leave behind is removed before the next stage and reported as `stray_untracked_files`; a repro test file left under tests/ was collected by the next stage's suite and failed a sound lane.\n";
 
 // skills/src/prompts/skeptic-edge.md
 var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\nFor each finding: describe the input, what happens, what should happen.\n";
@@ -2035,6 +2051,8 @@ No markdown fences, no explanation.`,
   const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") }));
   const postGreenVerifyResult = postGreenVerifyRaw;
+  const greenStrays = strayFilesFromSteps(postGreenVerifyResult);
+  if (greenStrays.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${greenStrays.strays.length} untracked file(s) left by GREEN ${greenStrays.cleaned ? "removed" : "NOT removed"} before the verify: ${greenStrays.strays.join(", ")}`);
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, "test-verify"));
   const greenEnvMissing = testEnvMissing(stepStdout(postGreenVerifyResult, "test-verify"));
   if (greenEnvMissing) {
@@ -2188,6 +2206,9 @@ ${bugSummary}`,
     if (!fuWrite.ok) log(`[${taskId}] ${fuWrite.error} \u2014 ${minority.length} skeptic minority finding(s) stay in this log only`);
     else followUps = minority.length;
   }
+  const strayOutcome = strayFilesFromSteps(await runBatch(strayCleanSteps(wt), stageOpts("cli", { label: `stray-clean:${taskId}`, phase: "Act", model: model("fast") })));
+  if (strayOutcome.cleaned === null) log(`[${taskId}] stray_clean_unchecked: could not list untracked files in the worktree before REFACTOR`);
+  else if (strayOutcome.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${strayOutcome.strays.length} untracked file(s) left by a prior stage ${strayOutcome.cleaned ? "removed" : "NOT removed"} before REFACTOR: ${strayOutcome.strays.join(", ")}`);
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
   if (!refResult || !refResult.verified) {
     return { task_id: taskId, status: "failed", stage: "REFACTOR", error: refResult?.error || "refactor failed" };
