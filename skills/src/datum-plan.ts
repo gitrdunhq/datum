@@ -14,6 +14,7 @@ import planImpactTemplate from './prompts/plan-impact.md'
 import planTriageTemplate from './prompts/plan-triage.md'
 import planDeepenTemplate from './prompts/plan-deepen.md'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { routingRestoreSteps, routingRestoreFromSteps, ROUTING_PATH } from './shared/routing-steps'
 import { runBatch } from './shared/agents'
 
 export const meta = {
@@ -331,6 +332,14 @@ if (!routingWritten.ok) throw new Error(routingWritten.error)
 const triageGateSteps = gateSteps('triage', '')
 const triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts('cli', { label: 'gate-triage', model: model('fast') })))
 if (!triageGate.passed) throw new Error(`Triage gate failed — routing.json rejected: ${triageGate.message || 'no message'}`)
+// A consumer that committed routing.json under an earlier datum version
+// would otherwise be left with a modified tracked file after every plan run
+// (caliper eedom wf_4f739141-c8c). The gate has read the fresh decision;
+// restore the committed content and name the condition. Fails soft: the
+// decision already landed, a dirty tree is a nuisance, not a wrong plan.
+const routingRestore = routingRestoreFromSteps(await runBatch(routingRestoreSteps(), stageOpts('cli', { label: 'routing-restore', model: model('fast') })))
+if (routingRestore.tracked === true) log(`routing_json_tracked: ${ROUTING_PATH} is committed in this repo and was restored after the triage gate — untrack it (git rm --cached ${ROUTING_PATH}) so plan runs leave the tree clean`)
+else if (routingRestore.tracked === null) log(`routing_restore_unchecked: could not tell whether ${ROUTING_PATH} is tracked; a committed copy may show as modified`)
 
 // Deepen (conditional). The research agent APPENDS `## Research Findings`
 // to TASKS.md and touches nothing else (tasks.json is untouched by design).
