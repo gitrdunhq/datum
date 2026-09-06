@@ -85,7 +85,7 @@ bash install.sh --uninstall
 ## Documentation
 
 - [FLOW.md](docs/FLOW.md) — the pipeline as it runs: phases, lanes, gates, named failures, closed gaps
-- [Workflow Diagram](docs/datum-workflow.md) — mermaid flowcharts of the pipeline
+- [Diagrams](docs/diagrams/README.md) — rendered pipeline, lane and state diagrams from FLOW.md
 - [CURRENT_STATE.md](CURRENT_STATE.md) — what shipped last
 - [CHANGELOG.md](CHANGELOG.md) — release history
 - [ROADMAP.md](ROADMAP.md) — what's next
