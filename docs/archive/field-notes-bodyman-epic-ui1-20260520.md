@@ -1,5 +1,7 @@
 # DATUM Field Notes — THE RECORD Epic UI-1 (2026-05-20)
 
+> **Archived 2026-09-06.** Historical record, not a defect list. The headline recommendation (a `structural | behavioral` task field so RED/GREEN runs only for behavioral work) shipped as `Lane.kind`; see docs/FLOW.md. Every remaining "fix needed" targets code that no longer exists (`test_signal.py`, `skeleton_creator.py`, the commit queue and spec-drift sidecar were all deleted).
+
 **Project:** THE RECORD (macOS meeting transcription, 1688+ tests, Swift 6.2)
 **Epic:** UI-1 — macOS UI Test Infrastructure (XCUITest + UITestIdentifiers)
 **Run ID:** epic-1-20260520-144835
