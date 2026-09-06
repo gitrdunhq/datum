@@ -400,6 +400,10 @@ Concrete divergences in the current code, each naming the principle it violates.
 - **A re-merge re-stamped completed markers; a conflicting squash left the checkout dirty** — closed in 55df693: `lane-state write` refuses to overwrite a completed marker without `--force`, `lane-state rehash` repairs from the on-disk plan (Python port of `laneSpecHash` pinned by shared vectors), `git reset --merge` before raising. The chunked relay was verified against the git blob sha (7ecf5af) until the digest replaced it (6c93b50).
 - **Sandbox-hostile code in bundles** — closed in 6811546/51a9fbf: the Workflow vm exposes no `Buffer`/`TextEncoder`/`process`/`require` and throws on `Date.now()`/`Math.random()`/`new Date()`; `utf8ByteLength` replaces `Buffer.byteLength`, retry jitter is deterministic, and a tripwire test bans all of them in bundled sources.
 
+### Properties
+
+Every verdict function is a partial function over a small input space with a few named outcomes, and every "null read as failed" defect above was that function tested on its happy inputs only. Since 4e7eef24 the invariants are property-tested (fast-check in `skills/src/shared/verdicts.property.test.ts`, Hypothesis in `tests/test_gate_properties.py`): a verdict is always one of its named outcomes; "failed" implies evidence (a parsed exit code, a parsed step); absence is named, never "clean" and never "failed"; a datum failure prefix is infrastructure wherever it sits in the string, and unknown text never goes to datum's tracker; a read witness verifies on seven or more correct leading hex characters and never on fewer; a guess in the Assumption Audit errors exactly when it names no answered question. New verdict functions get a property before an example.
+
 ## 6. Runtime contract for bundled scripts
 
 `skills/*.js` run inside the Workflow tool's Node `vm` context, not in Node proper. From the authoring reference, and confirmed by dogfooding failures:
