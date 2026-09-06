@@ -390,6 +390,31 @@ def test_verify_phase_act_no_matching_commit_gives_a_reason(tmp_path, monkeypatc
     assert "run-1" in reason or "act" in reason
 
 
+def test_verify_phase_closeout_accepts_the_closeout_batchs_own_commit_format(
+    tmp_path, monkeypatch
+):
+    """elonchesd epic-1: `pipeline-state-save --phase closeout` answered
+    "no commit matching '^closeout:'" — the closeout batch itself commits
+    `closeout(<run>): write CURRENT_STATE.md + ...` (datum-closeout.ts), so
+    the phase that had just completed could never be recorded."""
+    repo = _git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "c.txt").write_text("y\n")
+    _git(["add", "."], cwd=repo)
+    _git(
+        [
+            "commit",
+            "-q",
+            "-m",
+            "closeout(20260905-172138): write CURRENT_STATE.md + RETRO.md",
+        ],
+        cwd=repo,
+    )
+
+    found, reason = verify_phase("closeout", run_id="20260905-172138")
+    assert found is True, reason
+
+
 def test_verify_phase_validate_false_tests_pass_fails_with_reason(
     tmp_path, monkeypatch
 ):

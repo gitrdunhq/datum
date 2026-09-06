@@ -71,13 +71,21 @@ def verify_phase(
     prefix = PHASE_COMMIT_PREFIX.get(phase)
     if prefix is None:
         return False, f"unknown phase {phase!r}"
+    # `<phase>:` or `<phase>(<run-id>):` — the closeout batch commits
+    # `closeout(<run>): write CURRENT_STATE.md + ...` (datum-closeout.ts),
+    # and `^closeout:` could never record the phase that had just
+    # completed (elonchesd epic-1).
+    word = prefix.rstrip(":")
+    pattern = rf"^{re.escape(word)}(:|\()"
     result = subprocess.run(
-        ["git", "log", "--oneline", "--grep", f"^{prefix}"],
+        ["git", "log", "--oneline", "--extended-regexp", "--grep", pattern],
         capture_output=True,
         text=True,
     )
     found = bool(result.stdout.strip())
-    return found, "" if found else f"no commit matching '^{prefix}' found in git log"
+    return found, (
+        "" if found else f"no commit matching '^{word}:' or '^{word}(' found in git log"
+    )
 
 
 def read_pipeline_state(datum_dir: Path | None = None) -> dict[str, Any] | None:
