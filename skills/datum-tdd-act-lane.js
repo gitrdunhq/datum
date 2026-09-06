@@ -894,15 +894,22 @@ datum dev test-count-gate --repo ${q2(o.wt)} --files ${o.testFiles.map(q2).join(
       tolerant: true
     });
   }
+  const baseLine = o.baseRef ? `__base=$(git -C ${q2(o.wt)} merge-base HEAD ${q2(o.baseRef)} 2>/dev/null)` : '__base=""';
+  const filterLines = (f, i) => [
+    `__d${i}=$(mktemp -d); __t="$__d${i}/${f.split("/").pop()}"`,
+    `if [ -n "$__base" ]; then __added=$(git -C ${q2(o.wt)} diff --unified=0 "$__base" HEAD -- ${q2(f)} 2>/dev/null | awk '/^@@/{split($3,p,","); s=substr(p[1],2)+0; n=(p[2]==""?1:p[2]+0); for(i=0;i<n;i++) printf "%d ", s+i}'); else __added=ALL; fi`,
+    `awk -v added="$__added" -v sq="'" 'BEGIN{all=(added=="ALL"); n=split(added,a," "); for(i=1;i<=n;i++) keep[a[i]]=1; re="\\"\\"\\"|" sq sq sq "|\`"} { s=$0; c=gsub(re,"",s); if (instr || !(all || keep[NR])) print ""; else print $0; if (c%2==1) instr=!instr }' ${q2(`${o.wt}/${f}`)} > "$__t"`
+  ].join("\n");
   steps.push({
     name: "assert-check",
-    command: o.testFiles.map((f) => o.sgPatterns.map(
+    command: baseLine + "\n" + o.testFiles.map((f, i) => filterLines(f, i) + "\n" + o.sgPatterns.map(
       (p) => (
         // The grep fallback (no ast-grep, or ast-grep errored) is anchored to
         // a statement start: an unanchored grep matched `assert True` inside a
         // quoted fixture string of a test-detection test and failed a sound
         // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
-        `ast-grep --pattern '${p.pattern}' ${q2(`${o.wt}/${f}`)} 2>/dev/null || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' ${q2(`${o.wt}/${f}`)} 2>/dev/null`
+        // Hits are reported against the original path.
+        `ast-grep --pattern '${p.pattern}' "$__t" > "$__d${i}/out" 2>/dev/null && sed "s#^$__t#${f}#" "$__d${i}/out" || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' "$__t" 2>/dev/null | sed "s#^#${f}:#"`
       )
     ).join("\n")).join("\n") + `
 BODYPATFILE=$(mktemp)
@@ -910,7 +917,7 @@ cat > "$BODYPATFILE" <<'PATTERN_EOF'
 ${o.testFuncBodyRegex}
 PATTERN_EOF
 ` + o.testFiles.map(
-      (f) => `grep -A1 -f "$BODYPATFILE" ${q2(`${o.wt}/${f}`)} 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
+      (f, i) => `grep -A1 -f "$BODYPATFILE" "$__d${i}/${f.split("/").pop()}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
     ).join("\n"),
     tolerant: true
   });
