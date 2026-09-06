@@ -496,7 +496,7 @@ def test_init_refresh_covers_skills_agents_and_hooks_without_bootstrap(
     stale_agents = repo / AGENTS_SUBDIR
     stale_agents.mkdir(parents=True)
     stale_agents.joinpath("datum-red.md").write_text(
-        f"---\nname: datum-red\n---\n{MATERIALISED_MARKER} agents/datum-red.md -->\nstale\n"
+        f"---\nname: datum-red\n---\n{MATERIALISED_MARKER} agents/datum-red.md -->\nSTALE-SENTINEL-CONTENT\n"
     )
 
     result = CliRunner().invoke(app, ["init", "--refresh", "--json"])
@@ -506,7 +506,8 @@ def test_init_refresh_covers_skills_agents_and_hooks_without_bootstrap(
     assert out["refreshed"] is True
     assert out["agentsDir"] == str((repo / AGENTS_SUBDIR).resolve())
     assert out["hooksDir"] == str((repo / LOCAL_HOOKS_SUBDIR).resolve())
-    assert "stale" not in (stale_agents / "datum-red.md").read_text()
+    # A sentinel no real agent file contains (the real datum-red.md names stale_owned_test).
+    assert "STALE-SENTINEL-CONTENT" not in (stale_agents / "datum-red.md").read_text()
     assert (repo / ".datum" / "skills" / "datum-go.js").is_file()
     cfg = json.loads((repo / ".datum" / "config.json").read_text())
     assert cfg["language"] == "python"
