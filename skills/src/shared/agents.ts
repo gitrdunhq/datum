@@ -221,8 +221,12 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, ' ').slice(0, 120)}") — retrying once with a fresh runner`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner refused this batch`, retryOpts), steps)
   } else if (result.missing && result.corrupt) {
-    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) — retrying once with a fresh runner`)
-    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner mistyped this script; copy it exactly`, retryOpts), steps)
+    // elonchesd player-guidance wf_6cb9491b-36b task-007/016: a fresh FAST
+    // runner dropped the same quote in the same place both times. A slip
+    // the model class repeats is not a coin flip; the retry goes to the
+    // balanced model, which transcribes what the fast one cannot.
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) — retrying once on the balanced model`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner mistyped this script; copy it exactly`, { ...retryOpts, model: model('balanced') }), steps)
   } else if (result.missing && !result.refusal && !result.scriptError) {
     logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) — retrying once with a fresh runner`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner returned nothing; return the script's stdout`, retryOpts), steps)

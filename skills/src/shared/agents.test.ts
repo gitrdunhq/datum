@@ -349,3 +349,23 @@ describe('runBatch — one retry on an empty reply, named runner_empty_result', 
     expect(describeFailure(r, 'post-green-verify')).toMatch(/^post-green-verify: runner_empty_result — batch agent returned no parseable result/)
   })
 })
+
+// elonchesd player-guidance wf_6cb9491b-36b task-007/task-016: the corrupt
+// retry went to a fresh FAST runner, which dropped the same quote in the
+// same place both times. A transcription slip repeated by the same model
+// class is not a coin flip; the retry goes to the balanced model.
+describe('runBatch — the corrupt-script retry goes to the balanced model', () => {
+  it('re-sends a mistyped script with model("balanced"), not the caller\'s fast model', async () => {
+    const steps = [{ name: 'a', command: 'echo a' }]
+    const corrupt = JSON.stringify([{ name: '__script', exit_code: 1, stdout: '', stderr: 'batch_script_corrupt: expected 0123456789abcdef0123456789abcdef01234567, got 89abcdef0123456789abcdef0123456789abcdef' }])
+    const ok = JSON.stringify([{ name: 'a', exit_code: 0, stdout: 'a\n', stderr: '' }])
+    const models: (string | undefined)[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'post-green-verify:T7', model: 'fast-model' }, {
+      agentFn: async (_p, o) => { models.push(o?.model); return n++ === 0 ? corrupt : ok },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(models).toEqual(['fast-model', model('balanced')])
+  })
+})
