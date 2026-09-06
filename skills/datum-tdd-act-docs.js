@@ -304,7 +304,8 @@ function parseBatchResult(raw, steps) {
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
-    const scriptError = results[0].stderr;
+    const { exit_code, stderr } = results[0];
+    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -529,6 +530,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
+  } else if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
   }
   return result;
 }

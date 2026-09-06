@@ -302,7 +302,8 @@ function parseBatchResult(raw, steps2) {
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
-    const scriptError = results[0].stderr;
+    const { exit_code, stderr } = results[0];
+    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps2.filter((s) => s.tolerant).map((s) => s.name));
