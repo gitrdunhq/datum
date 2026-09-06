@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, appendFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -232,8 +232,11 @@ describe('postRedSteps', () => {
   it('assert-check grep fallback is anchored to the statement start and escapes regex metacharacters', () => {
     const steps = postRedSteps({ ...opts, sgPatterns: [{ pattern: 'assert True', name: 'assert True' }, { pattern: 'expect(true).toBe(false)', name: 'forced failure' }] })
     const cmd = steps.find((s) => s.name === 'assert-check')!.command
-    expect(cmd).toContain(`grep -nE '^[[:space:]]*assert True' "/wt/T1/tests/test_a.py"`)
-    expect(cmd).toContain(`grep -nE '^[[:space:]]*expect\\(true\\)\\.toBe\\(false\\)' "/wt/T1/tests/test_a.py"`)
+    // The scan runs on the filtered copy ($__t: added lines only, multi-line
+    // strings blanked), never on the file itself.
+    expect(cmd).toContain(`grep -nE '^[[:space:]]*assert True' "$__t"`)
+    expect(cmd).toContain(`grep -nE '^[[:space:]]*expect\\(true\\)\\.toBe\\(false\\)' "$__t"`)
+    expect(cmd).not.toContain(`grep -nE '^[[:space:]]*assert True' "/wt/T1/tests/test_a.py"`)
     expect(cmd).not.toMatch(/grep -n 'assert True'/)
   })
 
@@ -1389,6 +1392,87 @@ describe('postRedSteps assert-check matches the skeleton placeholder, not any th
     try {
       expect(run(dir, "it('mounts', () => {\n  const app = document.querySelector('#app')\n  if (!app) throw new Error('test setup failed: #app not found')\n  expect(app.children.length).toBe(1)\n})\n")).toBe('')
       expect(run(dir, "it('x', async () => {\n    // Assert\n    throw new Error('RED agent: implement this assertion');\n});\n")).toMatch(/RED agent: implement this assertion/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// caliper eedom wf_0837ad8b-e5f task-005: assert-check reported
+// `raise NotImplementedError` at a line the RED commit never touched — inside
+// a textwrap.dedent("""...""") string of Python source a pre-existing test
+// feeds to the indexer. The scan must cover only the lines the lane ADDED
+// since its base, and never the inside of a multi-line string.
+describe('postRedSteps assert-check scans only the lane\'s added lines, outside multi-line strings', () => {
+  function initRepo(): { dir: string; git: (...a: string[]) => string } {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-assert-added-'))
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    git('init', '-q', '-b', 'main')
+    git('config', 'core.hooksPath', '/dev/null')
+    git('config', 'user.email', 't@t')
+    git('config', 'user.name', 't')
+    mkdirSync(join(dir, 'tests'))
+    writeFileSync(join(dir, 'tests', 'test_a.py'), [
+      'import textwrap',
+      '',
+      'def test_kind():',
+      '    src = textwrap.dedent("""',
+      '        def f():',
+      '            raise NotImplementedError',
+      '    """)',
+      '    assert kind(src) == "stub"',
+      '',
+      'def test_old_stub():',
+      '    raise NotImplementedError',
+      '',
+    ].join('\n'))
+    git('add', '-A'); git('commit', '-q', '-m', 'base')
+    git('checkout', '-q', '-b', 'lane')
+    return { dir, git }
+  }
+  const sgPatterns = [{ pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' }]
+  // Both with ast-grep on the PATH and without it (the grep fallback is what
+  // eedom ran: the halt text was grep -n output).
+  function run(dir: string, sg: boolean): string {
+    const steps = postRedSteps({ wt: dir, testFiles: ['tests/test_a.py'], acCount: 0, testFuncDiffRegex: 'x', sgPatterns, testFuncBodyRegex: 'x', testFuncGrepRegex: 'x', ownership: false, verifyTestCmd: null, baseRef: 'main' })
+    const step = steps.find((s) => s.name === 'assert-check')!
+    const out = execFileSync('bash', ['-c', (sg ? '' : 'PATH=/usr/bin:/bin\n') + batchScript([step])], { cwd: dir, encoding: 'utf8' })
+    return (stepStdout(parseBatchResult(out, [step]), 'assert-check') || '').trim()
+  }
+  it('a sound RED that only appends real tests is clean, whatever the file already held', () => {
+    const { dir, git } = initRepo()
+    try {
+      appendFileSync(join(dir, 'tests', 'test_a.py'), 'def test_new():\n    assert compute(2) == 4\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'red')
+      expect(run(dir, true)).toBe('')
+      expect(run(dir, false)).toBe('')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('a placeholder the lane added is reported at its line in the original file, the pre-existing ones are not', () => {
+    const { dir, git } = initRepo()
+    try {
+      appendFileSync(join(dir, 'tests', 'test_a.py'), 'def test_p():\n    raise NotImplementedError\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'red')
+      for (const sg of [true, false]) {
+        const out = run(dir, sg)
+        expect(out, `ast-grep on PATH: ${sg}`).toContain('tests/test_a.py:13:')
+        expect(out, `ast-grep on PATH: ${sg}`).not.toMatch(/:6:|:11:/)
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('without a base the whole file is scanned, still skipping multi-line strings', () => {
+    const { dir } = initRepo()
+    try {
+      const steps = postRedSteps({ wt: dir, testFiles: ['tests/test_a.py'], acCount: 0, testFuncDiffRegex: 'x', sgPatterns, testFuncBodyRegex: 'x', testFuncGrepRegex: 'x', ownership: false, verifyTestCmd: null, baseRef: null })
+      const step = steps.find((s) => s.name === 'assert-check')!
+      // grep fallback only: ast-grep parses Python and already ignores a string literal.
+      const out = (stepStdout(parseBatchResult(execFileSync('bash', ['-c', 'PATH=/usr/bin:/bin\n' + batchScript([step])], { cwd: dir, encoding: 'utf8' }), [step]), 'assert-check') || '').trim()
+      expect(out).toContain('tests/test_a.py:11:')
+      expect(out).not.toMatch(/:6:/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
