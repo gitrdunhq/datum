@@ -961,7 +961,8 @@ PATTERN_EOF
     ).join("\n"),
     tolerant: true
   });
-  if (o.ownership) steps.push({ name: "ownership", command: ownershipCommand(o.wt), tolerant: true });
+  const redSince = o.baseRef ? laneStartExpr(o.wt, o.baseRef) : null;
+  if (o.ownership) steps.push({ name: "ownership", command: ownershipCommand(o.wt, redSince), tolerant: true });
   const cap = scopeReadCap(o.testFiles.length);
   o.testFiles.forEach((f, i) => {
     steps.push({ name: `scope-size-${i}`, command: `wc -c < ${q2(`${o.wt}/${f}`)} 2>/dev/null | tr -d ' '`, tolerant: true });
@@ -1006,11 +1007,14 @@ function parseTellScan(stdout) {
   }
   return out;
 }
-function ownershipCommand(wt) {
-  return `git -C ${q2(wt)} diff --name-only HEAD~1 HEAD`;
+function ownershipCommand(wt, since) {
+  return `git -C ${q2(wt)} diff --name-only ${since || "HEAD~1"} HEAD`;
 }
-function ownershipCheckSteps(wt) {
-  return [{ name: "ownership", command: ownershipCommand(wt), tolerant: true }];
+function ownershipCheckSteps(wt, since) {
+  return [{ name: "ownership", command: ownershipCommand(wt, since), tolerant: true }];
+}
+function laneStartExpr(wt, epicBranch) {
+  return `"$(git -C ${q2(wt)} merge-base HEAD ${q2(epicBranch)})"`;
 }
 function depMergeSteps(wt, branches) {
   return branches.map((b, i) => ({
@@ -1104,7 +1108,7 @@ function scopeGapsFromSteps(scopeGaps, exitOf) {
   return { existing, missing };
 }
 function postGreenSteps(o) {
-  const steps = [{ name: "ownership", command: ownershipCommand(o.wt), tolerant: true }];
+  const steps = [{ name: "ownership", command: ownershipCommand(o.wt, o.redSha), tolerant: true }];
   if (o.redSha) {
     steps.push({ name: "red-files", command: `git -C ${q2(o.wt)} diff-tree --no-commit-id --name-only -r ${q2(o.redSha)}`, tolerant: true });
   }
@@ -1466,8 +1470,8 @@ var { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted,
 configureAgentTypes(cfg.agentTypes || {});
 setBatchCacheKey(cfg.configFingerprint || "");
 setBatchRoot(cfg.repoRoot || "");
-async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles) {
-  const steps = ownershipCheckSteps(wt);
+async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles, since) {
+  const steps = ownershipCheckSteps(wt, since);
   const result = await runBatch(steps, stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }));
   if (result.missing) {
     return {
@@ -1921,7 +1925,7 @@ No markdown fences, no explanation.`,
   }
   log(`[${taskId}] RED verified \u2014 tests fail as expected (committed: ${red.commit_sha || "n/a"})`);
   await updateStage(issueId, "red", red.commit_sha);
-  const redOwnership = deterministic ? ownershipFromStdout(stepStdout(postRedResult, "ownership"), testFiles, implFiles) : await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles);
+  const redOwnership = deterministic ? ownershipFromStdout(stepStdout(postRedResult, "ownership"), testFiles, implFiles) : await verifyFileOwnership2(taskId, wt, "RED", testFiles, implFiles, laneStartExpr(wt, cfg2.epicBranch));
   if (!redOwnership.ok) {
     const redPrefix = redOwnership.checkFailed ? "ownership_check_failed" : "file_ownership_violation";
     log(`[${taskId}] RED ${redPrefix.toUpperCase()}: ${redOwnership.violations.join(", ")}`);
@@ -2198,7 +2202,7 @@ No markdown fences, no explanation.`,
       redCommitted = redCommittedFilesFromSteps(postGreenRaw);
       return ownershipFromStdout(stepStdout(postGreenRaw, "ownership"), implFiles, testFiles);
     }
-    return verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles);
+    return verifyFileOwnership2(taskId, wt, "GREEN", implFiles, testFiles, red.commit_sha || null);
   };
   let greenOwnership = await checkGreenOwnership("");
   const ownTestsOnly = (o) => {
