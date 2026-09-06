@@ -343,6 +343,16 @@ describe('runBatch — one retry on an empty reply, named runner_empty_result', 
     expect(labels).toEqual(['post-green-verify:T1', 'post-green-verify:T1:retry'])
     expect(logs.some((l) => /\[runBatch\] post-green-verify:T1: runner_empty_result on attempt 1/.test(l))).toBe(true)
   })
+  it('treats an empty code fence ("``` ```", wf_aec6a61b-94a task-007) as an empty reply and retries', async () => {
+    const labels: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'lane-intake:T7', model: 'm' }, {
+      agentFn: async (_p, o) => { labels.push(o?.label || ''); return n++ === 0 ? '``` ```' : ok },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['lane-intake:T7', 'lane-intake:T7:retry'])
+  })
   it('gives up after a second empty reply and names it', async () => {
     const r = await runBatch(steps, { label: 'post-green-verify:T1', model: 'm' }, { agentFn: async () => null, logFn: () => undefined })
     expect(r.missing).toBe(true)

@@ -199,8 +199,11 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
       ? parseAgentJson<unknown>(raw, null)
       : null
   if (!Array.isArray(arr)) {
-    const text = typeof raw === 'string' ? raw.trim() : ''
-    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true }
+    // A reply that is only code fences ("``` ```", wf_aec6a61b-94a task-007)
+    // is an empty reply, not prose: it must take the empty-reply retry, not
+    // be named runner_no_json.
+    const text = typeof raw === 'string' ? raw.replace(/```[a-z]*/gi, '').trim() : ''
+    return text ? { steps: [], failed: null, missing: true, refusal: (raw as string).trim() } : { steps: [], failed: null, missing: true }
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
   if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {

@@ -152,6 +152,18 @@ describe('parseBatchResult', () => {
     expect(parseBatchResult(arr, steps).steps).toHaveLength(1)
   })
 
+  // datum integration-lanes wf_aec6a61b-94a task-007: the intake verify
+  // runner replied "``` ```" — an empty fence. Stored as prose, it was
+  // named runner_no_json and the empty-reply retry never fired.
+  it('reads a reply that is only code fences and whitespace as an empty reply, not prose', () => {
+    for (const raw of ['``` ```', '```\n```', '```json\n\n```', '  ```bash\n  ```  ']) {
+      const r = parseBatchResult(raw, steps)
+      expect(r.missing).toBe(true)
+      expect(r.refusal).toBeUndefined()
+      expect(describeFailure(r, 'lane-intake')).toMatch(/^lane-intake: runner_empty_result/)
+    }
+  })
+
   it('reports missing when the agent returned nothing usable', () => {
     for (const raw of [null, undefined, '', 'MISSING', '{"not":"an array"}']) {
       const r = parseBatchResult(raw, steps)
