@@ -215,7 +215,9 @@ function validateBatchSteps(steps2) {
 function batchScript(steps2) {
   const inner = innerBatchScript(steps2);
   const sha = gitBlobSha(utf8Encode(inner));
+  const rootGuard = batchRoot ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`] : [];
   return [
+    ...rootGuard,
     `__f=$(mktemp); trap 'rm -f "$__f"' EXIT`,
     `cat > "$__f" <<'${BATCH_EOF}'`,
     inner.replace(/\n$/, ""),
@@ -228,6 +230,13 @@ function batchScript(steps2) {
   ].join("\n") + "\n";
 }
 var BATCH_EOF = "DATUM_BATCH_EOF";
+function shellQuote(s) {
+  return `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+var batchRoot = "";
+function setBatchRoot(root) {
+  batchRoot = typeof root === "string" ? root.trim() : "";
+}
 function innerBatchScript(steps2) {
   validateBatchSteps(steps2);
   for (const s of steps2) {
@@ -278,7 +287,8 @@ function parseBatchResult(raw, steps2) {
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
-    return { steps: [], failed: null, missing: true, corrupt: results[0].stderr };
+    const scriptError = results[0].stderr;
+    return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps2.filter((s) => s.tolerant).map((s) => s.name));
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
@@ -295,6 +305,7 @@ var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|u
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
+    if (r.scriptError) return `${label}: ${r.scriptError}`;
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
     const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
     if (REFUSAL_RE.test(r.refusal)) {
@@ -358,6 +369,7 @@ var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 var a = args;
 configureAgentTypes(a.agentTypes || {});
 setBatchCacheKey(a.configFingerprint || "");
+setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 phase("Setup");
 var steps = setupSteps({
   batchRunId: a.batchRunId,

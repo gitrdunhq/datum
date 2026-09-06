@@ -365,7 +365,9 @@ function validateBatchSteps(steps) {
 function batchScript(steps) {
   const inner = innerBatchScript(steps);
   const sha = gitBlobSha(utf8Encode(inner));
+  const rootGuard = batchRoot ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`] : [];
   return [
+    ...rootGuard,
     `__f=$(mktemp); trap 'rm -f "$__f"' EXIT`,
     `cat > "$__f" <<'${BATCH_EOF}'`,
     inner.replace(/\n$/, ""),
@@ -378,6 +380,13 @@ function batchScript(steps) {
   ].join("\n") + "\n";
 }
 var BATCH_EOF = "DATUM_BATCH_EOF";
+function shellQuote(s) {
+  return `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+var batchRoot = "";
+function setBatchRoot(root) {
+  batchRoot = typeof root === "string" ? root.trim() : "";
+}
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
   for (const s of steps) {
@@ -428,7 +437,8 @@ function parseBatchResult(raw, steps) {
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
-    return { steps: [], failed: null, missing: true, corrupt: results[0].stderr };
+    const scriptError = results[0].stderr;
+    return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
@@ -448,6 +458,7 @@ function isRunnerRefusal(reply) {
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
+    if (r.scriptError) return `${label}: ${r.scriptError}`;
     if (!r.refusal) return `${label}: batch agent returned no parseable result`;
     const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
     if (REFUSAL_RE.test(r.refusal)) {
@@ -821,6 +832,7 @@ if (startIdx === -1) {
 var configFingerprint = typeof a.configFingerprint === "string" ? a.configFingerprint : "";
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
 setBatchCacheKey(configFingerprint);
+setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 var bootBatch = parseBatchResult(
   // bootstrapOpts: the switches live in the config this very read fetches.
   await agent(batchCommandPrompt(bootSteps()), bootstrapOpts("cli", { label: "boot", model: model("fast") })),
@@ -828,6 +840,7 @@ var bootBatch = parseBatchResult(
 );
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, "boot"));
 var boot = bootFromSteps(bootBatch);
+setBatchRoot(boot.repoRoot);
 var globalCfg = { ...DEFAULT_CONFIG, ...boot.config || {} };
 configureAgentTypes(readAgentTypeConfig(globalCfg));
 log(`Agent types: ${agentTypeArgs().agentTypes ? "on" : "off"}, hooks_installed: ${agentTypeArgs().hooksInstalled}`);
@@ -835,6 +848,7 @@ var phaseArgs = {
   yolo,
   agentTypes: agentTypeArgs(),
   configFingerprint,
+  repoRoot: boot.repoRoot,
   freeText: typeof a.freeText === "string" ? a.freeText : "",
   issueNumber: typeof a.issueNumber === "number" ? a.issueNumber : null
 };
@@ -1084,7 +1098,7 @@ if (shouldRun("act", 3)) {
       }
       const setup = await workflow(
         { scriptPath: sk("datum-tdd-act-setup") },
-        { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint }
+        { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot }
       );
       const act = await workflow(
         { scriptPath: sk("datum-tdd-act-lane") },
@@ -1095,7 +1109,7 @@ if (shouldRun("act", 3)) {
           batchTag,
           // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
           // in the lane runner, same as datum-tdd-act passes it.
-          cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
+          cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
           priorFailures: actFailures,
           priorCompleted: actCompleted
         }
@@ -1124,6 +1138,7 @@ if (shouldRun("act", 3)) {
           batchTag,
           agentTypes: agentTypeArgs(),
           configFingerprint,
+          repoRoot: boot.repoRoot,
           laneState: mergedIds.length > 0 ? { epicSlug: slug, entries: mergedIds.map((id) => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) } : null
         }
       );
@@ -1149,7 +1164,7 @@ if (shouldRun("act", 3)) {
     try {
       docsResult = await workflow(
         { scriptPath: sk("datum-tdd-act-docs") },
-        { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint }
+        { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot }
       );
     } catch (exc) {
       log(`[warn] docs_workflow_failed: ${exc.message} \u2014 continuing; docs may be stale or left uncommitted`);
