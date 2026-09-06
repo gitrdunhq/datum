@@ -221,6 +221,22 @@ function utf8Encode(s) {
   }
   return out;
 }
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -462,10 +478,16 @@ function commitFilesFromSteps(result) {
 }
 
 // skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
   const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || "batch";
@@ -554,10 +576,7 @@ function normaliseSeverity(raw, where) {
   return "high";
 }
 var baseSteps = [{ name: "base-branch", command: "datum epic-base", tolerant: true }];
-var baseResult = parseBatchResult(
-  await agent(batchCommandPrompt(baseSteps), stageOpts("cli", { label: "read-base", model: model("fast") })),
-  baseSteps
-);
+var baseResult = await runBatch(baseSteps, stageOpts("cli", { label: "read-base", model: model("fast") }));
 var baseBranch = (stepStdout(baseResult, "base-branch") || "").trim();
 if (!baseBranch || /\s/.test(baseBranch)) {
   throw new Error(`review_base_unresolved: datum epic-base printed ${JSON.stringify(baseBranch)} (${baseResult.missing ? "batch returned no result" : describeFailure(baseResult, "read-base")})`);
@@ -622,26 +641,17 @@ async function reviewFromDiff() {
     ""
   ];
   const branchSteps = [{ name: "branch", command: "git rev-parse --abbrev-ref HEAD", tolerant: true }];
-  const branchResult = parseBatchResult(
-    await agent(batchCommandPrompt(branchSteps), stageOpts("cli", { label: "read-branch", model: model("fast") })),
-    branchSteps
-  );
+  const branchResult = await runBatch(branchSteps, stageOpts("cli", { label: "read-branch", model: model("fast") }));
   const branch = (stepStdout(branchResult, "branch") || "").trim();
   if (!branch) throw new Error(`review_branch_unresolved: git rev-parse printed nothing (${branchResult.missing ? "batch returned no result" : "empty stdout"})`);
   const epicDir = `docs/epics/${branch}`;
   const reportPath = `${epicDir}/REVIEW-REPORT.md`;
   const reportContent = reportLines.join("\n");
   const writeSteps = writeFileSteps({ path: reportPath, content: reportContent });
-  const written = writeFileFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(writeSteps), stageOpts("cli", { label: "write-report", model: model("fast") })),
-    writeSteps
-  ), { path: reportPath, expectedSha: writeFileBlobSha(reportContent), prefix: "review_report" });
+  const written = writeFileFromSteps(await runBatch(writeSteps, stageOpts("cli", { label: "write-report", model: model("fast") })), { path: reportPath, expectedSha: writeFileBlobSha(reportContent), prefix: "review_report" });
   if (!written.ok) throw new Error(written.error);
   const commitStepList = commitFilesSteps({ wt: ".", files: [reportPath], message: `review: REVIEW-REPORT.md (${deduped.length} findings)` });
-  const commit = commitFilesFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label: "commit-report", model: model("fast") })),
-    commitStepList
-  ));
+  const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label: "commit-report", model: model("fast") })));
   if (commit.error) throw new Error(`review_commit_failed: ${commit.error}`);
   if (commit.nothingToCommit) log("REVIEW-REPORT.md unchanged since the last review \u2014 nothing to commit");
   else log(`REVIEW-REPORT.md committed (${commit.sha})`);

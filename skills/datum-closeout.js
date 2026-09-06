@@ -8,6 +8,85 @@ export const meta = {
   ]
 };
 
+// skills/src/shared/models.ts
+var DEFAULT_TIERS = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+var activeTiers = { ...DEFAULT_TIERS };
+function model(tier) {
+  return activeTiers[tier];
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  skeptic: "datum-skeptic",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  cli: "datum-cli"
+};
+var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
+function configureAgentTypes(opts) {
+  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
+  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
+}
+function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
+  if (!state.agentTypes) return { ...extra };
+  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+function bootstrapOpts(stage, extra = {}) {
+  if (!configured) return { ...extra };
+  return stageOpts(stage, extra);
+}
+
 // skills/src/shared/utils.ts
 function findMatchingBracketEnd(text, start) {
   const open = text[start];
@@ -77,52 +156,6 @@ function renderPrompt(template, vars) {
     /\{\{(\w+)\}\}/g,
     (_match, key) => vars[key] ?? `{{${key}}}`
   );
-}
-
-// skills/src/shared/models.ts
-var DEFAULT_TIERS = {
-  fast: "haiku",
-  balanced: "sonnet",
-  deep: "opus"
-};
-var activeTiers = { ...DEFAULT_TIERS };
-function model(tier) {
-  return activeTiers[tier];
-}
-
-// skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
-
-// skills/src/shared/agent-types.ts
-var AGENT_TYPE_TABLE = {
-  red: "datum-red",
-  green: "datum-green",
-  refactor: "datum-refactor",
-  skeptic: "datum-skeptic",
-  reflect: "datum-reflect",
-  docs: "datum-docs",
-  reader: "datum-reader",
-  cli: "datum-cli"
-};
-var state = { agentTypes: true, hooksInstalled: false };
-var configured = false;
-function configureAgentTypes(opts) {
-  if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
-  if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
-  configured = true;
-}
-function stageOpts(stage, extra = {}) {
-  if (!configured) {
-    throw new Error(
-      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
-    );
-  }
-  if (!state.agentTypes) return { ...extra };
-  return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
-}
-function bootstrapOpts(stage, extra = {}) {
-  if (!configured) return { ...extra };
-  return stageOpts(stage, extra);
 }
 
 // skills/src/shared/sha1.ts
@@ -201,26 +234,6 @@ function gitBlobSha(bytes) {
   const headerBytes = [];
   for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
   return sha1Hex(headerBytes.concat(bytes));
-}
-
-// skills/src/shared/utf8.ts
-function utf8Encode(s) {
-  const out = [];
-  for (let i = 0; i < s.length; i++) {
-    let c = s.charCodeAt(i);
-    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        c = 65536 + (c - 55296 << 10) + (d - 56320);
-        i++;
-      }
-    }
-    if (c < 128) out.push(c);
-    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
-    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-  }
-  return out;
 }
 
 // skills/src/shared/batch.ts
@@ -325,6 +338,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
@@ -341,10 +357,87 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/commit-steps.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
+// skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  if (result.missing && result.corrupt) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  }
+  return result;
+}
+
+// skills/src/prompts/closeout-synthesize.md
+var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
+
 // skills/src/shared/lane-steps.ts
-var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
+var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function housekeepSteps(epicBranch) {
-  return [{ name: "housekeep", command: `datum housekeep-epic ${q(epicBranch)}`, tolerant: true }];
+  return [{ name: "housekeep", command: `datum housekeep-epic ${q2(epicBranch)}`, tolerant: true }];
 }
 function housekeepFromSteps(result) {
   if (result.missing) return { ok: false, summary: "", error: `housekeep_failed: ${describeFailure(result, "housekeep")}` };
@@ -362,12 +455,12 @@ function closeoutCollectSteps(o) {
   return [
     {
       name: "branch",
-      command: o.branchHint ? `printf '%s' ${q(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
+      command: o.branchHint ? `printf '%s' ${q2(o.branchHint)}` : "git rev-parse --abbrev-ref HEAD",
       tolerant: true
     },
     {
       name: "timestamp",
-      command: o.runId ? `__rid=${q(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
+      command: o.runId ? `__rid=${q2(o.runId)} && printf '%s' "$__rid"` : `__rid=$(date +%Y%m%d-%H%M%S) && printf '%s' "$__rid"`,
       tolerant: true
     },
     {
@@ -426,14 +519,14 @@ function moveStepName(fileName) {
 }
 function moveIntoEpicDirCommand(src, epicDir2, base) {
   const dest = `${epicDir2}/${base}`;
-  return `if [ -f ${q(src)} ]; then if [ -e ${q(dest)} ]; then echo "KEPT_ROOT: ${dest} exists, root ${src} is not this epic's, left in place"; else mkdir -p ${q(epicDir2)} && git mv ${q(src)} ${q(dest)}; fi; else echo ABSENT; fi`;
+  return `if [ -f ${q2(src)} ]; then if [ -e ${q2(dest)} ]; then echo "KEPT_ROOT: ${dest} exists, root ${src} is not this epic's, left in place"; else mkdir -p ${q2(epicDir2)} && git mv ${q2(src)} ${q2(dest)}; fi; else echo ABSENT; fi`;
 }
 function closeoutArchiveSteps(o) {
   const steps = [
     // File the run's follow-ups (synthesis manifest + per-lane skeptic minority findings) before archiving.
-    { name: "file-followups", command: `datum closeout-file-followups --run-id ${q(o.runId)}`, tolerant: true },
-    { name: "tag", command: `git tag ${q(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
-    { name: "archive", command: `datum closeout-archive --run-id ${q(o.runId)}`, tolerant: true }
+    { name: "file-followups", command: `datum closeout-file-followups --run-id ${q2(o.runId)}`, tolerant: true },
+    { name: "tag", command: `git tag ${q2(`epic/${o.branch}/${o.runId}`)} HEAD`, tolerant: true },
+    { name: "archive", command: `datum closeout-archive --run-id ${q2(o.runId)}`, tolerant: true }
   ];
   for (const f of ARCHIVE_ROOT_FILES) {
     steps.push({ name: moveStepName(f), command: moveIntoEpicDirCommand(f, o.epicDir, f), tolerant: true });
@@ -445,54 +538,11 @@ function closeoutArchiveSteps(o) {
   });
   steps.push({
     name: "commit",
-    command: `git diff --cached --quiet || git commit -m ${q(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
+    command: `git diff --cached --quiet || git commit -m ${q2(`closeout(${o.runId}): archive pipeline artifacts to ${o.epicDir}`)}`,
     tolerant: true
   });
   steps.push({ name: "commit-sha", command: "git rev-parse --short HEAD", tolerant: true });
   return steps;
-}
-
-// skills/src/shared/commit-steps.ts
-var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
-function commitFilesSteps(o) {
-  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
-    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
-  }
-  if (/["`$\\]/.test(o.message)) {
-    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
-  }
-  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
-  const wt = q2(o.wt);
-  const files = o.files.map(q2).join(" ");
-  return [
-    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
-    { name: "add", command: `git -C ${wt} add -- ${files}` },
-    {
-      name: "commit",
-      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
-      tolerant: true
-    },
-    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
-  ];
-}
-function commitFilesFromSteps(result) {
-  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
-  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
-  const add = stepResult(result, "add");
-  if (!add || add.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const commit = stepResult(result, "commit");
-  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
-  const out = (commit.stdout || "").trim();
-  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
-  if (commit.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const sha = (stepStdout(result, "sha") || "").trim();
-  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
-  return { committed: true, nothingToCommit: false, sha, error: "" };
 }
 
 // skills/src/datum-closeout.ts
@@ -556,10 +606,7 @@ var synth = typeof synthResult === "string" ? parseAgentJsonStrict(synthResult, 
 log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(", ")}`);
 var synthFiles = changelogManaged ? ["CURRENT_STATE.md", `${epicDir}/RETRO.md`] : ["CURRENT_STATE.md", "CHANGELOG.md", `${epicDir}/RETRO.md`];
 var synthCommitSteps = commitFilesSteps({ wt: ".", files: synthFiles, message: `closeout(${rid}): write ${synthFiles.map((f) => f.split("/").pop()).join(" + ")}` });
-var synthCommit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(synthCommitSteps), stageOpts("cli", { label: "commit-synthesis", model: model("fast") })),
-  synthCommitSteps
-));
+var synthCommit = commitFilesFromSteps(await runBatch(synthCommitSteps, stageOpts("cli", { label: "commit-synthesis", model: model("fast") })));
 if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`);
 if (synthCommit.nothingToCommit) log(`Closeout artifacts unchanged since the last run \u2014 already committed (${synthFiles.join(", ")})`);
 else log(`Closeout artifacts committed (${synthCommit.sha})`);
@@ -589,10 +636,7 @@ var commitStep = archiveResult.steps.find((s) => s.name === "commit");
 var archived = !archiveResult.missing && !!commitStep && commitStep.exit_code === 0;
 var archiveCommit = archived ? (stepStdout(archiveResult, "commit-sha") || "").trim() : "";
 var housekeepStepList = housekeepSteps(branch);
-var housekeep = housekeepFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(housekeepStepList), stageOpts("cli", { label: "housekeep", model: model("fast") })),
-  housekeepStepList
-));
+var housekeep = housekeepFromSteps(await runBatch(housekeepStepList, stageOpts("cli", { label: "housekeep", model: model("fast") })));
 if (housekeep.ok) log(`housekeep: ${housekeep.summary || "done"}`);
 else log(`housekeep: ${housekeep.error}`);
 return {

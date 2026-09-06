@@ -9,6 +9,53 @@ export const meta = {
   ]
 };
 
+// skills/src/shared/models.ts
+var DEFAULT_TIERS = {
+  fast: "haiku",
+  balanced: "sonnet",
+  deep: "opus"
+};
+var activeTiers = { ...DEFAULT_TIERS };
+function model(tier) {
+  return activeTiers[tier];
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 // skills/src/shared/utils.ts
 function findMatchingBracketEnd(text, start) {
   const open = text[start];
@@ -78,17 +125,6 @@ function renderPrompt(template, vars) {
     /\{\{(\w+)\}\}/g,
     (_match, key) => vars[key] ?? `{{${key}}}`
   );
-}
-
-// skills/src/shared/models.ts
-var DEFAULT_TIERS = {
-  fast: "haiku",
-  balanced: "sonnet",
-  deep: "opus"
-};
-var activeTiers = { ...DEFAULT_TIERS };
-function model(tier) {
-  return activeTiers[tier];
 }
 
 // skills/src/shared/sha1.ts
@@ -167,26 +203,6 @@ function gitBlobSha(bytes) {
   const headerBytes = [];
   for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
   return sha1Hex(headerBytes.concat(bytes));
-}
-
-// skills/src/shared/utf8.ts
-function utf8Encode(s) {
-  const out = [];
-  for (let i = 0; i < s.length; i++) {
-    let c = s.charCodeAt(i);
-    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        c = 65536 + (c - 55296 << 10) + (d - 56320);
-        i++;
-      }
-    }
-    if (c < 128) out.push(c);
-    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
-    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-  }
-  return out;
 }
 
 // skills/src/shared/batch.ts
@@ -291,6 +307,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
@@ -307,53 +326,8 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
 }
 
-// skills/src/shared/write-steps.ts
-var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
-var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
-function heredocBytes(content) {
-  return content === "" || content.endsWith("\n") ? content : content + "\n";
-}
-function writeFileSteps(o) {
-  if (o.content.split("\n").some((line) => line === HEREDOC_TERMINATOR)) {
-    throw new Error(`writeFileSteps: content contains the heredoc terminator ${HEREDOC_TERMINATOR} on its own line`);
-  }
-  const names = o.names ?? DEFAULT_NAMES;
-  const slash = o.path.lastIndexOf("/");
-  const dir = slash > 0 ? o.path.slice(0, slash) : ".";
-  const body = heredocBytes(o.content);
-  const write = body === "" ? `: > ${q(o.path)}` : `cat > ${q(o.path)} <<'${HEREDOC_TERMINATOR}'
-${body.slice(0, -1)}
-${HEREDOC_TERMINATOR}`;
-  return [
-    { name: names.mkdir, command: `mkdir -p ${q(dir)}` },
-    { name: names.write, command: write },
-    { name: names.sha, command: `git hash-object ${q(o.path)}`, tolerant: true }
-  ];
-}
-function writeFileBlobSha(content) {
-  return gitBlobSha(utf8Encode(heredocBytes(content)));
-}
-function tail(step) {
-  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
-}
-function writeFileFromSteps(result, o) {
-  const names = o.names ?? DEFAULT_NAMES;
-  if (result.missing) return { ok: false, error: `${o.prefix}_write_failed: ${describeFailure(result, names.write)}` };
-  for (const name of [names.mkdir, names.write]) {
-    const step = stepResult(result, name);
-    if (!step) return { ok: false, error: `${o.prefix}_write_failed: ${name} step did not run` };
-    if (step.exit_code !== 0) return { ok: false, error: `${o.prefix}_write_failed: ${name} exited ${step.exit_code} \u2014 ${tail(step)}` };
-  }
-  const sha = (stepResult(result, names.sha)?.stdout || "").trim();
-  if (sha !== o.expectedSha) {
-    return { ok: false, error: `${o.prefix}_write_mismatch: ${o.path} on disk is blob ${sha || "(none)"}, the script wrote ${o.expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
-  }
-  return { ok: true, error: "" };
-}
-
 // skills/src/shared/commit-steps.ts
-var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
 function commitFilesSteps(o) {
   if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
@@ -363,14 +337,14 @@ function commitFilesSteps(o) {
     throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
   }
   if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
-  const wt = q2(o.wt);
-  const files = o.files.map(q2).join(" ");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
   return [
     { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
     { name: "add", command: `git -C ${wt} add -- ${files}` },
     {
       name: "commit",
-      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q2(o.message)} -- ${files} && echo COMMITTED; fi`,
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
       tolerant: true
     },
     { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
@@ -393,6 +367,82 @@ function commitFilesFromSteps(result) {
   const sha = (stepStdout(result, "sha") || "").trim();
   if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
   return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
+// skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  if (result.missing && result.corrupt) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  }
+  return result;
+}
+
+// skills/src/shared/write-steps.ts
+var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
+function heredocBytes(content) {
+  return content === "" || content.endsWith("\n") ? content : content + "\n";
+}
+function writeFileSteps(o) {
+  if (o.content.split("\n").some((line) => line === HEREDOC_TERMINATOR)) {
+    throw new Error(`writeFileSteps: content contains the heredoc terminator ${HEREDOC_TERMINATOR} on its own line`);
+  }
+  const names = o.names ?? DEFAULT_NAMES;
+  const slash = o.path.lastIndexOf("/");
+  const dir = slash > 0 ? o.path.slice(0, slash) : ".";
+  const body = heredocBytes(o.content);
+  const write = body === "" ? `: > ${q2(o.path)}` : `cat > ${q2(o.path)} <<'${HEREDOC_TERMINATOR}'
+${body.slice(0, -1)}
+${HEREDOC_TERMINATOR}`;
+  return [
+    { name: names.mkdir, command: `mkdir -p ${q2(dir)}` },
+    { name: names.write, command: write },
+    { name: names.sha, command: `git hash-object ${q2(o.path)}`, tolerant: true }
+  ];
+}
+function writeFileBlobSha(content) {
+  return gitBlobSha(utf8Encode(heredocBytes(content)));
+}
+function tail(step) {
+  return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
+}
+function writeFileFromSteps(result, o) {
+  const names = o.names ?? DEFAULT_NAMES;
+  if (result.missing) return { ok: false, error: `${o.prefix}_write_failed: ${describeFailure(result, names.write)}` };
+  for (const name of [names.mkdir, names.write]) {
+    const step = stepResult(result, name);
+    if (!step) return { ok: false, error: `${o.prefix}_write_failed: ${name} step did not run` };
+    if (step.exit_code !== 0) return { ok: false, error: `${o.prefix}_write_failed: ${name} exited ${step.exit_code} \u2014 ${tail(step)}` };
+  }
+  const sha = (stepResult(result, names.sha)?.stdout || "").trim();
+  if (sha !== o.expectedSha) {
+    return { ok: false, error: `${o.prefix}_write_mismatch: ${o.path} on disk is blob ${sha || "(none)"}, the script wrote ${o.expectedSha} \u2014 the runner did not copy the heredoc verbatim` };
+  }
+  return { ok: true, error: "" };
 }
 
 // skills/src/prompts/awake-scan.md
@@ -428,10 +478,7 @@ var writeSteps = [
   ...writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES }),
   ...writeFileSteps({ path: fullPath, content: distill.preamble_full, names: FULL_NAMES })
 ];
-var writeResult = parseBatchResult(
-  await agent(batchCommandPrompt(writeSteps), { label: "write-preambles", model: model("fast") }),
-  writeSteps
-);
+var writeResult = await runBatch(writeSteps, { label: "write-preambles", model: model("fast") });
 for (const verdict of [
   writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: "preamble", names: PREAMBLE_NAMES }),
   writeFileFromSteps(writeResult, { path: fullPath, expectedSha: writeFileBlobSha(distill.preamble_full), prefix: "preamble_full", names: FULL_NAMES })
@@ -439,10 +486,7 @@ for (const verdict of [
   if (!verdict.ok) throw new Error(verdict.error);
 }
 var commitStepList = commitFilesSteps({ wt: ".", files: [preamblePath, fullPath], message: "awake: regenerate agent preamble from repo scan" });
-var commit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(commitStepList), { label: "commit-preambles", model: model("fast") }),
-  commitStepList
-));
+var commit = commitFilesFromSteps(await runBatch(commitStepList, { label: "commit-preambles", model: model("fast") }));
 if (commit.error) throw new Error(`awake_commit_failed: ${commit.error}`);
 if (commit.nothingToCommit) log("Preambles unchanged since the last awake \u2014 nothing to commit");
 else log(`Written and committed: ${preamblePath} + ${fullPath} (${commit.sha})`);

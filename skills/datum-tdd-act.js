@@ -610,10 +610,16 @@ function agentTypeArgs() {
 }
 
 // skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
   const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || "batch";
@@ -669,8 +675,8 @@ setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 var repoCfg = {};
 if (!a.testCommand || !a.language) {
   const configReadStepList = configReadSteps();
-  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
-  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) };
+  const configBatch = await runBatch(configReadStepList, bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
+  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(configBatch) };
 }
 if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.models);
 configureAgentTypes(readAgentTypeConfig(repoCfg));

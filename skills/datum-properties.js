@@ -446,10 +446,16 @@ function commitFilesFromSteps(result) {
 }
 
 // skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
   const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || "batch";
@@ -686,10 +692,7 @@ var probeSteps = contextProbeSteps({
     { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` }
   ]
 });
-var readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
-  probeSteps
-);
+var readBatch = await runBatch(probeSteps, bootstrapOpts("cli", { label: "read-context", model: model("fast") }));
 var relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL]);
 if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
@@ -698,10 +701,7 @@ if (!(a.agentTypes && typeof a.agentTypes === "object")) {
 var inlineBatch = null;
 var inlineSteps = contextInlineSteps(relayPlan.inline);
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") })),
-    inlineSteps
-  );
+  inlineBatch = await runBatch(inlineSteps, stageOpts("cli", { label: "read-context-files", model: model("fast") }));
 }
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
 if (ctx.mismatched.length > 0) {
@@ -738,10 +738,7 @@ if (derive.written !== propertiesPath) {
   throw new Error(`properties_derive_failed: agent reported writing ${JSON.stringify(derive.written)}, expected ${propertiesPath}`);
 }
 var commitStepList = commitFilesSteps({ wt: ".", files: [`${epicDir}/PROPERTIES.md`], message: "properties: derive PROPERTIES.md" });
-var commit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label: "commit-properties", model: model("fast") })),
-  commitStepList
-));
+var commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label: "commit-properties", model: model("fast") })));
 if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`);
 if (commit.nothingToCommit) log(`PROPERTIES.md unchanged since the last run \u2014 already committed at ${propertiesPath}`);
 else log(`PROPERTIES.md written and committed (${commit.sha})`);

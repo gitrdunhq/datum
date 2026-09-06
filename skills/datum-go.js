@@ -618,10 +618,16 @@ function agentTypeArgs() {
 }
 
 // skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
   const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || "batch";
@@ -833,11 +839,7 @@ var configFingerprint = typeof a.configFingerprint === "string" ? a.configFinger
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
 setBatchCacheKey(configFingerprint);
 setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
-var bootBatch = parseBatchResult(
-  // bootstrapOpts: the switches live in the config this very read fetches.
-  await agent(batchCommandPrompt(bootSteps()), bootstrapOpts("cli", { label: "boot", model: model("fast") })),
-  bootSteps()
-);
+var bootBatch = await runBatch(bootSteps(), bootstrapOpts("cli", { label: "boot", model: model("fast") }));
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, "boot"));
 var boot = bootFromSteps(bootBatch);
 setBatchRoot(boot.repoRoot);
@@ -913,10 +915,7 @@ function shouldRun(p, idx) {
 }
 async function markPhaseComplete(p, testsPass) {
   const saveSteps = pipelineStateSaveSteps({ phase: p, runId: resolvedRunId, route, testsPass });
-  const saved = pipelineStateSaveFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(saveSteps), stageOpts("cli", { label: `save-state:${p}`, model: model("fast") })),
-    saveSteps
-  ), p);
+  const saved = pipelineStateSaveFromSteps(await runBatch(saveSteps, stageOpts("cli", { label: `save-state:${p}`, model: model("fast") })), p);
   if (!saved.recorded) {
     log(`[warn] ${saved.reason} \u2014 phase "${p}" NOT recorded in .datum/pipeline-state.json`);
     return;
@@ -941,10 +940,7 @@ Output ONLY raw JSON, no markdown fences, no explanation.`,
   const newEpicInfo = parseAgentJson(newEpicText, { newEpic: false });
   if (newEpicInfo.newEpic && typeof newEpicInfo.slug === "string" && newEpicInfo.slug.trim()) {
     const bootstrapSteps = newEpicBootstrapSteps(newEpicInfo.slug);
-    const bootstrap = newEpicBootstrapFromSteps(parseBatchResult(
-      await agent(batchCommandPrompt(bootstrapSteps), stageOpts("cli", { label: "new-epic-bootstrap", model: model("fast") })),
-      bootstrapSteps
-    ), newEpicInfo.slug);
+    const bootstrap = newEpicBootstrapFromSteps(await runBatch(bootstrapSteps, stageOpts("cli", { label: "new-epic-bootstrap", model: model("fast") })), newEpicInfo.slug);
     if (!bootstrap.ok) throw new Error(`new_epic_bootstrap_failed: ${bootstrap.error}`);
     log(`New epic detected \u2014 brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || "no reason given"}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`);
     newEpicBranch = bootstrap.epicBranch;

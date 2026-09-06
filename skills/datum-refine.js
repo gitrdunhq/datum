@@ -459,10 +459,16 @@ function commitFilesFromSteps(result) {
 }
 
 // skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
   const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || "batch";
@@ -757,10 +763,7 @@ var probeSteps = contextProbeSteps({
     { name: "has-addenda", command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` }
   ]
 });
-var readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
-  probeSteps
-);
+var readBatch = await runBatch(probeSteps, bootstrapOpts("cli", { label: "read-context", model: model("fast") }));
 var relayPlan = contextRelayPlan(readBatch, [TICKET_REL, QUESTIONS_REL]);
 if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
@@ -769,10 +772,7 @@ if (!(a.agentTypes && typeof a.agentTypes === "object")) {
 var inlineBatch = null;
 var inlineSteps = contextInlineSteps(relayPlan.inline);
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") })),
-    inlineSteps
-  );
+  inlineBatch = await runBatch(inlineSteps, stageOpts("cli", { label: "read-context-files", model: model("fast") }));
 }
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
 if (ctx.mismatched.length > 0) {
@@ -811,10 +811,7 @@ async function refineFromTicket() {
   };
   async function commitRefineFiles(files, message, label, opts = { allowUnchanged: true }) {
     const commitStepList = commitFilesSteps({ wt: ".", files, message });
-    const commit = commitFilesFromSteps(parseBatchResult(
-      await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
-      commitStepList
-    ));
+    const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label, model: model("fast") })));
     if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`);
     if (commit.nothingToCommit) {
       if (!opts.allowUnchanged) throw new Error(`refine_commit_failed: nothing to commit for ${label} (${files.join(", ")}) \u2014 the agent did not write them`);

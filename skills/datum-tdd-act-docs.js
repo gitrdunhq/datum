@@ -196,6 +196,22 @@ function utf8Encode(s) {
   }
   return out;
 }
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -299,6 +315,9 @@ function stepStdout(r, name) {
   return s ? s.stdout : null;
 }
 var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
@@ -478,6 +497,35 @@ async function resilientAgent(prompt, opts, deps) {
   }
   return lastResult;
 }
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  if (result.missing && result.corrupt) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  }
+  return result;
+}
 
 // skills/src/datum-tdd-act-docs.ts
 var a = args;
@@ -523,10 +571,7 @@ if (a.completedLanes.length === 0) {
         failureReason = "docs agent reported success but wrote no files";
       } else {
         const commitStepList = commitFilesSteps({ wt: ".", files: docsWritten, message: `docs(${a.runId}): sync docs for merged lanes` });
-        const commit = commitFilesFromSteps(parseBatchResult(
-          await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label: "docs-commit", phase: "Docs", model: model("fast") })),
-          commitStepList
-        ));
+        const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label: "docs-commit", phase: "Docs", model: model("fast") })));
         committed = commit.committed || commit.nothingToCommit;
         commitSha = commit.sha || "";
         syncedFiles = docsWritten;

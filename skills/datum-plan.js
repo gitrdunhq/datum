@@ -208,6 +208,42 @@ function bootstrapOpts(stage, extra = {}) {
   return stageOpts(stage, extra);
 }
 
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 // skills/src/shared/sha1.ts
 function rotl(x, n) {
   return (x << n | x >>> 32 - n) >>> 0;
@@ -284,42 +320,6 @@ function gitBlobSha(bytes) {
   const headerBytes = [];
   for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
   return sha1Hex(headerBytes.concat(bytes));
-}
-
-// skills/src/shared/utf8.ts
-function utf8Encode(s) {
-  const out = [];
-  for (let i = 0; i < s.length; i++) {
-    let c = s.charCodeAt(i);
-    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        c = 65536 + (c - 55296 << 10) + (d - 56320);
-        i++;
-      }
-    }
-    if (c < 128) out.push(c);
-    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
-    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-  }
-  return out;
-}
-function utf8ByteLength(s) {
-  let bytes = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 128) bytes += 1;
-    else if (c < 2048) bytes += 2;
-    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-      const d = s.charCodeAt(i + 1);
-      if (d >= 56320 && d <= 57343) {
-        bytes += 4;
-        i++;
-      } else bytes += 3;
-    } else bytes += 3;
-  }
-  return bytes;
 }
 
 // skills/src/shared/batch.ts
@@ -443,10 +443,84 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail4 ? ` \u2014 ${tail4}` : ""}`;
 }
 
-// skills/src/shared/tracker.ts
+// skills/src/shared/commit-steps.ts
 var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+
+// skills/src/shared/agents.ts
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  if (result.missing && result.corrupt) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  }
+  return result;
+}
+
+// skills/src/shared/tracker.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 function publishSteps(lanePlanPath, epicTitle) {
-  return [{ name: "publish", command: `datum plan-issues --lane-plan ${q(lanePlanPath)} --title ${q(epicTitle)}`, tolerant: true }];
+  return [{ name: "publish", command: `datum plan-issues --lane-plan ${q2(lanePlanPath)} --title ${q2(epicTitle)}`, tolerant: true }];
 }
 function tail(step) {
   return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
@@ -464,10 +538,7 @@ function publishFromSteps(result) {
 }
 async function publishLanePlan(lanePlanPath, epicTitle) {
   const steps = publishSteps(lanePlanPath, epicTitle);
-  const publish = publishFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(steps), stageOpts("cli", { label: "publish-issues", model: model("fast") })),
-    steps
-  ));
+  const publish = publishFromSteps(await runBatch(steps, stageOpts("cli", { label: "publish-issues", model: model("fast") })));
   if (!publish.ok || !publish.parsed) {
     log(`[tracker] ${publish.error}`);
     return null;
@@ -488,7 +559,7 @@ async function publishLanePlan(lanePlanPath, epicTitle) {
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
-function q2(p) {
+function q3(p) {
   return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
 }
 function contextProbeSteps(o) {
@@ -499,12 +570,12 @@ function contextProbeSteps(o) {
   o.files.forEach((relPath, i) => {
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then wc -c < ${q3(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-sha-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then git hash-object ${q2(relPath)}; else printf ''; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then git hash-object ${q3(relPath)}; else printf ''; fi`,
       tolerant: true
     });
   });
@@ -547,12 +618,12 @@ function contextInlineSteps(inlineFiles) {
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then cat ${q2(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then cat ${q3(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then wc -c < ${q3(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
   });
@@ -726,7 +797,7 @@ function configFromSteps(result) {
 
 // skills/src/shared/write-steps.ts
 var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
-var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var q4 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 var DEFAULT_NAMES = { mkdir: "mkdir", write: "write", sha: "sha" };
 function heredocBytes(content) {
   return content === "" || content.endsWith("\n") ? content : content + "\n";
@@ -739,13 +810,13 @@ function writeFileSteps(o) {
   const slash = o.path.lastIndexOf("/");
   const dir = slash > 0 ? o.path.slice(0, slash) : ".";
   const body = heredocBytes(o.content);
-  const write = body === "" ? `: > ${q3(o.path)}` : `cat > ${q3(o.path)} <<'${HEREDOC_TERMINATOR}'
+  const write = body === "" ? `: > ${q4(o.path)}` : `cat > ${q4(o.path)} <<'${HEREDOC_TERMINATOR}'
 ${body.slice(0, -1)}
 ${HEREDOC_TERMINATOR}`;
   return [
-    { name: names.mkdir, command: `mkdir -p ${q3(dir)}` },
+    { name: names.mkdir, command: `mkdir -p ${q4(dir)}` },
     { name: names.write, command: write },
-    { name: names.sha, command: `git hash-object ${q3(o.path)}`, tolerant: true }
+    { name: names.sha, command: `git hash-object ${q4(o.path)}`, tolerant: true }
   ];
 }
 function writeFileBlobSha(content) {
@@ -770,12 +841,12 @@ function writeFileFromSteps(result, o) {
 }
 
 // skills/src/shared/plan-steps.ts
-var q4 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var q5 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 function tail3(step) {
   return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
 }
 function lanePlanCommand(epicDir2) {
-  return `datum lane-plan --input ${q4(`${epicDir2}/tasks.json`)} --output ${q4(`${epicDir2}/lane-plan.json`)} --md-output ${q4(`${epicDir2}/TASKS.md`)}`;
+  return `datum lane-plan --input ${q5(`${epicDir2}/tasks.json`)} --output ${q5(`${epicDir2}/lane-plan.json`)} --md-output ${q5(`${epicDir2}/TASKS.md`)}`;
 }
 var TASKS_WRITE_NAMES = { mkdir: "mkdir", write: "write-tasks", sha: "tasks-sha" };
 function planBuildSteps(o) {
@@ -801,8 +872,8 @@ function planBuildFromSteps(result, expectedSha) {
 function skeletonBatchSteps(o) {
   const skeletonDir2 = `${o.epicDir}/skeletons`;
   return [
-    { name: "mkdir", command: `mkdir -p ${q4(skeletonDir2)}` },
-    { name: "skeleton", command: `datum skeleton --batch --language ${o.language} --tasks ${q4(`${o.epicDir}/lane-plan.json`)} --output-dir ${q4(skeletonDir2)}` }
+    { name: "mkdir", command: `mkdir -p ${q5(skeletonDir2)}` },
+    { name: "skeleton", command: `datum skeleton --batch --language ${o.language} --tasks ${q5(`${o.epicDir}/lane-plan.json`)} --output-dir ${q5(skeletonDir2)}` }
   ];
 }
 function skeletonBatchFromSteps(result) {
@@ -814,49 +885,6 @@ function skeletonBatchFromSteps(result) {
   }
   if (step.exit_code !== 0) return { ok: false, error: `skeleton_batch_failed: datum skeleton exited ${step.exit_code} \u2014 ${tail3(step)}` };
   return { ok: true, error: "" };
-}
-
-// skills/src/shared/commit-steps.ts
-var q5 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
-var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
-function commitFilesSteps(o) {
-  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
-    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
-  }
-  if (/["`$\\]/.test(o.message)) {
-    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
-  }
-  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
-  const wt = q5(o.wt);
-  const files = o.files.map(q5).join(" ");
-  return [
-    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
-    { name: "add", command: `git -C ${wt} add -- ${files}` },
-    {
-      name: "commit",
-      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q5(o.message)} -- ${files} && echo COMMITTED; fi`,
-      tolerant: true
-    },
-    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
-  ];
-}
-function commitFilesFromSteps(result) {
-  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
-  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
-  const add = stepResult(result, "add");
-  if (!add || add.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const commit = stepResult(result, "commit");
-  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
-  const out = (commit.stdout || "").trim();
-  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
-  if (commit.exit_code !== 0) {
-    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
-  }
-  const sha = (stepStdout(result, "sha") || "").trim();
-  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
-  return { committed: true, nothingToCommit: false, sha, error: "" };
 }
 
 // skills/src/prompts/plan-approaches.md
@@ -931,31 +959,6 @@ function routingRestoreFromSteps(result) {
   return { tracked: null, note: "routing_restore_unchecked" };
 }
 
-// skills/src/shared/agents.ts
-async function runBatch(steps, opts, deps) {
-  const agentFn = deps?.agentFn ?? agent;
-  const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
-  let result = parseBatchResult(await agentFn(prompt, opts), steps);
-  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
-    const label = opts.label || "batch";
-    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
-    result = parseBatchResult(await agentFn(`${prompt}
-
-# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
-  }
-  if (result.missing && result.corrupt) {
-    const label = opts.label || "batch";
-    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
-    result = parseBatchResult(await agentFn(`${prompt}
-
-# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
-  }
-  return result;
-}
-
 // skills/src/prompts/plan-decompose.md
 var plan_decompose_default = 'Task decomposer. Break the SPEC into implementation tasks for the TDD pipeline.\n\nSPEC content:\n{{specContent}}\n\nChosen approach:\n{{chosenApproach}}\n\nLanguage: {{language}}\nTest framework: {{testFramework}}\n\nCodebase scan (files, patterns, test conventions):\n{{scanContext}}\n\nPrior failure patterns:\n{{priorFailures}}\n\nBUILD-ORDER / IMPORT ANALYSIS CHECK:\nBefore finalizing depends_on for any task, trace the actual import/reference graph implied by the codebase scan and the SPEC \u2014 which modules/files import or call which others \u2014 and make sure each task\'s depends_on reflects that real build order, not just narrative ordering from the SPEC. A task that will import or call code another task creates must depend_on that task.\n\nPROJECT BUILD CONSTRAINTS:\n{{contextFilesSection}}\nThe context_files section above (when present) lists project documentation that is authoritative for build order and module boundaries. Where these project docs conflict with a build order you would otherwise infer from source imports, the project docs take precedence over inferred imports \u2014 follow the documented order and note the override in the affected task\'s red_note.\n\nRULES:\n- Each task maps to one lane in the TDD pipeline\n- Task ids MUST be `task-NNN` \u2014 zero-padded to three digits, numbered in the order you list them (task-001, task-002, ...). The schema gate rejects any other id shape. Put the descriptive name in the required `slug` field instead (lowercase letters, digits, hyphens; 3-61 chars; pattern `^[a-z0-9][a-z0-9-]{2,60}$`, e.g. "add-cycle-detection", "validate-input-schema"). `depends_on` references use the `task-NNN` ids, never slugs.\n- No task touches more than 5 files\n- The \'files\' array MUST list EVERY file the implementation agent will need to create or modify \u2014 not just the primary target. Omitting a file causes a file_ownership_violation at GREEN. When in doubt, include the file. Check the codebase scan for all files in the affected module.\n- PROTOCOL COMPLETENESS CHECK (do this for every task before finalizing its `files`): read each acceptance_criteria and ask "does satisfying this AC require adding or changing a method, property, or signature declared on a protocol, an abstract contract, a trait, or a base class?" (e.g. an AC like "use case calls repository.newMethod(...)" implies `newMethod` must be added to wherever the repository\'s contract is declared, not just its concrete implementation). If yes, search the repo (grep/ast-grep) for the declaration site of that contract/type \u2014 the keywords to search for vary by language ("protocol", "trait", "abstract", or the equivalent construct that declares a contract rather than an implementation) \u2014 and add that declaring file to `files` alongside the implementation file, since the lane\'s implementer needs to edit both in the same commit. Do not add it to `reads` in this case; `reads` is for files this task depends on but does not modify, and a contract gaining a new required member IS a modification. If no declaring file exists yet (the contract itself is new), say so in `red_note` instead of inventing a path.\n- NO-CODE-CHURN / DOCS-ONLY DETECTION (do this once, before writing any task\'s `red_note`): read the SPEC content for an NFR-style constraint stating the epic\'s diff must contain zero files of a given source-code extension, or that the epic is documentation-only/docs-only (e.g. "the diff must contain zero .swift/.py files", "documentation-only epic", "no code churn"). If such a constraint is present, then for every task whose `files[]` includes a test-artifact path that is directory-shaped or otherwise extensionless in a context where the epic\'s implementation language would normally require a compiled test package for that path (e.g. a Swift Testing target directory like `tests/CpdTableTests`), append this exact instruction to that task\'s `red_note`: "This epic forbids any file of the forbidden extension(s) in the diff. Write this test artifact as a single extensionless file containing pseudo-code/plain-text assertions \u2014 NOT a real compiled test package. Do NOT create a Package.swift, do NOT create a nested Tests/<Target>/ subdirectory, and do NOT add `import XCTest`/`import Testing` or any other compiled-test-framework import." Apply this identically to every affected lane so the constraint is decided once, centrally, at plan time rather than inferred independently per-lane.\n- UNIFICATION / FORK-CONSUMPTION PARITY CHECK (do this once, before finalizing any flip lane or deletion lane): read the SPEC for language describing a fork-consumption epic \u2014 e.g. "flip consumer(s) to the shared/canonical copy", "delete the fork/duplicate", "consolidate X into shared Y", or any end-state where a source tree is deleted in favor of an existing alternate tree. If detected, actually read and compare the fork\'s and the shared copy\'s file sets and public API surface for the specific files named in the SPEC \u2014 file existence, method/property signatures, protocol/contract conformance \u2014 do not just trust the SPEC\'s audit narrative. For every concrete gap found (a file present in the fork but missing from the shared copy, a method/property the fork\'s callers require that the shared copy lacks, a behavioral divergence the SPEC\'s own audit notes call out), emit a dedicated port task/lane scoped only to that gap\'s files, and add its id to the flip lane\'s `depends_on` so the flip lane is scoped to "flip now that parity is real," not "flip and also happen to fix everything wrong along the way." If the comparison can\'t be done confidently (the named files aren\'t findable, or the SPEC\'s claimed shared-copy location doesn\'t exist yet), do not fabricate port lanes \u2014 note the uncertainty in the flip lane\'s `red_note` instead, same fallback style as the PROTOCOL COMPLETENESS CHECK above.\n- BASELINE SYNC CHECK (same pass as the parity check above, unification epics only): before finalizing the flip lane, check whether the fork\'s target files as they exist on the epic branch actually match `main` for those same files \u2014 i.e. whether `main` has newer fixes to the fork that this plan doesn\'t yet account for. If a divergence is found, emit a dedicated sync-from-main task/lane scoped to only the diverging files, and add it to the flip lane\'s `depends_on` ahead of any parity-check port lanes. If this can\'t be determined confidently, note it in the flip lane\'s `red_note` rather than guessing \u2014 do not invent a sync lane speculatively.\n- Tasks sharing files must have a dependency edge or be in the same lane\n- Each lane MUST have its own unique test file(s). Never assign the same test file to multiple lanes. If multiple tasks target the same module (e.g. `module/foo`), split tests per lane: `tests/test_foo_create`, `tests/test_foo_validate`, etc. This prevents reflect score pollution from cross-lane test accumulation.\n- Every task needs: id, slug, title, acceptance_criteria, files, reads, depends_on, red_note\n- ACs must be specific enough to write a failing test from \u2014 function names, expected values, exception types\n- red_note tells the RED agent what the failing test should prove \u2014 use the project\'s language and test framework, not Python/pytest unless that IS the project language\n- kind is "behavioral" (default) for any task that changes testable behavior. Set "kind": "structural" ONLY for tasks whose deliverable has no testable behavior at all \u2014 documentation-only (ADRs, README, docs/*.md), config-only, or pure file moves. Structural tasks skip the RED/GREEN test stages and run a single commit stage, so never mark a task structural if any acceptance criterion could be checked by a test.\n- depends_on lists task IDs this task requires to be completed first\n- reads lists files this task\'s implementation READS but does NOT modify (e.g. a protocol/contract file another lane owns). If a task reads a file another lane writes, it must either list that file in reads (so a dependency edge is auto-injected) or add an explicit depends_on \u2014 otherwise the reader may run before the writer produces that file.\n\nReturn JSON matching this schema:\n[\n  {\n    "id": "task-001",\n    "slug": "descriptive-task-name",\n    "title": "Human-readable title",\n    "description": "What this task implements",\n    "acceptance_criteria": [\n      "function_name(input) returns expected_output",\n      "function_name(bad_input) raises SpecificError with \'message\'"\n    ],\n    "files": ["src/module/file", "tests/test_file"],\n    "reads": [],\n    "depends_on": [],\n    "introduces_stubs": false,\n    "kind": "behavioral",\n    "red_note": "The failing test must call function_name with input and assert on the return value",\n    "estimated_loc": 50\n  }\n]\n\nOutput raw JSON only. No markdown fences.\n';
 
@@ -977,18 +980,12 @@ var probeSteps = contextProbeSteps({
     { name: "error-history", command: `if [ -f .datum/ERRORS.md ]; then head -40 .datum/ERRORS.md; else printf '%s' '${NOT_FOUND_MARKER2}'; fi` }
   ]
 });
-var readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts("cli", { label: "read-context", model: model("fast") })),
-  probeSteps
-);
+var readBatch = await runBatch(probeSteps, bootstrapOpts("cli", { label: "read-context", model: model("fast") }));
 var relayPlan = contextRelayPlan(readBatch, [SPEC_REL]);
 var inlineBatch = null;
 var inlineSteps = contextInlineSteps(relayPlan.inline);
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), bootstrapOpts("cli", { label: "read-context-files", model: model("fast") })),
-    inlineSteps
-  );
+  inlineBatch = await runBatch(inlineSteps, bootstrapOpts("cli", { label: "read-context-files", model: model("fast") }));
 }
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
 if (ctx.mismatched.length > 0) {
@@ -1012,8 +1009,8 @@ var errorHistoryRaw = stepStdout(readBatch, "error-history");
 var errorHistory = errorHistoryRaw === null || errorHistoryRaw === NOT_FOUND_MARKER2 ? null : errorHistoryRaw;
 var priorFailures = [priorDefects, errorHistory || ""].filter(Boolean).join("\n") || "(no prior failure data)";
 var configReadStepList = configReadSteps();
-var configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
-var repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) };
+var configBatch = await runBatch(configReadStepList, bootstrapOpts("cli", { label: "read-config", model: model("fast") }));
+var repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(configBatch) };
 if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var language = repoCfg.language || DEFAULT_CONFIG.language;
 var testFramework = repoCfg.test_framework || DEFAULT_CONFIG.test_framework;
@@ -1023,18 +1020,12 @@ var contextFileEntries = [];
 var contextFilesWarnings = [];
 if (contextFilesList.length > 0) {
   const cfProbeSteps = contextProbeSteps({ files: contextFilesList });
-  const cfProbe = parseBatchResult(
-    await agent(batchCommandPrompt(cfProbeSteps), stageOpts("cli", { label: "probe-context-files", model: model("fast") })),
-    cfProbeSteps
-  );
+  const cfProbe = await runBatch(cfProbeSteps, stageOpts("cli", { label: "probe-context-files", model: model("fast") }));
   const cfPlan = contextRelayPlan(cfProbe, contextFilesList);
   let cfInline = null;
   const cfInlineSteps = contextInlineSteps(cfPlan.inline);
   if (cfPlan.inline.length > 0) {
-    cfInline = parseBatchResult(
-      await agent(batchCommandPrompt(cfInlineSteps), stageOpts("cli", { label: "read-context-files", model: model("fast") })),
-      cfInlineSteps
-    );
+    cfInline = await runBatch(cfInlineSteps, stageOpts("cli", { label: "read-context-files", model: model("fast") }));
   }
   let cf = contextFromRelay(cfProbe, cfInline, cfPlan);
   if (cf.mismatched.length > 0) {
@@ -1094,10 +1085,7 @@ for (const task of tasks) {
   log(`  ${task.id}: ${task.title}${deps}`);
 }
 var buildSteps = planBuildSteps({ epicDir, tasksJson });
-var build = planBuildFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(buildSteps), stageOpts("cli", { label: "build-lane-plan", model: model("fast") })),
-  buildSteps
-), tasksJsonBlobSha(tasksJson));
+var build = planBuildFromSteps(await runBatch(buildSteps, stageOpts("cli", { label: "build-lane-plan", model: model("fast") })), tasksJsonBlobSha(tasksJson));
 if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");
 var earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts("cli", { label: "gate-early", model: model("fast") })));
@@ -1107,10 +1095,7 @@ if (!earlyGate.passed) {
 log("Early plan gate PASSED (schema + structure)");
 async function commitPlanFiles(files, message, label) {
   const commitStepList = commitFilesSteps({ wt: ".", files, message });
-  const commit = commitFilesFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(commitStepList), stageOpts("cli", { label, model: model("fast") })),
-    commitStepList
-  ));
+  const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label, model: model("fast") })));
   if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`);
   if (commit.nothingToCommit) {
     log(`${label}: ${files.join(", ")} unchanged since the last run \u2014 already committed`);
@@ -1126,10 +1111,7 @@ var planCommit = await commitPlanFiles(
 log(`Lane plan built, gated, and committed (${planCommit})`);
 var skeletonDir = `${epicDir}/skeletons`;
 var skeletonSteps = skeletonBatchSteps({ epicDir, language });
-var skeleton = skeletonBatchFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(skeletonSteps), stageOpts("cli", { label: "skeleton-batch", model: model("fast") })),
-  skeletonSteps
-));
+var skeleton = skeletonBatchFromSteps(await runBatch(skeletonSteps, stageOpts("cli", { label: "skeleton-batch", model: model("fast") })));
 if (!skeleton.ok) throw new Error(skeleton.error);
 await commitPlanFiles([skeletonDir], "plan: pre-generate RED skeletons", "commit-skeletons");
 log(`Skeletons pre-generated in ${skeletonDir}`);
@@ -1142,10 +1124,7 @@ var triage = parseAgentJson(triageRaw, { decision: "properties", reason: "parse 
 log(`Triage: ${triage.decision} \u2014 ${triage.reason}`);
 var routingJson = JSON.stringify(triage, null, 2);
 var routingSteps = writeFileSteps({ path: ".datum/routing.json", content: routingJson });
-var routingWritten = writeFileFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(routingSteps), stageOpts("cli", { label: "write-routing", model: model("fast") })),
-  routingSteps
-), { path: ".datum/routing.json", expectedSha: writeFileBlobSha(routingJson), prefix: "routing" });
+var routingWritten = writeFileFromSteps(await runBatch(routingSteps, stageOpts("cli", { label: "write-routing", model: model("fast") })), { path: ".datum/routing.json", expectedSha: writeFileBlobSha(routingJson), prefix: "routing" });
 if (!routingWritten.ok) throw new Error(routingWritten.error);
 var triageGateSteps = gateSteps("triage", "");
 var triageGate = parseGateResult(await runBatch(triageGateSteps, stageOpts("cli", { label: "gate-triage", model: model("fast") })));
