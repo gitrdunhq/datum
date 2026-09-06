@@ -1058,6 +1058,11 @@ var contextFilesSection = buildContextFilesSection(
   (msg) => contextFilesWarnings.push(msg)
 );
 for (const warning of contextFilesWarnings) log(`context_files: ${warning}`);
+var refineGate = parseGateResult(await runBatch(gateSteps("refine", " --approve"), stageOpts("cli", { label: "gate-refine-prereq", model: model("fast") })));
+if (!refineGate.passed) {
+  throw new Error(`plan_prerequisite_failed: SPEC.md would not pass the refine gate \u2014 fix it (${refineGate.message || "no message"}) and re-run datum plan; no planning agent was dispatched`);
+}
+log("Refine prerequisite gate PASSED (SPEC.md structurally sound)");
 phase("Decompose");
 var approachesRaw = await agent(
   renderPrompt(plan_approaches_default, { specContent, currentState: currentState || "(not available)" }) + contextWitnessInstruction([specFile]),
@@ -1100,7 +1105,7 @@ if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");
 var earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts("cli", { label: "gate-early", model: model("fast") })));
 if (!earlyGate.passed) {
-  throw new Error(`Plan gate failed right after datum lane-plan \u2014 plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || "no message"}`);
+  throw new Error(`Plan gate failed right after datum lane-plan \u2014 plan NOT committed (fix the file the message names: tasks.json for lane/overlap errors, SPEC.md's Assumption Audit for assumption errors; then re-run datum plan): ${earlyGate.message || "no message"}`);
 }
 log("Early plan gate PASSED (schema + structure)");
 async function commitPlanFiles(files, message, label) {
