@@ -799,3 +799,63 @@ describe('a post-GREEN verify batch that returns nothing is green_verify_unavail
     expect(labels).toEqual(['post-green-verify:T1', 'post-green-verify:T1:retry'])
   })
 })
+
+// #440, second occurrence (elonchesd player-guidance task-011 after epic-2
+// task-006): GREEN reported blocked with needs_write naming the lane's OWN
+// test file — the RED fixture's precondition was wrong, GREEN's diagnosis was
+// exact, and it was rightly forbidden to edit the test. Bounded repair: RED
+// runs once more carrying GREEN's diagnosis, the post-RED gates re-run, then
+// GREEN once more. A second block by the same shape fails as before.
+describe('a GREEN blocked on the lane\'s own test file re-dispatches RED once with the diagnosis (#440)', () => {
+  function responder(secondGreenBlocked: boolean): { respond: Responder; labels: string[] } {
+    const base = happyPathResponder({ pytest: false })
+    const labels: string[] = []
+    let greens = 0
+    const respond: Responder = (label, prompt) => {
+      labels.push(label)
+      if (label.startsWith('green:') || label.startsWith('green-red-repair:')) {
+        greens += 1
+        if (greens === 1 || secondGreenBlocked) {
+          return { ...witness, success: false, tests_pass: false, committed: false, status: 'blocked', needs_write: ['src/a.test.ts'], reason: 'AC3 case 2 fixture puts two Kings on the board; the disabled state is structural and tech-panel AC5 pins it', files_written: ['src/a.ts'] }
+        }
+        return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ccc333', files_written: ['src/a.ts'], test_exit_code: 0 }
+      }
+      if (label.startsWith('red-repair:')) return { ...witness, success: true, tests_pass: false, committed: true, commit_sha: 'aaa222', files_written: ['src/a.test.ts'], test_exit_code: 1, test_errors: ['AssertionError'] }
+      if (label.startsWith('post-red-repair:')) return batch({ 'count-gate': '{"new_test_count":2,"required":2,"passed":true}', 'assert-check': '', ownership: 'src/a.test.ts\n', 'test-count-pattern': 'it\\(', 'test-count-after': '2\n', 'test-count-before': '0\n' })
+      return base(label, prompt)
+    }
+    return { respond, labels }
+  }
+
+  it('RED repair carries the diagnosis, its gates re-run, and the lane completes on the second GREEN', async () => {
+    const { respond, labels } = responder(false)
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    const repair = calls.find((c) => c.label.startsWith('red-repair:'))!
+    expect(repair.prompt).toContain('AC3 case 2 fixture puts two Kings')
+    expect(repair.prompt).toContain('src/a.test.ts')
+    const order = labels.map((l) => l.split(':')[0])
+    expect(order.indexOf('red-repair')).toBeGreaterThan(order.indexOf('green'))
+    expect(order.indexOf('post-red-repair')).toBeGreaterThan(order.indexOf('red-repair'))
+    expect(order.indexOf('green-red-repair')).toBeGreaterThan(order.indexOf('post-red-repair'))
+  })
+
+  it('a second block of the same shape after the repair fails as green_blocked_needs_write', async () => {
+    const { respond } = responder(true)
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('blocked')
+    expect(result.results.T1.error).toMatch(/^green_blocked_needs_write: \[src\/a\.test\.ts\]/)
+    expect(result.results.T1.error).toMatch(/after one RED repair/)
+  })
+
+  it('a block naming a file outside the lane\'s own tests is not repaired (unchanged behaviour)', async () => {
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('green:')) return { ...witness, success: false, tests_pass: false, committed: false, status: 'blocked', needs_write: ['tests/other.test.ts'], reason: 'foreign', files_written: [] }
+      return base(label, prompt)
+    }
+    const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('blocked')
+    expect(calls.some((c) => c.label.startsWith('red-repair:'))).toBe(false)
+  })
+})

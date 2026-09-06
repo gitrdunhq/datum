@@ -1035,7 +1035,52 @@ No markdown fences, no explanation.`,
     }
     const decision = decideGreenBlock(green, greenPreflight)
 
-    if (decision.blocked) {
+    // ── #440: blocked on the lane's OWN test — bounded RED repair ──────────
+    // elonchesd epic-2 task-006 and player-guidance task-011: GREEN reported
+    // blocked with needs_write naming the lane's own test file, because the
+    // RED fixture encoded a wrong precondition; GREEN's diagnosis was exact
+    // and it was rightly forbidden to edit the test. RED, which may edit
+    // tests, runs once more carrying that diagnosis; the post-RED gates
+    // re-run; GREEN runs once more. A second block by the same shape fails
+    // as green_blocked_needs_write, naming the repair that did not help.
+    const ownTestTargets = decision.blocked && decision.needsWrite.length > 0 && decision.needsWrite.every((f) => testFiles.includes(f))
+    if (decision.blocked && ownTestTargets) {
+      log(`[${taskId}] GREEN blocked on the lane's own test(s) [${decision.needsWrite.join(', ')}] — re-dispatching RED once with GREEN's diagnosis (#440)`)
+      const repairReason = `green_blocked_on_own_test: GREEN could not make the suite pass because the lane's own test(s) [${decision.needsWrite.join(', ')}] encode a wrong precondition or fixture. GREEN's diagnosis: ${decision.reason}. Amend ONLY the named test file(s) so each test asserts the criterion the lane spec states, under a precondition that can actually hold; never weaken an assertion the spec requires; keep every other test intact.`
+      const repaired: StageResult | null = await witnessedAgent(
+        redRetryPrompt({ ...promptVars, failureReason: repairReason }),
+        stageOpts('red', { label: `red-repair:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile, 'RED',
+      )
+      if (!repaired || !repaired.success || !repaired.committed) {
+        return { task_id: taskId, status: 'failed', stage: 'RED', error: `red_repair_failed: ${!repaired ? 'RED repair agent returned nothing' : repaired.failure_reason || 'RED repair did not commit'} — GREEN's diagnosis: ${decision.reason}` }
+      }
+      const repairPostRed = await runBatch(postRed, stageOpts('cli', { label: `post-red-repair:${taskId}`, phase: 'Act', model: model('fast') }))
+      const repairCount = acCount > 0 ? parseAgentJson<{ passed?: boolean }>(stepStdout(repairPostRed, 'count-gate') || '', { passed: false }) : { passed: true }
+      const repairAssert = (stepStdout(repairPostRed, 'assert-check') || '').trim()
+      const repairTouched = (stepStdout(repairPostRed, 'ownership') || '').split('\n').map((l) => l.trim()).filter(Boolean)
+      const repairForeign = repairTouched.filter((f) => !testFiles.includes(f))
+      if (!repairCount.passed || repairAssert.length > 0 || repairForeign.length > 0) {
+        const why = !repairCount.passed ? 'count gate failed after the repair' : repairAssert.length > 0 ? `placeholder_assertions after the repair: ${repairAssert.split('\n')[0]}` : `repair touched files outside the lane's tests [${repairForeign.join(', ')}]`
+        return { task_id: taskId, status: 'failed', stage: 'RED', error: `red_repair_failed: ${why}` }
+      }
+      log(`[${taskId}] RED repair committed (${repaired.commit_sha || 'n/a'}); post-RED gates passed — re-running GREEN once`)
+      green = await witnessedAgent(
+        greenRetryPrompt({
+          ...greenVars,
+          failureReason: `red_repaired: the lane's test(s) [${decision.needsWrite.join(', ')}] were amended per your diagnosis (${decision.reason}); implement against the amended tests`,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: 'red_repaired' }),
+        }),
+        stageOpts('green', { label: `green-red-repair:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile, 'GREEN',
+      )
+      const again = decideGreenBlock(green, null)
+      if (again.blocked) {
+        const err = `green_blocked_needs_write: [${again.needsWrite.join(', ') || 'unspecified'}] — ${again.reason} (still blocked after one RED repair for [${decision.needsWrite.join(', ')}])`
+        log(`[${taskId}] ${err}`)
+        return { task_id: taskId, status: 'blocked', stage: 'GREEN', error: err, needs_write: again.needsWrite }
+      }
+    } else if (decision.blocked) {
       const { widen, rejected } = cfg.yolo
         ? autoWidenTargets(decision.needsWrite)
         : { widen: [] as string[], rejected: decision.needsWrite }

@@ -913,7 +913,8 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     // context_read_unverified on a missing/forged witness.
     const runLaneOnly = body.slice(0, body.indexOf('async function runSkepticPanel'))
     expect(runLaneOnly.match(/await resilientAgent\(/g) || []).toEqual([])
-    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(10)
+    // 12 since #440: the RED repair and the GREEN after it are witnessed too.
+    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(12)
     expect(laneSource).toMatch(/assertReadWitness\(\[?specFile\]?, /)
   })
 
@@ -921,7 +922,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(laneSource).toMatch(/error: e instanceof Error \? e\.message : String\(e\)/)
     expect(laneSource).toMatch(/stage: staged \|\| 'CRASH'/)
     // Every witnessed call names its stage; skeptic lenses are GREEN-stage evidence.
-    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(10)
+    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(12)
     expect(laneSource).toMatch(/skeptic_lens_unverified/)
     expect(laneSource).toMatch(/no skeptic lens evidenced reading/)
   })
