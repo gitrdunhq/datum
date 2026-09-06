@@ -24,6 +24,16 @@ describe('owned test files: RED may amend what the ACs supersede; reflect checks
     expect(red).toMatch(/fixture|precondition/i)
   })
 
+  // references audit 2026-09-06: agents/datum-red.md (materialised into every
+  // consumer repo by datum init) still said "NEVER delete or replace existing
+  // tests", the rule that caused the deadlock this closure fixed.
+  it('agents/datum-red.md agrees with red.md: amend what the ACs supersede, never delete an uncontradicted test', () => {
+    const agentDef = readFileSync(join(__dirname, '..', '..', 'agents', 'datum-red.md'), 'utf8')
+    expect(agentDef).not.toMatch(/NEVER delete or replace existing tests/)
+    expect(agentDef).toMatch(/supersede/i)
+    expect(agentDef).toMatch(/stale_owned_test/)
+  })
+
   it('reflect.md asks for existing assertions an AC contradicts and reports them as a gap', () => {
     expect(reflect).toMatch(/contradict/i)
     expect(reflect).toMatch(/stale_owned_test/)

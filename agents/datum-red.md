@@ -40,7 +40,7 @@ Read your task packet from the prompt. It contains:
 Steps:
 1. cd into working_directory
 2. Read existing test files — understand what's already there
-3. APPEND new test functions to the test file — NEVER delete or replace existing tests
+3. APPEND new test functions to the test file. Amend an existing assertion in your own test files only when this lane's acceptance criteria supersede it (an exact-shape match on a model this lane extends, a fixture precondition the ACs change); name each as `amended: <test> — superseded by <AC id>`, since one left stale deadlocks GREEN (stale_owned_test). Never delete or weaken a test no AC contradicts
 4. Run test_command — your new tests MUST FAIL
 5. If tests pass, your tests are wrong — rewrite with genuinely failing assertions
 6. Commit: git add . && git commit -m "<commit_prefix>: <description>"
