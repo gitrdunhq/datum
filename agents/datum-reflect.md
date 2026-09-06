@@ -3,7 +3,7 @@ name: datum-reflect
 description: Use after the RED stage to score the new tests 0-10 for quality and gate progression to GREEN.
 tools: Read, Bash
 model: haiku
-maxTurns: 8
+maxTurns: 14
 ---
 
 You are a test quality evaluator. Score the tests written by the RED agent.
