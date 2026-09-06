@@ -518,25 +518,20 @@ def _blocking_review_findings(
             continue
         if not keyed and r["id"] in accepted:
             continue
-        # Same place and same lens; or same place and a shared requirement
-        # id (R2.1, INV-003, ...) — the identity the reviewer re-derives a
-        # finding from, which can land under another lens (caliper).
+        # The place is the identity: a decision recorded at the same file and
+        # line matches whatever lens re-raises it (elonchesd epic-2: the perf
+        # lens's scan came back under the architecture lens at the same
+        # line). A shared requirement id (R2.1, INV-003) is named when both
+        # cite it. A different line is a different finding.
         row_reqs = _requirement_ids(r.get("description", ""))
         prior = next(
-            (
-                d
-                for d in placed
-                if d["file"] == r["file"]
-                and d["line"] == r["line"]
-                and (
-                    _lens_of(d["id"]) == _lens_of(r["id"])
-                    or bool(row_reqs & _requirement_ids(d["reason"]))
-                )
-            ),
+            (d for d in placed if d["file"] == r["file"] and d["line"] == r["line"]),
             None,
         )
         if prior is not None and r["key"]:
-            matched[r["key"]] = prior["token"]
+            shared = sorted(row_reqs & _requirement_ids(prior["reason"]))
+            rule = "file+line" + (f"+{shared[0]}" if shared else "")
+            matched[r["key"]] = f"{prior['token']}|{rule}"
             continue
         blocking.append(f"{r['id']} [{r['key']}]" if r["key"] else r["id"])
     ignored: list[str] = []
@@ -1299,10 +1294,13 @@ def gate_review(yolo: bool, config: dict) -> None:
         named = ", ".join(
             sorted(t.lower() if _KEY_RE.match(t) else t for t in accepted)
         )
-        by_place = "; ".join(
-            f"{key} matched prior decision {token.lower() if _KEY_RE.match(token) else token}"
-            for key, token in matched.items()
-        )
+
+        def _describe(key: str, value: str) -> str:
+            token, _, rule = value.partition("|")
+            shown = token.lower() if _KEY_RE.match(token) else token
+            return f"{key} matched prior decision {shown} ({rule})"
+
+        by_place = "; ".join(_describe(k, v) for k, v in matched.items())
         pass_gate(
             f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: {named}"
             + (f"; {by_place}" if by_place else "")

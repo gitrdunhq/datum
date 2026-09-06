@@ -329,9 +329,9 @@ def test_a_reworded_refinding_matches_the_prior_decision_by_lens_file_and_line(
 
     assert exc.value.code == 0
     message = _fail_json(capsys)["message"]
-    assert "matched prior decision b0408cbd" in message
-    assert "9b29b0f8" in message
-    assert "matched prior decision 33334444" in message
+    # The rule is named (elonchesd: "if that was fuzzy matching, say so").
+    assert "9b29b0f8 matched prior decision b0408cbd (file+line)" in message
+    assert "11112222 matched prior decision 33334444 (file+line)" in message
 
 
 def test_a_prior_decision_matches_across_lenses_when_file_line_and_requirement_id_agree(
@@ -355,10 +355,19 @@ def test_a_prior_decision_matches_across_lenses_when_file_line_and_requirement_i
         gate.gate_review(True, {})
 
     assert exc.value.code == 0
-    assert "0049f593 matched prior decision 746f2805" in _fail_json(capsys)["message"]
+    assert (
+        "0049f593 matched prior decision 746f2805 (file+line+R2.1)"
+        in _fail_json(capsys)["message"]
+    )
 
 
-def test_a_prior_decision_on_another_line_or_lens_does_not_match(epic_repo, capsys):
+def test_a_prior_decision_on_another_line_does_not_match_but_the_same_place_matches_across_lenses(
+    epic_repo, capsys
+):
+    """elonchesd epic-2 iteration 2: the perf lens's 256-cell scan
+    (PERF-003, accepted) was re-raised by the architecture lens as ARCH-001
+    at the same file and line and blocked. The place is the identity; the
+    lens that noticed it is not. A different line is a different finding."""
     _write_report(
         epic_repo,
         "# Review Report\n\n## Findings\n\n"
@@ -368,7 +377,7 @@ def test_a_prior_decision_on_another_line_or_lens_does_not_match(epic_repo, caps
         "| PERF-001 | **high** | src/part_framework.py | 34 | perf at the same line | index | 11112222 |\n",
     )
     (epic_repo / "REVIEW-RESPONSE.md").write_text(
-        "- DEFER b0408cbd (CORR-001 src/part_framework.py:34) -> datum/next: R2.1\n"
+        "- DEFER b0408cbd (CORR-001 src/part_framework.py:34) -> datum/next: same scan\n"
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -377,7 +386,7 @@ def test_a_prior_decision_on_another_line_or_lens_does_not_match(epic_repo, caps
     assert exc.value.code == 1
     message = _fail_json(capsys)["message"]
     assert "CORR-001 [9b29b0f8]" in message
-    assert "PERF-001 [11112222]" in message
+    assert "PERF-001 [11112222]" not in message
 
 
 def test_bare_id_accept_on_a_keyed_report_does_not_count_and_is_named(
