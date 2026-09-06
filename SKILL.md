@@ -21,6 +21,7 @@ compatibility: "claude-code, codex, opencode, kiro, gemini-cli. Requires: git, p
 /datum init        Bootstrap repo: hooks, linter, AGENTS.md, CURRENT_STATE.md, ROADMAP.md. Materialises skills/*.js → .datum/skills/, agents/datum-*.md → .claude/agents/ (committed-safe) and their PreToolUse/PostToolUse hooks → .datum/hooks/ with hook paths rewritten (--refresh re-copies only; --refresh-skills is the old alias).
 /datum classify    Auto-classify epic complexity (Patch/Feature/System)
 /datum landscape   Generate docs/LANDSCAPE.md from filesystem analysis
+/datum code-tells  Scan a lane's added lines for machine-written tells (REFACTOR reads the hits; never a halt)
 /datum mermaid     Generate Mermaid diagrams
 /datum dream       Memory consolidation — staleness audit + transcript extraction + pruning
 ```
