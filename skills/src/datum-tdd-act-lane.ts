@@ -1456,30 +1456,27 @@ async function runRefactor(
     // independently the suite is still green from that reset tree before
     // treating it as "no refactor applied" — never blindly return verified:true.
     const failure = 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'
-    const resetStepList = worktreeResetSteps(wt)
-    const resetResult = await runBatch(resetStepList, stageOpts('cli', { label: `refactor-reset:${taskId}`, phase: 'Act', model: model('fast') }))
-    const leftover = (stepStdout(resetResult, 'status') || '').trim()
-    log(`[${taskId}] REFACTOR: ${failure}; worktree reset to HEAD${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''} — treating as no refactor applied (optional stage)`)
-
-    const noRefactorVerifySteps = [
-      { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
-    ]
-    const noRefactorVerifyRaw = await runBatch(noRefactorVerifySteps, stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }))
-    const noRefactorVerifyResult = noRefactorVerifyRaw
-    if (noRefactorVerifyResult.missing) {
-      return { verified: false, error: `${failure} (verify batch could not run: ${describeFailure(noRefactorVerifyResult, 'post-refactor-verify')})` }
-    }
-    const noRefactorVerifyExit = testExitCode(stepStdout(noRefactorVerifyResult, 'test-verify'))
-    if (noRefactorVerifyExit !== 0) {
-      return { verified: false, error: `${failure} (suite red after reset: independent exit=${noRefactorVerifyExit ?? 'no result'})` }
-    }
-    return { verified: true }
+    log(`[${taskId}] REFACTOR: ${failure} — treating as no refactor applied (optional stage)`)
+    return verifyWithoutRefactor(taskId, wt, cfg, failure)
   }
 
   if (!refactor.success) {
     if (refactor.failure_reason?.toLowerCase().includes('nothing to')) {
       log(`[${taskId}] REFACTOR: nothing to change`)
       return { verified: true }
+    }
+    // caliper eedom wf_fa38ac24-890 task-005: REFACTOR answered
+    // {status:"blocked", needs_write:[]} because the mandated test run failed
+    // for a reason outside its scope, committed nothing, and the lane was
+    // failed as agent behaviour on a pristine GREEN tree, then re-run from
+    // scratch. REFACTOR is optional: an honest "could not refactor" with no
+    // commit is "no refactor applied" — reset any partial edit, verify the
+    // committed tree independently, and complete the lane by that name.
+    // A failure WITH a commit stays refactor_failed: something landed.
+    if (!refactor.committed) {
+      const reason = `refactor_skipped: ${refactor.failure_reason || (refactor.status === 'blocked' ? 'REFACTOR reported blocked' : 'REFACTOR reported no success')}`
+      log(`[${taskId}] REFACTOR: ${reason}${refactor.status === 'blocked' && (refactor.needs_write?.length ?? 0) > 0 ? ` (needs_write: ${refactor.needs_write!.join(', ')})` : ''} — treating as no refactor applied (optional stage)`)
+      return verifyWithoutRefactor(taskId, wt, cfg, reason)
     }
     log(`[${taskId}] REFACTOR FAILED: ${refactor.failure_reason || 'unknown'}`)
     // A bare `null` here — as opposed to `{ verified: false, error }` — is
@@ -1518,6 +1515,31 @@ async function runRefactor(
   }
 
   log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || 'n/a'}; independent verify exit=0)`)
+  return { verified: true }
+}
+
+/**
+ * "No refactor applied": reset the worktree to HEAD (no partial edit
+ * survives), then confirm independently that the committed tree is green.
+ * `why` names the reason (refactor_no_result, refactor_skipped: ...). A red
+ * suite after the reset is the lane's failure, never verified:true.
+ */
+async function verifyWithoutRefactor(taskId: string, wt: string, cfg: PipelineConfig, why: string): Promise<{ verified: boolean; error?: string }> {
+  const resetResult = await runBatch(worktreeResetSteps(wt), stageOpts('cli', { label: `refactor-reset:${taskId}`, phase: 'Act', model: model('fast') }))
+  const leftover = (stepStdout(resetResult, 'status') || '').trim()
+  log(`[${taskId}] REFACTOR: worktree reset to HEAD${leftover ? ` (WARNING: still dirty: ${leftover.split('\n').length} paths)` : ''}`)
+
+  const verifySteps = [
+    { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
+  ]
+  const verifyResult = await runBatch(verifySteps, stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+  if (verifyResult.missing) {
+    return { verified: false, error: `refactor_verify_failed: ${why} (verify batch could not run: ${describeFailure(verifyResult, 'post-refactor-verify')})` }
+  }
+  const exit = testExitCode(stepStdout(verifyResult, 'test-verify'))
+  if (exit !== 0) {
+    return { verified: false, error: `refactor_verify_failed: suite red on the committed tree after ${why} (independent exit=${exit ?? 'no result'})` }
+  }
   return { verified: true }
 }
 

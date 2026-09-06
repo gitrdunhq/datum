@@ -511,11 +511,18 @@ export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
 // reported "blocked" on a pristine GREEN commit. Strays are listed by name,
 // removed, and the removal confirmed, so the caller can name them.
 
+// .datum/ and .temp/ are the sanctioned scratch locations and never
+// collected by a test runner; the lane's own spec lives at
+// <wt>/.datum/lane-spec.json, untracked wherever .datum is not ignored.
+export const STRAY_KEEP_DIRS = ['.datum', '.temp']
+
 export function strayCleanSteps(wt: string): BatchStep[] {
-  const list = `git -C ${q(wt)} status --porcelain --untracked-files=all 2>/dev/null | sed -n 's/^?? //p'`
+  const keepFilter = STRAY_KEEP_DIRS.map((d) => `-e '^${d.replace('.', '\\.')}/'`).join(' ')
+  const keepExcludes = STRAY_KEEP_DIRS.map((d) => `-e ${d}`).join(' ')
+  const list = `git -C ${q(wt)} status --porcelain --untracked-files=all 2>/dev/null | sed -n 's/^?? //p' | grep -v ${keepFilter}`
   return [
     { name: 'stray-list', command: list, tolerant: true },
-    { name: 'stray-clean', command: `git -C ${q(wt)} clean -fdq 2>&1`, tolerant: true },
+    { name: 'stray-clean', command: `git -C ${q(wt)} clean -fdq ${keepExcludes} 2>&1`, tolerant: true },
     { name: 'stray-confirm', command: list, tolerant: true },
   ]
 }

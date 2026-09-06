@@ -1589,3 +1589,32 @@ describe('strayCleanSteps — untracked files between stages are strays: listed,
     expect(names.indexOf('ownership')).toBeLessThan(names.indexOf('stray-list'))
   })
 })
+
+// caliper: .temp/ and .datum/ are the sanctioned scratch locations (the lane
+// spec itself lives at <wt>/.datum/lane-spec.json, untracked wherever .datum
+// is not ignored) and no test runner collects them. The sweep leaves them.
+describe('strayCleanSteps leaves .datum/ and .temp/ alone', () => {
+  it('under real bash: a stray under tests/ goes, .datum/ and .temp/ stay and are not listed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-stray-keep-'))
+    // Hermetic: the developer's global excludes may already ignore .datum/
+    // and .temp/, which would make this pass for the wrong reason.
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', HOME: dir, XDG_CONFIG_HOME: join(dir, 'xdg') }
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env })
+      git('init', '-q'); git('config', 'core.hooksPath', '/dev/null'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't')
+      writeFileSync(join(dir, 'a.py'), 'x = 1\n'); git('add', '-A'); git('commit', '-q', '-m', 'base')
+      mkdirSync(join(dir, 'tests')); writeFileSync(join(dir, 'tests', 'test_repro.py'), 'import os\n')
+      mkdirSync(join(dir, '.datum')); writeFileSync(join(dir, '.datum', 'lane-spec.json'), '{}\n')
+      mkdirSync(join(dir, '.temp')); writeFileSync(join(dir, '.temp', 'scratch.txt'), 'x\n')
+      expect(git('status', '--porcelain', '--untracked-files=all')).toContain('.datum/lane-spec.json')
+      const steps = strayCleanSteps(dir)
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8', env }), steps)
+      expect(strayFilesFromSteps(r)).toEqual({ strays: ['tests/test_repro.py'], cleaned: true })
+      expect(existsSync(join(dir, 'tests', 'test_repro.py'))).toBe(false)
+      expect(existsSync(join(dir, '.datum', 'lane-spec.json'))).toBe(true)
+      expect(existsSync(join(dir, '.temp', 'scratch.txt'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

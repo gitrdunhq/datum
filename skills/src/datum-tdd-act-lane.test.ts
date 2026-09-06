@@ -663,10 +663,16 @@ describe('REFACTOR null result — named error, worktree reset, independent re-v
     // The null-result branch must reach the same test-verify step used by the
     // real REFACTOR path, and must be able to return verified:false when that
     // verify can't confirm a green suite.
+    // The null branch and the blocked/no-commit branch share
+    // verifyWithoutRefactor: reset to HEAD, independent test-verify, and
+    // verified:false when that verify cannot confirm a green suite.
     const nullBranch = refactorFn.slice(refactorFn.indexOf('if (!refactor)'), refactorFn.indexOf('if (!refactor.success)'))
-    expect(nullBranch).toMatch(/test-verify/)
-    expect(nullBranch).toMatch(/verified:\s*false/)
     expect(nullBranch).toMatch(/refactor_no_result/)
+    expect(nullBranch).toMatch(/verifyWithoutRefactor\(/)
+    const helper = refactorFn.slice(refactorFn.indexOf('async function verifyWithoutRefactor'))
+    expect(helper).toMatch(/worktreeResetSteps\(/)
+    expect(helper).toMatch(/test-verify/)
+    expect(helper).toMatch(/verified:\s*false/)
   })
 })
 
@@ -811,10 +817,14 @@ describe('REFACTOR failures surface the real reason, never a bare "refactor fail
   it('runRefactor never returns bare null for a real (non-"nothing to change") REFACTOR failure', () => {
     const successFalseBlock = refactorFn.slice(
       refactorFn.indexOf('if (!refactor.success)'),
-      refactorFn.indexOf('if (!refactor.success)') + 900,
+      refactorFn.indexOf('// Independent verification'),
     )
     expect(successFalseBlock).not.toMatch(/return null/)
     expect(successFalseBlock).toMatch(/refactor_failed:\s*\$\{refactor\.failure_reason/)
+    // caliper wf_fa38ac24-890: a failure WITHOUT a commit is refactor_skipped
+    // (optional stage, tree verified independently), never refactor_failed.
+    expect(successFalseBlock).toMatch(/if \(!refactor\.committed\)/)
+    expect(successFalseBlock).toMatch(/refactor_skipped/)
   })
 
   it('the final REFACTOR call site checks .verified (not just truthiness) and surfaces refResult.error', () => {

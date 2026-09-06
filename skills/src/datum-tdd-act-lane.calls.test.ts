@@ -750,3 +750,32 @@ describe('strays are cleaned and named before REFACTOR', () => {
     expect(src).toMatch(/stray_clean_unchecked/)
   })
 })
+
+// caliper eedom wf_fa38ac24-890: REFACTOR answered {status:"blocked",
+// needs_write:[]} because the mandated test run failed for a reason outside
+// its scope (strays). It committed nothing, so the lane's tree is GREEN's;
+// that is an honest "no refactor applied", not a lane failure. The tree is
+// reset and independently verified; green completes the lane by name.
+describe('a blocked REFACTOR that committed nothing is "refactor skipped", verified independently', () => {
+  function responder(verifyExit: number): Responder {
+    const base = happyPathResponder({ pytest: true })
+    return (label, prompt) => {
+      if (label.startsWith('refactor-check:')) return { should_refactor: true, reason: 'long function' }
+      if (label.startsWith('refactor:')) return { status: 'blocked', needs_write: [], success: false, tests_pass: false, committed: false, failure_reason: 'test command failed on untouched tree' }
+      if (label.startsWith('refactor-reset:')) return batch({ status: '' })
+      if (label.startsWith('post-refactor-verify:')) return batch({ 'test-verify': `TEST_EXIT=${verifyExit}\n` })
+      return base(label, prompt)
+    }
+  }
+  it('green after the reset: lane completed at REFACTOR, refactor_skipped named in the log', async () => {
+    const logs: string[] = []
+    const { result } = await runLane({ respond: responder(0), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: true, logs })
+    expect(result.results.T1.status, result.results.T1.error).toBe('completed')
+    expect(logs.some((l) => /refactor_skipped: test command failed on untouched tree/.test(l))).toBe(true)
+  })
+  it('red after the reset: the lane fails as refactor_verify_failed, not refactor_failed', async () => {
+    const { result } = await runLane({ respond: responder(1), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: true })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^refactor_verify_failed/)
+  })
+})
