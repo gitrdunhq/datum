@@ -203,6 +203,11 @@ var PREFIX_RULES = [
   },
   // ── agent_behavior: the agent actively violated a hard rule ──
   {
+    test: /\bred_repair_failed\b/,
+    category: "agent_behavior",
+    reason: "red_repair_failed: GREEN was blocked on the lane's own test file with an exact diagnosis (#440), RED was re-dispatched once to amend that test, and the repair did not land (no commit, count gate or placeholder scan failed after it, or it touched a file outside the lane's tests). The lane's test is what is wrong \u2014 a finding about the lane's work, not tooling."
+  },
+  {
     test: /\bplaceholder_assertions\b/,
     category: "agent_behavior",
     reason: "placeholder_assertions: the RED agent committed placeholder/pass-only assertions instead of real tests."
