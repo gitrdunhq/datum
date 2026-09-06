@@ -559,3 +559,17 @@ describe('a mismatched inline relay is re-fetched once, then deferred', () => {
     expect(src).toMatch(/context_relay_mismatch on /)
   })
 })
+
+// elonchesd datum/player-guidance wf_251cf8a3-363: 15 agents and 20 minutes
+// of planning, then the plan gate failed on SPEC.md's Assumption Audit, a
+// refine artifact that never changes during plan. Plan checks refine's own
+// gate (structural, --approve) right after Read, before any planning agent,
+// and halts by name with the gate's message when it fails.
+describe('datum-plan checks the refine gate before any planning agent', () => {
+  it('runs gateSteps("refine", " --approve") between Read and Decompose and names plan_prerequisite_failed', () => {
+    const refineGateAt = datumPlanSrc.indexOf("gateSteps('refine', ' --approve')")
+    expect(refineGateAt).toBeGreaterThan(datumPlanSrc.indexOf("phase('Read')"))
+    expect(refineGateAt).toBeLessThan(datumPlanSrc.indexOf("phase('Decompose')"))
+    expect(datumPlanSrc.slice(refineGateAt, refineGateAt + 900)).toMatch(/plan_prerequisite_failed/)
+  })
+})

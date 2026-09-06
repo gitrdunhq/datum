@@ -160,6 +160,18 @@ for (const warning of contextFilesWarnings) log(`context_files: ${warning}`)
 
 import planDecomposeTemplate from './prompts/plan-decompose.md'
 
+// ── Prerequisite: refine's own gate, structurally, before any planning agent ──
+// elonchesd datum/player-guidance wf_251cf8a3-363: 15 agents and 20 minutes
+// of planning, then the plan gate failed on SPEC.md's Assumption Audit — a
+// refine artifact that never changes during plan. The refine gate now checks
+// the audit itself, and plan re-runs it here (--approve: structural checks
+// only) so a SPEC that would not pass refine halts in seconds, by name.
+const refineGate = parseGateResult(await runBatch(gateSteps('refine', ' --approve'), stageOpts('cli', { label: 'gate-refine-prereq', model: model('fast') })))
+if (!refineGate.passed) {
+  throw new Error(`plan_prerequisite_failed: SPEC.md would not pass the refine gate — fix it (${refineGate.message || 'no message'}) and re-run datum plan; no planning agent was dispatched`)
+}
+log('Refine prerequisite gate PASSED (SPEC.md structurally sound)')
+
 // ── Decompose (approach → impact → decompose → build — all substantive, kept separate) ──
 
 phase('Decompose')
@@ -261,7 +273,7 @@ if (!build.ok) throw new Error(build.error)
 const earlyGateSteps = gateSteps('plan', ' --approve')
 const earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts('cli', { label: 'gate-early', model: model('fast') })))
 if (!earlyGate.passed) {
-  throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix tasks.json and re-run datum plan): ${earlyGate.message || 'no message'}`)
+  throw new Error(`Plan gate failed right after datum lane-plan — plan NOT committed (fix the file the message names: tasks.json for lane/overlap errors, SPEC.md's Assumption Audit for assumption errors; then re-run datum plan): ${earlyGate.message || 'no message'}`)
 }
 log('Early plan gate PASSED (schema + structure)')
 
