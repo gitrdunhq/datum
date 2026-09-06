@@ -14,7 +14,7 @@ git branch -v
 
 ## Step 2 — Read Existing Docs
 Read whichever of these state docs exist:
-1. `docs/ROADMAP.md` (Planned work)
+1. `ROADMAP.md` (Planned work)
 2. `CHANGELOG.md` (Shipped history)
 3. `README.md`
 
@@ -48,7 +48,7 @@ Always write `CURRENT_STATE.md` at the project root.
 ---
 
 ## What's Next
-*(Pull directly from the active `docs/ROADMAP.md`)*
+*(Pull directly from the active `ROADMAP.md`)*
 {Track A — description}: {one-line summary of work}
 {Track B — description}: {one-line summary of work}
 
