@@ -1,0 +1,86 @@
+{
+  "task_id": "task-007",
+  "slug": "export-integration-contract-summary",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify For a lane dict with `kind == 'integration'`, the body writt",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_for_a_lane_dict_with_kind_integration_the_body_written_by_ex",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_for_a_lane_dict_with_kind_integration_the_body_written_by_ex \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC1:\n    def test_ac1_for_a_lane_dict_with_kind_integration_the_body_written_by_ex(self):\n        \"\"\"\n        PROP-001: For a lane dict with `kind == 'integration'`, the body written by `export_lane_s\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify `contract_summary()`'s signature and return value for any gi",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_contract_summary_s_signature_and_return_value_for_any_given",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_contract_summary_s_signature_and_return_value_for_any_given \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC2:\n    def test_ac2_contract_summary_s_signature_and_return_value_for_any_given(self):\n        \"\"\"\n        PROP-002: `contract_summary()`'s signature and return value for any given `acceptance_crit\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify For a lane with `kind` absent or `'task'`/`'behavioral'`/`'s",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_for_a_lane_with_kind_absent_or_task_behavioral_structural_th",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_for_a_lane_with_kind_absent_or_task_behavioral_structural_th \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC3:\n    def test_ac3_for_a_lane_with_kind_absent_or_task_behavioral_structural_th(self):\n        \"\"\"\n        PROP-003: For a lane with `kind` absent or `'task'`/`'behavioral'`/`'structural'`, the exp\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify The exported body for an integration lane includes `expect_t",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_the_exported_body_for_an_integration_lane_includes_expect_te",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_the_exported_body_for_an_integration_lane_includes_expect_te \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC4:\n    def test_ac4_the_exported_body_for_an_integration_lane_includes_expect_te(self):\n        \"\"\"\n        PROP-004: The exported body for an integration lane includes `expect_tests_pass: true`, ca\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify The exported body for a task lane does not include an `expec",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_the_exported_body_for_a_task_lane_does_not_include_an_expect",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_the_exported_body_for_a_task_lane_does_not_include_an_expect \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC5:\n    def test_ac5_the_exported_body_for_a_task_lane_does_not_include_an_expect(self):\n        \"\"\"\n        PROP-005: The exported body for a task lane does not include an `expect_tests_pass` key (A\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "datum/lane_spec_export.py",
+      "kind": "pytest",
+      "purpose": "Verify `ac_count` in the returned summary for an integration lane e",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_ac_count_in_the_returned_summary_for_an_integration_lane_equ",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-007 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_ac_count_in_the_returned_summary_for_an_integration_lane_equ \u2192 datum/lane_spec_export.py\n\nimport pytest\n\n\nclass TestTask007AC6:\n    def test_ac6_ac_count_in_the_returned_summary_for_an_integration_lane_equ(self):\n        \"\"\"\n        PROP-006: `ac_count` in the returned summary for an integration lane equals `len(lane['acc\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/lane_spec_export.py": "\nfrom __future__ import annotations\n\nimport hashlib\nimport json\nimport re\nfrom pathlib import Path\n\nfrom datum.lane_hash import lane_spec_hash\n\nSCHEMA_VERSION = 1\n\n\nclass LaneSpecExportError(ValueError):\n    ...\n\n\n\n_BUILTIN_SKIP = frozenset(\n)\n_FUNC_RE = re.compile(r\"(?<!['\\\"-])(\\w+)\\s*\\(([^)]*)\\)\")\n_RET_RE = re.compile(r\"returns?\\s+(?:a\\s+)?(\\w+)\", re.IGNORECASE)\n_RAISE_RE = re.compile(r\"[Rr]aises?\\s+(\\w+Error|\\w+Exception)\")\n\n\ndef contract_summary(acceptance_criteria: list[str] | None) -> list[dict]:\n    ...\n\n\ndef git_blob_sha(data: bytes) -> str:\n    ...\n\n\ndef export_lane_spec(\n    plan: dict, task_id: str, out: Path, expect_hash: str | None\n) -> dict:\n    lanes = plan.get(\"lanes\")\n    lane = lanes.get(task_id)\n    spec_hash = lane_spec_hash(lane)\n            spec_hash=spec_hash,\n            expected=expect_hash,\n    criteria = lane.get(\"acceptance_criteria\") or []\n    body = {\n    data = (json.dumps(body, indent=2, ensure_ascii=False) + \"\\n\").encode(\"utf-8\")\n\n\ndef export_lane_spec_file(\n    plan_path: Path, task_id: str, out: Path, expect_hash: str | None\n) -> dict:\n        plan = json.loads(plan_path.read_text(encoding=\"utf-8\"))\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

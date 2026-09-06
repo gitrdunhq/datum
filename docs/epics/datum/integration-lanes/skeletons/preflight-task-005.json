@@ -1,0 +1,110 @@
+{
+  "task_id": "task-005",
+  "slug": "wire-int-lanes-into-lane-plan",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify `build_lane_plan(..., properties_path=None)` returns a plan ",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_build_lane_plan_properties_path_none_returns_a_plan_byte_ide",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_build_lane_plan_properties_path_none_returns_a_plan_byte_ide \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC1:\n    def test_ac1_build_lane_plan_properties_path_none_returns_a_plan_byte_ide(self):\n        \"\"\"\n        PROP-001: `build_lane_plan(..., properties_path=None)` returns a plan byte-identical to th\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify With a PROPERTIES.md containing invariants, the returned pla",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_with_a_properties_md_containing_invariants_the_returned_plan",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_with_a_properties_md_containing_invariants_the_returned_plan \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC2:\n    def test_ac2_with_a_properties_md_containing_invariants_the_returned_plan(self):\n        \"\"\"\n        PROP-002: With a PROPERTIES.md containing invariants, the returned plan's `lanes` gains on\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify Each INT lane id is appended to `topological_order` after al",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_each_int_lane_id_is_appended_to_topological_order_after_all",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_each_int_lane_id_is_appended_to_topological_order_after_all \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC3:\n    def test_ac3_each_int_lane_id_is_appended_to_topological_order_after_all(self):\n        \"\"\"\n        PROP-003: Each INT lane id is appended to `topological_order` after all of its covered tas\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify Each INT lane's single test file is added to `file_ownership",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_each_int_lane_s_single_test_file_is_added_to_file_ownership",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_each_int_lane_s_single_test_file_is_added_to_file_ownership \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC4:\n    def test_ac4_each_int_lane_s_single_test_file_is_added_to_file_ownership(self):\n        \"\"\"\n        PROP-004: Each INT lane's single test file is added to `file_ownership` mapped to that INT\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify `total_lanes` equals `len(lanes)` including the INT lanes",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_total_lanes_equals_len_lanes_including_the_int_lanes",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_total_lanes_equals_len_lanes_including_the_int_lanes \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC5:\n    def test_ac5_total_lanes_equals_len_lanes_including_the_int_lanes(self):\n        \"\"\"\n        PROP-005: `total_lanes` equals `len(lanes)` including the INT lanes\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify A PROPERTIES.md whose `## Integration Invariants` table is p",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_a_properties_md_whose_integration_invariants_table_is_presen",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_a_properties_md_whose_integration_invariants_table_is_presen \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC6:\n    def test_ac6_a_properties_md_whose_integration_invariants_table_is_presen(self):\n        \"\"\"\n        PROP-006: A PROPERTIES.md whose `## Integration Invariants` table is present but empty pro\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify The plan produced with INT lanes validates against the widen",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_the_plan_produced_with_int_lanes_validates_against_the_widen",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_the_plan_produced_with_int_lanes_validates_against_the_widen \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC7:\n    def test_ac7_the_plan_produced_with_int_lanes_validates_against_the_widen(self):\n        \"\"\"\n        PROP-007: The plan produced with INT lanes validates against the widened lane-plan pydanti\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "tests/test_lane_plan_integration_lanes.py",
+      "kind": "pytest",
+      "purpose": "Verify `main()` accepts an optional `--properties` argument and pas",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_main_accepts_an_optional_properties_argument_and_passes_it_t",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_main_accepts_an_optional_properties_argument_and_passes_it_t \u2192 tests/test_lane_plan_integration_lanes.py\n\nimport pytest\n\n\nclass TestTask005AC8:\n    def test_ac8_main_accepts_an_optional_properties_argument_and_passes_it_t(self):\n        \"\"\"\n        PROP-008: `main()` accepts an optional `--properties` argument and passes it through; omit\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/lane_plan.py": "#!/usr/bin/env python3\n\nimport argparse\nimport json\nimport sys\nimport re\nfrom pathlib import Path\n\n\ndef validate_json_schema(data: list, schema_path: Path):\n    ...\n\n\n\n\ndef normalize_input(raw: list | dict) -> tuple[list[dict], dict]:\n    ...\n\n\ndef validate_units(units: dict, task_ids: set[str]) -> list[str]:\n    ...\n\n\n\ndef topological_sort_units(units: dict) -> list[str]:\n    ...\n\n\n\n\n\ndef build_file_ownership(\n    tasks: list[dict],\n) -> tuple[dict[str, str], dict[str, list[str]]]:\n    ownership: dict[str, str] = {}\n    conflicts: dict[str, list[str]] = {}\n\n                ownership[f] = task[\"id\"]\n\n\n\ndef inject_conflict_edges(tasks: list[dict]) -> None:\n    ...\n\n\ndef _reaches(deps: dict[str, list[str]], start: str, target: str) -> bool:\n    ...\n\n\ndef inject_read_dependency_edges(tasks: list[dict]) -> list[str]:\n    ...\n\n\ndef topological_sort(tasks: list[dict]) -> list[str]:\n    ...\n\n\n\n\n\n\ndef _render_task_block(task: dict, heading_level: str = \"###\") -> list[str]:\n    ...\n\n\n\n\n\n\n\n\n\ndef render_tasks_md(\n    tasks: list[dict], sorted_ids: list[str], units: dict | None = None\n) -> str:\n    task_map = {t[\"id\"]: t for t in tasks}\n    lines = [\"# Implementation Plan (TASKS.md)\", \"\"]\n\n        task = task_map[tid]\n\n        assigned: set[str] = set()\n\n        unit_pseudo_tasks = [\n            unit_order = topological_sort(unit_pseudo_tasks)\n            unit_order = list(units.keys())\n\n            unit = units[uid]\n            dep_note = \"\"\n                dep_note = f\" (depends on: {', '.join(unit['depends_on'])})\"\n            unit_task_ids = [\n\n        ungrouped = [tid for tid in sorted_ids if tid not in assigned]\n\n\n\n# \u2500\u2500 Per-lane test-command detection & preflight (#326, #307) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n#\n# A mixed-language repo (this one: Python `datum/` package + TypeScript\n# `skills/src/` workflow sources) has exactly one `language`/`test_command`\n# pair in the epic-level .datum/config.json. A lane whose files live entirely\n# in the other language silently inherits the wrong command: e.g. a lane\n# touching only skills/src/*.ts + its vitest spec gets \"uv run pytest -x -q\",\n# which collects zero tests and reports a false pass/fail signal (#326).\n# `infer_lane_language` sniffs the lane's own file extensions (mirrors the\n# priority order already used client-side in datum-tdd-act-lane.ts) so we can\n# set a per-lane `test_command` override in lane-plan.json when it disagrees\n# with the epic-level default (`Lane.test_command` is already consumed there,\n# added in 4bdfdcf).\n\n# Extension -> language, checked in this priority order (first match wins the\n# tie-break when a lane touches more than one language).\n_LANE_LANGUAGE_EXTENSIONS: list[tuple[str, str]] = [\n]\n\n# Default test command for a lane whose files are dominated by this language.\n# Kept deliberately small (no framework auto-detection) \u2014 this is a per-lane\n# override for the common cases, not a rebuild of datum/detect.py.\nLANE_LANGUAGE_TEST_COMMANDS: dict[str, str] = {\n}\n\n# Substrings that identify which language a test_command string targets.\n# Used to detect a global/override command that clearly can't run a lane's\n# file scope (e.g. \"uv run pytest\" against a lane of only *.ts files).\n_TEST_COMMAND_LANGUAGE_MARKERS: list[tuple[str, str]] = [\n]\n\n\ndef infer_lane_language(files: list[str]) -> str | None:\n    ...\n\n\ndef detect_command_language(test_command: str | None) -> str | None:\n    ...\n\n\ndef detect_lane_test_command(\n    files: list[str],\n) -> str | None:\n    lane_lang = infer_lane_language(files)\n    global_lang = detect_command_language(global_test_command)\n    override = LANE_LANGUAGE_TEST_COMMANDS.get(lane_lang)\n\n\ndef detect_spm_lane_override(\n    lane_id: str, files: list[str], repo_root: Path\n) -> tuple[str | None, str | None]:\n    from datum.tdd_driver import detect_spm_subpackage, get_spm_test_command\n\n    swift_files = [f for f in files if Path(f).suffix.lower() == \".swift\"]\n\n    root_resolved = repo_root.resolve()\n        pkg = detect_spm_subpackage(repo_root / f)\n        resolved = pkg.resolve() if pkg is not None else None\n\n        names = []\n            elif pkg_dir == root_resolved:\n        warning = (\n\n\n    cmd = get_spm_test_command(repo_root / swift_files[0])\n\n        rel_dir = str(pkg_dir.relative_to(root_resolved))\n        rel_dir = str(pkg_dir)\n        rel_dir = f'\"{rel_dir}\"'\n\n\ndef validate_lane_test_commands(lanes: dict) -> list[str]:\n    ...\n\n\nGENERATED_BANNER_RE = re.compile(r\"@generated(?:.*?Source:\\s*(\\S+))?\")\n\n\ndef validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]:\n    ...\n\n\ndef build_lane_plan(\n    tasks: list[dict],\n) -> dict:\n    task_map = {t[\"id\"]: t for t in tasks}\n    repo_root = Path(repo_root)\n\n    lanes = {}\n    spm_warnings: list[str] = []\n        task = task_map[tid]\n\n        write_conflicts = {}\n            owner = ownership.get(f)\n                write_conflicts[f] = owner\n\n        lanes[tid] = {\n            lanes[tid][\"slug\"] = task[\"slug\"]\n\n        kind = task.get(\"kind\")\n            lanes[tid][\"kind\"] = kind\n\n        explicit_cmd = task.get(\"test_command\")\n            lanes[tid][\"test_command\"] = explicit_cmd\n            spm_cmd, spm_warning = detect_spm_lane_override(\n                lanes[tid][\"test_command\"] = spm_cmd\n                detected = detect_lane_test_command(task[\"files\"], global_test_command)\n                    lanes[tid][\"test_command\"] = detected\n\n    result = {\n        result[\"units\"] = units\n        result[\"warnings\"] = spm_warnings\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

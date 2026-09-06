@@ -1,0 +1,106 @@
+{
+  "task_id": "task-001",
+  "slug": "parse-integration-invariants-table",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants(md_text)` returns a list of di",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_parse_integration_invariants_md_text_returns_a_list_of_dicts",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_parse_integration_invariants_md_text_returns_a_list_of_dicts \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC1:\n    def test_ac1_parse_integration_invariants_md_text_returns_a_list_of_dicts(self):\n        \"\"\"\n        PROP-001: `parse_integration_invariants(md_text)` returns a list of dicts with keys `id`, \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants` on text whose table columns a",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_parse_integration_invariants_on_text_whose_table_columns_are",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_parse_integration_invariants_on_text_whose_table_columns_are \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC2:\n    def test_ac2_parse_integration_invariants_on_text_whose_table_columns_are(self):\n        \"\"\"\n        PROP-002: `parse_integration_invariants` on text whose table columns are not exactly `ID |\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants` on a row whose cell count dif",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_parse_integration_invariants_on_a_row_whose_cell_count_diffe",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_parse_integration_invariants_on_a_row_whose_cell_count_diffe \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC3:\n    def test_ac3_parse_integration_invariants_on_a_row_whose_cell_count_diffe(self):\n        \"\"\"\n        PROP-003: `parse_integration_invariants` on a row whose cell count differs from 4 raises `\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants` on a row whose `Source` match",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_parse_integration_invariants_on_a_row_whose_source_matches_n",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_parse_integration_invariants_on_a_row_whose_source_matches_n \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC4:\n    def test_ac4_parse_integration_invariants_on_a_row_whose_source_matches_n(self):\n        \"\"\"\n        PROP-004: `parse_integration_invariants` on a row whose `Source` matches neither `spec:<se\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants` on text with the `## Integrat",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_parse_integration_invariants_on_text_with_the_integration_in",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_parse_integration_invariants_on_text_with_the_integration_in \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC5:\n    def test_ac5_parse_integration_invariants_on_text_with_the_integration_in(self):\n        \"\"\"\n        PROP-005: `parse_integration_invariants` on text with the `## Integration Invariants` head\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `has_integration_invariants_section(md_text)` returns False ",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_has_integration_invariants_section_md_text_returns_false_whe",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_has_integration_invariants_section_md_text_returns_false_whe \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC6:\n    def test_ac6_has_integration_invariants_section_md_text_returns_false_whe(self):\n        \"\"\"\n        PROP-006: `has_integration_invariants_section(md_text)` returns False when the `## Integra\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_integration_invariants_parse.py",
+      "kind": "pytest",
+      "purpose": "Verify `parse_integration_invariants` splits `Covers` on commas and",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_parse_integration_invariants_splits_covers_on_commas_and_str",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_parse_integration_invariants_splits_covers_on_commas_and_str \u2192 tests/test_integration_invariants_parse.py\n\nimport pytest\n\n\nclass TestTask001AC7:\n    def test_ac7_parse_integration_invariants_splits_covers_on_commas_and_str(self):\n        \"\"\"\n        PROP-007: `parse_integration_invariants` splits `Covers` on commas and strips whitespace, \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [
+    {
+      "path": "datum/integration_invariants.py",
+      "functions": [
+        "has_integration_invariants_section",
+        "parse_integration_invariants"
+      ],
+      "stub_written": false,
+      "content": "def parse_integration_invariants(md_text):\n    ...\n\ndef has_integration_invariants_section(md_text):\n    ...\n"
+    }
+  ],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}
