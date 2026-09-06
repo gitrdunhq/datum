@@ -494,9 +494,46 @@ export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
     steps.push({ name: 'red-files', command: `git -C ${q(o.wt)} diff-tree --no-commit-id --name-only -r ${q(o.redSha)}`, tolerant: true })
   }
   if (o.verifyTestCmd) {
+    // Strays first: the verify must run against the committed tree, never
+    // against scratch files an agent left behind (see strayCleanSteps).
+    steps.push(...strayCleanSteps(o.wt))
     steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'green-verify'), tolerant: true })
   }
   return steps
+}
+
+// ── Strays: untracked files between stages ──────────────────────────────────
+// Every stage commits its work, so anything untracked in the lane worktree
+// between stages is scratch an agent left behind. caliper eedom
+// wf_fa38ac24-890 task-005: four repro test files written while a skeptic
+// reproduced its findings were collected by REFACTOR's pytest run; two
+// monkeypatched os.chdir, a later test failed deterministically, and REFACTOR
+// reported "blocked" on a pristine GREEN commit. Strays are listed by name,
+// removed, and the removal confirmed, so the caller can name them.
+
+export function strayCleanSteps(wt: string): BatchStep[] {
+  const list = `git -C ${q(wt)} status --porcelain --untracked-files=all 2>/dev/null | sed -n 's/^?? //p'`
+  return [
+    { name: 'stray-list', command: list, tolerant: true },
+    { name: 'stray-clean', command: `git -C ${q(wt)} clean -fdq 2>&1`, tolerant: true },
+    { name: 'stray-confirm', command: list, tolerant: true },
+  ]
+}
+
+export interface StrayOutcome {
+  /** Untracked paths found before the clean, sorted. */
+  strays: string[]
+  /** true when the confirm step ran and found nothing; false when strays
+   *  survived the clean; null when the steps did not run (a named absence). */
+  cleaned: boolean | null
+}
+
+export function strayFilesFromSteps(result: BatchResult): StrayOutcome {
+  const listed = stepStdout(result, 'stray-list')
+  const confirm = stepStdout(result, 'stray-confirm')
+  if (listed === null || confirm === null) return { strays: [], cleaned: null }
+  const strays = listed.split('\n').map((l) => l.trim()).filter(Boolean).sort()
+  return { strays, cleaned: confirm.trim() === '' }
 }
 
 /** The RED commit's file list from the red-files step, or null when the step did not run. */

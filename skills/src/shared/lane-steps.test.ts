@@ -12,6 +12,8 @@ import {
   postRedSteps,
   scopeContractSteps,
   postGreenSteps,
+  strayCleanSteps,
+  strayFilesFromSteps,
   ownershipCheckSteps,
   depMergeSteps,
   depMergeFromSteps,
@@ -1520,5 +1522,70 @@ describe('postRedSteps assert-check trusts ast-grep\'s "no match"; grep runs onl
   })
   it('ast-grep absent: grep fallback reports the line', () => {
     expect(scan(null)).toBe('tests/test_a.py:2:    raise NotImplementedError')
+  })
+})
+
+// caliper eedom wf_fa38ac24-890 task-005: four untracked scratch test files
+// left in the lane worktree by an earlier stage's agent (repro files) were
+// collected by the REFACTOR test run; two monkeypatched os.chdir and a later
+// test failed deterministically, so REFACTOR reported "blocked" on a pristine
+// GREEN commit. Every stage commits its work; anything untracked between
+// stages is a stray. It is listed by name, removed, and named in the log.
+describe('strayCleanSteps — untracked files between stages are strays: listed, removed, named', () => {
+  function initRepo(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-stray-'))
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    git('init', '-q')
+    git('config', 'core.hooksPath', '/dev/null')
+    git('config', 'user.email', 't@t')
+    git('config', 'user.name', 't')
+    mkdirSync(join(dir, 'tests'))
+    writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_a():\n    assert 1\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'green')
+    return dir
+  }
+  it('builds list, clean and confirm steps against the worktree', () => {
+    const steps = strayCleanSteps('/wt/T1')
+    expect(steps.map((s) => s.name)).toEqual(['stray-list', 'stray-clean', 'stray-confirm'])
+    expect(steps[0].command).toContain('git -C "/wt/T1" status --porcelain --untracked-files=all')
+    expect(steps[1].command).toContain('git -C "/wt/T1" clean -fdq')
+    for (const s of steps) expect(s.tolerant).toBe(true)
+  })
+  it('under real bash: strays are removed and named; tracked files and committed work are untouched', () => {
+    const dir = initRepo()
+    try {
+      writeFileSync(join(dir, 'tests', 'test_chdir_issue.py'), 'import os\n')
+      mkdirSync(join(dir, 'scratch'))
+      writeFileSync(join(dir, 'scratch', 'repro.py'), 'x = 1\n')
+      const steps = strayCleanSteps(dir)
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      const outcome = strayFilesFromSteps(r)
+      expect(outcome.strays).toEqual(['scratch/repro.py', 'tests/test_chdir_issue.py'])
+      expect(outcome.cleaned).toBe(true)
+      expect(existsSync(join(dir, 'tests', 'test_chdir_issue.py'))).toBe(false)
+      expect(existsSync(join(dir, 'scratch', 'repro.py'))).toBe(false)
+      expect(existsSync(join(dir, 'tests', 'test_a.py'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('under real bash: a clean worktree reports no strays and cleaned=true', () => {
+    const dir = initRepo()
+    try {
+      const steps = strayCleanSteps(dir)
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(strayFilesFromSteps(r)).toEqual({ strays: [], cleaned: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('a batch that did not run is a named absence, not "clean"', () => {
+    expect(strayFilesFromSteps(parseBatchResult('', strayCleanSteps('/wt')))).toEqual({ strays: [], cleaned: null })
+  })
+  it('postGreenSteps runs the stray clean before the independent test-verify', () => {
+    const names = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: 'pytest -q' }).map((s) => s.name)
+    expect(names.indexOf('stray-confirm')).toBeGreaterThan(-1)
+    expect(names.indexOf('stray-confirm')).toBeLessThan(names.indexOf('test-verify'))
+    expect(names.indexOf('ownership')).toBeLessThan(names.indexOf('stray-list'))
   })
 })

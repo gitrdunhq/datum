@@ -25,6 +25,8 @@ import {
   laneSpecFromSteps,
   laneSpecContextFile,
   digestSpecHash,
+  strayCleanSteps,
+  strayFilesFromSteps,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps, preserveHeadRefSteps } from './shared/commit-steps'
 import { assertReadWitness, verifyReadWitness, type ContextFile } from './shared/context-relay'
@@ -1112,6 +1114,8 @@ No markdown fences, no explanation.`,
   const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }))
   const postGreenVerifyResult = postGreenVerifyRaw
+  const greenStrays = strayFilesFromSteps(postGreenVerifyResult)
+  if (greenStrays.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${greenStrays.strays.length} untracked file(s) left by GREEN ${greenStrays.cleaned ? 'removed' : 'NOT removed'} before the verify: ${greenStrays.strays.join(', ')}`)
   const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, 'test-verify'))
   const greenEnvMissing = testEnvMissing(stepStdout(postGreenVerifyResult, 'test-verify'))
   if (greenEnvMissing) {
@@ -1306,6 +1310,15 @@ No markdown fences, no explanation.`,
     if (!fuWrite.ok) log(`[${taskId}] ${fuWrite.error} — ${minority.length} skeptic minority finding(s) stay in this log only`)
     else followUps = minority.length
   }
+
+  // ── Strays before REFACTOR (caliper eedom wf_fa38ac24-890 task-005) ──
+  // The skeptic lenses may write repro files while demonstrating a finding;
+  // REFACTOR's test run collected four of them and failed on a pristine
+  // GREEN commit. Untracked files between stages are strays: removed and
+  // named. Fails soft — the batch not running is a named absence.
+  const strayOutcome = strayFilesFromSteps(await runBatch(strayCleanSteps(wt), stageOpts('cli', { label: `stray-clean:${taskId}`, phase: 'Act', model: model('fast') })))
+  if (strayOutcome.cleaned === null) log(`[${taskId}] stray_clean_unchecked: could not list untracked files in the worktree before REFACTOR`)
+  else if (strayOutcome.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${strayOutcome.strays.length} untracked file(s) left by a prior stage ${strayOutcome.cleaned ? 'removed' : 'NOT removed'} before REFACTOR: ${strayOutcome.strays.join(', ')}`)
 
   // ── REFACTOR (writes + verifies + commits in one agent) ──
   const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)

@@ -91,7 +91,8 @@ function happyPathResponder(o: { pytest: boolean }): Responder {
     if (label.startsWith('green:')) {
       return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'bbb222', files_written: [implFile], test_exit_code: 0 }
     }
-    if (label.startsWith('post-green-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
+    if (label.startsWith('post-green-verify:')) return batch({ ownership: '', 'stray-list': '', 'stray-clean': '', 'stray-confirm': '', 'test-verify': 'TEST_EXIT=0\n' })
+    if (label.startsWith('stray-clean:')) return batch({ 'stray-list': '', 'stray-clean': '', 'stray-confirm': '' })
     if (label.startsWith('post-green:')) return batch({ ownership: `${implFile}\n` })
     if (label.startsWith('skeptic-')) return { ...witness, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
     if (label.startsWith('refactor-check:')) return { should_refactor: false, reason: 'clean' }
@@ -160,26 +161,27 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(result.results.T1.stage).toBe('REFACTOR')
   })
 
-  it('hooks not installed (legacy checks): ≤ 7 command-runner calls for a pytest lane', async () => {
+  it('hooks not installed (legacy checks): ≤ 8 command-runner calls for a pytest lane', async () => {
     const { calls } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: true })
     expect(runnerLabels(calls)).toEqual([
-      'completion-check', 'lane-intake', 'post-red', 'ownership-check', 'scope-contract', 'post-green-verify', 'ownership-check',
+      'completion-check', 'lane-intake', 'post-red', 'ownership-check', 'scope-contract', 'post-green-verify', 'ownership-check', 'stray-clean',
     ])
     // The independent GREEN test-verify step (#386) is not gated behind
     // deterministicChecks() — it runs whenever GREEN ran, hooks or no hooks.
-    expect(cliCalls(calls)).toHaveLength(6)
+    // stray-clean (caliper wf_fa38ac24-890) runs before REFACTOR the same way.
+    expect(cliCalls(calls)).toHaveLength(7)
     expect(readerCalls(calls).map((c) => c.label.split(':')[0])).toEqual(['completion-check', 'refactor-check'])
   })
 
-  it('hooks not installed: a TypeScript lane skips the scope/contract batch (5 runner calls)', async () => {
+  it('hooks not installed: a TypeScript lane skips the scope/contract batch (7 runner calls)', async () => {
     const { calls } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: false })
-    expect(runnerLabels(calls)).toEqual(['completion-check', 'lane-intake', 'post-red', 'ownership-check', 'post-green-verify', 'ownership-check'])
+    expect(runnerLabels(calls)).toEqual(['completion-check', 'lane-intake', 'post-red', 'ownership-check', 'post-green-verify', 'ownership-check', 'stray-clean'])
   })
 
-  it('hooks installed (deterministic checks): 4 command-runner calls for a pytest lane, none of them LLM checks', async () => {
+  it('hooks installed (deterministic checks): 6 command-runner calls for a pytest lane, none of them LLM checks', async () => {
     const { calls, result } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: true })
     expect(result.results.T1.status, result.results.T1.error).toBe('completed')
-    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'scope-contract', 'post-green-verify', 'post-green'])
+    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'scope-contract', 'post-green-verify', 'post-green', 'stray-clean'])
     expect(calls.some((c) => c.label.startsWith('ownership-check:'))).toBe(false)
     expect(calls.some((c) => c.label.startsWith('completion-check:'))).toBe(false)
     // the ownership read rides inside the post-RED / post-GREEN batches
@@ -189,10 +191,10 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(calls.find((c) => c.label.startsWith('lane-intake:'))!.prompt).toContain('.datum/runs/r1/lane-state/T1.json')
   })
 
-  it('hooks installed: a TypeScript lane needs only 4 command-runner calls', async () => {
+  it('hooks installed: a TypeScript lane needs only 5 command-runner calls', async () => {
     const { calls, result } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status, result.results.T1.error).toBe('completed')
-    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'post-green-verify', 'post-green'])
+    expect(runnerLabels(calls)).toEqual(['lane-intake', 'post-red', 'post-green-verify', 'post-green', 'stray-clean'])
   })
 
   it('hooks installed but agent_types off: the LLM checks stay (the hooks only fire through agentType)', async () => {
@@ -729,5 +731,22 @@ describe('the TS/JS placeholder pattern is the skeleton literal, not the bare th
     expect(src).not.toMatch(/pattern: 'it\(\$_, \(\) => \{ throw new Error\(\$_\) \}\)'/)
     expect(src).toContain("const SKELETON_THROW_RE = 'throw new Error\\\\(.RED agent: implement this assertion.\\\\)'")
     expect(src).not.toMatch(/pattern: 'throw new Error', name: 'throw placeholder'/)
+  })
+})
+
+// caliper eedom wf_fa38ac24-890 task-005: repro files a prior stage left
+// untracked were collected by REFACTOR's test run. The lane removes strays
+// before REFACTOR and names them.
+describe('strays are cleaned and named before REFACTOR', () => {
+  const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('runs strayCleanSteps before runRefactor and logs stray_untracked_files', () => {
+    const cleanAt = src.indexOf('strayCleanSteps(wt)')
+    // The main path's REFACTOR dispatch (the resume path at intake starts
+    // from a fresh worktree and has no prior stage to leave strays).
+    const refactorAt = src.indexOf('const refResult = await runRefactor(taskId')
+    expect(cleanAt).toBeGreaterThan(-1)
+    expect(cleanAt).toBeLessThan(refactorAt)
+    expect(src).toMatch(/stray_untracked_files/)
+    expect(src).toMatch(/stray_clean_unchecked/)
   })
 })
