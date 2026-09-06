@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import sys
+import re
 from pathlib import Path
 
 
@@ -535,6 +536,40 @@ def validate_lane_test_commands(lanes: dict) -> list[str]:
     return errors
 
 
+GENERATED_BANNER_RE = re.compile(r"@generated(?:.*?Source:\s*(\S+))?")
+
+
+def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]:
+    """Preflight: a file whose first line carries `@generated` is never a
+    lane file — it is rebuilt from its source after merge (skills/*.js by
+    scripts/build-workflows.sh). datum self-hosted wf_2749a43b-680: the
+    decomposer put skills/datum-properties.js beside its prompt source and
+    lane-plan halted on the language guard with a message about test
+    commands, one step past the real defect. Names the file and its source.
+    """
+    errors: list[str] = []
+    for lid, lane in lanes.items():
+        for rel in lane.get("files", []):
+            path = repo_root / rel
+            if not path.is_file():
+                continue
+            try:
+                with path.open(encoding="utf-8", errors="replace") as fh:
+                    first = fh.readline()
+            except OSError:
+                continue
+            m = GENERATED_BANNER_RE.search(first)
+            if not m:
+                continue
+            source = m.group(1)
+            errors.append(
+                f"lane {lid} lists {rel}, a generated file (first line carries "
+                f"@generated{f', source {source}' if source else ''}) — edit the "
+                f"source and rebuild; a generated file is never in a lane's files"
+            )
+    return errors
+
+
 def build_lane_plan(
     tasks: list[dict],
     sorted_ids: list[str],
@@ -716,6 +751,19 @@ def main() -> None:
 
     # Preflight (#307): fail fast, before a single agent-token is spent, if
     # any lane's effective test_command clearly can't run its own file scope.
+    generated_errors = validate_lane_files_not_generated(
+        lane_plan["lanes"], repo_root=Path(".")
+    )
+    if generated_errors:
+        print(
+            json.dumps(
+                {
+                    "error": "Generated file(s) in lane scope",
+                    "details": generated_errors,
+                }
+            )
+        )
+        sys.exit(1)
     test_cmd_errors = validate_lane_test_commands(lane_plan["lanes"])
     if test_cmd_errors:
         print(

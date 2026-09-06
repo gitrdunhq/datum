@@ -573,3 +573,15 @@ describe('datum-plan checks the refine gate before any planning agent', () => {
     expect(datumPlanSrc.slice(refineGateAt, refineGateAt + 900)).toMatch(/plan_prerequisite_failed/)
   })
 })
+
+// datum self-hosted wf_2749a43b-680: the decomposer listed the generated
+// bundle skills/datum-properties.js beside its prompt source. The prompt
+// says so once, centrally; lane-plan enforces it.
+describe('the decompose prompt forbids generated files in a task\'s files', () => {
+  it('names the @generated banner and says generated outputs are rebuilt, never edited', () => {
+    const prompt = readFileSync(join(__dirname, 'prompts', 'plan-decompose.md'), 'utf8')
+    expect(prompt).toMatch(/@generated/)
+    expect(prompt).toMatch(/never (list|include)/i)
+    expect(prompt).toMatch(/rebuilt|regenerated/i)
+  })
+})
