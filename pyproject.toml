@@ -5,7 +5,7 @@ description = "DATUM V2 Agentic Production Line Orchestrator"
 authors = [
     {name = "Gitrdun HQ"}
 ]
-readme = "docs/DATUM.md"
+readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [

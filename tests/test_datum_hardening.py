@@ -175,8 +175,14 @@ class TestSkillAssets(unittest.TestCase):
     def test_skill_md_exists(self) -> None:
         self.assertTrue((ROOT / "SKILL.md").exists())
 
-    def test_datum_md_exists(self) -> None:
-        self.assertTrue((ROOT / "docs/DATUM.md").exists())
+    def test_flow_md_exists(self) -> None:
+        self.assertTrue((ROOT / "docs/FLOW.md").exists())
+
+    def test_design_brainstorm_not_presented_as_reference(self) -> None:
+        # docs/DATUM.md was the pre-implementation design spec; README must
+        # not point readers at it as the skill reference.
+        self.assertFalse((ROOT / "docs/DATUM.md").exists())
+        self.assertNotIn("docs/DATUM.md", (ROOT / "README.md").read_text())
 
     def test_install_sh_exists_and_executable(self) -> None:
         install = ROOT / "install.sh"
