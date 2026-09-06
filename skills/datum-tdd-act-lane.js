@@ -896,6 +896,15 @@ function testEnvMissing(stdout) {
   const line = stdout.split("\n").map((l) => l.trim()).find((l) => re.test(l));
   return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, "") : null;
 }
+function verifyVerdict(result, label) {
+  const exit = testExitCode(stepStdout(result, "test-verify"));
+  if (exit === null) {
+    const why = result.missing ? describeFailure(result, label) : stepResult(result, "test-verify") ? `${label}: test-verify step ran but printed no TEST_EXIT line` : `${label}: test-verify step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
+    return { kind: "unavailable", exit: null, why };
+  }
+  if (exit === 0) return { kind: "passed", exit: 0, why: "" };
+  return { kind: "failed", exit, why: "" };
+}
 function testExitCode(stdout) {
   if (!stdout) return null;
   const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)];
@@ -2088,24 +2097,23 @@ No markdown fences, no explanation.`,
   const postGreenVerifyResult = postGreenVerifyRaw;
   const greenStrays = strayFilesFromSteps(postGreenVerifyResult);
   if (greenStrays.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${greenStrays.strays.length} untracked file(s) left by GREEN ${greenStrays.cleaned ? "removed" : "NOT removed"} before the verify: ${greenStrays.strays.join(", ")}`);
-  const greenVerifyExit = testExitCode(stepStdout(postGreenVerifyResult, "test-verify"));
+  const greenVerdict = verifyVerdict(postGreenVerifyResult, "post-green-verify");
   const greenEnvMissing = testEnvMissing(stepStdout(postGreenVerifyResult, "test-verify"));
   if (greenEnvMissing) {
     log(`[${taskId}] test_env_missing: ${greenEnvMissing}`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `test_env_missing: ${greenEnvMissing} \u2014 the lane worktree has no test environment; GREEN's verify is not evidence` };
   }
-  if (greenVerifyExit === null) {
-    const why = describeFailure(postGreenVerifyResult, "post-green-verify");
-    log(`[${taskId}] green_verify_unavailable: ${why}`);
-    return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+  if (greenVerdict.kind === "unavailable") {
+    log(`[${taskId}] green_verify_unavailable: ${greenVerdict.why}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${greenVerdict.why}` };
   }
-  if (greenVerifyExit !== 0) {
-    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
+  if (greenVerdict.kind === "failed") {
+    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerdict.exit} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
     return {
       task_id: taskId,
       status: "failed",
       stage: "GREEN",
-      error: `green_verify_failed: independent test-verify step exit=${greenVerifyExit ?? "null"} (agent self-reported tests_pass=${green?.tests_pass})`
+      error: `green_verify_failed: independent test-verify step exit=${greenVerdict.exit} (agent self-reported tests_pass=${green?.tests_pass})`
     };
   }
   if (!green || !green.success || !green.tests_pass) {
@@ -2167,13 +2175,12 @@ No markdown fences, no explanation.`,
       "GREEN"
     );
     const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
-    const retryExit = testExitCode(stepStdout(retryVerify, "test-verify"));
-    if (retryExit === null && green && green.success) {
-      const why = describeFailure(retryVerify, "post-green-tests-retry-verify");
-      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+    const retryVerdict = verifyVerdict(retryVerify, "post-green-tests-retry-verify");
+    if (retryVerdict.kind === "unavailable" && green && green.success) {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerdict.why}` };
     }
-    if (!green || !green.success || retryExit !== 0) {
-      return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} \u2014 retry ${!green ? "returned nothing" : !green.success ? `failed: ${green.failure_reason || "no reason"}` : `did not pass the suite (exit=${retryExit ?? "null"})`}` };
+    if (!green || !green.success || retryVerdict.kind !== "passed") {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} \u2014 retry ${!green ? "returned nothing" : !green.success ? `failed: ${green.failure_reason || "no reason"}` : `did not pass the suite (exit=${retryVerdict.exit})`}` };
     }
     greenOwnership = await checkGreenOwnership("-tests-retry");
     if (!greenOwnership.ok && ownTestsOnly(greenOwnership)) {
@@ -2207,15 +2214,14 @@ ${bugSummary}`,
     );
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
-    const retryVerifyExit = testExitCode(stepStdout(retryVerifyRaw, "test-verify"));
-    if (retryVerifyExit === null && green && green.success) {
-      const why = describeFailure(retryVerifyRaw, "post-green-skeptic-retry-verify");
-      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+    const retryVerifyVerdict = verifyVerdict(retryVerifyRaw, "post-green-skeptic-retry-verify");
+    if (retryVerifyVerdict.kind === "unavailable" && green && green.success) {
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerifyVerdict.why}` };
     }
-    if (retryVerifyExit !== 0 || !green || !green.success) {
+    if (retryVerifyVerdict.kind !== "passed" || !green || !green.success) {
       const first = confirmedBugs[0];
       const summary = first ? first.description : "GREEN retry did not produce a passing, committed fix";
-      log(`[${taskId}] SKEPTIC RETRY FAILED: independent test-verify exit=${retryVerifyExit ?? "null"}`);
+      log(`[${taskId}] SKEPTIC RETRY FAILED: independent test-verify exit=${retryVerifyVerdict.exit ?? "null"}`);
       return {
         task_id: taskId,
         status: "failed",
