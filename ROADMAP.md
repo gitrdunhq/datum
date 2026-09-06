@@ -12,7 +12,6 @@
 ## Planned
 
 - Bedrock flex tier for overnight pipeline runs (~50% cost reduction)
-- Headless orchestrator for datum-local variant
 - 3-round adversarial review pipeline (#134)
 
 ## Completed
