@@ -186,7 +186,7 @@ describe('parseBatchResult', () => {
     const r = parseBatchResult('Here is a summary of what I did: everything went fine.', steps)
     expect(r.missing).toBe(true)
     expect(describeFailure(r, 'x')).toMatch(/^x: runner_no_json — batch agent returned no parseable result \(reply: "Here is a summary/)
-    expect(describeFailure(parseBatchResult(null, steps), 'x')).toBe('x: batch agent returned no parseable result')
+    expect(describeFailure(parseBatchResult(null, steps), 'x')).toBe('x: runner_empty_result — batch agent returned no parseable result (empty reply)')
   })
 
   it('flags only non-tolerant non-zero exits as failed', () => {

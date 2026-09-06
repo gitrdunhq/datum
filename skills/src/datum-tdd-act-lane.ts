@@ -1126,8 +1126,18 @@ No markdown fences, no explanation.`,
     log(`[${taskId}] test_env_missing: ${greenEnvMissing}`)
     return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `test_env_missing: ${greenEnvMissing} — the lane worktree has no test environment; GREEN's verify is not evidence` }
   }
+  // elonchesd datum/player-guidance wf_dee84cc2-e64 task-001: the verify
+  // batch returned nothing, exit=null was reported as green_verify_failed
+  // and triage filed "GREEN lied"; the committed GREEN passed 434/434. No
+  // parsed exit code is no verdict: named as unavailable, an infrastructure
+  // failure, never a claim that the suite was red.
+  if (greenVerifyExit === null) {
+    const why = describeFailure(postGreenVerifyResult, 'post-green-verify')
+    log(`[${taskId}] green_verify_unavailable: ${why}`)
+    return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_unavailable: ${why}` }
+  }
   if (greenVerifyExit !== 0) {
-    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? 'null'} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`)
+    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`)
     return {
       task_id: taskId,
       status: 'failed',
@@ -1218,6 +1228,10 @@ No markdown fences, no explanation.`,
     )
     const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts('cli', { label: `post-green-tests-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
     const retryExit = testExitCode(stepStdout(retryVerify, 'test-verify'))
+    if (retryExit === null && green && green.success) {
+      const why = describeFailure(retryVerify, 'post-green-tests-retry-verify')
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_unavailable: ${why}` }
+    }
     if (!green || !green.success || retryExit !== 0) {
       return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `${hint} — retry ${!green ? 'returned nothing' : !green.success ? `failed: ${green.failure_reason || 'no reason'}` : `did not pass the suite (exit=${retryExit ?? 'null'})`}` }
     }
@@ -1264,6 +1278,10 @@ No markdown fences, no explanation.`,
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts('cli', { label: `post-green-skeptic-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
     const retryVerifyExit = testExitCode(stepStdout(retryVerifyRaw, 'test-verify'))
 
+    if (retryVerifyExit === null && green && green.success) {
+      const why = describeFailure(retryVerifyRaw, 'post-green-skeptic-retry-verify')
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_unavailable: ${why}` }
+    }
     if (retryVerifyExit !== 0 || !green || !green.success) {
       const first = confirmedBugs[0]
       const summary = first ? first.description : 'GREEN retry did not produce a passing, committed fix'

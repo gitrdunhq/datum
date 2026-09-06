@@ -95,6 +95,11 @@ const PREFIX_RULES: PrefixRule[] = [
     reason: 'ownership_check_failed: the ownership-diff step itself did not run or returned no result — distinct from an actual violation (file_ownership_violation), which is agent behavior.',
   },
   {
+    test: /\bgreen_verify_unavailable\b/,
+    category: 'infrastructure',
+    reason: 'green_verify_unavailable: the independent post-GREEN test-verify batch returned nothing parseable (twice), so there is no exit code — no evidence about the code either way (elonchesd wf_dee84cc2-e64: a GREEN that passed 434/434 was filed as "GREEN lied"). A runner failure, not agent behaviour.',
+  },
+  {
     test: /\bvalidate_run_failed\b/,
     category: 'infrastructure',
     reason: 'validate_run_failed: the independent test-verify run at the Validate stage did not execute — a runner/tooling failure.',

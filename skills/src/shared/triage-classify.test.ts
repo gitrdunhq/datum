@@ -315,3 +315,16 @@ describe('classifyLaneError — batch wrapper failures (batch_script_corrupt, ba
     expect(triageDestination(result, error)).toBe('datum')
   })
 })
+
+// elonchesd wf_dee84cc2-e64 task-001: a verify batch that returned nothing
+// is not evidence about the code. Named separately from green_verify_failed
+// (which now always carries a parsed exit code) and filed as infrastructure.
+describe('classifyLaneError — green_verify_unavailable (verify batch returned nothing)', () => {
+  it('classifies as infrastructure and routes to datum', () => {
+    const error = 'green_verify_unavailable: post-green-verify: runner_empty_result — batch agent returned no parseable result (empty reply)'
+    const r = classifyLaneError(error, 'GREEN')
+    expect(r.category).toBe('infrastructure')
+    expect(r.confidence).toBe('deterministic')
+    expect(triageDestination(r, error)).toBe('datum')
+  })
+})

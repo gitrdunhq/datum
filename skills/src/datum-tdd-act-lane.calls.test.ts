@@ -779,3 +779,23 @@ describe('a blocked REFACTOR that committed nothing is "refactor skipped", verif
     expect(result.results.T1.error).toMatch(/^refactor_verify_failed/)
   })
 })
+
+// elonchesd datum/player-guidance wf_dee84cc2-e64 task-001: the post-GREEN
+// verify batch returned nothing twice; the lane must name the missing
+// verdict, never green_verify_failed (which claims the suite was red).
+describe('a post-GREEN verify batch that returns nothing is green_verify_unavailable, not a red suite', () => {
+  it('fails the lane at GREEN by that name after runBatch\'s own retry', async () => {
+    const base = happyPathResponder({ pytest: true })
+    const labels: string[] = []
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('post-green-verify:')) { labels.push(label); return null }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: true })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/^green_verify_unavailable: /)
+    expect(result.results.T1.error).not.toMatch(/green_verify_failed/)
+    expect(labels).toEqual(['post-green-verify:T1', 'post-green-verify:T1:retry'])
+  })
+})

@@ -208,20 +208,24 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     opts = { ...opts, model: model('balanced') }
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps)
+  const label = opts.label || 'batch'
+  const retryOpts = { ...opts, label: `${label}:retry` }
+  // One retry, whatever the runner-side cause. Each is a failure of the
+  // runner, not a verdict on the commands:
+  //  - a host classifier refusal (elonchesd wf_0593c210-f04: one of three
+  //    identical batches allowed);
+  //  - a re-typed script the hash check refused (caliper wf_4f739141-c8c);
+  //  - an empty reply (elonchesd wf_dee84cc2-e64: the post-GREEN verify
+  //    returned nothing and the lane read exit=null as a red suite).
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
-    const label = opts.label || 'batch'
     logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, ' ').slice(0, 120)}") — retrying once with a fresh runner`)
-    const retryOpts = { ...opts, label: `${label}:retry` }
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner refused this batch`, retryOpts), steps)
-  }
-  // caliper eedom wf_4f739141-c8c: the runner re-typed the script and dropped a
-  // quote. The wrapper's hash check caught it; a transcription slip is not a
-  // verdict on the script, so it is re-sent once to a fresh runner too.
-  if (result.missing && result.corrupt) {
-    const label = opts.label || 'batch'
+  } else if (result.missing && result.corrupt) {
     logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) — retrying once with a fresh runner`)
-    const retryOpts = { ...opts, label: `${label}:retry` }
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner mistyped this script; copy it exactly`, retryOpts), steps)
+  } else if (result.missing && !result.refusal && !result.scriptError) {
+    logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) — retrying once with a fresh runner`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner returned nothing; return the script's stdout`, retryOpts), steps)
   }
   return result
 }

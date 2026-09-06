@@ -227,7 +227,8 @@ export function describeFailure(r: BatchResult, label: string): string {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt — the runner did not run the script it was given (${r.corrupt})`
     if (r.scriptError) return `${label}: ${r.scriptError}`
-    if (!r.refusal) return `${label}: batch agent returned no parseable result`
+    // elonchesd wf_dee84cc2-e64: an empty reply read as a red suite. Named.
+    if (!r.refusal) return `${label}: runner_empty_result — batch agent returned no parseable result (empty reply)`
     const excerpt = r.refusal.replace(/\s+/g, ' ').slice(0, 300)
     if (REFUSAL_RE.test(r.refusal)) {
       return `${label}: runner_permission_denied — the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`

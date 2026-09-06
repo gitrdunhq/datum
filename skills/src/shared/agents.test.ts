@@ -41,8 +41,8 @@ describe('runBatch — one retry on a runner refusal', () => {
     expect(logs.some((l) => /runner_permission_denied on attempt 1/.test(l))).toBe(true)
   })
 
-  it('does not retry a parsed batch, a null, or a non-refusal prose reply', async () => {
-    for (const reply of [arr, null, 'Here is a summary of the output.']) {
+  it('does not retry a parsed batch or a non-refusal prose reply (a null IS retried: runner_empty_result)', async () => {
+    for (const reply of [arr, 'Here is a summary of the output.']) {
       let calls = 0
       await runBatch(steps, { label: 'x' }, { agentFn: async () => { calls++; return reply }, logFn: () => undefined })
       expect(calls).toBe(1)
@@ -320,5 +320,32 @@ describe('runBatch — large scripts go to the balanced model', () => {
       logFn: () => undefined,
     })
     expect(models).toEqual(['fast-model'])
+  })
+})
+
+// elonchesd datum/player-guidance wf_dee84cc2-e64 task-001: the post-GREEN
+// verify batch returned NOTHING (agents_empty_result), the lane read
+// exit=null as green_verify_failed and triage filed it as "GREEN lied";
+// the committed GREEN passed 434/434 in a scratch worktree. An empty reply
+// is a runner failure like a refusal: re-sent once, then named.
+describe('runBatch — one retry on an empty reply, named runner_empty_result', () => {
+  const steps = [{ name: 'test-verify', command: 'npm test' }]
+  const ok = JSON.stringify([{ name: 'test-verify', exit_code: 0, stdout: 'TEST_EXIT=0\n', stderr: '' }])
+  it('re-sends once with a fresh label and a retry marker; the second reply is used', async () => {
+    const labels: string[] = []
+    const logs: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'post-green-verify:T1', model: 'm' }, {
+      agentFn: async (_p, o) => { labels.push(o?.label || ''); return n++ === 0 ? null : ok },
+      logFn: (m) => logs.push(m),
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['post-green-verify:T1', 'post-green-verify:T1:retry'])
+    expect(logs.some((l) => /\[runBatch\] post-green-verify:T1: runner_empty_result on attempt 1/.test(l))).toBe(true)
+  })
+  it('gives up after a second empty reply and names it', async () => {
+    const r = await runBatch(steps, { label: 'post-green-verify:T1', model: 'm' }, { agentFn: async () => null, logFn: () => undefined })
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'post-green-verify')).toMatch(/^post-green-verify: runner_empty_result — batch agent returned no parseable result/)
   })
 })
