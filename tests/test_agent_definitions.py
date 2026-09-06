@@ -26,7 +26,10 @@ CHEAP_AGENTS = {
     # 8, not 3: reflect now reads the lane-spec file, runs git hash-object on
     # it for the read witness, then reads the test file(s) before scoring —
     # at 3 it hit the cap on every lane and every lane went to GREEN unscored.
-    "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 8},
+    # 14, not 8: since the lane spec became a deferred file, reflect must read
+    # it, hash it for the witness, read every test file and survive the
+    # harness schema retry (caliper eedom wf_4f739141-c8c, a464e08f).
+    "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 14},
 }
 STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
 # wf_b1c88e09-036: a GREEN on a 555-line file spent 30 calls (7 Edits + Reads)
