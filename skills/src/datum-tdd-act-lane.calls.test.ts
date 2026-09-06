@@ -722,8 +722,11 @@ describe('green_edited_tests is scoped to RED-committed files and never discards
 describe('the TS/JS placeholder pattern is the skeleton literal, not the bare throw token', () => {
   const src = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
   it('names the skeleton throw and the forced failure only', () => {
-    expect(src).toContain("{ pattern: 'it($_, () => { throw new Error($_) })', name: 'skeleton placeholder', grep: SKELETON_THROW_RE }")
-    expect(src).toContain("{ pattern: 'it($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (async)', grep: SKELETON_THROW_RE }")
+    // The literal statement (parse-aware under ast-grep, so a copy inside a
+    // string is not a hit); the whole-body shapes never matched the real
+    // skeleton, whose `// Assert` comment is a node the exact shape excludes.
+    expect(src).toContain("{ pattern: \"throw new Error('RED agent: implement this assertion')\", name: 'skeleton placeholder', grep: SKELETON_THROW_RE }")
+    expect(src).not.toMatch(/pattern: 'it\(\$_, \(\) => \{ throw new Error\(\$_\) \}\)'/)
     expect(src).toContain("const SKELETON_THROW_RE = 'throw new Error\\\\(.RED agent: implement this assertion.\\\\)'")
     expect(src).not.toMatch(/pattern: 'throw new Error', name: 'throw placeholder'/)
   })

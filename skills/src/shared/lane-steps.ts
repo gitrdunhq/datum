@@ -126,8 +126,8 @@ export interface PostRedOpts {
   acCount: number
   testFuncDiffRegex: string
   /**
-   * Placeholder shapes. `pattern` is the ast-grep pattern (a whole test whose
-   * body is only the skeleton throw, e.g. `it($_, () => { throw new Error($_) })`);
+   * Placeholder shapes. `pattern` is the ast-grep pattern (a statement, e.g.
+   * the skeleton's literal `throw new Error('RED agent: implement this assertion')`);
    * `grep` is the ERE the fallback uses when ast-grep is absent, matched from a
    * statement start. Without `grep`, the pattern text itself is escaped and
    * used — right for token-shaped patterns (`assert True`), wrong for shapes.
@@ -218,8 +218,13 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
         // a statement start: an unanchored grep matched `assert True` inside a
         // quoted fixture string of a test-detection test and failed a sound
         // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
-        // Hits are reported against the original path.
-        `ast-grep --pattern '${p.pattern}' "$__t" > "$__d${i}/out" 2>/dev/null && sed "s#^$__t#${f}#" "$__d${i}/out" || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' "$__t" 2>/dev/null | sed "s#^#${f}:#"`,
+        // Hits are reported against the original path. ast-grep exits 1 for
+        // "no match" AND for every error, so `ast-grep || grep` fell back on
+        // every clean file and its parse-aware verdict was never trusted
+        // (caliper: the eedom halt was grep output with ast-grep installed).
+        // Trusted when present and silent on stderr; grep only otherwise.
+        `__sg=1; if command -v ast-grep >/dev/null 2>&1; then ast-grep --pattern '${p.pattern}' "$__t" > "$__d${i}/out" 2> "$__d${i}/err"; [ -s "$__d${i}/err" ] || __sg=0; fi\n` +
+        `if [ "$__sg" -eq 0 ]; then sed "s#^$__t#${f}#" "$__d${i}/out"; else grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' "$__t" 2>/dev/null | sed "s#^#${f}:#"; fi`,
       ).join('\n')).join('\n') +
       `\nBODYPATFILE=$(mktemp)\ncat > "$BODYPATFILE" <<'PATTERN_EOF'\n${o.testFuncBodyRegex}\nPATTERN_EOF\n` +
       o.testFiles.map((f, i) =>

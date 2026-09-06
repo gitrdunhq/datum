@@ -734,15 +734,17 @@ No markdown fences, no explanation.`,
       ]
     : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? [
-        // The placeholder is a test whose whole body is the skeleton throw —
-        // never the bare `throw new Error` token, which also matched a guard
-        // clause beside real expect() calls and failed a sound RED
-        // (elonchesd wf_a979f3d8-f0c task-013). The grep fallback matches the
-        // skeleton's own message.
-        { pattern: 'it($_, () => { throw new Error($_) })', name: 'skeleton placeholder', grep: SKELETON_THROW_RE },
-        { pattern: 'it($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (async)', grep: SKELETON_THROW_RE },
-        { pattern: 'test($_, () => { throw new Error($_) })', name: 'skeleton placeholder (test)', grep: SKELETON_THROW_RE },
-        { pattern: 'test($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (test, async)', grep: SKELETON_THROW_RE },
+        // The placeholder is the skeleton's own throw with its own message
+        // (datum/skeleton_creator.py) — never the bare `throw new Error`
+        // token, which also matched a guard clause beside real expect() calls
+        // and failed a sound RED (elonchesd wf_a979f3d8-f0c task-013). The
+        // earlier whole-body shapes `it($_, () => { throw new Error($_) })`
+        // never matched the real skeleton under ast-grep (its `// Assert`
+        // comment is a node the exact shape does not allow), which went
+        // unnoticed while the grep fallback ran on every file; ast-grep
+        // matches the literal statement and skips it inside strings, the
+        // grep fallback matches the message.
+        { pattern: "throw new Error('RED agent: implement this assertion')", name: 'skeleton placeholder', grep: SKELETON_THROW_RE },
         { pattern: 'expect(true).toBe(false)', name: 'forced failure' },
       ]
     : [

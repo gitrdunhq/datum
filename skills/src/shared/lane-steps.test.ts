@@ -1375,9 +1375,10 @@ describe('ownershipFromStdout fails closed when the diff step did not run', () =
 // literal throw, not any throw.
 describe('postRedSteps assert-check matches the skeleton placeholder, not any throw', () => {
   const grep = 'throw new Error\\(.RED agent: implement this assertion.\\)'
+  // The same patterns datum-tdd-act-lane.ts uses; run with the real ast-grep
+  // when present (its verdict is trusted now) and without it.
   const sgPatterns = [
-    { pattern: 'it($_, () => { throw new Error($_) })', name: 'skeleton placeholder', grep },
-    { pattern: 'it($_, async () => { throw new Error($_) })', name: 'skeleton placeholder (async)', grep },
+    { pattern: "throw new Error('RED agent: implement this assertion')", name: 'skeleton placeholder', grep },
     { pattern: 'expect(true).toBe(false)', name: 'forced failure' },
   ]
   function run(dir: string, content: string): string {
@@ -1476,5 +1477,48 @@ describe('postRedSteps assert-check scans only the lane\'s added lines, outside 
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// caliper (wf_0837ad8b-e5f follow-up): ast-grep exits 1 for "no match" AND
+// for every error, so `ast-grep ... || grep ...` fell back to grep on every
+// clean file — ast-grep's parse-aware verdict was never trusted, and the grep
+// fallback was the effective checker on every run. The chain now trusts
+// ast-grep when it is on the PATH and wrote nothing to stderr; grep runs
+// only when it is absent or errored.
+describe('postRedSteps assert-check trusts ast-grep\'s "no match"; grep runs only when ast-grep is absent or errored', () => {
+  const sgPatterns = [{ pattern: 'raise NotImplementedError', name: 'raise NotImplementedError' }]
+  function scan(fakeAstGrep: string | null): string {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-sg-trust-'))
+    try {
+      mkdirSync(join(dir, 'tests'))
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_p():\n    raise NotImplementedError\n')
+      let pathPrefix = ''
+      if (fakeAstGrep !== null) {
+        mkdirSync(join(dir, 'bin'))
+        writeFileSync(join(dir, 'bin', 'ast-grep'), `#!/bin/bash\n${fakeAstGrep}\n`, { mode: 0o755 })
+        pathPrefix = `PATH=${dir}/bin:/usr/bin:/bin\n`
+      } else {
+        pathPrefix = 'PATH=/usr/bin:/bin\n'
+      }
+      const steps = postRedSteps({ wt: dir, testFiles: ['tests/test_a.py'], acCount: 0, testFuncDiffRegex: 'x', sgPatterns, testFuncBodyRegex: 'x', testFuncGrepRegex: 'x', ownership: false, verifyTestCmd: null, baseRef: null })
+      const step = steps.find((s) => s.name === 'assert-check')!
+      const out = execFileSync('bash', ['-c', pathPrefix + batchScript([step])], { cwd: dir, encoding: 'utf8' })
+      return (stepStdout(parseBatchResult(out, [step]), 'assert-check') || '').trim()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  it('ast-grep present, silent, exit 1 (no match): its verdict stands, grep does not run', () => {
+    expect(scan('exit 1')).toBe('')
+  })
+  it('ast-grep present and reporting a match: the hit is reported against the original path', () => {
+    expect(scan('printf "%s:2:    raise NotImplementedError\\n" "$3"; exit 0')).toBe('tests/test_a.py:2:    raise NotImplementedError')
+  })
+  it('ast-grep present but errored (stderr): grep fallback reports the line', () => {
+    expect(scan('echo "ERROR: cannot parse" >&2; exit 1')).toBe('tests/test_a.py:2:    raise NotImplementedError')
+  })
+  it('ast-grep absent: grep fallback reports the line', () => {
+    expect(scan(null)).toBe('tests/test_a.py:2:    raise NotImplementedError')
   })
 })
