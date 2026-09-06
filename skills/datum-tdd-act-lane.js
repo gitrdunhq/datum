@@ -908,8 +908,13 @@ datum dev test-count-gate --repo ${q2(o.wt)} --files ${o.testFiles.map(q2).join(
         // a statement start: an unanchored grep matched `assert True` inside a
         // quoted fixture string of a test-detection test and failed a sound
         // RED as placeholder_assertions (caliper wf_181691ac-fbf, BUG I).
-        // Hits are reported against the original path.
-        `ast-grep --pattern '${p.pattern}' "$__t" > "$__d${i}/out" 2>/dev/null && sed "s#^$__t#${f}#" "$__d${i}/out" || grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' "$__t" 2>/dev/null | sed "s#^#${f}:#"`
+        // Hits are reported against the original path. ast-grep exits 1 for
+        // "no match" AND for every error, so `ast-grep || grep` fell back on
+        // every clean file and its parse-aware verdict was never trusted
+        // (caliper: the eedom halt was grep output with ast-grep installed).
+        // Trusted when present and silent on stderr; grep only otherwise.
+        `__sg=1; if command -v ast-grep >/dev/null 2>&1; then ast-grep --pattern '${p.pattern}' "$__t" > "$__d${i}/out" 2> "$__d${i}/err"; [ -s "$__d${i}/err" ] || __sg=0; fi
+if [ "$__sg" -eq 0 ]; then sed "s#^$__t#${f}#" "$__d${i}/out"; else grep -nE '^[[:space:]]*${p.grep ?? ereEscape(p.pattern)}' "$__t" 2>/dev/null | sed "s#^#${f}:#"; fi`
       )
     ).join("\n")).join("\n") + `
 BODYPATFILE=$(mktemp)
@@ -1754,15 +1759,17 @@ No markdown fences, no explanation.`,
     { pattern: 't.Fatal("not implemented")', name: "t.Fatal placeholder" },
     { pattern: 'panic("not implemented")', name: "panic placeholder" }
   ] : laneLanguage === "typescript" || laneLanguage === "javascript" ? [
-    // The placeholder is a test whose whole body is the skeleton throw —
-    // never the bare `throw new Error` token, which also matched a guard
-    // clause beside real expect() calls and failed a sound RED
-    // (elonchesd wf_a979f3d8-f0c task-013). The grep fallback matches the
-    // skeleton's own message.
-    { pattern: "it($_, () => { throw new Error($_) })", name: "skeleton placeholder", grep: SKELETON_THROW_RE },
-    { pattern: "it($_, async () => { throw new Error($_) })", name: "skeleton placeholder (async)", grep: SKELETON_THROW_RE },
-    { pattern: "test($_, () => { throw new Error($_) })", name: "skeleton placeholder (test)", grep: SKELETON_THROW_RE },
-    { pattern: "test($_, async () => { throw new Error($_) })", name: "skeleton placeholder (test, async)", grep: SKELETON_THROW_RE },
+    // The placeholder is the skeleton's own throw with its own message
+    // (datum/skeleton_creator.py) — never the bare `throw new Error`
+    // token, which also matched a guard clause beside real expect() calls
+    // and failed a sound RED (elonchesd wf_a979f3d8-f0c task-013). The
+    // earlier whole-body shapes `it($_, () => { throw new Error($_) })`
+    // never matched the real skeleton under ast-grep (its `// Assert`
+    // comment is a node the exact shape does not allow), which went
+    // unnoticed while the grep fallback ran on every file; ast-grep
+    // matches the literal statement and skips it inside strings, the
+    // grep fallback matches the message.
+    { pattern: "throw new Error('RED agent: implement this assertion')", name: "skeleton placeholder", grep: SKELETON_THROW_RE },
     { pattern: "expect(true).toBe(false)", name: "forced failure" }
   ] : [
     { pattern: "assert True", name: "assert True" },
