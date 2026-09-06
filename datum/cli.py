@@ -2904,6 +2904,24 @@ for _cmd_name, _script_name in _DEV_PYTHON_SCRIPTS.items():
     )(_make_python_wrapper(_script_name))
 
 
+@app.command(name="code-tells")
+def code_tells(
+    repo: str = typer.Option(..., "--repo", help="Worktree root"),
+    files: list[str] = typer.Option(  # noqa: B008
+        ..., "--files", help="Files to scan, relative to --repo"
+    ),
+    base: str | None = typer.Option(
+        None, "--base", help="Scan only lines added since this ref"
+    ),
+) -> None:
+    """Scan a lane's added lines for machine-written tells (one `file:line:tag:text` row each)."""
+    from datum.code_tells import added_lines, format_findings, scan_lines
+
+    typer.echo(
+        format_findings(scan_lines(added_lines(Path(repo), base, files))), nl=False
+    )
+
+
 # ── Closeout collectors as top-level commands ────────────────────────────────
 # The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps /
 # closeoutArchiveSteps) invokes these by name. They did not exist: every step
