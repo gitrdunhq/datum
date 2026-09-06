@@ -173,9 +173,10 @@ function extractRequiredScopeFiles(content, testFilePath, language) {
     while (m = fromRe.exec(content)) modules.push(m[1]);
     while (m = importRe.exec(content)) modules.push(m[1]);
     for (const mod of modules) {
-      const top = mod.split(".")[0];
-      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue;
-      required.add(`${mod.split(".").join("/")}.py`);
+      const parts = mod.split(".");
+      if (!FIRST_PARTY_PY_PACKAGES.includes(parts[0])) continue;
+      if (parts.length === 1) continue;
+      required.add(`${parts.join("/")}.py`);
     }
   }
   return [...required];
