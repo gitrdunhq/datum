@@ -19,6 +19,15 @@ const srcDir = join(__dirname, '..')
 const scripts = readdirSync(srcDir)
   .filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))
 
+/** The first batch dispatch: runBatch( or a direct batchCommandPrompt( — whichever comes first. */
+function firstBatchIndex(src: string): number {
+  const a = firstCallIndex(src, 'runBatch')
+  const b = firstCallIndex(src, 'batchCommandPrompt')
+  if (a === -1) return b
+  if (b === -1) return a
+  return Math.min(a, b)
+}
+
 function firstCallIndex(src: string, fn: string): number {
   // Skip the import line: find the first occurrence that is followed by `(`
   // and is not part of an import specifier list.
@@ -55,7 +64,7 @@ describe('setBatchCacheKey runs before the first batchCommandPrompt in every scr
   for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
     it(file, () => {
       const src = readFileSync(join(srcDir, file), 'utf8')
-      const firstBatch = firstCallIndex(src, 'batchCommandPrompt')
+      const firstBatch = firstBatchIndex(src)
       if (firstBatch === -1) return
       const keyAt = firstCallIndex(src, 'setBatchCacheKey')
       expect(keyAt, `${file}: never calls setBatchCacheKey`).not.toBe(-1)
@@ -73,9 +82,11 @@ describe('child scripts configure from the parent switches before any read', () 
     it(`${file} calls configureAgentTypes(a.agentTypes) before its first agent() call`, () => {
       const src = readFileSync(join(srcDir, file), 'utf8')
       const configureAt = src.search(/configureAgentTypes\(a\.agentTypes\b/)
-      const firstAgentAt = src.search(/await agent\(/)
+      // The first dispatch of any kind: a direct agent() or a runBatch() (which calls agent() inside).
+      const firstAgentAt = [src.search(/await agent\(/), src.search(/await runBatch\(/)].filter((i) => i !== -1).reduce((m, i) => Math.min(m, i), Infinity)
       expect(configureAt, `${file}: no configureAgentTypes(a.agentTypes)`).not.toBe(-1)
-      expect(configureAt, `${file}: first agent() call precedes configureAgentTypes(a.agentTypes)`).toBeLessThan(firstAgentAt)
+      expect(firstAgentAt, `${file}: no agent()/runBatch() call at all`).not.toBe(Infinity)
+      expect(configureAt, `${file}: first agent()/runBatch() call precedes configureAgentTypes(a.agentTypes)`).toBeLessThan(firstAgentAt)
     })
   }
 })
@@ -87,11 +98,24 @@ describe('setBatchRoot runs before the first batchCommandPrompt in every script'
   for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
     it(file, () => {
       const src = readFileSync(join(srcDir, file), 'utf8')
-      const firstBatch = firstCallIndex(src, 'batchCommandPrompt')
+      const firstBatch = firstBatchIndex(src)
       if (firstBatch === -1) return
       const rootAt = firstCallIndex(src, 'setBatchRoot')
       expect(rootAt, `${file}: never calls setBatchRoot`).not.toBe(-1)
       expect(rootAt, `${file}: first batchCommandPrompt( at ${firstBatch} precedes setBatchRoot( at ${rootAt}`).toBeLessThan(firstBatch)
+    })
+  }
+})
+
+// Every batch goes through runBatch: the refusal retry, the corrupt-script
+// retry and the large-script model routing live there, and 29 direct
+// `agent(batchCommandPrompt(...))` sites had none of them (caliper #566: the
+// 24 KB lane-plan batch was corrupted once and never retried).
+describe('no script calls agent(batchCommandPrompt(...)) directly — every batch goes through runBatch', () => {
+  for (const file of scripts) {
+    it(file, () => {
+      const src = readFileSync(join(srcDir, file), 'utf8')
+      expect(src, `${file}: direct agent(batchCommandPrompt(...)) call — use runBatch(steps, opts)`).not.toMatch(/agent\(batchCommandPrompt\(/)
     })
   }
 })

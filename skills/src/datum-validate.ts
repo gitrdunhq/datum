@@ -35,8 +35,8 @@ setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 let repoCfg: Record<string, string> = {}
 if (!a.testCommand) {
   const configReadStepList = configReadSteps()
-  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
-  repoCfg = configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) as unknown as Record<string, string>
+  const configBatch = await runBatch(configReadStepList, bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+  repoCfg = configFromSteps(configBatch) as unknown as Record<string, string>
 }
 // Standalone run (no parent args): the repo config, else the defaults.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))

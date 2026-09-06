@@ -71,10 +71,7 @@ const probeSteps = contextProbeSteps({
     { name: 'has-addenda', command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` },
   ],
 })
-const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  probeSteps,
-)
+const readBatch = await runBatch(probeSteps, bootstrapOpts('cli', { label: 'read-context', model: model('fast') }))
 const relayPlan = contextRelayPlan(readBatch, [TICKET_REL, QUESTIONS_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
@@ -86,10 +83,7 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
 let inlineBatch: BatchResult | null = null
 const inlineSteps = contextInlineSteps(relayPlan.inline)
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
-    inlineSteps,
-  )
+  inlineBatch = await runBatch(inlineSteps, stageOpts('cli', { label: 'read-context-files', model: model('fast') }))
 }
 let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 // caliper eedom wf_9bf2c994-801: the runner dropped 340 bytes from the middle
@@ -178,10 +172,7 @@ let triageResult: TriageResult = {
 // attribution trailer from the harness reminder into the message.)
 async function commitRefineFiles(files: string[], message: string, label: string, opts: { allowUnchanged: boolean } = { allowUnchanged: true }): Promise<string> {
   const commitStepList = commitFilesSteps({ wt: '.', files, message })
-  const commit = commitFilesFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label, model: model('fast') })),
-    commitStepList,
-  ))
+  const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts('cli', { label, model: model('fast') })))
   if (commit.error) throw new Error(`refine_commit_failed: ${commit.error}`)
   // A missing file fails `git add` (commit.error). Nothing-to-commit means the
   // files already match HEAD: fine for a resume re-writing SPEC.md, a failure

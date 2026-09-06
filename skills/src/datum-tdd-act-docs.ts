@@ -5,7 +5,7 @@ import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } 
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { resilientAgent } from './shared/agents'
+import { resilientAgent, runBatch } from './shared/agents'
 
 export const meta = {
   name: 'datum-tdd-act-docs',
@@ -68,10 +68,7 @@ if (a.completedLanes.length === 0) {
         // exact message — no commit agent, no trailers, and the outcome is the
         // exit code. "Nothing to commit" is a rerun after a landed commit.
         const commitStepList = commitFilesSteps({ wt: '.', files: docsWritten, message: `docs(${a.runId}): sync docs for merged lanes` })
-        const commit = commitFilesFromSteps(parseBatchResult(
-          await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label: 'docs-commit', phase: 'Docs', model: model('fast') })),
-          commitStepList,
-        ))
+        const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts('cli', { label: 'docs-commit', phase: 'Docs', model: model('fast') })))
         committed = commit.committed || commit.nothingToCommit
         commitSha = commit.sha || ''
         syncedFiles = docsWritten

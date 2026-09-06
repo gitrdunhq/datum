@@ -98,11 +98,7 @@ setBatchCacheKey(configFingerprint)
 // The boot batch is what measures the root; until then the launcher's value
 // (if any) applies, and '' means "wherever the runner starts".
 setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
-const bootBatch = parseBatchResult(
-  // bootstrapOpts: the switches live in the config this very read fetches.
-  await agent(batchCommandPrompt(bootSteps()), bootstrapOpts('cli', { label: 'boot', model: model('fast') })),
-  bootSteps(),
-)
+const bootBatch = await runBatch(bootSteps(), bootstrapOpts('cli', { label: 'boot', model: model('fast') }))
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))
 const boot = bootFromSteps(bootBatch)
 // elonchesd: every batch of this run and of every child starts at the root
@@ -266,10 +262,7 @@ async function markPhaseComplete(p: Phase, testsPass?: boolean): Promise<void> {
   // refusal nor an unverified save records the phase in memory, so a resume
   // re-runs the phase rather than skipping it on a claim.
   const saveSteps = pipelineStateSaveSteps({ phase: p, runId: resolvedRunId, route, testsPass })
-  const saved = pipelineStateSaveFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(saveSteps), stageOpts('cli', { label: `save-state:${p}`, model: model('fast') })),
-    saveSteps,
-  ), p)
+  const saved = pipelineStateSaveFromSteps(await runBatch(saveSteps, stageOpts('cli', { label: `save-state:${p}`, model: model('fast') })), p)
   if (!saved.recorded) {
     log(`[warn] ${saved.reason} — phase "${p}" NOT recorded in .datum/pipeline-state.json`)
     return
@@ -314,10 +307,7 @@ Output ONLY raw JSON, no markdown fences, no explanation.`,
     // script parses — a runner-echoed epicBranch used to become
     // resolvedBranch with nothing verifying that the init actually ran.
     const bootstrapSteps = newEpicBootstrapSteps(newEpicInfo.slug)
-    const bootstrap = newEpicBootstrapFromSteps(parseBatchResult(
-      await agent(batchCommandPrompt(bootstrapSteps), stageOpts('cli', { label: 'new-epic-bootstrap', model: model('fast') })),
-      bootstrapSteps,
-    ), newEpicInfo.slug)
+    const bootstrap = newEpicBootstrapFromSteps(await runBatch(bootstrapSteps, stageOpts('cli', { label: 'new-epic-bootstrap', model: model('fast') })), newEpicInfo.slug)
     if (!bootstrap.ok) throw new Error(`new_epic_bootstrap_failed: ${bootstrap.error}`)
     log(`New epic detected — brief describes different work than the existing TICKET.md on "${priorState.branch}" (${newEpicInfo.reason || 'no reason given'}). Bootstrapped new epic branch: ${bootstrap.epicBranch}`)
     newEpicBranch = bootstrap.epicBranch

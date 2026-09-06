@@ -51,10 +51,7 @@ const probeSteps = contextProbeSteps({
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
   ],
 })
-const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  probeSteps,
-)
+const readBatch = await runBatch(probeSteps, bootstrapOpts('cli', { label: 'read-context', model: model('fast') }))
 const relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
@@ -66,10 +63,7 @@ if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
 let inlineBatch: BatchResult | null = null
 const inlineSteps = contextInlineSteps(relayPlan.inline)
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
-    inlineSteps,
-  )
+  inlineBatch = await runBatch(inlineSteps, stageOpts('cli', { label: 'read-context-files', model: model('fast') }))
 }
 let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 // A relayed file the runner rewrote in transit (caliper eedom
@@ -130,10 +124,7 @@ if (derive.written !== propertiesPath) {
 }
 
 const commitStepList = commitFilesSteps({ wt: '.', files: [`${epicDir}/PROPERTIES.md`], message: 'properties: derive PROPERTIES.md' })
-const commit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label: 'commit-properties', model: model('fast') })),
-  commitStepList,
-))
+const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts('cli', { label: 'commit-properties', model: model('fast') })))
 if (commit.error) throw new Error(`properties_commit_failed: ${commit.error}`)
 // `git add` of a missing file fails the batch above (commit.error), so
 // nothing-to-commit means the file exists and already matches HEAD: a resume

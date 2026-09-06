@@ -311,7 +311,7 @@ describe('datum-plan — build/commit/skeleton/rebuild are batches, not "Run the
   })
 
   it('verifies the tasks.json write against tasksJsonBlobSha and halts on plan_write_mismatch / plan_build_failed', () => {
-    expect(datumPlanSrc).toMatch(/planBuildFromSteps\(parseBatchResult\(/)
+    expect(datumPlanSrc).toMatch(/planBuildFromSteps\(await runBatch\(/)
     expect(datumPlanSrc).toMatch(/tasksJsonBlobSha\(tasksJson\)/)
     expect(datumPlanSrc).toMatch(/if \(!build\.ok\) throw new Error\(build\.error\)/)
   })
@@ -320,7 +320,7 @@ describe('datum-plan — build/commit/skeleton/rebuild are batches, not "Run the
     // One helper, commitPlanFiles, wraps commitFilesSteps/commitFilesFromSteps
     // and halts by name; every plan commit goes through it.
     expect(datumPlanSrc).toMatch(/commitFilesSteps\(\{ wt: '\.', files, message \}\)/)
-    expect(datumPlanSrc).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(datumPlanSrc).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(datumPlanSrc).toMatch(/commitPlanFiles\(\s*\[`\$\{epicDir\}\/tasks\.json`, `\$\{epicDir\}\/lane-plan\.json`, `\$\{epicDir\}\/TASKS\.md`\],\s*'plan: tasks\.json \+ lane-plan\.json \+ TASKS\.md',/)
     expect(datumPlanSrc).toMatch(/commitPlanFiles\(\[skeletonDir\], 'plan: pre-generate RED skeletons'/)
     expect(datumPlanSrc).toMatch(/throw new Error\(`plan_commit_failed: /)

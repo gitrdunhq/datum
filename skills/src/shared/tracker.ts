@@ -13,6 +13,7 @@
  */
 
 import { stageOpts } from './agent-types'
+import { runBatch } from './agents'
 import { model } from './models'
 import { parseAgentJson } from './utils'
 import { batchCommandPrompt, parseBatchResult, stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'
@@ -83,10 +84,7 @@ export async function publishLanePlan(
   epicTitle: string,
 ): Promise<PublishResult | null> {
   const steps = publishSteps(lanePlanPath, epicTitle)
-  const publish = publishFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(steps), stageOpts('cli', { label: 'publish-issues', model: model('fast') })),
-    steps,
-  ))
+  const publish = publishFromSteps(await runBatch(steps, stageOpts('cli', { label: 'publish-issues', model: model('fast') })))
   if (!publish.ok || !publish.parsed) {
     log(`[tracker] ${publish.error}`)
     return null
@@ -119,10 +117,7 @@ export async function updateStage(
 ): Promise<boolean> {
   if (!issueId) return false
   const steps = stageSteps(issueId, stage, commitSha)
-  const outcome = stageFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(steps), stageOpts('cli', { label: `tracker:${issueId}:${stage}`, model: model('fast') })),
-    steps,
-  ))
+  const outcome = stageFromSteps(await runBatch(steps, stageOpts('cli', { label: `tracker:${issueId}:${stage}`, model: model('fast') })))
   if (!outcome.ok) {
     log(`[tracker] ${outcome.error} (issue #${issueId} → ${stage})`)
     return false

@@ -522,7 +522,7 @@ describe('Act failures halt datum-go before Validate/Review/Closeout', () => {
     expect(prompt).toMatch(/Do NOT run datum init/)
     const after = goSource.slice(idx)
     expect(after).toMatch(/newEpicBootstrapSteps\(newEpicInfo\.slug\)/)
-    expect(after).toMatch(/newEpicBootstrapFromSteps\(parseBatchResult\(/)
+    expect(after).toMatch(/newEpicBootstrapFromSteps\(await runBatch\(/)
     expect(after).toMatch(/throw new Error\(`new_epic_bootstrap_failed: /)
     expect(after).toMatch(/newEpicBranch = bootstrap\.epicBranch/)
   })
@@ -562,7 +562,7 @@ describe('markPhaseComplete honours pipeline-state-save refusals', () => {
 
   it('runs pipeline-state-save as a batch step and reads the verdict from its exit code + JSON, not an LLM echo', () => {
     expect(fn).toMatch(/pipelineStateSaveSteps\(\{ phase: p, runId: resolvedRunId, route, testsPass \}\)/)
-    expect(fn).toMatch(/pipelineStateSaveFromSteps\(parseBatchResult\(/)
+    expect(fn).toMatch(/pipelineStateSaveFromSteps\(await runBatch\(/)
     expect(fn).not.toMatch(/Run: datum pipeline-state-save/)
     expect(fn).not.toMatch(/\/"verified"/)
   })

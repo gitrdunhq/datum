@@ -111,7 +111,7 @@ describe('datum-closeout — housekeep is a batch step whose outcome is logged, 
 
   it('runs housekeepSteps(branch) through the batch and reads it with housekeepFromSteps', () => {
     expect(src).toMatch(/housekeepSteps\(branch\)/)
-    expect(src).toMatch(/housekeepFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/housekeepFromSteps\(await runBatch\(/)
     expect(src).not.toMatch(/Run: datum housekeep-epic/)
   })
 
@@ -143,7 +143,7 @@ describe('datum-closeout — synthesis artifacts are committed by the script, no
     expect(commitIdx).toBeGreaterThan(synthIdx)
     // CHANGELOG.md is in the list unless release-please owns it (BUG U).
     expect(src).toMatch(/const synthFiles = changelogManaged \? \[[^\]]*\] : \['CURRENT_STATE\.md', 'CHANGELOG\.md', `\$\{epicDir\}\/RETRO\.md`\]/)
-    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(src).toMatch(/throw new Error\(`closeout_commit_failed: /)
   })
 

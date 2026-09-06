@@ -1,3 +1,4 @@
+import { runBatch } from './shared/agents'
 import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } from './shared/batch'
@@ -85,10 +86,7 @@ const writeSteps = [
   ...writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES }),
   ...writeFileSteps({ path: fullPath, content: distill.preamble_full, names: FULL_NAMES }),
 ]
-const writeResult = parseBatchResult(
-  await agent(batchCommandPrompt(writeSteps), { label: 'write-preambles', model: model('fast') }),
-  writeSteps,
-)
+const writeResult = await runBatch(writeSteps, { label: 'write-preambles', model: model('fast') })
 for (const verdict of [
   writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: 'preamble', names: PREAMBLE_NAMES }),
   writeFileFromSteps(writeResult, { path: fullPath, expectedSha: writeFileBlobSha(distill.preamble_full), prefix: 'preamble_full', names: FULL_NAMES }),
@@ -97,10 +95,7 @@ for (const verdict of [
 }
 
 const commitStepList = commitFilesSteps({ wt: '.', files: [preamblePath, fullPath], message: 'awake: regenerate agent preamble from repo scan' })
-const commit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(commitStepList), { label: 'commit-preambles', model: model('fast') }),
-  commitStepList,
-))
+const commit = commitFilesFromSteps(await runBatch(commitStepList, { label: 'commit-preambles', model: model('fast') }))
 if (commit.error) throw new Error(`awake_commit_failed: ${commit.error}`)
 if (commit.nothingToCommit) log('Preambles unchanged since the last awake — nothing to commit')
 else log(`Written and committed: ${preamblePath} + ${fullPath} (${commit.sha})`)

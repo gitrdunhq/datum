@@ -47,7 +47,7 @@ describe('datum-awake — preambles are written and committed by batches', () =>
 
   it('commits through commitFilesSteps and halts as awake_commit_failed', () => {
     expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[preamblePath, fullPath\], message: 'awake: regenerate agent preamble from repo scan' \}\)/)
-    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(src).toMatch(/throw new Error\(`awake_commit_failed: /)
   })
 })

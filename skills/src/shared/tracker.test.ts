@@ -77,7 +77,7 @@ describe('tracker.updateStage is best-effort but never silent', () => {
   it('runs the batch, returns a boolean, and logs the named [tracker] failure', () => {
     const fn = src.slice(src.indexOf('export async function updateStage'), src.indexOf('export function getIssueId'))
     expect(fn).toMatch(/Promise<boolean>/)
-    expect(fn).toMatch(/stageFromSteps\(parseBatchResult\(/)
+    expect(fn).toMatch(/stageFromSteps\(await runBatch\(/)
     expect(fn).toMatch(/log\(`\[tracker\] \$\{\w+\.error\}/)
   })
 })
@@ -86,7 +86,7 @@ describe('tracker.publishLanePlan tolerates non-JSON replies', () => {
   it('reads the publisher JSON from the batch step through publishFromSteps, never a raw JSON.parse of an echo', () => {
     const fn = src.slice(src.indexOf('export async function publishLanePlan'), src.indexOf('export async function updateStage'))
     expect(fn).not.toMatch(/JSON\.parse\(/)
-    expect(fn).toMatch(/publishFromSteps\(parseBatchResult\(/)
+    expect(fn).toMatch(/publishFromSteps\(await runBatch\(/)
     expect(fn).not.toMatch(/Run: datum plan-issues/)
   })
 

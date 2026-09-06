@@ -131,7 +131,7 @@ describe('datum-review — the report is written and committed by batches, not a
   it('writes REVIEW-REPORT.md through writeFileSteps and verifies the blob sha', () => {
     expect(datumReviewSrc).not.toMatch(/Write this content to/)
     expect(datumReviewSrc).toMatch(/writeFileSteps\(\{ path: reportPath, content: reportContent \}\)/)
-    expect(datumReviewSrc).toMatch(/writeFileFromSteps\(parseBatchResult\(/)
+    expect(datumReviewSrc).toMatch(/writeFileFromSteps\(await runBatch\(/)
     expect(datumReviewSrc).toMatch(/writeFileBlobSha\(reportContent\)/)
     expect(datumReviewSrc).toMatch(/if \(!written\.ok\) throw new Error\(written\.error\)/)
   })

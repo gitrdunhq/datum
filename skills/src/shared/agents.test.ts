@@ -12,7 +12,8 @@
 // real callers is unchanged.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resilientAgent, runBatch } from './agents'
+import { resilientAgent, runBatch, LARGE_BATCH_BYTES } from './agents'
+import { model } from './models'
 import { describeFailure } from './batch'
 import { configureAgentTypes } from './agent-types'
 
@@ -290,5 +291,34 @@ describe('runBatch — one retry on a corrupt (mistyped) script', () => {
     const r = await runBatch(steps, { label: 'setup' }, { agentFn: async () => corrupt, logFn: () => undefined })
     expect(r.missing).toBe(true)
     expect(describeFailure(r, 'setup')).toMatch(/batch_script_corrupt/)
+  })
+})
+
+// caliper eedom wf_8c7ccdb5-11d (#566): a 24 KB lane-plan batch through the
+// fast runner came back with " on purpose" inserted into a description
+// string — the sha guard caught it, but at that size a transcription slip is
+// near-certain, so a retry mostly fails twice. A batch whose prompt exceeds
+// LARGE_BATCH_BYTES is routed to the balanced model instead, and says so.
+describe('runBatch — large scripts go to the balanced model', () => {
+  const ok = JSON.stringify([{ name: 'w', exit_code: 0, stdout: '', stderr: '' }])
+  it('a prompt over the threshold is sent with the balanced model and logged', async () => {
+    const big = [{ name: 'w', command: `cat > x <<'EOF'\n${'y'.repeat(LARGE_BATCH_BYTES + 100)}\nEOF` }]
+    const models: (string | undefined)[] = []
+    const logs: string[] = []
+    const r = await runBatch(big, { label: 'build-lane-plan', model: 'fast-model' }, {
+      agentFn: async (_p, o) => { models.push(o?.model); return ok },
+      logFn: (m) => logs.push(m),
+    })
+    expect(r.missing).toBe(false)
+    expect(models).toEqual([model('balanced')])
+    expect(logs.some((l) => /\[runBatch\] build-lane-plan: \d+-byte script routed to the balanced model/.test(l))).toBe(true)
+  })
+  it('a small prompt keeps the caller\'s model', async () => {
+    const models: (string | undefined)[] = []
+    await runBatch([{ name: 'w', command: 'echo 1' }], { label: 'x', model: 'fast-model' }, {
+      agentFn: async (_p, o) => { models.push(o?.model); return ok },
+      logFn: () => undefined,
+    })
+    expect(models).toEqual(['fast-model'])
   })
 })

@@ -82,10 +82,10 @@ describe('datum-refine — TICKET.md relay is a byte-verified batch, not an LLM 
     expect(src).toMatch(/contextFromRelay\(readBatch, inlineBatch, relayPlan\)/)
   })
 
-  it('runs the read batches through the deterministic cli stage, not a JSON-echoing agent call', () => {
-    expect(src).toMatch(/batchCommandPrompt\(probeSteps\)/)
-    expect(src).toMatch(/batchCommandPrompt\(inlineSteps\)/)
-    expect(src).toMatch(/parseBatchResult\(/)
+  it('runs the read batches through runBatch on the cli stage, not a JSON-echoing agent call', () => {
+    expect(src).toMatch(/await runBatch\(probeSteps, bootstrapOpts\('cli'/)
+    expect(src).toMatch(/await runBatch\(inlineSteps, stageOpts\('cli'/)
+    expect(src).not.toMatch(/agent\(batchCommandPrompt\(/)
   })
 })
 
@@ -180,7 +180,7 @@ describe('datum-refine — write and commit are separated; commits are batches',
 
   it('commitRefineFiles wraps commitFilesSteps/commitFilesFromSteps and halts as refine_commit_failed', () => {
     expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files, message \}\)/)
-    expect(src).toMatch(/commitFilesFromSteps\(parseBatchResult\(/)
+    expect(src).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(src).toMatch(/throw new Error\(`refine_commit_failed: /)
   })
 })

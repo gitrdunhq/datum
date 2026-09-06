@@ -31,8 +31,8 @@ setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 let repoCfg: RepoConfig = {} as RepoConfig
 if (!a.testCommand || !a.language) {
   const configReadStepList = configReadSteps()
-  const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
-  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) } as RepoConfig
+  const configBatch = await runBatch(configReadStepList, bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+  repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(configBatch) } as RepoConfig
 }
 if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.models)
 // #368: agent_types / hooks_installed switches for this and every child workflow.

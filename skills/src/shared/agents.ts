@@ -1,4 +1,5 @@
 import { model } from './models'
+import { utf8ByteLength } from './utf8'
 import { stageOpts } from './agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
 import { worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
@@ -187,10 +188,25 @@ export interface RunBatchDeps {
   logFn?: (message: string) => void
 }
 
+/**
+ * Scripts over this size go to the balanced model. caliper eedom
+ * wf_8c7ccdb5-11d (#566): a 24 KB lane-plan batch through the fast runner
+ * came back with " on purpose" inserted into a description string; the sha
+ * guard caught it, but at that size a fast-model transcription slip is
+ * near-certain and a retry mostly fails twice. The threshold is on the
+ * PROMPT bytes (script + wrapper + instructions), the thing the runner types.
+ */
+export const LARGE_BATCH_BYTES = 8 * 1024
+
 export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string }, deps?: RunBatchDeps): Promise<BatchResult> {
   const agentFn = deps?.agentFn ?? agent
   const logFn = deps?.logFn ?? log
   const prompt = batchCommandPrompt(steps)
+  const promptBytes = utf8ByteLength(prompt)
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model('balanced') && opts.model !== model('deep')) {
+    logFn(`[runBatch] ${opts.label || 'batch'}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`)
+    opts = { ...opts, model: model('balanced') }
+  }
   let result = parseBatchResult(await agentFn(prompt, opts), steps)
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
     const label = opts.label || 'batch'

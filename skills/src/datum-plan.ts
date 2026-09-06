@@ -65,18 +65,12 @@ const probeSteps = contextProbeSteps({
     { name: 'error-history', command: `if [ -f .datum/ERRORS.md ]; then head -40 .datum/ERRORS.md; else printf '%s' '${NOT_FOUND_MARKER}'; fi` },
   ],
 })
-const readBatch = parseBatchResult(
-  await agent(batchCommandPrompt(probeSteps), bootstrapOpts('cli', { label: 'read-context', model: model('fast') })),
-  probeSteps,
-)
+const readBatch = await runBatch(probeSteps, bootstrapOpts('cli', { label: 'read-context', model: model('fast') }))
 const relayPlan = contextRelayPlan(readBatch, [SPEC_REL])
 let inlineBatch: BatchResult | null = null
 const inlineSteps = contextInlineSteps(relayPlan.inline)
 if (relayPlan.inline.length > 0) {
-  inlineBatch = parseBatchResult(
-    await agent(batchCommandPrompt(inlineSteps), bootstrapOpts('cli', { label: 'read-context-files', model: model('fast') })),
-    inlineSteps,
-  )
+  inlineBatch = await runBatch(inlineSteps, bootstrapOpts('cli', { label: 'read-context-files', model: model('fast') }))
 }
 let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 // A relayed file the runner rewrote in transit (caliper eedom
@@ -115,8 +109,8 @@ const priorFailures: string = [priorDefects, errorHistory || ''].filter(Boolean)
 // wrong merged field, e.g. test_command, silently poisoned every downstream
 // lane). Shared with datum-validate.ts / datum-tdd-act.ts (#368 item 2).
 const configReadStepList = configReadSteps()
-const configBatchRaw = await agent(batchCommandPrompt(configReadStepList), bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
-const repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(parseBatchResult(configBatchRaw, configReadStepList)) } as Record<string, unknown>
+const configBatch = await runBatch(configReadStepList, bootstrapOpts('cli', { label: 'read-config', model: model('fast') }))
+const repoCfg = { ...DEFAULT_CONFIG, ...configFromSteps(configBatch) } as Record<string, unknown>
 // #368: args (from datum-go) win, else the repo config, else the defaults.
 // Standalone run (no parent args): switches come from the repo config just read.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
@@ -135,18 +129,12 @@ const contextFileEntries: ContextFile[] = []
 const contextFilesWarnings: string[] = []
 if (contextFilesList.length > 0) {
   const cfProbeSteps = contextProbeSteps({ files: contextFilesList })
-  const cfProbe = parseBatchResult(
-    await agent(batchCommandPrompt(cfProbeSteps), stageOpts('cli', { label: 'probe-context-files', model: model('fast') })),
-    cfProbeSteps,
-  )
+  const cfProbe = await runBatch(cfProbeSteps, stageOpts('cli', { label: 'probe-context-files', model: model('fast') }))
   const cfPlan = contextRelayPlan(cfProbe, contextFilesList)
   let cfInline: BatchResult | null = null
   const cfInlineSteps = contextInlineSteps(cfPlan.inline)
   if (cfPlan.inline.length > 0) {
-    cfInline = parseBatchResult(
-      await agent(batchCommandPrompt(cfInlineSteps), stageOpts('cli', { label: 'read-context-files', model: model('fast') })),
-      cfInlineSteps,
-    )
+    cfInline = await runBatch(cfInlineSteps, stageOpts('cli', { label: 'read-context-files', model: model('fast') }))
   }
   let cf = contextFromRelay(cfProbe, cfInline, cfPlan)
   if (cf.mismatched.length > 0) {
@@ -262,10 +250,7 @@ for (const task of tasks) {
 // re-serialised a task used to produce a different plan than decompose
 // did, silently — now that is plan_write_mismatch and the run halts.
 const buildSteps = planBuildSteps({ epicDir, tasksJson })
-const build = planBuildFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(buildSteps), stageOpts('cli', { label: 'build-lane-plan', model: model('fast') })),
-  buildSteps,
-), tasksJsonBlobSha(tasksJson))
+const build = planBuildFromSteps(await runBatch(buildSteps, stageOpts('cli', { label: 'build-lane-plan', model: model('fast') })), tasksJsonBlobSha(tasksJson))
 if (!build.ok) throw new Error(build.error)
 
 // ── Early plan gate: schema + structure, right after lane-plan and BEFORE the
@@ -285,10 +270,7 @@ log('Early plan gate PASSED (schema + structure)')
 // {"exit_code": 0}, and a failed or empty commit halts by name.
 async function commitPlanFiles(files: string[], message: string, label: string): Promise<string> {
   const commitStepList = commitFilesSteps({ wt: '.', files, message })
-  const commit = commitFilesFromSteps(parseBatchResult(
-    await agent(batchCommandPrompt(commitStepList), stageOpts('cli', { label, model: model('fast') })),
-    commitStepList,
-  ))
+  const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts('cli', { label, model: model('fast') })))
   if (commit.error) throw new Error(`plan_commit_failed: ${commit.error}`)
   // A missing file fails `git add` (commit.error); nothing-to-commit means the
   // files already match HEAD — a resume re-running a landed step.
@@ -306,10 +288,7 @@ log(`Lane plan built, gated, and committed (${planCommit})`)
 // ── Skeleton batch — generate test contracts while Claude still has full spec context ──
 const skeletonDir = `${epicDir}/skeletons`
 const skeletonSteps = skeletonBatchSteps({ epicDir, language })
-const skeleton = skeletonBatchFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(skeletonSteps), stageOpts('cli', { label: 'skeleton-batch', model: model('fast') })),
-  skeletonSteps,
-))
+const skeleton = skeletonBatchFromSteps(await runBatch(skeletonSteps, stageOpts('cli', { label: 'skeleton-batch', model: model('fast') })))
 if (!skeleton.ok) throw new Error(skeleton.error)
 await commitPlanFiles([skeletonDir], 'plan: pre-generate RED skeletons', 'commit-skeletons')
 log(`Skeletons pre-generated in ${skeletonDir}`)
@@ -339,10 +318,7 @@ log(`Triage: ${triage.decision} — ${triage.reason}`)
 
 const routingJson = JSON.stringify(triage, null, 2)
 const routingSteps = writeFileSteps({ path: '.datum/routing.json', content: routingJson })
-const routingWritten = writeFileFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(routingSteps), stageOpts('cli', { label: 'write-routing', model: model('fast') })),
-  routingSteps,
-), { path: '.datum/routing.json', expectedSha: writeFileBlobSha(routingJson), prefix: 'routing' })
+const routingWritten = writeFileFromSteps(await runBatch(routingSteps, stageOpts('cli', { label: 'write-routing', model: model('fast') })), { path: '.datum/routing.json', expectedSha: writeFileBlobSha(routingJson), prefix: 'routing' })
 if (!routingWritten.ok) throw new Error(routingWritten.error)
 // Not committed: routing.json is run state under .datum, which datum's own
 // gitignore-check ignores and a consumer's global excludes may ignore

@@ -1,3 +1,4 @@
+import { runBatch } from './shared/agents'
 import { renderPrompt, parseAgentJson, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
 import closeoutSynthTemplate from './prompts/closeout-synthesize.md'
@@ -145,10 +146,7 @@ log(`Closeout synthesis wrote: ${(synth?.artifacts_written || []).join(', ')}`)
 // follow-ups.json stays under .datum/runs (untracked by design).
 const synthFiles = changelogManaged ? ['CURRENT_STATE.md', `${epicDir}/RETRO.md`] : ['CURRENT_STATE.md', 'CHANGELOG.md', `${epicDir}/RETRO.md`]
 const synthCommitSteps = commitFilesSteps({ wt: '.', files: synthFiles, message: `closeout(${rid}): write ${synthFiles.map((f) => f.split('/').pop()).join(' + ')}` })
-const synthCommit = commitFilesFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(synthCommitSteps), stageOpts('cli', { label: 'commit-synthesis', model: model('fast') })),
-  synthCommitSteps,
-))
+const synthCommit = commitFilesFromSteps(await runBatch(synthCommitSteps, stageOpts('cli', { label: 'commit-synthesis', model: model('fast') })))
 if (synthCommit.error) throw new Error(`closeout_commit_failed: ${synthCommit.error}`)
 // A missing file fails `git add` (synthCommit.error); nothing-to-commit means
 // the artifacts already match HEAD — a resume after they landed.
@@ -206,10 +204,7 @@ const archiveCommit: string = archived ? (stepStdout(archiveResult, 'commit-sha'
 // closeout artifacts already landed) but never silent: a failure is logged
 // by name and carried on the workflow result.
 const housekeepStepList = housekeepSteps(branch)
-const housekeep = housekeepFromSteps(parseBatchResult(
-  await agent(batchCommandPrompt(housekeepStepList), stageOpts('cli', { label: 'housekeep', model: model('fast') })),
-  housekeepStepList,
-))
+const housekeep = housekeepFromSteps(await runBatch(housekeepStepList, stageOpts('cli', { label: 'housekeep', model: model('fast') })))
 if (housekeep.ok) log(`housekeep: ${housekeep.summary || 'done'}`)
 else log(`housekeep: ${housekeep.error}`)
 
