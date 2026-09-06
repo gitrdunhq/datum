@@ -124,135 +124,6 @@ function stageOpts(stage, extra = {}) {
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
 
-// skills/src/shared/batch.ts
-var NAME_RE = /^[a-z][a-z0-9-]*$/;
-function validateBatchSteps(steps) {
-  if (steps.length === 0) throw new Error("batch: no steps");
-  const seen = /* @__PURE__ */ new Set();
-  for (const s of steps) {
-    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
-    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
-    seen.add(s.name);
-    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
-  }
-}
-function batchScript(steps) {
-  validateBatchSteps(steps);
-  const lines = [
-    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
-    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
-    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
-  ];
-  steps.forEach((s, i) => {
-    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
-    lines.push("{");
-    lines.push(s.command.replace(/\n+$/, ""));
-    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
-    lines.push(`__rec '${s.name}' "$__c"`);
-    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
-  });
-  lines.push("__end");
-  return lines.join("\n") + "\n";
-}
-var cacheKey = "";
-function setBatchCacheKey(key) {
-  cacheKey = typeof key === "string" ? key : "";
-}
-function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
-
-` : "") + batchScript(steps);
-}
-function asStepResult(x) {
-  if (!x || typeof x !== "object") return null;
-  const o = x;
-  if (typeof o.name !== "string") return null;
-  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
-  return {
-    name: o.name,
-    exit_code: Number.isFinite(code) ? code : 1,
-    stdout: typeof o.stdout === "string" ? o.stdout : "",
-    stderr: typeof o.stderr === "string" ? o.stderr : ""
-  };
-}
-function parseBatchResult(raw, steps) {
-  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) {
-    const text = typeof raw === "string" ? raw.trim() : "";
-    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true };
-  }
-  const results = arr.map(asStepResult).filter((r) => r !== null);
-  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
-  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
-  return { steps: results, failed, missing: false };
-}
-function stepResult(r, name) {
-  return r.steps.find((s) => s.name === name) ?? null;
-}
-function stepStdout(r, name) {
-  const s = stepResult(r, name);
-  return s ? s.stdout : null;
-}
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
-function isRunnerRefusal(reply) {
-  return REFUSAL_RE.test(reply);
-}
-function describeFailure(r, label) {
-  if (r.missing) {
-    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
-    const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
-    if (REFUSAL_RE.test(r.refusal)) {
-      return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
-    }
-    return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
-  }
-  if (!r.failed) return `${label}: ok`;
-  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
-  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
-}
-
-// skills/src/shared/gate.ts
-function gateSteps(phase2, flags) {
-  return [{ name: "gate", command: `datum gate ${phase2}${flags}`, tolerant: true }];
-}
-function parseGateResult(result) {
-  const step = result.missing ? null : stepResult(result, "gate");
-  if (!step) {
-    return {
-      passed: false,
-      needsHuman: false,
-      hardStop: false,
-      exitCode: null,
-      message: `gate_run_failed: ${describeFailure(result, "gate")}`
-    };
-  }
-  let json = null;
-  try {
-    const text = step.stdout.trim();
-    const start = text.indexOf("{");
-    json = start >= 0 ? JSON.parse(text.slice(start, text.lastIndexOf("}") + 1)) : null;
-  } catch {
-    json = null;
-  }
-  if (!json || typeof json !== "object") {
-    const tail2 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
-    return {
-      passed: false,
-      needsHuman: false,
-      hardStop: step.exit_code === 2,
-      exitCode: step.exit_code,
-      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail2 ? ` \u2014 ${tail2}` : ""}`
-    };
-  }
-  return {
-    passed: step.exit_code === 0 && json.passed === true,
-    needsHuman: json.needs_human === true,
-    hardStop: step.exit_code === 2 || json.hard_stop === true,
-    exitCode: step.exit_code,
-    message: typeof json.message === "string" ? json.message : ""
-  };
-}
-
 // skills/src/shared/sha1.ts
 function rotl(x, n) {
   return (x << n | x >>> 32 - n) >>> 0;
@@ -351,6 +222,158 @@ function utf8Encode(s) {
   return out;
 }
 
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  const inner = innerBatchScript(steps);
+  const sha = gitBlobSha(utf8Encode(inner));
+  return [
+    `__f=$(mktemp); trap 'rm -f "$__f"' EXIT`,
+    `cat > "$__f" <<'${BATCH_EOF}'`,
+    inner.replace(/\n$/, ""),
+    BATCH_EOF,
+    '__h=$(git hash-object "$__f" 2>&1)',
+    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
+    // shell, so anything defined before the script (the tests' `__root=`
+    // prelude, a `cd`) is visible exactly as it was before the wrapper.
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`
+  ].join("\n") + "\n";
+}
+var BATCH_EOF = "DATUM_BATCH_EOF";
+function innerBatchScript(steps) {
+  validateBatchSteps(steps);
+  for (const s of steps) {
+    if (s.command.split("\n").some((l) => l.trim() === BATCH_EOF)) throw new Error(`batch: step "${s.name}" contains the heredoc delimiter ${BATCH_EOF}`);
+  }
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) {
+    const text = typeof raw === "string" ? raw.trim() : "";
+    return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true };
+  }
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, corrupt: results[0].stderr };
+  }
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
+function describeFailure(r, label) {
+  if (r.missing) {
+    if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
+    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
+    const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
+    if (REFUSAL_RE.test(r.refusal)) {
+      return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
+    }
+    return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
+  }
+  if (!r.failed) return `${label}: ok`;
+  const tail2 = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail2 ? ` \u2014 ${tail2}` : ""}`;
+}
+
+// skills/src/shared/gate.ts
+function gateSteps(phase2, flags) {
+  return [{ name: "gate", command: `datum gate ${phase2}${flags}`, tolerant: true }];
+}
+function parseGateResult(result) {
+  const step = result.missing ? null : stepResult(result, "gate");
+  if (!step) {
+    return {
+      passed: false,
+      needsHuman: false,
+      hardStop: false,
+      exitCode: null,
+      message: `gate_run_failed: ${describeFailure(result, "gate")}`
+    };
+  }
+  let json = null;
+  try {
+    const text = step.stdout.trim();
+    const start = text.indexOf("{");
+    json = start >= 0 ? JSON.parse(text.slice(start, text.lastIndexOf("}") + 1)) : null;
+  } catch {
+    json = null;
+  }
+  if (!json || typeof json !== "object") {
+    const tail2 = (step.stderr || step.stdout).trim().split("\n").slice(-3).join(" | ");
+    return {
+      passed: false,
+      needsHuman: false,
+      hardStop: step.exit_code === 2,
+      exitCode: step.exit_code,
+      message: `gate_run_failed: datum gate exited ${step.exit_code} without JSON${tail2 ? ` \u2014 ${tail2}` : ""}`
+    };
+  }
+  return {
+    passed: step.exit_code === 0 && json.passed === true,
+    needsHuman: json.needs_human === true,
+    hardStop: step.exit_code === 2 || json.hard_stop === true,
+    exitCode: step.exit_code,
+    message: typeof json.message === "string" ? json.message : ""
+  };
+}
+
 // skills/src/shared/review-keys.ts
 function normaliseFindingText(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -440,6 +463,14 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  }
+  if (result.missing && result.corrupt) {
+    const label = opts.label || "batch";
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    const retryOpts = { ...opts, label: `${label}:retry` };
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
   }
   return result;
 }
