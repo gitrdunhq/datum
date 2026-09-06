@@ -473,7 +473,10 @@ def setup_pipeline_worktrees(
 
     mapping: dict[str, Path] = {}
     source_root = main_checkout_root(repo_root)
-    sync_args = sync_args_from_config()
+    # The datum config is the MAIN checkout's (gitignored, so absent from the
+    # batch's root worktree where setup runs — wf_498d1f29-3f9 synced every
+    # lane with --frozen alone because the cwd had no config).
+    sync_args = sync_args_from_config(source_root / ".datum" / "config.json")
     for lane_id in lane_ids:
         mapping[lane_id] = create_lane_worktree(
             epic_branch, lane_id, run_id, base_sha, repo_root=repo_root

@@ -1436,3 +1436,36 @@ class TestLaneWorktreeHooksAndSyncArgs:
         setup_pipeline_worktrees("run-uv-args", "epic/test", ["lane-a"], repo_root=repo)
         calls = log.read_text().splitlines()
         assert calls == ["sync --frozen --all-extras"]
+
+
+class TestSyncArgsReadFromMainCheckout:
+    """datum self-hosted wf_498d1f29-3f9: `datum worktrees setup` runs inside
+    the batch's ROOT worktree, where the gitignored .datum/config.json does
+    not exist, so `worktree_sync_args` read from the cwd was empty and every
+    lane synced with --frozen alone (numpy still missing). The config is the
+    MAIN checkout's, wherever setup is invoked from."""
+
+    def test_sync_args_come_from_the_main_checkout_not_the_cwd(self, repo: Path, monkeypatch, tmp_path: Path):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
+        (repo / "uv.lock").write_text("version = 1\n")
+        (repo / ".datum").mkdir(exist_ok=True)
+        (repo / ".datum" / "config.json").write_text(
+            json.dumps({"worktree_sync_args": {"uv": ["--frozen", "--all-extras"]}})
+        )
+        _git(["checkout", "-q", "epic/test"], cwd=repo)
+        _git(["add", "pyproject.toml", "uv.lock"], cwd=repo)
+        _git(["commit", "-q", "-m", "lockfile"], cwd=repo)
+        bin_dir = repo.parent / "fakebin2"
+        bin_dir.mkdir(exist_ok=True)
+        log = repo.parent / "uv-main.log"
+        (bin_dir / "uv").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n")
+        (bin_dir / "uv").chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
+        # Invoke from a detached root worktree, the way the setup batch does.
+        root_wt = tmp_path / "root-wt"
+        _git(["worktree", "add", "--detach", str(root_wt), "epic/test"], cwd=repo)
+        monkeypatch.chdir(root_wt)
+        setup_pipeline_worktrees("run-uv-main", "epic/test", ["lane-a"], repo_root=root_wt)
+        assert log.read_text().splitlines() == ["sync --frozen --all-extras"]
