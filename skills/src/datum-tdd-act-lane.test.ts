@@ -440,7 +440,7 @@ describe('ownership check fails closed, not open (agent-based verifyFileOwnershi
     // no trace. Same step builder as the deterministic post-RED/post-GREEN
     // batches, same evaluator (ownershipFromStdout), so both modes agree.
     const body = ownershipFnBody()
-    expect(body).toMatch(/ownershipCheckSteps\(wt\)/)
+    expect(body).toMatch(/ownershipCheckSteps\(wt, since\)/)
     expect(body).toMatch(/await runBatch\(steps, /)
     expect(body).toMatch(/ownershipFromStdout\(stepStdout\(/)
     expect(body).not.toMatch(/files_changed/)

@@ -259,7 +259,9 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
       ).join('\n'),
     tolerant: true,
   })
-  if (o.ownership) steps.push({ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true })
+  // RED's start is the lane's start: the merge-base with the epic branch.
+  const redSince = o.baseRef ? laneStartExpr(o.wt, o.baseRef) : null
+  if (o.ownership) steps.push({ name: 'ownership', command: ownershipCommand(o.wt, redSince), tolerant: true })
   // Capped: one batch is one tool result and the harness spills results over
   // ~25 KB to a file the runner cannot echo (caliper BUG N — a 300-line test
   // file made the whole post-RED batch unreadable and the count gate looked
@@ -323,9 +325,14 @@ export function parseTellScan(stdout: string | null | undefined): TellFinding[] 
   return out
 }
 
-/** The deterministic ownership read: files touched by the stage commit. */
-export function ownershipCommand(wt: string): string {
-  return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`
+/**
+ * The deterministic ownership read: files the stage touched, from `since`
+ * (the stage's real start) to HEAD. HEAD~1 only when no start is known: a
+ * stage is not always one commit (a RED that commits twice, a GREEN that
+ * commits nothing and was judged on RED's diff).
+ */
+export function ownershipCommand(wt: string, since?: string | null): string {
+  return `git -C ${q(wt)} diff --name-only ${since || 'HEAD~1'} HEAD`
 }
 
 /**
@@ -335,8 +342,13 @@ export function ownershipCommand(wt: string): string {
  * ownershipFromStdout. It used to be a runner told to run the diff and
  * RETURN {"files_changed": [...]} — a typed-back list that could drop a path.
  */
-export function ownershipCheckSteps(wt: string): BatchStep[] {
-  return [{ name: 'ownership', command: ownershipCommand(wt), tolerant: true }]
+export function ownershipCheckSteps(wt: string, since?: string | null): BatchStep[] {
+  return [{ name: 'ownership', command: ownershipCommand(wt, since), tolerant: true }]
+}
+
+/** Shell expression for a lane's start: its merge-base with the epic branch. */
+export function laneStartExpr(wt: string, epicBranch: string): string {
+  return `"$(git -C ${q(wt)} merge-base HEAD ${q(epicBranch)})"`
 }
 
 // ── Closeout housekeep: delete merged lane branches + pipeline-state ──
@@ -538,7 +550,7 @@ export interface PostGreenOpts {
 }
 
 export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
-  const steps: BatchStep[] = [{ name: 'ownership', command: ownershipCommand(o.wt), tolerant: true }]
+  const steps: BatchStep[] = [{ name: 'ownership', command: ownershipCommand(o.wt, o.redSha), tolerant: true }]
   if (o.redSha) {
     steps.push({ name: 'red-files', command: `git -C ${q(o.wt)} diff-tree --no-commit-id --name-only -r ${q(o.redSha)}`, tolerant: true })
   }

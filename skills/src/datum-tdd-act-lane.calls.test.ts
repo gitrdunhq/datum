@@ -70,7 +70,7 @@ function happyPathResponder(o: { pytest: boolean }): Responder {
         'count-gate': '{"new_test_count":2,"required":2,"passed":true}',
         'assert-check': '',
       }
-      if (/git -C "\/wt\/T1" diff --name-only HEAD~1 HEAD/.test(prompt)) steps.ownership = `${testFile}\n`
+      if (/git -C "\/wt\/T1" diff --name-only .+ HEAD/.test(prompt)) steps.ownership = `${testFile}\n`
       steps['scope-read-0'] = o.pytest
         ? 'def test_a():\n    assert 1\n\ndef test_b():\n    assert 2\n'
         : 'it("a", () => { expect(1).toBe(1) })\nit("b", () => { expect(2).toBe(2) })\n'
@@ -185,8 +185,9 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(calls.some((c) => c.label.startsWith('ownership-check:'))).toBe(false)
     expect(calls.some((c) => c.label.startsWith('completion-check:'))).toBe(false)
     // the ownership read rides inside the post-RED / post-GREEN batches
-    expect(calls.find((c) => c.label.startsWith('post-red:'))!.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
-    expect(calls.find((c) => c.label.startsWith('post-green:'))!.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+    // RED's diff starts at the lane start (merge-base with the epic); GREEN's at the RED commit.
+    expect(calls.find((c) => c.label.startsWith('post-red:'))!.prompt).toMatch(/git -C "\/wt\/T1" diff --name-only "\$\(git -C "\/wt\/T1" merge-base HEAD "[^"]+"\)" HEAD/)
+    expect(calls.find((c) => c.label.startsWith('post-green:'))!.prompt).toContain('git -C "/wt/T1" diff --name-only aaa111 HEAD')
     // the cross-run completion read rides inside the intake batch
     expect(calls.find((c) => c.label.startsWith('lane-intake:'))!.prompt).toContain('.datum/runs/r1/lane-state/T1.json')
   })
@@ -327,7 +328,8 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const checks = calls.filter((c) => c.label.startsWith('ownership-check:'))
     expect(checks).toHaveLength(2)
     for (const c of checks) {
-      expect(c.prompt).toContain('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+      expect(c.prompt).toMatch(/git -C "\/wt\/T1" diff --name-only .+ HEAD/)
+      expect(c.prompt).not.toContain('HEAD~1')
       expect(c.prompt).not.toContain('files_changed')
     }
   })

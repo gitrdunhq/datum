@@ -1657,3 +1657,25 @@ describe('codeTellSteps / parseTellScan — the deterministic tell scan', () => 
     expect(parseTellScan(null)).toEqual([])
   })
 })
+
+// HEAD~1 rotation (research-and-fix sweep, 2026-09-06): every `HEAD~1` in
+// the pipeline was listed and judged. The ownership diff was the one that
+// still assumed "the stage is exactly one commit": a RED that commits twice
+// (#392 shape) hid its first commit from the check, and a GREEN that
+// committed nothing was judged on RED's diff — RED's test files — as
+// green_edited_tests. The diff now starts at the stage's real start.
+describe('ownership diff starts at the stage start, not HEAD~1', () => {
+  it('ownershipCommand diffs from a given start commit', () => {
+    expect(ownershipCommand('/wt/T1', 'abc123')).toBe('git -C "/wt/T1" diff --name-only abc123 HEAD')
+    expect(ownershipCommand('/wt/T1')).toBe('git -C "/wt/T1" diff --name-only HEAD~1 HEAD')
+  })
+  it('post-GREEN ownership starts at the RED commit when it is known', () => {
+    const cmd = postGreenSteps({ wt: '/wt/T1', redSha: 'r1' }).find((s) => s.name === 'ownership')!.command
+    expect(cmd).toBe('git -C "/wt/T1" diff --name-only r1 HEAD')
+  })
+  it('post-RED ownership starts at the merge-base with the epic branch', () => {
+    const steps = postRedSteps({ wt: '/wt/T1', testFiles: ['tests/test_a.py'], acCount: 0, testFuncDiffRegex: 'x', sgPatterns: [], testFuncBodyRegex: 'x', testFuncGrepRegex: 'x', ownership: true, verifyTestCmd: null, baseRef: 'datum/e' })
+    const cmd = steps.find((s) => s.name === 'ownership')!.command
+    expect(cmd).toBe('git -C "/wt/T1" diff --name-only "$(git -C "/wt/T1" merge-base HEAD "datum/e")" HEAD')
+  })
+})

@@ -29,6 +29,7 @@ import {
   strayCleanSteps,
   codeTellSteps,
   parseTellScan,
+  laneStartExpr,
   strayFilesFromSteps,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps, preserveHeadRefSteps } from './shared/commit-steps'
@@ -120,13 +121,14 @@ async function verifyFileOwnership(
   stage: string,
   allowedFiles: string[],
   forbiddenFiles: string[],
+  since: string | null,
 ): Promise<OwnershipCheckResult> {
   // The same one-step batch the deterministic post-RED/post-GREEN reads carry
   // (shared/lane-steps.ts): the diff's stdout comes back inside the batch
   // result and is evaluated here by ownershipFromStdout. The runner used to
   // be told to run the diff and RETURN a JSON list of the changed paths — a
   // typed-back list that could drop a path and hide a real violation.
-  const steps = ownershipCheckSteps(wt)
+  const steps = ownershipCheckSteps(wt, since)
   const result = await runBatch(steps, stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }))
 
   // A missing result is a named tooling failure, never a clean check — the
@@ -849,7 +851,7 @@ No markdown fences, no explanation.`,
   // post-RED batch already read; otherwise the standalone LLM check runs.
   const redOwnership: OwnershipCheckResult = deterministic
     ? ownershipFromStdout(stepStdout(postRedResult, 'ownership'), testFiles, implFiles)
-    : await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles)
+    : await verifyFileOwnership(taskId, wt, 'RED', testFiles, implFiles, laneStartExpr(wt, cfg.epicBranch))
   if (!redOwnership.ok) {
     const redPrefix = redOwnership.checkFailed ? 'ownership_check_failed' : 'file_ownership_violation'
     log(`[${taskId}] RED ${redPrefix.toUpperCase()}: ${redOwnership.violations.join(', ')}`)
@@ -1238,7 +1240,7 @@ No markdown fences, no explanation.`,
       redCommitted = redCommittedFilesFromSteps(postGreenRaw)
       return ownershipFromStdout(stepStdout(postGreenRaw, 'ownership'), implFiles, testFiles)
     }
-    return verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles)
+    return verifyFileOwnership(taskId, wt, 'GREEN', implFiles, testFiles, red.commit_sha || null)
   }
   let greenOwnership: OwnershipCheckResult = await checkGreenOwnership('')
   // GREEN that rewrote files the RED commit wrote is a TDD violation of the
