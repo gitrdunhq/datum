@@ -82,7 +82,7 @@ def test_a_guess_fails_exactly_when_it_names_no_answered_question(rows, answered
             expected.append((i + 1, "unanswered"))
 
     assert len(errors) == len(expected), (errors, expected)
-    for err, (row_no, kind) in zip(errors, expected):
+    for err, (row_no, kind) in zip(errors, expected, strict=False):
         assert f"Assumption {row_no}:" in err
         assert "tasks.json" not in err
         if kind == "no-question":

@@ -18,7 +18,7 @@ def extract_skeleton(content: str) -> str:
     in_docstring = False
     docstring_char = None
 
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         stripped = line.strip()
         indent = len(line) - len(line.lstrip())
 

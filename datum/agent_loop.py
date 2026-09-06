@@ -24,12 +24,12 @@ import os
 import re
 import secrets
 import time
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Literal, TypedDict
 
 
-class FailureLayer(str, Enum):
+class FailureLayer(StrEnum):
     CONTEXT = "context"
     CONSTRAINT = "constraint"
     VERIFICATION = "verification"

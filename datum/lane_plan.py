@@ -139,7 +139,7 @@ def inject_conflict_edges(tasks: list[dict]) -> None:
     _, conflicts = build_file_ownership(tasks)
     by_id = {t["id"]: t for t in tasks}
     for _file, task_ids in conflicts.items():
-        for previous, later in zip(task_ids, task_ids[1:]):
+        for previous, later in zip(task_ids, task_ids[1:], strict=False):
             deps = by_id[later].setdefault("depends_on", [])
             if previous not in deps:
                 deps.append(previous)

@@ -14,10 +14,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from datum.gitignore_check import REQUIRED_IGNORES, check_gitignore, fix_gitignore
 from typer.testing import CliRunner
 
 from datum.cli import app
+from datum.gitignore_check import REQUIRED_IGNORES, check_gitignore, fix_gitignore
 
 
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:

@@ -2,9 +2,9 @@
 
 from datum.lane_plan import (
     build_lane_plan,
+    detect_command_language,
     detect_lane_test_command,
     infer_lane_language,
-    detect_command_language,
     validate_lane_test_commands,
 )
 

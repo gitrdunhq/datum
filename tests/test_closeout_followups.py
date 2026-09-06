@@ -114,7 +114,8 @@ def test_medium_and_low_items_are_retained_locally_not_filed_even_with_a_tracker
     import sys as _sys
 
     monkeypatch.setattr(_sys, "argv", ["file_followups", "--run-id", "r1", "--tracker", "github"])
-    import io, contextlib
+    import contextlib
+    import io
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):

@@ -30,7 +30,6 @@ which reads status/merge_commit/spec_hash via jq and checks ancestry via
 
 import json
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest

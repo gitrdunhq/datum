@@ -15,6 +15,7 @@ malformed_invariant_source:.
 from __future__ import annotations
 
 import pytest
+
 from datum.integration_invariants import (
     IntegrationInvariantError,
     has_integration_invariants_section,

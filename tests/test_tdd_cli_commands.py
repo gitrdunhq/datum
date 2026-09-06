@@ -3,7 +3,6 @@
 # Traceability: AC3 → test_ac3_ac3_datum_tddargs_with_no_feature → tests/test_tdd_cli_commands.py
 
 import json
-import subprocess
 
 import pytest
 from typer.testing import CliRunner

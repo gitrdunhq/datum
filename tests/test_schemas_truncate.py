@@ -15,8 +15,6 @@ This characterization suite pins CURRENT behavior for all branches:
 
 from __future__ import annotations
 
-import pytest
-
 from datum.schemas import _truncate
 
 

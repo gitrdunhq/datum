@@ -130,8 +130,6 @@ class TestExtractSwiftTargetContext:
         monkeypatch.chdir(tmp_path)
 
         # Mock subprocess to return valid JSON with empty targets list
-        original_check_output = sp.check_output
-
         def mock_check_output(*args, **kwargs):
             return json.dumps({"targets": []})
 
@@ -756,7 +754,9 @@ class TestBuildImplStubs:
 
 
 class TestDetectSwiftFrameworkNonexistentNestedDir:
-    def test_climbs_from_a_not_yet_created_test_dir_to_the_nearest_existing_ancestor(self, tmp_path):
+    def test_climbs_from_a_not_yet_created_test_dir_to_the_nearest_existing_ancestor(
+        self, tmp_path
+    ):
         """The RED agent's new test file usually lives in a directory that does
         not exist yet. Detection must climb to the nearest EXISTING ancestor
         (and on up to Tests/) and scan there — not return the default because
@@ -766,6 +766,8 @@ class TestDetectSwiftFrameworkNonexistentNestedDir:
         (tmp_path / "Tests" / "MyTests").mkdir(parents=True)
         (tmp_path / "Tests" / "MyTests" / "Marker.swift").write_text("import XCTest")
 
-        missing_dir = tmp_path / "Tests" / "MyTests" / "UnitTests" / "Specific"  # NOT created
+        missing_dir = (
+            tmp_path / "Tests" / "MyTests" / "UnitTests" / "Specific"
+        )  # NOT created
         result = _detect_swift_framework(str(missing_dir / "New.swift"))
         assert result == "xctest"

@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 # always >= 1 — see datum/models/closeout_data_schema.py) so it can never be
 # mistaken for a real epic while still satisfying the int-typed contract that
 # downstream consumers (run_collate/collate.py/tag_epic.py) rely on (#301).
-from datum.models.closeout_data_schema import UNKNOWN_EPIC_NUMBER  # noqa: E402 — one definition, re-exported here
+from datum.models.closeout_data_schema import (
+    UNKNOWN_EPIC_NUMBER,  # noqa: E402 — one definition, re-exported here
+)
 
 # Branch-slug patterns recognized for epic-number auto-detection, checked in
 # order. Covers both `datum/epic-23`-style epic branches and the
