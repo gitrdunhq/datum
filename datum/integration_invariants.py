@@ -79,3 +79,106 @@ def parse_integration_invariants(md_text: str) -> list[dict]:
             }
         )
     return rows
+
+
+def _task_ancestors(task_id: str, tasks: dict, memo: dict) -> set:
+    if task_id in memo:
+        return memo[task_id]
+    result: set = set()
+    stack = list(tasks.get(task_id, {}).get("depends_on", []))
+    while stack:
+        dep = stack.pop()
+        if dep in result:
+            continue
+        result.add(dep)
+        stack.extend(tasks.get(dep, {}).get("depends_on", []))
+    memo[task_id] = result
+    return result
+
+
+def _group_is_ancestor(a_tasks: tuple, b_tasks: tuple, ancestors: dict) -> bool:
+    if not a_tasks or not b_tasks:
+        return False
+    return all(a in ancestors[b] for a in a_tasks for b in b_tasks)
+
+
+def _is_pytest_command(test_command: str) -> bool:
+    return "pytest" in test_command
+
+
+def unknown_covered_tasks(invariants: list[dict], tasks: dict) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for inv in invariants:
+        for task_id in inv["covers"]:
+            if task_id not in tasks:
+                pairs.append((inv["id"], task_id))
+    return pairs
+
+
+def derive_integration_lanes(
+    invariants: list[dict], tasks: dict, test_command: str
+) -> list[dict]:
+    if not invariants:
+        return []
+
+    groups: dict[tuple, list[str]] = {}
+    for inv in invariants:
+        key = tuple(sorted(set(inv["covers"])))
+        groups.setdefault(key, []).append(inv["invariant"])
+
+    memo: dict = {}
+    ancestors: dict = {}
+    for key in groups:
+        for task_id in key:
+            if task_id not in ancestors:
+                ancestors[task_id] = _task_ancestors(task_id, tasks, memo)
+
+    keys = list(groups.keys())
+    in_degree = {k: 0 for k in keys}
+    successors: dict = {k: [] for k in keys}
+    for a in keys:
+        for b in keys:
+            if a == b:
+                continue
+            if _group_is_ancestor(a, b, ancestors) and not _group_is_ancestor(
+                b, a, ancestors
+            ):
+                successors[a].append(b)
+                in_degree[b] += 1
+
+    ordered: list[tuple] = []
+    remaining = set(keys)
+    while remaining:
+        ready = sorted(k for k in remaining if in_degree[k] == 0)
+        if not ready:
+            ready = sorted(remaining)
+        chosen = ready[0]
+        ordered.append(chosen)
+        remaining.remove(chosen)
+        for succ in successors[chosen]:
+            in_degree[succ] -= 1
+
+    is_pytest = _is_pytest_command(test_command)
+    lanes = []
+    for n, key in enumerate(ordered, start=1):
+        if is_pytest:
+            files = [f"tests/integration/test_int_{n}.py"]
+        else:
+            files = [f"src/integration/int-{n}.test.ts"]
+        covered = ", ".join(key)
+        lanes.append(
+            {
+                "id": f"task-INT-{n}",
+                "kind": "integration",
+                "expect_tests_pass": True,
+                "depends_on": list(key),
+                "acceptance_criteria": list(groups[key]),
+                "files": files,
+                "title": f"Integration invariants covering {covered}",
+                "red_note": (
+                    f"Verify integration invariants covering {covered}: "
+                    + "; ".join(groups[key])
+                ),
+            }
+        )
+    return lanes
