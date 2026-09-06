@@ -76,7 +76,8 @@ describe('datum-review — deterministic gate verdict (#368)', () => {
 
   it('runs the gate after the report commit step, not before', () => {
     const commitIdx = datumReviewSrc.indexOf("label: 'commit-report'")
-    const gateIdx = datumReviewSrc.indexOf("gateSteps('review'")
+    // The FINAL gate (the early structural gate runs before the lenses).
+    const gateIdx = datumReviewSrc.lastIndexOf("gateSteps('review'")
     expect(commitIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeGreaterThan(commitIdx)
   })
@@ -84,8 +85,9 @@ describe('datum-review — deterministic gate verdict (#368)', () => {
   it('exposes gatePassed/gateMessage/gateNeedsHuman in __workflowResult alongside canMerge/criticalFindings', () => {
     const resultIdx = datumReviewSrc.indexOf('export const __workflowResult')
     const resultBlock = datumReviewSrc.slice(resultIdx)
-    expect(resultBlock).toMatch(/canMerge:\s*critical\.length === 0/)
-    expect(resultBlock).toMatch(/criticalFindings:\s*critical\.length/)
+    // On the skip path (report already passing) canMerge follows the gate.
+    expect(resultBlock).toMatch(/canMerge: outcome \? outcome\.critical\.length === 0 : gate\.passed \|\| gate\.needsHuman/)
+    expect(resultBlock).toMatch(/criticalFindings: outcome \? outcome\.critical\.length : 0/)
     expect(resultBlock).toMatch(/gatePassed:\s*gate\.passed/)
     expect(resultBlock).toMatch(/gateMessage:\s*gate\.message/)
     expect(resultBlock).toMatch(/gateNeedsHuman:\s*gate\.needsHuman/)
@@ -254,5 +256,36 @@ describe('review lenses are schema-validated and diff from the epic base', () =>
       expect(p, f).not.toMatch(/merge-base HEAD main\b/)
       expect(p, f).not.toMatch(/diff main\.\.\./)
     }
+  })
+})
+
+// elonchesd wf_54212856-1cb: every blocking finding of iteration 2 had been
+// accepted by key; the gate answered needs_human. The yolo relaunch re-ran
+// all four lenses instead of approving, wrote a third report with six new
+// highs (none a defect: architecture the SPEC mandates, re-raises of
+// accepted places), and hard-stopped at the iteration cap. Accepting was
+// punished. Review now runs a structural early gate first and never
+// regenerates a report that already passes; the lens rubric requires a
+// SPEC/AC citation or a measurable NFR for high and forbids re-raising a
+// place the operator has decided.
+describe('datum-review — an already-passing report is not regenerated; the rubric is spec-anchored', () => {
+  const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+  it('runs `datum gate review --approve` before the lenses and skips them when it passes', () => {
+    const early = src.indexOf("gateSteps('review', ' --approve')")
+    const lenses = src.indexOf('DOMAINS.map((d) => () =>')
+    expect(early).toBeGreaterThan(-1)
+    expect(early).toBeLessThan(lenses)
+    expect(src).toMatch(/review_already_complete/)
+    expect(src).toMatch(/async function reviewFromDiff\(/)
+    expect(src).toMatch(/alreadyComplete \? null : await reviewFromDiff\(\)/)
+    // The final gate still applies the human-hold policy on the skip path.
+    expect(src.lastIndexOf("gateSteps('review', yolo ? ' --approve' : '')")).toBeGreaterThan(src.indexOf('await reviewFromDiff()'))
+  })
+  it('the lens prompt requires a SPEC/AC citation or measurable NFR for high, reads REVIEW-RESPONSE.md, and does not grade against rules outside SPEC.md', () => {
+    const p = readFileSync(join(__dirname, 'prompts', 'review-domain.md'), 'utf8')
+    expect(p).toMatch(/REVIEW-RESPONSE\.md/)
+    expect(p).toMatch(/do not re-raise/i)
+    expect(p).toMatch(/cite[^\n]*(SPEC\.md|acceptance criterion|requirement id)/i)
+    expect(p).toMatch(/outside SPEC\.md/i)
   })
 })

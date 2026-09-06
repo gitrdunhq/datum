@@ -79,6 +79,21 @@ if (!baseBranch || /\s/.test(baseBranch)) {
 }
 log(`Review diff base: ${baseBranch}`)
 
+// ── Early gate: does the report on disk already pass? ─────────────────────
+// Every blocking finding of the previous iteration had been accepted by key;
+// the gate answered needs_human; the yolo relaunch re-ran all four lenses,
+// sampled six NEW highs and hard-stopped at the iteration cap (elonchesd
+// wf_54212856-1cb). Accepting was punished. `--approve` skips only the
+// human hold, so a pass here means "no unaccepted high/critical": the
+// lenses are not re-run and the final gate below applies the policy.
+const earlyGateSteps = gateSteps('review', ' --approve')
+const earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts('cli', { label: 'gate-early', model: model('fast') })))
+const alreadyComplete: boolean = earlyGate.passed
+if (alreadyComplete) log(`review_already_complete: REVIEW-REPORT.md passes the review gate (${earlyGate.message || 'no blocking findings'}) — lenses not re-run`)
+
+interface ReviewOutcome { deduped: Finding[]; critical: Finding[] }
+
+async function reviewFromDiff(): Promise<ReviewOutcome> {
 // Schema-validated at the tool layer: a lens that answers in prose is
 // retried by the runtime instead of halting Review on a strict parse.
 const reviewResults = await parallel<DomainResult>(
@@ -187,17 +202,28 @@ if (commit.nothingToCommit) log('REVIEW-REPORT.md unchanged since the last revie
 else log(`REVIEW-REPORT.md committed (${commit.sha})`)
 
 if (critical.length > 0) log(`${critical.length} high/critical — remediation needed`)
+return { deduped, critical }
+}
+
+const outcome: ReviewOutcome | null = alreadyComplete ? null : await reviewFromDiff()
 
 // Deterministic: the verdict is `datum gate review`'s exit code read from a
 // batch step (shared/gate.ts), not an LLM's echo of its JSON — same pattern
 // as Refine/Plan/Properties/Validate (#368). Runs after the report is
-// committed so the gate can resolve docs/epics/<branch>/REVIEW-REPORT.md.
+// committed so the gate can resolve docs/epics/<branch>/REVIEW-REPORT.md;
+// on the skip path it applies the human-hold policy the early gate skipped.
 const gateStepList = gateSteps('review', yolo ? ' --approve' : '')
 const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { label: 'gate', model: model('fast') })))
 if (gate.passed) log('Review gate PASSED')
 else log(`Review gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 
 export const __workflowResult = {
-  totalFindings: deduped.length, criticalFindings: critical.length, canMerge: critical.length === 0,
+  // On the skip path the report was not regenerated: the gate's verdict is
+  // the only truth about it (accepted findings do not block), so canMerge
+  // follows the gate rather than a count of unreviewed rows.
+  totalFindings: outcome ? outcome.deduped.length : -1,
+  criticalFindings: outcome ? outcome.critical.length : 0,
+  canMerge: outcome ? outcome.critical.length === 0 : gate.passed || gate.needsHuman,
+  alreadyComplete,
   gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman,
 }
