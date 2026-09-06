@@ -862,7 +862,7 @@ function tail3(step) {
   return (step.stderr || step.stdout || "").trim().split("\n").slice(-3).join(" | ");
 }
 function lanePlanCommand(epicDir2) {
-  return `datum lane-plan --input ${q5(`${epicDir2}/tasks.json`)} --output ${q5(`${epicDir2}/lane-plan.json`)} --md-output ${q5(`${epicDir2}/TASKS.md`)}`;
+  return `datum lane-plan --input ${q5(`${epicDir2}/tasks.json`)} --output ${q5(`${epicDir2}/lane-plan.json`)} --md-output ${q5(`${epicDir2}/TASKS.md`)} --properties ${q5(`${epicDir2}/PROPERTIES.md`)}`;
 }
 var TASKS_WRITE_NAMES = { mkdir: "mkdir", write: "write-tasks", sha: "tasks-sha" };
 function planBuildSteps(o) {
