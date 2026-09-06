@@ -7,28 +7,33 @@ import re
 HEADING = "## Integration Invariants"
 EXPECTED_COLUMNS = ["ID", "Invariant", "Covers", "Source"]
 SOURCE_PATTERN = re.compile(r"^spec:.+$|^question:Q\d+$")
+HEADING_PATTERN = re.compile(r"^#{1,6}\s")
+SEPARATOR_CELL_PATTERN = re.compile(r"^:?-+:?$")
 
 
 class IntegrationInvariantError(Exception):
     pass
 
 
+def _heading_index(lines: list[str]) -> int | None:
+    for i, line in enumerate(lines):
+        if line.strip() == HEADING:
+            return i
+    return None
+
+
 def has_integration_invariants_section(md_text: str) -> bool:
-    return HEADING in md_text
+    return _heading_index(md_text.splitlines()) is not None
 
 
 def _extract_section_lines(md_text: str) -> list[str]:
     lines = md_text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if line.strip() == HEADING:
-            start = i + 1
-            break
-    if start is None:
+    index = _heading_index(lines)
+    if index is None:
         return []
     section: list[str] = []
-    for line in lines[start:]:
-        if line.strip().startswith("## ") and line.strip() != HEADING:
+    for line in lines[index + 1 :]:
+        if HEADING_PATTERN.match(line.strip()):
             break
         section.append(line)
     return section
@@ -56,6 +61,15 @@ def parse_integration_invariants(md_text: str) -> list[dict]:
             f"got {header_cells}"
         )
 
+    separator_cells = _split_row(table_lines[1]) if len(table_lines) > 1 else []
+    if len(separator_cells) != len(EXPECTED_COLUMNS) or not all(
+        SEPARATOR_CELL_PATTERN.match(cell) for cell in separator_cells
+    ):
+        raise IntegrationInvariantError(
+            "malformed_invariant_table: expected a separator row after the header, "
+            f"got {separator_cells}"
+        )
+
     data_lines = table_lines[2:]
     rows: list[dict] = []
     for line in data_lines:
@@ -74,7 +88,7 @@ def parse_integration_invariants(md_text: str) -> list[dict]:
             {
                 "id": row_id,
                 "invariant": invariant,
-                "covers": [c.strip() for c in covers.split(",")],
+                "covers": [c.strip() for c in covers.split(",") if c.strip()],
                 "source": source,
             }
         )

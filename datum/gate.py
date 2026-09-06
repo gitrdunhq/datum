@@ -19,6 +19,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.integration_invariants import (
+    IntegrationInvariantError,
+    has_integration_invariants_section,
+    parse_integration_invariants,
+)
 from datum.path_utils import assets_dir, existing_review_packets_dir, templates_dir
 
 
@@ -177,6 +182,43 @@ def check_questions_answered(content: str) -> list[str]:
             current_question = None
 
     return errors
+
+
+def answered_question_ids(content: str) -> list[str]:
+    """Return the Q<N> ids whose block has a non-empty [Answer]: line.
+
+    Mirrors check_questions_answered's block-tracking and peek-ahead logic,
+    inverted: a question is "answered" exactly when check_questions_answered
+    would NOT emit an "unanswered" error for it.
+    """
+    answered: list[str] = []
+    lines = content.split("\n")
+    current_question: str | None = None
+
+    for i in range(len(lines)):
+        line = lines[i]
+        q_match = re.match(r"^###\s+(Q\d+):", line)
+        if q_match:
+            current_question = q_match.group(1)
+            continue
+
+        a_match = re.match(r"^\[Answer\]:\s*(.*)", line)
+        if a_match:
+            answer_text = a_match.group(1).strip()
+            is_answered = bool(answer_text)
+            if not is_answered and current_question:
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j]
+                    stripped = next_line.strip()
+                    if stripped == "":
+                        continue
+                    is_answered = not re.match(r"^###\s+", next_line)
+                    break
+            if is_answered and current_question and current_question not in answered:
+                answered.append(current_question)
+            current_question = None
+
+    return answered
 
 
 def check_open_questions(spec_content: str) -> list[str]:
@@ -1171,6 +1213,33 @@ def gate_properties(yolo: bool, config: dict) -> None:
     # Check traceability table exists
     if "task-" not in content.lower() and "task_" not in content.lower():
         fail("PROPERTIES.md missing traceability table (no task references found)")
+
+    if not has_integration_invariants_section(content):
+        fail("missing_integration_invariants_section")
+
+    try:
+        invariant_rows = parse_integration_invariants(content)
+    except IntegrationInvariantError as exc:
+        fail(str(exc))
+
+    for row in invariant_rows:
+        if row["source"].startswith("spec:") and len(row["covers"]) < 2:
+            fail(f"invariant_covers_insufficient: {row['id']}")
+
+    questions_path = resolve_artifact("QUESTIONS.md")
+    questions_content = questions_path.read_text() if questions_path.exists() else ""
+    answered_ids = answered_question_ids(questions_content)
+
+    coverage_errors: list[str] = []
+    for qid in answered_ids:
+        source = f"question:{qid}"
+        matches = [row for row in invariant_rows if row["source"] == source]
+        if not matches:
+            coverage_errors.append(f"invariant_missing_for_question: {qid}")
+        elif len(matches) > 1:
+            coverage_errors.append(f"invariant_duplicate_for_question: {qid}")
+    if coverage_errors:
+        fail("; ".join(coverage_errors))
 
     policy = gate_policy(config, "properties_human_review")
     if policy == "required" and not yolo:
