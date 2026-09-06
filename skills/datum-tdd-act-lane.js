@@ -1178,29 +1178,39 @@ function extractWitnessMap(parsed) {
   return w;
 }
 var WITNESS_MIN_HEX = 7;
+function commonPrefixLen(a2, b) {
+  let i = 0;
+  while (i < a2.length && i < b.length && a2[i] === b[i]) i++;
+  return i;
+}
 function verifyReadWitness(files, parsed) {
   const deferred = files.filter((f) => f.exists && !f.inlined);
   const witness = extractWitnessMap(parsed);
   const missing = [];
   const mismatched = [];
   const tooShort = [];
+  const nearMiss = [];
   const candidates = [...Object.values(witness), ...Object.keys(witness)];
   const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
   const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
   for (const f of deferred) {
     const sha = f.sha.toLowerCase();
     if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
+    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
+      nearMiss.push(f.path);
+      continue;
+    }
     const keyed = witness[f.path];
     if (typeof keyed === "string" && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path);
     else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path);
     else if (typeof keyed === "string" && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path);
     else missing.push(f.path);
   }
-  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort };
+  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss };
 }
 function assertReadWitness(files, parsed) {
   const result = verifyReadWitness(files, parsed);
-  if (result.ok) return;
+  if (result.ok) return result;
   const witness = extractWitnessMap(parsed);
   const byPath = new Map(files.map((f2) => [f2.path, f2]));
   const badPath = result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0];
@@ -1456,7 +1466,8 @@ async function witnessedAgent(prompt, opts, specFile, stage) {
 }
 function assertStageWitness(specFile, parsed, stage) {
   try {
-    assertReadWitness([specFile], parsed);
+    const verdict = assertReadWitness([specFile], parsed);
+    if (verdict.nearMiss.length > 0) log(`read_witness_near_miss: ${stage} cited a witness whose leading hex matches ${verdict.nearMiss.join(", ")} but diverges after the proof \u2014 accepted (transcription slip after a genuine read)`);
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
     err.stage = stage;
