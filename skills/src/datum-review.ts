@@ -3,7 +3,7 @@ import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import reviewDomainTemplate from './prompts/review-domain.md'
 import reviewCorrectnessSpecVerifyTemplate from './prompts/review-correctness-spec-verify.md'
 import { configureAgentTypes, stageOpts } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { findingKey } from './shared/review-keys'
 import { REVIEW_LENS_SCHEMA } from './shared/schemas'
@@ -34,6 +34,7 @@ if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agen
 else configureAgentTypes({})
 // Resume cache key (#354): the review gate re-runs after a human edit.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 const DOMAINS = [
   { domain: 'Security', prefix: 'SEC', focus: 'OWASP top 10, injection, auth bypass, secrets exposure, unsafe deserialization', model: model('balanced') },

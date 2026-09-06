@@ -2,7 +2,7 @@ import { renderPrompt, parseAgentJson, parseAgentJsonStrict, assertAcyclicTasks,
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { publishLanePlan } from './shared/tracker'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps } from './shared/plan-steps'
@@ -37,6 +37,7 @@ const yolo: boolean = !!a.yolo
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 // Resume cache key (#354): an edited SPEC.md must re-run the reads and the gates.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 // ── Read (deterministic batch: branch/epic-dir + byte-verified SPEC.md
 // relay, replacing the LLM `reader` echo of util-read-context.md — an LLM

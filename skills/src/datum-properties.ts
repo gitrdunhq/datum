@@ -3,7 +3,7 @@ import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { runBatch } from './shared/agents'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
@@ -37,6 +37,7 @@ const yolo: boolean = !!a.yolo
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 // Resume cache key (#354): an edited SPEC/TASKS must re-run the reads and the gate.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 phase('Read')
 

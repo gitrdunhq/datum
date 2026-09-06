@@ -2,7 +2,7 @@ import { model } from './shared/models'
 import type { SetupArgs } from './shared/types'
 import { parseAgentJson } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { setupSteps, laneWorktreePathsFromSteps } from './shared/lane-steps'
 
 export const meta = {
@@ -14,6 +14,7 @@ export const meta = {
 const a = args as SetupArgs
 configureAgentTypes(a.agentTypes || {})
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 phase('Setup')
 
 // Root worktree, lane worktrees and lane-plan distribution — ONE datum-cli

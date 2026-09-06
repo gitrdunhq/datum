@@ -6,7 +6,7 @@ import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
 import { housekeepSteps, housekeepFromSteps } from './shared/lane-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 
 /** Collector steps whose non-zero exit is logged individually — #368 follow-up. */
@@ -32,6 +32,7 @@ const runId: string = a.runId || ''
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 // Resume cache key (#354): collectors re-run when state or docs changed.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 // ── Collect: one deterministic batched datum-cli call, no LLM judgement ──
 //

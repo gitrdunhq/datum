@@ -47,6 +47,9 @@ export interface BatchResult {
   /** `batch_script_corrupt: expected <sha>, got <sha>` — the runner did not
    *  run the script it was given (a transcription error); runBatch retries once. */
   corrupt?: string
+  /** Any wrapper-level `__script` failure verbatim (`batch_script_corrupt: ...`,
+   *  `batch_root_missing: <root>`); nothing in the batch ran. */
+  scriptError?: string
 }
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/
@@ -76,7 +79,15 @@ export function validateBatchSteps(steps: BatchStep[]): void {
 export function batchScript(steps: BatchStep[]): string {
   const inner = innerBatchScript(steps)
   const sha = gitBlobSha(utf8Encode(inner))
+  // elonchesd: a runner whose cwd was not the repo root ran a batch whose
+  // every relative `.datum/...` path missed. The orchestrator records the
+  // root at boot and every batch of the run starts there; a root that no
+  // longer exists is one named __script step, and nothing runs.
+  const rootGuard = batchRoot
+    ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`]
+    : []
   return [
+    ...rootGuard,
     '__f=$(mktemp); trap \'rm -f "$__f"\' EXIT',
     `cat > "$__f" <<'${BATCH_EOF}'`,
     inner.replace(/\n$/, ''),
@@ -90,6 +101,21 @@ export function batchScript(steps: BatchStep[]): string {
 }
 
 const BATCH_EOF = 'DATUM_BATCH_EOF'
+
+/** Double-quoted for bash: `"`, `\`, `` ` `` and `$` escaped. */
+function shellQuote(s: string): string {
+  return `"${s.replace(/(["\\`$])/g, '\\$1')}"`
+}
+
+// The repo root recorded at boot (`git rev-parse --show-toplevel` in
+// bootSteps), one copy per bundle like the cache key: every script sets it
+// from its args before its first batchCommandPrompt (agent-types-ordering
+// test). Empty means "wherever the runner starts", the pre-guard behaviour.
+let batchRoot = ''
+
+export function setBatchRoot(root: string): void {
+  batchRoot = typeof root === 'string' ? root.trim() : ''
+}
 
 /** The unwrapped step runner (what the heredoc carries). */
 export function innerBatchScript(steps: BatchStep[]): string {
@@ -168,7 +194,10 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
   if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {
-    return { steps: [], failed: null, missing: true, corrupt: results[0].stderr }
+    const scriptError = results[0].stderr
+    return scriptError.startsWith('batch_script_corrupt')
+      ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError }
+      : { steps: [], failed: null, missing: true, scriptError }
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name))
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null
@@ -197,6 +226,7 @@ export function isRunnerRefusal(reply: string): boolean {
 export function describeFailure(r: BatchResult, label: string): string {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt — the runner did not run the script it was given (${r.corrupt})`
+    if (r.scriptError) return `${label}: ${r.scriptError}`
     if (!r.refusal) return `${label}: batch agent returned no parseable result`
     const excerpt = r.refusal.replace(/\s+/g, ' ').slice(0, 300)
     if (REFUSAL_RE.test(r.refusal)) {

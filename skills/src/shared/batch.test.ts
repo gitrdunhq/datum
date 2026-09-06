@@ -5,10 +5,14 @@
 
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, realpathSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   batchScript,
   batchCommandPrompt,
   setBatchCacheKey,
+  setBatchRoot,
   parseBatchResult,
   stepStdout,
   stepResult,
@@ -236,5 +240,53 @@ describe('batchScript integrity: the runner cannot silently mangle the script', 
     expect(bad.missing).toBe(true)
     expect(bad.corrupt).toMatch(/^batch_script_corrupt: expected [0-9a-f]{40}, got [0-9a-f]{40}/)
     expect(describeFailure(bad, 'setup')).toMatch(/^setup: batch_script_corrupt — the runner did not run the script it was given/)
+  })
+})
+
+// elonchesd: a batch that assumed the runner's cwd was the repo root ran
+// somewhere else and every relative `.datum/...` path missed. The orchestrator
+// records the root once at boot; every batch of the run starts by cd-ing there.
+describe('setBatchRoot — every batch starts at the recorded repo root', () => {
+  it('prepends a guarded cd to the recorded root, quoted, before the script runs', () => {
+    const steps = [{ name: 'a', command: 'echo a' }]
+    setBatchRoot('/tmp/some dir/with "quotes"')
+    try {
+      const script = batchScript(steps)
+      expect(script.startsWith('cd "/tmp/some dir/with \\"quotes\\"" 2>/dev/null || {')).toBe(true)
+      expect(script).toContain('batch_root_missing')
+      expect(script.indexOf('cd ')).toBeLessThan(script.indexOf('__f=$(mktemp)'))
+    } finally {
+      setBatchRoot('')
+    }
+  })
+
+  it('an empty root leaves the script exactly as before', () => {
+    const steps = [{ name: 'a', command: 'echo a' }]
+    setBatchRoot('')
+    const script = batchScript(steps)
+    expect(script.startsWith('__f=$(mktemp)')).toBe(true)
+    expect(script).not.toContain('batch_root_missing')
+  })
+
+  it('under real bash: the steps run inside the root; a missing root is one named __script step', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-root-'))
+    try {
+      const steps = [{ name: 'where', command: 'pwd -P' }]
+      setBatchRoot(dir)
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: tmpdir(), encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(r.failed).toBeNull()
+      expect(stepStdout(r, 'where')?.trim()).toBe(realpathSync(dir))
+
+      setBatchRoot(join(dir, 'gone'))
+      const missing = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: tmpdir(), encoding: 'utf8' }), steps)
+      expect(missing.missing).toBe(true)
+      expect(missing.corrupt).toBeUndefined()
+      expect(missing.scriptError).toMatch(/^batch_root_missing: /)
+      expect(describeFailure(missing, 'boot')).toMatch(/^boot: batch_root_missing: /)
+    } finally {
+      setBatchRoot('')
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

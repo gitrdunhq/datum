@@ -27,6 +27,8 @@ export interface GoArgs {
   route?: string
   phases?: Phase[]
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
   freeText?: string
   issueNumber?: number
 }
@@ -39,6 +41,8 @@ export interface PhaseArgs {
   /** Resume cache key (`datum config-fingerprint`): stamped into every
    *  batch prompt so a human edit between runs is a cache miss. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 
 export interface CloseoutArgs extends PhaseArgs {
@@ -56,6 +60,8 @@ export interface TddActArgs {
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 
 // Cross-workflow arg/result contracts
@@ -71,6 +77,8 @@ export interface SetupArgs {
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 export interface SetupResult {
   worktreePaths: Record<string, string>
@@ -99,6 +107,8 @@ export interface MergeArgs {
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
   /** #368: epic-scoped completion markers to record after a successful
    *  merge (folded into the merge batch; was a separate agent call). */
   laneState?: { epicSlug: string; entries: Array<{ task_id: string; spec_hash: string }> } | null
@@ -127,6 +137,8 @@ export interface DocsArgs {
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 export interface DocsResult {
   synced: boolean
@@ -216,6 +228,8 @@ export interface PipelineConfig {
   agentTypes?: AgentTypeConfig
   /** Resume cache key — see PhaseArgs.configFingerprint. */
   configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 
 export interface LaneOutcome {

@@ -1,7 +1,7 @@
 import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
 import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
 import { runBatch } from './shared/agents'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
@@ -95,6 +95,9 @@ interface PhaseResult {
 const configFingerprint: string = typeof a.configFingerprint === 'string' ? a.configFingerprint : ''
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING)
 setBatchCacheKey(configFingerprint)
+// The boot batch is what measures the root; until then the launcher's value
+// (if any) applies, and '' means "wherever the runner starts".
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 const bootBatch = parseBatchResult(
   // bootstrapOpts: the switches live in the config this very read fetches.
   await agent(batchCommandPrompt(bootSteps()), bootstrapOpts('cli', { label: 'boot', model: model('fast') })),
@@ -102,6 +105,10 @@ const bootBatch = parseBatchResult(
 )
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))
 const boot = bootFromSteps(bootBatch)
+// elonchesd: every batch of this run and of every child starts at the root
+// the boot batch measured, so a runner whose cwd drifted still resolves
+// every relative `.datum/...` and `docs/epics/...` path.
+setBatchRoot(boot.repoRoot)
 const globalCfg = { ...DEFAULT_CONFIG, ...(boot.config || {}) } as RepoConfig
 // #368: agent_types (default true) / hooks_installed (default false) switches.
 // Every child workflow gets them via args — each bundle has its own copy.
@@ -118,6 +125,7 @@ const phaseArgs = {
   yolo,
   agentTypes: agentTypeArgs(),
   configFingerprint,
+  repoRoot: boot.repoRoot,
   freeText: typeof a.freeText === 'string' ? a.freeText : '',
   issueNumber: typeof a.issueNumber === 'number' ? a.issueNumber : null,
 }
@@ -540,7 +548,7 @@ if (shouldRun('act', 3)) {
     // Setup — direct child workflow
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint },
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
     ) as SetupResult
 
     // Lane execution — direct child workflow
@@ -550,7 +558,7 @@ if (shouldRun('act', 3)) {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },
@@ -585,6 +593,7 @@ if (shouldRun('act', 3)) {
         batchTag,
         agentTypes: agentTypeArgs(),
         configFingerprint,
+        repoRoot: boot.repoRoot,
         laneState: mergedIds.length > 0
           ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) }
           : null,
@@ -631,7 +640,7 @@ if (shouldRun('act', 3)) {
   try {
     docsResult = await workflow(
       { scriptPath: sk('datum-tdd-act-docs') },
-      { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint },
+      { completedLanes: actCompleted, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
     ) as DocsResult | null
   } catch (exc) {
     log(`[warn] docs_workflow_failed: ${(exc as Error).message} — continuing; docs may be stale or left uncommitted`)

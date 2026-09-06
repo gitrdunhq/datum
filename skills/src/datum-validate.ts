@@ -2,7 +2,7 @@ import { renderPrompt, parseAgentJson, parseValidateArgs, evaluateMainSync, test
 import type { MainSyncResult } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
@@ -30,6 +30,7 @@ const noMergeMain: boolean = a.noMergeMain
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes as Record<string, boolean>)
 // Resume cache key (#354): the final gate re-runs after a human edit.
 setBatchCacheKey(typeof a.configFingerprint === 'string' ? a.configFingerprint : '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 let repoCfg: Record<string, string> = {}
 if (!a.testCommand) {

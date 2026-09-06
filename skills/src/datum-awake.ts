@@ -1,6 +1,6 @@
 import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } from './shared/batch'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import awakeScanTemplate from './prompts/awake-scan.md'
@@ -18,8 +18,9 @@ export const meta = {
 
 // Resume cache key (#354): stamped into the write/commit batches below so an
 // edited repo between runs is a cache miss. Standalone launches may pass none.
-const awakeArgs = (typeof args === 'object' && args) ? (args as { configFingerprint?: string }) : {}
+const awakeArgs = (typeof args === 'object' && args) ? (args as { configFingerprint?: string; repoRoot?: string }) : {}
 setBatchCacheKey(awakeArgs.configFingerprint || '')
+setBatchRoot(awakeArgs.repoRoot || '')
 
 // ── Scan ──
 

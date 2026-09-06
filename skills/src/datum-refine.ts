@@ -7,7 +7,7 @@ import refineSpecTemplate from './prompts/refine-spec.md'
 import refineQuestionsTemplate from './prompts/refine-questions.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { runBatch } from './shared/agents'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextFromRelay, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -52,6 +52,7 @@ const freeText: string = typeof a.freeText === 'string' ? a.freeText : ''
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 // Resume cache key (#354): an answered QUESTIONS.md must re-run the reads and the gate.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 phase('Read')
 

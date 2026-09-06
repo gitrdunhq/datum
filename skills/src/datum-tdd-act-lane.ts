@@ -3,7 +3,7 @@ import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, runBatch, verifyCommitIndependently, parseCommitVerification } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import {
   laneIntakeSteps,
   postRedSteps,
@@ -96,6 +96,7 @@ const a = args as LaneArgs
 const { batchLaneIds, lanePlan, worktreePaths, cfg, priorFailures, priorCompleted, batchTag } = a
 configureAgentTypes(cfg.agentTypes || {})
 setBatchCacheKey(cfg.configFingerprint || '')
+setBatchRoot(cfg.repoRoot || '')
 
 // ── File ownership verification ─────────────────────────────────────────────
 

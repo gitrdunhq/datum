@@ -2,7 +2,7 @@ import { model, setModelTiers } from './shared/models'
 import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, TddActArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
 import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
 import { runBatch } from './shared/agents'
 import { DEFAULT_CONFIG, skillPath } from './shared/models'
@@ -25,6 +25,7 @@ const a = ((typeof args === 'string')
 
 // Resume cache key (#354): stamped into every batch prompt of this run.
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 // Read config from .datum/config.json if not passed as args
 let repoCfg: RepoConfig = {} as RepoConfig
@@ -176,7 +177,7 @@ for (let bi = 0; bi < batches.length; bi++) {
     log('── Setup ──')
     const setup = await workflow(
       { scriptPath: sk('datum-tdd-act-setup') },
-      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' }
+      { batchRunId, epicBranch, batchLaneIds: runnableBatchIds, lanePlan, lanePlanPath, batchTag, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '', repoRoot: a.repoRoot || '' }
     ) as SetupResult
 
     // Act
@@ -185,7 +186,7 @@ for (let bi = 0; bi < batches.length; bi++) {
       { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '', repoRoot: a.repoRoot || '' },
         priorFailures: failures,
         priorCompleted: completedLanes,
       }
@@ -235,6 +236,7 @@ for (let bi = 0; bi < batches.length; bi++) {
         batchTag,
         agentTypes: agentTypeArgs(),
         configFingerprint: a.configFingerprint || '',
+        repoRoot: a.repoRoot || '',
         laneState: mergedIds.length > 0
           ? { epicSlug: slug, entries: mergedIds.map(id => ({ task_id: id, spec_hash: digestSpecHash(lanePlan, id) })) }
           : null,
@@ -298,7 +300,7 @@ let docsResult: DocsResult | null = null
 try {
   docsResult = await workflow(
     { scriptPath: sk('datum-tdd-act-docs') },
-    { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '' }
+    { completedLanes, lanePlan, runId, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '', repoRoot: a.repoRoot || '' }
   ) as DocsResult | null
 } catch (exc) {
   log(`[warn] docs_workflow_failed: ${(exc as Error).message} — continuing; docs may be stale or left uncommitted`)

@@ -79,3 +79,19 @@ describe('child scripts configure from the parent switches before any read', () 
     })
   }
 })
+
+// And for the repo root: every script that runs batches records the root the
+// parent measured at boot (setBatchRoot) before its first batchCommandPrompt,
+// so a runner whose cwd drifted still runs every batch at the repo root.
+describe('setBatchRoot runs before the first batchCommandPrompt in every script', () => {
+  for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
+    it(file, () => {
+      const src = readFileSync(join(srcDir, file), 'utf8')
+      const firstBatch = firstCallIndex(src, 'batchCommandPrompt')
+      if (firstBatch === -1) return
+      const rootAt = firstCallIndex(src, 'setBatchRoot')
+      expect(rootAt, `${file}: never calls setBatchRoot`).not.toBe(-1)
+      expect(rootAt, `${file}: first batchCommandPrompt( at ${firstBatch} precedes setBatchRoot( at ${rootAt}`).toBeLessThan(firstBatch)
+    })
+  }
+})

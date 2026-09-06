@@ -1,7 +1,7 @@
 import { model } from './shared/models'
 import type { DocsArgs, WriteResult } from './shared/types'
 import { WRITE_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
-import { batchCommandPrompt, setBatchCacheKey, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } from './shared/batch'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
@@ -16,6 +16,7 @@ export const meta = {
 const a = args as DocsArgs
 configureAgentTypes(a.agentTypes || {})
 setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 phase('Docs')
 
 let synced = false
