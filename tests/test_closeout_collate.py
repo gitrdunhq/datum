@@ -170,6 +170,35 @@ def test_collate_lifts_lanes_out_of_tasks(repo):
     assert "lanes" not in data["tasks"]
 
 
+def test_collate_names_a_token_collector_that_had_no_source(repo):
+    """elonchesd epic-2 closeout: token_metrics was all zero with an empty
+    collector_warnings — "did not run" was indistinguishable from "zero"."""
+    run_id = "run-005"
+    raw_dir = _write_collector_outputs(repo, run_id)
+    (raw_dir / "token_metrics.json").write_text(
+        json.dumps(
+            {
+                "collected": False,
+                "reason": "no state.db with a token_metrics table (no producer writes one)",
+                "total_input": None,
+                "total_output": None,
+            }
+        )
+    )
+    result = _run_collate(repo, run_id, _merge_sha(repo))
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
+    assert data["collector_warnings"] == [
+        "token_metrics: not collected — no state.db with a token_metrics table (no producer writes one)"
+    ]
+    assert data["token_metrics"]["total_input"] is None
+    from datum.models.closeout_data_schema import CloseoutData
+
+    CloseoutData(**data)
+
+
 def test_collate_resolves_the_epic_number_from_the_branch_when_the_flag_is_absent(repo):
     """The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps)
     never passed --epic-number, so argparse exited 2 with a usage message and

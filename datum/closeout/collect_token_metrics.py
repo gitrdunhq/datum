@@ -72,22 +72,48 @@ def main() -> None:
         per_model[model]["input"] += inp
         per_model[model]["output"] += out
 
-    data = {
-        "total_input": total_input,
-        "total_output": total_output,
-        "total": total_input + total_output,
-        "per_phase": per_phase,
-        "per_model": per_model,
-    }
+    # No source is NOT zero: nothing in the pipeline writes the token_metrics
+    # table this collector reads (elonchesd epic-2: every closeout said 0
+    # tokens while the Workflow tool had reported ~9.6M). Say so by name so
+    # collate carries it as a collector warning; the real producer is #459.
+    if not model_log:
+        if not db_path.exists():
+            reason = f"no state.db at .datum/runs/{args.run_id}/state.db or .datum/state.db (no producer writes one)"
+        elif db_error:
+            reason = db_error
+        else:
+            reason = "state.db has a token_metrics table with no rows"
+        data = {
+            "collected": False,
+            "reason": reason,
+            "total_input": None,
+            "total_output": None,
+            "total": None,
+            "per_phase": {},
+            "per_model": {},
+        }
+    else:
+        data = {
+            "collected": True,
+            "total_input": total_input,
+            "total_output": total_output,
+            "total": total_input + total_output,
+            "per_phase": per_phase,
+            "per_model": per_model,
+        }
 
     out_path = Path(f".datum/runs/{args.run_id}/closeout-raw/token_metrics.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2))
     marker.write_text("done")
-    result = {"ok": True, "total_tokens": data["total"]}
-    if db_error:
+    result: dict = {
+        "ok": True,
+        "collected": data["collected"],
+        "total_tokens": data["total"],
+    }
+    if not data["collected"]:
         result["skipped"] = True
-        result["reason"] = db_error
+        result["reason"] = data["reason"]
     print(json.dumps(result))
 
 

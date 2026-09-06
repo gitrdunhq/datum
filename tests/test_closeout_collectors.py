@@ -480,9 +480,11 @@ class TestCollectTokenMetrics:
         assert metrics_file.exists()
 
         data = json.loads(metrics_file.read_text())
-        assert data["total_input"] == 0
-        assert data["total_output"] == 0
-        assert data["total"] == 0
+        # No source is "not collected", never zero (elonchesd epic-2 closeout).
+        assert data["collected"] is False
+        assert data["total_input"] is None
+        assert data["total_output"] is None
+        assert data["total"] is None
 
     def test_skip_on_marker(self, env_with_repo):
         """collect_token_metrics skips if .collect-token-metrics.done exists."""
@@ -857,7 +859,9 @@ class TestEdgeCases:
 
         metrics_file = repo["runs_dir"] / "closeout-raw" / "token_metrics.json"
         data = json.loads(metrics_file.read_text())
-        assert data["total"] == 0
+        # A DB without the table is "not collected", never zero.
+        assert data["collected"] is False
+        assert data["total"] is None
 
     def test_collect_git_with_invalid_sha_range(self, env_with_repo):
         """collect_git fails appropriately when given invalid SHAs."""
@@ -1107,3 +1111,37 @@ class TestCollate:
             f"collect_token_metrics silently reported 0 tokens instead of "
             f"reporting that the token_metrics table was missing: {output}"
         )
+
+
+def test_collect_token_metrics_names_itself_when_it_has_no_source(env_with_repo):
+    """elonchesd epic-2 closeout: token_metrics was all zero with an empty
+    collector_warnings, so "the collector did not run" was indistinguishable
+    from "zero", while the Workflow tool had reported ~9.6M subagent tokens.
+    Nothing in the pipeline writes the token_metrics table this collector
+    reads. With no source it says so, by name, instead of reporting zero."""
+    repo = env_with_repo
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "datum.closeout.collect_token_metrics",
+            "--run-id",
+            repo["run_id"],
+        ],
+        cwd=repo["repo_dir"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = json.loads(result.stdout)
+    assert output["ok"] is True
+    assert output["collected"] is False
+    assert "state.db" in output["reason"]
+    data = json.loads(
+        (repo["runs_dir"] / "closeout-raw" / "token_metrics.json").read_text()
+    )
+    assert data["collected"] is False
+    assert data["reason"] == output["reason"]
+    assert data["total_input"] is None and data["total_output"] is None

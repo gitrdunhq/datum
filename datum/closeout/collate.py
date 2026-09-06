@@ -90,6 +90,14 @@ def main() -> None:
                 warnings.append(
                     f"{collector}: no closeout-raw/{collector}.json — collector did not run or failed"
                 )
+    # A collector that ran but found no source says so (collected: false,
+    # reason): carried as a warning, never read as zero (elonchesd epic-2).
+    for collector in ("token_metrics", "tasks"):
+        payload = data.get(collector)
+        if isinstance(payload, dict) and payload.get("collected") is False:
+            warnings.append(
+                f"{collector}: not collected — {payload.get('reason') or 'no reason given'}"
+            )
     data["collector_warnings"] = warnings
 
     # Flatten well-known keys
