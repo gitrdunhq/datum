@@ -8,8 +8,8 @@ Usage:
 
 import argparse
 import json
-import sys
 import re
+import sys
 from pathlib import Path
 
 
@@ -127,19 +127,22 @@ def build_file_ownership(
 def inject_conflict_edges(tasks: list[dict]) -> None:
     """Add depends_on edges between lanes that share files.
 
-    For each file claimed by multiple lanes, all lanes after the first
-    claimant get a dependency on the first claimant. Mutates in place.
+    Every writer of a shared file is chained to the writer before it (in
+    task order), so no two writers ever run as siblings from the same base:
+    each dependent merges the previous writer's lane branch at intake and
+    squash order equals write order. elonchesd player-guidance
+    wf_6cb9491b-36b task-013: three screen lanes each extended
+    src/rules/copy.ts, every one depended only on the FIRST claimant, ran
+    in parallel, and conflicted with each other at squash time. Mutates in
+    place.
     """
     _, conflicts = build_file_ownership(tasks)
+    by_id = {t["id"]: t for t in tasks}
     for _file, task_ids in conflicts.items():
-        first = task_ids[0]
-        for later in task_ids[1:]:
-            for t in tasks:
-                if t["id"] == later:
-                    deps = t.setdefault("depends_on", [])
-                    if first not in deps:
-                        deps.append(first)
-                    break
+        for previous, later in zip(task_ids, task_ids[1:]):
+            deps = by_id[later].setdefault("depends_on", [])
+            if previous not in deps:
+                deps.append(previous)
 
 
 def _reaches(deps: dict[str, list[str]], start: str, target: str) -> bool:

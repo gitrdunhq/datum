@@ -53,14 +53,21 @@ class TestInjectConflictEdges:
         assert tasks[1]["depends_on"].count("task-1") == 1
 
     def test_three_way_conflict_chains(self):
+        """elonchesd player-guidance wf_6cb9491b-36b task-013: three screen
+        lanes each extended src/rules/copy.ts, every one depended only on the
+        FIRST claimant, so they ran as siblings from the same base and
+        conflicted at squash time. Every writer of a shared file is chained
+        to the writer before it, so each dependent merges the previous
+        writer's branch at intake and squash order equals write order."""
         tasks = [
             {"id": "task-1", "files": ["shared.py"], "depends_on": []},
             {"id": "task-2", "files": ["shared.py"], "depends_on": []},
             {"id": "task-3", "files": ["shared.py"], "depends_on": []},
         ]
         inject_conflict_edges(tasks)
-        assert "task-1" in tasks[1]["depends_on"]
-        assert "task-1" in tasks[2]["depends_on"]
+        assert tasks[1]["depends_on"] == ["task-1"]
+        assert tasks[2]["depends_on"] == ["task-2"]
+        assert topological_sort(tasks) == ["task-1", "task-2", "task-3"]
 
     def test_no_self_edges(self):
         tasks = [
@@ -225,3 +232,20 @@ class TestInjectReadDependencyEdges:
         inject_read_dependency_edges(tasks)
         assert "task-0" in tasks[1]["depends_on"]
         assert "task-writer" in tasks[1]["depends_on"]
+
+
+class TestSharedFileWritersAreSerialised:
+    def test_four_writers_form_one_chain_and_never_run_as_siblings(self):
+        tasks = [
+            {"id": "task-002", "files": ["src/rules/copy.ts"], "depends_on": []},
+            {"id": "task-012", "files": ["src/rules/copy.ts", "src/a.ts"], "depends_on": ["task-002"]},
+            {"id": "task-013", "files": ["src/rules/copy.ts", "src/b.ts"], "depends_on": ["task-002"]},
+            {"id": "task-015", "files": ["src/rules/copy.ts", "src/c.ts"], "depends_on": ["task-002"]},
+        ]
+        inject_conflict_edges(tasks)
+        by_id = {t["id"]: t for t in tasks}
+        assert "task-012" in by_id["task-013"]["depends_on"]
+        assert "task-013" in by_id["task-015"]["depends_on"]
+        # no two writers of the file are independent of each other
+        order = topological_sort(tasks)
+        assert order.index("task-002") < order.index("task-012") < order.index("task-013") < order.index("task-015")
