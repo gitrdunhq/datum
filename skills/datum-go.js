@@ -641,10 +641,10 @@ async function runBatch(steps, opts, deps) {
 
 # attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
   } else if (result.missing && result.corrupt) {
-    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once on the balanced model`);
     result = parseBatchResult(await agentFn(`${prompt}
 
-# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, { ...retryOpts, model: model("balanced") }), steps);
   } else if (result.missing && !result.refusal && !result.scriptError) {
     logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) \u2014 retrying once with a fresh runner`);
     result = parseBatchResult(await agentFn(`${prompt}
