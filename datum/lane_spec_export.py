@@ -27,6 +27,13 @@ from datum.lane_hash import lane_spec_hash
 
 SCHEMA_VERSION = 1
 
+INTEGRATION_NOTE = {
+    "note": (
+        "This is an integration lane: its tests are expected to PASS "
+        "against the already-merged code and must not be written to fail."
+    )
+}
+
 
 class LaneSpecExportError(ValueError):
     """The lane could not be exported; `payload` is safe to print as JSON."""
@@ -161,13 +168,16 @@ def export_lane_spec(
             expected=expect_hash,
         )
     criteria = lane.get("acceptance_criteria") or []
+    summary = contract_summary(criteria)
+    if lane.get("kind") == "integration":
+        summary = [INTEGRATION_NOTE, *summary]
     body = {
         "schema_version": SCHEMA_VERSION,
         **lane,
         # After the spread: the caller's id and hash win over any stray keys.
         "task_id": task_id,
         "spec_hash": spec_hash,
-        "contract_summary": contract_summary(criteria),
+        "contract_summary": summary,
     }
     data = (json.dumps(body, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     out.parent.mkdir(parents=True, exist_ok=True)
