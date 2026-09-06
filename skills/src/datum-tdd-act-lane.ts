@@ -27,6 +27,8 @@ import {
   laneSpecContextFile,
   digestSpecHash,
   strayCleanSteps,
+  codeTellSteps,
+  parseTellScan,
   strayFilesFromSteps,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps, preserveHeadRefSteps } from './shared/commit-steps'
@@ -437,7 +439,8 @@ No markdown fences, no explanation.`,
   // datum-cli call as the squash merge (#368) — not by a per-lane agent here.
 
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
+    // No tell scan on this path: the checker reads the files itself.
+    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, [])
     if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
     await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
@@ -481,7 +484,8 @@ No markdown fences, no explanation.`,
 
     if (intakeVerifyExit === 0) {
       log(`[${taskId}] RED and GREEN commits already exist on lane branch — lane already satisfied, resuming from REFACTOR (#331)`)
-      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
+      // No tell scan on this path: the checker reads the files itself.
+      const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, [])
       if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
       await updateStage(issueId, 'done')
       return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
@@ -1381,12 +1385,19 @@ No markdown fences, no explanation.`,
   // REFACTOR's test run collected four of them and failed on a pristine
   // GREEN commit. Untracked files between stages are strays: removed and
   // named. Fails soft — the batch not running is a named absence.
-  const strayOutcome = strayFilesFromSteps(await runBatch(strayCleanSteps(wt), stageOpts('cli', { label: `stray-clean:${taskId}`, phase: 'Act', model: model('fast') })))
+  // The deterministic tell scan (unslop-code) rides the same batch: one
+  // runner call, and its hits decide whether REFACTOR runs at all.
+  const preRefactor = await runBatch(
+    [...strayCleanSteps(wt), ...codeTellSteps({ wt, files: [...implFiles, ...testFiles], baseRef: scopedLaneCfg.epicBranch })],
+    stageOpts('cli', { label: `stray-clean:${taskId}`, phase: 'Act', model: model('fast') }),
+  )
+  const strayOutcome = strayFilesFromSteps(preRefactor)
   if (strayOutcome.cleaned === null) log(`[${taskId}] stray_clean_unchecked: could not list untracked files in the worktree before REFACTOR`)
   else if (strayOutcome.strays.length > 0) log(`[${taskId}] stray_untracked_files: ${strayOutcome.strays.length} untracked file(s) left by a prior stage ${strayOutcome.cleaned ? 'removed' : 'NOT removed'} before REFACTOR: ${strayOutcome.strays.join(', ')}`)
+  const tells = tellLines(stepStdout(preRefactor, 'tell-scan'))
 
   // ── REFACTOR (writes + verifies + commits in one agent) ──
-  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
+  const refResult = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, tells)
   // Must check `.verified`, not just truthiness: runRefactor returns a
   // `{ verified: false, error }` OBJECT (truthy) for a real REFACTOR failure,
   // not null — a bare `!refResult` check here would have treated that as
@@ -1471,28 +1482,39 @@ async function runRefactor(
   wt: string,
   cfg: PipelineConfig,
   specFile: ContextFile,
+  tells: string[],
 ): Promise<{ verified: boolean; error?: string } | null> {
   log(`[${taskId}] REFACTOR: checking if needed`)
 
-  // resilientAgent, not agent(): a prose reply to a schema'd call makes the
-  // runtime throw, which used to escape as a lane CRASH (see reflect above).
-  const preCheck: RefactorCheck | null = await resilientAgent(
-    refactorCheckPrompt({ wt, allFiles: [...implFiles, ...testFiles].join(', ') }),
-    stageOpts('reader', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
-  )
+  // `tells` is the deterministic scan (unslop-code) over the lane's added
+  // lines. A hit is a real problem, so it decides REFACTOR runs without
+  // asking the checker; the checker reads only for what a regex cannot see.
+  const laneFiles = [...implFiles, ...testFiles]
+  const tellsSlot = tells.length > 0 ? tells.join('\n') : '(none)'
+  let reason = tells.length > 0 ? `code_tells: ${tells.length} on added lines (${tells.slice(0, 3).join('; ')}${tells.length > 3 ? '; …' : ''})` : ''
 
-  if (!preCheck) {
-    // Nothing came back — not the same as "nothing to improve". REFACTOR is
-    // optional, so skip it, but by its real name.
-    log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts — skipping the optional REFACTOR stage`)
-    return { verified: true }
-  }
-  if (!preCheck.should_refactor) {
-    log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || 'nothing to improve'})`)
-    return { verified: true }
+  if (tells.length === 0) {
+    // resilientAgent, not agent(): a prose reply to a schema'd call makes the
+    // runtime throw, which used to escape as a lane CRASH (see reflect above).
+    const preCheck: RefactorCheck | null = await resilientAgent(
+      refactorCheckPrompt({ wt, allFiles: laneFiles.join(', '), tellsSlot }),
+      stageOpts('reader', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
+    )
+
+    if (!preCheck) {
+      // Nothing came back — not the same as "nothing to improve". REFACTOR is
+      // optional, so skip it, but by its real name.
+      log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts — skipping the optional REFACTOR stage`)
+      return { verified: true }
+    }
+    if (!preCheck.should_refactor) {
+      log(`[${taskId}] REFACTOR: skipped (${preCheck.reason || 'nothing to improve'})`)
+      return { verified: true }
+    }
+    reason = preCheck.reason || 'checker asked for it'
   }
 
-  log(`[${taskId}] REFACTOR: proceeding (${preCheck.reason})`)
+  log(`[${taskId}] REFACTOR: proceeding (${reason})`)
 
   const refactorPacket: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', specFile, {})
   const refactorCtxCmd: string = laneCtxCmd(refactorPacket, wt)
@@ -1509,6 +1531,7 @@ async function runRefactor(
       // Same author/trailer scheme as RED and GREEN (#357) — a REFACTOR commit
       // under the user's identity was being read as a stray concurrent writer.
       commitCmd: laneCommitCommand({ wt, taskId, stage: 'REFACTOR', runId: cfg.runId }),
+      tellsSlot,
     }),
     stageOpts('refactor', { label: `refactor:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
   )
@@ -1558,6 +1581,8 @@ async function runRefactor(
   // failure of the lane, not something to return verified:true over.
   const verifySteps = [
     { name: 'test-verify', command: testRunCommand(cfg.testCommand, wt, 'refactor-verify'), tolerant: true },
+    // Rescan in the same batch when there were hits: what survived is named.
+    ...(tells.length > 0 ? codeTellSteps({ wt, files: laneFiles, baseRef: cfg.epicBranch }) : []),
   ]
   const verifyRaw = await runBatch(verifySteps, stageOpts('cli', { label: `post-refactor-verify:${taskId}`, phase: 'Act', model: model('fast') }))
   let refactorVerifyExit = testExitCode(stepStdout(verifyRaw, 'test-verify'))
@@ -1580,7 +1605,17 @@ async function runRefactor(
   }
 
   log(`[${taskId}] REFACTOR: clean (committed: ${refactor.commit_sha || 'n/a'}; independent verify exit=0)`)
+  if (tells.length > 0) {
+    // Advisory: what the scan still sees after REFACTOR is named, never a halt.
+    const left = tellLines(stepStdout(verifyRaw, 'tell-scan'))
+    if (left.length > 0) log(`[${taskId}] code_tells_remaining: ${left.length} of ${tells.length} tell(s) survived REFACTOR — ${left.slice(0, 5).join('; ')}`)
+  }
   return { verified: true }
+}
+
+/** One line per scanner finding, for logs and prompt slots. */
+function tellLines(stdout: string | null | undefined): string[] {
+  return parseTellScan(stdout).map((t) => `${t.file}:${t.line} ${t.tag}: ${t.text.trim()}`)
 }
 
 /**

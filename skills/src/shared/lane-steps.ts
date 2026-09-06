@@ -301,6 +301,28 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
   return steps
 }
 
+/** One row of `datum code-tells`: a machine-written tell on a line the lane added. */
+export interface TellFinding { file: string; line: number; tag: string; text: string }
+
+/**
+ * The deterministic tell scan (unslop-code): `datum code-tells` over the
+ * lane's files, added lines since the base only. Advisory, never a halt —
+ * hits decide that REFACTOR runs and are handed to it by name.
+ */
+export function codeTellSteps(o: { wt: string; files: string[]; baseRef: string | null }): BatchStep[] {
+  const base = o.baseRef ? ` --base ${q(o.baseRef)}` : ''
+  return [{ name: 'tell-scan', command: `datum code-tells --repo ${q(o.wt)}${base} --files ${o.files.map(q).join(' ')}`, tolerant: true }]
+}
+
+export function parseTellScan(stdout: string | null | undefined): TellFinding[] {
+  const out: TellFinding[] = []
+  for (const row of (stdout || '').split('\n')) {
+    const m = /^([^:]+):(\d+):([a-z_]+):(.*)$/.exec(row)
+    if (m) out.push({ file: m[1], line: Number(m[2]), tag: m[3], text: m[4] })
+  }
+  return out
+}
+
 /** The deterministic ownership read: files touched by the stage commit. */
 export function ownershipCommand(wt: string): string {
   return `git -C ${q(wt)} diff --name-only HEAD~1 HEAD`

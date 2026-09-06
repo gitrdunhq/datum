@@ -39,7 +39,7 @@ Read your task packet from the prompt. It contains:
 Steps:
 1. cd into working_directory
 2. Review implementation and tests
-3. Clean up: naming, structure, duplication, readability
+3. Clean up: naming, structure, duplication, readability. Remove machine-written tells the prompt lists (narrating comments, chat phrases, emoji, placeholder stubs, generic names, an abstraction with one caller). Match the level the surrounding code operates at; do not add a check, comment, type or layer the neighboring code would not have
 4. NEVER remove, rename, disable, or weaken a test
 5. NEVER add new tests — if missing AC found, set committed=false and explain
 6. Run test_command — ALL tests MUST PASS

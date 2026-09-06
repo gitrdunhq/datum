@@ -10,6 +10,8 @@ import { join } from 'node:path'
 import {
   laneIntakeSteps,
   postRedSteps,
+  codeTellSteps,
+  parseTellScan,
   scopeContractSteps,
   postGreenSteps,
   strayCleanSteps,
@@ -1629,5 +1631,29 @@ describe('setupSteps root-wt disables hooks for the root worktree', () => {
     const rootWt = steps.find((s) => s.name === 'root-wt')!.command
     expect(rootWt).toContain('git config extensions.worktreeConfig true')
     expect(rootWt).toMatch(/git -C "\$__rootwt" config --worktree core\.hooksPath \/dev\/null|config --worktree core\.hooksPath \/dev\/null/)
+  })
+})
+
+// unslop-code (randommonicle/claude-skills) for REFACTOR: the mechanical
+// surface tells are scanned deterministically over the lane's added lines by
+// `datum code-tells`; the result feeds the REFACTOR check and REFACTOR itself.
+describe('codeTellSteps / parseTellScan — the deterministic tell scan', () => {
+  it('is one tolerant step running datum code-tells over the lane files since the base', () => {
+    const steps = codeTellSteps({ wt: '/wt/T1', files: ['src/a.py', 'src/b.ts'], baseRef: 'datum/e' })
+    expect(steps).toHaveLength(1)
+    expect(steps[0].name).toBe('tell-scan')
+    expect(steps[0].tolerant).toBe(true)
+    expect(steps[0].command).toBe('datum code-tells --repo "/wt/T1" --base "datum/e" --files "src/a.py" "src/b.ts"')
+  })
+  it('omits --base when the lane has none', () => {
+    expect(codeTellSteps({ wt: '/wt/T1', files: ['src/a.py'], baseRef: null })[0].command).not.toContain('--base')
+  })
+  it('parses file:line:tag:text rows and ignores anything else', () => {
+    const out = 'src/a.py:12:narrating_comment:# Step 1: open\nnoise\nsrc/b.ts:3:emoji:// 🚀 go\n'
+    expect(parseTellScan(out)).toEqual([
+      { file: 'src/a.py', line: 12, tag: 'narrating_comment', text: '# Step 1: open' },
+      { file: 'src/b.ts', line: 3, tag: 'emoji', text: '// 🚀 go' },
+    ])
+    expect(parseTellScan(null)).toEqual([])
   })
 })

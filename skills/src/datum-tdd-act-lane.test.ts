@@ -963,3 +963,21 @@ describe('a near-miss read witness is accepted and named, not a lane failure', (
     expect(fn).toMatch(/nearMiss/)
   })
 })
+
+describe('code tells (unslop-code) — scanned before the REFACTOR check, rescanned after REFACTOR', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('runs the tell scan before the refactor-check agent and feeds both prompts', () => {
+    const scanIdx = laneSource.indexOf('codeTellSteps(')
+    const checkIdx = laneSource.indexOf('refactorCheckPrompt(')
+    expect(scanIdx).toBeGreaterThan(0)
+    expect(scanIdx).toBeLessThan(checkIdx)
+    expect(laneSource).toMatch(/tellsSlot/)
+  })
+
+  it('scanner hits alone are enough to run REFACTOR, and leftovers are named code_tells_remaining, never a halt', () => {
+    expect(laneSource).toMatch(/code_tells:/)
+    expect(laneSource).toMatch(/code_tells_remaining/)
+    expect(laneSource).not.toMatch(/error: `code_tells/)
+  })
+})

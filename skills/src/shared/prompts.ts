@@ -74,6 +74,7 @@ export function greenRetryPrompt(vars: {
 export function refactorPrompt(vars: {
   wt: string; refactorCtxCmd: string; refactorPacketStr: string
   testCommand: string; testRunCmd: string; allFilesList: string; commitPrefix: string; commitCmd: string
+  tellsSlot: string
 }): string {
   return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
 }
@@ -96,7 +97,7 @@ export function skepticLenses(): SkepticLens[] {
   ]
 }
 
-export function refactorCheckPrompt(vars: { wt: string; allFiles: string }): string {
+export function refactorCheckPrompt(vars: { wt: string; allFiles: string; tellsSlot: string }): string {
   return PREAMBLE + renderPrompt(refactorCheckTemplate, vars as PromptVars)
 }
 
