@@ -102,6 +102,8 @@ Consecutive command runners with no LLM judgement between them run as **one** `d
 
 The lane batches reset datum's own scratch worktrees (`git reset --hard`, `git clean -fd` under `.datum/worktrees/`). A host permission classifier can refuse those for subagents; the runner then answers in prose, the batch is re-sent once to a fresh runner, and a second refusal fails the lane as `runner_permission_denied` with the excerpt. That is an operator decision, not a datum bug — see "Permissions" below. datum will not wrap those commands in its own CLI to get past the classifier, and it will not write the rules for you.
 
+Every batch script is delivered through a quoted heredoc into a temp file, hash-checked with `git hash-object` against the sha the workflow computed, and run only on a match; a runner that re-typed the script gets one retry with a fresh runner and a second mismatch fails by name (`batch_script_corrupt`). Every batch also starts with a `cd` to the repo root datum-go measured at boot, so the shell's current directory (a second worktree, a subdirectory) cannot redirect relative paths; a root that no longer exists is `batch_root_missing` and nothing in the batch runs.
+
 ## Permissions
 
 `datum permissions-snippet` prints the JSON to merge into the consumer repo's `.claude/settings.local.json` (`autoMode.allow`, keep `"$defaults"` first). datum prints and documents these rules; it never writes them, because a pipeline installing the rules that permit its own `git reset --hard` would be granting itself permissions — that call belongs to the repo's operator. The two rules:
