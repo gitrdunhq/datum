@@ -680,19 +680,25 @@ def check_assumption_audit(
             continue
 
         if status == "guess":
-            # Check if Resolves points to an answered question
-            resolves_match = re.match(r"^(Q\d+)$", resolves.strip())
-            if not resolves_match:
+            # Resolves must reference an answered question. Any Q<N> in the
+            # cell counts ("Q8 (partially)", "Q2 (related)" reference one;
+            # elonchesd wf_251cf8a3-363 lost 20 minutes of planning to an
+            # exact-match rule); 'n/a' with prose is the real violation.
+            referenced = re.findall(r"\bQ\d+\b", resolves)
+            if not referenced:
                 errors.append(
                     f"Assumption {cells[0]}: status is 'guess' but Resolves "
-                    f"is '{resolves}' (must reference Q<N>)"
+                    f"is '{resolves}' — a guess must reference an answered "
+                    f"Q<N>; fix the Assumption Audit table in SPEC.md"
                 )
-            elif resolves_match.group(1) not in answered_questions:
-                errors.append(
-                    f"Assumption {cells[0]}: status is 'guess', Resolves "
-                    f"references {resolves_match.group(1)} but that question "
-                    f"is unanswered"
-                )
+            else:
+                unanswered = [q for q in referenced if q not in answered_questions]
+                if unanswered:
+                    errors.append(
+                        f"Assumption {cells[0]}: status is 'guess', Resolves "
+                        f"references {', '.join(unanswered)} but that question "
+                        f"is unanswered (QUESTIONS.md)"
+                    )
 
     # Check for zero Refine-section questions (warning, not error)
     if questions_content:
@@ -851,6 +857,21 @@ def gate_refine(yolo: bool, config: dict) -> None:
         q_errors = check_questions_answered(questions_path.read_text())
         if q_errors:
             fail(f"QUESTIONS.md has unanswered questions: {q_errors}")
+
+    # Overconfidence: the Assumption Audit table is refine's own output, so
+    # it is checked here, where a fix costs seconds. The plan gate re-checks
+    # it, but a failure there arrives after every planning agent has run
+    # (elonchesd wf_251cf8a3-363: 15 agents, 20 minutes, then this).
+    overconfidence_enabled = config.get("gates", {}).get("overconfidence_check", True)
+    audit_errors, audit_warnings = check_assumption_audit(
+        content,
+        questions_path.read_text() if questions_path.exists() else None,
+        overconfidence_enabled,
+    )
+    for w in audit_warnings:
+        print(f"⚠️ Warning: {w}", file=sys.stderr)
+    if audit_errors:
+        fail(f"Overconfidence gate failed: {audit_errors}")
 
     policy = gate_policy(config, "refine_human_review")
     if policy == "required" and not yolo:

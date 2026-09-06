@@ -196,3 +196,142 @@ class TestBackwardCompat(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssumptionAuditResolvesReference(unittest.TestCase):
+    """elonchesd datum/player-guidance wf_251cf8a3-363: 'Q8 (partially)' and
+    'Q2 (related)' DO reference Q<N>; the exact-match rule rejected them
+    after 20 minutes of planning agents. A 'guess' row passes when Resolves
+    contains a Q<N> that is answered; 'n/a' is the real violation, and the
+    message names the file to fix (SPEC.md's Assumption Audit), never
+    tasks.json."""
+
+    SPEC = (
+        "## Assumption Audit\n\n"
+        "| # | Assumption | Justification | Status | Resolves |\n"
+        "|---|---|---|---|---|\n"
+        "| 4 | Risky | Maybe | guess | {r4} |\n"
+        "| 7 | Risky | Maybe | guess | {r7} |\n"
+        "| 8 | Risky | Maybe | guess | {r8} |\n"
+    )
+    QUESTIONS = (
+        "### Q2: [Scope] Two?\n\n[Answer]: yes.\n\n"
+        "### Q8: [Scope] Eight?\n\n[Answer]: partly.\n"
+    )
+
+    def test_parenthetical_reference_to_an_answered_question_passes(self):
+        from datum.gate import check_assumption_audit
+
+        spec = self.SPEC.format(r4="Q8 (partially)", r7="Q2 (related)", r8="Q8")
+        errors, _ = check_assumption_audit(spec, self.QUESTIONS)
+        self.assertEqual(errors, [])
+
+    def test_na_with_prose_is_the_violation_and_names_spec_md(self):
+        from datum.gate import check_assumption_audit
+
+        spec = self.SPEC.format(
+            r4="n/a — decided by convention", r7="Q2 (related)", r8="Q8"
+        )
+        errors, _ = check_assumption_audit(spec, self.QUESTIONS)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Assumption 4", errors[0])
+        self.assertIn("SPEC.md", errors[0])
+        self.assertNotIn("tasks.json", errors[0])
+
+    def test_reference_to_an_unanswered_question_still_fails(self):
+        from datum.gate import check_assumption_audit
+
+        spec = self.SPEC.format(r4="Q3 (related)", r7="Q2", r8="Q8")
+        errors, _ = check_assumption_audit(spec, self.QUESTIONS)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Q3", errors[0])
+        self.assertIn("unanswered", errors[0])
+
+
+class TestRefineGateRunsAssumptionAudit(unittest.TestCase):
+    """The audit table is refine's output; checking it only at the plan gate
+    threw away 20 minutes of planning agents (elonchesd wf_251cf8a3-363).
+    The refine gate runs the same check, where a fix costs seconds."""
+
+    def _epic(self, tmp: str, resolves: str) -> None:
+        import os
+        import subprocess
+
+        subprocess.run(["git", "init", "-q", "-b", "datum/e"], cwd=tmp, check=True)
+        # The epic dir resolves from the branch, which needs a commit; hermetic
+        # against the developer's global git config and hooks.
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "base",
+            ],
+            cwd=tmp,
+            check=True,
+        )
+        os.makedirs(os.path.join(tmp, "docs", "epics", "datum", "e"))
+        spec = (
+            "# Spec\n## Summary\nx\n## Requirements\nx\n## Failure modes\nx\n"
+            "## Non-functional\nx\n## Out of scope\nx\n"
+            "## Assumption Audit\n\n"
+            "| # | Assumption | Justification | Status | Resolves |\n"
+            "|---|---|---|---|---|\n"
+            f"| 1 | Risky | Maybe | guess | {resolves} |\n"
+        )
+        with open(
+            os.path.join(tmp, "docs", "epics", "datum", "e", "SPEC.md"), "w"
+        ) as f:
+            f.write(spec)
+        with open(
+            os.path.join(tmp, "docs", "epics", "datum", "e", "QUESTIONS.md"), "w"
+        ) as f:
+            f.write("## Refine\n\n### Q1: [Scope] One?\n\n[Answer]: yes.\n")
+
+    def _run(self, tmp: str) -> tuple[bool, str]:
+        import io
+        import os
+        from contextlib import redirect_stdout
+
+        from datum.gate import gate_refine
+
+        cwd = os.getcwd()
+        os.chdir(tmp)
+        buf = io.StringIO()
+        try:
+            with redirect_stdout(buf):
+                gate_refine(yolo=True, config={})
+            return True, buf.getvalue()
+        except SystemExit as e:
+            # pass_gate() exits 0, fail() exits 1: the code is the verdict.
+            return e.code in (0, None), buf.getvalue()
+        finally:
+            os.chdir(cwd)
+
+    def test_refine_gate_fails_on_a_guess_with_no_question(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._epic(tmp, "n/a")
+            passed, out = self._run(tmp)
+            self.assertFalse(passed)
+            self.assertIn("Assumption 1", out)
+            self.assertIn("SPEC.md", out)
+
+    def test_refine_gate_passes_on_a_guess_resolved_by_an_answered_question(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._epic(tmp, "Q1 (partially)")
+            passed, out = self._run(tmp)
+            self.assertTrue(passed, out)
