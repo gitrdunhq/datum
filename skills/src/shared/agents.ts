@@ -198,5 +198,14 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     const retryOpts = { ...opts, label: `${label}:retry` }
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner refused this batch`, retryOpts), steps)
   }
+  // caliper eedom wf_4f739141-c8c: the runner re-typed the script and dropped a
+  // quote. The wrapper's hash check caught it; a transcription slip is not a
+  // verdict on the script, so it is re-sent once to a fresh runner too.
+  if (result.missing && result.corrupt) {
+    const label = opts.label || 'batch'
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) — retrying once with a fresh runner`)
+    const retryOpts = { ...opts, label: `${label}:retry` }
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner mistyped this script; copy it exactly`, retryOpts), steps)
+  }
   return result
 }

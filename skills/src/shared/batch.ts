@@ -12,6 +12,8 @@
 // Pure functions, no sandbox globals. tested-by: skills/src/shared/batch.test.ts
 
 import { parseAgentJson } from './utils'
+import { gitBlobSha } from './sha1'
+import { utf8Encode } from './utf8'
 
 export interface BatchStep {
   /** Unique step id, `[a-z][a-z0-9-]*`. Used to look the result up. */
@@ -42,6 +44,9 @@ export interface BatchResult {
   /** The runner's prose reply when it returned text instead of the JSON
    *  array — kept so describeFailure can name a permission refusal. */
   refusal?: string
+  /** `batch_script_corrupt: expected <sha>, got <sha>` — the runner did not
+   *  run the script it was given (a transcription error); runBatch retries once. */
+  corrupt?: string
 }
 
 const NAME_RE = /^[a-z][a-z0-9-]*$/
@@ -57,9 +62,41 @@ export function validateBatchSteps(steps: BatchStep[]): void {
   }
 }
 
-/** The bash script that runs every step and prints one JSON array. */
+/**
+ * The bash script that runs every step and prints one JSON array.
+ *
+ * Delivered through a quoted heredoc into a file and hashed with
+ * `git hash-object` against the sha computed here before it runs: the
+ * runner TRANSCRIBES the script into its Bash call, and a fast model drops
+ * a character in a 24-line script with nested quoting (caliper eedom
+ * wf_4f739141-c8c: `printf '{"root": "%s"}'` became `"%s'}'`, an unmatched
+ * quote, a halted run). A mismatch prints one `__script` step naming
+ * batch_script_corrupt instead of running anything; runBatch retries once.
+ */
 export function batchScript(steps: BatchStep[]): string {
+  const inner = innerBatchScript(steps)
+  const sha = gitBlobSha(utf8Encode(inner))
+  return [
+    '__f=$(mktemp); trap \'rm -f "$__f"\' EXIT',
+    `cat > "$__f" <<'${BATCH_EOF}'`,
+    inner.replace(/\n$/, ''),
+    BATCH_EOF,
+    '__h=$(git hash-object "$__f" 2>&1)',
+    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
+    // shell, so anything defined before the script (the tests' `__root=`
+    // prelude, a `cd`) is visible exactly as it was before the wrapper.
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`,
+  ].join('\n') + '\n'
+}
+
+const BATCH_EOF = 'DATUM_BATCH_EOF'
+
+/** The unwrapped step runner (what the heredoc carries). */
+export function innerBatchScript(steps: BatchStep[]): string {
   validateBatchSteps(steps)
+  for (const s of steps) {
+    if (s.command.split('\n').some((l) => l.trim() === BATCH_EOF)) throw new Error(`batch: step "${s.name}" contains the heredoc delimiter ${BATCH_EOF}`)
+  }
   const lines: string[] = [
     '__bo=$(mktemp); __be=$(mktemp); __r=\'[]\'',
     '__rec() { __r=$(printf \'%s\' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" \'. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]\'); }',
@@ -130,6 +167,9 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     return text ? { steps: [], failed: null, missing: true, refusal: text } : { steps: [], failed: null, missing: true }
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
+  if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, corrupt: results[0].stderr }
+  }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name))
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null
   return { steps: results, failed, missing: false }
@@ -156,6 +196,7 @@ export function isRunnerRefusal(reply: string): boolean {
 
 export function describeFailure(r: BatchResult, label: string): string {
   if (r.missing) {
+    if (r.corrupt) return `${label}: batch_script_corrupt — the runner did not run the script it was given (${r.corrupt})`
     if (!r.refusal) return `${label}: batch agent returned no parseable result`
     const excerpt = r.refusal.replace(/\s+/g, ' ').slice(0, 300)
     if (REFUSAL_RE.test(r.refusal)) {

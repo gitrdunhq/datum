@@ -200,3 +200,41 @@ describe('parseBatchResult', () => {
     expect(r.steps).toEqual([{ name: 'a', exit_code: 0, stdout: 'ok', stderr: '' }])
   })
 })
+
+// caliper eedom wf_4f739141-c8c: the fast-model runner re-typed the 24-line
+// setup batch into its Bash call and turned `printf '{"root": "%s"}'` into
+// `printf '{"root": "%s'}'` — one dropped character, an unmatched quote, a
+// halted run. A runner transcribes; it must never be trusted to transcribe
+// exactly. The batch now delivers the script through a quoted heredoc into
+// a file, hashes the file with `git hash-object` against the sha the
+// workflow computed, runs it only on a match, and otherwise prints a single
+// `__script` step naming batch_script_corrupt so the caller retries.
+describe('batchScript integrity: the runner cannot silently mangle the script', () => {
+  const steps = [{ name: 'root-wt', command: `__root=$(pwd) && printf '{"root": "%s"}' "$__root"`, tolerant: true }]
+
+  it('wraps the inner script in a quoted heredoc, hashes it with git hash-object, and runs it only on a match', () => {
+    const script = batchScript(steps)
+    expect(script).toMatch(/cat > "\$__f" <<'DATUM_BATCH_EOF'\n/)
+    expect(script).toMatch(/\nDATUM_BATCH_EOF\n/)
+    expect(script).toMatch(/git hash-object "\$__f"/)
+    expect(script).toMatch(/batch_script_corrupt/)
+    expect(script).toMatch(/[0-9a-f]{40}/)
+    // sourced, so a prelude (`__root=...`, a `cd`) stays visible to the steps
+    expect(script).toMatch(/\. "\$__f"/)
+    expect(script).not.toMatch(/bash "\$__f"/)
+  })
+
+  it('under real bash, the exact script runs and a one-character transcription error is a named corrupt result', () => {
+    const script = batchScript(steps)
+    const ok = parseBatchResult(execFileSync('bash', ['-c', script], { encoding: 'utf8' }), steps)
+    expect(ok.missing).toBe(false)
+    expect(stepStdout(ok, 'root-wt')).toMatch(/^\{"root": "/)
+
+    const mangled = script.replace(`printf '{"root": "%s"}'`, `printf '{"root": "%s'}'`)
+    expect(mangled).not.toBe(script)
+    const bad = parseBatchResult(execFileSync('bash', ['-c', mangled], { encoding: 'utf8' }), steps)
+    expect(bad.missing).toBe(true)
+    expect(bad.corrupt).toMatch(/^batch_script_corrupt: expected [0-9a-f]{40}, got [0-9a-f]{40}/)
+    expect(describeFailure(bad, 'setup')).toMatch(/^setup: batch_script_corrupt — the runner did not run the script it was given/)
+  })
+})

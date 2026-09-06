@@ -1228,7 +1228,10 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
       // Replace the real `datum` collector calls with no-ops so this runs
       // without the CLI installed — this test is about the shell plumbing
       // (var threading, mkdir, data-exists check), not the collectors.
-      const script = batchScript(steps).replace(/datum closeout-collect[a-z-]*[^\n]*/g, 'true')
+      // Patched BEFORE batchScript: the wrapper hashes the script it emits,
+      // so editing the emitted text would read as a runner transcription error.
+      const patched = steps.map((s) => ({ ...s, command: s.command.replace(/datum closeout-collect[a-z-]*[^\n]*/g, 'true') }))
+      const script = batchScript(patched)
       const r = parseBatchResult(
         execFileSync('bash', ['-c', `cd ${JSON.stringify(dir)} && git init -q && git commit --allow-empty -q -m x && ${script}`], { encoding: 'utf8' }),
         steps,

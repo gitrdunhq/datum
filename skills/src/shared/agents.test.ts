@@ -265,3 +265,30 @@ describe('parseCommitVerification', () => {
     expect(r.detail).toMatch(/no result|did not run/i)
   })
 })
+
+// caliper eedom wf_4f739141-c8c: a runner that mistyped the batch script is
+// now a named batch_script_corrupt result (shared/batch.ts). Like a refusal,
+// it is re-sent once with a fresh runner before the caller sees it.
+describe('runBatch — one retry on a corrupt (mistyped) script', () => {
+  const steps = [{ name: 'a', command: 'echo hi', tolerant: true }]
+  const corrupt = JSON.stringify([{ name: '__script', exit_code: 1, stdout: '', stderr: 'batch_script_corrupt: expected 0000000000000000000000000000000000000000, got 1111111111111111111111111111111111111111' }])
+  const good = JSON.stringify([{ name: 'a', exit_code: 0, stdout: 'hi\n', stderr: '' }])
+
+  it('re-sends the batch once and returns the second result', async () => {
+    let calls = 0
+    const logs: string[] = []
+    const r = await runBatch(steps, { label: 'setup' }, {
+      agentFn: async () => { calls++; return calls === 1 ? corrupt : good },
+      logFn: (m: string) => { logs.push(m) },
+    })
+    expect(calls).toBe(2)
+    expect(r.missing).toBe(false)
+    expect(logs.join('\n')).toMatch(/\[runBatch\] setup: batch_script_corrupt on attempt 1/)
+  })
+
+  it('gives up after the second corrupt result, keeping it named', async () => {
+    const r = await runBatch(steps, { label: 'setup' }, { agentFn: async () => corrupt, logFn: () => undefined })
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'setup')).toMatch(/batch_script_corrupt/)
+  })
+})
