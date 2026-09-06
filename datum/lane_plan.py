@@ -580,6 +580,7 @@ def build_lane_plan(
     units: dict | None = None,
     global_test_command: str | None = None,
     repo_root: Path | str = ".",
+    properties_path: Path | str | None = None,
 ) -> dict:
     """Build the full lane-plan.json structure."""
     task_map = {t["id"]: t for t in tasks}
@@ -648,10 +649,43 @@ def build_lane_plan(
                 if detected:
                     lanes[tid]["test_command"] = detected
 
+    topological_order = list(sorted_ids)
+
+    if properties_path is not None:
+        properties_path = Path(properties_path)
+        if properties_path.is_file():
+            from datum.integration_invariants import (
+                derive_integration_lanes,
+                parse_integration_invariants,
+            )
+
+            md_text = properties_path.read_text(encoding="utf-8")
+            invariants = parse_integration_invariants(md_text)
+            if invariants:
+                int_lanes = derive_integration_lanes(
+                    invariants, task_map, global_test_command or ""
+                )
+                for int_lane in int_lanes:
+                    int_id = int_lane["id"]
+                    lanes[int_id] = {
+                        "id": int_id,
+                        "title": int_lane["title"],
+                        "files": int_lane["files"],
+                        "acceptance_criteria": int_lane["acceptance_criteria"],
+                        "red_note": int_lane["red_note"],
+                        "kind": int_lane["kind"],
+                        "expect_tests_pass": int_lane["expect_tests_pass"],
+                        "depends_on": int_lane["depends_on"],
+                        "stage": "queued",
+                    }
+                    topological_order.append(int_id)
+                    for f in int_lane["files"]:
+                        ownership[f] = int_id
+
     result = {
         "schema_version": "1.0.0",
         "total_lanes": len(lanes),
-        "topological_order": sorted_ids,
+        "topological_order": topological_order,
         "file_ownership": ownership,
         "lanes": lanes,
     }
@@ -670,6 +704,7 @@ def main() -> None:
     parser.add_argument("--input", default="tasks.json")
     parser.add_argument("--output", default=".datum/lane-plan.json")
     parser.add_argument("--md-output", default="TASKS.md")
+    parser.add_argument("--properties", default=None)
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -749,7 +784,13 @@ def main() -> None:
 
     ownership, _ = build_file_ownership(tasks)
     lane_plan = build_lane_plan(
-        tasks, sorted_ids, ownership, units, global_test_command, repo_root=Path(".")
+        tasks,
+        sorted_ids,
+        ownership,
+        units,
+        global_test_command,
+        repo_root=Path("."),
+        properties_path=args.properties,
     )
 
     # Preflight (#307): fail fast, before a single agent-token is spent, if

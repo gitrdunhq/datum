@@ -21,8 +21,10 @@ from pathlib import Path
 
 from datum.integration_invariants import (
     IntegrationInvariantError,
+    derive_integration_lanes,
     has_integration_invariants_section,
     parse_integration_invariants,
+    unknown_covered_tasks,
 )
 from datum.path_utils import assets_dir, existing_review_packets_dir, templates_dir
 
@@ -932,6 +934,9 @@ def gate_refine(yolo: bool, config: dict) -> None:
     pass_gate("Refine gate passed")
 
 
+_INT_LANE_PREFIX = "task-INT-"
+
+
 def check_zero_lanes(lane_plan: dict) -> list[str]:
     """A lane-plan.json with zero lanes must fail the gate explicitly.
 
@@ -957,7 +962,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
     with lane_plan_path.open() as f:
         lane_plan = json.load(f)
 
-    validate_payload, validate_value = _contracts()
+    validate_payload, _validate_value = _contracts()
     schema_errors = validate_payload("lane-plan.schema.json", lane_plan_path)
     if schema_errors:
         fail(f"lane-plan.json schema validation failed: {schema_errors}", hard=True)
@@ -1010,6 +1015,79 @@ def gate_plan(yolo: bool, config: dict) -> None:
     # in any correct topological schedule.
     task_deps = {lid: set(lane.get("depends_on", [])) for lid, lane in lanes.items()}
     _transitive_closure(task_deps)
+
+    # Integration-invariant lane checks (task-006): tasks.json and
+    # PROPERTIES.md are each read at most once here to satisfy the
+    # gate-performance NFR.
+    tasks_json_path = resolve_artifact("tasks.json")
+    if tasks_json_path.exists():
+        with tasks_json_path.open() as f:
+            tasks_data = json.load(f)
+        tasks_by_id = {
+            t["id"]: t for t in tasks_data if isinstance(t, dict) and "id" in t
+        }
+    else:
+        tasks_by_id = {}
+
+    properties_path = resolve_artifact("PROPERTIES.md")
+    invariant_rows: list[dict] = []
+    if properties_path.exists():
+        with properties_path.open() as f:
+            properties_content = f.read()
+        if has_integration_invariants_section(properties_content):
+            try:
+                invariant_rows = parse_integration_invariants(properties_content)
+            except IntegrationInvariantError:
+                invariant_rows = []
+
+    unknown_pairs = unknown_covered_tasks(invariant_rows, tasks_by_id)
+    if unknown_pairs:
+        fail(
+            "; ".join(
+                f"invariant_covers_unknown_task: {inv_id} -> {task_id}"
+                for inv_id, task_id in unknown_pairs
+            )
+        )
+
+    int_lane_ids = [lid for lid in lanes if lid.startswith(_INT_LANE_PREFIX)]
+
+    if invariant_rows:
+        test_command = config.get("test_command", "pytest")
+        derived_lanes = {
+            derived["id"]: derived
+            for derived in derive_integration_lanes(
+                invariant_rows, tasks_by_id, test_command
+            )
+        }
+        depends_on_errors = []
+        for lid in int_lane_ids:
+            lane = lanes[lid]
+            actual = set(lane.get("depends_on", []))
+            derived = derived_lanes.get(lid)
+            expected = set(derived["depends_on"]) if derived else set()
+            if actual != expected:
+                depends_on_errors.append(
+                    f"{lid} depends_on {sorted(actual)} does not match invariant "
+                    f"Covers union {sorted(expected)}"
+                )
+        if depends_on_errors:
+            fail("; ".join(depends_on_errors))
+
+    direction_errors = []
+    for lid, lane in lanes.items():
+        if lane.get("kind") == "integration":
+            continue
+        for dep in lane.get("depends_on", []):
+            if dep.startswith(_INT_LANE_PREFIX):
+                direction_errors.append(
+                    f"{lid} (kind={lane.get('kind', 'task')}) depends on "
+                    f"integration lane {dep}"
+                )
+    if direction_errors:
+        fail("; ".join(direction_errors))
+
+    if not int_lane_ids and not invariant_rows:
+        print("no_integration_invariants", file=sys.stderr)
 
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
