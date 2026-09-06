@@ -207,7 +207,11 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
   if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {
-    const scriptError = results[0].stderr
+    const { exit_code, stderr } = results[0]
+    // The guards (root, jq, hash) name themselves on stderr. A silent non-zero
+    // exit is the host refusing the script before any step ran (exit 126 at
+    // boot, wf_d913ace6-62c): named, never "the runner said nothing".
+    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`
     return scriptError.startsWith('batch_script_corrupt')
       ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError }
       : { steps: [], failed: null, missing: true, scriptError }

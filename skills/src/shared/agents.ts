@@ -230,6 +230,11 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
   } else if (result.missing && !result.refusal && !result.scriptError) {
     logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) — retrying once with a fresh runner`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner returned nothing; return the script's stdout`, retryOpts), steps)
+  } else if (result.missing && result.scriptError?.startsWith('batch_script_failed')) {
+    // wf_d913ace6-62c boot: the host shell refused the script (exit 126, no
+    // stderr) — a runner-side refusal like the classifier's, retried once.
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner's shell refused to execute the script; run it again`, retryOpts), steps)
   }
   return result
 }

@@ -379,3 +379,26 @@ describe('runBatch — the corrupt-script retry goes to the balanced model', () 
     expect(models).toEqual(['fast-model', model('balanced')])
   })
 })
+
+// wf_d913ace6-62c boot: the host shell refused the script (exit 126, no
+// stderr) twice in a row, and intermittently across launches. A refusal of
+// this kind is a runner-side failure like the other three: one fresh retry.
+describe('runBatch — one retry on batch_script_failed (the host refused the script)', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  const refused = JSON.stringify([{ name: '__script', exit_code: 126, stdout: '', stderr: '' }])
+  const ok = JSON.stringify([{ name: 'cfg', exit_code: 0, stdout: '{}', stderr: '' }])
+  it('re-sends once and uses the second reply', async () => {
+    const labels: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'boot', model: 'm' }, {
+      agentFn: async (_p, o) => { labels.push(o?.label || ''); return n++ === 0 ? refused : ok },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['boot', 'boot:retry'])
+  })
+  it('names a second refusal batch_script_failed with the exit code', async () => {
+    const r = await runBatch(steps, { label: 'boot', model: 'm' }, { agentFn: async () => refused, logFn: () => undefined })
+    expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_script_failed: the batch script exited 126/)
+  })
+})

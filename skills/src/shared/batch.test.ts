@@ -344,3 +344,22 @@ describe('batchScript — tool prefixes on PATH and a named missing jq', () => {
     }
   })
 })
+
+// datum integration-lanes wf_d913ace6-62c boot: the runner honestly returned
+// [{"name":"__script","exit_code":126,"stdout":"","stderr":""}] — the host
+// refused to execute the script before any step ran — and datum named it
+// runner_empty_result, as if the runner had said nothing.
+describe('a __script row that failed before any step is batch_script_failed, not an empty reply', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  it('names the exit code and that no step ran', () => {
+    const r = parseBatchResult(JSON.stringify([{ name: '__script', exit_code: 126, stdout: '', stderr: '' }]), steps)
+    expect(r.missing).toBe(true)
+    expect(r.scriptError).toMatch(/^batch_script_failed: the batch script exited 126 before any step ran/)
+    expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_script_failed: the batch script exited 126/)
+  })
+  it('still names a hash mismatch as batch_script_corrupt', () => {
+    const r = parseBatchResult(JSON.stringify([{ name: '__script', exit_code: 1, stdout: '', stderr: 'batch_script_corrupt: expected a, got b' }]), steps)
+    expect(r.corrupt).toBeTruthy()
+    expect(r.scriptError).not.toMatch(/batch_script_failed/)
+  })
+})
