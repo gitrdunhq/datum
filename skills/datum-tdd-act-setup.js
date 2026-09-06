@@ -306,7 +306,7 @@ function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
     if (r.scriptError) return `${label}: ${r.scriptError}`;
-    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
+    if (!r.refusal) return `${label}: runner_empty_result \u2014 batch agent returned no parseable result (empty reply)`;
     const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
     if (REFUSAL_RE.test(r.refusal)) {
       return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;

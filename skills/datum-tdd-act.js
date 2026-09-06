@@ -451,7 +451,7 @@ function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
     if (r.scriptError) return `${label}: ${r.scriptError}`;
-    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
+    if (!r.refusal) return `${label}: runner_empty_result \u2014 batch agent returned no parseable result (empty reply)`;
     const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
     if (REFUSAL_RE.test(r.refusal)) {
       return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
@@ -621,21 +621,23 @@ async function runBatch(steps, opts, deps) {
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  const label = opts.label || "batch";
+  const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
-    const label = opts.label || "batch";
     logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
-  }
-  if (result.missing && result.corrupt) {
-    const label = opts.label || "batch";
+  } else if (result.missing && result.corrupt) {
     logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  } else if (result.missing && !result.refusal && !result.scriptError) {
+    logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
   }
   return result;
 }

@@ -597,7 +597,7 @@ function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
     if (r.scriptError) return `${label}: ${r.scriptError}`;
-    if (!r.refusal) return `${label}: batch agent returned no parseable result`;
+    if (!r.refusal) return `${label}: runner_empty_result \u2014 batch agent returned no parseable result (empty reply)`;
     const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
     if (REFUSAL_RE.test(r.refusal)) {
       return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
@@ -797,21 +797,23 @@ async function runBatch(steps, opts, deps) {
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  const label = opts.label || "batch";
+  const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
-    const label = opts.label || "batch";
     logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
-  }
-  if (result.missing && result.corrupt) {
-    const label = opts.label || "batch";
+  } else if (result.missing && result.corrupt) {
     logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once with a fresh runner`);
-    const retryOpts = { ...opts, label: `${label}:retry` };
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, retryOpts), steps);
+  } else if (result.missing && !result.refusal && !result.scriptError) {
+    logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
   }
   return result;
 }
@@ -2092,8 +2094,13 @@ No markdown fences, no explanation.`,
     log(`[${taskId}] test_env_missing: ${greenEnvMissing}`);
     return { task_id: taskId, status: "failed", stage: "GREEN", error: `test_env_missing: ${greenEnvMissing} \u2014 the lane worktree has no test environment; GREEN's verify is not evidence` };
   }
+  if (greenVerifyExit === null) {
+    const why = describeFailure(postGreenVerifyResult, "post-green-verify");
+    log(`[${taskId}] green_verify_unavailable: ${why}`);
+    return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+  }
   if (greenVerifyExit !== 0) {
-    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit ?? "null"} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
+    log(`[${taskId}] GREEN VERIFY FAILED: independent re-run of the test suite exited ${greenVerifyExit} (expected 0), regardless of agent self-report (tests_pass=${green?.tests_pass})`);
     return {
       task_id: taskId,
       status: "failed",
@@ -2161,6 +2168,10 @@ No markdown fences, no explanation.`,
     );
     const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryExit = testExitCode(stepStdout(retryVerify, "test-verify"));
+    if (retryExit === null && green && green.success) {
+      const why = describeFailure(retryVerify, "post-green-tests-retry-verify");
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+    }
     if (!green || !green.success || retryExit !== 0) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `${hint} \u2014 retry ${!green ? "returned nothing" : !green.success ? `failed: ${green.failure_reason || "no reason"}` : `did not pass the suite (exit=${retryExit ?? "null"})`}` };
     }
@@ -2197,6 +2208,10 @@ ${bugSummary}`,
     const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryVerifyExit = testExitCode(stepStdout(retryVerifyRaw, "test-verify"));
+    if (retryVerifyExit === null && green && green.success) {
+      const why = describeFailure(retryVerifyRaw, "post-green-skeptic-retry-verify");
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${why}` };
+    }
     if (retryVerifyExit !== 0 || !green || !green.success) {
       const first = confirmedBugs[0];
       const summary = first ? first.description : "GREEN retry did not produce a passing, committed fix";
