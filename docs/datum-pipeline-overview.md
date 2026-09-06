@@ -8,8 +8,8 @@ datum takes a ticket and turns it into tested, reviewed, merged code — fully a
 Ticket/Issue
     |
     v
- REFINE -----> PLAN -----> ACT -----> VALIDATE -----> REVIEW -----> CLOSEOUT
- (clarify)    (decompose)  (TDD)      (full suite)    (code review)  (merge/tag)
+ REFINE ---> PLAN ---> PROPERTIES ---> ACT ---> VALIDATE ---> REVIEW ---> CLOSEOUT
+ (clarify)  (decompose) (invariants)  (TDD)   (full suite)  (code review) (tag/archive)
 ```
 
 ### Refine
@@ -33,6 +33,10 @@ Before the lane plan is written, `datum-plan` runs a deterministic cycle guard (
 }
 ```
 
+### Properties
+
+Turns the spec and lane plan into `PROPERTIES.md`: the invariants that must never break, phrased so a test can check them. The skeptic panel in Act and the Review lenses read it. Its gate halts the pipeline in yolo mode too; there is no skip.
+
 ### Act — The TDD Engine
 
 This is the core. Each lane runs the full **RED / GREEN / REFACTOR** cycle in an isolated git worktree:
@@ -49,11 +53,11 @@ Runs the full test suite on the merged branch. If tests are red, the pipeline ha
 
 ### Review
 
-Automated code review. Critical findings block merge. Non-critical findings get filed as GitHub issues for follow-up.
+Four review lenses write `REVIEW-REPORT.md`. High and critical findings halt the pipeline until an operator accepts or resolves them with `datum review-accept`. Lower findings are carried into Closeout.
 
 ### Closeout
 
-Merges to target branch, closes GitHub issues, tags the run, generates docs.
+Synthesises `CURRENT_STATE.md`, `CHANGELOG.md` and `RETRO.md`, files follow-up GitHub issues for high-severity findings only, tags the run as `epic/<branch>/<runId>`, archives the epic and runs housekeeping. The merge already happened lane by lane inside Act; Closeout does not merge.
 
 ## Key Concepts
 
@@ -64,7 +68,7 @@ Merges to target branch, closes GitHub issues, tags the run, generates docs.
 | **Skeleton generation** | Before RED, datum pre-generates test scaffolding from acceptance criteria. One named test per AC — traceability is machine-verifiable. Supports flat, directory/package-style (e.g. Swift/JVM test packages), and docs-only test conventions via `test_convention` (#270). |
 | **Gates** | Every phase has a pass/fail gate. Non-yolo runs halt and wait for human input. Pipeline state persists for resume. |
 | **File ownership** | Each lane declares which files it touches. The pipeline enforces this — a lane physically cannot commit changes to files it doesn't own. |
-| **Self-healing** | If the pipeline crashes unexpectedly, it auto-files a deduplicated GitHub issue before halting. |
+| **Named failures** | Every halt carries a stable failure name (e.g. `skeptic_broken`, `green_edited_tests`) that the triage classifier routes to the right owner. `datum bugfile` files an issue on request; nothing auto-files on crash. |
 
 ## What Makes It Different
 
