@@ -555,7 +555,10 @@ function innerBatchScript(steps) {
   }
   const lines = [
     "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
-    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    // #517: jq's exit is checked. A step jq cannot encode is still recorded —
+    // without jq (name and exit code are validated/numeric, so a literal is
+    // safe) and named on stderr — instead of vanishing from the array.
+    `__rec() { __n=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]') && __r="$__n" || { __sep=","; [ "$__r" = "[]" ] && __sep=""; __r="\${__r%]}\${__sep}{\\"name\\":\\"$1\\",\\"exit_code\\":$2,\\"stdout\\":\\"\\",\\"stderr\\":\\"batch_rec_failed: jq could not record this step (exit $2; output lost, likely not valid UTF-8)\\"}]"; }; }`,
     `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
   ];
   steps.forEach((s, i) => {
@@ -618,7 +621,20 @@ function parseBatchResult(raw, steps) {
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
-  const failed = results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  const recFailed = results2.find((r) => r.stderr.startsWith("batch_rec_failed:")) ?? null;
+  const failed = recFailed ?? results2.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  const last = results2[results2.length - 1];
+  const stoppedByFailFast = failed !== null && last?.name === failed.name && !tolerant.has(failed.name);
+  if (results2.length < steps.length && !stoppedByFailFast) {
+    const returned = new Set(results2.map((r) => r.name));
+    const absent = steps.map((s) => s.name).filter((n) => !returned.has(n));
+    return {
+      steps: [],
+      failed: null,
+      missing: true,
+      scriptError: `batch_incomplete: ${results2.length} of ${steps.length} step records returned and no non-tolerant failure stopped the batch \u2014 the runner returned a partial result (last record: ${last?.name ?? "none"}); absent: [${absent.join(", ")}]`
+    };
+  }
   return { steps: results2, failed, missing: false };
 }
 function stepResult(r, name) {
@@ -2084,7 +2100,10 @@ The code under test is already merged: these tests must PASS on your first run; 
         task_id: taskId,
         status: "failed",
         stage: "RED",
-        error: `count_gate_no_output: test-count-check returned null \u2014 cannot verify ${acCount} new test functions were committed`
+        // The batch's own name for its absence rides along (batch_incomplete,
+        // batch_timeout, runner_permission_denied): triage reads the error,
+        // not the log (#341 task-008).
+        error: `count_gate_no_output: test-count-check returned null (${describeFailure(postRedResult, "post-red batch")}) \u2014 cannot verify ${acCount} new test functions were committed`
       };
     } else {
       const text = countRaw.trim();
