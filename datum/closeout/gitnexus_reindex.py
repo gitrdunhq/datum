@@ -4,6 +4,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -64,8 +65,10 @@ def main() -> None:
                     {"ok": False, "error": "reindex failed", "log": str(log_path)}
                 )
             )
-        else:
-            print(json.dumps({"ok": True, "log": str(log_path)}))
+            # The exit code is the verdict a caller reads; ok: false with
+            # exit 0 was a contract violation (tests/test_closeout_scripts.py).
+            sys.exit(1)
+        print(json.dumps({"ok": True, "log": str(log_path)}))
     except subprocess.TimeoutExpired as e:
         # Emit a non-fatal warning instead of a traceback
         err_msg = f"GitNexus reindex timed out after {timeout} seconds. Resume manually if needed."
