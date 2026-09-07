@@ -36,6 +36,7 @@ BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
 Each test MUST assert a specific expected value or exception type.
 - Never assert on the text of the lane's own source files (`expect(source).toContain(...)` / `.not.toContain(...)` against an implementation file you or a later stage will write). Assert behaviour, not spelling — a rename or reformat should not break the test.
 - Never read back a set-only accessor or a write-only property to observe a value it never exposes. Assert against something the code under test actually returns or has an observable effect on.
+- Never read pipeline state under the repository's own `.datum/` (lane-spec.json, pipeline-state.json, a run directory). It exists only in this worktree while the pipeline runs; a test that reads it passes here and fails everywhere else. Build the input in a temporary directory instead.
 
 VERIFY BEFORE RUNNING TESTS:
 Run the command given as COUNT below to grep your test file(s) for new test functions.

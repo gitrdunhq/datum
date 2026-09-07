@@ -278,7 +278,7 @@ describe('postRedSteps', () => {
   it('orders count gate, placeholder scan, ownership, per-file scope reads, then test counts — all tolerant', () => {
     const steps = postRedSteps(opts)
     expect(names(steps)).toEqual([
-      'count-gate', 'assert-check', 'ownership', 'scope-size-0', 'scope-read-0', 'scope-size-1', 'scope-read-1',
+      'count-gate', 'assert-check', 'artifact-check', 'ownership', 'scope-size-0', 'scope-read-0', 'scope-size-1', 'scope-read-1',
       'test-count-pattern', 'test-count-after', 'test-count-before',
     ])
     expect(steps.every((s) => s.tolerant)).toBe(true)
@@ -1970,5 +1970,58 @@ describe('scripts/test-count-gate always prints a JSON envelope (#495)', () => {
     const r = run(['--repo', repoRoot, '--bogus'])
     expect(r.code).not.toBe(0)
     expect(JSON.parse(r.out.trim()).error).toMatch(/^count_gate_crashed: /)
+  })
+})
+
+// #499 (integration-lanes-2 run 20260907-015322): task-INT-1's RED read
+// REPO_ROOT/.datum/lane-spec.json, the file the exporter had just written
+// into that lane worktree; the test passed there, merged, and failed on the
+// epic. A test whose input is pipeline state under the repo's own .datum/
+// is environment-dependent by construction. The post-RED batch scans the
+// lane's added test lines (the same filtered copies the placeholder scan
+// uses) for a repo-root-relative .datum read and names the line.
+describe('postRedSteps — artifact-check names a RED line that reads the repo root\'s .datum/ (#499)', () => {
+  it('reports file:line for a REPO_ROOT / ".datum" read and stays silent for a tmp_path one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-postred-artifact-'))
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      git('init', '-q', '-b', 'epic')
+      git('config', 'core.hooksPath', '/dev/null')
+      git('config', 'user.email', 't@t')
+      git('config', 'user.name', 't')
+      mkdirSync(join(dir, 'tests'))
+      writeFileSync(join(dir, 'tests', 'test_a.py'), 'def test_old():\n    assert 1 == 1\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'base')
+      git('checkout', '-q', '-b', 'epic--T1')
+      writeFileSync(join(dir, 'tests', 'test_a.py'), [
+        'from pathlib import Path',
+        'REPO_ROOT = Path(__file__).resolve().parents[1]',
+        'def test_old():',
+        '    assert 1 == 1',
+        'def test_reads_state(tmp_path):',
+        '    ok = (tmp_path / ".datum" / "lane-spec.json")  # a scratch path is fine',
+        '    data = (REPO_ROOT / ".datum" / "lane-spec.json").read_text()',
+        '    assert data',
+        '',
+      ].join('\n'))
+      git('add', '-A'); git('commit', '-q', '-m', 'red(T1): RED complete')
+
+      const steps = postRedSteps({
+        wt: dir, testFiles: ['tests/test_a.py'], acCount: 1,
+        testFuncDiffRegex: '[+][[:space:]]*def test_',
+        sgPatterns: [{ pattern: 'assert True', name: 'assert True' }],
+        testFuncBodyRegex: 'def test_', testFuncGrepRegex: 'def test_|async def test_', ownership: true,
+        verifyTestCmd: null, baseRef: 'epic',
+      })
+      expect(steps.map((s) => s.name)).toContain('artifact-check')
+      const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoRoot, encoding: 'utf8' })
+      const r = parseBatchResult(out, steps)
+      expect(r.missing).toBe(false)
+      const hits = (stepStdout(r, 'artifact-check') || '').trim().split('\n').filter(Boolean)
+      expect(hits).toHaveLength(1)
+      expect(hits[0]).toMatch(/^tests\/test_a\.py:7:/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

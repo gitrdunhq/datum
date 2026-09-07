@@ -1032,3 +1032,15 @@ describe('code tells (unslop-code) — scanned before the REFACTOR check, rescan
     expect(laneSource).not.toMatch(/error: `code_tells/)
   })
 })
+
+// #499: a RED test that reads the repo root's .datum/ is named before GREEN.
+describe('RED — a test that reads the repo root\'s .datum/ is red_reads_runtime_artifact (#499)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  it('reads the artifact-check step and fails RED by name, after the placeholder scan', () => {
+    const assertIdx = laneSource.indexOf("stepStdout(postRedResult, 'assert-check')")
+    const artifactIdx = laneSource.indexOf("stepStdout(postRedResult, 'artifact-check')")
+    expect(assertIdx).toBeGreaterThan(0)
+    expect(artifactIdx).toBeGreaterThan(assertIdx)
+    expect(laneSource).toMatch(/error: `red_reads_runtime_artifact: \$\{artifactDetail\}`/)
+  })
+})

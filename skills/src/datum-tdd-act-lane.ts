@@ -842,6 +842,15 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: 'failed', stage: 'RED', error: `placeholder_assertions: ${assertDetail}` }
   }
 
+  // #499: a RED line that reads the repo root's own .datum/ (lane-spec.json,
+  // pipeline-state.json, a run dir) passes only in the lane worktree where
+  // the pipeline just wrote that file, and fails on the merged epic.
+  const artifactDetail = (stepStdout(postRedResult, 'artifact-check') || '').trim()
+  if (artifactDetail.length > 0) {
+    log(`[${taskId}] RED: a test reads pipeline state under the repo root's .datum/ — ${artifactDetail}`)
+    return { task_id: taskId, status: 'failed', stage: 'RED', error: `red_reads_runtime_artifact: ${artifactDetail}` }
+  }
+
   // Deterministic green-blindness gate (#audit-1): the RED agent's tests_pass
   // is self-reported from a run IT performed and read the exit status from —
   // a hallucinated or mistaken "tests_pass: false" would sail through

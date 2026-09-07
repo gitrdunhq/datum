@@ -179,6 +179,11 @@ const PREFIX_RULES: PrefixRule[] = [
     reason: 'placeholder_assertions: the RED agent committed placeholder/pass-only assertions instead of real tests.',
   },
   {
+    test: /\bred_reads_runtime_artifact\b/,
+    category: 'agent_behavior',
+    reason: 'red_reads_runtime_artifact: the RED agent wrote a test that reads pipeline state under the repo root\'s .datum/, which exists only in the lane worktree.',
+  },
+  {
     test: /\bno_new_test_functions_committed\b/,
     category: 'agent_behavior',
     reason: 'no_new_test_functions_committed: the RED agent did not actually add the required new test functions.',

@@ -268,6 +268,11 @@ export function testExitCode(stdout: string | null | undefined): number | null {
   return Number(matches[matches.length - 1][1])
 }
 
+/** A repo-root-relative read of `.datum/` on one line: a root expression
+ *  (REPO_ROOT, __dirname, process.cwd(), Path(__file__).parents[n], ...)
+ *  followed within 80 chars by a quoted or slashed `.datum`. grep -E. */
+export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|repo_root|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`
+
 export function postRedSteps(o: PostRedOpts): BatchStep[] {
   const steps: BatchStep[] = []
   if (o.acCount > 0) {
@@ -320,6 +325,20 @@ export function postRedSteps(o: PostRedOpts): BatchStep[] {
       `\nBODYPATFILE=$(mktemp)\ncat > "$BODYPATFILE" <<'PATTERN_EOF'\n${o.testFuncBodyRegex}\nPATTERN_EOF\n` +
       o.testFiles.map((f, i) =>
         `grep -A1 -f "$BODYPATFILE" "$__d${i}/${f.split('/').pop()}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`,
+      ).join('\n'),
+    tolerant: true,
+  })
+  // #499: a RED line that reads the repo root's own .datum/ (lane-spec.json,
+  // pipeline-state.json, a run dir) passes only in the lane worktree where
+  // the pipeline just wrote that file (integration-lanes-2 task-INT-1). The
+  // scan runs on the same filtered copies (added lines only) and names
+  // repo-root-relative reads; a tmp_path / ".datum" is scratch and passes.
+  steps.push({
+    name: 'artifact-check',
+    command:
+      `ARTPATFILE=$(mktemp)\ncat > "$ARTPATFILE" <<'PATTERN_EOF'\n${RUNTIME_ARTIFACT_READ_RE}\nPATTERN_EOF\n` +
+      o.testFiles.map((f, i) =>
+        `grep -nE -f "$ARTPATFILE" "$__d${i}/${f.split('/').pop()}" 2>/dev/null | sed "s#^#${f}:#"`,
       ).join('\n'),
     tolerant: true,
   })

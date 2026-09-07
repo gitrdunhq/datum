@@ -50,6 +50,7 @@ describe('classifyLaneError — deterministic lane_plan prefixes', () => {
 describe('classifyLaneError — deterministic agent_behavior prefixes', () => {
   const agentBehaviorCases: Array<[string, string]> = [
     ['placeholder_assertions', 'placeholder_assertions: 3: expect(true).toBe(false)'],
+    ['red_reads_runtime_artifact', 'red_reads_runtime_artifact: tests/integration/test_int_1.py:79:    lane_spec_path = REPO_ROOT / ".datum" / "lane-spec.json"'],
     ['no_new_test_functions_committed', 'no_new_test_functions_committed: 0 of 3 required test functions found'],
     ['green_blindness_violation', 'green_blindness_violation: GREEN agent read RED test file contents'],
     ['file_ownership_violation', 'file_ownership_violation: wrote outside allowed_write_files'],
