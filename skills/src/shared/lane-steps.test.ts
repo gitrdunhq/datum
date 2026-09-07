@@ -1695,3 +1695,32 @@ describe('laneIntakeSteps — skeleton-plan projects the preflight to what the r
     expect(cmd).toContain('MISSING')
   })
 })
+
+// #495 (elonchesd threejs-board task-019): the count-gate step printed
+// nothing, so the lane halted count_gate_no_output with nothing to read.
+// The script is `set -e`: a missing --pattern-file, a bad option or an
+// unreadable repo exited before the final echo. Every exit now prints one
+// JSON envelope; an early one carries `error` and a null count.
+describe('scripts/test-count-gate always prints a JSON envelope (#495)', () => {
+  const run = (args: string[]): { out: string; code: number } => {
+    try {
+      return { out: execFileSync('bash', ['scripts/test-count-gate', ...args], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), code: 0 }
+    } catch (e: any) {
+      return { out: String(e.stdout || ''), code: e.status }
+    }
+  }
+  it('a missing --pattern-file is an envelope with error and a null count, not silence', () => {
+    const r = run(['--repo', repoRoot, '--files', 'tests/test_a.py', '--pattern-file', '/nonexistent/patfile', '--required', '3'])
+    expect(r.code).not.toBe(0)
+    const parsed = JSON.parse(r.out.trim())
+    expect(parsed.new_test_count).toBeNull()
+    expect(parsed.required).toBe(3)
+    expect(parsed.passed).toBe(false)
+    expect(parsed.error).toMatch(/^count_gate_crashed: /)
+  })
+  it('a usage error is an envelope too', () => {
+    const r = run(['--repo', repoRoot, '--bogus'])
+    expect(r.code).not.toBe(0)
+    expect(JSON.parse(r.out.trim()).error).toMatch(/^count_gate_crashed: /)
+  })
+})

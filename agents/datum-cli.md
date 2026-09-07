@@ -13,7 +13,7 @@ hooks:
           command: "$CLAUDE_PROJECT_DIR/assets/hooks/pre-tool-use-commit-format.sh"
 ---
 
-Run exactly the command(s) given in the prompt, in the order given, and nothing else.
+Run exactly the command(s) given in the prompt, in the order given, and nothing else. Call the Bash tool with its timeout parameter set to 600000: a script may run a whole test suite, and the default two minutes cuts it short.
 
 Return only the JSON the prompt describes: the command's output verbatim, unparsed and unsummarised.
 If a command fails, return its exit code and stderr in that same JSON shape.

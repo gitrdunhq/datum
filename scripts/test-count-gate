@@ -27,9 +27,28 @@ FILES=()
 PATTERN=""
 REQUIRED=0
 FIRST=1
+EMITTED=0
+LAST_ERR=""
+
+# #495: under `set -e` a missing --pattern-file, a bad option or an
+# unreadable repo exited before the final echo, the step printed nothing,
+# and the lane halted count_gate_no_output with nothing to read. Every exit
+# prints one envelope; an early one names the cause and a null count.
+on_exit() {
+    local code=$?
+    if [[ "$EMITTED" -eq 0 ]]; then
+        local reason="${LAST_ERR:-exited $code before counting (line ${FAILED_LINE:-?})}"
+        reason=${reason//\"/\'}
+        printf '{"new_test_count":null,"required":%s,"passed":false,"error":"count_gate_crashed: %s"}\n' "${REQUIRED:-0}" "$reason"
+    fi
+}
+on_err() { FAILED_LINE=$1; }
+trap on_exit EXIT
+trap 'on_err $LINENO' ERR
 
 usage() {
-    echo "Usage: $0 --repo DIR --files F1 [F2 ...] --pattern 'PATTERN' --required N"
+    echo "Usage: $0 --repo DIR --files F1 [F2 ...] --pattern 'PATTERN' --required N" >&2
+    LAST_ERR="${LAST_ERR:-usage error}"
     exit 2
 }
 
@@ -42,12 +61,14 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --pattern) PATTERN="$2"; shift 2 ;;
-        --pattern-file) PATTERN="$(cat "$2")"; shift 2 ;;
+        --pattern-file)
+            [[ -r "$2" ]] || { LAST_ERR="pattern file not readable: $2"; exit 2; }
+            PATTERN="$(cat "$2")"; shift 2 ;;
         --regex) REGEX_TYPE="$2"; shift 2 ;;
         --required) REQUIRED="$2"; shift 2 ;;
         --base) BASE_REF="$2"; shift 2 ;;
         -h|--help) usage ;;
-        *) echo "Unknown option: $1" >&2; usage ;;
+        *) echo "Unknown option: $1" >&2; LAST_ERR="unknown option: $1"; usage ;;
     esac
 done
 REGEX_TYPE="${REGEX_TYPE:-ERE}"
@@ -103,5 +124,6 @@ else
     EXIT_CODE=0
 fi
 
+EMITTED=1
 echo "{\"new_test_count\":${COUNT},\"required\":${REQUIRED},\"passed\":${PASS}}"
 exit $EXIT_CODE
