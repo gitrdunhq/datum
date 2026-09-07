@@ -198,7 +198,6 @@ export interface Lane {
   /** Docs-only / config-only lanes skip RED/GREEN and go straight to REFACTOR.
    *  Produced by the planner via tasks.json `kind` (#369). Absent = behavioral. */
   kind?: 'structural' | 'behavioral'
-  green_model?: ModelName
   /** Verbatim test command override for lanes the repo-wide command can't
    *  reach (e.g. files in a sub-package with its own Package.swift). When set,
    *  the auto Swift --filter scoping is skipped — the override carries its own

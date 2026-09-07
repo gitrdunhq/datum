@@ -983,7 +983,7 @@ No markdown fences, no explanation.`,
   }
 
   // ── GREEN (writes implementation + verifies tests pass + commits) ──
-  const greenModel = (lane.green_model || model('balanced')) as ModelName
+  const greenModel = model('balanced') as ModelName
   log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`)
 
   const greenExtras: Record<string, unknown> = {
