@@ -128,7 +128,7 @@ None outstanding — all material ambiguities raised during scan (error-string f
 | 7 | `green_verify_unavailable` for an integration lane uses the identical null-exit code path/conditions as GREEN's verify, since the lane's own worktree already represents the merged epic branch | Operator-confirmed in QUESTIONS.md Q4 | decided | n/a |
 | 8 | RED prompt surfaces invariant ids as plain substrings in one sentence, not a structured/fenced block | Operator-confirmed in QUESTIONS.md Q5 | decided | n/a |
 | 9 | `Lane.kind === 'integration'` is the authoritative runtime signal for the RED-only fast path (rather than `expect_tests_pass` alone) | Design decision to mirror the existing `isStructural` precedent, which branches on `kind`, not a separate boolean; keeps one canonical trigger | decided | n/a |
-| 10 | New classifier category is named `code_defect` (or equivalent) distinct from all seven existing `TriageClassifyCategory` values | Ticket R3 explicitly says `agent_behavior` is wrong; no existing category fits "code defect in merged work" per scan of `triage-classify.ts:13-20` | guess | n/a (naming only; low risk, can be renamed in review without spec impact) |
+| 10 | New classifier category is named `code_defect` (or equivalent) distinct from all seven existing `TriageClassifyCategory` values | Ticket R3 explicitly says `agent_behavior` is wrong; no existing category fits "code defect in merged work" per scan of `triage-classify.ts:13-20` | guess | Q3 (the answer settles what the classification carries; the operator fixes the category name as `code_defect`) |
 
 ## 9. Classification Metadata
 
