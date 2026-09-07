@@ -2,7 +2,8 @@
 """
 pipeline_scheduler.py — Manages concurrent lane execution for the ACT phase.
 
-Reads lane-plan.json and .datum/state.json, dispatches lanes respecting:
+Reads lane-plan.json and live state via datum.state.load_state(), dispatches
+lanes respecting:
   - Within-lane sequencing (RED → GREEN → REFACTOR)
   - Dependency DAG (signature deps unblock on stub commit; behavior deps on GREEN commit)
   - File-ownership conflict gating
@@ -19,14 +20,11 @@ import json
 import sys
 from pathlib import Path
 
+import datum.state as state_mod
+
 DEFAULT_MAX_RETRY_BACKOFF_MS = 300_000
 
 STAGE_ORDER = ["RED", "GREEN", "REFACTOR"]
-
-
-def load_state() -> dict:
-    p = Path(".datum/state.json")
-    return json.loads(p.read_text()) if p.exists() else {}
 
 
 def load_lane_plan() -> dict:
@@ -169,7 +167,7 @@ def main() -> None:
         print(json.dumps({"error": "usage: pipeline_scheduler.py [status|next-ready]"}))
         sys.exit(1)
 
-    state = load_state()
+    state = state_mod.load_state()
     lane_plan = load_lane_plan()
     cmd = sys.argv[1]
 
