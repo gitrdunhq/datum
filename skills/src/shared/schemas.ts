@@ -27,7 +27,10 @@ export const STAGE_RESULT_SCHEMA = {
     // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
     read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
-  required: ['success', 'tests_pass', 'committed'],
+  // read_witness is required: a structured answer drops optional fields
+  // (#341 task-011 twice, the #516 probes: 7 of 9 answers omitted it) and the
+  // runner reads it. A stage with nothing deferred returns {}.
+  required: ['success', 'tests_pass', 'committed', 'read_witness'],
 } as const
 
 export const REFLECT_SCHEMA = {
@@ -39,7 +42,7 @@ export const REFLECT_SCHEMA = {
     // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
     read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
-  required: ['reasoning', 'score'],
+  required: ['reasoning', 'score', 'read_witness'],
 } as const
 
 // Review lens result. A schema, not a "return raw JSON" instruction: the
@@ -86,7 +89,7 @@ export const SKEPTIC_SCHEMA = {
     // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
     read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
-  required: ['bugs_found', 'confidence', 'verdict'],
+  required: ['bugs_found', 'confidence', 'verdict', 'read_witness'],
 } as const
 
 export const TRIAGE_SCHEMA = {
