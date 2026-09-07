@@ -44,7 +44,7 @@ def test_lane_spec_hash_ignores_presentation_fields():
         **base,
         "title": "some title",
         "red_note": "some note",
-        "green_model": "opus",
+        "test_command": "uv run pytest -q",
     }
     assert lane_spec_hash(base) == lane_spec_hash(with_extra)
 

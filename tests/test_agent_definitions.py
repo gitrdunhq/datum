@@ -148,3 +148,14 @@ def test_skeptic_keeps_read_only_hook():
     assert any("read-only" in c and "exit 2" in c for c in cmds), cmds
     tools = _tools(data)
     assert "Write" not in tools and "Edit" not in tools
+
+
+# #494: the lane runner dispatches the skeptic lenses at per-lens tiers
+# (skills/src/shared/prompts.ts skepticLenses — edge/error at model('fast'),
+# contract at model('balanced')), never at a fixed frontmatter model, so a
+# hard-coded "model: sonnet" here was dead metadata the call site never
+# honoured.
+def test_skeptic_model_is_inherit_not_a_dead_fixed_tier():
+    data, body = _split(AGENTS_DIR / "datum-skeptic.md")
+    assert data["model"] == "inherit", data["model"]
+    assert "per lens" in body.lower() or "per-lens" in body.lower()

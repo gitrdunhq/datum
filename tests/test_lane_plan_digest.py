@@ -45,7 +45,6 @@ PLAN = {
             "depends_on": ["task-001"],
             "acceptance_criteria": ["b() returns 2"],
             "test_command": "uv run pytest tests/b",
-            "green_model": "opus",
         },
     },
     "topological_order": ["task-001", "task-002"],
@@ -93,7 +92,6 @@ def test_digest_is_compact_sorted_json_with_topology_and_per_lane_metadata(
     )
     lane2 = digest["lanes"]["task-002"]
     assert lane2["test_command"] == "uv run pytest tests/b"
-    assert lane2["green_model"] == "opus"
     assert lane2["spec_hash"] == lane_spec_hash(PLAN["lanes"]["task-002"])
     assert (
         json.dumps(digest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

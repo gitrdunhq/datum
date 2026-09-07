@@ -34,6 +34,8 @@ BANNED PATTERNS (any of these = pipeline rejection, no exceptions):
 - TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body
 - `assert x is not None` / trivial nil-checks as the ONLY assertion
 Each test MUST assert a specific expected value or exception type.
+- Never assert on the text of the lane's own source files (`expect(source).toContain(...)` / `.not.toContain(...)` against an implementation file you or a later stage will write). Assert behaviour, not spelling — a rename or reformat should not break the test.
+- Never read back a set-only accessor or a write-only property to observe a value it never exposes. Assert against something the code under test actually returns or has an observable effect on.
 
 VERIFY BEFORE RUNNING TESTS:
 Run the command given as COUNT below to grep your test file(s) for new test functions.

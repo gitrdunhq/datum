@@ -50,7 +50,6 @@ Break the feature into 2-5 tasks. Each task needs:
 - **stage**: `behavioral` (needs RED→GREEN) or `structural` (refactor only)
 - **depends_on**: list of task IDs this depends on (for wave ordering)
 - **estimated_impl_lines**: estimated lines of implementation code GREEN will write (split task if >30)
-- **green_model**: optional model override for GREEN agent (e.g., "opus" for complex tasks)
 
 Guidelines for good decomposition:
 - Each task should be independently testable
@@ -88,8 +87,7 @@ Write `.datum/lane-plan.json` with this structure:
       "red_note": "...",
       "stage": "behavioral",
       "depends_on": [],
-      "estimated_impl_lines": 20,
-      "green_model": null
+      "estimated_impl_lines": 20
     }
   }
 }
