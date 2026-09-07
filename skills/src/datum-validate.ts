@@ -11,6 +11,7 @@ import { configReadSteps, configFromSteps } from './shared/config-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { VALIDATE_CHECK_SCHEMA } from './shared/schemas'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-validate',
@@ -83,7 +84,7 @@ interface ValidateCheck {
 }
 
 const checkResult = !mainSync.ok ? null : await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
+  withPreamble(`First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validateCheckTemplate, {
@@ -91,7 +92,7 @@ ${renderPrompt(validateCheckTemplate, {
     tasksPath: 'docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md',
     testCommand,
     testRunCmd: testRunCommand(testCommand, '.', 'validate'),
-  })}`,
+  })}`),
   { label: 'validate-check', model: model('balanced'), schema: VALIDATE_CHECK_SCHEMA },
 )
 

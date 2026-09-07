@@ -12,6 +12,7 @@ import { runBatch } from './shared/agents'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-review',
@@ -97,9 +98,9 @@ async function reviewFromDiff(): Promise<ReviewOutcome> {
 const reviewResults = await parallel<DomainResult>(
   DOMAINS.map((d) => () =>
     agent(
-      d.domain === 'Correctness'
+      withPreamble(d.domain === 'Correctness'
         ? renderPrompt(reviewCorrectnessSpecVerifyTemplate, { baseBranch })
-        : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch }),
+        : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
       { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA },
     ),
   ),

@@ -159,3 +159,68 @@ describe('every template puts its stable half before its first variable', () => 
     expect(offenders).toEqual([])
   })
 })
+
+// Unit 3: the preamble reaches every phase. PREAMBLE (agent-preamble.md, the
+// CLI rule, the coding rules, the test conventions, the context budget) was
+// prepended only by the eight lane/docs helpers in shared/prompts.ts, while
+// awake-distill.md told the model it goes on "every agent prompt". The SPEC
+// writer, the four review lenses, the decomposer and the final validate call
+// never saw "test command comes from .datum/config.json — read it, don't
+// guess", which is how the pipeline's last correctness phase ended up being
+// told to detect its own linter.
+describe('every phase prompt carries the shared preamble', () => {
+  const PHASE_SCRIPTS = [
+    'datum-refine.ts', 'datum-plan.ts', 'datum-properties.ts', 'datum-review.ts',
+    'datum-validate.ts', 'datum-closeout.ts', 'datum-awake.ts',
+  ]
+
+  /** Byte ranges covered by each `withPreamble(...)` call's argument list. */
+  function preambleSpans(src: string): Array<[number, number]> {
+    const spans: Array<[number, number]> = []
+    const re = /withPreamble\(/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(src)) !== null) {
+      let depth = 0
+      let inStr: string | null = null
+      let i = m.index + m[0].length - 1
+      for (; i < src.length; i++) {
+        const ch = src[i]
+        if (inStr) {
+          if (ch === '\\') { i++; continue }
+          if (ch === inStr) inStr = null
+          continue
+        }
+        if (ch === '"' || ch === "'" || ch === '`') { inStr = ch; continue }
+        if (ch === '(') depth++
+        else if (ch === ')') { depth--; if (depth === 0) break }
+      }
+      spans.push([m.index, i])
+    }
+    return spans
+  }
+
+  it('shared/prompts.ts exports withPreamble and it prepends PREAMBLE', () => {
+    const shared = readFileSync(join(__dirname, 'shared', 'prompts.ts'), 'utf8')
+    expect(shared).toMatch(/export function withPreamble\(text: string\): string/)
+    expect(shared).toMatch(/return PREAMBLE \+ text/)
+  })
+
+  it('every renderPrompt() in a phase script sits inside a withPreamble() call', () => {
+    const naked: string[] = []
+    let total = 0
+    for (const file of PHASE_SCRIPTS) {
+      const src = readFileSync(join(__dirname, file), 'utf8')
+      const spans = preambleSpans(src)
+      const re = /renderPrompt\(/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(src)) !== null) {
+        total++
+        if (!spans.some(([a, b]) => m!.index > a && m!.index < b)) {
+          naked.push(`${file}:${src.slice(0, m.index).split('\n').length}`)
+        }
+      }
+    }
+    expect(total, 'renderPrompt call sites across the phase scripts').toBeGreaterThan(12)
+    expect(naked).toEqual([])
+  })
+})

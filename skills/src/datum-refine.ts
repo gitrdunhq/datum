@@ -13,6 +13,7 @@ import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-ty
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { answeredQuestions, answersKeptSteps, answersKeptFromSteps } from './shared/questions-steps'
 import type { PhaseArgs } from './shared/types'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-refine',
@@ -189,12 +190,12 @@ if (hasAddenda) {
   // Triage agent also updates ROADMAP.md if needed (collapsed update-roadmap);
   // the script commits it below.
   const triageRaw = await agent(
-    renderPrompt(refineTriageTemplate, { ticketPath }) + `
+    withPreamble(renderPrompt(refineTriageTemplate, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
-Do NOT git add or git commit anything — the workflow commits ROADMAP.md after you return.`,
+Do NOT git add or git commit anything — the workflow commits ROADMAP.md after you return.`),
     { label: 'triage-addenda', model: model('balanced') },
   )
   // Strict: hasAddenda is true here, so a silent fallback to "no addenda"
@@ -221,7 +222,7 @@ Do NOT git add or git commit anything — the workflow commits ROADMAP.md after 
 // common case; when deferred, it demands a git-hash-object witness in the
 // agent's JSON output, and assertReadWitness gates it below.
 const classifyRaw = await agent(
-  renderPrompt(refineClassifyTemplate, { ticketContent }) + contextWitnessInstruction([ticketFile]),
+  withPreamble(renderPrompt(refineClassifyTemplate, { ticketContent }) + contextWitnessInstruction([ticketFile])),
   { label: 'classify-ambiguity', model: model('fast') },
 )
 
@@ -243,7 +244,7 @@ const requirements: string = triageResult.merged_requirements.length > 0
   : ticketContent
 
 const scanRaw = await agent(
-  renderPrompt(refineScanTemplate, { wt: '.', requirements }),
+  withPreamble(renderPrompt(refineScanTemplate, { wt: '.', requirements })),
   { label: 'scan-codebase', model: model('balanced') },
 )
 
@@ -262,7 +263,7 @@ const specPath = `${epicDir}/SPEC.md`
 const questionsPath = `${epicDir}/QUESTIONS.md`
 
 const specRaw = await agent(
-  `You have TWO tasks. Do them in order.
+  withPreamble(`You have TWO tasks. Do them in order.
 
 TASK 1 — Write SPEC.md:
 ${renderPrompt(refineSpecTemplate, {
@@ -288,7 +289,7 @@ Write the QUESTIONS to "${questionsPath}".
 
 Do NOT git add or git commit anything — the workflow commits both files after you return.
 Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}`
-  + contextWitnessInstruction([ticketFile]),
+  + contextWitnessInstruction([ticketFile])),
   { label: 'write-spec-and-questions', model: model('balanced') },
 )
 

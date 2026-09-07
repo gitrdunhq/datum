@@ -9,6 +9,7 @@ import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineR
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-properties',
@@ -114,12 +115,12 @@ phase('Derive')
 // or stray files, and its exit code — not an LLM's say-so — is the verdict.
 const propertiesPath = `${epicDir}/PROPERTIES.md`
 const deriveRaw = await agent(
-  renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent, questionsContent })
+  withPreamble(renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent, questionsContent })
   + `\n\nAFTER DERIVING THE PROPERTIES CONTENT:
 1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
 2. Do NOT git add or git commit anything in this step — the workflow commits.
 3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}`
-  + contextWitnessInstruction(witnessFiles),
+  + contextWitnessInstruction(witnessFiles)),
   { label: 'derive', model: model('balanced') },
 )
 

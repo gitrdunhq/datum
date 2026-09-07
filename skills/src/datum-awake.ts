@@ -6,14 +6,15 @@ import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/w
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import awakeScanTemplate from './prompts/awake-scan.md'
 import awakeDistillTemplate from './prompts/awake-distill.md'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-awake',
   description: 'Scan repo rules and conventions, distill into cached agent preamble (llms.txt pattern)',
   phases: [
     { title: 'Scan', detail: 'read CLAUDE.md, AGENTS.md, configs, test files, code patterns' },
-    { title: 'Distill', detail: 'compress into agent-preamble.md + agent-preamble-full.md' },
-    { title: 'Commit', detail: 'write preamble files and commit' },
+    { title: 'Distill', detail: 'compress into agent-preamble.md' },
+    { title: 'Commit', detail: 'write the preamble file and commit' },
   ],
 }
 
@@ -28,7 +29,7 @@ setBatchRoot(awakeArgs.repoRoot || '')
 phase('Scan')
 
 const scanRaw = await agent(
-  renderPrompt(awakeScanTemplate, { wt: '.' }),
+  withPreamble(renderPrompt(awakeScanTemplate, { wt: '.' })),
   { label: 'scan-repo', model: model('balanced') },
 )
 
@@ -51,7 +52,7 @@ log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`
 phase('Distill')
 
 const distillRaw = await agent(
-  renderPrompt(awakeDistillTemplate, { scanResults: JSON.stringify(scan) }),
+  withPreamble(renderPrompt(awakeDistillTemplate, { scanResults: JSON.stringify(scan) })),
   { label: 'distill-preamble', model: model('balanced') },
 )
 
