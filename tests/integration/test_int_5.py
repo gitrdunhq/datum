@@ -151,3 +151,176 @@ class TestInt06HaltMessageReadsReasonOnly:
         )
         assert halt_match is not None, "integration_failed halt return not found"
         assert "taskIds" not in halt_match.group(0)
+
+
+# ---------------------------------------------------------------------------
+# INV-3: migrate.py's fate (one-shot legacy importer) is fixed by task-001's
+# decision doc and implemented unchanged by task-007.
+#
+# This is a `kind: "integration"` lane (task-INT-5, covering task-001 /
+# task-007): these tests are expected to PASS against the already-merged
+# code. A failing test below is a finding about the merged state, not a
+# placeholder — do not weaken it.
+# ---------------------------------------------------------------------------
+
+import inspect
+
+from typer.testing import CliRunner
+
+import datum.migrate as migrate_mod
+from datum.cli import app as cli_app
+
+cli_runner = CliRunner()
+
+MIGRATE_PY = REPO_ROOT / "datum/migrate.py"
+CLI_PY = REPO_ROOT / "datum/cli.py"
+DECISION_DOC = REPO_ROOT / "docs/architecture/state-store.md"
+
+
+class TestInv3MigratePyDeclaresItsDecidedFate:
+    """migrate.py must carry a top-of-file comment stating its decided fate:
+    one-shot legacy .datum/state.json importer per SPEC Requirement 3 option
+    (b), naming it as the only module permitted to read a legacy
+    .datum/state.json."""
+
+    def test_module_docstring_states_one_shot_legacy_importer_fate(self) -> None:
+        src = MIGRATE_PY.read_text()
+        assert "one-shot" in src
+        assert "legacy" in src
+        assert "Requirement 3" in src
+
+    def test_module_docstring_names_it_the_only_legacy_state_json_reader(self) -> None:
+        doc = " ".join((migrate_mod.__doc__ or "").split())
+        assert "only module permitted to read a legacy .datum/state.json" in doc
+
+
+class TestInv3MigratePyHasNoLoadOrSaveStateDefinitions:
+    """SPEC Requirement 1's AC forbids `def load_state`/`def save_state`
+    outside datum/state.py; migrate.py's reader is renamed and its writer
+    delegates to datum.state.save_state."""
+
+    def test_migrate_module_defines_no_load_state_function(self) -> None:
+        src = MIGRATE_PY.read_text()
+        assert "def load_state(" not in src
+
+    def test_migrate_module_defines_no_save_state_function(self) -> None:
+        src = MIGRATE_PY.read_text()
+        assert "def save_state(" not in src
+
+    def test_migrate_module_exposes_renamed_legacy_reader(self) -> None:
+        assert hasattr(migrate_mod, "load_legacy_state")
+        assert callable(migrate_mod.load_legacy_state)
+
+    def test_migrate_module_writer_delegates_to_canonical_save_state(self) -> None:
+        src = MIGRATE_PY.read_text()
+        assert "from datum.state import save_state" in src
+
+
+class TestInv3CliMigrateCommandUsesRenamedSymbols:
+    """datum/cli.py's migrate command imports the renamed symbols from
+    datum.migrate and still exits cleanly with the legacy 'nothing to do'
+    message when there is neither a legacy state.json nor a .wfc dir."""
+
+    def test_cli_migrate_command_imports_renamed_symbols_from_datum_migrate(
+        self,
+    ) -> None:
+        src = CLI_PY.read_text()
+        assert "from datum.migrate import (" in src
+        assert "load_legacy_state" in src
+        assert "migrate_wfc_directory" in src
+        assert "migrate_state" in src
+
+    def test_cli_migrate_prints_nothing_to_do_when_no_legacy_state_or_wfc_dir(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = cli_runner.invoke(cli_app, ["migrate"])
+        assert (
+            "No legacy .wfc/ directory or .datum/state.json found. Nothing to do."
+            in result.output
+        )
+        assert result.exit_code == 0
+
+
+class TestInv3RunningMigrateUpgradesLegacyStateIntoStateDb:
+    """Running the migrate path against a repo containing a legacy
+    .datum/state.json and no state.db results in that dict being readable
+    afterwards via datum.state.load_state(), with the schema-version
+    upgrade from migrate_state() applied."""
+
+    def test_legacy_state_json_lands_in_state_db_with_schema_upgrade(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import datum.state as state_mod
+
+        monkeypatch.chdir(tmp_path)
+        datum_dir = tmp_path / ".datum"
+        datum_dir.mkdir()
+        (datum_dir / "state.json").write_text(
+            '{"skill_version": "0.0.1", "run_id": "epic-1-legacy"}'
+        )
+
+        cli_runner.invoke(cli_app, ["migrate"])
+
+        migrated = state_mod.load_state()
+        assert migrated != {}
+        assert migrated["run_id"] == "epic-1-legacy"
+        assert migrated["schema_version"] == "1.0.0"
+        assert migrated["skill_version"] == migrate_mod.current_skill_version()
+        # The legacy importer must not have skipped writing to state.db.
+        assert (datum_dir / "state.db").exists()
+
+    def test_no_legacy_state_json_leaves_state_db_untouched(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import datum.state as state_mod
+
+        monkeypatch.chdir(tmp_path)
+        cli_runner.invoke(cli_app, ["migrate"])
+        assert state_mod.load_state() == {}
+
+
+class TestInv3MigrateStateAndMigrateWfcDirectorySignaturesUnchanged:
+    """migrate_state() and migrate_wfc_directory() keep their current
+    signatures and behaviour."""
+
+    def test_migrate_state_signature_is_state_and_target_version(self) -> None:
+        sig = inspect.signature(migrate_mod.migrate_state)
+        assert list(sig.parameters) == ["state", "target_version"]
+
+    def test_migrate_wfc_directory_signature_is_dry_run_only(self) -> None:
+        sig = inspect.signature(migrate_mod.migrate_wfc_directory)
+        assert list(sig.parameters) == ["dry_run"]
+
+    def test_migrate_state_returns_state_and_changes_tuple(self) -> None:
+        state, changes = migrate_mod.migrate_state({}, "1.0.0")
+        assert state == {}
+        assert changes == []
+
+    def test_migrate_state_sets_schema_version_and_records_change(self) -> None:
+        state, changes = migrate_mod.migrate_state({"skill_version": "1.0.0"}, "1.0.0")
+        assert state["schema_version"] == "1.0.0"
+        assert "set schema_version=1.0.0" in changes
+
+
+class TestInv3DecisionDocFixesMigratePyFate:
+    """INV-3 requires task-001's decision doc
+    (docs/architecture/state-store.md) to record migrate.py's fate as a
+    one-shot legacy state.json importer (SPEC Requirement 3 option b) —
+    the same fate implemented by task-007. Per this lane's contract, this
+    test must PASS against already-merged code; if the doc is missing or
+    silent on migrate.py's fate, that is a genuine integration finding to
+    report, not a test to weaken."""
+
+    def test_decision_doc_exists_and_records_migrate_py_legacy_importer_fate(
+        self,
+    ) -> None:
+        assert DECISION_DOC.exists(), (
+            f"{DECISION_DOC} does not exist — task-001's decision doc "
+            "recording migrate.py's fate (SPEC Requirement 3 option b) "
+            "is missing, so INV-3 is not satisfied"
+        )
+        text = DECISION_DOC.read_text()
+        assert "migrate.py" in text
+        assert "one-shot" in text
+        assert "legacy" in text
