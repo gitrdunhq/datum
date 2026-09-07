@@ -43,6 +43,7 @@ def load_config() -> dict:
     local_config = Path(".datum/config.toml")
     default_path = assets_dir() / "config.toml.default"
 
+    config: dict = {}
     for path in (project_config, local_config, default_path):
         if path.exists():
             try:
@@ -51,10 +52,27 @@ def load_config() -> dict:
                 try:
                     import tomli as tomllib  # type: ignore[import]
                 except ImportError:
-                    return {}
+                    break
             with path.open("rb") as f:
-                return tomllib.load(f)
-    return {}
+                config = tomllib.load(f)
+            break
+
+    # .datum/config.json is the pipeline's config (RepoConfig; what `datum
+    # init` writes and every workflow reads). Its keys win: review_max_iterations
+    # was documented there and never read here, so raising it changed nothing.
+    for json_path in (
+        Path(project_dir) / ".datum/config.json",
+        Path(".datum/config.json"),
+    ):
+        if json_path.exists():
+            try:
+                loaded = json.loads(json_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                loaded = None
+            if isinstance(loaded, dict):
+                config = {**config, **loaded}
+            break
+    return config
 
 
 def gate_policy(config: dict, gate_name: str) -> str:

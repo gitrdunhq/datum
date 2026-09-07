@@ -335,3 +335,26 @@ class TestRefineGateRunsAssumptionAudit(unittest.TestCase):
             self._epic(tmp, "Q1 (partially)")
             passed, out = self._run(tmp)
             self.assertTrue(passed, out)
+
+
+# ── load_config reads .datum/config.json (review iteration 4 escalation) ──
+
+
+def test_load_config_reads_datum_config_json_over_toml(tmp_path, monkeypatch):
+    """The review gate's message and SKILL.md both say review_max_iterations
+    lives in .datum/config.json, but load_config read only config.toml and
+    the bundled default, so raising the budget to 5 still hard-stopped at 3.
+    JSON keys win over the TOML; TOML-only keys (gates policy) survive."""
+    from datum.gate import _review_max_iterations, load_config
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    (tmp_path / ".datum" / "config.toml").write_text(
+        '[gates]\nplan_human_approval = "required"\nreview_max_iterations = 2\n'
+    )
+    (tmp_path / ".datum" / "config.json").write_text('{"review_max_iterations": 5}')
+
+    config = load_config()
+
+    assert _review_max_iterations(config) == 5
+    assert config["gates"]["plan_human_approval"] == "required"
