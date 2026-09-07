@@ -1,119 +1,118 @@
 # datum — Current State
 
-**Branch:** `main` | **Last updated:** 2026-07-07 | **Run:** `20260707-173926`
+**Branch:** `main` | **Last updated:** 2026-09-06 | **Run:** `20260906-163354`
 
 ---
 
 ## Shipped
 
-### Consumer-First Build-Order (2026-07-07, run 20260707-173926)
+### Integration Lanes (2026-09-06, run 20260906-163354)
 
-Epic ticket (GitHub issue #264, `docs/epics/datum/consumer-first-build-order/TICKET.md`)
-fixed a `datum-plan` gap where `lane-plan.json` `depends_on` relationships were inferred
-purely from SPEC narrative, never from the actual import graph of files being built —
-causing parallel lanes to race ahead of interfaces they depend on and act-lane agents to
-hallucinate upstream interface shapes. Merge `9241846` (base `7be6c6f082cd`, 30 files,
-+1753/-18 LOC for the epic's own scope; see Data Gap below for total-run figures).
+Epic ticket `9e6c7aaf` (`docs/epics/datum/integration-lanes/TICKET.md`, "slice 1 —
+Properties emits tagged cross-task invariants, Plan schedules RED-only INT lanes")
+merged at `ff60e33c56cb2dac886372ffcfc03029e9d737cd`. 9/9 tasks completed
+(`task-001`..`task-009`, `say_do_ratio` 1.0, 0 `failed_terminal`) per
+`docs/epics/datum/integration-lanes/tasks.json` / `lane-plan.json`.
 
-Five tasks landed per `docs/epics/datum/consumer-first-build-order/TASKS.md`:
+Four review iterations ran against `docs/epics/datum/integration-lanes/`
+(`REVIEW-REPORT.md` commits with 12, 11, 6, 9, and 2 findings across passes), closing
+with the operator recording three ACCEPT decisions in
+`docs/epics/datum/integration-lanes/REVIEW-RESPONSE.md`:
 
-| Task | What Shipped |
-|---|---|
-| `add-context-files-config-default` | `context_files: []` added to `DEFAULT_CONFIG` (`skills/src/shared/models.ts`) so projects can declare build-constraint docs |
-| `add-upstream-source-context` | `TaskPacket.upstream_source` + `resolveUpstreamSource()` helper in `skills/src/shared/utils.ts` — reads transitive `depends_on` implFiles from the worktree, excludes testFiles, fails fast on missing upstream files |
-| `wire-lane-upstream-injection` | `datum-tdd-act-lane.ts`'s `runLane` wires `resolveUpstreamSource` into RED/GREEN/REFACTOR `buildPacket` calls so every stage receives real upstream source, not just SPEC.md |
-| `add-cycle-detection` | New pure `detectCycles()` module (`skills/src/shared/graph.ts`) — direct and transitive dependency-cycle detection over `{id, depends_on}` task graphs |
-| `datum-plan-buildorder-and-context` | `datum-plan.ts` wired to call `detectCycles` before writing `lane-plan.json` (halts loud on cycles), reads `context_files` into the decompose prompt, and `plan-decompose.md` gained a "BUILD-ORDER / IMPORT ANALYSIS CHECK" + "PROJECT BUILD CONSTRAINTS" section |
+- **ACCEPT `d3246c28`** (ARCH-003, `datum/gate.py:19`): "Module-level imports of
+  `integration_invariants` in `gate.py` are the same pattern as every other gate helper
+  import in that file; the coupling is real and intended, and a lazy import would only
+  hide an ImportError until the plan gate runs."
+- **ACCEPT `cad4e34f`** (CORR-001, `datum/lane_plan_digest.py:56`): "SPEC AC4.1
+  conflicts with its own Backward-compatibility row (pre-slice plans must digest
+  byte-identically) and with the shipped test
+  `test_ac1_properties_path_none_is_byte_identical_to_pre_slice_output`; every
+  consumer already treats an absent kind as task (AC4.3, AC9.2), so no default is
+  synthesised."
+- **ACCEPT `be2382b4`** (ARCH-001, `datum/gate.py:1087`): "The NFR bounds file reads
+  (one extra linear pass over PROPERTIES.md and tasks.json), and `gate_plan` does
+  exactly that; `derive_integration_lanes` then works in memory on a table of at most
+  a few dozen rows. Verifying `depends_on` against the same derivation the planner ran
+  is the point: a second grouping implementation in the gate could drift from the
+  planner and pass a plan the planner would not have produced."
 
-**Self-hosted fix during the run:** the final commit (`9241846`) fixed the just-landed
-`context_files` reader, which had used `node:fs` directly and broke the build; it was
-switched to read via the `agent()` tool convention, per the standing "fix pipeline inline"
-practice.
+`brief_defects` reported by the run: none. `platform`/`lane_tools`: not reported
+(null/empty in `closeout-data.json`). `gitnexus_diff`/`solutions`: not reported (null).
 
-**Review:** one pass, 6 findings, 2 high (`PERF-001` N+1 git subprocess calls in
-`worktree_manager.py::housekeep_epic()`; `ARCH-001` bidirectional logic in
-`pathBoundaryMatch()` contradicting its documented one-directional contract), plus 2
-medium performance findings (`PERF-002`/`PERF-003`, O(n·m) `.some()` loops in
-`verifyFileOwnership`/`findScopeGaps`) and 2 medium architecture findings (`ARCH-002`
-`WalkthroughResult` subclassing `Path`; `ARCH-003` `contextlib.redirect_stdout` coupling
-in `cli.py::init()`). **None of the 6 findings were confirmed fixed in this run's commit
-log** — see Data Gap and `follow-ups.json`.
+**Data gap — git-stat scope conflation (carried pattern, see prior closeouts' FU-3).**
+`closeout-data.json`'s `git` block reports 513 commits, 51063/-8320 LOC across ~240
+files, spanning the full commit list back through many unrelated prior epics
+(hermetic-test-git-fixtures, stable-epic-identity, bug-squash work, etc. — the oldest
+entry in the reported list is `52655981 fix(datum-go): preflight tool-check
+false-positives on non-datum target repos (#378)`). This epic's own scope, by ticket
+commit, runs from `9e6c7aaf` ("ticket(integration-lanes): slice 1 …") through
+`2b83f804` ("review(integration-lanes): accept ARCH-001") — roughly 80 of the 513
+listed commits. The collector appears to capture the full project git log rather than
+a range scoped to the prior epic's merge SHA, the same base-SHA resolution gap flagged
+as FU-3 in `.datum/runs/20260707-173926/follow-ups.json`. Per-epic LOC/file figures
+above should not be read from the raw `git` block without re-scoping to the ticket
+commit.
 
-**Data gap — scope conflation.** This run's `closeout-data.json` reports `git.commits`
-spanning all the way back to base `badb2a9bceb9` (68 commits, +4462/-461 LOC across 64
-files), which is **before** the prior epic (Bug Squash Round 2, merged at `7be6c6f082cd`)
-even started. That means the captured git stats conflate three separate units of work:
-(1) Bug Squash Round 2 itself, (2) an **un-closed-out intermediate hardening pass** — 36
-commits between `7be6c6f082cd` and `ef25421` (pipeline reliability fixes covering issues
-#213, #270, #301–#304, #307–#310, #315, #319, #325–#327, #331–#335, three review passes
-converging 12 → 9 → 6 findings — see "What's Next" below), and (3) this epic's actual
-5-task scope (`ef25421`..`9241846`, 30 files, +1753/-18 LOC). `tasks`, `solutions`, and
-`token_metrics` were again empty/zero in `closeout-data.json` (same capture gap noted in
-the prior closeout's `follow-ups.json` FU-2, still unresolved). `gitnexus_diff` reports
-`available: true` but carries no impact-detail payload (MCP not live during capture).
+**Telemetry gap (carried pattern).** `token_metrics.collected` is `false`: "no
+state.db at `.datum/runs/20260906-163354/state.db` or `.datum/state.db` (no producer
+writes one)" — logged as a `collector_warnings` entry. `tasks.per_stage_retries` is
+`null`. This matches the token-metrics capture gap flagged in prior closeouts
+(FU-4, run `20260707-173926`) — still unresolved.
 
-### Prior: Bug Squash Round 2 (2026-07-07, run 20260707-093851)
+### Prior State (through 2026-07-07, run `20260707-173926`)
 
-Ten self-filed bugs from epic #282 landed (TOML config crash, file-ownership false
-positives, rigid test-artifact convention, missing branch-bootstrap path, closeout gaps,
-silent LLM-escalation failure, noisy memory extraction, unvalidated `testCommand`,
-orphaned lane branches). 21 commits, 55 files, +2556/-203 LOC, merged at `7be6c6f082cd`.
-R1–R10 completion vs. issues #265/#269/#270/#213/#301/#302/#303/#304/#307/#309 was left
-**unverified** by that run's telemetry gap (see its `follow-ups.json` FU-1) — still open;
-carried forward below.
+Consumer-First Build-Order and Bug Squash Round 2 epics shipped; see git history for
+`9241846` and `7be6c6f082cd` for detail. That closeout's own follow-ups (FU-1 through
+FU-6, `.datum/runs/20260707-173926/follow-ups.json`) — review-finding verification,
+retroactive mini-closeout for an un-tracked 36-commit hardening pass, git-stat base-SHA
+scoping, telemetry capture, GitNexus live-MCP capture, and R1–R10 verification — are
+not confirmed resolved by anything in this run's `closeout-data.json` and are carried
+forward below.
 
 ### Prior Sessions (Epics 1–23+, PRs #25–#56, Bug Squash #167)
 
 23+ epics shipped historically: local LLM pipeline (MLX Gemma/Qwen3), self-healing,
 semantic memory, TUI dashboard, full installer, closeout command, and the original
-Bug Squash #167 partial pass. See git log for `43be12e` era for detail.
+Bug Squash #167 partial pass. See git log for the `43be12e` era for detail.
 
 ---
 
 ## What's Next
 
-**Priority 1 — Close out the un-closed-out intermediate hardening pass.** 36 commits
-between `7be6c6f082cd` (Bug Squash Round 2 merge) and `ef25421` (this epic's SPEC commit)
-shipped real fixes — auto-repair of lane scope gaps (#325/#334/#335), per-lane
-`test_command` auto-detection and preflight (#326/#307), RED-stage retry on no-commit
-(#333), count-gate crash guards (#315), CLI-arg-flag recovery (#319), worktree branch
-preservation during cleanup, `pathBoundaryMatch` nested-path fixes, `resilientAgent`
-StructuredOutput-crash handling, decompose-tasks protocol/contract completeness checks,
-`RETRO.md`/`closeout` epic-number and walkthrough-fallback fixes (#264-adjacent), memory
-extraction noise filtering — but never went through Refine → Plan → Review → Closeout as
-its own epic. It rode along inside this run's `closeout-data.json` git-stat window
-undocumented as its own unit. Recommend a retroactive mini-closeout (or explicit
-acknowledgment in the next epic's SPEC) so these fixes are traceable to issue numbers
-rather than only living in commit messages.
+**Priority 1 — Fix the closeout git-stat base-SHA resolution.** This is the third
+consecutive closeout whose `git` block spans far more than the epic under review (this
+run: 513 commits back to `#378`-era work). Root-cause where the base SHA is chosen in
+the closeout collector so future runs scope `git.commits`/`loc_added`/`loc_removed` to
+(previous epic's merge SHA)..(this epic's merge SHA).
 
-**Priority 2 — Verify the 6 review findings from this epic got addressed.** `PERF-001`
-(N+1 subprocess calls), `ARCH-001` (bidirectional `pathBoundaryMatch` bug — a correctness
-risk, not just style, since it can produce false-positive path-ownership matches),
-`PERF-002`/`PERF-003` (O(n·m) loops), `ARCH-002` (`Path` subclassing), `ARCH-003`
-(`redirect_stdout` coupling) — none appear in the commit list after `5f50fec` (the review
-commit) other than the unrelated `9241846` build fix. Confirm whether these were folded
-into `9241846` silently or remain open (tracked in `follow-ups.json`).
+**Priority 2 — Root-cause the missing `state.db`.** `token_metrics.collected: false`
+for this run because no `state.db` exists at either candidate path. Confirm whether a
+producer is supposed to write one during Act and, if so, why it didn't for run
+`20260906-163354`.
 
-**Priority 3 — Confirm R1–R10 from Bug Squash Round 2** (carried from prior state,
-still unverified).
-
-**Priority 4 — Wire up closeout telemetry capture** (carried from prior state):
-`token_metrics`, `tasks`, `solutions` have now been empty/zero across at least two
-consecutive closeout runs. This is a repeat data-capture gap, not a one-off.
+**Priority 3 — Carry forward FU-1/FU-2/FU-5/FU-6 from run `20260707-173926`**
+(review-finding verification for Consumer-First Build-Order, the un-tracked
+36-commit hardening pass, GitNexus live-MCP capture, R1–R10 verification) — nothing in
+this run's data confirms these were addressed.
 
 ---
 
 ## In Flight
 
-No active feature branches after this closeout. `main` is the merge target (`9241846`).
+No active feature branches after this closeout. `main` is the merge target
+(`ff60e33c`).
 
 ---
 
 ## Backlog
 
 Carried from prior state where unresolved:
-- R1–R10 verification (Bug Squash Round 2, see Priority 3 above)
-- Closeout telemetry capture fix (see Priority 4 above)
+- Closeout git-stat base-SHA scoping (new evidence this run — see Priority 1)
+- `token_metrics`/`state.db` capture gap (see Priority 2)
+- Review-finding verification for Consumer-First Build-Order (FU-1, run
+  `20260707-173926`)
+- Retroactive mini-closeout for the un-tracked 36-commit hardening pass (FU-2, run
+  `20260707-173926`)
 - GitNexus MCP live-during-run requirement so `gitnexus_diff` impact detail populates
-- New this run: retroactive accounting for the 36-commit intermediate hardening pass
-  (Priority 1) and the 6 unresolved review findings (Priority 2)
+  (FU-5, run `20260707-173926`; `gitnexus_diff` is `null` again this run)
+- R1–R10 verification, Bug Squash Round 2 (FU-6, run `20260707-173926`)
