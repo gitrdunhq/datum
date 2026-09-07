@@ -18,6 +18,7 @@ export type TriageClassifyCategory =
   | 'test_quality'
   | 'dependency'
   | 'unknown'
+  | 'code_defect'
 
 export interface TriageClassification {
   category: TriageClassifyCategory
@@ -257,6 +258,24 @@ export function classifyLaneError(
   }
 
   const text = error || ''
+
+  // code_defect: task-002's independent post-merge verify step found the
+  // epic's merged suite red even though every lane's own tests passed in
+  // isolation — a genuine cross-lane code defect, not datum tooling and not
+  // a single agent's misbehaviour. Checked before the generic PREFIX_RULES
+  // scan (not appended to it) because the `covered ([^;]+)` extraction is
+  // dynamic per-match, unlike PrefixRule's static `reason` string; every
+  // pre-existing PREFIX_RULES entry below is untouched and unreordered.
+  if (/\bintegration_failed\b/.test(text)) {
+    const coveredMatch = text.match(/covered ([^;]+)/)
+    const coveredIds = coveredMatch ? coveredMatch[1].trim() : 'unknown lane(s)'
+    return {
+      category: 'code_defect',
+      confidence: 'deterministic',
+      reason: `integration_failed: covered ${coveredIds} — the independent post-merge verify found the merged epic's suite red even though every covered lane's own tests passed in isolation, a genuine cross-lane code defect.`,
+    }
+  }
+
   for (const rule of PREFIX_RULES) {
     if (rule.test.test(text)) {
       return { category: rule.category, confidence: 'deterministic', reason: rule.reason }
@@ -305,6 +324,9 @@ const DESTINATION_BY_CATEGORY: Record<TriageClassifyCategory, TriageDestination>
   // without positive evidence; treat as a consumer-code finding to log, not
   // as a reason to file against datum.
   unknown: 'consumer',
+  // task-003: integration_failed cross-lane defects are consumer-code
+  // findings — never filed to datum's own tracker.
+  code_defect: 'consumer',
   // Already-skipped consequence of an upstream root failure — never filed
   // anywhere on its own.
   dependency: 'none',

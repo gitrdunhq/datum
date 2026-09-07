@@ -13,6 +13,7 @@ const CATEGORY_LABEL: Record<Exclude<TriageClassifyCategory, 'dependency' | 'unk
   lane_plan: 'lane-plan',
   agent_behavior: 'agent-behavior',
   test_quality: 'test-quality',
+  code_defect: 'code-defect',
 }
 
 // Inverse of CATEGORY_LABEL, for when the LLM assigns the category (no
@@ -25,6 +26,7 @@ const LABEL_TO_CATEGORY: Record<string, TriageClassifyCategory> = {
   'lane-plan': 'lane_plan',
   'agent-behavior': 'agent_behavior',
   'test-quality': 'test_quality',
+  'code-defect': 'code_defect',
 }
 
 export const meta = {

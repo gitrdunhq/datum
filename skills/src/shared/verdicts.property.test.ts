@@ -112,7 +112,7 @@ describe('classifyLaneError / triageDestination', () => {
     const datumPrefixes = ['runner_permission_denied', 'batch_script_corrupt', 'batch_root_missing', 'green_verify_unavailable', 'lane_intake_failed', 'count_gate_no_output', 'test_env_missing', 'green_no_result', 'red_no_result']
     fc.assert(fc.property(fc.string(), fc.constantFrom(...datumPrefixes), fc.string(), fc.constantFrom('RED', 'GREEN', 'REFACTOR', 'SKIPPED', undefined), (pre, prefix, post, stage) => {
       const c = classifyLaneError(`${pre} ${prefix}: ${post}`, stage)
-      expect(['infrastructure', 'workflow_bug', 'lane_plan', 'agent_behavior', 'test_quality', 'dependency', 'unknown']).toContain(c.category)
+      expect(['infrastructure', 'workflow_bug', 'lane_plan', 'agent_behavior', 'test_quality', 'dependency', 'unknown', 'code_defect']).toContain(c.category)
       expect(['datum', 'consumer', 'none']).toContain(triageDestination(c, ''))
       if (stage !== 'SKIPPED' && !/^blocked[:\s]/.test(`${pre} ${prefix}`)) {
         expect(c.category, `${prefix} inside "${pre} ${prefix}: ${post}"`).toBe('infrastructure')
