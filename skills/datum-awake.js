@@ -419,10 +419,16 @@ async function runBatch(steps, opts, deps) {
 
 # attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
   } else if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
-    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying with a fresh runner (up to two retries)`);
     result = parseBatchResult(await agentFn(`${prompt}
 
-# attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+# attempt 2 of 3 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+    if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+      logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 2 \u2014 last retry with a fresh runner`);
+      result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 3 of 3 \u2014 two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps);
+    }
   } else if (result.missing && result.scriptError?.startsWith("batch_timeout")) {
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with the timeout instruction repeated`);
     result = parseBatchResult(await agentFn(`${prompt}
