@@ -66,6 +66,34 @@ function groupBlockedByRoot(lanePlan, failures, blockedIds) {
 }
 
 // skills/src/shared/agent-types.ts
+var AGENT_TYPE_TABLE = {
+  red: "datum-red",
+  green: "datum-green",
+  refactor: "datum-refactor",
+  // #341 task-001: a structural lane's single writing stage. Not
+  // datum-refactor — that definition says "clean up without changing
+  // behaviour" and its pre-check answered "nothing to improve" on a file
+  // that did not exist yet, so docs-only lanes completed with no commit.
+  structural: "datum-structural",
+  skeptic: "datum-skeptic",
+  // #375: the Review lenses. Not datum-skeptic — that definition's body is
+  // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
+  // PASS/FRAGILE/BROKEN), while a lens reads the epic diff and answers with a
+  // findings array. Same read-only shape, plus a Bash matcher: the lens that
+  // broke a run did it with `git checkout`, which Edit|Write cannot see.
+  review: "datum-reviewer",
+  reflect: "datum-reflect",
+  docs: "datum-docs",
+  reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
+  cli: "datum-cli"
+};
+var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cli"];
+var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
 function configureAgentTypes(opts) {
