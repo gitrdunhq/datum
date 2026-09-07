@@ -622,6 +622,16 @@ def init(
             "No branch/epic bootstrap. --refresh-skills is the old alias."
         ),
     ),
+    seed_docs: bool = typer.Option(
+        False,
+        "--seed-docs",
+        help=(
+            "Also seed the opt-in doc stubs nothing in the pipeline reads: "
+            "GEMINI.md/CODEX.md/KIRO.md/COPILOT.md redirects, "
+            "docs/adr/000-template.md, docs/practice/README.md (#370, #379). "
+            "Off by default."
+        ),
+    ),
 ):
     """Bootstrap the repository for DATUM execution.
 
@@ -780,7 +790,7 @@ def init(
         console.print("[bold green]Bootstrapping DATUM...[/bold green]")
     try:
         with quiet_stdout:
-            seed_state_docs.main()
+            seed_state_docs.main(seed_docs=seed_docs)
         if not json_output:
             console.print("[bold green]✓ Repo seeded.[/bold green]")
     except Exception as e:

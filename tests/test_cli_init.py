@@ -429,3 +429,60 @@ def test_init_refresh_prints_the_scriptpath_launch_line(git_repo):
     assert (
         f'Workflow({{ scriptPath: "{cfg["skills_dir"]}/datum-go.js"' in result.output
     ), result.output
+
+
+# ---------------------------------------------------------------------------
+# --seed-docs (#370, #379): `datum init` used to unconditionally write a pile
+# of doc stubs (CODEX.md/COPILOT.md/GEMINI.md/KIRO.md redirects, an ADR
+# template, docs/practice/README.md) that nothing in datum/ or skills/src/
+# ever reads. Default init must not write them; --seed-docs opts in. The
+# pipeline-required docs (CLAUDE.md/AGENTS.md preamble, ROADMAP.md,
+# CURRENT_STATE.md) must be unaffected either way.
+# ---------------------------------------------------------------------------
+
+_OPTIONAL_DOC_PATHS = (
+    "GEMINI.md",
+    "CODEX.md",
+    "KIRO.md",
+    "COPILOT.md",
+    "docs/adr/000-template.md",
+    "docs/practice/README.md",
+)
+_REQUIRED_DOC_PATHS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "ROADMAP.md",
+    "CURRENT_STATE.md",
+)
+
+
+def test_default_init_does_not_seed_the_optional_doc_stubs(git_repo):
+    result = _invoke("--name", "first")
+    assert result.exit_code == 0, result.output
+    for rel in _OPTIONAL_DOC_PATHS:
+        assert not (git_repo / rel).exists(), f"{rel} should not be seeded by default"
+    for rel in _REQUIRED_DOC_PATHS:
+        assert (git_repo / rel).exists(), f"{rel} must still be seeded by default"
+
+
+def test_seed_docs_flag_writes_the_optional_doc_stubs(git_repo):
+    result = _invoke("--name", "first", "--seed-docs")
+    assert result.exit_code == 0, result.output
+    for rel in _OPTIONAL_DOC_PATHS:
+        assert (git_repo / rel).exists(), f"{rel} should be seeded with --seed-docs"
+    for rel in _REQUIRED_DOC_PATHS:
+        assert (git_repo / rel).exists()
+
+
+def test_seed_docs_flag_leaves_pipeline_required_files_unchanged(git_repo):
+    """--seed-docs only adds the opt-in stubs; it must not change the
+    content the pipeline actually reads."""
+    baseline = _invoke("--name", "first")
+    assert baseline.exit_code == 0, baseline.output
+    required_before = {rel: (git_repo / rel).read_text() for rel in _REQUIRED_DOC_PATHS}
+
+    _run_git("checkout", "main", cwd=git_repo)
+    seeded = _invoke("--name", "second", "--seed-docs")
+    assert seeded.exit_code == 0, seeded.output
+    for rel in _REQUIRED_DOC_PATHS:
+        assert (git_repo / rel).read_text() == required_before[rel]

@@ -89,16 +89,45 @@ def _current_branch() -> str:
     return res.stdout.strip() if res.returncode == 0 else ""
 
 
-TOOL_FILES = {
+# CLAUDE.md is read by the pipeline itself (agent_loop.py's rules-file scan,
+# datum-awake's CLAUDE.md/AGENTS.md scan) so its redirect stub is always
+# seeded. GEMINI.md/CODEX.md/KIRO.md/COPILOT.md have no reader anywhere in
+# datum/ or skills/src/ — awake-scan.md only reads them opportunistically if
+# they already exist — so they are opt-in (--seed-docs), not written by
+# default (#370, #379).
+REQUIRED_TOOL_FILES = {
     "CLAUDE.md": "Claude Code",
+}
+OPTIONAL_TOOL_FILES = {
     "GEMINI.md": "Gemini CLI",
     "CODEX.md": "Codex",
     "KIRO.md": "Kiro",
     "COPILOT.md": "Copilot",
 }
+# Kept for callers that still import the old combined mapping.
+TOOL_FILES = {**REQUIRED_TOOL_FILES, **OPTIONAL_TOOL_FILES}
 
 
-def seed_agents_md() -> list[str]:
+def _seed_tool_redirects(tool_files: dict[str, str]) -> list[str]:
+    seeded = []
+    redirect_template = _read_template("TOOL_REDIRECT.md")
+    for filename, tool_name in tool_files.items():
+        path = Path(filename)
+        content = path.read_text() if path.exists() else ""
+        redirect_line = (
+            "All agent instructions live in [AGENTS.md](AGENTS.md). Read that file."
+        )
+        if redirect_line not in content:
+            redirect = redirect_template.replace("{tool_name}", tool_name)
+            if content.strip():
+                path.write_text(redirect + "\n" + content)
+            else:
+                path.write_text(redirect)
+            seeded.append(str(path))
+    return seeded
+
+
+def seed_agents_md(seed_docs: bool = False) -> list[str]:
     seeded = []
 
     agents_template = _read_template("AGENTS.md")
@@ -114,25 +143,23 @@ def seed_agents_md() -> list[str]:
             agents.write_text(content.rstrip() + "\n" + local_llm_template)
             seeded.append(str(agents) + " (local-llm section added)")
 
-    redirect_template = _read_template("TOOL_REDIRECT.md")
-    for filename, tool_name in TOOL_FILES.items():
-        path = Path(filename)
-        content = path.read_text() if path.exists() else ""
-        redirect_line = (
-            "All agent instructions live in [AGENTS.md](AGENTS.md). Read that file."
-        )
-        if redirect_line not in content:
-            redirect = redirect_template.replace("{tool_name}", tool_name)
-            if content.strip():
-                path.write_text(redirect + "\n" + content)
-            else:
-                path.write_text(redirect)
-            seeded.append(str(path))
+    seeded.extend(_seed_tool_redirects(REQUIRED_TOOL_FILES))
+    if seed_docs:
+        seeded.extend(_seed_tool_redirects(OPTIONAL_TOOL_FILES))
 
     return seeded
 
 
-def main() -> None:
+def main(seed_docs: bool = False) -> None:
+    """Seed the docs a consumer repo needs from a fresh `datum init`.
+
+    ``seed_docs=False`` (the default) writes only what the pipeline actually
+    reads: hooks/config/profiles/lane-tools, CURRENT_STATE.md, ROADMAP.md,
+    TICKET.md, and the AGENTS.md/CLAUDE.md preamble. ``seed_docs=True`` also
+    writes the opt-in stubs nothing in datum/ or skills/src/ reads —
+    GEMINI.md/CODEX.md/KIRO.md/COPILOT.md redirects, docs/adr/000-template.md,
+    and docs/practice/README.md (#370, #379).
+    """
     seeded = []
 
     seeded.extend(seed_hooks())
@@ -170,23 +197,24 @@ def main() -> None:
             ticket_path.write_text(_read_template("TICKET.md"))
             seeded.append(str(ticket_path))
 
-    adr_dir = Path("docs/adr")
-    adr_dir.mkdir(parents=True, exist_ok=True)
-    adr_template = adr_dir / "000-template.md"
-    if not adr_template.exists():
-        src_template = templates_dir() / "000-madr-template.md"
-        if src_template.exists():
-            adr_template.write_text(src_template.read_text())
-            seeded.append(str(adr_template))
+    if seed_docs:
+        adr_dir = Path("docs/adr")
+        adr_dir.mkdir(parents=True, exist_ok=True)
+        adr_template = adr_dir / "000-template.md"
+        if not adr_template.exists():
+            src_template = templates_dir() / "000-madr-template.md"
+            if src_template.exists():
+                adr_template.write_text(src_template.read_text())
+                seeded.append(str(adr_template))
 
-    practice_dir = Path("docs/practice")
-    practice_dir.mkdir(parents=True, exist_ok=True)
-    practice_readme = practice_dir / "README.md"
-    if not practice_readme.exists():
-        practice_readme.write_text(_read_template("PRACTICE_LEDGER.md"))
-        seeded.append(str(practice_readme))
+        practice_dir = Path("docs/practice")
+        practice_dir.mkdir(parents=True, exist_ok=True)
+        practice_readme = practice_dir / "README.md"
+        if not practice_readme.exists():
+            practice_readme.write_text(_read_template("PRACTICE_LEDGER.md"))
+            seeded.append(str(practice_readme))
 
-    seeded.extend(seed_agents_md())
+    seeded.extend(seed_agents_md(seed_docs))
 
     print(json.dumps({"ok": True, "seeded": seeded}))
 
