@@ -313,8 +313,12 @@ var cacheKey = "";
 function setBatchCacheKey(key) {
   cacheKey = typeof key === "string" ? key : "";
 }
+var BATCH_TOOL_TIMEOUT_MS = 6e5;
+var TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i;
 function batchCommandPrompt(steps) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
+
+` + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
 
 ` : "") + batchScript(steps);
 }
@@ -336,6 +340,9 @@ function parseBatchResult(raw, steps) {
     const text = typeof raw === "string" ? raw.replace(/```[a-z]*/gi, "").trim() : "";
     if (!text) return { steps: [], failed: null, missing: true };
     const prose = raw.trim();
+    if (TIMEOUT_RE.test(prose)) {
+      return { steps: [], failed: null, missing: true, scriptError: `batch_timeout: the runner's shell cut the script before it finished (runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}"); the Bash tool must be called with timeout ${BATCH_TOOL_TIMEOUT_MS}` };
+    }
     const exited = /exit(?:ed)?(?: with)? code (\d+)/i.exec(prose);
     if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
       return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
@@ -458,6 +465,16 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+  } else if (result.missing && result.scriptError?.startsWith("batch_timeout")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with the timeout instruction repeated`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's shell cut the script short; call the Bash tool with timeout 600000 and let the script finish`, retryOpts), steps);
+  } else if (result.missing && /^batch_(root_missing|tool_missing)/.test(result.scriptError || "")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner (a guard row is not trusted until it repeats)`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
   }
   return result;
 }
