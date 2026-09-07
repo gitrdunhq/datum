@@ -415,3 +415,26 @@ describe('an empty array is an empty reply', () => {
     }
   })
 })
+
+// #496 (integration-lanes-2 wf_355fd4cc-76b): three INT lanes' independent
+// verify ran the full pytest suite and the runner's Bash tool cut it at its
+// two-minute default — "The command timed out after 120 seconds", exit 143.
+// The prompt asks for the tool's maximum timeout, and a timed-out reply in
+// any of the three shapes seen is batch_timeout, retried once.
+describe('batch timeout (#496): the prompt asks for the long Bash timeout and a timed-out reply is named', () => {
+  it('batchCommandPrompt tells the runner to pass timeout 600000 to the Bash tool', () => {
+    const p = batchCommandPrompt([{ name: 'cfg', command: 'cat .datum/config.json' }])
+    expect(p).toMatch(/timeout(?::| of| parameter)? 600000/)
+  })
+  const steps = [{ name: 'test-verify', command: 'uv run pytest -x -q' }]
+  it.each([
+    ['prose', 'The command timed out after 120 seconds and did not produce output.'],
+    ['json-error', '{"error": "timeout", "exit_code": 143, "message": "Command timed out after 2m 0s - script did not complete execution"}'],
+    ['json-row', '{"exit_code": 143, "stdout": "", "stderr": "Command timed out after 2m 0s"}'],
+  ])('a %s timeout reply is batch_timeout, missing, not a refusal', (_shape, reply) => {
+    const r = parseBatchResult(reply, steps)
+    expect(r.missing).toBe(true)
+    expect(r.scriptError).toMatch(/^batch_timeout: /)
+    expect(describeFailure(r, 'post-red')).toMatch(/^post-red: batch_timeout: /)
+  })
+})

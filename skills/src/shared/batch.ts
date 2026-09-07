@@ -166,9 +166,15 @@ export function setBatchCacheKey(key: string): void {
 }
 
 /** Prompt for the datum-cli agent: run the script once, return its stdout. */
+/** The Bash tool's maximum timeout (ms). A batch may run a full test suite;
+ *  the tool's two-minute default cut three INT-lane verifies (#496). */
+export const BATCH_TOOL_TIMEOUT_MS = 600000
+/** A runner reply saying its shell cut the script short. */
+export const TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i
+
 export function batchCommandPrompt(steps: BatchStep[]): string {
   return (
-    'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. ' +
+    `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. ` +
     'Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, ' +
     'do not message anyone, do not summarise or explain — this prompt is the whole task. ' +
     'The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); ' +
@@ -205,6 +211,13 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     const text = typeof raw === 'string' ? raw.replace(/```[a-z]*/gi, '').trim() : ''
     if (!text) return { steps: [], failed: null, missing: true }
     const prose = (raw as string).trim()
+    // #496 (integration-lanes-2 wf_355fd4cc-76b): the runner's Bash tool cut
+    // a full-suite verify at its two-minute default and said so in prose, as
+    // {"error":"timeout"} or as a 143 row. Named, and retried once with the
+    // timeout instruction repeated; never a refusal, never "the tests failed".
+    if (TIMEOUT_RE.test(prose)) {
+      return { steps: [], failed: null, missing: true, scriptError: `batch_timeout: the runner's shell cut the script before it finished (runner said: "${prose.replace(/\s+/g, ' ').slice(0, 160)}"); the Bash tool must be called with timeout ${BATCH_TOOL_TIMEOUT_MS}` }
+    }
     // wf_4cd23ab6-9f8 boot: the runner described the host's refusal in prose
     // ("exited with code 126 ... failed to execute"). Same failure, same name.
     const exited = /exit(?:ed)?(?: with)? code (\d+)/i.exec(prose)

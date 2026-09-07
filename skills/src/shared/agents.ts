@@ -235,6 +235,11 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     // stderr) — a runner-side refusal like the classifier's, retried once.
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner's shell refused to execute the script; run it again`, retryOpts), steps)
+  } else if (result.missing && result.scriptError?.startsWith('batch_timeout')) {
+    // #496: the runner's shell cut a full-suite verify at the Bash tool's
+    // two-minute default. One retry, with the timeout instruction repeated.
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with the timeout instruction repeated`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner's shell cut the script short; call the Bash tool with timeout 600000 and let the script finish`, retryOpts), steps)
   } else if (result.missing && /^batch_(root_missing|tool_missing)/.test(result.scriptError || '')) {
     // wf_2581bc04-604 boot: the host refused the script (exit 126) and the
     // runner then wrote the guard's row itself, copied from the script text.

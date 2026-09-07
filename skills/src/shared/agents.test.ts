@@ -427,3 +427,27 @@ describe('runBatch — one retry on a guard row (batch_root_missing / batch_tool
     expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_root_missing: \/Volumes/)
   })
 })
+
+// #496: a timed-out batch is re-sent once with the timeout instruction
+// repeated; a second timeout is terminal under its own name.
+describe('runBatch — one retry on batch_timeout', () => {
+  const steps = [{ name: 'test-verify', command: 'uv run pytest -x -q' }]
+  const timedOut = 'The command timed out after 120 seconds and did not produce output.'
+  const ok = JSON.stringify([{ name: 'test-verify', exit_code: 0, stdout: 'TEST_EXIT=0', stderr: '' }])
+  it('re-sends once, repeating the timeout instruction, and uses the second reply', async () => {
+    const prompts: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'post-red', model: 'm' }, {
+      agentFn: async (p) => { prompts.push(p); return n++ === 0 ? timedOut : ok },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toMatch(/attempt 2 of 2[\s\S]*600000/)
+  })
+  it('a second timeout is terminal as batch_timeout', async () => {
+    const r = await runBatch(steps, { label: 'post-red', model: 'm' }, { agentFn: async () => timedOut, logFn: () => undefined })
+    expect(describeFailure(r, 'post-red')).toMatch(/^post-red: batch_timeout: /)
+  })
+})
+
