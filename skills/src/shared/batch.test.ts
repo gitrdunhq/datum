@@ -235,9 +235,10 @@ describe('batchScript integrity: the runner cannot silently mangle the script', 
     expect(script).toMatch(/git hash-object "\$__f"/)
     expect(script).toMatch(/batch_script_corrupt/)
     expect(script).toMatch(/[0-9a-f]{40}/)
-    // sourced, so a prelude (`__root=...`, a `cd`) stays visible to the steps
-    expect(script).toMatch(/\. "\$__f"/)
-    expect(script).not.toMatch(/bash "\$__f"/)
+    // executed by bash (zsh refused to source it, 2026-09-07); cwd and
+    // exported variables reach the steps
+    expect(script).toMatch(/bash "\$__f"/)
+    expect(script).not.toMatch(/\. "\$__f"/)
   })
 
   it('under real bash, the exact script runs and a one-character transcription error is a named corrupt result', () => {
@@ -436,5 +437,26 @@ describe('batch timeout (#496): the prompt asks for the long Bash timeout and a 
     expect(r.missing).toBe(true)
     expect(r.scriptError).toMatch(/^batch_timeout: /)
     expect(describeFailure(r, 'post-red')).toMatch(/^post-red: batch_timeout: /)
+  })
+})
+
+// datum self-hosted, 2026-09-07: the datum-cli runner's Bash tool is zsh 5.9
+// on this host, and zsh refuses to source the heredoc file (`. "$__f"`) with
+// exit 126 while `bash "$__f"` runs it; every "boot refused the script"
+// halt this week was that. The step file is executed by bash explicitly, so
+// the steps run under the shell they were written for whatever the tool's
+// shell is; cwd and exported PATH from the wrapper still reach it.
+describe('batchScript executes the step file with bash, never by sourcing it', () => {
+  it('runs `bash "$__f"` after the hash check and never `. "$__f"` or `source`', () => {
+    const script = batchScript([{ name: 'a', command: 'echo a' }])
+    expect(script).toMatch(/else bash "\$__f"; fi/)
+    expect(script).not.toMatch(/\. "\$__f"|source "\$__f"/)
+  })
+  it('under real zsh, the wrapper runs the steps and prints the rows', () => {
+    const steps = [{ name: 'a', command: 'echo from-a' }]
+    const out = execFileSync('/bin/zsh', ['-c', batchScript(steps)], { encoding: 'utf8' })
+    const r = parseBatchResult(out, steps)
+    expect(r.missing).toBe(false)
+    expect(stepStdout(r, 'a')).toBe('from-a\n')
   })
 })
