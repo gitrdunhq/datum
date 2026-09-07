@@ -1,0 +1,98 @@
+{
+  "task_id": "task-008",
+  "slug": "skeleton-int-lane-single-file",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify `run_preflight` for a lane whose `kind` is `'integration'` e",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_run_preflight_for_a_lane_whose_kind_is_integration_emits_eve",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_run_preflight_for_a_lane_whose_kind_is_integration_emits_eve \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC1:\n    def test_ac1_run_preflight_for_a_lane_whose_kind_is_integration_emits_eve(self):\n        \"\"\"\n        PROP-001: `run_preflight` for a lane whose `kind` is `'integration'` emits every skeleton \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify The INT lane's skeleton bodies use the same placeholder shap",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_int_lane_s_skeleton_bodies_use_the_same_placeholder_shap",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_int_lane_s_skeleton_bodies_use_the_same_placeholder_shap \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC2:\n    def test_ac2_the_int_lane_s_skeleton_bodies_use_the_same_placeholder_shap(self):\n        \"\"\"\n        PROP-002: The INT lane's skeleton bodies use the same placeholder shape task-lane skeleton\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify `make_function_name(ac_id, ac_text, language)` keeps its cur",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_make_function_name_ac_id_ac_text_language_keeps_its_current",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_make_function_name_ac_id_ac_text_language_keeps_its_current \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC3:\n    def test_ac3_make_function_name_ac_id_ac_text_language_keeps_its_current(self):\n        \"\"\"\n        PROP-003: `make_function_name(ac_id, ac_text, language)` keeps its current three-positiona\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify `make_function_name(..., invariant_id='II3')` (new default-N",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_make_function_name_invariant_id_ii3_new_default_none_keyword",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_make_function_name_invariant_id_ii3_new_default_none_keyword \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC4:\n    def test_ac4_make_function_name_invariant_id_ii3_new_default_none_keyword(self):\n        \"\"\"\n        PROP-004: `make_function_name(..., invariant_id='II3')` (new default-None keyword) returns\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify An INT lane with N acceptance criteria produces exactly N sk",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_an_int_lane_with_n_acceptance_criteria_produces_exactly_n_sk",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_an_int_lane_with_n_acceptance_criteria_produces_exactly_n_sk \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC5:\n    def test_ac5_an_int_lane_with_n_acceptance_criteria_produces_exactly_n_sk(self):\n        \"\"\"\n        PROP-005: An INT lane with N acceptance criteria produces exactly N skeleton functions in \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify `run_batch` over a lane plan containing both task lanes and ",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_run_batch_over_a_lane_plan_containing_both_task_lanes_and_in",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_run_batch_over_a_lane_plan_containing_both_task_lanes_and_in \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC6:\n    def test_ac6_run_batch_over_a_lane_plan_containing_both_task_lanes_and_in(self):\n        \"\"\"\n        PROP-006: `run_batch` over a lane plan containing both task lanes and INT lanes produces u\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_skeleton_integration_lane.py",
+      "kind": "pytest",
+      "purpose": "Verify The parent directory of the INT lane's test file is created ",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_the_parent_directory_of_the_int_lane_s_test_file_is_created",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_the_parent_directory_of_the_int_lane_s_test_file_is_created \u2192 tests/test_skeleton_integration_lane.py\n\nimport pytest\n\n\nclass TestTask008AC7:\n    def test_ac7_the_parent_directory_of_the_int_lane_s_test_file_is_created(self):\n        \"\"\"\n        PROP-007: The parent directory of the INT lane's test file is created on demand when skele\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/skeleton_creator.py": "#!/usr/bin/env python3\n\nimport argparse\nimport json\nimport re\nimport subprocess\nimport sys\nfrom pathlib import Path\nfrom typing import Literal\n\nTestConvention = Literal[\"flat\", \"directory\", \"docs-only\"]\n\n\ndef _write_skeleton(dest: Path, content: str) -> None:\n    ...\n\n\ndef _extract_swift_target_context(task_files: list[str]) -> str | None:\n    ...\n\n\n\n\n\n\n\ndef _detect_swift_framework(test_file: str) -> str:\n    ...\n\n\nSUPPORTED = {\"swift\", \"typescript\", \"javascript\", \"go\", \"python\"}\n\nSKELETON_TEMPLATES = {\n// Skeleton: {task_id} {ac_id} \u2014 {property_id}\n// RED agent: fill in the assertion body. Do not rename this function or move this file.\n// Traceability: {ac_id} \u2192 {function_name} \u2192 {path}\n\nimport Testing\n@testable import {module}\n\n@Suite(\"{suite_name}\")\nstruct {struct_name} {{\n    @Test(.tags(.{tag}))\n\n\n}}\n// Skeleton: {task_id} {ac_id} \u2014 {property_id}\n// RED agent: fill in the assertion body. Do not rename this function or move this file.\n// Traceability: {ac_id} \u2192 {function_name} \u2192 {path}\n\nimport XCTest\n@testable import {module}\n\nfinal class {struct_name}: XCTestCase {{\n\n\n}}\n// Skeleton: {task_id} {ac_id} \u2014 {property_id}\n// RED agent: fill in the assertion body. Do not rename this test or move this file.\n// Traceability: {ac_id} \u2192 {function_name} \u2192 {path}\n\nimport {{ describe, it, expect }} from 'vitest';\n\n// {property_id}: {predicate_short}\ndescribe('{suite_name}', () => {{\n\n\n}});\n// Skeleton: {task_id} {ac_id} \u2014 {property_id}\n// RED agent: fill in the assertion body. Do not rename this function or move this file.\n// Traceability: {ac_id} \u2192 {function_name} \u2192 {path}\n\npackage {package}_test\n\nimport \"testing\"\n\n// {property_id}: {predicate_short}\nfunc {function_name}(t *testing.T) {{\n\n\n}}\n# Skeleton: {task_id} {ac_id} \u2014 {property_id}\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: {ac_id} \u2192 {function_name} \u2192 {path}\n\nimport pytest\n\n\nclass Test{struct_name}:\n    ...\n\n\n\n\n\n\n\n\ndef build_impl_stubs(\n    task_id: str,\n) -> list[dict]:\n    sigs = _extract_signatures_from_acs(acs)\n\n    stubs = []\n    ext_lang_map = {\n\n        path = Path(impl_path)\n        ext = path.suffix.lower()\n        lang = ext_lang_map.get(ext)\n\n        lines = []\n        seen: set[str] = set()\n            args_str = \", \".join(sig[\"args\"]) if sig[\"args\"] else \"\"\n\n            elif lang == \"swift\":\n            elif lang == \"go\":\n\n\n        content = \"\\n\".join(lines)\n\n\n\n\ndef slugify(text: str) -> str:\n    ...\n\n\n\ndef infer_test_path(\n    task_files: list[str],\n    test_convention: TestConvention = \"flat\",\n) -> str | None:\n\n    mock_markers = [\"Mock\", \"mock\", \"Stub\", \"stub\", \"Fake\", \"fake\", \"Spy\", \"spy\"]\n\n        src = task_files[0]\n        parent_name = Path(src).parent.name\n\n        src = task_files[0]\n            name = Path(src).stem\n            name = Path(src).stem\n            name = Path(src).stem\n    ext_map = {\n    ext = ext_map.get(language, \".py\")\n\n\ndef infer_module(task_files: list[str], language: str) -> str:\n    ...\n\n\ndef make_function_name(ac_id: str, ac_text: str, language: str) -> str:\n    ...\n\n\ndef make_struct_name(task_id: str, ac_id: str) -> str:\n    ...\n\n\ndef build_skeleton(\n    task_id: str,\n) -> dict:\n    function_name = make_function_name(ac_id, ac_text, language)\n    path = infer_test_path(task_files, language, ac_id)\n    struct_name = make_struct_name(task_id, ac_id)\n    module = infer_module(task_files, language)\n    suite_name = f\"{task_id} \u2014 {property_id}\"\n    tag = property_id.lower().replace(\"-\", \"\")\n\n    actual_framework = framework or language\n    template = SKELETON_TEMPLATES.get(\n    content = template.format(\n        task_id=task_id,\n        ac_id=ac_id,\n        property_id=property_id,\n        predicate_short=predicate_short[:80],\n        function_name=function_name,\n        path=path,\n        module=module,\n        suite_name=suite_name,\n        struct_name=struct_name,\n        tag=tag,\n        package=module,\n\n\n\ndef run_preflight(\n    task_id: str,\n    skip_file_writes: bool = False,\n) -> dict:\n\n\n            tasks_data = json.loads(tasks_path.read_text())\n\n            task_data = tasks_data[\"lanes\"].get(task_id)\n                task_data[\"id\"] = task_id\n            task_data = next((t for t in tasks_data if t.get(\"id\") == task_id), None)\n\n\n        acs_text = task_data.get(\"acceptance_criteria\", [])\n        files = task_data.get(\"files\", [])\n\n        outputs = []\n            ac_id = f\"AC{i + 1}\"\n            props = re.findall(\n            prop_id = props[0] if props else f\"PROP-{i + 1:03d}\"\n            skeleton = build_skeleton(\n                task_id=task_id,\n                ac_id=ac_id,\n                ac_text=ac_text.strip(),\n                property_id=prop_id,\n                predicate_short=ac_text.strip(),\n                task_files=files,\n                language=language,\n                framework=(\n            dest = Path(skeleton[\"path\"])\n                skeleton[\"skeleton_written\"] = True\n                skeleton[\"skeleton_written\"] = False\n                skeleton[\"skeleton_note\"] = (\n\n        target_context = (\n        impl_files = [f for f in files if \"test\" not in f.lower()]\n        impl_stubs = build_impl_stubs(task_id, acs_text, impl_files, language)\n        existing_api = {}\n            from datum.skeleton import extract_skeleton_from_file\n\n                p = Path(f)\n                    existing_api[f] = extract_skeleton_from_file(p)\n        result = {\n\n    content = tasks_path.read_text()\n    task_block_pattern = (\n    match = re.search(task_block_pattern, content, re.DOTALL | re.IGNORECASE)\n\n    block = match.group(0)\n\n    acs = re.findall(\n    numbered = re.findall(r\"[-*]\\s+(AC\\d+):\\s+(.+)\", block, re.IGNORECASE)\n\n    files = re.findall(r\"[-*]\\s+`?([^\\s`]+(?:\\.swift|\\.ts|\\.go|\\.py|\\.js))`?\", block)\n\n    properties = re.findall(\n\n    outputs = []\n            prop_id = properties[i] if i < len(properties) else f\"PROP-{i + 1:03d}\"\n            skeleton = build_skeleton(\n                task_id=task_id,\n                ac_id=ac_id,\n                ac_text=ac_text.strip(),\n                property_id=prop_id,\n                predicate_short=ac_text.strip(),\n                task_files=files,\n                language=language,\n                framework=(\n            dest = Path(skeleton[\"path\"])\n                skeleton[\"skeleton_written\"] = True\n                skeleton[\"skeleton_written\"] = False\n                skeleton[\"skeleton_note\"] = (\n            ac_id = f\"AC{i + 1}\"\n            prop_id = properties[i] if i < len(properties) else f\"PROP-{i + 1:03d}\"\n            skeleton = build_skeleton(\n                task_id=task_id,\n                ac_id=ac_id,\n                ac_text=ac_text.strip(),\n                property_id=prop_id,\n                predicate_short=ac_text.strip(),\n                task_files=files,\n                language=language,\n                framework=(\n            dest = Path(skeleton[\"path\"])\n                skeleton[\"skeleton_written\"] = True\n                skeleton[\"skeleton_written\"] = False\n                skeleton[\"skeleton_note\"] = (\n        target_context = (\n\n    target_context = (\n\n    result = {\n\n\n\n\ndef run_batch(\n    language: str,\n    skip_file_writes: bool = True,\n) -> dict:\n\n        tasks_data = json.loads(tasks_path.read_text())\n\n    lanes = tasks_data.get(\"lanes\", {})\n\n    results = {}\n        out = output_dir / f\"preflight-{task_id}.json\"\n        result = run_preflight(\n            task_id=task_id,\n            language=language,\n            tasks_path=tasks_path,\n            output_path=out,\n            skip_file_writes=skip_file_writes,\n        results[task_id] = {\n\n    summary = {\n    summary_path = output_dir / \"batch-summary.json\"\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

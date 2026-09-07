@@ -478,11 +478,15 @@ def _setup_views(con: Any, datum_dir: Path) -> None:  # noqa: ANN401
         run_dirs = sorted(d.name for d in floor_runs_dir.iterdir() if d.is_dir())
         if run_dirs:
             # Build a small inline JSON and use read_json_auto over a values list.
-            rows_sql = ", ".join(f"('{d}')" for d in run_dirs)
+            # Escape single quotes (SQL standard '' escaping) — run_dirs are
+            # directory names, which may legitimately contain apostrophes and
+            # must never be able to break out of the string literal.
+            escaped_dirs = [d.replace("'", "''") for d in run_dirs]
+            rows_sql = ", ".join(f"('{d}')" for d in escaped_dirs)
             try:
                 con.execute(
                     f"CREATE OR REPLACE TABLE floor_runs AS "
-                    f"SELECT column0 AS run_dir FROM (VALUES {rows_sql})"
+                    f"SELECT run_dir FROM (VALUES {rows_sql}) AS t(run_dir)"
                 )
             except Exception:
                 _empty_view(con, "floor_runs", ["run_dir"])

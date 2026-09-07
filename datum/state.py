@@ -57,7 +57,11 @@ def current_branch() -> str | None:
             branch = result.stdout.strip()
             return branch if branch else None
         return None
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError):
+        # git binary missing/unavailable or the call timed out — genuinely
+        # unknown branch. Callers must treat this None as "unknown", never
+        # as "no work branch" (see ensure_feature_branch/cmd_init, which
+        # raise rather than silently guessing when this is None).
         return None
 
 
@@ -74,8 +78,65 @@ def _existing_branches() -> set[str]:
         if result.returncode != 0:
             return set()
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError):
+        # Best-effort de-dup input for make_unique() — if git is
+        # unavailable, an empty set just means uniqueness can't be
+        # verified, not that the branch name is (in)valid.
         return set()
+
+
+def epic_base_path(branch: str) -> Path:
+    """`.datum/epics/<slug>/base.json` for an epic branch (the pipeline-state slug)."""
+    from datum.pipeline_state import epic_state_slug
+
+    return (
+        Path(".datum") / "epics" / (epic_state_slug(branch) or "unknown") / "base.json"
+    )
+
+
+def record_epic_base(branch: str, base_branch: str) -> None:
+    """Persist the branch this epic was created from. Fails open: a
+    recording problem must never block branch creation."""
+    try:
+        path = epic_base_path(branch)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"base_branch": base_branch}, indent=2) + "\n")
+    except OSError:
+        return
+
+
+def resolve_epic_base(branch: str | None = None) -> tuple[str, str]:
+    """(base_branch, source) for the current epic: the recorded parent, else
+    origin/HEAD, else origin/main|master, else a local main|master, else
+    'main' assumed. Source names which."""
+    import subprocess
+
+    branch = branch or current_branch() or ""
+    path = epic_base_path(branch) if branch else None
+    if path is not None and path.exists():
+        try:
+            recorded = json.loads(path.read_text()).get("base_branch")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            recorded = None
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded.strip(), "recorded"
+
+    def git(*args: str) -> str:
+        res = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=5, check=False
+        )
+        return res.stdout.strip() if res.returncode == 0 else ""
+
+    head = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if head:
+        return head.removeprefix("origin/"), "origin-head"
+    for name in ("main", "master"):
+        if git("show-ref", "--verify", f"refs/remotes/origin/{name}"):
+            return f"origin/{name}", "origin-default"
+    for name in ("main", "master"):
+        if git("show-ref", "--verify", f"refs/heads/{name}"):
+            return name, "local-default"
+    return "main", "assumed"
 
 
 def ensure_feature_branch(title: str | None = None) -> str:
@@ -90,7 +151,19 @@ def ensure_feature_branch(title: str | None = None) -> str:
     import sys
 
     branch = current_branch()
-    if branch not in PROTECTED_BRANCHES:
+    if branch is None:
+        raise RuntimeError(
+            "could not determine current git branch (git command failed, "
+            "timed out, or repo is unavailable) — refusing to guess"
+        )
+
+    # A foreign feature branch (feature/x) is adopted in place, title
+    # ignored (#213). A datum epic branch is different: the same name
+    # adopts it, a different name is a NEW epic chained from HEAD
+    # (elonchesd: `init --name playable-ui-shell` on datum/epic-1
+    # re-adopted epic-1 and datum-go carried on under the wrong epic).
+    on_epic = branch.startswith("datum/")
+    if branch not in PROTECTED_BRANCHES and not on_epic:
         return branch
 
     new_branch = ""
@@ -99,20 +172,27 @@ def ensure_feature_branch(title: str | None = None) -> str:
 
         slug = slugify(title)
         if slug:
-            new_branch = make_unique(f"datum/{slug}", _existing_branches())
-            
+            wanted = f"datum/{slug}"
+            if on_epic and (branch == wanted or branch.startswith(f"{wanted}-")):
+                return branch
+            new_branch = make_unique(wanted, _existing_branches())
+    if on_epic and not new_branch:
+        return branch
+
     if not new_branch:
         if sys.stdout.isatty():
             from rich.prompt import Prompt
+
             user_input = Prompt.ask(
                 "[bold yellow]Enter a descriptive name for this epic[/bold yellow] (or press Enter for generic)"
             )
             if user_input:
                 from datum.slug import make_unique, slugify
+
                 slug = slugify(user_input)
                 if slug:
                     new_branch = make_unique(f"datum/{slug}", _existing_branches())
-                    
+
     if not new_branch:
         n = next_epic_number()
         new_branch = f"datum/epic-{n}"
@@ -121,6 +201,12 @@ def ensure_feature_branch(title: str | None = None) -> str:
         capture_output=True,
         text=True,
     )
+    if result.returncode == 0:
+        # The epic's parent, recorded at creation: review and closeout diff
+        # from it (`datum epic-base`), so an epic chained from another epic
+        # is judged on its own commits, not its parent's (elonchesd
+        # wf_22ad6b36-dec re-reviewed all of epic-1 from `merge-base main`).
+        record_epic_base(new_branch, branch)
     if result.returncode != 0:
         print(
             json.dumps(
@@ -160,26 +246,6 @@ def load_config() -> dict:
     if not config_path.exists():
         return {}
     return tomllib.loads(config_path.read_text())
-
-
-def resolve_tier(phase: str, run_state: dict | None = None) -> dict:
-    config = load_config()
-    models = config.get("models", {})
-    phases = models.get("phases", {})
-
-    tier_name = phases.get(phase, "standard")
-
-    if (
-        config.get("pipeline", {}).get("deepen_downshift", False)
-        and run_state
-        and run_state.get("phases", {}).get("deepen", {}).get("status") == "completed"
-        and phase in ("act_red", "act_green", "act_refactor")
-    ):
-        tier_name = "fast"
-
-    model_id = models.get(tier_name, tier_name)
-
-    return {"phase": phase, "tier": tier_name, "model": model_id}
 
 
 def init_db():
@@ -256,19 +322,24 @@ def cmd_read(args: argparse.Namespace) -> None:
     if not state:
         print(json.dumps({"error": "no_state", "message": "No .datum/state.db found"}))
         sys.exit(1)
-        
+
     # Schema invariant checks
     import re
+
     current_phase = state.get("current_phase")
     if current_phase:
         phase_status = state.get("phases", {}).get(current_phase, {}).get("status")
         if phase_status == "pending":
-            print(json.dumps({
-                "error": "incoherent_state", 
-                "message": f"current_phase '{current_phase}' has 'pending' status"
-            }))
+            print(
+                json.dumps(
+                    {
+                        "error": "incoherent_state",
+                        "message": f"current_phase '{current_phase}' has 'pending' status",
+                    }
+                )
+            )
             sys.exit(1)
-            
+
     run_id = state.get("run_id", "")
     work_branch = state.get("git", {}).get("work_branch", "")
     if run_id and work_branch and work_branch.startswith("datum/epic-"):
@@ -276,10 +347,14 @@ def cmd_read(args: argparse.Namespace) -> None:
         if epic_match:
             epic_slug = epic_match.group(1)
             if not work_branch.startswith(f"datum/{epic_slug}"):
-                print(json.dumps({
-                    "error": "incoherent_state", 
-                    "message": f"work_branch '{work_branch}' does not match run_id '{run_id}'"
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "error": "incoherent_state",
+                            "message": f"work_branch '{work_branch}' does not match run_id '{run_id}'",
+                        }
+                    )
+                )
                 sys.exit(1)
 
     print(json.dumps(state, indent=2))
@@ -288,10 +363,16 @@ def cmd_read(args: argparse.Namespace) -> None:
 def cmd_init(args: argparse.Namespace) -> None:
     base_branch = getattr(args, "base_branch", "main")
     branch = current_branch()
-    
+
     title = getattr(args, "title", None)
     if title:
         work_branch = ensure_feature_branch(title)
+    elif branch is None:
+        raise RuntimeError(
+            "could not determine current git branch (git command failed, "
+            "timed out, or repo is unavailable) — refusing to guess "
+            "whether a work branch exists"
+        )
     else:
         work_branch = None if branch == base_branch else branch
 
@@ -347,14 +428,14 @@ def update_state(mutator: callable) -> bool:
             return False
 
         mutator(state)
-        
+
         state["updated_at"] = datetime.now(UTC).isoformat()
         conn.execute(
             "INSERT OR REPLACE INTO kv_state (key, value) VALUES ('current', ?)",
             (json.dumps(state),),
         )
         conn.commit()
-    
+
     # Write-through cache
     json_path = Path(".datum/state.json")
     json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -395,7 +476,7 @@ def cmd_transition(args: argparse.Namespace) -> None:
     if args.to not in PHASES:
         print(json.dumps({"error": f"unknown phase: {args.to}"}))
         sys.exit(1)
-    
+
     def _mutate(state):
         state["current_phase"] = args.to
 
@@ -423,7 +504,9 @@ def cmd_lane_update(args: argparse.Namespace) -> None:
                 print(json.dumps({"error": f"unknown stage: {args.stage}"}))
                 sys.exit(1)
             lane["stage"] = args.stage
-            stage_data = lane["stages"].get(args.stage, {"status": "pending", "retries": 0})
+            stage_data = lane["stages"].get(
+                args.stage, {"status": "pending", "retries": 0}
+            )
             if args.status:
                 stage_data["status"] = args.status
             if args.sha:

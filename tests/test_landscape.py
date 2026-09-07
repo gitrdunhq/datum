@@ -124,6 +124,57 @@ class TestLandscapeScaffold(unittest.TestCase):
             # The src/ directory should show 15 LOC total
             self.assertIn("15", md)
 
+    def test_file_tree_names_directories_above_their_files(self) -> None:
+        """A directory line precedes its files, so nested basenames are attributable."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pkg" / "sub").mkdir(parents=True)
+            (root / "pkg" / "sub" / "leaf.py").write_text("x\n", encoding="utf-8")
+            (root / "pkg" / "top.py").write_text("x\n", encoding="utf-8")
+
+            from datum.landscape import generate_scaffold
+
+            md = generate_scaffold(root, cache_dir=root / ".datum")["markdown"]
+            tree = md.split("## File Tree")[1].split("```")[1].splitlines()
+
+            self.assertIn("pkg/", tree)
+            self.assertIn("  sub/", tree)
+            self.assertIn("    leaf.py (1 LOC)", tree)
+            self.assertIn("  top.py (1 LOC)", tree)
+            self.assertLess(tree.index("pkg/"), tree.index("  sub/"))
+            self.assertLess(tree.index("  sub/"), tree.index("    leaf.py (1 LOC)"))
+
+    def test_git_repo_tree_lists_tracked_files_only(self) -> None:
+        """Inside a git repo the tree follows `git ls-files`: ignored and untracked scratch stays out."""
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            g = lambda *a: subprocess.run(  # noqa: E731
+                ["git", "-c", "core.hooksPath=/dev/null", *a],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            g("init", "-q")
+            (root / ".gitignore").write_text("scratch/\n", encoding="utf-8")
+            (root / "pkg").mkdir()
+            (root / "pkg" / "tracked.py").write_text("x\n", encoding="utf-8")
+            (root / "scratch").mkdir()
+            (root / "scratch" / "ignored.py").write_text("x\n" * 50, encoding="utf-8")
+            (root / "untracked.py").write_text("x\n", encoding="utf-8")
+            g("add", ".gitignore", "pkg")
+
+            from datum.landscape import generate_scaffold
+
+            md = generate_scaffold(root, cache_dir=root / ".datum")["markdown"]
+
+            self.assertIn("tracked.py (1 LOC)", md)
+            self.assertNotIn("ignored.py", md)
+            self.assertNotIn("scratch/", md)
+            self.assertNotIn("untracked.py", md)
+
     def test_gitnexus_markers_present(self) -> None:
         """ISOL-003: gitnexus markers don't overwrite scaffold."""
         with tempfile.TemporaryDirectory() as tmp:

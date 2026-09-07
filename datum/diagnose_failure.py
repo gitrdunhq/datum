@@ -20,7 +20,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PATTERN_LIBRARY = REPO_ROOT / "skills" / "datum-workflow" / "references" / "pattern-library.md"
+PATTERN_LIBRARY = (
+    REPO_ROOT / "skills" / "datum-workflow" / "references" / "pattern-library.md"
+)
 
 # ── Built-in fallback patterns ────────────────────────────────────────────────
 # Used when pattern-library.md is absent. Tuples are (regex, cause) for
@@ -118,7 +120,9 @@ def _load_library_patterns() -> tuple[list, list, list]:
     for block in blocks:
         try:
             data = tomllib.loads(block)
-        except Exception:
+        except tomllib.TOMLDecodeError:
+            # One malformed ```toml block in pattern-library.md must not
+            # break loading of the other (valid) pattern blocks — skip it.
             continue
         for p in data.get("patterns", []):
             regex = p.get("regex", "")
@@ -188,21 +192,39 @@ def classify(log_text: str) -> dict:
 
 
 def log_unknown(log_text: str, run_id: str | None) -> None:
-    """Append to unknown-failures.json for later review by learn_patterns.py."""
+    """Append to unknown-failures.json for later review by learn_patterns.py.
+
+    Called from parallel lane agents that can hit an UNKNOWN classification
+    around the same time — an unlocked read-modify-write here lost entries
+    and crashed readers on torn writes under real concurrency. Locked with
+    an fcntl.flock advisory lock, and written
+    via temp-file + atomic replace so a reader never observes a partial file.
+    """
+    import fcntl
+
     if not run_id:
         return
     out = Path(f".datum/runs/{run_id}/unknown-failures.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    entries = json.loads(out.read_text()) if out.exists() else []
-    entries.append(
-        {
-            "log_excerpt": log_text[:500],
-            "timestamp": __import__("datetime")
-            .datetime.now(__import__("datetime").timezone.utc)
-            .isoformat(),
-        }
-    )
-    out.write_text(json.dumps(entries, indent=2))
+    lock_path = out.with_suffix(".lock")
+
+    with open(lock_path, "w") as lock_fd:  # noqa: SIM115
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            entries = json.loads(out.read_text()) if out.exists() else []
+            entries.append(
+                {
+                    "log_excerpt": log_text[:500],
+                    "timestamp": __import__("datetime")
+                    .datetime.now(__import__("datetime").timezone.utc)
+                    .isoformat(),
+                }
+            )
+            tmp = out.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(entries, indent=2))
+            tmp.replace(out)
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
@@ -215,17 +237,15 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
         return
 
     import datetime
+    import fcntl
 
-    timestamp = datetime.datetime.now(datetime.UTC).strftime(
-        "%Y-%m-%d %H:%M UTC"
-    )
+    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC")
     errors_path = Path(".datum/ERRORS.md")
     errors_path.parent.mkdir(parents=True, exist_ok=True)
 
     header = (
         "# DATUM Error Log\n\nCross-epic failure memory. Read by Plan phase step 0.\n\n"
     )
-    existing = errors_path.read_text() if errors_path.exists() else header
 
     entry_lines = [
         f"## [{timestamp}] {result['classification']} — {result['cause']}",
@@ -238,7 +258,19 @@ def append_errors_md(result: dict, log_text: str, run_id: str | None) -> None:
     entry_lines.append(f"**Log excerpt:**\n```\n{log_text[:400].strip()}\n```")
     entry_lines.append("")
 
-    errors_path.write_text(existing + "\n".join(entry_lines) + "\n")
+    # Locked + atomic-replace for the same reason as log_unknown(): parallel
+    # lanes can each hit a REASONING/UNKNOWN failure around the same time
+    # and both append to this shared cross-epic log.
+    lock_path = errors_path.with_suffix(".md.lock")
+    with open(lock_path, "w") as lock_fd:  # noqa: SIM115
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            existing = errors_path.read_text() if errors_path.exists() else header
+            tmp = errors_path.with_suffix(".md.tmp")
+            tmp.write_text(existing + "\n".join(entry_lines) + "\n")
+            tmp.replace(errors_path)
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def main() -> None:

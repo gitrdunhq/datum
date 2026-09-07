@@ -317,17 +317,77 @@ def test_install_agent_types_swallows_exceptions_into_errors(tmp_path, monkeypat
     assert any("disk on fire" in e for e in res.errors)
 
 
-def test_install_agent_types_uses_package_dirs_in_place_inside_datum_repo(tmp_path):
+def test_install_agent_types_links_claude_agents_inside_datum_repo(tmp_path):
+    # A self-hosted checkout (repo_root == package_root) needs
+    # <repo>/.claude/agents -> ../agents so Claude Code's own agent-type
+    # resolution (which reads .claude/agents/*.md, not agents/*.md) can see
+    # the datum-* agents. install.sh creates this symlink, but nothing
+    # guaranteed it had ever been run — a checkout that skipped install.sh
+    # previously got a lying `agent_types: true` even though
+    # .claude/agents didn't exist and every agentType lookup would fail.
     pkg = _make_package(tmp_path)
+    assert not (pkg / AGENTS_SUBDIR).exists()
 
     res = install_agent_types(pkg, pkg)
 
-    assert res.agents_dir == (pkg / "agents").resolve()
+    assert res.agents_dir == pkg / AGENTS_SUBDIR
     assert res.hooks_dir == (pkg / "assets" / "hooks").resolve()
-    assert res.agents_written == [] and res.hooks_written == []
+    assert (pkg / AGENTS_SUBDIR).is_symlink()
+    assert (pkg / AGENTS_SUBDIR / "datum-red.md").is_file()
     assert res.agent_types is True and res.hooks_installed is True
-    assert not (pkg / AGENTS_SUBDIR).exists()
     assert not (pkg / LOCAL_HOOKS_SUBDIR).exists()
+
+    # second run: symlink already present, left alone, still reported installed
+    again = install_agent_types(pkg, pkg)
+    assert (pkg / AGENTS_SUBDIR).is_symlink()
+    assert again.agent_types is True and again.hooks_installed is True
+
+
+def test_install_agent_types_leaves_an_existing_claude_agents_dir_alone_inside_datum_repo(
+    tmp_path,
+):
+    # If .claude/agents already exists (e.g. a real directory rather than
+    # the install.sh symlink) it must never be clobbered.
+    pkg = _make_package(tmp_path)
+    dest = pkg / AGENTS_SUBDIR
+    dest.mkdir(parents=True)
+    (dest / "hand-written.md").write_text("---\nname: hand-written\n---\nmine\n")
+
+    res = install_agent_types(pkg, pkg)
+
+    assert not (pkg / AGENTS_SUBDIR).is_symlink()
+    assert (dest / "hand-written.md").is_file()
+    # the datum-* agents were never actually placed here, so agent_types
+    # must honestly report false rather than claim success
+    assert res.agent_types is False
+
+
+def test_install_agent_types_repairs_a_broken_claude_agents_symlink_inside_datum_repo(
+    tmp_path,
+):
+    # A stale symlink whose target has since moved/been deleted (e.g. the
+    # repo was relocated) is dangling: Path.exists() follows symlinks and
+    # returns False for it, so the "not agents_dest.exists()" guard tried
+    # to create a fresh symlink at that path and got a real FileExistsError
+    # from the OS — recorded as an error, making hooks_installed/
+    # agent_types report false even though hooks and agents are otherwise
+    # fully functional once the dangling link is replaced (#524 code review).
+    pkg = _make_package(tmp_path)
+    dest = pkg / AGENTS_SUBDIR
+    dest.parent.mkdir(parents=True)
+    dest.symlink_to(tmp_path / "nonexistent-old-location", target_is_directory=True)
+    assert dest.is_symlink() and not dest.exists()
+
+    res = install_agent_types(pkg, pkg)
+
+    assert res.errors == []
+    assert res.agents_dir == dest
+    assert dest.is_symlink() and dest.exists()
+    assert (dest / "datum-red.md").is_file()
+    # the repaired symlink must point back into pkg/agents, not somewhere
+    # resolved through the stale broken target
+    assert dest.resolve() == (pkg / "agents").resolve()
+    assert res.agent_types is True and res.hooks_installed is True
 
 
 # ── the real hooks run from the materialised path ──
@@ -436,7 +496,7 @@ def test_init_refresh_covers_skills_agents_and_hooks_without_bootstrap(
     stale_agents = repo / AGENTS_SUBDIR
     stale_agents.mkdir(parents=True)
     stale_agents.joinpath("datum-red.md").write_text(
-        f"---\nname: datum-red\n---\n{MATERIALISED_MARKER} agents/datum-red.md -->\nstale\n"
+        f"---\nname: datum-red\n---\n{MATERIALISED_MARKER} agents/datum-red.md -->\nSTALE-SENTINEL-CONTENT\n"
     )
 
     result = CliRunner().invoke(app, ["init", "--refresh", "--json"])
@@ -446,7 +506,8 @@ def test_init_refresh_covers_skills_agents_and_hooks_without_bootstrap(
     assert out["refreshed"] is True
     assert out["agentsDir"] == str((repo / AGENTS_SUBDIR).resolve())
     assert out["hooksDir"] == str((repo / LOCAL_HOOKS_SUBDIR).resolve())
-    assert "stale" not in (stale_agents / "datum-red.md").read_text()
+    # A sentinel no real agent file contains (the real datum-red.md names stale_owned_test).
+    assert "STALE-SENTINEL-CONTENT" not in (stale_agents / "datum-red.md").read_text()
     assert (repo / ".datum" / "skills" / "datum-go.js").is_file()
     cfg = json.loads((repo / ".datum" / "config.json").read_text())
     assert cfg["language"] == "python"

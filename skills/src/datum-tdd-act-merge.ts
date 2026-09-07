@@ -1,8 +1,8 @@
 import { model } from './shared/models'
 import type { MergeArgs } from './shared/types'
-import { filterGreenLanes } from './shared/utils'
+import { filterGreenLanes, parseAgentJson } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import { mergeSteps } from './shared/lane-steps'
 import { laneStateWriteScript } from './shared/prompts'
 
@@ -14,6 +14,8 @@ export const meta = {
 
 const a = args as MergeArgs
 configureAgentTypes(a.agentTypes || {})
+setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 
 // ── Merge ──
 phase('Merge')
@@ -58,20 +60,35 @@ const mergeRaw = await agent(
 const merge = parseBatchResult(mergeRaw, steps)
 if (merge.missing) log(`Merge${a.batchTag}: ${describeFailure(merge, 'merge batch')}`)
 
+// The outcome is what the merge STEP reported, never what we were asked to
+// merge: a failed squash-merge used to return merged: true (derived from the
+// input completedIds), so callers carried on to Validate/Review/Closeout on
+// an unmerged epic. "Nothing to merge" is not a failure.
+const mergeStep = mergeOrder.length > 0 ? stepResult(merge, 'merge') : null
+const mergeOk: boolean = mergeOrder.length === 0 || (!!mergeStep && mergeStep.exit_code === 0)
+// `datum worktrees merge` prints {sha, merged, already_merged} on success and
+// the same plus {failed_lane, error} on a partial merge (exit 1): the lanes
+// that landed before a conflicting lane are committed and kept, so callers
+// demote only failed_lane (elonchesd wf_4f1e41dd-ab7 batch 3/5).
+interface MergeJson { sha?: string; merged?: string[]; already_merged?: string[]; failed_lane?: string; conflict_files?: string[]; report?: string; error?: string }
+const mergeJson = parseAgentJson<MergeJson | null>(mergeStep ? mergeStep.stdout : '', null)
+const landedIds: string[] = mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : (mergeOk ? mergeOrder : [])
+const failedLane: string = mergeJson && typeof mergeJson.failed_lane === 'string' ? mergeJson.failed_lane : ''
 if (mergeOrder.length > 0) {
-  const m = stepResult(merge, 'merge')
-  if (m && m.exit_code === 0) {
+  if (mergeOk) {
     log(`Merged${a.batchTag} in order: [${mergeOrder.join(' → ')}]`)
+  } else if (failedLane) {
+    log(`Merge${a.batchTag} FAILED — partial merge: ${failedLane} did not land (${mergeJson?.error || 'no error text'}); landed and committed: [${landedIds.join(', ') || 'none'}]`)
   } else {
-    log(`Merge${a.batchTag} FAILED: ${m ? (m.stderr || m.stdout).trim().split('\n').slice(-5).join('\n') : 'step did not run'}`)
+    log(`Merge${a.batchTag} FAILED: ${mergeStep ? (mergeStep.stderr || mergeStep.stdout).trim().split('\n').slice(-5).join('\n') : 'step did not run'}`)
   }
 }
 if (laneState) {
   const out = stepStdout(merge, 'lane-state-write') || ''
   if (out.includes('SKIPPED_MERGE_FAILED')) {
-    log(`Lane-state markers${a.batchTag} NOT recorded — merge failed`)
+    log(`Lane-state markers${a.batchTag} NOT recorded — no lane landed`)
   } else if (out.includes('DONE')) {
-    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map(e => e.task_id).join(', ')}]`)
+    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map(e => e.task_id).filter(id => landedIds.includes(id)).join(', ')}]`)
   } else {
     log(`Lane-state markers${a.batchTag}: ${describeFailure(merge, 'lane-state-write')}`)
   }
@@ -82,5 +99,24 @@ phase('Cleanup')
 
 const cleanup = stepResult(merge, 'cleanup')
 log(`Cleanup${a.batchTag}: ${cleanup ? (cleanup.exit_code === 0 ? 'done' : `exited ${cleanup.exit_code}`) : 'step did not run'}`)
+// `worktrees cleanup` prints {"cleaned": {..., "preserved_with_commits": [...]}} —
+// lane branches it refused to delete because they carry real commits. Say so.
+const cleaned = cleanup && cleanup.exit_code === 0
+  ? parseAgentJson<{ cleaned?: { preserved_with_commits?: string[] } } | null>(cleanup.stdout, null)
+  : null
+const preserved = cleaned && cleaned.cleaned && Array.isArray(cleaned.cleaned.preserved_with_commits) ? cleaned.cleaned.preserved_with_commits : []
+if (preserved.length > 0) {
+  log(`Cleanup${a.batchTag}: preserved lane branch(es) with real commits (not deleted): ${preserved.join(', ')}`)
+}
 
-export const __workflowResult = { merged: a.completedIds.length > 0 }
+export const __workflowResult = {
+  merged: mergeOrder.length > 0 && mergeOk,
+  failed: mergeOrder.length > 0 && !mergeOk,
+  mergedIds: mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : (mergeOk ? mergeOrder : []),
+  failedLane: mergeJson && typeof mergeJson.failed_lane === 'string' ? mergeJson.failed_lane : '',
+  // The git-level reason and the conflicted paths, so the demoted lane's
+  // error says what happened (elonchesd wf_8769406f-b9c task-015).
+  error: mergeJson && typeof mergeJson.error === 'string' ? mergeJson.error : '',
+  conflictFiles: mergeJson && Array.isArray(mergeJson.conflict_files) ? mergeJson.conflict_files : [],
+  report: mergeJson && typeof mergeJson.report === 'string' ? mergeJson.report : '',
+}

@@ -26,17 +26,6 @@ var WRITE_RESULT_SCHEMA = {
   },
   required: ["success"]
 };
-var COMMIT_RESULT_SCHEMA = {
-  type: "object",
-  properties: {
-    committed: { type: "boolean" },
-    commit_sha: { type: "string" },
-    files_staged: { type: "array", items: { type: "string" } },
-    violations: { type: "array", items: { type: "string" } },
-    failure_reason: { type: "string" }
-  },
-  required: ["committed"]
-};
 var REFACTOR_CHECK_SCHEMA = {
   type: "object",
   properties: {
@@ -45,6 +34,399 @@ var REFACTOR_CHECK_SCHEMA = {
   },
   required: ["should_refactor"]
 };
+
+// skills/src/shared/utils.ts
+function findMatchingBracketEnd(text, start) {
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned = (fenced ? fenced[1] : text).trim();
+  try {
+    return { found: true, value: JSON.parse(cleaned) };
+  } catch {
+  }
+  const openRe = /[{[]/g;
+  let match;
+  let best;
+  let found = false;
+  while ((match = openRe.exec(cleaned)) !== null) {
+    const start = match.index;
+    const end = findMatchingBracketEnd(cleaned, start);
+    if (end === -1) continue;
+    try {
+      best = JSON.parse(cleaned.slice(start, end + 1));
+      found = true;
+      openRe.lastIndex = end + 1;
+    } catch {
+      openRe.lastIndex = start + 1;
+    }
+  }
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
+}
+function renderPrompt(template, vars) {
+  return template.replace(
+    /\{\{(\w+)\}\}/g,
+    (_match, key) => vars[key] ?? `{{${key}}}`
+  );
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
+}
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+// skills/src/shared/batch.ts
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function validateBatchSteps(steps) {
+  if (steps.length === 0) throw new Error("batch: no steps");
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of steps) {
+    if (!NAME_RE.test(s.name)) throw new Error(`batch: invalid step name "${s.name}"`);
+    if (seen.has(s.name)) throw new Error(`batch: duplicate step name "${s.name}"`);
+    seen.add(s.name);
+    if (!s.command || !s.command.trim()) throw new Error(`batch: step "${s.name}" has an empty command`);
+  }
+}
+function batchScript(steps) {
+  const inner = innerBatchScript(steps);
+  const sha = gitBlobSha(utf8Encode(inner));
+  const rootGuard = batchRoot ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`] : [];
+  const toolPath = 'export PATH="$PATH:${DATUM_BATCH_TOOL_PREFIXES:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}"';
+  const jqGuard = `if ! jq --version >/dev/null 2>&1; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_tool_missing: jq is not on the runner PATH (set DATUM_BATCH_TOOL_PREFIXES or install jq)"}]\\n'; exit 0; fi`;
+  return [
+    ...rootGuard,
+    toolPath,
+    jqGuard,
+    `__f=$(mktemp); trap 'rm -f "$__f"' EXIT`,
+    `cat > "$__f" <<'${BATCH_EOF}'`,
+    inner.replace(/\n$/, ""),
+    BATCH_EOF,
+    '__h=$(git hash-object "$__f" 2>&1)',
+    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
+    // shell, so anything defined before the script (the tests' `__root=`
+    // prelude, a `cd`) is visible exactly as it was before the wrapper.
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`
+  ].join("\n") + "\n";
+}
+var BATCH_EOF = "DATUM_BATCH_EOF";
+function shellQuote(s) {
+  return `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+var batchRoot = "";
+function setBatchRoot(root) {
+  batchRoot = typeof root === "string" ? root.trim() : "";
+}
+function innerBatchScript(steps) {
+  validateBatchSteps(steps);
+  for (const s of steps) {
+    if (s.command.split("\n").some((l) => l.trim() === BATCH_EOF)) throw new Error(`batch: step "${s.name}" contains the heredoc delimiter ${BATCH_EOF}`);
+  }
+  const lines = [
+    "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
+    `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
+    `__end() { printf '%s\\n' "$__r"; rm -f "$__bo" "$__be"; }`
+  ];
+  steps.forEach((s, i) => {
+    lines.push(`# step ${i + 1}/${steps.length}: ${s.name}${s.tolerant ? " (tolerant)" : ""}`);
+    lines.push("{");
+    lines.push(s.command.replace(/\n+$/, ""));
+    lines.push(`} >"$__bo" 2>"$__be"; __c=$?`);
+    lines.push(`__rec '${s.name}' "$__c"`);
+    if (!s.tolerant) lines.push('if [ "$__c" -ne 0 ]; then __end; exit 0; fi');
+  });
+  lines.push("__end");
+  return lines.join("\n") + "\n";
+}
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
+function batchCommandPrompt(steps) {
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps);
+}
+function asStepResult(x) {
+  if (!x || typeof x !== "object") return null;
+  const o = x;
+  if (typeof o.name !== "string") return null;
+  const code = typeof o.exit_code === "number" ? o.exit_code : parseInt(String(o.exit_code ?? ""), 10);
+  return {
+    name: o.name,
+    exit_code: Number.isFinite(code) ? code : 1,
+    stdout: typeof o.stdout === "string" ? o.stdout : "",
+    stderr: typeof o.stderr === "string" ? o.stderr : ""
+  };
+}
+function parseBatchResult(raw, steps) {
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
+  if (!Array.isArray(arr)) {
+    const text = typeof raw === "string" ? raw.replace(/```[a-z]*/gi, "").trim() : "";
+    if (!text) return { steps: [], failed: null, missing: true };
+    const prose = raw.trim();
+    const exited = /exit(?:ed)?(?: with)? code (\d+)/i.exec(prose);
+    if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
+      return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
+    }
+    return { steps: [], failed: null, missing: true, refusal: prose };
+  }
+  const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
+    const { exit_code, stderr } = results[0];
+    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
+  }
+  const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
+  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
+  return { steps: results, failed, missing: false };
+}
+function stepResult(r, name) {
+  return r.steps.find((s) => s.name === name) ?? null;
+}
+function stepStdout(r, name) {
+  const s = stepResult(r, name);
+  return s ? s.stdout : null;
+}
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
+function describeFailure(r, label) {
+  if (r.missing) {
+    if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
+    if (r.scriptError) return `${label}: ${r.scriptError}`;
+    if (!r.refusal) return `${label}: runner_empty_result \u2014 batch agent returned no parseable result (empty reply)`;
+    const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
+    if (REFUSAL_RE.test(r.refusal)) {
+      return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
+    }
+    return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
+  }
+  if (!r.failed) return `${label}: ok`;
+  const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
+  return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/commit-steps.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
+function worktreeDirtySteps(wt) {
+  return [{ name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }];
+}
+function worktreeDirtyFromSteps(result) {
+  if (result.missing) {
+    return { dirty: true, known: false, detail: `retry_guard_unverified: ${describeFailure(result, "status")}` };
+  }
+  const step = stepResult(result, "status");
+  if (!step || step.exit_code !== 0) {
+    const tail = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail ? ` \u2014 ${tail}` : ""}` };
+  }
+  const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
+  return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
+}
+
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
+
+// skills/src/prompts/docs-check.md
+var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation needs updating \u2014 do NOT write or modify files.\n\nSearch for references to these symbols in doc files (*.md, excluding CHANGELOG.md):\n{{changedFiles}}\n\nAlso check: did this task add new public functions or classes with zero documentation?\n\nReturn should_refactor=true only if:\n- An existing doc references a symbol that changed (stale doc)\n- A new public API has zero documentation anywhere\n\nReturn should_refactor=false if all docs are current or no docs reference the changed code.\n";
+
+// skills/src/prompts/docs-sync.md
+var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nTASK PACKET: {{docsPacket}}\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n';
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function docsCheckPrompt(vars) {
+  return PREAMBLE + renderPrompt(docs_check_default, vars);
+}
+function docsSyncPrompt(vars) {
+  return PREAMBLE + renderPrompt(docs_sync_default, vars);
+}
 
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
@@ -58,108 +440,134 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
 }
 
 // skills/src/shared/agents.ts
-async function commitStage(taskId, wt, commitPrefix, allowedFiles, stage) {
-  const allowedList = allowedFiles.join(", ");
-  const basePrompt = `You are a GIT COMMIT agent. You ONLY handle git operations \u2014 never edit source files.
-
-TASK:
-1. Run: git -C "${wt}" status --porcelain
-2. Verify ONLY these files were modified: ${allowedList}
-3. If files outside that list were changed, report them as violations and do NOT commit
-4. Stage the allowed files: git -C "${wt}" add <files>
-5. Commit: git -C "${wt}" commit -m "${commitPrefix}: ${stage} complete"
-6. Return the commit SHA from: git -C "${wt}" rev-parse --short HEAD
-
-CONSTRAINTS:
-- NEVER edit, create, or delete source files \u2014 only git operations
-- If there are no changes to commit, return committed=false
-- Use git -C "${wt}" for ALL git commands to enforce directory`;
-  let result = await agent(basePrompt, stageOpts("cli", {
-    label: `git-${stage.toLowerCase()}:${taskId}`,
-    phase: "Act",
-    model: model("fast"),
-    schema: COMMIT_RESULT_SCHEMA
-  }));
-  if (result && result.violations && result.violations.length > 0) {
-    log(`[${taskId}] GIT ${stage}: file ownership violations: ${result.violations.join(", ")}`);
+var RATE_LIMIT_MAX_RETRIES = 4;
+var RATE_LIMIT_BASE_DELAY_MS = 5e3;
+var RATE_LIMIT_JITTER_MS = 2e3;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
+  let lastResult = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    } else if (attempt < maxRetries) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} returned nothing (null result) \u2014 retrying`);
+    }
+    if (attempt < maxRetries && opts?.worktree) {
+      const guardSteps = worktreeDirtySteps(opts.worktree);
+      const guard = worktreeDirtyFromSteps(parseBatchResult(
+        await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),
+        guardSteps
+      ));
+      if (!guard.known) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} and the worktree state is unknown (${guard.detail}) \u2014 aborting retry to prevent duplicate writes`);
+        return lastResult;
+      }
+      if (guard.dirty) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes (${guard.detail})`);
+        return lastResult;
+      }
+    }
+    if (attempt < maxRetries) {
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + (attempt + 1) * 7919 % RATE_LIMIT_JITTER_MS;
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      await sleepMs(delay);
+    }
   }
-  if (!result || !result.committed && result.failure_reason) {
-    log(`[${taskId}] GIT ${stage}: haiku failed (${result && result.failure_reason || "null"}), escalating to sonnet`);
-    result = await agent(
-      basePrompt + `
-
-RETRY CONTEXT: Previous commit attempt failed: ${result && result.failure_reason || "null result"}.
-Diagnose the git state: run git -C "${wt}" status, git -C "${wt}" diff --stat, git -C "${wt}" log --oneline -3.
-Fix any issues (merge conflicts, dirty index, detached HEAD) then commit.
-If the worktree is in a broken state, report failure_reason with details.`,
-      stageOpts("cli", {
-        label: `git-${stage.toLowerCase()}-fix:${taskId}`,
-        phase: "Act",
-        model: model("balanced"),
-        schema: COMMIT_RESULT_SCHEMA
-      })
-    );
+  return lastResult;
+}
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const prompt = batchCommandPrompt(steps);
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
   }
-  if (result && result.committed) {
-    log(`[${taskId}] GIT ${stage} committed: ${result.commit_sha || "(no sha)"}`);
-    log(`[${taskId}]   staged: ${(result.files_staged || []).join(", ") || "(none reported)"}`);
-  } else {
-    log(`[${taskId}] GIT ${stage} FAILED: ${result && result.failure_reason || "no commit after escalation"}`);
+  let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  const label = opts.label || "batch";
+  const retryOpts = { ...opts, label: `${label}:retry` };
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps);
+  } else if (result.missing && result.corrupt) {
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once on the balanced model`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, { ...retryOpts, model: model("balanced") }), steps);
+  } else if (result.missing && !result.refusal && !result.scriptError) {
+    logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
+  } else if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
   }
   return result;
-}
-
-// skills/src/prompts/agent-preamble.md
-var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
-
-// skills/src/prompts/docs-check.md
-var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation needs updating \u2014 do NOT write or modify files.\n\nSearch for references to these symbols in doc files (*.md, excluding CHANGELOG.md):\n{{changedFiles}}\n\nAlso check: did this task add new public functions or classes with zero documentation?\n\nReturn should_refactor=true only if:\n- An existing doc references a symbol that changed (stale doc)\n- A new public API has zero documentation anywhere\n\nReturn should_refactor=false if all docs are current or no docs reference the changed code.\n";
-
-// skills/src/prompts/docs-sync.md
-var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nTASK PACKET: {{docsPacket}}\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n';
-
-// skills/src/shared/utils.ts
-function renderPrompt(template, vars) {
-  return template.replace(
-    /\{\{(\w+)\}\}/g,
-    (_match, key) => vars[key] ?? `{{${key}}}`
-  );
-}
-
-// skills/src/shared/prompts.ts
-var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
-function docsCheckPrompt(vars) {
-  return PREAMBLE + renderPrompt(docs_check_default, vars);
-}
-function docsSyncPrompt(vars) {
-  return PREAMBLE + renderPrompt(docs_sync_default, vars);
 }
 
 // skills/src/datum-tdd-act-docs.ts
 var a = args;
 configureAgentTypes(a.agentTypes || {});
+setBatchCacheKey(a.configFingerprint || "");
+setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 phase("Docs");
 var synced = false;
 var syncedFiles;
+var committed;
+var commitSha;
+var failureReason;
 if (a.completedLanes.length === 0) {
   log("No completed lanes \u2014 skipping docs");
 } else {
   const changedFiles = [...new Set(a.completedLanes.flatMap((id) => a.lanePlan.lanes[id].files || []))];
-  const docsCheck = await agent(
+  const docsCheck = await resilientAgent(
     docsCheckPrompt({ changedFiles: changedFiles.join(", ") }),
-    { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA }
+    { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }
   );
-  if (docsCheck?.should_refactor) {
+  if (!docsCheck) {
+    failureReason = "docs_check_no_result: the docs-check agent returned nothing on both attempts \u2014 docs were not checked";
+    log(`Docs: ${failureReason}`);
+  } else if (docsCheck.should_refactor) {
     const docsPacket = JSON.stringify({
       schema_version: "1.0",
       changed_files: changedFiles,
@@ -178,12 +586,21 @@ if (a.completedLanes.length === 0) {
       const docsWritten = docs.files_written || [];
       if (docsWritten.length === 0) {
         log("Docs: agent reported success but no files_written \u2014 skipping commit");
+        failureReason = "docs agent reported success but wrote no files";
       } else {
-        await commitStage("docs", ".", `docs(${a.runId})`, docsWritten, "DOCS");
+        const commitStepList = commitFilesSteps({ wt: ".", files: docsWritten, message: `docs(${a.runId}): sync docs for merged lanes` });
+        const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts("cli", { label: "docs-commit", phase: "Docs", model: model("fast") })));
+        committed = commit.committed || commit.nothingToCommit;
+        commitSha = commit.sha || "";
+        syncedFiles = docsWritten;
+        if (committed) {
+          log(commit.nothingToCommit ? `Docs already committed (nothing to commit): ${docsWritten.join(", ")}` : `Docs synced and committed (${commitSha}): ${docsWritten.join(", ")}`);
+          synced = true;
+        } else {
+          failureReason = commit.error || "commit_failed: unknown";
+          log(`Docs written but NOT committed \u2014 ${failureReason}. Files left modified in the checkout: ${docsWritten.join(", ")}`);
+        }
       }
-      log(`Docs synced: ${docsWritten.join(", ")}`);
-      synced = true;
-      syncedFiles = docsWritten;
     } else {
       log(`Docs: ${docs?.failure_reason || "nothing to update"}`);
     }
@@ -191,4 +608,4 @@ if (a.completedLanes.length === 0) {
     log("Docs: no stale references found, skipping");
   }
 }
-return { synced, files: syncedFiles };
+return { synced, files: syncedFiles, committed, commit_sha: commitSha, failure_reason: failureReason };

@@ -6,14 +6,18 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from datum.lane_hash import lane_spec_hash
 from datum.rules_doctor import do_preflight
 from datum.status_render import load_state, render
 
 try:
-    from importlib.metadata import version as _pkg_version
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
     __version__ = _pkg_version("datum")
-except Exception:
+except PackageNotFoundError:
+    # Expected when running from a source checkout that was never `pip
+    # install`-ed (e.g. local dev via `uv run`) — no installed distribution
+    # metadata exists to read a version from.
     __version__ = "dev"
 
 
@@ -105,6 +109,16 @@ def floor():
 
     from datum.path_utils import skill_root
 
+    try:
+        import textual  # noqa: F401
+    except ImportError:
+        console.print(
+            "[bold red]The Factory Floor TUI requires the 'textual' package, "
+            "which is not installed.[/bold red]\n"
+            "Run: [bold]pip install datum\\[tui][/bold]"
+        )
+        raise typer.Exit(1) from None
+
     tui_app = skill_root() / "datum-tui" / "app.py"
     if not tui_app.exists():
         console.print(f"[red]TUI not found at {tui_app}[/red]")
@@ -126,7 +140,7 @@ def status(json_output: bool = typer.Option(False, "--json", help="Output raw JS
     """Show the live pipeline status for the active run."""
     state = load_state()
     if json_output:
-        console.print(json.dumps(state, indent=2))
+        typer.echo(json.dumps(state, indent=2))
     else:
         console.print(render(state))
 
@@ -141,7 +155,7 @@ def language_detect_cmd(path: str = typer.Option(".", help="Path to the reposito
 
     root = Path(path).resolve()
     result = detect(root)
-    console.print(json.dumps(result))
+    typer.echo(json.dumps(result))
 
 
 @app.command(name="lane-plan")
@@ -152,6 +166,11 @@ def lane_plan_cmd(
         ".datum/lane-plan.json", "--output", help="Output lane plan JSON"
     ),
     md_output: str = typer.Option("TASKS.md", "--md-output", help="Output tasks MD"),
+    properties: str | None = typer.Option(
+        None,
+        "--properties",
+        help="PROPERTIES.md whose Integration Invariants become task-INT lanes",
+    ),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
@@ -165,9 +184,83 @@ def lane_plan_cmd(
     args.extend(
         ["--input", input_file, "--output", output_file, "--md-output", md_output]
     )
+    if properties is not None:
+        args.extend(["--properties", properties])
 
     with patch.object(sys, "argv", args):
         lane_plan_main()
+
+
+@app.command(name="lane-plan-digest")
+def lane_plan_digest_cmd(
+    plan: str = typer.Option(..., "--plan", help="Path to lane-plan.json"),
+    out: str = typer.Option(
+        "",
+        "--out",
+        help="Also write the digest bytes to this file (for git hash-object)",
+    ),
+):
+    """Print the compact scheduler digest of a lane plan (topology, files, spec hashes).
+
+    One JSON line: schema_version, lane_plan_sha, total_lanes,
+    topological_order, and per lane the fields the Act scheduler reads plus
+    spec_hash (the pinned laneSpecHash port). Acceptance criteria are NOT
+    included — lanes fetch their own spec at intake. Errors are JSON, exit 1.
+    """
+    from datum.lane_plan_digest import DigestError, digest_plan_file
+
+    try:
+        text = digest_plan_file(Path(plan))
+    except DigestError as exc:
+        typer.echo(json.dumps({"error": str(exc)}))
+        raise typer.Exit(code=1) from None
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
+    typer.echo(text, nl=False)
+
+
+@app.command(name="permissions-snippet")
+def permissions_snippet_cmd():
+    """Print the Claude Code auto-mode allow rules a consumer repo needs (JSON
+    to merge into .claude/settings.local.json). datum prints these; it never
+    writes them — see SKILL.md "Permissions".
+    """
+    from datum.permissions import permissions_snippet
+
+    typer.echo(permissions_snippet())
+
+
+@app.command(name="lane-spec-export")
+def lane_spec_export_cmd(
+    plan: str = typer.Option(
+        ..., "--plan", help="Path to the worktree's lane-plan.json"
+    ),
+    task: str = typer.Option(..., "--task", help="Lane id to export"),
+    out: str = typer.Option(..., "--out", help="Where to write the lane spec JSON"),
+    expect_hash: str = typer.Option(
+        "",
+        "--expect-hash",
+        help="The digest's spec_hash for this lane; a mismatch is exit 1 and writes nothing",
+    ),
+):
+    """Write one lane's full spec (acceptance criteria, red_note, contract
+    summary) to --out and print one short JSON line: task_id, path, bytes,
+    sha (git blob), spec_hash, ac_count.
+
+    The criteria never travel through stdout — the stage agents read the
+    file by path and evidence the read with its blob sha. Errors are JSON
+    with a named prefix (lane_spec_missing, lane_spec_hash_mismatch), exit 1.
+    """
+    from datum.lane_spec_export import LaneSpecExportError, export_lane_spec_file
+
+    try:
+        summary = export_lane_spec_file(
+            Path(plan), task, Path(out), expect_hash or None
+        )
+    except LaneSpecExportError as exc:
+        typer.echo(json.dumps(exc.payload))
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps(summary))
 
 
 @app.command(name="plan-issues")
@@ -196,7 +289,7 @@ def plan_issues_cmd(
         title = f"[epic] {branch}"
 
     result = publish_lane_plan(str(lp_path), title)
-    console.print(json.dumps(result, indent=2))
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command(name="issue-stage")
@@ -207,11 +300,114 @@ def issue_stage_cmd(
     ),
     commit: str = typer.Option("", "--commit", help="Commit SHA"),
 ):
-    """Update a GitHub issue's datum stage label."""
-    from datum.github_issues import update_issue_stage
+    """Update a GitHub issue's datum stage label.
 
-    update_issue_stage(issue, stage, commit or None)
-    console.print(json.dumps({"ok": True, "issue": issue, "stage": stage}))
+    Stdout is read as JSON by the tracker batch (skills/src/shared/tracker.ts
+    stageFromSteps): a failure is {"ok": false, "error"} with exit 1, never a
+    traceback.
+    """
+    from datum import github_issues
+
+    try:
+        github_issues.update_issue_stage(issue, stage, commit or None)
+    except (github_issues.GitHubRepoUnresolvedError, RuntimeError, OSError) as exc:
+        typer.echo(
+            json.dumps({"ok": False, "issue": issue, "stage": stage, "error": str(exc)})
+        )
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps({"ok": True, "issue": issue, "stage": stage}))
+
+
+@app.command(name="lane-plan-from-epic")
+def lane_plan_from_epic_cmd(
+    epic_number: int = typer.Argument(..., help="GitHub epic issue number"),
+    output: str = typer.Option(
+        ".datum/lane-plan.json", "--output", help="Path to write lane-plan.json"
+    ),
+):
+    """Rebuild lane-plan.json from a GitHub epic issue's sub-issues.
+
+    Reverse of `plan-issues`: reads each sub-issue's datum:metadata comment
+    block (files/acceptance_criteria/depends_on/stage) and resyncs a local
+    lane-plan.json from GitHub's current state of those issues.
+    """
+    from datum.github_issues import build_lane_plan_from_epic
+
+    try:
+        result = build_lane_plan_from_epic(epic_number)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold red]lane-plan-from-epic failed: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, indent=2) + "\n")
+
+    typer.echo(json.dumps(result, indent=2))
+
+
+@app.command(name="ticket-from-issue")
+def ticket_from_issue_cmd(
+    issue_number: int = typer.Argument(
+        ..., help="GitHub issue number to bootstrap TICKET.md from"
+    ),
+):
+    """Bootstrap a brand-new epic + TICKET.md from a single GitHub issue.
+
+    Closes the issueNumber gap datum-go.ts/datum-refine.ts previously
+    documented as unimplemented: fetches the issue's title/body, derives a
+    slug from the title, runs the real `init()` bootstrap (branch, epic
+    dir, skills), then overwrites the placeholder TICKET.md with the
+    issue's own content and commits it.
+    """
+    import subprocess
+
+    from datum.github_issues import fetch_issue
+    from datum.slug import slugify
+    from datum.state import current_branch
+
+    try:
+        issue = fetch_issue(issue_number)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[bold red]ticket-from-issue failed: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    slug = slugify(issue["title"]) or f"issue-{issue_number}"
+
+    # init() is a typer command but a plain function underneath — call it
+    # directly (all params explicit, avoiding the typer.Option-sentinel
+    # default trap) rather than shelling out to `datum init` again.
+    init(name=slug, json_output=True, refresh=False)
+
+    from datum.gate import resolve_epic_dir
+
+    epic_dir = resolve_epic_dir()
+    ticket_path = epic_dir / "TICKET.md"
+    ticket_path.parent.mkdir(parents=True, exist_ok=True)
+    ticket_path.write_text(f"# {issue['title']}\n\n{issue['body']}\n")
+
+    subprocess.run(["git", "add", str(ticket_path)], check=False)
+    subprocess.run(
+        [
+            "git",
+            "commit",
+            "-q",
+            "-m",
+            f"ticket: bootstrap TICKET.md from issue #{issue_number}",
+        ],
+        check=False,
+    )
+
+    branch = current_branch()
+    typer.echo(
+        json.dumps(
+            {
+                "epicBranch": branch,
+                "ticketPath": str(ticket_path),
+                "issueNumber": issue_number,
+            }
+        )
+    )
 
 
 @app.command("config-fingerprint")
@@ -226,12 +422,42 @@ def config_fingerprint_cmd(
     run re-reads config when (and only when) it changed.
     """
     from datum.config_fingerprint import config_fingerprint
+    from datum.gate import resolve_epic_dir
 
-    fp = config_fingerprint(Path.cwd(), Path.home())
+    fp = config_fingerprint(Path.cwd(), Path.home(), epic_dir=resolve_epic_dir())
     if json_output:
         print(json.dumps({"configFingerprint": fp}))
     else:
         print(fp)
+
+
+@app.command("gitignore-check")
+def gitignore_check_cmd(
+    fix: bool = typer.Option(
+        False, "--fix", help="Append the missing patterns to .gitignore."
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repository root"),
+):
+    """Preflight: every scratch path datum writes must be gitignored.
+
+    Prints {"ok", "missing", "added"[, "hint"]} and exits 1 when patterns are
+    missing and --fix was not given. Uses `git check-ignore`, so a blanket
+    `.datum/*` satisfies the `.datum/...` entries and negations are honoured.
+    """
+    from datum.gitignore_check import check_gitignore, fix_gitignore
+
+    root = Path(repo).resolve()
+    added = fix_gitignore(root) if fix else []
+    result = check_gitignore(root)
+    payload: dict = {"ok": result["ok"], "missing": result["missing"], "added": added}
+    if not result["ok"]:
+        payload["hint"] = (
+            "run `datum gitignore-check --fix` (or add the patterns to .gitignore) — "
+            "unignored scratch paths end up in `git add .` and collide with lane merges"
+        )
+    print(json.dumps(payload))
+    if not result["ok"]:
+        raise typer.Exit(code=1)
 
 
 def _install_workflows():
@@ -259,6 +485,14 @@ def _install_workflows():
             link.unlink()
         link.symlink_to(js)
         installed += 1
+
+    from datum.skills_materialize import prune_dangling_workflow_links
+
+    pruned = prune_dangling_workflow_links(target_dir)
+    if pruned:
+        console.print(
+            f"[dim]Workflows: removed dangling link(s) for deleted bundle(s): {', '.join(pruned)}[/dim]"
+        )
 
     total = len(js_files)
     if installed > 0:
@@ -315,6 +549,15 @@ def _print_agent_install(installed) -> None:
         )
     for err in installed.errors:
         console.print(f"[bold red]agent install: {err}[/bold red]")
+    if installed.agents_written:
+        # Claude Code registers project agents at session start; a mid-session
+        # init leaves the fresh datum-* types unresolvable ("agent type
+        # 'datum-cli' not found") until the session reloads them.
+        console.print(
+            "[yellow]Agent types were (re)written — run /reload-plugins in this "
+            "Claude Code session (or restart it) before `datum go`, or set "
+            '"agent_types": false in .datum/config.json to run without them.[/yellow]'
+        )
 
 
 def _quiet_stdout_ctx(json_output: bool):
@@ -416,6 +659,7 @@ def init(
             console.print(f"[dim]Skills refreshed → {resolved}[/dim]")
             _print_agent_install(installed)
             console.print(f"[dim]config updated at {config_path}[/dim]")
+            _print_launch_line(str(resolved))
         return
 
     # In --json mode, downstream helpers still write their own human status
@@ -475,9 +719,15 @@ def init(
     if not json_output:
         console.print(f"[dim]Branch: {branch}[/dim]")
 
-    from datum.pipeline_state import reset_stale_pipeline_state
+    from datum.pipeline_state import (
+        PipelineStateCorruptError,
+        reset_stale_pipeline_state,
+    )
 
-    cleared_state = reset_stale_pipeline_state(branch)
+    try:
+        cleared_state = reset_stale_pipeline_state(branch)
+    except PipelineStateCorruptError as exc:
+        _fail(str(exc))
     if cleared_state and not json_output:
         console.print(
             f"[dim]Cleared stale pipeline state from '{cleared_state.get('branch')}'[/dim]"
@@ -536,6 +786,30 @@ def init(
                 }
             )
         )
+    else:
+        cfg_now = json.loads(config_path.read_text()) if config_path.exists() else {}
+        skills_dir_now = cfg_now.get("skills_dir")
+        if isinstance(skills_dir_now, str) and skills_dir_now:
+            _print_launch_line(skills_dir_now)
+
+
+def _print_launch_line(skills_dir: str) -> None:
+    """The exact launch line for this repo — by scriptPath, never by name.
+
+    `Workflow({name: "datum-go"})` resolves the ~/.claude/workflows registry
+    copy, which the harness can hold for the whole session: a peer refreshed
+    to a new bundle and still ran the old one (run wf_d95d30ed-366). The
+    sub-workflows load by scriptPath from skills_dir and never drift; the
+    top-level launch must do the same. Plain echo: rich would soft-wrap it.
+    """
+    typer.echo(
+        "Launch (scriptPath, never name — the registry copy can be stale for the session):\n"
+        "  FP=$(datum config-fingerprint)\n"
+        f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>" }} }})'
+        "\nPermissions: the pipeline resets its own scratch worktrees; a host permission classifier may refuse that.\n"
+        "  `datum permissions-snippet` prints the allow rules to paste into .claude/settings.local.json (datum never writes them);\n"
+        '  add the file before the session starts (or run /hooks), and consider `/auto-mode-setup` at user level too. See SKILL.md "Permissions".'
+    )
 
 
 @app.command()
@@ -671,10 +945,12 @@ def classify(
         )
         raise typer.Exit(1)
 
+    from datum.gate import load_config
+
     metadata = parse_classification_metadata(spec_text)
-    config = {}  # TODO: load [classification] from config.toml
+    config = load_config().get("classification", {})
     result = do_classify(metadata, config)
-    console.print(json.dumps(result, indent=2))
+    typer.echo(json.dumps(result, indent=2))
 
 
 @app.command()
@@ -745,19 +1021,6 @@ def contract_preflight(ctx: typer.Context):
     import sys
 
     res = subprocess.run([sys.executable, "-m", "datum.contract_preflight"] + ctx.args)
-    raise typer.Exit(res.returncode)
-
-
-@app.command(
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-    name="commit-queue",
-)
-def commit_queue(ctx: typer.Context):
-    """Run DATUM commit queue manager (internal)."""
-    import subprocess
-    import sys
-
-    res = subprocess.run([sys.executable, "-m", "datum.commit_queue"] + ctx.args)
     raise typer.Exit(res.returncode)
 
 
@@ -1011,7 +1274,7 @@ def local_llm_cmd(
                 turn_num = t.get("turn", "?")
                 if turn_type == "plan":
                     console.print(f"\n[bold cyan]Turn {turn_num} (plan):[/bold cyan]")
-                    console.print(json.dumps(t.get("data", {}), indent=2))
+                    typer.echo(json.dumps(t.get("data", {}), indent=2))
                 elif turn_type == "step":
                     data = t.get("data", {})
                     agreement = t.get("agreement", data.get("confidence", 0))
@@ -1119,7 +1382,7 @@ def dream(
         console.print("  ✓ No stale memories")
 
     if audit_only:
-        console.print(json.dumps(stale, indent=2))
+        typer.echo(json.dumps(stale, indent=2))
         return
 
     transcripts_dir = mem_path.parent
@@ -1706,6 +1969,81 @@ def memory_search(
         console.print(f"  {preview}")
 
 
+@memory_app.command("reindex")
+def memory_reindex(
+    reviewers_dir: str = typer.Option(
+        None,
+        "--reviewers-dir",
+        help="Directory containing <reviewer_id>/KNOWLEDGE.md files (default: <repo>/reviewers)",
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Rebuild reviewer-knowledge embeddings: drop all collections, then re-index.
+
+    Fixes the gap where RAGEngine's own error messages ("Run `datum memory
+    reindex` to rebuild all embeddings") pointed at a command that didn't
+    exist. Wires reindex_all() (drop) + index_all() (repopulate) together.
+    """
+    from pathlib import Path as _Path
+
+    from datum.memory.embeddings import get_embedding_provider
+    from datum.memory.rag_engine import RAGEngine
+
+    repo_root = _Path(repo).resolve()
+    store_dir = _Path.home() / ".datum" / "projects" / repo_root.name / "knowledge"
+
+    try:
+        provider = get_embedding_provider(persist_dir=store_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=provider)
+    dropped = engine.reindex_all()
+    reviewers_path = (
+        _Path(reviewers_dir).resolve() if reviewers_dir else repo_root / "reviewers"
+    )
+    indexed = engine.index_all(reviewers_dir=reviewers_path)
+
+    console.print(
+        f"[bold green]Reindex complete:[/bold green] {dropped} collection(s) dropped, "
+        f"{len(indexed)} reviewer(s) re-indexed"
+    )
+    typer.echo(json.dumps({"dropped_collections": dropped, "indexed": indexed}))
+
+
+@memory_app.command("delete-chunks")
+def memory_delete_chunks(
+    reviewer_id: str = typer.Option(
+        ..., "--reviewer-id", help="Reviewer whose collection to delete chunks from"
+    ),
+    chunk_id: list[str] = typer.Option(  # noqa: B008
+        ..., "--chunk-id", help="Chunk id to delete (repeatable)"
+    ),
+    repo: str = typer.Option(".", "--repo", help="Repo root (default: cwd)"),
+):
+    """Delete specific chunk ids from a reviewer's embedding collection."""
+    from pathlib import Path as _Path
+
+    from datum.memory.embeddings import get_embedding_provider
+    from datum.memory.rag_engine import RAGEngine
+
+    repo_root = _Path(repo).resolve()
+    store_dir = _Path.home() / ".datum" / "projects" / repo_root.name / "knowledge"
+
+    try:
+        provider = get_embedding_provider(persist_dir=store_dir)
+    except ImportError as exc:
+        console.print(f"[bold red]No embedding backend: {exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    engine = RAGEngine(store_dir=store_dir, embedding_provider=provider)
+    deleted = engine.delete_chunks(list(chunk_id), reviewer_id=reviewer_id)
+
+    console.print(f"[bold green]Deleted {deleted} chunk(s)[/bold green]")
+    typer.echo(json.dumps({"deleted": deleted}))
+
+
 @app.command()
 def retrospect(
     run_id: str = typer.Option(
@@ -1732,7 +2070,7 @@ def retrospect(
     result = run_retrospect(cfg)
 
     if json_output:
-        console.print(json.dumps(result.to_dict(), indent=2))
+        typer.echo(json.dumps(result.to_dict(), indent=2))
         return
 
     console.print(
@@ -1794,12 +2132,35 @@ def worktrees_setup(
     run_id: str = typer.Option(..., "--run-id", help="Unique pipeline run identifier"),
     epic_branch: str = typer.Option(..., "--epic-branch", help="Epic branch name"),
     lane_ids: str = typer.Option(..., "--lane-ids", help="Comma-separated lane IDs"),
+    link_dirs: str = typer.Option(
+        "",
+        "--link-dirs",
+        help="Comma-separated dependency dirs to symlink from the main checkout into each lane worktree (default: worktree_link_dirs in .datum/config.json, else node_modules,.venv)",
+    ),
 ):
     """Create one worktree per lane for parallel ACT execution."""
-    from datum.worktree_manager import setup_pipeline_worktrees
+    from datum.worktree_manager import DEFAULT_LINK_DIRS, setup_pipeline_worktrees
 
     ids = [lid.strip() for lid in lane_ids.split(",") if lid.strip()]
-    mapping = setup_pipeline_worktrees(run_id, epic_branch, ids)
+    dirs: list[str] = list(DEFAULT_LINK_DIRS)
+    if link_dirs:
+        dirs = [d.strip() for d in link_dirs.split(",") if d.strip()]
+    else:
+        cfg_path = Path(".datum/config.json")
+        if cfg_path.exists():
+            try:
+                cfg_dirs = json.loads(cfg_path.read_text()).get("worktree_link_dirs")
+                if isinstance(cfg_dirs, list):
+                    dirs = [str(d) for d in cfg_dirs]
+            except (OSError, ValueError):
+                pass
+    try:
+        mapping = setup_pipeline_worktrees(run_id, epic_branch, ids, link_dirs=dirs)
+    except RuntimeError as exc:
+        # A missing epic branch or a failed worktree add is JSON on stdout
+        # with exit 1 — the setup batch parses stdout, never a traceback.
+        typer.echo(json.dumps({"error": str(exc)}))
+        raise typer.Exit(code=1) from None
     result = {k: str(v) for k, v in mapping.items()}
     typer.echo(json.dumps(result, indent=2))
 
@@ -1813,13 +2174,52 @@ def worktrees_merge(
     commit_message: str = typer.Option(
         ..., "--commit-message", help="Merge commit message"
     ),
+    run_id: str = typer.Option(
+        "",
+        "--run-id",
+        help="Run id; a conflict writes .datum/runs/<run-id>/merge-conflict-<lane>.json",
+    ),
 ):
-    """Squash-merge completed lane branches into the epic branch."""
-    from datum.worktree_manager import merge_lane_branches
+    """Squash-merge completed lane branches into the epic branch.
+
+    A partial merge (a later lane conflicted after earlier lanes landed)
+    prints the same JSON shape plus ``failed_lane``, ``conflict_files``,
+    ``report`` and ``error`` and exits 1, so the workflow can demote only
+    the lane that did not land and say why.
+    """
+    from datum.worktree_manager import LaneMergeError, merge_lane_branches
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
-    sha = merge_lane_branches(epic_branch, order, commit_message)
-    typer.echo(json.dumps({"sha": sha, "merged": order}))
+    report_dir = Path(".datum") / "runs" / run_id if run_id.strip() else None
+    try:
+        result = merge_lane_branches(
+            epic_branch, order, commit_message, report_dir=report_dir
+        )
+    except LaneMergeError as exc:
+        typer.echo(json.dumps(exc.payload()))
+        raise typer.Exit(code=1) from None
+    except RuntimeError as exc:
+        # Precondition failures (untracked-file collision, bad checkout, ...)
+        # land nothing; report them in the same JSON shape so the batch
+        # never has to parse a traceback.
+        import subprocess
+
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+        ).stdout.strip()
+        typer.echo(
+            json.dumps(
+                {
+                    "sha": head,
+                    "merged": [],
+                    "already_merged": [],
+                    "failed_lane": "",
+                    "error": str(exc),
+                }
+            )
+        )
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps(result))
 
 
 @worktrees_app.command("cleanup")
@@ -1838,6 +2238,131 @@ def worktrees_cleanup(
             err=True,
         )
     typer.echo(json.dumps({"cleaned": result}))
+
+
+@worktrees_app.command("list")
+def worktrees_list_cmd(
+    run_id: str = typer.Option(
+        None, "--run-id", help="Only show worktrees for this pipeline run"
+    ),
+):
+    """List every registered worktree (path, sha, branch)."""
+    from datum.worktree_manager import WORKTREE_ROOT, list_worktrees
+
+    worktrees = list_worktrees()
+    if run_id:
+        prefix = f"{WORKTREE_ROOT}/{run_id}/"
+        worktrees = [w for w in worktrees if prefix in w["path"].replace("\\", "/")]
+    typer.echo(json.dumps(worktrees, indent=2))
+
+
+@app.command(name="epic-base")
+def epic_base_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Print {base_branch, source}"),
+):
+    """Print the branch this epic diffs against: its recorded parent
+    (written by `datum init --name` when the epic was chained from another
+    epic), else origin/HEAD, else origin/main|master, else a local
+    main|master, else main. Review and closeout use it as the merge base.
+    """
+    from datum.state import resolve_epic_base
+
+    base_branch, source = resolve_epic_base()
+    if as_json:
+        typer.echo(json.dumps({"base_branch": base_branch, "source": source}))
+    else:
+        typer.echo(base_branch)
+
+
+@app.command(name="review-accept")
+def review_accept_cmd(
+    finding_id: str = typer.Argument(
+        ..., help="Finding id from REVIEW-REPORT.md, e.g. PERF-001"
+    ),
+    reason: str = typer.Option(
+        ..., "--reason", help="Why this finding is accepted as-is (required, recorded)"
+    ),
+    defer_to: str = typer.Option(
+        "",
+        "--defer-to",
+        help="Record a DEFER to this epic branch instead of an ACCEPT (the gate treats both alike)",
+    ),
+):
+    """Record a reasoned operator accept (or defer) for one review finding.
+
+    The finding is named by its id (PERF-001) or its Key column; the id is
+    resolved against the current REVIEW-REPORT.md and the line written to
+    docs/epics/<branch>/REVIEW-RESPONSE.md binds to the KEY, because ids
+    are renumbered on every review run. `datum gate review` ignores accepted
+    keys when it counts blocking high/critical findings and names them in
+    its pass message. An LLM reviewer's severity calibration is never a hard
+    stop with no recorded way past it.
+    """
+    from datum.gate import resolve_epic_dir, review_report_rows
+
+    token = finding_id.strip().upper()
+    if not re.fullmatch(r"[A-Z]+-\d+|[0-9A-F]{8}", token):
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"finding must be an id like PERF-001 or an 8-hex key, got {finding_id!r}"
+                }
+            )
+        )
+        raise typer.Exit(code=1)
+    why = " ".join(reason.split())
+    if not why:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "--reason must not be empty: an accept is a recorded decision"
+                }
+            )
+        )
+        raise typer.Exit(code=1)
+    epic_dir = resolve_epic_dir()
+    report = epic_dir / "REVIEW-REPORT.md"
+    rows = review_report_rows(report.read_text()) if report.exists() else []
+    row = next((r for r in rows if r["id"] == token or r["key"].upper() == token), None)
+    if rows and row is None:
+        typer.echo(
+            json.dumps({"error": f"{token} is not in REVIEW-REPORT.md ({report})"})
+        )
+        raise typer.Exit(code=1)
+    if row is not None and row["key"]:
+        bound = row["key"]
+        note = f" ({row['id']} {row['file']}:{row['line']})"
+    else:
+        bound = token
+        note = ""
+    verb = "DEFER" if defer_to.strip() else "ACCEPT"
+    target = f" -> {defer_to.strip()}" if defer_to.strip() else ""
+    epic_dir.mkdir(parents=True, exist_ok=True)
+    response = epic_dir / "REVIEW-RESPONSE.md"
+    lines = (
+        response.read_text().splitlines()
+        if response.exists()
+        else ["# Review Response", ""]
+    )
+    kept = [
+        ln
+        for ln in lines
+        if not re.match(
+            rf"^\s*[-*]?\s*(ACCEPT|DEFER)\s+{re.escape(bound)}\b", ln, re.IGNORECASE
+        )
+    ]
+    kept.append(f"- {verb} {bound}{note}{target}: {why}")
+    response.write_text("\n".join(kept).rstrip("\n") + "\n")
+    typer.echo(
+        json.dumps(
+            {
+                verb.lower() + "ed": bound,
+                "finding": token,
+                "reason": why,
+                "path": str(response),
+            }
+        )
+    )
 
 
 @app.command(name="housekeep-epic")
@@ -1883,6 +2408,8 @@ def pipeline_state_save_cmd(
     import subprocess
 
     from datum.pipeline_state import (
+        PipelineStateCorruptError,
+        read_epic_pipeline_state,
         read_pipeline_state,
         verify_phase,
         write_pipeline_state,
@@ -1893,19 +2420,45 @@ def pipeline_state_save_cmd(
         typer.echo(json.dumps({"verified": False, "phase": phase, "reason": reason}))
         raise typer.Exit(code=1)
 
-    branch = subprocess.run(
+    branch_res = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout.strip()
-
-    prior = read_pipeline_state()
-    completed = (
-        list(prior["completedPhases"])
-        if prior and prior.get("branch") == branch
-        else []
+        check=False,
     )
+    if branch_res.returncode != 0 or not branch_res.stdout.strip():
+        # JSON on every path: the TS side parses stdout (never a traceback).
+        typer.echo(
+            json.dumps(
+                {
+                    "verified": False,
+                    "phase": phase,
+                    "reason": f"git rev-parse --abbrev-ref HEAD failed (exit {branch_res.returncode}): {(branch_res.stderr or '').strip()}",
+                }
+            )
+        )
+        raise typer.Exit(code=1)
+    branch = branch_res.stdout.strip()
+
+    try:
+        prior = read_pipeline_state()
+    except PipelineStateCorruptError as exc:
+        typer.echo(json.dumps({"verified": False, "phase": phase, "reason": str(exc)}))
+        raise typer.Exit(code=1) from exc
+    if prior and prior.get("branch") == branch:
+        completed = list(prior["completedPhases"])
+    else:
+        # The global file belongs to another epic (a later init took it
+        # over): continue THIS epic's own recorded progress from its
+        # per-epic mirror, never restart it at one phase.
+        try:
+            mirrored = read_epic_pipeline_state(branch)
+        except PipelineStateCorruptError as exc:
+            typer.echo(
+                json.dumps({"verified": False, "phase": phase, "reason": str(exc)})
+            )
+            raise typer.Exit(code=1) from exc
+        completed = list(mirrored["completedPhases"]) if mirrored else []
     if phase not in completed:
         completed.append(phase)
 
@@ -1963,6 +2516,31 @@ def _resolve_lane_state_dir_or_exit(epic: str) -> Path:
         raise typer.Exit(1) from None
 
 
+def _resolve_lane_state_marker_path_or_exit(lane_dir: Path, task: str) -> Path:
+    """Resolve the marker path for a task within lane_dir, or exit(1) on traversal."""
+    if (
+        "/" in task
+        or "\\" in task
+        or ".." in task
+        or task in ("", ".", "..")
+        or task.startswith(".")
+    ):
+        console_err.print(
+            f"[bold red]task ID must not contain path separators or '..': {task!r}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    marker_path = (lane_dir / f"{task}.json").resolve()
+    resolved_lane_dir = lane_dir.resolve()
+    if resolved_lane_dir not in marker_path.parents:
+        console_err.print(
+            f"[bold red]resolved marker path escapes lane-state directory: {task!r}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    return marker_path
+
+
 @lane_state_app.command("write")
 def lane_state_write(
     epic: str = typer.Option(
@@ -1976,10 +2554,41 @@ def lane_state_write(
     completed_at: str = typer.Option(
         "", "--completed-at", help="ISO8601 completion timestamp (defaults to now, UTC)"
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite an existing completed marker even when the new status is also completed",
+    ),
 ):
-    """Write a deterministic lane-state marker for a task."""
+    """Write a deterministic lane-state marker for a task.
+
+    Refuses to overwrite an existing marker whose status is already
+    "completed" when the new status is also "completed" — this is the
+    re-scheduled-and-re-merged-lane guard (a merge batch re-running
+    `lane-state write` for a lane that was already merged must not stomp
+    the original merge_commit/spec_hash with values computed from the
+    in-flight re-run). Any real status change (completed -> anything,
+    or anything -> completed from a non-completed marker) still writes.
+    Pass --force to overwrite unconditionally.
+    """
     lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
     lane_dir.mkdir(parents=True, exist_ok=True)
+
+    if not force and marker_path.exists():
+        try:
+            existing = json.loads(marker_path.read_text())
+        except (json.JSONDecodeError, ValueError):
+            existing = None
+        if (
+            isinstance(existing, dict)
+            and existing.get("status") == "completed"
+            and status == "completed"
+        ):
+            output = dict(existing)
+            output["unchanged"] = True
+            typer.echo(json.dumps(output, indent=2, sort_keys=True))
+            return
 
     resolved_completed_at = completed_at or datetime.now(UTC).isoformat()
 
@@ -1992,7 +2601,6 @@ def lane_state_write(
         "completed_at": resolved_completed_at,
     }
 
-    marker_path = lane_dir / f"{task}.json"
     marker_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
 
     typer.echo(json.dumps(marker, indent=2, sort_keys=True))
@@ -2007,60 +2615,148 @@ def lane_state_read(
 ):
     """Read a lane-state marker for a task, printing {"status": "not_found"} if absent."""
     lane_dir = _resolve_lane_state_dir_or_exit(epic)
-    marker_path = lane_dir / f"{task}.json"
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
     if not marker_path.exists():
         typer.echo(json.dumps({"status": "not_found"}))
         return
 
-    typer.echo(marker_path.read_text().strip())
+    # Validate marker content: must be valid JSON and a dict.
+    # Per FLOW.md principle 3 "No silent fallbacks", corrupt markers are named errors,
+    # not silently treated as "fresh lane" by downstream jq parsing that fails silently.
+    try:
+        marker_text = marker_path.read_text().strip()
+        if not marker_text:
+            raise ValueError("marker file is empty")
+        marker_data = json.loads(marker_text)
+        if not isinstance(marker_data, dict):
+            raise ValueError(
+                f"marker must be a JSON object, not {type(marker_data).__name__}"
+            )
+    except (json.JSONDecodeError, ValueError) as exc:
+        console_err.print(
+            f"[bold red]lane_state_marker_corrupt: {marker_path}: {exc}[/bold red]"
+        )
+        raise typer.Exit(1) from None
+
+    typer.echo(json.dumps(marker_data))
 
 
-# ── TDD stage verification (#133) ────────────────────────────────────────────
+def _resolve_lane_plan_path_for_rehash(epic: str, override: str | None) -> Path:
+    """Resolve the on-disk lane plan to rehash a marker's spec_hash against.
 
+    Mirrors the precedence of the TS `resolve` step in actStartSteps()
+    (skills/src/shared/lane-steps.ts): prefer
+    docs/epics/<epic>/lane-plan-final.json, else
+    docs/epics/<epic>/lane-plan.json — with one addition, a third fallback
+    to .datum/lane-plan.json (the location `datum init`/`datum lane-plan`
+    write by default when no epic-scoped plan exists yet), since a plain
+    lookup failure here would silently defeat `rehash`'s purpose.
+    """
+    if override:
+        return Path(override)
 
-@app.command(name="verify-stage")
-def verify_stage_cmd(
-    stage: str = typer.Argument(
-        ..., help="Stage to verify: 'red', 'green', or 'baseline'"
-    ),
-    repo_path: str = typer.Option(".", "--repo", help="Repository root path"),
-    test_command: str = typer.Option(
-        "pytest -q", "--test-command", help="Test runner command"
-    ),
-):
-    """Verify TDD stage gate: RED tests must fail, GREEN tests must pass."""
-    import shlex
+    if ".." in epic:
+        raise ValueError(f"epic identifier must not contain '..': {epic!r}")
 
-    from datum.tdd_driver import (
-        DirtyBaselineError,
-        GreenBlindnessError,
-        verify_green_baseline,
-        verify_red_stage,
+    epic_dir = Path("docs") / "epics" / epic
+    final_path = epic_dir / "lane-plan-final.json"
+    if final_path.is_file():
+        return final_path
+
+    default_path = epic_dir / "lane-plan.json"
+    if default_path.is_file():
+        return default_path
+
+    dot_datum_path = Path(".datum") / "lane-plan.json"
+    if dot_datum_path.is_file():
+        return dot_datum_path
+
+    raise FileNotFoundError(
+        "No lane-plan.json found — tried: "
+        f"{final_path}, {default_path}, {dot_datum_path}"
     )
 
-    cmd = shlex.split(test_command)
-    path = Path(repo_path).resolve()
+
+@lane_state_app.command("rehash")
+def lane_state_rehash(
+    epic: str = typer.Option(
+        ..., "--epic", help="Epic identifier, e.g. 'datum/epic-287'"
+    ),
+    task: str = typer.Option(..., "--task", help="Task ID, e.g. 'task-002'"),
+    lane_plan: str = typer.Option(
+        None,
+        "--lane-plan",
+        help="Explicit path to the lane plan JSON (skips final/default/.datum resolution)",
+    ),
+):
+    """Recompute a task's spec_hash from the on-disk lane plan.
+
+    Rewrites only the spec_hash field of an existing marker —
+    merge_commit/run_id/completed_at are preserved untouched. This is the
+    escape hatch for a marker whose spec_hash was computed from an
+    in-flight/in-script plan rather than the plan actually on disk (see
+    the `lane-state write` no-overwrite guard above): rehash lets an
+    operator realign spec_hash with the current plan without disturbing
+    the marker's completion identity.
+    """
+    lane_dir = _resolve_lane_state_dir_or_exit(epic)
+    marker_path = _resolve_lane_state_marker_path_or_exit(lane_dir, task)
+
+    if not marker_path.exists():
+        console_err.print(
+            f"[bold red]lane_state_marker_not_found: no marker for task {task!r} "
+            f"under epic {epic!r} ({marker_path})[/bold red]"
+        )
+        raise typer.Exit(1)
 
     try:
-        if stage == "red":
-            signal = verify_red_stage(path, test_command=cmd)
-            typer.echo(
-                json.dumps({"verified": True, "stage": "red", "test_signal": signal})
+        marker_text = marker_path.read_text().strip()
+        if not marker_text:
+            raise ValueError("marker file is empty")
+        marker = json.loads(marker_text)
+        if not isinstance(marker, dict):
+            raise ValueError(
+                f"marker must be a JSON object, not {type(marker).__name__}"
             )
-        elif stage in ("green", "baseline"):
-            verify_green_baseline(path, test_command=cmd)
-            typer.echo(json.dumps({"verified": True, "stage": stage}))
-        else:
-            typer.echo(
-                json.dumps({"verified": False, "error": f"Unknown stage: {stage}"})
+    except (json.JSONDecodeError, ValueError) as exc:
+        console_err.print(
+            f"[bold red]lane_state_marker_corrupt: {marker_path}: {exc}[/bold red]"
+        )
+        raise typer.Exit(1) from None
+
+    try:
+        plan_path = _resolve_lane_plan_path_for_rehash(epic, lane_plan)
+    except (ValueError, FileNotFoundError) as exc:
+        console_err.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(1) from None
+
+    try:
+        plan_text = plan_path.read_text()
+        plan = json.loads(plan_text)
+        if not isinstance(plan, dict):
+            raise ValueError(
+                f"lane plan must be a JSON object, not {type(plan).__name__}"
             )
-            raise typer.Exit(1)
-    except GreenBlindnessError as e:
-        typer.echo(json.dumps({"verified": False, "stage": "red", "error": str(e)}))
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        console_err.print(f"[bold red]lane_plan_corrupt: {plan_path}: {exc}[/bold red]")
         raise typer.Exit(1) from None
-    except DirtyBaselineError as e:
-        typer.echo(json.dumps({"verified": False, "stage": stage, "error": str(e)}))
-        raise typer.Exit(1) from None
+
+    lanes = plan.get("lanes") or {}
+    lane = lanes.get(task)
+    if lane is None:
+        console_err.print(
+            f"[bold red]lane_not_found_in_plan: task {task!r} not found in "
+            f"{plan_path}[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    marker["spec_hash"] = lane_spec_hash(lane)
+    marker_path.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n")
+
+    console_err.print(
+        f"[dim]lane-state rehash: recomputed spec_hash from {plan_path}[/dim]"
+    )
+    typer.echo(json.dumps(marker, indent=2, sort_keys=True))
 
 
 @app.command(name="tdd-args")
@@ -2091,14 +2787,18 @@ def tdd_args_cmd(
     """
     from datetime import datetime
 
-    # Resolve feature name: --feature is required.
+    from datum.tdd_args import CannotDetermineBranchError, _get_current_branch
+
+    # Resolve repo root early for git operations
+    repo_root = Path(repo).resolve()
+
+    # Resolve feature name: if not provided, default to current git branch.
     if not feature:
-        typer.echo(
-            "Error: --feature is required. Provide the feature name, e.g.:\n"
-            '  datum tdd-args --feature "My Feature"',
-            err=False,
-        )
-        raise typer.Exit(code=1)
+        try:
+            feature = _get_current_branch(str(repo_root))
+        except CannotDetermineBranchError as e:
+            typer.echo(f"Error: {e}", err=False)
+            raise typer.Exit(code=1)
 
     # Sanitize feature name into a git branch slug.
     slug = feature.lower()
@@ -2113,7 +2813,6 @@ def tdd_args_cmd(
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     # Detect test command.
-    repo_root = Path(repo).resolve()
     pyproject_path = repo_root / "pyproject.toml"
     test_command = "uv run pytest -x -q"
     if pyproject_path.exists():
@@ -2210,6 +2909,64 @@ for _cmd_name, _script_name in _DEV_PYTHON_SCRIPTS.items():
         context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
         help=f"Run scripts/{_script_name}.",
     )(_make_python_wrapper(_script_name))
+
+
+@app.command(name="code-tells")
+def code_tells(
+    repo: str = typer.Option(..., "--repo", help="Worktree root"),
+    files: list[str] = typer.Option(  # noqa: B008
+        ..., "--files", help="Files to scan, relative to --repo"
+    ),
+    base: str | None = typer.Option(
+        None, "--base", help="Scan only lines added since this ref"
+    ),
+) -> None:
+    """Scan a lane's added lines for machine-written tells (one `file:line:tag:text` row each)."""
+    from datum.code_tells import added_lines, format_findings, scan_lines
+
+    typer.echo(
+        format_findings(scan_lines(added_lines(Path(repo), base, files))), nl=False
+    )
+
+
+# ── Closeout collectors as top-level commands ────────────────────────────────
+# The closeout batch (skills/src/shared/lane-steps.ts closeoutCollectSteps /
+# closeoutArchiveSteps) invokes these by name. They did not exist: every step
+# failed under `tolerant: true`, closeout-data.json was never written and the
+# synthesis agent "refused on missing data" — a consumer with no producer.
+# Each forwards its args to the module's argparse main in the tool's own
+# interpreter (consumer repos have no importable `datum`), so the exit code
+# and JSON stdout the batch reads are the module's own.
+# tested-by: tests/test_closeout_cli.py
+_CLOSEOUT_MODULES = {
+    "closeout-collect-git": "collect_git",
+    "closeout-collect-tasks": "collect_tasks",
+    "closeout-collect-token-metrics": "collect_token_metrics",
+    "closeout-collate": "collate",
+    "closeout-archive": "archive",
+    "closeout-file-followups": "file_followups",
+}
+
+
+def _make_closeout_wrapper(module_name: str):
+    def _wrapper(ctx: typer.Context):
+        import subprocess
+        import sys
+
+        res = subprocess.run(
+            [sys.executable, "-m", f"datum.closeout.{module_name}"] + ctx.args
+        )
+        raise typer.Exit(res.returncode)
+
+    return _wrapper
+
+
+for _cmd_name, _module_name in _CLOSEOUT_MODULES.items():
+    app.command(
+        name=_cmd_name,
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+        help=f"Closeout step: run datum.closeout.{_module_name} with the given args.",
+    )(_make_closeout_wrapper(_module_name))
 
 
 lane_tools_app = typer.Typer(
@@ -2314,6 +3071,11 @@ def main():
                             "[yellow]Skipped — duplicate issue already open or failed to file.[/yellow]"
                         )
             except Exception:
+                # Best-effort optional bug auto-file prompt (input errors,
+                # network failures reporting to GitHub, etc.) — the real
+                # error and traceback were already printed above and the
+                # process exits non-zero either way, so a failure here must
+                # never mask or replace the original failure.
                 pass
 
         sys.exit(1)

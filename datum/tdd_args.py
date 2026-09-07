@@ -7,8 +7,64 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
+
+
+class CannotDetermineBranchError(ValueError):
+    """Raised when the current git branch cannot be determined."""
+
+    pass
+
+
+def _get_current_branch(repo_root: str) -> str:
+    """Return the current git branch name for the repo at repo_root.
+
+    Parameters
+    ----------
+    repo_root:
+        Root directory of the repository.
+
+    Returns
+    -------
+    str
+        The branch name (output of `git rev-parse --abbrev-ref HEAD`).
+
+    Raises
+    ------
+    CannotDetermineBranchError
+        If the repository is not a git repo, git fails, the branch is detached
+        (showing "HEAD"), or any other condition prevents determining the branch.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        branch = result.stdout.strip()
+    except FileNotFoundError:
+        raise CannotDetermineBranchError("git command not found. Is git installed?")
+    except subprocess.TimeoutExpired:
+        raise CannotDetermineBranchError(
+            "git command timed out while determining branch."
+        )
+    except subprocess.CalledProcessError:
+        raise CannotDetermineBranchError(
+            f"Unable to determine git branch at {repo_root!r}. "
+            "Is this a git repository?"
+        )
+
+    if not branch or branch == "HEAD":
+        raise CannotDetermineBranchError(
+            f"Unable to determine git branch at {repo_root!r}. "
+            "The repository is in a detached HEAD state."
+        )
+
+    return branch
 
 
 def _sanitize_branch_slug(feature_name: str) -> str:

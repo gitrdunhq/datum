@@ -5,7 +5,7 @@ description = "DATUM V2 Agentic Production Line Orchestrator"
 authors = [
     {name = "Gitrdun HQ"}
 ]
-readme = "docs/DATUM.md"
+readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
@@ -42,11 +42,17 @@ rag = [
 # Not declared as a dependency since caliper is not on PyPI.
 # The import is wrapped in try/except ImportError (graceful degradation).
 
+# `datum floor` (Factory Floor TUI dashboard, datum-tui/app.py).
+tui = [
+    "textual>=0.60",
+]
+
 [project.scripts]
 datum = "datum.cli:app"
 
 [dependency-groups]
 dev = [
+    "hypothesis==6.165.10",
     "pytest>=9.0",
 ]
 

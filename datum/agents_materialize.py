@@ -34,6 +34,7 @@ Pure filesystem logic — ``datum init`` is the caller.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import stat
@@ -232,12 +233,38 @@ def install_agent_types(
     hook_names = referenced_hooks(source_agents)
 
     if package_root == repo_root or repo_root in package_root.parents:
-        return AgentInstallResult(
-            agents_dir=source_agents,
+        # Not .resolve() — repo_root is already absolute/resolved, and
+        # resolving the *combined* path would follow an existing symlink at
+        # AGENTS_SUBDIR to wherever it points (including a broken symlink's
+        # dangling target), silently operating on the wrong path entirely.
+        agents_dest = repo_root / AGENTS_SUBDIR
+        result = AgentInstallResult(
+            agents_dir=agents_dest,
             hooks_dir=source_hooks,
             _agents_expected=agent_names,
             _hooks_expected=hook_names,
         )
+        # Claude Code resolves agent types from <repo>/.claude/agents, not
+        # from <repo>/agents — without this symlink `agent_types: true`
+        # would be a lie and every agentType lookup would fail at runtime.
+        # install.sh creates it too, but a checkout may never have run
+        # install.sh, so datum init must not assume it already exists.
+        if source_agents.is_dir() and not agents_dest.exists():
+            # A dangling symlink (target moved/deleted, e.g. a relocated
+            # checkout) also fails .exists(), but symlink_to() then raises
+            # FileExistsError on the stale link node itself — repair it
+            # rather than reporting a false hard failure (#524 code review).
+            if agents_dest.is_symlink():
+                agents_dest.unlink()
+            try:
+                agents_dest.parent.mkdir(parents=True, exist_ok=True)
+                agents_dest.symlink_to(
+                    os.path.relpath(source_agents, agents_dest.parent),
+                    target_is_directory=True,
+                )
+            except OSError as exc:
+                result.errors.append(f"agents symlink: {exc}")
+        return result
 
     result = AgentInstallResult(
         agents_dir=(repo_root / AGENTS_SUBDIR).resolve(),

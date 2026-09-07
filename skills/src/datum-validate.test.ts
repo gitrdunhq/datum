@@ -3,9 +3,9 @@
 // masked the exit code.
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseValidateArgs, mainSyncPrompt, evaluateMainSync, testRunCommand } from './shared/utils'
+import { parseValidateArgs, evaluateMainSync, testRunCommand } from './shared/utils'
 
 const validateSrc = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
 const promptsDir = join(__dirname, 'prompts')
@@ -28,18 +28,7 @@ describe('#358 — parseValidateArgs', () => {
   })
 })
 
-describe('#358 — mainSyncPrompt / evaluateMainSync', () => {
-  it('always fetches origin main and counts how far behind HEAD is', () => {
-    for (const noMerge of [true, false]) {
-      const p = mainSyncPrompt(noMerge)
-      expect(p).toContain('git fetch origin main')
-      expect(p).toContain('git rev-list --count HEAD..origin/main')
-    }
-  })
-  it('merges origin/main by default and only reports when --no-merge-main is set', () => {
-    expect(mainSyncPrompt(false)).toContain('git merge --no-edit origin/main')
-    expect(mainSyncPrompt(true)).not.toContain('git merge')
-  })
+describe('#358 — evaluateMainSync', () => {
   it('fails loudly with the behind count when merging is disabled and the epic is behind', () => {
     const r = evaluateMainSync({ behind: 7, merged: false, conflict: false }, true)
     expect(r.ok).toBe(false)
@@ -85,11 +74,166 @@ describe('#358 — validate + lane prompts use the file-backed test run', () => 
     }
   })
   it('datum-validate.ts syncs with main before running the validate check', () => {
-    const syncIdx = validateSrc.indexOf('mainSyncPrompt(')
+    const syncIdx = validateSrc.indexOf('mainSyncSteps(')
     const checkIdx = validateSrc.indexOf("label: 'validate-check'")
     expect(syncIdx).toBeGreaterThan(-1)
     expect(syncIdx).toBeLessThan(checkIdx)
     expect(validateSrc).toMatch(/evaluateMainSync\(/)
     expect(validateSrc).toMatch(/parseValidateArgs\(/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix — main sync (fetch/behind-count/merge) is a deterministic
+// datum-cli batch (shared/main-sync-steps.ts), not an LLM relay that fetches,
+// merges and self-reports {behind, merged, conflict} JSON.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — main sync is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports or calls the retired mainSyncPrompt relay', () => {
+    expect(validateSrc).not.toMatch(/mainSyncPrompt/)
+  })
+
+  it('imports mainSyncSteps/mainSyncFromSteps from shared/main-sync-steps', () => {
+    expect(validateSrc).toMatch(/import\s*\{[^}]*mainSyncSteps[^}]*mainSyncFromSteps[^}]*\}\s*from\s*'\.\/shared\/main-sync-steps'/)
+  })
+
+  it('runs the sync steps through runBatch (batchCommandPrompt/parseBatchResult with the refusal retry) like every other cli batch', () => {
+    const syncIdx = validateSrc.indexOf('mainSyncSteps(')
+    const block = validateSrc.slice(syncIdx, syncIdx + 400)
+    expect(block).toMatch(/await runBatch\(syncSteps/)
+    expect(block).toMatch(/stageOpts\(\s*'cli'/)
+    expect(block).not.toMatch(/agent\(batchCommandPrompt\(syncSteps/)
+  })
+})
+
+describe('#validate-gate-determinism — the pass/fail bit comes from an independent test run, not the LLM self-report', () => {
+  it('runs the test command itself as a deterministic datum-cli batch step', () => {
+    // One agent() call built from batchCommandPrompt(...) with stageOpts('cli', ...),
+    // mirroring the RED-stage post-red batch (datum-tdd-act-lane.ts) — not the
+    // validate-check agent's own self-reported test run.
+    expect(validateSrc).toMatch(/batchCommandPrompt\(/)
+    expect(validateSrc).toMatch(/stageOpts\(\s*'cli'/)
+    expect(validateSrc).toMatch(/parseBatchResult\(/)
+  })
+
+  it('derives testsPassed from testExitCode(...) === 0, not from the agent-reported tests_pass', () => {
+    expect(validateSrc).toMatch(/testExitCode\(/)
+    // The final testsPassed assignment must not be a bare pass-through of the
+    // LLM's self-reported field.
+    expect(validateSrc).not.toMatch(/testsPassed:\s*!!check\?\.tests_pass/)
+  })
+
+  it('imports testExitCode from shared/lane-steps and batch helpers from shared/batch', () => {
+    expect(validateSrc).toMatch(/from '\.\/shared\/lane-steps'/)
+    expect(validateSrc).toMatch(/from '\.\/shared\/batch'/)
+  })
+
+  it('a non-zero deterministic exit fails validation regardless of the agent self-report', () => {
+    // Looks for the exit-code-driven branch, distinct from the old
+    // `!check?.tests_pass` gate condition.
+    expect(validateSrc).not.toMatch(/else if \(!check\?\.tests_pass\)/)
+    expect(validateSrc).toMatch(/testExit\s*!==\s*0/)
+  })
+
+  it('a null exit code (deterministic step never ran) fails loudly with an explicit reason, never a silent pass', () => {
+    expect(validateSrc).toMatch(/testExit\s*===\s*null/)
+    expect(validateSrc).toMatch(/validate_run_failed/)
+  })
+
+  it('the workflow result carries the deterministic exit code alongside testsPassed', () => {
+    expect(validateSrc).toMatch(/testExitCode:\s*testExit/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The phase gate verdict must come from the CLI's exit code via a
+// deterministic batch step (shared/gate.ts), never from an LLM agent that
+// ran `datum gate` and echoed the JSON back.
+// ---------------------------------------------------------------------------
+
+describe('datum-validate — deterministic gate verdict', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('runs the gate through gateSteps/parseGateResult, not the util-run-gate LLM relay', () => {
+    expect(src).not.toMatch(/util-run-gate/)
+    expect(src).toMatch(/gateSteps\(/)
+    expect(src).toMatch(/parseGateResult\(/)
+  })
+})
+
+describe('datum-validate produces the test signal the validate gate consumes', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('runs the independent test run through validateVerifySteps (test-verify + write-signal)', () => {
+    expect(src).toMatch(/validateVerifySteps\(/)
+    expect(src).not.toMatch(/name: 'test-verify', command: testRunCommand/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix (#368 follow-up) — util-read-context.md was an unused
+// import in datum-validate.ts (this script already derives branch/epic_dir
+// deterministically inline via `git rev-parse --abbrev-ref HEAD` embedded in
+// its own prompt text; nothing here ever called agent(readContextTemplate,
+// ...)). The dead import is removed, and now that no script under skills/src
+// imports the LLM relay template any more, the file itself is deleted.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — util-read-context.md LLM relay is fully retired', () => {
+  it('datum-validate.ts no longer imports the unused util-read-context.md template', () => {
+    expect(validateSrc).not.toMatch(/from '\.\/prompts\/util-read-context\.md'/)
+  })
+
+  it('no file under skills/src imports util-read-context.md any more', () => {
+    const srcDir = join(__dirname)
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+        } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+          const contents = readFileSync(full, 'utf8')
+          if (/from ['"][^'"]*prompts\/util-read-context\.md['"]/.test(contents)) {
+            offenders.push(full)
+          }
+        }
+      }
+    }
+    walk(srcDir)
+    expect(offenders).toEqual([])
+  })
+
+  it('the util-read-context.md prompt file itself no longer exists', () => {
+    expect(existsSync(join(__dirname, 'prompts', 'util-read-context.md'))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Determinism fix — the standalone-run config read no longer relays through
+// READ_CONFIG_PROMPT (an LLM "read two configs and merge them by hand"),
+// it uses the same shared/config-steps.ts batch as datum-plan.ts.
+// ---------------------------------------------------------------------------
+
+describe('determinism fix — config read is a deterministic batch, not an LLM relay', () => {
+  it('no longer imports or calls agent(READ_CONFIG_PROMPT ...)', () => {
+    expect(validateSrc).not.toMatch(/READ_CONFIG_PROMPT/)
+  })
+
+  it('imports configReadSteps/configFromSteps from shared/config-steps', () => {
+    expect(validateSrc).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
+  })
+})
+
+// Phase review wf_9a69f891-462: datum-go reads gateMessage / gateNeedsHuman /
+// hardStop off the validate result on every halt path (datum-go.ts:679) and
+// validate never exported them — every validate hold printed "needs review".
+describe('datum-validate — the gate verdict fields datum-go reads are exported', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('exports gateMessage, gateNeedsHuman and hardStop from the deterministic gate verdict', () => {
+    expect(src).toMatch(/export const __workflowResult = \{[\s\S]*gateMessage: gateMessage,\s*gateNeedsHuman: gateNeedsHuman,\s*hardStop: hardStop/)
+    // A skipped gate (main out of sync / tests red) still carries a message, not undefined.
+    expect(src).toMatch(/let gateMessage = ''/)
+    expect(src).toMatch(/gateMessage = `validate_run_failed:/)
+    expect(src).toMatch(/gateMessage = `tests red/)
   })
 })

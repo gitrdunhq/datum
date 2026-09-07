@@ -24,20 +24,10 @@ export const STAGE_RESULT_SCHEMA = {
     status: { type: 'string', enum: ['ok', 'blocked'] },
     needs_write: { type: 'array', items: { type: 'string' } },
     reason: { type: 'string' },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['success', 'tests_pass', 'committed'],
-} as const
-
-export const COMMIT_RESULT_SCHEMA = {
-  type: 'object',
-  properties: {
-    committed: { type: 'boolean' },
-    commit_sha: { type: 'string' },
-    files_staged: { type: 'array', items: { type: 'string' } },
-    violations: { type: 'array', items: { type: 'string' } },
-    failure_reason: { type: 'string' },
-  },
-  required: ['committed'],
 } as const
 
 export const REFLECT_SCHEMA = {
@@ -46,8 +36,37 @@ export const REFLECT_SCHEMA = {
     reasoning: { type: 'string' },
     gaps: { type: 'array', items: { type: 'string' } },
     score: { type: 'number' },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['reasoning', 'score'],
+} as const
+
+// Review lens result. A schema, not a "return raw JSON" instruction: the
+// correctness lens answered in markdown and Review halted on a strict parse
+// with no retry (elonchesd wf_22ad6b36-dec). StructuredOutput validates at
+// the tool layer and the model retries on mismatch.
+export const REVIEW_LENS_SCHEMA = {
+  type: 'object',
+  properties: {
+    domain: { type: 'string' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          severity: { type: 'string' },
+          file: { type: 'string' },
+          line: { type: 'number' },
+          description: { type: 'string' },
+          suggestion: { type: 'string' },
+        },
+        required: ['id', 'severity', 'file', 'description'],
+      },
+    },
+  },
+  required: ['domain', 'findings'],
 } as const
 
 export const SKEPTIC_SCHEMA = {
@@ -64,6 +83,8 @@ export const SKEPTIC_SCHEMA = {
     }},
     confidence: { type: 'number' },
     verdict: { type: 'string', enum: ['PASS', 'FRAGILE', 'BROKEN'] },
+    // Blob-sha prefix of every deferred file the agent was told to read (assertReadWitness).
+    read_witness: { type: 'object', additionalProperties: { type: 'string' } },
   },
   required: ['bugs_found', 'confidence', 'verdict'],
 } as const
@@ -85,24 +106,6 @@ export const TRIAGE_SCHEMA = {
     }},
   },
   required: ['issues'],
-} as const
-
-export const VERIFY_STAGE_SCHEMA = {
-  type: 'object',
-  properties: {
-    verified: { type: 'boolean' },
-    exit_code: { type: 'number' },
-    error: { type: 'string' },
-    test_signal: {
-      type: 'object',
-      properties: {
-        exit_code: { type: 'number' },
-        errors: { type: 'array', items: { type: 'string' } },
-        assertion_messages: { type: 'array', items: { type: 'string' } },
-      },
-    },
-  },
-  required: ['verified'],
 } as const
 
 export const REFACTOR_CHECK_SCHEMA = {

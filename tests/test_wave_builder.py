@@ -483,3 +483,26 @@ class TestTask002MissingDependencyRegressionStrict:
         d = result.to_dict()
         assert isinstance(d, dict), f"to_dict() must return a dict, got: {type(d)}"
         assert "waves" in d, f"to_dict() result must have 'waves' key, got: {d!r}"
+
+
+class TestBuildWavesEmptyAndSelfCycle:
+    """Coverage gaps: build_waves({}) and a 1-node self-dependency cycle
+    were both untested."""
+
+    def test_empty_lanes_returns_empty_wave_result(self):
+        result = build_waves({})
+        assert list(result) == []
+        assert result.stats.total_tasks == 0
+        assert result.stats.num_waves == 0
+        assert result.summary == "0 tasks in 0 waves"
+
+    def test_single_lane_with_no_deps_is_one_wave_of_one(self):
+        result = build_waves({"a": {"depends_on": []}})
+        assert list(result) == [["a"]]
+
+    def test_self_dependency_raises_cyclic_dependency_error(self):
+        """A lane depending on itself is a 1-node cycle — must be caught,
+        not silently deadlocked (in_degree never reaches 0)."""
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            build_waves({"a": {"depends_on": ["a"]}})
+        assert "a" in str(exc_info.value)

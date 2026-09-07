@@ -21,15 +21,6 @@ from pathlib import Path
 
 DEFAULT_MAX_RETRY_BACKOFF_MS = 300_000
 
-
-def backoff_ms(attempt: int, max_backoff_ms: int = DEFAULT_MAX_RETRY_BACKOFF_MS) -> int:
-    """Exponential backoff delay before a reasoning retry (Symphony formula).
-
-    attempt=1 → 10s, attempt=2 → 20s, attempt=3 → 40s, capped at max_backoff_ms.
-    """
-    return min(10_000 * (2 ** (attempt - 1)), max_backoff_ms)
-
-
 STAGE_ORDER = ["RED", "GREEN", "REFACTOR"]
 
 

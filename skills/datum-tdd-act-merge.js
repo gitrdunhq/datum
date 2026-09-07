@@ -22,18 +22,61 @@ function filterGreenLanes(completedIds, results) {
   const redOnlyIds2 = completedIds.filter((id) => results?.[id]?.stage === "RED");
   return { greenIds: greenIds2, redOnlyIds: redOnlyIds2 };
 }
-function parseAgentJson(text, fallback) {
-  if (!text || typeof text !== "string") return fallback;
-  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
-  const cleaned = (fenced ? fenced[1] : text).trim();
-  const start = cleaned.search(/[{[]/);
-  const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (start === -1 || end === -1) return fallback;
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch {
-    return fallback;
+function findMatchingBracketEnd(text, start) {
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i;
+    }
   }
+  return -1;
+}
+function scanForAgentJson(text) {
+  if (!text || typeof text !== "string") return { found: false };
+  const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/);
+  const cleaned2 = (fenced ? fenced[1] : text).trim();
+  try {
+    return { found: true, value: JSON.parse(cleaned2) };
+  } catch {
+  }
+  const openRe = /[{[]/g;
+  let match;
+  let best;
+  let found = false;
+  while ((match = openRe.exec(cleaned2)) !== null) {
+    const start = match.index;
+    const end = findMatchingBracketEnd(cleaned2, start);
+    if (end === -1) continue;
+    try {
+      best = JSON.parse(cleaned2.slice(start, end + 1));
+      found = true;
+      openRe.lastIndex = end + 1;
+    } catch {
+      openRe.lastIndex = start + 1;
+    }
+  }
+  return found ? { found: true, value: best } : { found: false };
+}
+function parseAgentJson(text, fallback) {
+  const r = scanForAgentJson(text);
+  return r.found ? r.value : fallback;
 }
 function renderPrompt(template, vars) {
   return template.replace(
@@ -54,13 +97,118 @@ var AGENT_TYPE_TABLE = {
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
+var configured = false;
 function configureAgentTypes(opts) {
   if (typeof opts.agentTypes === "boolean") state.agentTypes = opts.agentTypes;
   if (typeof opts.hooksInstalled === "boolean") state.hooksInstalled = opts.hooksInstalled;
+  configured = true;
 }
 function stageOpts(stage, extra = {}) {
+  if (!configured) {
+    throw new Error(
+      `agent_types_unconfigured: stageOpts('${stage}'${extra.label ? `, ${extra.label}` : ""}) called before configureAgentTypes() \u2014 configure from args/config first, or use bootstrapOpts() for the read that has to precede configuration`
+    );
+  }
   if (!state.agentTypes) return { ...extra };
   return { ...extra, agentType: AGENT_TYPE_TABLE[stage] };
+}
+
+// skills/src/shared/sha1.ts
+function rotl(x, n) {
+  return (x << n | x >>> 32 - n) >>> 0;
+}
+function sha1Hex(bytes) {
+  const msgBitsLow = bytes.length * 8 >>> 0;
+  const msgBitsHigh = Math.floor(bytes.length * 8 / 4294967296) >>> 0;
+  const padded = bytes.slice();
+  padded.push(128);
+  while (padded.length % 64 !== 56) padded.push(0);
+  padded.push(
+    msgBitsHigh >>> 24 & 255,
+    msgBitsHigh >>> 16 & 255,
+    msgBitsHigh >>> 8 & 255,
+    msgBitsHigh & 255,
+    msgBitsLow >>> 24 & 255,
+    msgBitsLow >>> 16 & 255,
+    msgBitsLow >>> 8 & 255,
+    msgBitsLow & 255
+  );
+  let h0 = 1732584193;
+  let h1 = 4023233417;
+  let h2 = 2562383102;
+  let h3 = 271733878;
+  let h4 = 3285377520;
+  const w = new Array(80).fill(0);
+  for (let chunkStart = 0; chunkStart < padded.length; chunkStart += 64) {
+    for (let i = 0; i < 16; i++) {
+      const o = chunkStart + i * 4;
+      w[i] = (padded[o] << 24 | padded[o + 1] << 16 | padded[o + 2] << 8 | padded[o + 3]) >>> 0;
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+    let a2 = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f;
+      let k;
+      if (i < 20) {
+        f = b & c | ~b & d;
+        k = 1518500249;
+      } else if (i < 40) {
+        f = b ^ c ^ d;
+        k = 1859775393;
+      } else if (i < 60) {
+        f = b & c | b & d | c & d;
+        k = 2400959708;
+      } else {
+        f = b ^ c ^ d;
+        k = 3395469782;
+      }
+      const temp = rotl(a2, 5) + f + e + k + w[i] >>> 0;
+      e = d;
+      d = c;
+      c = rotl(b, 30);
+      b = a2;
+      a2 = temp;
+    }
+    h0 = h0 + a2 >>> 0;
+    h1 = h1 + b >>> 0;
+    h2 = h2 + c >>> 0;
+    h3 = h3 + d >>> 0;
+    h4 = h4 + e >>> 0;
+  }
+  const toHex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4);
+}
+function gitBlobSha(bytes) {
+  const header = `blob ${bytes.length}\0`;
+  const headerBytes = [];
+  for (let i = 0; i < header.length; i++) headerBytes.push(header.charCodeAt(i));
+  return sha1Hex(headerBytes.concat(bytes));
+}
+
+// skills/src/shared/utf8.ts
+function utf8Encode(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    let c = s.charCodeAt(i);
+    if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        c = 65536 + (c - 55296 << 10) + (d - 56320);
+        i++;
+      }
+    }
+    if (c < 128) out.push(c);
+    else if (c < 2048) out.push(192 | c >> 6, 128 | c & 63);
+    else if (c < 65536) out.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+    else out.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+  }
+  return out;
 }
 
 // skills/src/shared/batch.ts
@@ -76,7 +224,39 @@ function validateBatchSteps(steps2) {
   }
 }
 function batchScript(steps2) {
+  const inner = innerBatchScript(steps2);
+  const sha = gitBlobSha(utf8Encode(inner));
+  const rootGuard = batchRoot ? [`cd ${shellQuote(batchRoot)} 2>/dev/null || { printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_root_missing: %s"}]\\n' ${shellQuote(batchRoot)}; exit 0; }`] : [];
+  const toolPath = 'export PATH="$PATH:${DATUM_BATCH_TOOL_PREFIXES:-/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin}"';
+  const jqGuard = `if ! jq --version >/dev/null 2>&1; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_tool_missing: jq is not on the runner PATH (set DATUM_BATCH_TOOL_PREFIXES or install jq)"}]\\n'; exit 0; fi`;
+  return [
+    ...rootGuard,
+    toolPath,
+    jqGuard,
+    `__f=$(mktemp); trap 'rm -f "$__f"' EXIT`,
+    `cat > "$__f" <<'${BATCH_EOF}'`,
+    inner.replace(/\n$/, ""),
+    BATCH_EOF,
+    '__h=$(git hash-object "$__f" 2>&1)',
+    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
+    // shell, so anything defined before the script (the tests' `__root=`
+    // prelude, a `cd`) is visible exactly as it was before the wrapper.
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`
+  ].join("\n") + "\n";
+}
+var BATCH_EOF = "DATUM_BATCH_EOF";
+function shellQuote(s) {
+  return `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+}
+var batchRoot = "";
+function setBatchRoot(root) {
+  batchRoot = typeof root === "string" ? root.trim() : "";
+}
+function innerBatchScript(steps2) {
   validateBatchSteps(steps2);
+  for (const s of steps2) {
+    if (s.command.split("\n").some((l) => l.trim() === BATCH_EOF)) throw new Error(`batch: step "${s.name}" contains the heredoc delimiter ${BATCH_EOF}`);
+  }
   const lines = [
     "__bo=$(mktemp); __be=$(mktemp); __r='[]'",
     `__rec() { __r=$(printf '%s' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" '. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]'); }`,
@@ -93,8 +273,14 @@ function batchScript(steps2) {
   lines.push("__end");
   return lines.join("\n") + "\n";
 }
+var cacheKey = "";
+function setBatchCacheKey(key) {
+  cacheKey = typeof key === "string" ? key : "";
+}
 function batchCommandPrompt(steps2) {
-  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + batchScript(steps2);
+  return 'Run exactly this script with the Bash tool in ONE invocation and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.\n\n' + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
+
+` : "") + batchScript(steps2);
 }
 function asStepResult(x) {
   if (!x || typeof x !== "object") return null;
@@ -110,8 +296,22 @@ function asStepResult(x) {
 }
 function parseBatchResult(raw, steps2) {
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
-  if (!Array.isArray(arr)) return { steps: [], failed: null, missing: true };
+  if (!Array.isArray(arr)) {
+    const text = typeof raw === "string" ? raw.replace(/```[a-z]*/gi, "").trim() : "";
+    if (!text) return { steps: [], failed: null, missing: true };
+    const prose = raw.trim();
+    const exited = /exit(?:ed)?(?: with)? code (\d+)/i.exec(prose);
+    if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
+      return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
+    }
+    return { steps: [], failed: null, missing: true, refusal: prose };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
+    const { exit_code, stderr } = results[0];
+    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
+  }
   const tolerant = new Set(steps2.filter((s) => s.tolerant).map((s) => s.name));
   const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null;
   return { steps: results, failed, missing: false };
@@ -123,8 +323,18 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
 function describeFailure(r, label) {
-  if (r.missing) return `${label}: batch agent returned no parseable result`;
+  if (r.missing) {
+    if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
+    if (r.scriptError) return `${label}: ${r.scriptError}`;
+    if (!r.refusal) return `${label}: runner_empty_result \u2014 batch agent returned no parseable result (empty reply)`;
+    const excerpt = r.refusal.replace(/\s+/g, " ").slice(0, 300);
+    if (REFUSAL_RE.test(r.refusal)) {
+      return `${label}: runner_permission_denied \u2014 the datum-cli runner was refused by the host permission classifier and replied in prose; the commands in this batch need an allow-rule for this repo: "${excerpt}"`;
+    }
+    return `${label}: runner_no_json \u2014 batch agent returned no parseable result (reply: "${excerpt}")`;
+  }
   if (!r.failed) return `${label}: ok`;
   const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
@@ -137,48 +347,61 @@ function fencedScript(rendered) {
   if (!m) throw new Error("template has no fenced script block");
   return m[1];
 }
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
 function completionMarkerCommand(runId, taskId) {
+  if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`);
+  if (!PLAIN_ID_RE.test(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`);
   const dir = `.datum/runs/${runId}/lane-state`;
   return `mkdir -p ${q(dir)} && printf '%s\\n' '{"task_id": "${taskId}", "status": "completed"}' > ${q(`${dir}/${taskId}.json`)}`;
 }
 function mergeSteps(o) {
   const steps2 = [];
-  if (o.completedIds.length > 0) {
-    steps2.push({
-      name: "completion-markers",
-      command: o.completedIds.map((id) => completionMarkerCommand(o.batchRunId, id)).join("\n"),
-      tolerant: true
-    });
-  }
   if (o.mergeOrder.length > 0) {
     steps2.push({
       name: "merge",
-      command: `datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes"; __merge_rc=$?; [ "$__merge_rc" -eq 0 ]`,
+      command: `__merge_out=$(datum worktrees merge --epic-branch ${q(o.epicBranch)} --lane-order ${o.mergeOrder.join(",")} --commit-message "act(${o.batchRunId}): merge ${o.mergeOrder.length} lanes" --run-id ${q(o.batchRunId)}); __merge_rc=$?; printf '%s\\n' "$__merge_out"; [ "$__merge_rc" -eq 0 ]`,
+      tolerant: true
+    });
+  }
+  if (o.completedIds.length > 0) {
+    steps2.push({
+      name: "completion-markers",
+      command: `__landed_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '(.merged[]?, .already_merged[]?)' 2>/dev/null | tr '\\n' ' ')"
+` + o.completedIds.map((id) => `case "$__landed_ids" in *" ${id} "*) ${completionMarkerCommand(o.batchRunId, id)};; *) echo "SKIPPED_NOT_MERGED ${id}";; esac`).join("\n"),
       tolerant: true
     });
   }
   if (o.laneStateWriteScript) {
     steps2.push({
       name: "lane-state-write",
-      command: `if [ "\${__merge_rc:-0}" -ne 0 ]; then echo SKIPPED_MERGE_FAILED; else
+      command: `__merged_ids=" $(printf '%s' "\${__merge_out:-}" | jq -r '.merged[]?' 2>/dev/null | tr '\\n' ' ')"
+if [ "$__merged_ids" = " " ]; then echo SKIPPED_MERGE_FAILED; else
 ${o.laneStateWriteScript.trim()}
 fi`,
       tolerant: true
     });
   }
-  steps2.push({
-    name: "cleanup",
-    command: `datum worktrees cleanup --run-id ${q(o.batchRunId)} --epic-branch ${q(o.epicBranch)}`,
-    tolerant: true
-  });
+  steps2.push(...cleanupSteps(o.batchRunId, o.epicBranch));
   return steps2;
 }
+function cleanupSteps(batchRunId, epicBranch) {
+  return [{
+    name: "cleanup",
+    command: `datum worktrees cleanup --run-id ${q(batchRunId)} --epic-branch ${q(epicBranch)}`,
+    tolerant: true
+  }];
+}
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/lane-state-write.md
-var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
+var lane_state_write_default = 'Record epic-scoped completion markers for lanes just squash-merged into {{epicBranch}}.\n\nRun this exact script from the repo root and return ONLY the word DONE. It calls `datum lane-state write` (the deterministic CLI, not hand-written JSON) once per entry:\n\n```\nMC=$(git rev-parse {{epicBranch}})\necho \'{{entriesJson}}\' | jq -c \'.[]\' | while read -r e; do\n  TID=$(echo "$e" | jq -r \'.task_id\')\n  case "${__merged_ids:- $TID }" in *" $TID "*) ;; *) continue;; esac\n  SHASH=$(echo "$e" | jq -r \'.spec_hash\')\n  datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \\\n    --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null\ndone\necho DONE\n```\n\nDo not write files directly; all state must go through the `datum lane-state write` CLI call above.\n';
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
@@ -192,6 +415,8 @@ function laneStateWriteScript(vars) {
 // skills/src/datum-tdd-act-merge.ts
 var a = args;
 configureAgentTypes(a.agentTypes || {});
+setBatchCacheKey(a.configFingerprint || "");
+setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 phase("Merge");
 var { greenIds, redOnlyIds } = filterGreenLanes(a.completedIds, a.results);
 for (const id of redOnlyIds) {
@@ -218,20 +443,26 @@ var mergeRaw = await agent(
 );
 var merge = parseBatchResult(mergeRaw, steps);
 if (merge.missing) log(`Merge${a.batchTag}: ${describeFailure(merge, "merge batch")}`);
+var mergeStep = mergeOrder.length > 0 ? stepResult(merge, "merge") : null;
+var mergeOk = mergeOrder.length === 0 || !!mergeStep && mergeStep.exit_code === 0;
+var mergeJson = parseAgentJson(mergeStep ? mergeStep.stdout : "", null);
+var landedIds = mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : mergeOk ? mergeOrder : [];
+var failedLane = mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : "";
 if (mergeOrder.length > 0) {
-  const m = stepResult(merge, "merge");
-  if (m && m.exit_code === 0) {
+  if (mergeOk) {
     log(`Merged${a.batchTag} in order: [${mergeOrder.join(" \u2192 ")}]`);
+  } else if (failedLane) {
+    log(`Merge${a.batchTag} FAILED \u2014 partial merge: ${failedLane} did not land (${mergeJson?.error || "no error text"}); landed and committed: [${landedIds.join(", ") || "none"}]`);
   } else {
-    log(`Merge${a.batchTag} FAILED: ${m ? (m.stderr || m.stdout).trim().split("\n").slice(-5).join("\n") : "step did not run"}`);
+    log(`Merge${a.batchTag} FAILED: ${mergeStep ? (mergeStep.stderr || mergeStep.stdout).trim().split("\n").slice(-5).join("\n") : "step did not run"}`);
   }
 }
 if (laneState) {
   const out = stepStdout(merge, "lane-state-write") || "";
   if (out.includes("SKIPPED_MERGE_FAILED")) {
-    log(`Lane-state markers${a.batchTag} NOT recorded \u2014 merge failed`);
+    log(`Lane-state markers${a.batchTag} NOT recorded \u2014 no lane landed`);
   } else if (out.includes("DONE")) {
-    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map((e) => e.task_id).join(", ")}]`);
+    log(`Lane-state markers${a.batchTag} recorded for [${(a.laneState?.entries || []).map((e) => e.task_id).filter((id) => landedIds.includes(id)).join(", ")}]`);
   } else {
     log(`Lane-state markers${a.batchTag}: ${describeFailure(merge, "lane-state-write")}`);
   }
@@ -239,4 +470,19 @@ if (laneState) {
 phase("Cleanup");
 var cleanup = stepResult(merge, "cleanup");
 log(`Cleanup${a.batchTag}: ${cleanup ? cleanup.exit_code === 0 ? "done" : `exited ${cleanup.exit_code}` : "step did not run"}`);
-return { merged: a.completedIds.length > 0 };
+var cleaned = cleanup && cleanup.exit_code === 0 ? parseAgentJson(cleanup.stdout, null) : null;
+var preserved = cleaned && cleaned.cleaned && Array.isArray(cleaned.cleaned.preserved_with_commits) ? cleaned.cleaned.preserved_with_commits : [];
+if (preserved.length > 0) {
+  log(`Cleanup${a.batchTag}: preserved lane branch(es) with real commits (not deleted): ${preserved.join(", ")}`);
+}
+return {
+  merged: mergeOrder.length > 0 && mergeOk,
+  failed: mergeOrder.length > 0 && !mergeOk,
+  mergedIds: mergeJson && Array.isArray(mergeJson.merged) ? mergeJson.merged : mergeOk ? mergeOrder : [],
+  failedLane: mergeJson && typeof mergeJson.failed_lane === "string" ? mergeJson.failed_lane : "",
+  // The git-level reason and the conflicted paths, so the demoted lane's
+  // error says what happened (elonchesd wf_8769406f-b9c task-015).
+  error: mergeJson && typeof mergeJson.error === "string" ? mergeJson.error : "",
+  conflictFiles: mergeJson && Array.isArray(mergeJson.conflict_files) ? mergeJson.conflict_files : [],
+  report: mergeJson && typeof mergeJson.report === "string" ? mergeJson.report : ""
+};

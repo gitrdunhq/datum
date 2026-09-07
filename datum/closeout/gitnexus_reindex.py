@@ -26,7 +26,12 @@ def load_config() -> dict:
             try:
                 with open(path, "rb") as f:
                     return tomllib.load(f)
-            except Exception:
+            except (OSError, tomllib.TOMLDecodeError):
+                # Expected when a candidate config path is unreadable or not
+                # valid TOML — fall through to the next candidate path, and
+                # ultimately to the {} default below (this script is
+                # explicitly non-blocking; a bad config must never abort
+                # closeout, only fall back to defaults).
                 pass
     return {}
 
@@ -55,7 +60,9 @@ def main() -> None:
 
         if result.returncode != 0:
             print(
-                json.dumps({"ok": False, "error": "reindex failed", "log": str(log_path)})
+                json.dumps(
+                    {"ok": False, "error": "reindex failed", "log": str(log_path)}
+                )
             )
         else:
             print(json.dumps({"ok": True, "log": str(log_path)}))
@@ -63,13 +70,21 @@ def main() -> None:
         # Emit a non-fatal warning instead of a traceback
         err_msg = f"GitNexus reindex timed out after {timeout} seconds. Resume manually if needed."
         if e.stdout or e.stderr:
-            log_content = (e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")) + \
-                          (e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or ""))
+            log_content = (
+                e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
+            ) + (e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or ""))
             log_path.write_text(log_content + "\n" + err_msg)
         else:
             log_path.write_text(err_msg)
         print(
-            json.dumps({"ok": False, "error": "timeout", "warning": err_msg, "log": str(log_path)})
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": "timeout",
+                    "warning": err_msg,
+                    "log": str(log_path),
+                }
+            )
         )
 
 

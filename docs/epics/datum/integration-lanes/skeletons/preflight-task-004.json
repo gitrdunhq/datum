@@ -1,0 +1,118 @@
+{
+  "task_id": "task-004",
+  "slug": "group-invariants-into-int-lanes",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify `derive_integration_lanes(invariants, tasks, test_command)` ",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_derive_integration_lanes_invariants_tasks_test_command_retur",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_derive_integration_lanes_invariants_tasks_test_command_retur \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC1:\n    def test_ac1_derive_integration_lanes_invariants_tasks_test_command_retur(self):\n        \"\"\"\n        PROP-001: `derive_integration_lanes(invariants, tasks, test_command)` returns a list of la\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify Each returned lane has `id` == `task-INT-<n>` numbered from ",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_each_returned_lane_has_id_task_int_n_numbered_from_1_kind_in",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_each_returned_lane_has_id_task_int_n_numbered_from_1_kind_in \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC2:\n    def test_ac2_each_returned_lane_has_id_task_int_n_numbered_from_1_kind_in(self):\n        \"\"\"\n        PROP-002: Each returned lane has `id` == `task-INT-<n>` numbered from 1, `kind` == `'integ\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify Each returned lane's `files` is exactly one path: `tests/int",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_each_returned_lane_s_files_is_exactly_one_path_tests_integra",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_each_returned_lane_s_files_is_exactly_one_path_tests_integra \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC3:\n    def test_ac3_each_returned_lane_s_files_is_exactly_one_path_tests_integra(self):\n        \"\"\"\n        PROP-003: Each returned lane's `files` is exactly one path: `tests/integration/test_int_<n\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify Group numbering is topological: a group whose covered tasks ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_group_numbering_is_topological_a_group_whose_covered_tasks_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_group_numbering_is_topological_a_group_whose_covered_tasks_a \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC4:\n    def test_ac4_group_numbering_is_topological_a_group_whose_covered_tasks_a(self):\n        \"\"\"\n        PROP-004: Group numbering is topological: a group whose covered tasks are all ancestors (p\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify Calling `derive_integration_lanes` twice on the same inputs,",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_calling_derive_integration_lanes_twice_on_the_same_inputs_an",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_calling_derive_integration_lanes_twice_on_the_same_inputs_an \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC5:\n    def test_ac5_calling_derive_integration_lanes_twice_on_the_same_inputs_an(self):\n        \"\"\"\n        PROP-005: Calling `derive_integration_lanes` twice on the same inputs, and on inputs whose\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify `derive_integration_lanes` with an empty invariant list retu",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_derive_integration_lanes_with_an_empty_invariant_list_return",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_derive_integration_lanes_with_an_empty_invariant_list_return \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC6:\n    def test_ac6_derive_integration_lanes_with_an_empty_invariant_list_return(self):\n        \"\"\"\n        PROP-006: `derive_integration_lanes` with an empty invariant list returns `[]` (AC8.1)\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify `unknown_covered_tasks(invariants, tasks)` returns an ordere",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_unknown_covered_tasks_invariants_tasks_returns_an_ordered_li",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_unknown_covered_tasks_invariants_tasks_returns_an_ordered_li \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC7:\n    def test_ac7_unknown_covered_tasks_invariants_tasks_returns_an_ordered_li(self):\n        \"\"\"\n        PROP-007: `unknown_covered_tasks(invariants, tasks)` returns an ordered list of `(invarian\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "tests/test_integration_invariants_frontier.py",
+      "kind": "pytest",
+      "purpose": "Verify Each returned lane also carries `title` and `red_note` keys ",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_each_returned_lane_also_carries_title_and_red_note_keys_with",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-004 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_each_returned_lane_also_carries_title_and_red_note_keys_with \u2192 tests/test_integration_invariants_frontier.py\n\nimport pytest\n\n\nclass TestTask004AC8:\n    def test_ac8_each_returned_lane_also_carries_title_and_red_note_keys_with(self):\n        \"\"\"\n        PROP-008: Each returned lane also carries `title` and `red_note` keys with non-empty strin\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [
+    {
+      "path": "datum/integration_invariants.py",
+      "functions": [
+        "derive_integration_lanes",
+        "unknown_covered_tasks"
+      ],
+      "stub_written": false,
+      "content": "def derive_integration_lanes(invariants, tasks, test_command):\n    ...\n\ndef unknown_covered_tasks(invariants, tasks):\n    ...\n"
+    }
+  ],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

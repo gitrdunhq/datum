@@ -24,12 +24,12 @@ import os
 import re
 import secrets
 import time
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Literal, TypedDict
 
 
-class FailureLayer(str, Enum):
+class FailureLayer(StrEnum):
     CONTEXT = "context"
     CONSTRAINT = "constraint"
     VERIFICATION = "verification"
@@ -513,6 +513,17 @@ def _lint_python(content: str) -> list[str]:
                         f"line {node.lineno} uses os.system — banned "
                         f"(SEC-001). Use subprocess.run with a list argv."
                     )
+                if (
+                    isinstance(func, _ast.Attribute)
+                    and func.attr == "popen"
+                    and isinstance(func.value, _ast.Name)
+                    and func.value.id == "os"
+                ):
+                    warnings.append(
+                        f"line {node.lineno} uses os.popen — banned "
+                        f"(SEC-001). It spawns a shell exactly like "
+                        f"os.system. Use subprocess.run with a list argv."
+                    )
                 for kw in node.keywords:
                     if (
                         kw.arg == "shell"
@@ -957,37 +968,6 @@ def _distill_rules_text(repo_dir) -> str | None:
 
     text = "\n".join(rule_lines + header_lines)
     return strip_invisible_unicode(strip_special_tokens(text))[:2000]
-
-
-def load_project_rules(repo_dir) -> str:
-    """Read the target repo's agent rules — AGENTS.md preferred, CLAUDE.md
-    fallback — and distill to rule-like lines: bullets and numbered items
-    first, then `#` headers (#60: headers are de-prioritized context, they
-    only consume whatever cap budget the real rules leave over).
-
-    Capped at 2000 chars so project rules can't crowd out the loop's own
-    instructions on a small model.
-
-    S0: the distilled text is sanitized (special tokens + invisible Unicode
-    stripped) and pinned via hash_pin_rules to .datum/rules-hash.json under
-    repo_dir. The first load pins; a later load whose rules differ raises
-    ValueError — the tampering tripwire. Episodes delete the stale pin at
-    start so only MID-EPISODE mutation trips it, never cross-run changes.
-
-    #85: agent_loop's per-step tripwire does NOT use this disk pin — the
-    store is agent-writable, so the loop verifies against an in-memory hash
-    captured at episode start. The disk store remains useful for cross-call
-    pinning by trusted callers and as an audit artifact.
-    """
-    repo_dir = Path(repo_dir)
-    text = _distill_rules_text(repo_dir)
-    if text is None:
-        return ""
-
-    store = repo_dir / ".datum" / "rules-hash.json"
-    store.parent.mkdir(exist_ok=True)
-    hash_pin_rules(text, store)
-    return text
 
 
 def _catalog_lines(allowed_tools: list[str], progressive: bool = False) -> str:

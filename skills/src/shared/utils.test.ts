@@ -4,8 +4,9 @@
 // error) until the GREEN phase implements and exports them.
 
 import { describe, it, expect } from 'vitest'
-import { buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps } from './utils'
-import type { Lane, LanePlan, LaneOutcome } from './types'
+import { skepticMinorityFindings, minorityFollowUps, verifyFileOwnership, buildWaves, packWaves, computeBlockedLanes, groupBlockedByRoot, filterGreenLanes, extractRequiredScopeFiles, findScopeGaps, classifyFiles, parseAgentJson, parseAgentJsonStrict, crossValidateBugs, buildPacket, laneSpecHash, preflightTestPaths } from './utils'
+import type { ContextFile } from './context-relay'
+import type { Lane, LanePlan, LaneOutcome, PipelineConfig } from './types'
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -450,6 +451,8 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
     expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
       hasRed: true,
       hasGreen: true,
+      redSpec: null,
+      greenSpec: null,
     })
   })
 
@@ -458,12 +461,12 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
       'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb red(some-lane): RED complete',
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit',
     ].join('\n')
-    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false })
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: true, hasGreen: false, redSpec: null, greenSpec: null })
   })
 
   it('reports neither present for a fresh lane branch with no stage commits', () => {
     const log = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa initial commit'
-    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+    expect(detectExistingLaneCommits(log, 'some-lane')).toEqual({ hasRed: false, hasGreen: false, redSpec: null, greenSpec: null })
   })
 
   it('does not match commits belonging to a different lane id (prefix collision)', () => {
@@ -475,11 +478,13 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
     expect(detectExistingLaneCommits(log, 'filter-transcript-noise-memory-extract')).toEqual({
       hasRed: false,
       hasGreen: false,
+      redSpec: null,
+      greenSpec: null,
     })
   })
 
   it('handles empty log output without throwing', () => {
-    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false })
+    expect(detectExistingLaneCommits('', 'some-lane')).toEqual({ hasRed: false, hasGreen: false, redSpec: null, greenSpec: null })
   })
 })
 
@@ -492,6 +497,27 @@ describe('detectExistingLaneCommits — issue #331: stale lane-plan vs actual gi
 // ---------------------------------------------------------------------------
 
 import { laneCommitCommand, LANE_COMMIT_AUTHOR_EMAIL } from './utils'
+
+// caliper BUG M: a RED committed under an earlier lane spec (files[] changed
+// between runs) was reused on resume because the subject alone was matched.
+describe('lane commits record the spec hash and the resume parser reads it back', () => {
+  it('laneCommitCommand adds a Datum-Spec trailer when given the spec hash', () => {
+    const cmd = laneCommitCommand({ wt: '/wt', taskId: 'T1', stage: 'RED', runId: 'r1', specHash: 'fnv1a64:00000000000000ab' })
+    expect(cmd).toContain('-m "Datum-Spec: fnv1a64:00000000000000ab"')
+    expect(laneCommitCommand({ wt: '/wt', taskId: 'T1', stage: 'RED', runId: 'r1' })).not.toContain('Datum-Spec')
+  })
+  it('detectExistingLaneCommits returns the RED/GREEN Datum-Spec trailers from the tab-separated history', () => {
+    const log = [
+      'bbb green(T1): GREEN complete\tfnv1a64:00000000000000ab',
+      'aaa red(T1): RED complete\tfnv1a64:00000000000000ab',
+    ].join('\n')
+    const r = detectExistingLaneCommits(log, 'T1')
+    expect(r).toEqual({ hasRed: true, hasGreen: true, redSpec: 'fnv1a64:00000000000000ab', greenSpec: 'fnv1a64:00000000000000ab' })
+    // Old commits without the trailer: present, spec unknown (null), never a false mismatch.
+    expect(detectExistingLaneCommits('aaa red(T1): RED complete', 'T1')).toEqual({ hasRed: true, hasGreen: false, redSpec: null, greenSpec: null })
+    expect(detectExistingLaneCommits('aaa red(T1): RED complete\t', 'T1').redSpec).toBeNull()
+  })
+})
 
 describe('laneCommitCommand — issue #357: unified lane commit convention', () => {
   const wt = '/tmp/wt/task-022'
@@ -620,5 +646,696 @@ describe('parseContractPreflight — issue #356', () => {
     const p = parseContractPreflight('{"status":"contract_conflict","conflicts":[],"needs_write":["a.py"],"reason":"r"}')
     expect(p.status).toBe('contract_conflict')
     expect(p.needs_write).toEqual(['a.py'])
+  })
+})
+
+// #524 dogfooding — isTest()'s directory check was `f.includes('/tests/')`,
+// requiring a slash BEFORE "tests" — so a repo-root-relative path like
+// "tests/unit/test_part_score.py" (no leading slash) never matched via the
+// directory check, only via the "test_" basename convention. Currently
+// masked whenever every test file also happens to follow a recognized
+// basename convention (test_*.py, *.spec.ts, etc.) — but it's dead code
+// for the common root-relative case, and would silently misclassify a test
+// file whose basename doesn't match any convention (e.g. a Kotlin/Java
+// suite like tests/integration/SomeSuite.kt).
+describe('classifyFiles — root-relative tests/ directory (#524)', () => {
+  it('classifies a root-relative tests/ path as a test file via the directory check alone', () => {
+    // "SomeSuite.kt" matches no basename convention — only the directory
+    // check can classify it, and only if it accounts for a path that
+    // starts with "tests/" rather than requiring a leading slash.
+    const { testFiles, implFiles } = classifyFiles(['tests/integration/SomeSuite.kt'])
+    expect(testFiles).toEqual(['tests/integration/SomeSuite.kt'])
+    expect(implFiles).toEqual([])
+  })
+
+  it('still classifies a nested tests/ path (with a leading slash) as a test file', () => {
+    const { testFiles } = classifyFiles(['src/module/tests/SomeSuite.kt'])
+    expect(testFiles).toEqual(['src/module/tests/SomeSuite.kt'])
+  })
+
+  it('still classifies a root-relative Tests/ (capitalized) path as a test file', () => {
+    const { testFiles } = classifyFiles(['Tests/IntegrationSuite.swift'])
+    expect(testFiles).toEqual(['Tests/IntegrationSuite.swift'])
+  })
+
+  it('does not misclassify an implementation file merely containing "test" in its name', () => {
+    const { testFiles, implFiles } = classifyFiles(['src/caliper/core/latest_config.py'])
+    expect(testFiles).toEqual([])
+    expect(implFiles).toEqual(['src/caliper/core/latest_config.py'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseAgentJson — bracket-matching robustness
+// ---------------------------------------------------------------------------
+
+describe('parseAgentJson', () => {
+  it('parses a clean JSON object response', () => {
+    const result = parseAgentJson('{"ok": true}', { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('does not overshoot into a stray closing bracket in trailing prose', () => {
+    // Real response: a valid JSON object followed by prose mentioning a
+    // filename that happens to contain a ']' character.
+    const text = '{"ok": true}\n\nSee the example output in results].txt for details.'
+    const result = parseAgentJson(text, { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('does not anchor on an illustrative JSON example that precedes the real answer', () => {
+    const text = 'For example: {"example": true}\n\nActual answer:\n{"ok": true, "value": 42}'
+    const result = parseAgentJson(text, { ok: false, value: 0 })
+    expect(result).toEqual({ ok: true, value: 42 })
+  })
+
+  it('falls back to bracket-scanning when the whole string is not valid JSON on its own', () => {
+    const text = 'Here is the result:\n{"ok": true}\nThanks!'
+    const result = parseAgentJson(text, { ok: false })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('returns the fallback when no JSON is present at all', () => {
+    const result = parseAgentJson('no json here', { ok: false })
+    expect(result).toEqual({ ok: false })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseAgentJsonStrict — throws a named error instead of returning a default
+// ---------------------------------------------------------------------------
+
+describe('parseAgentJsonStrict', () => {
+  it('parses a clean JSON object response', () => {
+    expect(parseAgentJsonStrict('{"ok": true}', 'my-label')).toEqual({ ok: true })
+  })
+
+  it('returns a real empty array rather than treating it as "not found"', () => {
+    // A naive `if (!value) throw` would wrongly reject this — an agent
+    // legitimately reporting "no findings" must come through as [].
+    expect(parseAgentJsonStrict('[]', 'my-label')).toEqual([])
+  })
+
+  it('returns a real 0 rather than treating it as "not found"', () => {
+    expect(parseAgentJsonStrict('0', 'my-label')).toBe(0)
+  })
+
+  it('extracts JSON from prose via bracket-scanning like parseAgentJson', () => {
+    const text = 'Here is the result:\n{"ok": true}\nThanks!'
+    expect(parseAgentJsonStrict(text, 'my-label')).toEqual({ ok: true })
+  })
+
+  it('throws a named agent_output_unparseable error with the label and truncated text when no JSON is present', () => {
+    expect(() => parseAgentJsonStrict('no json here', 'my-label')).toThrow(
+      /^agent_output_unparseable: my-label — no json here$/,
+    )
+  })
+
+  it('throws for null input', () => {
+    expect(() => parseAgentJsonStrict(null as unknown as string, 'my-label')).toThrow(
+      /^agent_output_unparseable: my-label/,
+    )
+  })
+
+  it('throws for empty string input', () => {
+    expect(() => parseAgentJsonStrict('', 'my-label')).toThrow(/^agent_output_unparseable: my-label/)
+  })
+
+  it('truncates the raw text in the error message to 200 characters', () => {
+    const longText = 'x'.repeat(500)
+    try {
+      parseAgentJsonStrict(longText, 'my-label')
+      throw new Error('expected parseAgentJsonStrict to throw')
+    } catch (e) {
+      const msg = (e as Error).message
+      expect(msg.startsWith('agent_output_unparseable: my-label — ' + 'x'.repeat(200))).toBe(true)
+      expect(msg.length).toBeLessThan(500)
+    }
+  })
+
+  it('throws for truncated/unbalanced JSON', () => {
+    const text = 'Result: {"incomplete": true'
+    expect(() => parseAgentJsonStrict(text, 'my-label')).toThrow(/^agent_output_unparseable: my-label/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// findMatchingBracketEnd — character-level bracket matching (tested via parseAgentJson)
+// ---------------------------------------------------------------------------
+
+describe('findMatchingBracketEnd (via parseAgentJson)', () => {
+  it('extracts plain JSON object from agent prose', () => {
+    const text = 'The result is:\n{"status":"ok"}\nDone.'
+    const result = parseAgentJson(text, { status: 'unknown' })
+    expect(result).toEqual({ status: 'ok' })
+  })
+
+  it('extracts plain JSON array from agent prose', () => {
+    const text = 'Items: [1, 2, 3]'
+    const result = parseAgentJson(text, [])
+    expect(result).toEqual([1, 2, 3])
+  })
+
+  it('handles nested objects with multiple levels', () => {
+    const text = 'Result: {"a":{"b":{"c":1}}}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ a: { b: { c: 1 } } })
+  })
+
+  it('handles nested arrays inside objects', () => {
+    const text = 'Data: {"items":[1,2,[3,4]]}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ items: [1, 2, [3, 4]] })
+  })
+
+  it('preserves brackets inside string values and does not close early', () => {
+    const text = 'Result: {"message":"contains } and ] brackets"}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ message: 'contains } and ] brackets' })
+  })
+
+  it('handles escaped quotes inside strings', () => {
+    const text = 'Result: {"message":"contains \\"quotes\\""}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ message: 'contains "quotes"' })
+  })
+
+  it('handles backslash-escaped brackets inside strings', () => {
+    const text = 'Result: {"pattern":"\\\\}"}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ pattern: '\\}' })
+  })
+
+  it('finds the LAST valid JSON object when multiple candidates exist (agent answers come last)', () => {
+    const text = 'Example: {"example":true}\n\nActual: {"actual":true}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ actual: true })
+  })
+
+  it('returns fallback for truncated/unbalanced JSON', () => {
+    const text = 'Result: {"incomplete": true'
+    const result = parseAgentJson(text, { fallback: true })
+    expect(result).toEqual({ fallback: true })
+  })
+
+  it('strips ```json code fence wrapping the entire response', () => {
+    const text = '```json\n{"ok":true}\n```'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('strips ```  (no language) code fence wrapping the entire response', () => {
+    const text = '```\n{"ok":true}\n```'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('keeps the LAST parseable JSON even when it is fenced — prompts put the example first and the answer last', () => {
+    // Documented convention (commit 654ee95): the real answer comes last; an
+    // illustrative example, if any, comes first. Skipping fenced candidates
+    // would return the fallback for the most common reply shape below.
+    const text = 'Example:\n```json\n{"example":true}\n```\nAnswer: {"ok":true}'
+    expect(parseAgentJson(text, {})).toEqual({ ok: true })
+  })
+
+  it('parses a reply that is prose followed by a single fenced JSON block', () => {
+    expect(parseAgentJson('Here you go:\n```json\n{"a": 2}\n```\n', null)).toEqual({ a: 2 })
+  })
+
+  it('parses the first { or [ bracket when no full-response JSON parse succeeds', () => {
+    const text = 'Response: [1,2,3]'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual([1, 2, 3])
+  })
+
+  it('returns fallback for completely invalid input', () => {
+    const text = 'no json here at all'
+    const result = parseAgentJson(text, { fallback: 42 })
+    expect(result).toEqual({ fallback: 42 })
+  })
+
+  it('returns fallback for null/undefined input', () => {
+    expect(parseAgentJson(null as unknown as string, { ok: false })).toEqual({ ok: false })
+    expect(parseAgentJson(undefined as unknown as string, { ok: false })).toEqual({ ok: false })
+  })
+
+  it('handles JSON with empty string values', () => {
+    const text = '{"key":""}'
+    const result = parseAgentJson(text, {})
+    expect(result).toEqual({ key: '' })
+  })
+
+  it('handles very deeply nested JSON', () => {
+    const text = '{"a":{"b":{"c":{"d":{"e":{"f":1}}}}}}'
+    const result = parseAgentJson(text, {})
+    expect((result as any).a.b.c.d.e.f).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// joinPosix — POSIX path joining with . and .. handling (via extractRequiredScopeFiles)
+// ---------------------------------------------------------------------------
+
+describe('joinPosix (via extractRequiredScopeFiles)', () => {
+  it('joins base and relative paths with /', () => {
+    const content = 'import * as x from "./utils"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/utils.ts')
+  })
+
+  it('handles ./ current-directory prefixes', () => {
+    const content = 'import * as x from "./subdir/utils"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/subdir/utils.ts')
+  })
+
+  it('handles ../ parent-directory references', () => {
+    const content = 'import * as x from "../sibling"'
+    const required = extractRequiredScopeFiles(content, 'src/deep/nested/test.ts', 'typescript')
+    expect(required).toContain('src/deep/sibling.ts')
+  })
+
+  it('handles multiple ../ to walk up multiple levels', () => {
+    const content = 'import * as x from "../../utils"'
+    const required = extractRequiredScopeFiles(content, 'src/deep/nested/test.ts', 'typescript')
+    expect(required).toContain('src/utils.ts')
+  })
+
+  it('stops at root when .. would go beyond (does not create leading /../..)', () => {
+    const content = 'import * as x from "../../../../../outside"'
+    const required = extractRequiredScopeFiles(content, 'src/test.ts', 'typescript')
+    // Should never escape the root; exact behavior depends on joinPosix
+    const result = required[0]
+    expect(result).not.toContain('../')
+  })
+
+  it('handles . (current directory, no-op)', () => {
+    const content = 'import * as x from "././nested"'
+    const required = extractRequiredScopeFiles(content, 'src/dir/test.ts', 'typescript')
+    expect(required).toContain('src/dir/nested.ts')
+  })
+
+  it('resolves readFileSync(join(__dirname, ...)) with multiple path segments', () => {
+    const content = 'readFileSync(join(__dirname, "sub", "dir", "file.txt"))'
+    const required = extractRequiredScopeFiles(content, 'src/test.ts', 'typescript')
+    expect(required).toContain('src/sub/dir/file.txt')
+  })
+
+  it('resolves readFileSync with .. segments', () => {
+    const content = 'readFileSync(join(__dirname, "..", "sibling", "file.txt"))'
+    const required = extractRequiredScopeFiles(content, 'src/nested/test.ts', 'typescript')
+    expect(required).toContain('src/sibling/file.txt')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// crossValidateBugs — merges skeptic results across lenses
+// ---------------------------------------------------------------------------
+
+describe('crossValidateBugs', () => {
+  it('collects bugs from all three skeptic lenses', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug2', evidence: 'e2', severity: 'low' as const }],
+        confidence: 0.8,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug3', evidence: 'e3', severity: 'medium' as const }],
+        confidence: 0.85,
+      },
+    ]
+    const lenses = [
+      { key: 'lens1', model: 'opus' as const, prompt: 'test' },
+      { key: 'lens2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'lens3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs, brokenCount, crossValidated } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(3)
+    expect(brokenCount).toBe(0)
+  })
+
+  it('counts BROKEN verdicts', () => {
+    const results = [
+      { verdict: 'BROKEN' as const, bugs_found: [], confidence: 0.5 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.9 },
+      { verdict: 'FRAGILE' as const, bugs_found: [], confidence: 0.7 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { brokenCount } = crossValidateBugs(results, lenses)
+    expect(brokenCount).toBe(1)
+  })
+
+  it('identifies cross-validated bugs (same description in multiple lenses)', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'off by one error', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'off by one error', evidence: 'e2', severity: 'high' as const }],
+        confidence: 0.85,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [],
+        confidence: 0.95,
+      },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { crossValidated } = crossValidateBugs(results, lenses)
+    expect(crossValidated).toHaveLength(2)
+    expect(crossValidated[0].description).toBe('off by one error')
+  })
+
+  it('normalizes bug descriptions to lowercase and truncates to 60 chars for comparison', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [
+          { description: 'OFF BY ONE ERROR IN LOOP', evidence: 'e1', severity: 'high' as const },
+        ],
+        confidence: 0.9,
+      },
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [
+          { description: 'off  by   one   ERROR  in  LOOP', evidence: 'e2', severity: 'high' as const },
+        ],
+        confidence: 0.85,
+      },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { crossValidated } = crossValidateBugs(results, lenses)
+    expect(crossValidated).toHaveLength(2)
+  })
+
+  it('handles null entries in skepticResults', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      null,
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug2', evidence: 'e2', severity: 'low' as const }],
+        confidence: 0.8,
+      },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(2)
+  })
+
+  it('handles empty bugs_found array', () => {
+    const results = [
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.9 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.85 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'l1', model: 'opus' as const, prompt: 'test' },
+      { key: 'l2', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'l3', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs, crossValidated } = crossValidateBugs(results, lenses)
+    expect(allBugs).toHaveLength(0)
+    expect(crossValidated).toHaveLength(0)
+  })
+
+  it('preserves lens key on each bug entry', () => {
+    const results = [
+      {
+        verdict: 'PASS' as const,
+        bugs_found: [{ description: 'bug1', evidence: 'e1', severity: 'high' as const }],
+        confidence: 0.9,
+      },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.85 },
+      { verdict: 'PASS' as const, bugs_found: [], confidence: 0.95 },
+    ]
+    const lenses = [
+      { key: 'opus-lens', model: 'opus' as const, prompt: 'test' },
+      { key: 'sonnet-lens', model: 'sonnet' as const, prompt: 'test' },
+      { key: 'haiku-lens', model: 'haiku' as const, prompt: 'test' },
+    ]
+    const { allBugs } = crossValidateBugs(results, lenses)
+    expect(allBugs[0].lens).toBe('opus-lens')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildPacket — constructs TaskPacket for RED/GREEN/REFACTOR agents
+// ---------------------------------------------------------------------------
+
+describe('buildPacket', () => {
+  const testLane: Lane = {
+    title: 'Test Lane',
+    files: [],
+    acceptance_criteria: ['AC1', 'AC2'],
+    red_note: 'This is tricky',
+  }
+
+  const cfg = {
+    lanePlanPath: '/path/to/lane-plan.json',
+    epicBranch: 'epic/test',
+    runId: 'test-run-123',
+    language: 'typescript',
+    testCommand: 'npm test',
+    test_framework: 'vitest',
+  } as PipelineConfig
+  const specFile: ContextFile = { path: '/wt/.datum/lane-spec.json', exists: true, inlined: false, bytes: 300, sha: 'f'.repeat(40), content: null }
+
+  it('builds a packet for RED stage with test files allowed and impl files forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.stage).toBe('RED')
+    expect(packet.allowed_write_files).toEqual(['tests/test.ts'])
+    expect(packet.forbidden_write_files).toEqual(['src/impl.ts'])
+    expect(packet.commit_prefix).toBe('red(task-123)')
+  })
+
+  it('builds a packet for GREEN stage with impl files allowed and test files forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'GREEN', specFile)
+    expect(packet.stage).toBe('GREEN')
+    expect(packet.allowed_write_files).toEqual(['src/impl.ts'])
+    expect(packet.forbidden_write_files).toEqual(['tests/test.ts'])
+    expect(packet.commit_prefix).toBe('green(task-123)')
+  })
+
+  it('builds a packet for REFACTOR stage with both files allowed and none forbidden', () => {
+    const packet = buildPacket('task-123', ['tests/test.ts'], ['src/impl.ts'], testLane, '/wt', cfg, 'REFACTOR', specFile)
+    expect(packet.stage).toBe('REFACTOR')
+    expect(packet.allowed_write_files).toEqual(['tests/test.ts', 'src/impl.ts'])
+    expect(packet.forbidden_write_files).toEqual([])
+    expect(packet.commit_prefix).toBe('refactor(task-123)')
+  })
+
+  it('includes schema version and task_id', () => {
+    const packet = buildPacket('task-456', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.schema_version).toBe('1.0')
+    expect(packet.task_id).toBe('task-456')
+  })
+
+  it('copies title from lane', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.title).toBe('Test Lane')
+  })
+
+  it('carries the lane spec FILE reference, never the criteria or red_note text', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    // path + bytes only: the sha is the read witness and must not be in the prompt.
+    expect(packet.lane_spec_file).toEqual({ path: '/wt/.datum/lane-spec.json', bytes: 300 })
+    expect(JSON.stringify(packet)).not.toContain('ffffffffffff')
+    expect((packet as any).acceptance_criteria).toBeUndefined()
+    expect((packet as any).red_note).toBeUndefined()
+    expect(JSON.stringify(packet)).not.toContain('AC1')
+  })
+
+  it('sets working_directory from wt parameter', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/my/wt', cfg, 'RED', specFile)
+    expect(packet.working_directory).toBe('/my/wt')
+  })
+
+  it('includes test_command from config', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.test_command).toBe('npm test')
+  })
+
+  it('includes test_framework from config when present', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.test_framework).toBe('vitest')
+  })
+
+  it('omits test_framework when config does not have it', () => {
+    const minCfg = { testCommand: 'npm test' }
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', minCfg as any, 'RED', specFile)
+    expect((packet as any).test_framework).toBeUndefined()
+  })
+
+  it('merges extras into the packet', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile, {
+      custom_field: 'custom_value',
+      upstream_source: 'main',
+    })
+    expect((packet as any).custom_field).toBe('custom_value')
+    expect((packet as any).upstream_source).toBe('main')
+  })
+
+  it('extras do not override core fields (schema_version, task_id, stage, etc.)', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'RED', specFile, {
+      stage: 'GREEN',
+      schema_version: '2.0',
+      task_id: 'wrong-id',
+    })
+    expect(packet.stage).toBe('RED')
+    expect(packet.schema_version).toBe('1.0')
+    expect(packet.task_id).toBe('task-123')
+  })
+
+  it('handles empty test and impl file lists', () => {
+    const packet = buildPacket('task-123', [], [], testLane, '/wt', cfg, 'REFACTOR', specFile)
+    expect(packet.allowed_write_files).toEqual([])
+    expect(packet.forbidden_write_files).toEqual([])
+  })
+
+  it('preserves order of test files when allowed', () => {
+    const testFiles = ['test1.ts', 'test2.ts', 'test3.ts']
+    const packet = buildPacket('task-123', testFiles, [], testLane, '/wt', cfg, 'RED', specFile)
+    expect(packet.allowed_write_files).toEqual(testFiles)
+  })
+
+  it('preserves order of impl files when allowed', () => {
+    const implFiles = ['impl1.ts', 'impl2.ts', 'impl3.ts']
+    const packet = buildPacket('task-123', [], implFiles, testLane, '/wt', cfg, 'GREEN', specFile)
+    expect(packet.allowed_write_files).toEqual(implFiles)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// laneSpecHash — cross-language pin against tests/fixtures/lane_spec_hash_vectors.json
+//
+// tests/fixtures/lane_spec_hash_vectors.json is a static, committed fixture:
+// an array of {name, lane, hash}, one entry per interesting laneSpecHash
+// input shape (multibyte text, emoji/astral-plane characters, quotes,
+// backslashes, newlines, empty arrays, and a lane missing all three fields
+// entirely). It was generated once from this exact `laneSpecHash` by a
+// throwaway vitest run and is now pinned by BOTH sides: this test asserts
+// laneSpecHash still reproduces every vector's hash (TS regressions caught
+// here), and tests/test_lane_hash.py asserts the Python port
+// datum/lane_hash.py `lane_spec_hash` reproduces the same vectors (Python
+// regressions/divergence caught there). Neither side regenerates the
+// fixture — if either implementation's output would change, the fixture
+// (and the other side's test) makes that a loud, deliberate diff instead of
+// a silent drift that breaks `datum lane-state rehash` skip-condition
+// matching against markers written by the TS orchestrator.
+// ---------------------------------------------------------------------------
+
+import laneSpecHashVectors from '../../../tests/fixtures/lane_spec_hash_vectors.json'
+
+describe('laneSpecHash — cross-language pin (tests/fixtures/lane_spec_hash_vectors.json)', () => {
+  for (const vector of laneSpecHashVectors as Array<{ name: string; lane: Partial<Lane>; hash: string }>) {
+    it(`matches pinned vector: ${vector.name}`, () => {
+      expect(laneSpecHash(vector.lane as Pick<Lane, 'files' | 'acceptance_criteria' | 'depends_on'>)).toBe(vector.hash)
+    })
+  }
+})
+
+// elonchesd wf_2b0230c2-f41: a RED-stage diff that touched the lane's OWN
+// impl file was reported as "owned by another lane". The forbidden list at
+// RED/GREEN is the other stage's files of the same lane, so say that.
+describe('verifyFileOwnership names forbidden files by stage, not as another lane\'s', () => {
+  it('a forbidden file is reported as off-limits for this stage', () => {
+    const r = verifyFileOwnership(['src/a.ts'], ['src/a.test.ts'], ['src/a.ts'])
+    expect(r.ok).toBe(false)
+    expect(r.violations[0]).toBe('src/a.ts is forbidden at this stage (the other stage of this lane owns it, or another lane does)')
+    expect(r.violations.join(' ')).not.toContain('owned by another lane')
+  })
+})
+
+describe('skepticMinorityFindings / minorityFollowUps (caliper#564)', () => {
+  const hi = { description: 'thresholds dropped on --serve path', evidence: 'part_cmd.py:345 vs 368', severity: 'high' as const, lens: 'edge' }
+  const lo = { description: 'style nit', evidence: 'x', severity: 'low' as const, lens: 'error' }
+  const noEv = { description: 'might break', evidence: '', severity: 'critical' as const, lens: 'contract' }
+  it('keeps every single-lens bug with evidence at its reported severity; drops cross-validated and evidence-less ones', () => {
+    const out = skepticMinorityFindings([hi, lo, noEv], [])
+    expect(out).toEqual([hi, lo])
+    expect(skepticMinorityFindings([hi], [hi])).toEqual([])
+    const [, low] = minorityFollowUps('task-006', 'abc', [hi, lo])
+    expect(low.severity).toBe('low')
+  })
+  it('renders FollowUpIssue entries with a stable dedup key and lane/sha traceability', () => {
+    const [f] = minorityFollowUps('task-007', 'bc6f34d', [hi])
+    expect(f.dedup_key).toBe('skeptic-minority:task-007:bc6f34d:0')
+    expect(f.title).toBe('[skeptic] task-007: thresholds dropped on --serve path')
+    expect(f.body).toContain('GREEN bc6f34d')
+    expect(f.body).toContain('part_cmd.py:345 vs 368')
+    expect(f.source).toBe('act.skeptic-minority')
+    expect(f.severity).toBe('high')
+  })
+})
+
+// caliper BUG P (wf_b5e87f27-e4b task-009): the lane runner registered EVERY
+// preflight skeleton output path as a test file — a second classifier that
+// disagreed with classifyFiles. docs/CAPABILITIES.md and a deliverable
+// fixture (tests/fixtures/part_corpus/baseline.json, impl-adjacent via
+// /fixtures/) became "the lane's test files", so a fully green GREEN that
+// wrote them failed green_edited_tests and was reset away.
+describe('preflightTestPaths', () => {
+  it('registers only outputs classifyFiles calls tests, skipping docs, fixtures and duplicates', () => {
+    const r = preflightTestPaths(
+      [
+        { path: 'tests/test_part_score.py' },
+        { path: 'docs/CAPABILITIES.md' },
+        { path: 'tests/fixtures/part_corpus/baseline.json' },
+        { path: 'tests/test_part_score.py' },
+        { path: 'tests/test_already.py' },
+        {},
+      ],
+      ['tests/test_already.py'],
+    )
+    expect(r.registered).toEqual(['tests/test_part_score.py'])
+    expect(r.skipped).toEqual(['docs/CAPABILITIES.md', 'tests/fixtures/part_corpus/baseline.json'])
+  })
+})
+
+// datum self-hosted wf_498d1f29-3f9 task-002: the RED test did `import datum`
+// (the package, for `datum.__file__`) and the scope check demanded a lane
+// file `datum.py`, which cannot exist — the lane failed `scope_gap` on a
+// phantom. A first-party PACKAGE import needs no lane file; only a module
+// path below the package maps to a file.
+describe('extractRequiredScopeFiles — python package imports', () => {
+  it('a bare first-party package import maps to no file; a submodule still maps to its .py', () => {
+    const content = 'import datum\nimport datum.gate\nfrom datum.lane_plan import build_lane_plan\nimport json\n'
+    const required = extractRequiredScopeFiles(content, 'tests/test_x.py', 'python')
+    expect(required).not.toContain('datum.py')
+    expect(required).toContain('datum/gate.py')
+    expect(required).toContain('datum/lane_plan.py')
+    expect(required).not.toContain('json.py')
   })
 })

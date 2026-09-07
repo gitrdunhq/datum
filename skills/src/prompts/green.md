@@ -3,6 +3,9 @@ GREEN TDD agent. Make the failing tests pass with minimum implementation code.
 SETUP (run first): {{greenCtxCmd}}
 TASK PACKET: {{greenPacketStr}}
 
+LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
 CONTEXT MANAGEMENT:
 Before reading implementation files, use headroom_compress on any file longer than 100 lines.
 This saves context for reasoning. Use headroom_retrieve with a targeted query when you need
@@ -29,12 +32,13 @@ AFTER WRITING:
 
 PACKET FIELDS:
 - test_signal: error messages from failing tests — your implementation spec
-- contract_summary: function signatures extracted from acceptance criteria
+- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)
 - impl_stubs: skeleton files — fill these in
 - existing_api: current module code shape
 
 CONSTRAINTS:
 - Only write and commit implementation files: {{implFilesList}}
+- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.
 - If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) — one honest blocked result beats three blind attempts.
 - Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with 'Package.swift' and a description of the required dependency.
 - For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.

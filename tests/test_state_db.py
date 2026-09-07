@@ -160,6 +160,42 @@ def test_ensure_feature_branch_noop_when_already_on_feature_branch(
     assert "datum/contact-form" not in _git_out(tmp_path, "branch", "--list")
 
 
+def test_ensure_feature_branch_raises_when_current_branch_is_unknown(
+    tmp_path, monkeypatch, capsys
+):
+    """Regression guard: current_branch() returns None on a git failure
+    (timeout, missing binary, detached HEAD, etc — see its bare `except
+    Exception: return None`). ensure_feature_branch must never silently
+    treat that None as "we're already on a valid non-protected branch"
+    and hand a None branch name back to callers (who then write it into
+    pipeline state as a real branch)."""
+    _init_main_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "current_branch", lambda: None)
+
+    with pytest.raises(RuntimeError, match="branch"):
+        state_mod.ensure_feature_branch(title="Contact Form")
+
+
+def test_cmd_init_without_title_raises_when_current_branch_is_unknown(
+    tmp_path, monkeypatch
+):
+    """Regression guard: without --title, cmd_init derives work_branch as
+    `None if branch == base_branch else branch`. If current_branch() can't
+    determine the branch (git failure) it also returns None — which this
+    formula cannot tell apart from "we're legitimately on main with no
+    work branch yet". The unknown-branch case must fail loudly instead of
+    silently writing work_branch=None into state.json as if it were a
+    normal fresh-epic state."""
+    _init_main_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+    monkeypatch.setattr(state_mod, "current_branch", lambda: None)
+
+    with pytest.raises(RuntimeError, match="branch"):
+        state_mod.cmd_init(argparse.Namespace(run_id=None, title=None))
+
+
 def test_state_init_title_sets_descriptive_work_branch(tmp_path):
     """`datum state init --title` records the descriptive branch in state."""
     _init_main_repo(tmp_path)

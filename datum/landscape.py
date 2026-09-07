@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -76,16 +77,12 @@ def generate_scaffold(
 def _compute_hash(root_path: Path) -> str:
     """Hash based on sorted (relative_path, size, mtime_ns) tuples."""
     entries: list[tuple[str, int, int]] = []
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        for fname in filenames:
-            fpath = Path(dirpath) / fname
-            try:
-                stat = fpath.stat()
-                rel = str(fpath.relative_to(root_path))
-                entries.append((rel, stat.st_size, stat.st_mtime_ns))
-            except OSError:
-                continue
+    for rel in _project_files(root_path):
+        try:
+            stat = (root_path / rel).stat()
+            entries.append((rel, stat.st_size, stat.st_mtime_ns))
+        except OSError:
+            continue
 
     entries.sort()
     h = hashlib.sha256()
@@ -206,42 +203,68 @@ def _parse_cargo_name(path: Path) -> str | None:
         return None
 
 
+def _git_tracked_files(root_path: Path) -> list[str] | None:
+    """Relative paths of git-tracked files, or None when root is not a git repo.
+
+    Inside a repo the landscape follows ``git ls-files`` so ignored and untracked
+    scratch (worktrees, tool caches, graph dumps) never lands in a committed doc.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root_path), "ls-files", "-z"],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
+def _walk_files(root_path: Path) -> list[str]:
+    """Relative paths of every file under root, pruning SKIP_DIRS."""
+    out: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for fname in filenames:
+            out.append(str((Path(dirpath) / fname).relative_to(root_path)))
+    return out
+
+
+def _project_files(root_path: Path) -> list[str]:
+    """Sorted relative file paths: git-tracked when in a repo, else a walk."""
+    files = _git_tracked_files(root_path)
+    if files is None:
+        files = _walk_files(root_path)
+    kept = [f for f in files if not (set(Path(f).parts[:-1]) & SKIP_DIRS)]
+    return sorted(set(kept))
+
+
 def _section_file_tree(root_path: Path) -> str:
     """Build file tree with LOC per directory."""
     lines = ["## File Tree\n", "```"]
-    dir_loc: dict[str, int] = {}
-    file_entries: list[tuple[str, int]] = []
+    dir_loc: dict[str, int] = {".": 0}
+    seen_dirs: set[str] = set()
 
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        rel_dir = str(Path(dirpath).relative_to(root_path))
-        if rel_dir == ".":
-            rel_dir = ""
-
-        dir_total = 0
-        for fname in sorted(filenames):
-            fpath = Path(dirpath) / fname
-            loc = _count_lines(fpath)
-            dir_total += loc
-            rel_file = str(fpath.relative_to(root_path))
-            file_entries.append((rel_file, loc))
-
-        if rel_dir:
-            dir_loc[rel_dir] = dir_loc.get(rel_dir, 0) + dir_total
-            # Accumulate to parent directories
-            parts = Path(rel_dir).parts
-            for i in range(len(parts) - 1):
-                parent = str(Path(*parts[: i + 1]))
-                dir_loc[parent] = dir_loc.get(parent, 0) + dir_total
-        else:
-            dir_loc["."] = dir_total
-
-    # Render tree
-    for entry, loc in file_entries:
-        depth = entry.count(os.sep)
-        indent = "  " * depth
-        name = Path(entry).name
-        lines.append(f"{indent}{name} ({loc} LOC)")
+    # Sorted paths mean a directory's first file introduces the directory
+    # line (and any unseen ancestors) before that file, so nested basenames
+    # are attributable.
+    for rel_file in _project_files(root_path):
+        parts = Path(rel_file).parts
+        for i in range(1, len(parts)):
+            d = str(Path(*parts[:i]))
+            if d not in seen_dirs:
+                seen_dirs.add(d)
+                lines.append(f"{'  ' * (i - 1)}{parts[i - 1]}/")
+        loc = _count_lines(root_path / rel_file)
+        lines.append(f"{'  ' * (len(parts) - 1)}{parts[-1]} ({loc} LOC)")
+        if len(parts) == 1:
+            dir_loc["."] += loc
+        for i in range(1, len(parts)):
+            d = str(Path(*parts[:i]))
+            dir_loc[d] = dir_loc.get(d, 0) + loc
 
     lines.append("```\n")
 
@@ -272,13 +295,11 @@ def _section_module_docstrings(root_path: Path) -> str:
     lines = ["## Module Docstrings\n"]
     found = False
 
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        if "__init__.py" in filenames:
-            init_path = Path(dirpath) / "__init__.py"
-            docstring = _extract_docstring(init_path)
+    for rel_file in _project_files(root_path):
+        if Path(rel_file).name == "__init__.py":
+            docstring = _extract_docstring(root_path / rel_file)
             if docstring:
-                rel = str(Path(dirpath).relative_to(root_path))
+                rel = str(Path(rel_file).parent)
                 if rel == ".":
                     rel = "(root)"
                 lines.append(f"- **{rel}**: {docstring}")

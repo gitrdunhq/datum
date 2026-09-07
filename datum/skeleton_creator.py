@@ -24,6 +24,24 @@ from typing import Literal
 TestConvention = Literal["flat", "directory", "docs-only"]
 
 
+def _finalize_skeleton_output(skeleton: dict, skip_file_writes: bool) -> dict:
+    """Write the skeleton to disk (or note that it was skipped) and return it.
+
+    Shared by every skeleton-emission loop below so the write-vs-preflight
+    branching logic lives in exactly one place.
+    """
+    dest = Path(skeleton["path"])
+    if not skip_file_writes:
+        _write_skeleton(dest, skeleton.pop("content"))
+        skeleton["skeleton_written"] = True
+    else:
+        skeleton["skeleton_written"] = False
+        skeleton["skeleton_note"] = (
+            "preflight-only: content emitted in JSON, not written to disk"
+        )
+    return skeleton
+
+
 def _write_skeleton(dest: Path, content: str) -> None:
     """Append skeleton content to dest if it exists, otherwise create it."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -81,16 +99,22 @@ def _extract_swift_target_context(task_files: list[str]) -> str | None:
 def _detect_swift_framework(test_file: str) -> str:
     path = Path(test_file)
     test_dir = path.parent
-    # Check current dir and parents up to Tests/
-    while not test_dir.exists() and test_dir.name and test_dir.name != "Tests":
+    # Scan every EXISTING ancestor from the file's directory up to Tests/.
+    # Two real cases must both work: the RED agent's new test file usually
+    # lives in a directory that does not exist yet (climb to the nearest
+    # existing ancestor), and an existing deep directory may only carry the
+    # framework import in a sibling higher up (keep climbing to Tests/).
+    while True:
+        if test_dir.exists():
+            for f in test_dir.rglob("*.swift"):
+                content = f.read_text()
+                if "import XCTest" in content:
+                    return "xctest"
+                if "import Testing" in content:
+                    return "swift-testing"
+        if not test_dir.name or test_dir.name == "Tests":
+            break
         test_dir = test_dir.parent
-    if test_dir.exists():
-        for f in test_dir.rglob("*.swift"):
-            content = f.read_text()
-            if "import XCTest" in content:
-                return "xctest"
-            if "import Testing" in content:
-                return "swift-testing"
     return "swift-testing"
 
 
@@ -335,14 +359,25 @@ def build_impl_stubs(
             continue
 
         content = "\n".join(lines)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
 
         stubs.append(
             {
                 "path": impl_path,
                 "functions": list(seen),
-                "stub_written": True,
+                # Fixed (#388): impl stubs are data for GREEN's packet, not
+                # files to plant in a checkout. Writing them to disk here
+                # left untracked source files (e.g. src/.../part_score.py)
+                # in whichever checkout happened to be `cwd` when `datum
+                # skeleton` ran — usually the ROOT checkout, since the lane
+                # intake and Plan-phase callers never `cd`/`--repo` into the
+                # lane worktree. Those stray files collided with squash-merge
+                # ("untracked working tree files would be overwritten") and
+                # could shadow GREEN's real implementation with a
+                # NotImplementedError stub during RED. GREEN reads stub
+                # bodies from this JSON's `content` field and writes the
+                # actual file itself — never from a pre-existing stub file.
+                "stub_written": False,
+                "content": content,
             }
         )
 
@@ -422,7 +457,19 @@ def infer_module(task_files: list[str], language: str) -> str:
     return "Module"
 
 
-def make_function_name(ac_id: str, ac_text: str, language: str) -> str:
+def make_function_name(
+    ac_id: str, ac_text: str, language: str, invariant_id: str | None = None
+) -> str:
+    if invariant_id:
+        inv = invariant_id.lower()
+        if language == "swift":
+            return f"test_{inv}"
+        if language in ("typescript", "javascript"):
+            return inv
+        if language == "go":
+            return "Test" + invariant_id[0].upper() + invariant_id[1:]
+        return f"test_{inv}"
+
     slug = slugify(ac_text)
     if language == "swift":
         return f"test_{ac_id.lower()}_{slug}"
@@ -434,8 +481,17 @@ def make_function_name(ac_id: str, ac_text: str, language: str) -> str:
     return f"test_{ac_id.lower()}_{slug}"
 
 
+def _extract_invariant_id(ac_text: str) -> str | None:
+    """Pull a leading `II1:` or `INV-020:` invariant id off an AC's text, if present."""
+    m = re.match(r"\s*([A-Za-z]{1,6}-?\d+)\s*:", ac_text)
+    return m.group(1) if m else None
+
+
 def make_struct_name(task_id: str, ac_id: str) -> str:
-    return f"{task_id.replace('-', '_').replace('task', 'Task')}_{ac_id}"
+    """CapWords, no underscores: `Task001AC1`. The old `Task_001_AC1` failed
+    pep8-naming (ruff N801) on every skeleton-derived test in a repo with
+    the N rules on (caliper BUG Q, 27 of 29 Validate lint errors)."""
+    return f"{task_id.replace('-', '').replace('task', 'Task')}{ac_id}"
 
 
 def build_skeleton(
@@ -447,9 +503,17 @@ def build_skeleton(
     task_files: list[str],
     language: str,
     framework: str | None = None,
+    invariant_id: str | None = None,
+    forced_path: str | None = None,
 ) -> dict:
-    function_name = make_function_name(ac_id, ac_text, language)
-    path = infer_test_path(task_files, language, ac_id)
+    function_name = make_function_name(
+        ac_id, ac_text, language, invariant_id=invariant_id
+    )
+    path = (
+        forced_path
+        if forced_path is not None
+        else infer_test_path(task_files, language, ac_id)
+    )
     struct_name = make_struct_name(task_id, ac_id)
     module = infer_module(task_files, language)
     suite_name = f"{task_id} — {property_id}"
@@ -539,6 +603,7 @@ def run_preflight(
 
         acs_text = task_data.get("acceptance_criteria", [])
         files = task_data.get("files", [])
+        is_integration_lane = task_data.get("kind") == "integration"
 
         outputs = []
         for i, ac_text in enumerate(acs_text):
@@ -561,17 +626,12 @@ def run_preflight(
                     if language == "swift" and files
                     else None
                 ),
+                invariant_id=(
+                    _extract_invariant_id(ac_text) if is_integration_lane else None
+                ),
+                forced_path=(files[0] if is_integration_lane and files else None),
             )
-            dest = Path(skeleton["path"])
-            if not skip_file_writes:
-                _write_skeleton(dest, skeleton.pop("content"))
-                skeleton["skeleton_written"] = True
-            else:
-                skeleton["skeleton_written"] = False
-                skeleton["skeleton_note"] = (
-                    "preflight-only: content emitted in JSON, not written to disk"
-                )
-            outputs.append(skeleton)
+            outputs.append(_finalize_skeleton_output(skeleton, skip_file_writes))
 
         target_context = (
             _extract_swift_target_context(files) if language == "swift" else None
@@ -657,16 +717,7 @@ def run_preflight(
                 ),
             )
             # Write the file only when --apply is used; preflight only emits content in JSON
-            dest = Path(skeleton["path"])
-            if not skip_file_writes:
-                _write_skeleton(dest, skeleton.pop("content"))
-                skeleton["skeleton_written"] = True
-            else:
-                skeleton["skeleton_written"] = False
-                skeleton["skeleton_note"] = (
-                    "preflight-only: content emitted in JSON, not written to disk"
-                )
-            outputs.append(skeleton)
+            outputs.append(_finalize_skeleton_output(skeleton, skip_file_writes))
     elif acs:
         for i, ac_text in enumerate(acs):
             ac_id = f"AC{i + 1}"
@@ -685,16 +736,7 @@ def run_preflight(
                     else None
                 ),
             )
-            dest = Path(skeleton["path"])
-            if not skip_file_writes:
-                _write_skeleton(dest, skeleton.pop("content"))
-                skeleton["skeleton_written"] = True
-            else:
-                skeleton["skeleton_written"] = False
-                skeleton["skeleton_note"] = (
-                    "preflight-only: content emitted in JSON, not written to disk"
-                )
-            outputs.append(skeleton)
+            outputs.append(_finalize_skeleton_output(skeleton, skip_file_writes))
     else:
         target_context = (
             _extract_swift_target_context(files) if language == "swift" else None

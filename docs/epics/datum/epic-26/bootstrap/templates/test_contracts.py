@@ -25,27 +25,21 @@ import inspect
 
 import pytest
 
-# ── Imports ──────────────────────────────────────────────────────────────────
-
-import datum.state
-from datum.state import load_state, resolve_tier, PHASES
-
 import datum.gate
-
 import datum.local_llm
-from datum.local_llm import (
-    run_phase,
-    multi_turn_phase,
-    generate,
-    structured,
-    _execute_tool,
-)
-
 import datum.pipeline_scheduler
-import datum.commit_queue
-from datum.commit_queue import apply_patch_and_commit
 
+# ── Imports ──────────────────────────────────────────────────────────────────
+import datum.state
+from datum.local_llm import (
+    _execute_tool,
+    generate,
+    multi_turn_phase,
+    run_phase,
+    structured,
+)
 from datum.schemas import StepPlan, StepResult, ToolCall
+from datum.state import PHASES, load_state
 
 # ── datum.state surface ───────────────────────────────────────────────────────
 
@@ -60,21 +54,6 @@ def test_state_load_state_signature():
     sig = inspect.signature(load_state)
     params = list(sig.parameters.keys())
     assert params == [], f"load_state expected no params, got {params}"
-
-
-def test_state_resolve_tier_is_callable():
-    """Catches drift: datum.state.resolve_tier removed or replaced with a non-callable."""
-    assert callable(resolve_tier)
-
-
-def test_state_resolve_tier_signature():
-    """Catches drift: resolve_tier lost 'phase' or 'run_state' params — M1 driver call sites break."""
-    sig = inspect.signature(resolve_tier)
-    params = list(sig.parameters.keys())
-    assert "phase" in params, f"resolve_tier missing 'phase' param, got {params}"
-    assert (
-        "run_state" in params
-    ), f"resolve_tier missing 'run_state' param, got {params}"
 
 
 def test_state_phases_is_list():
@@ -194,38 +173,6 @@ def test_pipeline_scheduler_importable():
 def test_pipeline_scheduler_is_module():
     """Catches drift: datum.pipeline_scheduler replaced with a non-module object."""
     assert inspect.ismodule(datum.pipeline_scheduler)
-
-
-# ── datum.commit_queue surface ────────────────────────────────────────────────
-
-
-def test_commit_queue_importable():
-    """Catches drift: datum.commit_queue module deleted or renamed."""
-    assert datum.commit_queue is not None
-
-
-def test_commit_queue_is_module():
-    """Catches drift: datum.commit_queue replaced with a non-module object."""
-    assert inspect.ismodule(datum.commit_queue)
-
-
-def test_commit_queue_apply_patch_and_commit_is_callable():
-    """Catches drift: apply_patch_and_commit removed — M1 driver commit step breaks."""
-    assert callable(apply_patch_and_commit)
-
-
-def test_commit_queue_apply_patch_and_commit_signature():
-    """Catches drift: apply_patch_and_commit lost 'patch', 'message', 'run_id', or 'file_set'."""
-    sig = inspect.signature(apply_patch_and_commit)
-    params = list(sig.parameters.keys())
-    assert "patch" in params, f"apply_patch_and_commit missing 'patch', got {params}"
-    assert (
-        "message" in params
-    ), f"apply_patch_and_commit missing 'message', got {params}"
-    assert "run_id" in params, f"apply_patch_and_commit missing 'run_id', got {params}"
-    assert (
-        "file_set" in params
-    ), f"apply_patch_and_commit missing 'file_set', got {params}"
 
 
 # ── datum.schemas surface ─────────────────────────────────────────────────────

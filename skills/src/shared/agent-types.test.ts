@@ -11,10 +11,11 @@ import { join } from 'node:path'
 import {
   AGENT_TYPE_TABLE,
   configureAgentTypes,
-  agentTypesEnabled,
   hooksInstalled,
   deterministicChecks,
   stageOpts,
+  bootstrapOpts,
+  resetAgentTypesForTests,
   readAgentTypeConfig,
   agentTypeArgs,
   type StageKind,
@@ -71,6 +72,41 @@ describe('stageOpts', () => {
   })
 })
 
+// A consumer repo with `agent_types: false` (agents not registered until the
+// Claude Code session restarts) still died with "agent type 'datum-cli' not
+// found": the FIRST agent() call of several scripts is the config read
+// itself, issued through stageOpts() before configureAgentTypes() has run —
+// the default state silently said "agent types on". Unconfigured stageOpts
+// is now a loud failure; the one read that must precede configuration goes
+// through bootstrapOpts(), which never attaches an agentType until told to.
+describe('ordering guard (elonchesd-89 report)', () => {
+  it('stageOpts throws agent_types_unconfigured before configureAgentTypes has run', () => {
+    resetAgentTypesForTests()
+    expect(() => stageOpts('cli', { label: 'read-config' })).toThrow(/agent_types_unconfigured.*read-config/)
+  })
+
+  it('bootstrapOpts attaches no agentType before configuration', () => {
+    resetAgentTypesForTests()
+    const opts = bootstrapOpts('cli', { label: 'read-config', model: 'haiku' })
+    expect(opts).toEqual({ label: 'read-config', model: 'haiku' })
+    expect('agentType' in opts).toBe(false)
+  })
+
+  it('bootstrapOpts behaves exactly like stageOpts once configured', () => {
+    resetAgentTypesForTests()
+    configureAgentTypes({ agentTypes: true })
+    expect(bootstrapOpts('cli', { label: 'x' }).agentType).toBe('datum-cli')
+    configureAgentTypes({ agentTypes: false })
+    expect('agentType' in bootstrapOpts('cli', { label: 'x' })).toBe(false)
+  })
+
+  it('configureAgentTypes({}) counts as configured (child scripts pass the parent switches or {})', () => {
+    resetAgentTypesForTests()
+    configureAgentTypes({})
+    expect(stageOpts('cli').agentType).toBe('datum-cli')
+  })
+})
+
 describe('readAgentTypeConfig', () => {
   it('defaults agent_types on and hooks_installed off', () => {
     expect(readAgentTypeConfig({})).toEqual({ agentTypes: true, hooksInstalled: false })
@@ -88,7 +124,7 @@ describe('readAgentTypeConfig', () => {
 
 describe('deterministicChecks gate', () => {
   it('is off by default (hooks not reported installed)', () => {
-    expect(agentTypesEnabled()).toBe(true)
+    expect(agentTypeArgs().agentTypes).toBe(true)
     expect(hooksInstalled()).toBe(false)
     expect(deterministicChecks()).toBe(false)
   })
@@ -107,7 +143,7 @@ describe('deterministicChecks gate', () => {
     const passed = agentTypeArgs()
     configureAgentTypes({ agentTypes: true, hooksInstalled: false })
     configureAgentTypes(passed)
-    expect(agentTypesEnabled()).toBe(false)
+    expect(agentTypeArgs().agentTypes).toBe(false)
     expect(hooksInstalled()).toBe(true)
   })
 })

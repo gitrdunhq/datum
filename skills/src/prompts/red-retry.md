@@ -5,6 +5,9 @@ First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclud
 SETUP: {{redCtxCmd}}
 TASK PACKET: {{redPacketStr}}
 
+LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
+
 Write simple, concrete tests. One test per acceptance criterion. Assert specific values.
 Call methods that don't exist yet — the language's missing-method error (AttributeError, TypeError, compilation error, etc.) is your RED signal.
 NEVER use hardcoded failure stubs (raise NotImplementedError, fatalError, panic) — test fixtures may auto-skip them.

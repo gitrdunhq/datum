@@ -171,64 +171,30 @@ class TestHooks(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr or result.stdout)
 
 
-class TestCommitQueue(unittest.TestCase):
-    def test_requires_clean_tree(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-            (repo / "dirty.txt").write_text("untracked\n")
-            patch = _write_patch()
-            try:
-                result = run_module(
-                    "datum.commit_queue",
-                    [
-                        "--run-id",
-                        "epic-1-20260101-120000",
-                        "--apply-patch",
-                        str(patch),
-                        "--message",
-                        "green(task-001): update app",
-                    ],
-                    cwd=repo,
-                )
-            finally:
-                patch.unlink(missing_ok=True)
-            self.assertNotEqual(result.returncode, 0)
-            payload = json.loads(result.stdout)
-            self.assertEqual(payload["error"], "dirty_working_tree")
-
-    def test_applies_declared_patch(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp)
-            _init_repo(repo)
-            patch = _write_patch()
-            try:
-                result = run_module(
-                    "datum.commit_queue",
-                    [
-                        "--run-id",
-                        "epic-1-20260101-120000",
-                        "--apply-patch",
-                        str(patch),
-                        "--message",
-                        "green(task-001): update app",
-                    ],
-                    cwd=repo,
-                )
-            finally:
-                patch.unlink(missing_ok=True)
-            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            payload = json.loads(result.stdout)
-            self.assertTrue(payload["ok"])
-            self.assertEqual((repo / "app.txt").read_text(), "hello\nworld\n")
-
-
 class TestSkillAssets(unittest.TestCase):
     def test_skill_md_exists(self) -> None:
         self.assertTrue((ROOT / "SKILL.md").exists())
 
-    def test_datum_md_exists(self) -> None:
-        self.assertTrue((ROOT / "docs/DATUM.md").exists())
+    def test_skill_md_documents_integration_lanes(self) -> None:
+        # AC10.2 of the integration-lanes epic (review CORR-003).
+        text = (ROOT / "SKILL.md").read_text()
+        for name in (
+            'kind: "integration"',
+            "invariant_missing_for_question",
+            "invariant_covers_unknown_task",
+            "no_integration_invariants",
+            "integration_failed",
+        ):
+            self.assertIn(name, text)
+
+    def test_flow_md_exists(self) -> None:
+        self.assertTrue((ROOT / "docs/FLOW.md").exists())
+
+    def test_design_brainstorm_not_presented_as_reference(self) -> None:
+        # docs/DATUM.md was the pre-implementation design spec; README must
+        # not point readers at it as the skill reference.
+        self.assertFalse((ROOT / "docs/DATUM.md").exists())
+        self.assertNotIn("docs/DATUM.md", (ROOT / "README.md").read_text())
 
     def test_install_sh_exists_and_executable(self) -> None:
         install = ROOT / "install.sh"

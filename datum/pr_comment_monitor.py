@@ -16,11 +16,20 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timezone
 from pathlib import Path
+
+_RUN_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def _validate_run_id(run_id: str) -> None:
+    if not run_id or not _RUN_ID_RE.match(run_id) or ".." in run_id:
+        raise ValueError(f"run_id must be a safe path component: {run_id!r}")
+
 
 STATE_FILE = Path(".datum/state.json")
 PROCESSED_FILE_TEMPLATE = ".datum/runs/{run_id}/pr-comments-processed.json"
@@ -71,6 +80,7 @@ def post_reply(pr_url: str, comment_id: str, body: str) -> None:
 
 
 def load_processed(run_id: str) -> set[str]:
+    _validate_run_id(run_id)
     p = Path(PROCESSED_FILE_TEMPLATE.format(run_id=run_id))
     if p.exists():
         return set(json.loads(p.read_text()))
@@ -78,6 +88,7 @@ def load_processed(run_id: str) -> set[str]:
 
 
 def save_processed(run_id: str, processed: set[str]) -> None:
+    _validate_run_id(run_id)
     p = Path(PROCESSED_FILE_TEMPLATE.format(run_id=run_id))
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(sorted(processed), indent=2))
@@ -185,7 +196,9 @@ def poll_once(run_id: str, reply_enabled: bool) -> list[dict]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PR comment monitor for /datum commands")
+    parser = argparse.ArgumentParser(
+        description="PR comment monitor for /datum commands"
+    )
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--once", action="store_true", help="Check once and exit")
     parser.add_argument(

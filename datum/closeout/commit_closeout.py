@@ -31,11 +31,13 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    # Check if a closeout commit already exists
-    log = git(
-        "log", "--oneline", "--grep", f"closeout: {args.run_id}", "-1"
-    ).stdout.strip()
-    if log:
+    # Check if a closeout commit already exists (with exact subject matching)
+    log_result = git("log", "--grep", f"closeout: {args.run_id}", "--format=%s")
+    subjects = (
+        log_result.stdout.strip().split("\n") if log_result.stdout.strip() else []
+    )
+    closeout_subject = f"closeout: {args.run_id}"
+    if any(s == closeout_subject for s in subjects):
         marker.write_text("done")
         print(
             json.dumps(
@@ -52,7 +54,17 @@ def main() -> None:
     for f in SYNTHESIS_FILES:
         p = Path(f)
         if p.exists():
-            git("add", str(p))
+            result = git("add", str(p))
+            if result.returncode != 0:
+                print(
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": f"Failed to stage {f}: {result.stderr[:300]}",
+                        }
+                    )
+                )
+                sys.exit(1)
             staged.append(f)
 
     if not staged:
@@ -81,16 +93,94 @@ def main() -> None:
             if res_commit.returncode != 0:
                 print(json.dumps({"ok": False, "error": res_commit.stderr[:300]}))
                 sys.exit(1)
-            
-            git("push", "-u", "origin", branch_name)
-            subprocess.run(
-                ["gh", "pr", "create", "--title", f"Closeout: {args.run_id}", "--body", f"Automated closeout PR for {args.run_id}"],
+
+            push_result = git("push", "-u", "origin", branch_name)
+            if push_result.returncode != 0:
+                sha = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=".",
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                print(
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": f"git push failed: {push_result.stderr[:300]}",
+                            "sha": sha,
+                        }
+                    )
+                )
+                sys.exit(1)
+
+            import shutil
+
+            if shutil.which("gh") is None:
+                # gh not on PATH, skip PR creation but don't fail
+                marker.write_text("done")
+                sha = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=".",
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                print(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "pr_created": False,
+                            "reason": "gh not on PATH",
+                            "branch": branch_name,
+                            "files": staged,
+                            "sha": sha,
+                        }
+                    )
+                )
+                return
+
+            gh_result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--title",
+                    f"Closeout: {args.run_id}",
+                    "--body",
+                    f"Automated closeout PR for {args.run_id}",
+                ],
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
+            if gh_result.returncode != 0:
+                sha = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=".",
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                print(
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": f"gh pr create failed: {gh_result.stderr[:300]}",
+                            "sha": sha,
+                        }
+                    )
+                )
+                sys.exit(1)
+
             marker.write_text("done")
-            print(json.dumps({"ok": True, "pr_created": True, "branch": branch_name, "files": staged}))
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "pr_created": True,
+                        "branch": branch_name,
+                        "files": staged,
+                    }
+                )
+            )
             return
 
         print(json.dumps({"ok": False, "error": result.stderr[:300]}))

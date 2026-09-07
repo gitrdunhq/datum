@@ -16,10 +16,21 @@ Verification per phase:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+
+class PipelineStateCorruptError(RuntimeError):
+    """.datum/pipeline-state.json exists but could not be read/parsed.
+
+    Must never be treated the same as "no prior state" — a caller that
+    does `if not prior_state: start_fresh()` would silently discard
+    tracked pipeline progress on file corruption.
+    """
+
 
 PHASE_COMMIT_PREFIX = {
     "refine": "refine:",
@@ -34,9 +45,14 @@ def verify_phase(
     phase: str, *, run_id: str = "", tests_pass: bool = False
 ) -> tuple[bool, str]:
     if phase == "act":
-        pattern = f"^act({run_id}):"
+        # The squash-merge subject is `act(<batchRunId>): merge N lanes`
+        # (skills/src/shared/lane-steps.ts mergeSteps) and batchRunId is
+        # `<run_id>-b<N>` whenever the epic needed more than one batch — so
+        # match the optional batch suffix, or every large epic fails here.
+        # Extended regexp: `(`/`)` must be escaped to be literal.
+        pattern = rf"^act\({re.escape(run_id)}(-b[0-9]+)?\):"
         result = subprocess.run(
-            ["git", "log", "--oneline", "--grep", pattern],
+            ["git", "log", "--oneline", "--extended-regexp", "--grep", pattern],
             capture_output=True,
             text=True,
         )
@@ -55,13 +71,21 @@ def verify_phase(
     prefix = PHASE_COMMIT_PREFIX.get(phase)
     if prefix is None:
         return False, f"unknown phase {phase!r}"
+    # `<phase>:` or `<phase>(<run-id>):` — the closeout batch commits
+    # `closeout(<run>): write CURRENT_STATE.md + ...` (datum-closeout.ts),
+    # and `^closeout:` could never record the phase that had just
+    # completed (elonchesd epic-1).
+    word = prefix.rstrip(":")
+    pattern = rf"^{re.escape(word)}(:|\()"
     result = subprocess.run(
-        ["git", "log", "--oneline", "--grep", f"^{prefix}"],
+        ["git", "log", "--oneline", "--extended-regexp", "--grep", pattern],
         capture_output=True,
         text=True,
     )
     found = bool(result.stdout.strip())
-    return found, "" if found else f"no commit matching '^{prefix}' found in git log"
+    return found, (
+        "" if found else f"no commit matching '^{word}:' or '^{word}(' found in git log"
+    )
 
 
 def read_pipeline_state(datum_dir: Path | None = None) -> dict[str, Any] | None:
@@ -71,8 +95,10 @@ def read_pipeline_state(datum_dir: Path | None = None) -> dict[str, Any] | None:
         return None
     try:
         return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PipelineStateCorruptError(
+            f"{path} exists but could not be parsed as JSON: {exc}"
+        ) from exc
 
 
 def write_pipeline_state(
@@ -93,8 +119,58 @@ def write_pipeline_state(
     }
     target_dir = datum_dir or Path(".datum")
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "pipeline-state.json").write_text(json.dumps(state, indent=2))
+    final_path = target_dir / "pipeline-state.json"
+    tmp_path = target_dir / "pipeline-state.json.tmp"
+    tmp_path.write_text(json.dumps(state, indent=2))
+    tmp_path.replace(final_path)
+    # Mirrored per epic, so a later epic's init never erases this one's
+    # progress (elonchesd: epic-2's init blanked epic-1's "act completed"
+    # and a fresh datum-go on epic-1 started over at Refine).
+    mirror = epic_state_path(branch, target_dir)
+    if mirror is not None:
+        mirror.parent.mkdir(parents=True, exist_ok=True)
+        mirror_tmp = mirror.with_suffix(".json.tmp")
+        mirror_tmp.write_text(json.dumps(state, indent=2))
+        mirror_tmp.replace(mirror)
     return state
+
+
+def epic_state_slug(branch: str) -> str:
+    """Filesystem-safe slug for an epic branch — the same rule the lane-state
+    markers use (.datum/epics/<slug>/), so one epic has one directory."""
+    return re.sub(r"[^a-zA-Z0-9]+", "-", branch).strip("-")
+
+
+def read_epic_pipeline_state(
+    branch: str, datum_dir: Path | None = None
+) -> dict[str, Any] | None:
+    """This epic's own mirrored state, or None when it has none. A mirror
+    that exists but cannot be parsed is PipelineStateCorruptError, never
+    "no prior state"."""
+    target_dir = datum_dir or Path(".datum")
+    mirror = epic_state_path(branch, target_dir)
+    if mirror is None or not mirror.exists():
+        return None
+    try:
+        candidate = json.loads(mirror.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PipelineStateCorruptError(
+            f"{mirror} exists but could not be parsed as JSON: {exc}"
+        ) from exc
+    if not isinstance(candidate, dict) or candidate.get("branch") != branch:
+        return None
+    return candidate
+
+
+def epic_state_path(branch: str, datum_dir: Path) -> Path | None:
+    """The per-epic mirror of pipeline-state.json, or None for a branch that
+    yields no usable slug (never resolve a traversal-crafted name)."""
+    if not branch or ".." in branch:
+        return None
+    slug = epic_state_slug(branch)
+    if not slug:
+        return None
+    return datum_dir / "epics" / slug / "pipeline-state.json"
 
 
 def reset_stale_pipeline_state(
@@ -111,6 +187,30 @@ def reset_stale_pipeline_state(
     prior_state = read_pipeline_state(datum_dir)
     if not prior_state or prior_state.get("branch") == branch:
         return None
+    target_dir = datum_dir or Path(".datum")
+    # The epic being switched to may have progress of its own in its
+    # per-epic mirror: restore it rather than starting it over.
+    mirror = epic_state_path(branch, target_dir)
+    restored: dict[str, Any] | None = None
+    if mirror is not None and mirror.exists():
+        try:
+            candidate = json.loads(mirror.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            raise PipelineStateCorruptError(
+                f"{mirror} exists but could not be parsed as JSON: {exc}"
+            ) from exc
+        if isinstance(candidate, dict) and candidate.get("branch") == branch:
+            restored = candidate
+    if restored is not None:
+        write_pipeline_state(
+            branch=branch,
+            run_id=str(restored.get("runId", "")),
+            route=str(restored.get("route", prior_state.get("route", ""))),
+            completed_phases=list(restored.get("completedPhases", [])),
+            current_phase=restored.get("currentPhase"),
+            datum_dir=datum_dir,
+        )
+        return prior_state
     write_pipeline_state(
         branch=branch,
         run_id="",

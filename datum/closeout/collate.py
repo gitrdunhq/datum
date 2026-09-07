@@ -2,8 +2,14 @@
 """Combine all collector outputs into closeout-data.json."""
 
 import json
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
+
+from pydantic import ValidationError
+
+from datum.models.closeout_data_schema import CloseoutData
 
 COLLECTORS = [
     "git",
@@ -23,8 +29,23 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--merge-sha", required=True)
-    parser.add_argument("--epic-number", type=int, required=True)
+    # Optional: the closeout batch (skills/src/shared/lane-steps.ts) never
+    # passed it, so `required=True` made every run exit 2 with a usage message
+    # and closeout-data.json was never written. Resolve it the way `datum
+    # closeout` does — from the branch, else the UNKNOWN sentinel.
+    parser.add_argument("--epic-number", type=int, default=None)
     args = parser.parse_args()
+    epic_number = args.epic_number
+    if epic_number is None:
+        from datum.closeout_cmd import UNKNOWN_EPIC_NUMBER, _detect_epic_number
+
+        branch_res = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
+        )
+        branch = branch_res.stdout.strip() if branch_res.returncode == 0 else ""
+        epic_number = _detect_epic_number(branch)
+        if epic_number is None:
+            epic_number = UNKNOWN_EPIC_NUMBER
 
     raw_dir = Path(f".datum/runs/{args.run_id}/closeout-raw")
     if not raw_dir.exists():
@@ -35,26 +56,69 @@ def main() -> None:
     if not state_path.exists():
         state_path = Path(".datum/state.json")
 
+    ts_result = subprocess.run(
+        ["git", "log", "-1", "--format=%aI", args.merge_sha],
+        capture_output=True,
+        text=True,
+    )
+    merge_timestamp = None
+    if ts_result.returncode == 0 and ts_result.stdout.strip():
+        try:
+            merge_timestamp = datetime.fromisoformat(ts_result.stdout.strip())
+        except ValueError:
+            merge_timestamp = None
+
     data: dict = {
         "run_id": args.run_id,
-        "epic_number": args.epic_number,
+        "epic_number": epic_number,
         "merge_sha": args.merge_sha,
-        "merge_timestamp": None,
+        "merge_timestamp": merge_timestamp.isoformat() if merge_timestamp else None,
     }
 
+    # A missing OPTIONAL collector output is a named warning the synthesis
+    # agent reads, never a schema failure that hides the collectors that did
+    # run (caliper BUG S: git.json and token_metrics.json were fine). git
+    # stays required — the schema says so.
+    warnings: list[str] = []
     for collector in COLLECTORS:
         collector_file = raw_dir / f"{collector}.json"
         if collector_file.exists():
             data[collector] = json.loads(collector_file.read_text())
         else:
             data[collector] = None
+            if collector in ("tasks", "token_metrics"):
+                warnings.append(
+                    f"{collector}: no closeout-raw/{collector}.json — collector did not run or failed"
+                )
+    # A collector that ran but found no source says so (collected: false,
+    # reason): carried as a warning, never read as zero (elonchesd epic-2).
+    for collector in ("token_metrics", "tasks"):
+        payload = data.get(collector)
+        if isinstance(payload, dict) and payload.get("collected") is False:
+            warnings.append(
+                f"{collector}: not collected — {payload.get('reason') or 'no reason given'}"
+            )
+    data["collector_warnings"] = warnings
 
     # Flatten well-known keys
     if data.get("git"):
         data["git"] = data["git"]
     if data.get("tasks"):
         task_data = data["tasks"]
-        data["tasks"] = {k: v for k, v in task_data.items() if k != "brief_defects"}
+        data["tasks"] = {
+            k: v
+            for k, v in task_data.items()
+            if k
+            not in (
+                "brief_defects",
+                "lane_tools_added",
+                "lanes",
+                "source",
+                "ignored_foreign_markers",
+            )
+        }
+        if isinstance(task_data.get("lanes"), list):
+            data["lanes"] = task_data["lanes"]
         if "brief_defects" not in data or not data["brief_defects"]:
             data["brief_defects"] = task_data.get("brief_defects", [])
         if "lane_tools_added" not in data or not data["lane_tools_added"]:
@@ -62,6 +126,20 @@ def main() -> None:
 
     if data.get("token_metrics") is None:
         data["token_metrics"] = {"total_input": 0, "total_output": 0}
+
+    try:
+        CloseoutData(**data)
+    except ValidationError as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": "closeout-data.json failed schema validation — not written",
+                    "details": exc.errors(include_url=False),
+                }
+            )
+        )
+        sys.exit(1)
 
     out = Path(f".datum/runs/{args.run_id}/closeout-data.json")
     out.write_text(json.dumps(data, indent=2))

@@ -4,6 +4,7 @@
 // actual file reads (e.g. for context_files) must happen via the agent()
 // API at the call site — this module only renders already-fetched content.
 
+import type { ContextFile } from './context-relay'
 import type {
   LanePlan,
   Lane,
@@ -20,14 +21,6 @@ import type { TddStage, Severity } from './models'
 // ---------------------------------------------------------------------------
 // Local types
 // ---------------------------------------------------------------------------
-
-export interface ContractEntry {
-  function: string
-  args: string[]
-  returns: string | null
-  raises: string | null
-  ac: string
-}
 
 // ---------------------------------------------------------------------------
 // buildWaves — Kahn's algorithm BFS wave grouping
@@ -333,10 +326,15 @@ export function epicSlug(branch: string): string {
 // ---------------------------------------------------------------------------
 
 export function pathBoundaryMatch(a: string, b: string): boolean {
+  // Lane plans may list a directory with a trailing slash
+  // ("tests/fixtures/part_corpus/"); without normalising, `b + '/'` became
+  // "…/part_corpus//" and no file inside ever matched (#393).
+  const x = a.replace(/\/+$/, '')
+  const y = b.replace(/\/+$/, '')
   return (
-    a === b ||
-    a.endsWith('/' + b) ||
-    a.startsWith(b + '/')
+    x === y ||
+    x.endsWith('/' + y) ||
+    x.startsWith(y + '/')
   )
 }
 
@@ -349,7 +347,7 @@ export function verifyFileOwnership(
 
   for (const f of changed) {
     if (forbiddenFiles.some((fb) => pathBoundaryMatch(f, fb))) {
-      violations.push(`${f} is owned by another lane`)
+      violations.push(`${f} is forbidden at this stage (the other stage of this lane owns it, or another lane does)`)
     }
     if (allowedFiles.length > 0 && !allowedFiles.some((a) => pathBoundaryMatch(f, a))) {
       violations.push(`${f} is not in allowed files list [${allowedFiles.join(', ')}]`)
@@ -416,7 +414,9 @@ export function classifyFiles(files: string[]): {
       base.endsWith('.spec.js') ||
       base.endsWith('_test.go') ||
       base.endsWith('Tests.swift') ||
+      f.startsWith('tests/') ||
       f.includes('/tests/') ||
+      f.startsWith('Tests/') ||
       f.includes('/Tests/') ||
       base === 'conftest.py'
     )
@@ -424,6 +424,28 @@ export function classifyFiles(files: string[]): {
   const testFiles = (files || []).filter(isTest)
   const implFiles = (files || []).filter((f) => !isTest(f))
   return { testFiles, implFiles }
+}
+
+/**
+ * Which preflight skeleton outputs to register as the lane's test files.
+ * Only paths classifyFiles itself calls tests, and only new ones: the lane
+ * runner used to register every output path, a second classifier that
+ * turned docs and deliverable fixtures into "the lane's test files" and
+ * failed a sound GREEN as green_edited_tests (caliper BUG P).
+ */
+export function preflightTestPaths(
+  outputs: Array<{ path?: string }> | undefined,
+  testFiles: string[],
+): { registered: string[]; skipped: string[] } {
+  const registered: string[] = []
+  const skipped: string[] = []
+  for (const output of outputs || []) {
+    const p = output.path
+    if (!p || testFiles.includes(p) || registered.includes(p)) continue
+    if (classifyFiles([p]).testFiles.length > 0) registered.push(p)
+    else if (!skipped.includes(p)) skipped.push(p)
+  }
+  return { registered, skipped }
 }
 
 // ---------------------------------------------------------------------------
@@ -503,9 +525,13 @@ export function extractRequiredScopeFiles(
     while ((m = importRe.exec(content))) modules.push(m[1])
 
     for (const mod of modules) {
-      const top = mod.split('.')[0]
-      if (!FIRST_PARTY_PY_PACKAGES.includes(top)) continue
-      required.add(`${mod.split('.').join('/')}.py`)
+      const parts = mod.split('.')
+      if (!FIRST_PARTY_PY_PACKAGES.includes(parts[0])) continue
+      // A bare package import (`import datum`) needs no lane file: the
+      // package is a directory, and demanding `datum.py` failed a sound RED
+      // as scope_gap on a phantom (datum self-hosted wf_498d1f29-3f9).
+      if (parts.length === 1) continue
+      required.add(`${parts.join('/')}.py`)
     }
   }
 
@@ -521,14 +547,6 @@ export function findScopeGaps(requiredFiles: string[], allowedFiles: string[]): 
 // resolveLanePlanPath — prefer lane-plan-final.json over lane-plan.json
 // ---------------------------------------------------------------------------
 
-export function resolveLanePlanPrompt(epicDir: string): string {
-  return (
-    `[${epicDir}]\n` +
-    `ls "${epicDir}/lane-plan-final.json" 2>/dev/null && echo "final" || echo "default"` +
-    `\nReturn ONLY: "final" if lane-plan-final.json exists, "default" if only lane-plan.json exists, or "none" if neither exists.`
-  )
-}
-
 export function resolveLanePlanPath(epicDir: string, agentResult: string): string {
   const resolved = agentResult.trim()
   if (resolved === 'final') return `${epicDir}/lane-plan-final.json`
@@ -540,20 +558,97 @@ export function resolveLanePlanPath(epicDir: string, agentResult: string): strin
 // parseAgentJson — extracts JSON from agent text output
 // ---------------------------------------------------------------------------
 
-export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
-  if (!text || typeof text !== 'string') return fallback
+// Scans forward from an opening bracket at `start`, tracking nesting depth
+// and string/escape state, to find the index of its matching closing
+// bracket — rather than naively pairing the first opener with the LAST
+// closer anywhere in the text (which overshoots into trailing prose, or
+// undershoots into an illustrative JSON example that precedes the real
+// answer).
+function findMatchingBracketEnd(text: string, start: number): number {
+  const open = text[start]
+  const close = open === '{' ? '}' : ']'
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; continue }
+    if (ch === open) depth++
+    else if (ch === close) { depth--; if (depth === 0) return i }
+  }
+  return -1
+}
+
+// Shared scan used by both parseAgentJson (returns a caller-supplied
+// fallback) and parseAgentJsonStrict (throws) — `found` distinguishes "the
+// text really did contain no parseable JSON" from "the parsed value happens
+// to equal whatever the fallback would have been" (e.g. a genuine `[]` or
+// `0` result), which a naive equality check against the fallback could not.
+function scanForAgentJson<T>(text: string): { found: boolean; value?: T } {
+  if (!text || typeof text !== 'string') return { found: false }
   // Only strip a fence that wraps the WHOLE response — stripping every ``` occurrence
   // would corrupt embedded code fences (e.g. ```mermaid) inside file-content string values.
   const fenced = text.trim().match(/^```[a-z]*\n([\s\S]*)\n```$/)
   const cleaned = (fenced ? fenced[1] : text).trim()
-  const start = cleaned.search(/[{[]/)
-  const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
-  if (start === -1 || end === -1) return fallback
+
+  // Fast path: the whole (trimmed/unfenced) response is valid JSON on its own.
   try {
-    return JSON.parse(cleaned.slice(start, end + 1)) as T
+    return { found: true, value: JSON.parse(cleaned) as T }
   } catch {
-    return fallback
+    // fall through to bracket-scanning below
   }
+
+  // Try every candidate opening bracket, using a balanced scan to find its
+  // true matching close, and keep the LAST one that parses. Agent prompts
+  // put the actual answer last (an illustrative example, if any, comes
+  // first); this also avoids overshooting into trailing prose after the
+  // real object, since a balanced scan never runs past its own close.
+  // Candidates inside code fences are NOT skipped: "Here you go:\n```json
+  // {...}```" is the most common reply shape, and skipping fenced JSON
+  // returned the fallback for it.
+  const openRe = /[{[]/g
+  let match: RegExpExecArray | null
+  let best: T | undefined
+  let found = false
+  while ((match = openRe.exec(cleaned)) !== null) {
+    const start = match.index
+    const end = findMatchingBracketEnd(cleaned, start)
+    if (end === -1) continue
+    try {
+      best = JSON.parse(cleaned.slice(start, end + 1)) as T
+      found = true
+      openRe.lastIndex = end + 1
+    } catch {
+      openRe.lastIndex = start + 1
+    }
+  }
+  return found ? { found: true, value: best } : { found: false }
+}
+
+export function parseAgentJson<T = unknown>(text: string, fallback: T): T {
+  const r = scanForAgentJson<T>(text)
+  return r.found ? (r.value as T) : fallback
+}
+
+// FLOW.md design principle 2: an LLM proposes, it never asserts pass/fail —
+// so a call site that would ACT on an unparseable agent response as though
+// it were a real (if empty/negative) result must not get a fallback at all.
+// Throws a named `agent_output_unparseable: <label> — <first 200 chars>` so
+// a catch at the phase/lane boundary can record this as that phase's own
+// failure (see datum-go.ts's phase-halt wiring) instead of the pipeline
+// silently believing the fallback was the agent's real answer.
+export function parseAgentJsonStrict<T = unknown>(text: string, label: string): T {
+  const r = scanForAgentJson<T>(text)
+  if (!r.found) {
+    throw new Error(`agent_output_unparseable: ${label} — ${String(text ?? '').slice(0, 200)}`)
+  }
+  return r.value as T
 }
 
 // ---------------------------------------------------------------------------
@@ -573,109 +668,44 @@ export function laneCtxCmd(packet: TaskPacket, wt: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// extractContractSummary — extracts function signatures from AC text
-// ---------------------------------------------------------------------------
-
-const BUILTIN_SKIP = new Set([
-  // Python
-  'print',
-  'len',
-  'str',
-  'int',
-  'dict',
-  'list',
-  'set',
-  'isinstance',
-  'type',
-  'exit',
-  'round',
-  'sorted',
-  'filter',
-  'map',
-  'any',
-  'all',
-  'range',
-  'enumerate',
-  'zip',
-  'open',
-  'input',
-  'format',
-  'repr',
-  'hash',
-  'id',
-  'dir',
-  'vars',
-  'super',
-  'property',
-  'staticmethod',
-  'classmethod',
-  // Swift
-  'fatalError',
-  'precondition',
-  'debugPrint',
-  'String',
-  'Int',
-  'Array',
-  'Dictionary',
-  'Bool',
-  'Optional',
-  // Go
-  'fmt',
-  'Println',
-  'Printf',
-  'Sprintf',
-  'make',
-  'append',
-  'delete',
-  'panic',
-  'recover',
-  // TypeScript / JavaScript
-  'console',
-  'log',
-  'parseInt',
-  'parseFloat',
-  'Number',
-  'Object',
-  'Boolean',
-  'Promise',
-  'setTimeout',
-  'JSON',
-])
-
-export function extractContractSummary(
-  acceptanceCriteria: string[],
-): ContractEntry[] {
-  return (acceptanceCriteria || [])
-    .map((ac): ContractEntry | null => {
-      const funcMatch = ac.match(/(?<!['"-])(\w+)\(([^)]*)\)/)
-      const retMatch = ac.match(/returns?\s+(?:a\s+)?(\w+)/i)
-      const raiseMatch = ac.match(/[Rr]aises?\s+(\w+Error|\w+Exception)/)
-      if (!funcMatch || BUILTIN_SKIP.has(funcMatch[1])) return null
-      return {
-        function: funcMatch[1],
-        args: funcMatch[2]
-          ? funcMatch[2]
-              .split(',')
-              .map((a) => a.trim())
-              .filter(Boolean)
-          : [],
-        returns: retMatch ? retMatch[1] : null,
-        raises: raiseMatch ? raiseMatch[1] : null,
-        ac: ac.slice(0, 120),
-      }
-    })
-    .filter((entry): entry is ContractEntry => entry !== null)
-}
-
-// ---------------------------------------------------------------------------
 // crossValidateBugs — cross-validates bugs across skeptic lenses
 // ---------------------------------------------------------------------------
 
-interface CrossValidatedBug {
+export interface CrossValidatedBug {
   description: string
   evidence: string
   severity: Severity
   lens: string
+}
+
+/**
+ * Single-lens skeptic findings the 2-of-3 rule does not act on: with
+ * evidence, not cross-validated, any severity. Never a retry trigger (the 2-of-3
+ * rule for retrying GREEN stands); surfaced by name and filed at Closeout so
+ * a real bug one lens saw does not depend on a human reading the journal
+ * (caliper: --serve dropped thresholds, caliper#564).
+ */
+export function skepticMinorityFindings(
+  allBugs: CrossValidatedBug[],
+  crossValidated: CrossValidatedBug[],
+): CrossValidatedBug[] {
+  const validated = new Set(crossValidated)
+  // Every severity is kept (caliper: recoverable from the run dir, counted in
+  // the Act summary); the Closeout filer opens issues only for critical/high.
+  return allBugs.filter((b) => !validated.has(b) && typeof b.evidence === 'string' && b.evidence.trim().length > 0)
+}
+
+/** FollowUpIssue entries (datum/models/follow_up_schema.py) for one lane's minority findings. */
+export function minorityFollowUps(taskId: string, greenSha: string, findings: CrossValidatedBug[]): Record<string, unknown>[] {
+  return findings.map((b, i) => ({
+    dedup_key: `skeptic-minority:${taskId}:${greenSha || 'nosha'}:${i}`,
+    title: `[skeptic] ${taskId}: ${b.description.replace(/\s+/g, ' ').slice(0, 100)}`,
+    body: `Lane ${taskId}, GREEN ${greenSha || '(no sha)'}, skeptic lens "${b.lens}", severity ${b.severity}.\n\n${b.description}\n\nEvidence: ${b.evidence}\n\nA single lens reported this and the other lenses did not corroborate it, so the lane was not retried (2-of-3 rule). Verify before acting.`,
+    severity: (['critical', 'high', 'medium', 'low'] as string[]).includes(String(b.severity)) ? b.severity : 'medium',
+    category: 'other',
+    suggested_labels: ['datum-followup', 'skeptic'],
+    source: 'act.skeptic-minority',
+  }))
 }
 
 export function crossValidateBugs(
@@ -698,7 +728,8 @@ export function crossValidateBugs(
     }
   }
 
-  const bugDescs = allBugs.map((b) => b.description.toLowerCase().slice(0, 60))
+  const normalize = (d: string) => d.toLowerCase().replace(/\s+/g, ' ').slice(0, 60)
+  const bugDescs = allBugs.map((b) => normalize(b.description))
   const crossValidated = allBugs.filter((_bug, idx) => {
     const myDesc = bugDescs[idx]
     return bugDescs.some((d, j) => j !== idx && d === myDesc)
@@ -719,17 +750,25 @@ export function buildPacket(
   wt: string,
   cfg: PipelineConfig,
   stage: TddStage,
+  specFile: ContextFile,
   extras: Record<string, unknown> = {},
 ): TaskPacket {
+  // Extras first, then core fields override to prevent callers from accidentally
+  // overriding stage, task_id, schema_version, etc.
   return {
+    ...extras,
     schema_version: '1.0',
     task_id: taskId,
     stage: stage as TaskPacket['stage'],
     title: lane.title,
     working_directory: wt,
     test_command: cfg.testCommand,
-    acceptance_criteria: lane.acceptance_criteria || [],
-    red_note: lane.red_note || '',
+    // The criteria/red_note/contract_summary are in this file, not in the
+    // packet: nothing an LLM turn relayed is trusted as content (see
+    // datum/lane_spec_export.py). The agent reads it and witnesses the read.
+    // No sha here: the blob sha is the read witness, and a prompt that
+    // prints it lets the agent copy it without opening the file.
+    lane_spec_file: { path: specFile.path, bytes: specFile.bytes },
     allowed_write_files:
       stage === 'RED'
         ? testFiles
@@ -749,7 +788,6 @@ export function buildPacket(
           ? `green(${taskId})`
           : `refactor(${taskId})`,
     ...(cfg.test_framework ? { test_framework: cfg.test_framework } : {}),
-    ...extras,
   }
 }
 
@@ -887,34 +925,22 @@ export function parseValidateArgs(raw: unknown): ValidateArgs {
   }
 }
 
-/** Shell steps that fetch main and (unless disabled) merge it into the epic branch. */
-export function mainSyncPrompt(noMergeMain: boolean): string {
-  const merge = noMergeMain
-    ? `3. Do NOT merge. Return JSON: {"behind": <BEHIND>, "merged": false, "conflict": false}`
-    : `3. If BEHIND is 0, return JSON: {"behind": 0, "merged": false, "conflict": false}
-4. Otherwise run: git merge --no-edit origin/main > .datum/main-sync.log 2>&1; MERGE_EXIT=$?
-   If MERGE_EXIT is 0, return JSON: {"behind": <BEHIND>, "merged": true, "conflict": false}
-   If it is not 0, run: git merge --abort
-   and return JSON: {"behind": <BEHIND>, "merged": false, "conflict": true, "output": "<last 20 lines of .datum/main-sync.log>"}`
-  return `Sync the epic branch with main before validating (#358). Run these commands in order at the repo root:
-1. git fetch origin main
-   If the fetch fails (no remote, no network), return JSON: {"error": "<stderr>"}
-2. BEHIND=$(git rev-list --count HEAD..origin/main)
-${merge}
-Do not read the exit code through a pipe. Output raw JSON only, no markdown fences, no explanation.`
-}
-
 export interface MainSyncResult {
   behind: number
   merged: boolean
   conflict: boolean
   output?: string
   error?: string
+  /** Named reason the sync did not run (e.g. 'no origin remote'); never a fabricated 0-behind. */
+  skipped?: string
 }
 
 export function evaluateMainSync(result: MainSyncResult | null | undefined, noMergeMain: boolean): { ok: boolean; message: string } {
   if (!result || typeof result !== 'object' || typeof result.behind !== 'number') {
     return { ok: false, message: `could not determine whether the epic is behind main: ${result?.error || 'no sync result (git fetch origin main failed or returned unparseable output)'}` }
+  }
+  if (result.skipped) {
+    return { ok: true, message: `main sync skipped: ${result.skipped}` }
   }
   if (result.conflict) {
     return { ok: false, message: `merging origin/main into the epic branch hit a conflict (epic was ${result.behind} commits behind main); merge aborted — resolve by hand, then re-run validate: ${result.output || ''}`.trim() }
@@ -954,7 +980,7 @@ export function testRunCommand(testCommand: string, wt: string, stage: string): 
 // lane commit is attributable to (run, lane, stage) by a human or an agent
 // reading `git log`, regardless of which model made it.
 //
-// Author matches datum/commit_queue.py (`datum/<run_id>` <datum@local>).
+// Author is `datum/<run_id>` <datum@local>.
 // The subject stays `<prefix>: <STAGE> complete` so detectExistingLaneCommits
 // and verifyCommitIndependently keep matching.
 // ---------------------------------------------------------------------------
@@ -966,8 +992,10 @@ export function laneCommitCommand(opts: {
   taskId: string
   stage: TddStage
   runId: string
+  /** laneSpecHash of the lane this commit was made under (caliper BUG M). */
+  specHash?: string
 }): string {
-  const { wt, taskId, stage, runId } = opts
+  const { wt, taskId, stage, runId, specHash } = opts
   const prefix = `${stage.toLowerCase()}(${taskId})`
   const authorName = runId ? `datum/${runId}` : 'datum'
   const parts = [
@@ -979,6 +1007,7 @@ export function laneCommitCommand(opts: {
   if (runId) parts.push(`-m "Datum-Run: ${runId}"`)
   parts.push(`-m "Datum-Lane: ${taskId}"`)
   parts.push(`-m "Datum-Stage: ${stage}"`)
+  if (specHash && /^[A-Za-z0-9:]+$/.test(specHash)) parts.push(`-m "Datum-Spec: ${specHash}"`)
   return parts.join(' ')
 }
 
@@ -1001,13 +1030,26 @@ export function laneCommitCommand(opts: {
 export function detectExistingLaneCommits(
   logOutput: string,
   taskId: string,
-): { hasRed: boolean; hasGreen: boolean } {
+): { hasRed: boolean; hasGreen: boolean; redSpec: string | null; greenSpec: string | null } {
   const redTarget = `red(${taskId}): RED complete`
   const greenTarget = `green(${taskId}): GREEN complete`
   const lines = (logOutput || '').split('\n')
+  // History lines are "<sha> <subject>\t<Datum-Spec trailer>" (lane-steps.ts
+  // 'history'); commits made before the trailer existed carry nothing after
+  // the tab (or no tab), which reads as "spec unknown", never as a mismatch.
+  const specOf = (target: string): string | null => {
+    const line = lines.find((l) => l.includes(target))
+    if (!line) return null
+    const tab = line.indexOf('\t')
+    if (tab === -1) return null
+    const spec = line.slice(tab + 1).trim().split(',')[0]
+    return spec || null
+  }
   return {
     hasRed: lines.some((l) => l.includes(redTarget)),
     hasGreen: lines.some((l) => l.includes(greenTarget)),
+    redSpec: specOf(redTarget),
+    greenSpec: specOf(greenTarget),
   }
 }
 

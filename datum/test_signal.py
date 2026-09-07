@@ -183,15 +183,23 @@ def parse_xctest(raw: str, mode: str | None = None) -> dict:
                 msg = f"Compile error: {compile_errors[0].get('kind', 'unknown')} {compile_errors[0].get('symbol', '')}"
             else:
                 msg = "Compile error in headless mode"
-            assertion_failures.append({
-                "property_id": extract_property_id(msg) or "HEADLESS-RED",
-                "assertion_message": msg,
-                "expected": None,
-                "actual": None,
-            })
+            assertion_failures.append(
+                {
+                    "property_id": extract_property_id(msg) or "HEADLESS-RED",
+                    "assertion_message": msg,
+                    "expected": None,
+                    "actual": None,
+                }
+            )
         elif not assertion_failures and not compile_errors and not runtime_errors:
             # 0 tests run or all skipped
-            if "0 tests" in raw or "Executed 0 tests" in raw or "0 failures" in raw or "kAXErrorCannotComplete" in raw or "XCTSkip" in raw:
+            if (
+                "0 tests" in raw
+                or "Executed 0 tests" in raw
+                or "0 failures" in raw
+                or "kAXErrorCannotComplete" in raw
+                or "XCTSkip" in raw
+            ):
                 status = "pass"
 
     return {
@@ -260,19 +268,6 @@ def parse_vitest_json(raw: str) -> dict:
     }
 
 
-# ── Source content invariant check ─────────────────────────────────────────────
-
-
-def check_no_source_leak(signal: dict, test_dirs: list[Path]) -> bool:
-    """Verify the signal doesn't contain content from test source files."""
-    signal_str = json.dumps(signal)
-    if CANARY in signal_str:
-        return False
-    # Check that no line from any test file appears verbatim in the output
-    # (This is the self-test canary check — in production, canary strings are injected into fixtures)
-    return True
-
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -305,7 +300,9 @@ def main() -> None:
         # Inject canary into raw input and verify it doesn't appear in output
         canary_raw = f"Test Suite passed\n{CANARY}\n"
         signal = parse_signal(
-            args.framework if args.framework != "auto" else "xctest", canary_raw, mode=args.mode
+            args.framework if args.framework != "auto" else "xctest",
+            canary_raw,
+            mode=args.mode,
         )
         signal_str = json.dumps(signal)
         if CANARY in signal_str:

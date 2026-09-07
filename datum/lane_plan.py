@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -126,22 +127,40 @@ def build_file_ownership(
 def inject_conflict_edges(tasks: list[dict]) -> None:
     """Add depends_on edges between lanes that share files.
 
-    For each file claimed by multiple lanes, all lanes after the first
-    claimant get a dependency on the first claimant. Mutates in place.
+    Every writer of a shared file is chained to the writer before it (in
+    task order), so no two writers ever run as siblings from the same base:
+    each dependent merges the previous writer's lane branch at intake and
+    squash order equals write order. elonchesd player-guidance
+    wf_6cb9491b-36b task-013: three screen lanes each extended
+    src/rules/copy.ts, every one depended only on the FIRST claimant, ran
+    in parallel, and conflicted with each other at squash time. Mutates in
+    place.
     """
     _, conflicts = build_file_ownership(tasks)
+    by_id = {t["id"]: t for t in tasks}
     for _file, task_ids in conflicts.items():
-        first = task_ids[0]
-        for later in task_ids[1:]:
-            for t in tasks:
-                if t["id"] == later:
-                    deps = t.setdefault("depends_on", [])
-                    if first not in deps:
-                        deps.append(first)
-                    break
+        for previous, later in zip(task_ids, task_ids[1:], strict=False):
+            deps = by_id[later].setdefault("depends_on", [])
+            if previous not in deps:
+                deps.append(previous)
 
 
-def inject_read_dependency_edges(tasks: list[dict]) -> None:
+def _reaches(deps: dict[str, list[str]], start: str, target: str) -> bool:
+    """True if `target` is reachable from `start` by following depends_on edges."""
+    seen: set[str] = set()
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node == target:
+            return True
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(deps.get(node, []))
+    return False
+
+
+def inject_read_dependency_edges(tasks: list[dict]) -> list[str]:
     """Add depends_on edges for lanes that read (but don't write) another
     lane's file (#280).
 
@@ -150,16 +169,40 @@ def inject_read_dependency_edges(tasks: list[dict]) -> None:
     writing to it) gets no dependency edge and can be dispatched before its
     prerequisite lands. Each task may declare an optional `reads` list of
     file paths it depends on without owning. Mutates in place.
+
+    A `reads` reference is an inherently softer signal than a declared
+    `depends_on`: two lanes commonly cross-reference each other's owned
+    files just to see their current shape, with no real ordering
+    requirement either way. Injecting both directions unconditionally would
+    close a cycle and hard-fail the whole plan at topological_sort with no
+    recovery short of hand-editing tasks.json (#524 dogfooding). When
+    adding an edge would close a cycle, skip it and return a warning
+    instead — the plan keeps whichever direction was injected first.
     """
     ownership, _ = build_file_ownership(tasks)
+    warnings: list[str] = []
+    # Build once: setdefault ensures every task has a real depends_on list
+    # object (not a throwaway t.get(..., []) default), so `current`'s
+    # values are the SAME list objects `deps.append(owner)` mutates below —
+    # no need to rebuild this dict on every `reads` entry (#524 code review).
+    current = {t["id"]: t.setdefault("depends_on", []) for t in tasks}
     for task in tasks:
         for f in task.get("reads", []):
             owner = ownership.get(f)
             if owner is None or owner == task["id"]:
                 continue
-            deps = task.setdefault("depends_on", [])
-            if owner not in deps:
-                deps.append(owner)
+            deps = current[task["id"]]
+            if owner in deps:
+                continue
+            if _reaches(current, owner, task["id"]):
+                warnings.append(
+                    f"Skipped read-dependency edge {task['id']} -> {owner} (via {f!r}): "
+                    f"{owner} already depends on {task['id']}, so adding this edge would "
+                    "close a dependency cycle. Treating the read as informational only."
+                )
+                continue
+            deps.append(owner)
+    return warnings
 
 
 def topological_sort(tasks: list[dict]) -> list[str]:
@@ -381,12 +424,90 @@ def detect_lane_test_command(
     if lane_lang is None:
         return None
     global_lang = detect_command_language(global_test_command)
+    # A configured epic-level command with no recognisable language marker (a
+    # Makefile or shell wrapper like `bash scripts/test-run.sh`) is "no
+    # opinion", not "wrong language" — otherwise every lane gets stamped with
+    # the built-in per-language default and the repo's real runner is never
+    # used. A *missing* command (None) still falls through to the language
+    # default below so the lane has something to run.
+    if global_test_command and global_lang is None:
+        return None
     if global_lang == lane_lang:
         return None
     override = LANE_LANGUAGE_TEST_COMMANDS.get(lane_lang)
     if override is None or override == global_test_command:
         return None
     return override
+
+
+def detect_spm_lane_override(
+    lane_id: str, files: list[str], repo_root: Path
+) -> tuple[str | None, str | None]:
+    """Scope a Swift lane's test_command to its SPM subpackage (#394).
+
+    Wires the previously-unconsumed `datum.tdd_driver.detect_spm_subpackage`
+    / `get_spm_test_command` into lane-plan generation: when every .swift
+    file in the lane resolves to the same nested subpackage (a directory
+    with its own Package.swift, not the repo root's), the lane's own test
+    command should be scoped to that subpackage — the epic-wide `swift test`
+    would otherwise build against the wrong (root) dependency graph.
+
+    Returns (test_command, warning). Exactly one of the two is non-None:
+    - A single, non-root subpackage -> ("swift test --package-path <dir>", None)
+    - No .swift files, or all resolve to the repo root, or none resolve to
+      any Package.swift -> (None, None) — no opinion, caller falls back to
+      the ordinary language-detection override.
+    - .swift files resolving to *different* subpackages (or a mix of a
+      subpackage and the root/no-package) -> (None, "<warning naming the
+      lane and the packages involved>") — no single command can run the
+      full lane's files.
+    """
+    from datum.tdd_driver import detect_spm_subpackage, get_spm_test_command
+
+    swift_files = [f for f in files if Path(f).suffix.lower() == ".swift"]
+    if not swift_files:
+        return None, None
+
+    root_resolved = repo_root.resolve()
+    packages: dict[Path | None, list[str]] = {}
+    for f in swift_files:
+        pkg = detect_spm_subpackage(repo_root / f)
+        resolved = pkg.resolve() if pkg is not None else None
+        packages.setdefault(resolved, []).append(f)
+
+    if len(packages) != 1:
+        names = []
+        for pkg_dir in packages:
+            if pkg_dir is None:
+                names.append("<no Package.swift>")
+            elif pkg_dir == root_resolved:
+                names.append("<repo root>")
+            else:
+                try:
+                    names.append(str(pkg_dir.relative_to(root_resolved)))
+                except ValueError:
+                    names.append(str(pkg_dir))
+        warning = (
+            f"lane {lane_id}: .swift files span multiple SPM packages "
+            f"({', '.join(sorted(names))}); leaving test_command unset"
+        )
+        return None, warning
+
+    (pkg_dir,) = packages.keys()
+    if pkg_dir is None or pkg_dir == root_resolved:
+        return None, None
+
+    cmd = get_spm_test_command(repo_root / swift_files[0])
+    if not cmd:
+        return None, None
+
+    try:
+        rel_dir = str(pkg_dir.relative_to(root_resolved))
+    except ValueError:
+        rel_dir = str(pkg_dir)
+    if " " in rel_dir:
+        rel_dir = f'"{rel_dir}"'
+    return f"swift test --package-path {rel_dir}", None
 
 
 def validate_lane_test_commands(lanes: dict) -> list[str]:
@@ -418,17 +539,55 @@ def validate_lane_test_commands(lanes: dict) -> list[str]:
     return errors
 
 
+GENERATED_BANNER_RE = re.compile(r"@generated(?:.*?Source:\s*(\S+))?")
+
+
+def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]:
+    """Preflight: a file whose first line carries `@generated` is never a
+    lane file — it is rebuilt from its source after merge (skills/*.js by
+    scripts/build-workflows.sh). datum self-hosted wf_2749a43b-680: the
+    decomposer put skills/datum-properties.js beside its prompt source and
+    lane-plan halted on the language guard with a message about test
+    commands, one step past the real defect. Names the file and its source.
+    """
+    errors: list[str] = []
+    for lid, lane in lanes.items():
+        for rel in lane.get("files", []):
+            path = repo_root / rel
+            if not path.is_file():
+                continue
+            try:
+                with path.open(encoding="utf-8", errors="replace") as fh:
+                    first = fh.readline()
+            except OSError:
+                continue
+            m = GENERATED_BANNER_RE.search(first)
+            if not m:
+                continue
+            source = m.group(1)
+            errors.append(
+                f"lane {lid} lists {rel}, a generated file (first line carries "
+                f"@generated{f', source {source}' if source else ''}) — edit the "
+                f"source and rebuild; a generated file is never in a lane's files"
+            )
+    return errors
+
+
 def build_lane_plan(
     tasks: list[dict],
     sorted_ids: list[str],
     ownership: dict,
     units: dict | None = None,
     global_test_command: str | None = None,
+    repo_root: Path | str = ".",
+    properties_path: Path | str | None = None,
 ) -> dict:
     """Build the full lane-plan.json structure."""
     task_map = {t["id"]: t for t in tasks}
+    repo_root = Path(repo_root)
 
     lanes = {}
+    spm_warnings: list[str] = []
     for tid in sorted_ids:
         task = task_map[tid]
 
@@ -453,6 +612,18 @@ def build_lane_plan(
         if task.get("slug"):
             lanes[tid]["slug"] = task["slug"]
 
+        # Lane kind — the producer for the lane runner's structural fast-path
+        # (skills/src/datum-tdd-act-lane.ts skips RED/GREEN for docs-only /
+        # config-only lanes). A distinct field so it can never collide with
+        # the lifecycle `stage` above (#369). Absent means behavioral.
+        kind = task.get("kind")
+        if kind is not None:
+            if kind not in ("structural", "behavioral"):
+                raise ValueError(
+                    f"task {tid}: kind must be 'structural' or 'behavioral', got {kind!r}"
+                )
+            lanes[tid]["kind"] = kind
+
         # Explicit per-task test_command always wins; otherwise auto-detect
         # from the lane's own files when they disagree with the epic-level
         # default (#326).
@@ -460,19 +631,68 @@ def build_lane_plan(
         if explicit_cmd:
             lanes[tid]["test_command"] = explicit_cmd
         else:
-            detected = detect_lane_test_command(task["files"], global_test_command)
-            if detected:
-                lanes[tid]["test_command"] = detected
+            spm_cmd, spm_warning = detect_spm_lane_override(
+                tid, task["files"], repo_root
+            )
+            if spm_warning:
+                spm_warnings.append(spm_warning)
+            if spm_cmd:
+                lanes[tid]["test_command"] = spm_cmd
+            elif spm_warning is None:
+                # Only fall back to the generic per-language default when the
+                # SPM check had no opinion at all — a lane whose .swift files
+                # span multiple subpackages must stay unset (ambiguous
+                # scope), not silently get a repo-wide `swift test` that
+                # builds against the wrong dependency graph for at least one
+                # file.
+                detected = detect_lane_test_command(task["files"], global_test_command)
+                if detected:
+                    lanes[tid]["test_command"] = detected
+
+    topological_order = list(sorted_ids)
+
+    if properties_path is not None:
+        properties_path = Path(properties_path)
+        if properties_path.is_file():
+            from datum.integration_invariants import (
+                derive_integration_lanes,
+                parse_integration_invariants,
+            )
+
+            md_text = properties_path.read_text(encoding="utf-8")
+            invariants = parse_integration_invariants(md_text)
+            if invariants:
+                int_lanes = derive_integration_lanes(
+                    invariants, task_map, global_test_command or ""
+                )
+                for int_lane in int_lanes:
+                    int_id = int_lane["id"]
+                    lanes[int_id] = {
+                        "id": int_id,
+                        "title": int_lane["title"],
+                        "files": int_lane["files"],
+                        "acceptance_criteria": int_lane["acceptance_criteria"],
+                        "red_note": int_lane["red_note"],
+                        "kind": int_lane["kind"],
+                        "expect_tests_pass": int_lane["expect_tests_pass"],
+                        "depends_on": int_lane["depends_on"],
+                        "stage": "queued",
+                    }
+                    topological_order.append(int_id)
+                    for f in int_lane["files"]:
+                        ownership[f] = int_id
 
     result = {
         "schema_version": "1.0.0",
         "total_lanes": len(lanes),
-        "topological_order": sorted_ids,
+        "topological_order": topological_order,
         "file_ownership": ownership,
         "lanes": lanes,
     }
     if units:
         result["units"] = units
+    if spm_warnings:
+        result["warnings"] = spm_warnings
     return result
 
 
@@ -484,6 +704,7 @@ def main() -> None:
     parser.add_argument("--input", default="tasks.json")
     parser.add_argument("--output", default=".datum/lane-plan.json")
     parser.add_argument("--md-output", default="TASKS.md")
+    parser.add_argument("--properties", default=None)
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -526,16 +747,19 @@ def main() -> None:
     if args.validate:
         try:
             inject_conflict_edges(tasks)
-            inject_read_dependency_edges(tasks)
+            read_edge_warnings = inject_read_dependency_edges(tasks)
             topological_sort(tasks)
-            print(json.dumps({"valid": True, "task_count": len(tasks)}))
+            result = {"valid": True, "task_count": len(tasks)}
+            if read_edge_warnings:
+                result["warnings"] = read_edge_warnings
+            print(json.dumps(result))
         except ValueError as e:
             print(json.dumps({"valid": False, "error": str(e)}))
             sys.exit(1)
         return
 
     inject_conflict_edges(tasks)
-    inject_read_dependency_edges(tasks)
+    read_edge_warnings = inject_read_dependency_edges(tasks)
 
     try:
         sorted_ids = topological_sort(tasks)
@@ -560,11 +784,30 @@ def main() -> None:
 
     ownership, _ = build_file_ownership(tasks)
     lane_plan = build_lane_plan(
-        tasks, sorted_ids, ownership, units, global_test_command
+        tasks,
+        sorted_ids,
+        ownership,
+        units,
+        global_test_command,
+        repo_root=Path("."),
+        properties_path=args.properties,
     )
 
     # Preflight (#307): fail fast, before a single agent-token is spent, if
     # any lane's effective test_command clearly can't run its own file scope.
+    generated_errors = validate_lane_files_not_generated(
+        lane_plan["lanes"], repo_root=Path(".")
+    )
+    if generated_errors:
+        print(
+            json.dumps(
+                {
+                    "error": "Generated file(s) in lane scope",
+                    "details": generated_errors,
+                }
+            )
+        )
+        sys.exit(1)
     test_cmd_errors = validate_lane_test_commands(lane_plan["lanes"])
     if test_cmd_errors:
         print(
@@ -574,8 +817,18 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Write lane-plan.json
+    # Write lane-plan.json. A regenerated plan (Properties re-runs this after
+    # Plan published issues) carries each lane's github_issue forward.
     out_path = Path(args.output)
+    if out_path.is_file():
+        try:
+            previous = json.loads(out_path.read_text()).get("lanes", {})
+        except (json.JSONDecodeError, OSError, AttributeError):
+            previous = {}
+        for lid, lane in lane_plan["lanes"].items():
+            issue = (previous.get(lid) or {}).get("github_issue")
+            if issue is not None and "github_issue" not in lane:
+                lane["github_issue"] = issue
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w") as f:
         json.dump(lane_plan, f, indent=2)
@@ -584,16 +837,16 @@ def main() -> None:
     md_content = render_tasks_md(tasks, sorted_ids, units if units else None)
     Path(args.md_output).write_text(md_content)
 
-    print(
-        json.dumps(
-            {
-                "ok": True,
-                "lane_plan": args.output,
-                "tasks_md": args.md_output,
-                "total_lanes": lane_plan["total_lanes"],
-            }
-        )
-    )
+    result = {
+        "ok": True,
+        "lane_plan": args.output,
+        "tasks_md": args.md_output,
+        "total_lanes": lane_plan["total_lanes"],
+    }
+    all_warnings = list(read_edge_warnings) + list(lane_plan.get("warnings", []))
+    if all_warnings:
+        result["warnings"] = all_warnings
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

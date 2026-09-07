@@ -1,9 +1,11 @@
 import { model } from './shared/models'
 import type { DocsArgs, WriteResult } from './shared/types'
-import { WRITE_RESULT_SCHEMA, COMMIT_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
-import { commitStage } from './shared/agents'
+import { WRITE_RESULT_SCHEMA, REFACTOR_CHECK_SCHEMA } from './shared/schemas'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } from './shared/batch'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { docsCheckPrompt, docsSyncPrompt } from './shared/prompts'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
+import { resilientAgent, runBatch } from './shared/agents'
 
 export const meta = {
   name: 'datum-tdd-act-docs',
@@ -13,22 +15,32 @@ export const meta = {
 
 const a = args as DocsArgs
 configureAgentTypes(a.agentTypes || {})
+setBatchCacheKey(a.configFingerprint || '')
+setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 phase('Docs')
 
 let synced = false
 let syncedFiles: string[] | undefined
+let committed: boolean | undefined
+let commitSha: string | undefined
+let failureReason: string | undefined
 
 if (a.completedLanes.length === 0) {
   log('No completed lanes — skipping docs')
 } else {
   const changedFiles = [...new Set(a.completedLanes.flatMap(id => a.lanePlan.lanes[id].files || []))]
 
-  const docsCheck = await agent(
+  // resilientAgent, not agent(): a null result is a skipped check, which must
+  // not read as "no stale references found" (phase review wf_9a69f891-462).
+  const docsCheck = await resilientAgent<{ should_refactor?: boolean; reason?: string }>(
     docsCheckPrompt({ changedFiles: changedFiles.join(', ') }),
-    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA }
+    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 },
   )
 
-  if (docsCheck?.should_refactor) {
+  if (!docsCheck) {
+    failureReason = 'docs_check_no_result: the docs-check agent returned nothing on both attempts — docs were not checked'
+    log(`Docs: ${failureReason}`)
+  } else if (docsCheck.should_refactor) {
     const docsPacket = JSON.stringify({
       schema_version: '1.0',
       changed_files: changedFiles,
@@ -49,12 +61,27 @@ if (a.completedLanes.length === 0) {
       const docsWritten = docs.files_written || []
       if (docsWritten.length === 0) {
         log('Docs: agent reported success but no files_written — skipping commit')
+        failureReason = 'docs agent reported success but wrote no files'
       } else {
-        await commitStage('docs', '.', `docs(${a.runId})`, docsWritten, 'DOCS')
+        // Root checkout: stage and commit ONLY the docs files (the operator's
+        // unrelated WIP stays untouched), as one deterministic batch with the
+        // exact message — no commit agent, no trailers, and the outcome is the
+        // exit code. "Nothing to commit" is a rerun after a landed commit.
+        const commitStepList = commitFilesSteps({ wt: '.', files: docsWritten, message: `docs(${a.runId}): sync docs for merged lanes` })
+        const commit = commitFilesFromSteps(await runBatch(commitStepList, stageOpts('cli', { label: 'docs-commit', phase: 'Docs', model: model('fast') })))
+        committed = commit.committed || commit.nothingToCommit
+        commitSha = commit.sha || ''
+        syncedFiles = docsWritten
+        if (committed) {
+          log(commit.nothingToCommit
+            ? `Docs already committed (nothing to commit): ${docsWritten.join(', ')}`
+            : `Docs synced and committed (${commitSha}): ${docsWritten.join(', ')}`)
+          synced = true
+        } else {
+          failureReason = commit.error || 'commit_failed: unknown'
+          log(`Docs written but NOT committed — ${failureReason}. Files left modified in the checkout: ${docsWritten.join(', ')}`)
+        }
       }
-      log(`Docs synced: ${docsWritten.join(', ')}`)
-      synced = true
-      syncedFiles = docsWritten
     } else {
       log(`Docs: ${docs?.failure_reason || 'nothing to update'}`)
     }
@@ -63,4 +90,4 @@ if (a.completedLanes.length === 0) {
   }
 }
 
-export const __workflowResult = { synced, files: syncedFiles }
+export const __workflowResult = { synced, files: syncedFiles, committed, commit_sha: commitSha, failure_reason: failureReason }

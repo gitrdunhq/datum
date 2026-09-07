@@ -181,3 +181,64 @@ def test_init_refresh_skills_overwrites_locally_modified_copy(tmp_path, monkeypa
 
     assert result.exit_code == 0, result.output
     assert (local / "datum-go.js").read_text() != "// stale local copy\n"
+
+
+# ---------------------------------------------------------------------------
+# Refresh must also PRUNE: a bundle deleted upstream (datum-route.js, 60341d1)
+# survived `datum init --refresh` in a consumer repo, and its
+# ~/.claude/workflows symlink dangled. A stale bundle in a consumer repo is
+# exactly the producer-without-a-consumer the bundle rule targets.
+# ---------------------------------------------------------------------------
+
+
+def test_prune_removes_bundles_missing_from_source_and_keeps_everything_else(tmp_path):
+    from datum.skills_materialize import prune_stale_skills
+
+    src = _make_source(tmp_path)
+    dest = tmp_path / "repo" / ".datum" / "skills"
+    materialize_skills(src, dest)
+    (dest / "datum-route.js").write_text("// deleted upstream\n")
+    (dest / "notes.txt").write_text("keep me\n")
+
+    pruned = prune_stale_skills(src, dest)
+
+    assert pruned == ["datum-route.js"]
+    assert not (dest / "datum-route.js").exists()
+    assert (dest / "datum-go.js").exists() and (dest / "datum-plan.js").exists()
+    assert (dest / "notes.txt").exists()
+    assert prune_stale_skills(src, dest) == []
+    assert prune_stale_skills(src, tmp_path / "nowhere") == []
+
+
+def test_resolve_skills_dir_prunes_stale_bundles_on_refresh(tmp_path):
+    src = _make_source(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    local = repo / LOCAL_SKILLS_SUBDIR
+    local.mkdir(parents=True)
+    (local / "datum-route.js").write_text("// stale\n")
+
+    resolve_skills_dir(repo, src, force=True)
+
+    assert not (local / "datum-route.js").exists()
+    assert (local / "datum-go.js").read_text() == "// go v1\n"
+
+
+def test_prune_dangling_workflow_links_removes_only_dead_datum_symlinks(tmp_path):
+    from datum.skills_materialize import prune_dangling_workflow_links
+
+    src = _make_source(tmp_path)
+    workflows = tmp_path / "home" / ".claude" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "datum-go.js").symlink_to(src / "datum-go.js")  # live
+    (workflows / "datum-route.js").symlink_to(src / "datum-route.js")  # dangling
+    (workflows / "other-tool.js").symlink_to(tmp_path / "gone.js")  # dangling, not ours
+    (workflows / "datum-local.js").write_text("// a real file, not a link\n")
+
+    pruned = prune_dangling_workflow_links(workflows)
+
+    assert pruned == ["datum-route.js"]
+    assert (workflows / "datum-go.js").is_symlink()
+    assert (workflows / "other-tool.js").is_symlink()
+    assert (workflows / "datum-local.js").is_file()
+    assert prune_dangling_workflow_links(tmp_path / "missing") == []

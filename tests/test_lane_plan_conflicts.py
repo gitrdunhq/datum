@@ -4,6 +4,7 @@ from datum.lane_plan import (
     build_file_ownership,
     inject_conflict_edges,
     inject_read_dependency_edges,
+    topological_sort,
 )
 
 
@@ -52,14 +53,21 @@ class TestInjectConflictEdges:
         assert tasks[1]["depends_on"].count("task-1") == 1
 
     def test_three_way_conflict_chains(self):
+        """elonchesd player-guidance wf_6cb9491b-36b task-013: three screen
+        lanes each extended src/rules/copy.ts, every one depended only on the
+        FIRST claimant, so they ran as siblings from the same base and
+        conflicted at squash time. Every writer of a shared file is chained
+        to the writer before it, so each dependent merges the previous
+        writer's branch at intake and squash order equals write order."""
         tasks = [
             {"id": "task-1", "files": ["shared.py"], "depends_on": []},
             {"id": "task-2", "files": ["shared.py"], "depends_on": []},
             {"id": "task-3", "files": ["shared.py"], "depends_on": []},
         ]
         inject_conflict_edges(tasks)
-        assert "task-1" in tasks[1]["depends_on"]
-        assert "task-1" in tasks[2]["depends_on"]
+        assert tasks[1]["depends_on"] == ["task-1"]
+        assert tasks[2]["depends_on"] == ["task-2"]
+        assert topological_sort(tasks) == ["task-1", "task-2", "task-3"]
 
     def test_no_self_edges(self):
         tasks = [
@@ -158,6 +166,59 @@ class TestInjectReadDependencyEdges:
         inject_read_dependency_edges(tasks)
         assert tasks[1]["depends_on"] == []
 
+    # #524 dogfooding: two lanes cross-referencing each other's owned files
+    # in `reads` (a normal "let me see the current shape of a sibling file"
+    # pattern, not a real ordering requirement) previously deadlocked the
+    # whole plan — inject_read_dependency_edges had no cycle awareness, so
+    # it happily created both task-001->task-002 and task-002->task-001
+    # edges, and topological_sort then hard-failed the entire `datum
+    # lane-plan` run with no way to recover short of hand-editing tasks.json.
+
+    def test_mutual_read_skips_the_edge_that_would_close_a_cycle_and_warns(self):
+        tasks = [
+            {
+                "id": "task-001",
+                "files": ["part_stock.py", "part_facts.py"],
+                "reads": ["repo_config.py"],
+                "depends_on": [],
+            },
+            {
+                "id": "task-002",
+                "files": ["repo_config.py"],
+                "reads": ["part_stock.py"],
+                "depends_on": [],
+            },
+        ]
+        warnings = inject_read_dependency_edges(tasks)
+
+        edges = [(t["id"], dep) for t in tasks for dep in t["depends_on"]]
+        assert len(edges) == 1  # only one direction was injected
+        assert len(warnings) == 1
+        assert "cycle" in warnings[0].lower()
+        assert "task-001" in warnings[0] and "task-002" in warnings[0]
+
+        # the whole point: this no longer hard-fails lane-plan
+        order = topological_sort(tasks)
+        assert set(order) == {"task-001", "task-002"}
+
+    def test_non_cyclic_read_edges_produce_no_warnings(self):
+        tasks = [
+            {
+                "id": "task-writer",
+                "files": ["Domain/Protocol.swift"],
+                "reads": [],
+                "depends_on": [],
+            },
+            {
+                "id": "task-reader",
+                "files": ["UseCase.swift"],
+                "reads": ["Domain/Protocol.swift"],
+                "depends_on": [],
+            },
+        ]
+        warnings = inject_read_dependency_edges(tasks)
+        assert warnings == []
+
     def test_preserves_existing_deps(self):
         tasks = [
             {"id": "task-writer", "files": ["a.py"], "reads": [], "depends_on": []},
@@ -171,3 +232,20 @@ class TestInjectReadDependencyEdges:
         inject_read_dependency_edges(tasks)
         assert "task-0" in tasks[1]["depends_on"]
         assert "task-writer" in tasks[1]["depends_on"]
+
+
+class TestSharedFileWritersAreSerialised:
+    def test_four_writers_form_one_chain_and_never_run_as_siblings(self):
+        tasks = [
+            {"id": "task-002", "files": ["src/rules/copy.ts"], "depends_on": []},
+            {"id": "task-012", "files": ["src/rules/copy.ts", "src/a.ts"], "depends_on": ["task-002"]},
+            {"id": "task-013", "files": ["src/rules/copy.ts", "src/b.ts"], "depends_on": ["task-002"]},
+            {"id": "task-015", "files": ["src/rules/copy.ts", "src/c.ts"], "depends_on": ["task-002"]},
+        ]
+        inject_conflict_edges(tasks)
+        by_id = {t["id"]: t for t in tasks}
+        assert "task-012" in by_id["task-013"]["depends_on"]
+        assert "task-013" in by_id["task-015"]["depends_on"]
+        # no two writers of the file are independent of each other
+        order = topological_sort(tasks)
+        assert order.index("task-002") < order.index("task-012") < order.index("task-013") < order.index("task-015")

@@ -6,6 +6,7 @@ Run this exact script from the repo root and return ONLY the word DONE. It calls
 MC=$(git rev-parse {{epicBranch}})
 echo '{{entriesJson}}' | jq -c '.[]' | while read -r e; do
   TID=$(echo "$e" | jq -r '.task_id')
+  case "${__merged_ids:- $TID }" in *" $TID "*) ;; *) continue;; esac
   SHASH=$(echo "$e" | jq -r '.spec_hash')
   datum lane-state write --epic "{{epicBranch}}" --task "$TID" --status completed \
     --merge-commit "$MC" --spec-hash "$SHASH" --run-id "{{runId}}" > /dev/null

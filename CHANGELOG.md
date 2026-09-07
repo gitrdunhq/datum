@@ -2,6 +2,53 @@
 
 All notable changes to DATUM are documented here.
 
+## [Integration Lanes] — 2026-09-06 (run 20260906-163354)
+
+### Added
+
+Epic ticket `9e6c7aaf` (`docs/epics/datum/integration-lanes/`, "slice 1 — Properties
+emits tagged cross-task invariants, Plan schedules RED-only INT lanes") merged at
+`ff60e33c56cb2dac886372ffcfc03029e9d737cd`. 9/9 tasks completed (`say_do_ratio` 1.0, 0
+`failed_terminal`) per `docs/epics/datum/integration-lanes/tasks.json`.
+
+Review ran four iterations (`REVIEW-REPORT.md` passes of 12, 11, 6, 9, and 2 findings)
+and closed with three operator ACCEPT decisions recorded verbatim in
+`docs/epics/datum/integration-lanes/REVIEW-RESPONSE.md`:
+
+- **ACCEPT `d3246c28`** (ARCH-003, `datum/gate.py:19`): "Module-level imports of
+  `integration_invariants` in `gate.py` are the same pattern as every other gate helper
+  import in that file; the coupling is real and intended, and a lazy import would only
+  hide an ImportError until the plan gate runs."
+- **ACCEPT `cad4e34f`** (CORR-001, `datum/lane_plan_digest.py:56`): "SPEC AC4.1
+  conflicts with its own Backward-compatibility row (pre-slice plans must digest
+  byte-identically) and with the shipped test
+  `test_ac1_properties_path_none_is_byte_identical_to_pre_slice_output`; every
+  consumer already treats an absent kind as task (AC4.3, AC9.2), so no default is
+  synthesised."
+- **ACCEPT `be2382b4`** (ARCH-001, `datum/gate.py:1087`): "The NFR bounds file reads
+  (one extra linear pass over PROPERTIES.md and tasks.json), and `gate_plan` does
+  exactly that; `derive_integration_lanes` then works in memory on a table of at most
+  a few dozen rows. Verifying `depends_on` against the same derivation the planner ran
+  is the point: a second grouping implementation in the gate could drift from the
+  planner and pass a plan the planner would not have produced."
+
+### Known Gaps
+
+- **Git-stat scope conflation (repeat of FU-3, run `20260707-173926`).**
+  `closeout-data.json`'s `git` block reports 513 commits, +51063/-8320 LOC across
+  ~240 files, spanning far more than this epic — back through unrelated prior epics
+  to `52655981 fix(datum-go): preflight tool-check false-positives on non-datum
+  target repos (#378)`. This epic's own scope runs from ticket commit `9e6c7aaf`
+  through review-accept commit `2b83f804`, roughly 80 of the 513 listed commits. The
+  base-SHA resolution gap flagged in the prior closeout is still unresolved.
+- **Telemetry gap (repeat of FU-4, run `20260707-173926`).** `token_metrics.collected`
+  is `false`: "no state.db at `.datum/runs/20260906-163354/state.db` or
+  `.datum/state.db` (no producer writes one)" (logged in `collector_warnings`).
+- `gitnexus_diff` and `solutions` are `null`; `platform` is `null`; `lane_tools` is
+  empty — none reported by this run's collectors.
+
+---
+
 ## [Consumer-First Build-Order] — 2026-07-07 (run 20260707-173926)
 
 ### Added

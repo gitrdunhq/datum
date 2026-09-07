@@ -1,0 +1,82 @@
+[
+  {
+    "name": "basic",
+    "lane": {
+      "files": [
+        "a.py",
+        "b.py"
+      ],
+      "acceptance_criteria": [
+        "does a thing",
+        "does another thing"
+      ],
+      "depends_on": [
+        "task-000"
+      ]
+    },
+    "hash": "fnv1a64:c050a8fff85a7bbb"
+  },
+  {
+    "name": "multibyte-section-sign",
+    "lane": {
+      "files": [
+        "skills/src/datum-go.test.ts"
+      ],
+      "acceptance_criteria": [
+        "§ 4 of the spec requires X",
+        "handles § 12 correctly"
+      ],
+      "depends_on": []
+    },
+    "hash": "fnv1a64:4ab9dc7731a9505d"
+  },
+  {
+    "name": "emoji",
+    "lane": {
+      "files": [
+        "emoji.md"
+      ],
+      "acceptance_criteria": [
+        "renders 🎉 correctly",
+        "handles 🚀🔥 combo emoji"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-002"
+      ]
+    },
+    "hash": "fnv1a64:01af73863f242d83"
+  },
+  {
+    "name": "quotes-backslashes-newlines",
+    "lane": {
+      "files": [
+        "weird\\path.ts"
+      ],
+      "acceptance_criteria": [
+        "a \"quoted\" string",
+        "a line\nbreak",
+        "a backslash \\ literal",
+        "tab\there"
+      ],
+      "depends_on": []
+    },
+    "hash": "fnv1a64:27a7d1f84e9d59f6"
+  },
+  {
+    "name": "empty-arrays",
+    "lane": {
+      "files": [],
+      "acceptance_criteria": [],
+      "depends_on": []
+    },
+    "hash": "fnv1a64:fde4b51c15354c08"
+  },
+  {
+    "name": "missing-fields",
+    "lane": {
+      "title": "a lane with no files/AC/depends_on keys at all"
+    },
+    "hash": "fnv1a64:fde4b51c15354c08"
+  }
+]

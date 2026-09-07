@@ -6,7 +6,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, confloat, conint
+from pydantic import AwareDatetime, BaseModel, confloat, conint, field_validator
+
+# "No epic number could be determined" (datum/closeout_cmd.py re-exports it).
+# The only value below 1 CloseoutData accepts, so it can never be mistaken for
+# a real epic while a non-epic branch still closes out (#301).
+UNKNOWN_EPIC_NUMBER = -1
 
 
 class Git(BaseModel):
@@ -77,11 +82,17 @@ class GitnexusDiff(BaseModel):
 
 class CloseoutData(BaseModel):
     run_id: str
-    epic_number: conint(ge=1)
+    # A real epic number (>= 1) or UNKNOWN_EPIC_NUMBER: `conint(ge=1)` rejected
+    # the sentinel, so a closeout on a branch without a number could never
+    # validate — the sentinel's whole purpose was to satisfy this schema.
+    epic_number: int
     merge_sha: str
     merge_timestamp: AwareDatetime
     git: Git
-    tasks: Tasks
+    # Optional: a missing tasks collector is named in collector_warnings
+    # rather than sinking the collectors that did run (caliper BUG S).
+    tasks: Tasks | None = None
+    collector_warnings: list[str] | None = None
     lanes: list[Lane] | None = None
     platform: Platform | None = None
     lane_tools: list[LaneTool] | None = None
@@ -89,3 +100,12 @@ class CloseoutData(BaseModel):
     solutions: list[Solution] | None = None
     token_metrics: TokenMetrics
     gitnexus_diff: GitnexusDiff | None = None
+
+    @field_validator("epic_number")
+    @classmethod
+    def _epic_number_is_real_or_unknown(cls, v: int) -> int:
+        if v >= 1 or v == UNKNOWN_EPIC_NUMBER:
+            return v
+        raise ValueError(
+            f"epic_number must be >= 1 or the UNKNOWN sentinel {UNKNOWN_EPIC_NUMBER}, got {v}"
+        )

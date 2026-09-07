@@ -1,0 +1,128 @@
+"""Tests for datum/closeout/file_followups.py's schema validation.
+
+Bug: file_followups.py reads follow-ups.json (written by an LLM agent
+during Closeout) and files each item via `gh issue create` using
+permissive .get(..., default) fallbacks — a malformed item (missing
+title/body/dedup_key, the FollowUpIssue schema's required fields) would
+silently get filed as a near-empty "Follow-up" issue instead of being
+rejected and reported.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git"] + args, cwd=cwd, capture_output=True, text=True, check=True
+    )
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _git(["init", "-q"], cwd=repo_root)
+    _git(["config", "user.email", "test@example.com"], cwd=repo_root)
+    _git(["config", "user.name", "Test"], cwd=repo_root)
+    (repo_root / "README.md").write_text("hello\n")
+    _git(["add", "README.md"], cwd=repo_root)
+    _git(["commit", "-q", "-m", "init"], cwd=repo_root)
+    return repo_root
+
+
+def _manifest(repo_root: Path, run_id: str) -> Path:
+    """The manifest lives under the run directory, where the closeout
+    synthesis agent writes it (skills/src/prompts/closeout-synthesize.md) —
+    the filer used to read it from the cwd and so never saw it."""
+    p = repo_root / ".datum" / "runs" / run_id / "follow-ups.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _run_file_followups(repo_root: Path, run_id: str):
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "datum.closeout.file_followups",
+            "--run-id",
+            run_id,
+            "--tracker",
+            "local",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_malformed_followup_item_is_skipped_and_reported(repo):
+    """A follow-up item missing required FollowUpIssue fields (title, body,
+    dedup_key, source) must be reported as invalid, not silently filed with
+    empty-default placeholders."""
+    _manifest(repo, "run-001").write_text(
+        json.dumps([{"severity": "high"}])  # missing dedup_key/title/body/source
+    )
+
+    result = _run_file_followups(repo, "run-001")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = json.loads(result.stdout)
+    assert output.get("invalid", 0) == 1
+    assert output.get("filed", 0) == 0
+
+
+def test_valid_followup_item_with_local_tracker_is_retained(repo):
+    """A well-formed FollowUpIssue-shaped item passes validation and is
+    processed normally (local tracker just retains it, doesn't file to gh)."""
+    _manifest(repo, "run-002").write_text(
+        json.dumps(
+            [
+                {
+                    "dedup_key": "k1",
+                    "title": "Flaky test in worker pool",
+                    "body": "Details here",
+                    # high: at or above the default --min-severity, so the
+                    # local tracker "retains" it (medium/low are retained
+                    # below the threshold and counted separately).
+                    "severity": "high",
+                    "source": "closeout-collector",
+                }
+            ]
+        )
+    )
+
+    result = _run_file_followups(repo, "run-002")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = json.loads(result.stdout)
+    assert output.get("invalid", 0) == 0
+    assert output.get("retained", 0) == 1
+
+
+def test_malformed_followup_item_is_preserved_on_disk_not_deleted(repo):
+    """Bug (Copilot review, PR #385): invalid items were excluded from filing
+    (correct) but ALSO dropped from the write-back to follow-ups.json
+    (data loss) — `followups = valid_followups` before the final
+    `all_items = filed + retained` write silently deleted them from disk,
+    even though they were only supposed to be skipped, not erased."""
+    _manifest(repo, "run-003").write_text(
+        json.dumps([{"severity": "high"}])  # missing dedup_key/title/body/source
+    )
+
+    result = _run_file_followups(repo, "run-003")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = json.loads(result.stdout)
+    assert output.get("invalid", 0) == 1
+
+    on_disk = json.loads(_manifest(repo, "run-003").read_text())
+    assert len(on_disk) == 1, "invalid item must survive on disk, not be deleted"
+    assert on_disk[0].get("severity") == "high"

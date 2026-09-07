@@ -10,12 +10,12 @@ Ideas parked for future evaluation when the architecture dictates necessity.
 ## Dual Mode (Headless Runner)
 - **Concept:** Allow DATUM to run autonomously using an embedded LLM client (`litellm`), removing the need for a host tool like Claude Code or DATUM to drive the pipeline.
 - **Risks:** Couples orchestration engine with inference execution. Adds complexity of context windows, API retries, and token limits to DATUM. Could end up poorly recreating DATUM.
-- **Shelved:** Keep DATUM as a deterministic referee and guardrail. Let external agents remain the only drivers.
+- **Shelved:** Keep DATUM as a deterministic referee and guardrail. Let external agents remain the only drivers. (The root ROADMAP.md "Headless orchestrator for datum-local variant" entry was the same idea under Planned; this file is the disposition of record.)
 
-## DATUM V3: Dual Pipeline Architecture
+## Dual Pipeline Architecture (product upstream of engineering)
 - **Concept:** "Two pipelines, both alike in dignity." Splitting DATUM into an upstream Product Pipeline (ideation, PRDs, discovery) that feeds seamlessly into the downstream Engineering Pipeline (refine, plan, act).
 - **Risks:** Scope creep. Building product management orchestration before the engineering factory is perfectly dialed in risks building a system that designs great tickets but fails to write the code.
-- **Shelved:** Await V2 stabilization before assimilating the `datum-orchestrator` and `datum-ba` skill trees.
+- **Shelved:** Until the engineering pipeline is stable in the field. There are no `datum-orchestrator` or `datum-ba` skill trees to assimilate; the idea starts from scratch if revived.
 - **Artifacts removed:** `product_state.py`, `p1-triage.md` through `p4-handoff.md`, `product` CLI subcommand. Will resurface as a separate `datum-product` skill.
 
 ## MCP Server (Remote State API)

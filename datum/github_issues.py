@@ -17,7 +17,18 @@ from dataclasses import dataclass, field
 METADATA_PATTERN = re.compile(r"<!-- datum:metadata\s+(.*?)\s*-->", re.DOTALL)
 
 
-def _detect_repo() -> str:
+class GitHubRepoUnresolvedError(RuntimeError):
+    """No GitHub repo could be resolved from the current checkout."""
+
+
+def _detect_repo() -> str | None:
+    """The `owner/name` `gh` resolves for the CURRENT checkout, or None.
+
+    None — never a default. A consumer repo with no git remote made
+    `gh repo view` fail, and the old hardcoded fallback ("gitrdunhq/datum")
+    filed 18 of that project's task issues into datum's own tracker
+    (#396–#413). Publishing must refuse, not guess.
+    """
     try:
         r = subprocess.run(
             ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
@@ -29,10 +40,23 @@ def _detect_repo() -> str:
             return r.stdout.strip()
     except FileNotFoundError:
         pass
-    return "gitrdunhq/datum"
+    return None
 
 
-REPO = _detect_repo()
+REPO: str | None = _detect_repo()
+
+UNRESOLVED_REASON = (
+    "github_repo_unresolved: `gh repo view` cannot resolve a GitHub repo from "
+    "this checkout (no remote, or gh not authenticated) — refusing to touch any "
+    "tracker rather than default to another project's"
+)
+
+
+def require_repo() -> str:
+    """The resolved repo for a gh call, or a named error — never a default."""
+    if not REPO:
+        raise GitHubRepoUnresolvedError(UNRESOLVED_REASON)
+    return REPO
 
 
 @dataclass
@@ -86,14 +110,49 @@ def _build_issue_body(
     )
 
 
+def fetch_issue(issue_number: int) -> dict:
+    """Fetch a single GitHub issue's title/body/number.
+
+    Used to bootstrap a brand-new epic + TICKET.md from one bare issue with
+    no prior datum decomposition — distinct from list_sub_issues()/
+    build_lane_plan_from_epic(), which assume an epic issue already has
+    datum:metadata-tagged sub-issues.
+    """
+    raw = _gh_check(
+        "issue",
+        "view",
+        str(issue_number),
+        "--repo",
+        require_repo(),
+        "--json",
+        "number,title,body",
+    )
+    data = json.loads(raw)
+    return {
+        "number": data["number"],
+        "title": data["title"],
+        "body": data.get("body") or "",
+    }
+
+
 def parse_metadata(body: str) -> dict | None:
+    """Parse the `<!-- datum:metadata {...} -->` block from an issue body.
+
+    Returns None only when no metadata block is present at all — that is a
+    legitimate, expected case (a plain issue with no datum metadata yet).
+    A metadata block that IS present but fails to parse as JSON raises
+    instead: callers (list_sub_issues/build_lane_plan_from_epic) do
+    `meta or {}`, so silently returning None here would be indistinguishable
+    from "no metadata" and would quietly generate an empty lane (no files,
+    depends_on, acceptance_criteria) with no error surfaced.
+    """
     m = METADATA_PATTERN.search(body or "")
     if not m:
         return None
     try:
         return json.loads(m.group(1))
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed datum:metadata JSON block: {exc}") from exc
 
 
 def create_labels() -> None:
@@ -115,7 +174,7 @@ def create_labels() -> None:
             desc,
             "--force",
             "--repo",
-            REPO,
+            require_repo(),
         )
 
 
@@ -139,7 +198,7 @@ def create_epic(
         "--body",
         body,
         "--repo",
-        REPO,
+        require_repo(),
     )
     number = int(url.rstrip("/").split("/")[-1])
 
@@ -148,7 +207,7 @@ def create_epic(
         "view",
         str(number),
         "--repo",
-        REPO,
+        require_repo(),
         "--json",
         "id",
         "--jq",
@@ -185,7 +244,7 @@ def create_task(
         "--body",
         body,
         "--repo",
-        REPO,
+        require_repo(),
     )
     number = int(url.rstrip("/").split("/")[-1])
 
@@ -194,7 +253,7 @@ def create_task(
         "view",
         str(number),
         "--repo",
-        REPO,
+        require_repo(),
         "--json",
         "id",
         "--jq",
@@ -229,7 +288,7 @@ def link_sub_issue(parent_node_id: str, child_node_id: str) -> None:
 def list_sub_issues(parent_number: int) -> list[dict]:
     raw = _gh_check(
         "api",
-        f"repos/{REPO}/issues/{parent_number}/sub_issues",
+        f"repos/{require_repo()}/issues/{parent_number}/sub_issues",
     )
     issues = json.loads(raw)
     result = []
@@ -301,7 +360,7 @@ def update_issue_stage(
                 "--remove-label",
                 old_label,
                 "--repo",
-                REPO,
+                require_repo(),
             )
         _gh(
             "issue",
@@ -310,17 +369,25 @@ def update_issue_stage(
             "--add-label",
             label_map[stage],
             "--repo",
-            REPO,
+            require_repo(),
         )
 
     if stage == "done":
         comment = "Lane completed."
         if commit_sha:
             comment += f" Commit: {commit_sha}"
-        _gh("issue", "comment", str(issue_number), "--body", comment, "--repo", REPO)
+        _gh(
+            "issue",
+            "comment",
+            str(issue_number),
+            "--body",
+            comment,
+            "--repo",
+            require_repo(),
+        )
 
     if stage == "done":
-        _gh("issue", "close", str(issue_number), "--repo", REPO)
+        _gh("issue", "close", str(issue_number), "--repo", require_repo())
 
 
 def publish_lane_plan(
@@ -336,6 +403,10 @@ def publish_lane_plan(
     Returns: {"epic_number": N, "task_issues": {"lane-id": issue_number}}
     """
     from pathlib import Path
+
+    if not REPO:
+        # Publishing is optional; filing into a guessed tracker is not an option.
+        return {"skipped": "github_repo_unresolved", "reason": UNRESOLVED_REASON}
 
     lp_path = Path(lane_plan_path)
     lane_plan = json.loads(lp_path.read_text())

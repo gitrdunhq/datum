@@ -1,5 +1,68 @@
-import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel } from './models'
+import type { TddStage, FailureStage, LaneStatus, Severity, SkepticVerdict, TriageCategory, ModelName, RiskLevel, ModelTier, Phase, Route } from './models'
 import type { AgentTypeConfig } from './agent-types'
+
+// .datum/config.json, read via READ_CONFIG_PROMPT and merged onto DEFAULT_CONFIG.
+// Named fields are the ones every script reads directly; anything else the repo
+// puts in config.json still round-trips (index signature) without a compile error.
+export interface RepoConfig {
+  language?: string
+  test_framework?: string
+  test_command?: string
+  skills_dir?: string
+  context_files?: string[]
+  agent_types?: boolean
+  hooks_installed?: boolean
+  models?: Partial<Record<ModelTier, string>>
+  [key: string]: unknown
+}
+
+// Top-level `args` shapes each datum-*.ts entrypoint parses out of the sandbox's
+// ambient `args` (string | object, hence still loosely typed at the source —
+// see sandbox.d.ts). Casting the parsed value to one of these right after parsing
+// is what makes `a.someField` a compile error when the field doesn't exist,
+// instead of silently resolving to `undefined` at runtime (#368 postmortem).
+export interface GoArgs {
+  yolo?: boolean
+  startFrom?: string
+  route?: string
+  phases?: Phase[]
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
+  freeText?: string
+  issueNumber?: number
+}
+
+export interface PhaseArgs {
+  yolo?: boolean
+  agentTypes?: AgentTypeConfig
+  freeText?: string
+  issueNumber?: number | null
+  /** Resume cache key (`datum config-fingerprint`): stamped into every
+   *  batch prompt so a human edit between runs is a cache miss. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
+}
+
+export interface CloseoutArgs extends PhaseArgs {
+  runId?: string
+}
+
+export interface TddActArgs {
+  yolo?: boolean
+  testCommand?: string
+  language?: string
+  test_framework?: string
+  lanePlanPath?: string
+  epicBranch?: string
+  runId?: string
+  agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
+}
 
 // Cross-workflow arg/result contracts
 
@@ -7,11 +70,15 @@ export interface SetupArgs {
   batchRunId: string
   epicBranch: string
   batchLaneIds: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   lanePlanPath: string
   batchTag: string
   /** #368: agent_types / hooks_installed switches from the parent's config. */
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 export interface SetupResult {
   worktreePaths: Record<string, string>
@@ -19,7 +86,7 @@ export interface SetupResult {
 
 export interface LaneArgs {
   batchLaneIds: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   worktreePaths: Record<string, string>
   cfg: PipelineConfig
   priorFailures: string[]
@@ -38,30 +105,56 @@ export interface MergeArgs {
   topoOrder: string[]
   batchTag: string
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
   /** #368: epic-scoped completion markers to record after a successful
    *  merge (folded into the merge batch; was a separate agent call). */
   laneState?: { epicSlug: string; entries: Array<{ task_id: string; spec_hash: string }> } | null
 }
 export interface MergeResult {
+  /** True only when the squash-merge step exited 0 for a non-empty order. */
   merged: boolean
+  /** True when a merge was attempted and did not land (distinct from "nothing to merge"). */
+  failed: boolean
+  /** Lanes that actually landed on the epic branch (also set on a partial merge). */
+  mergedIds: string[]
+  /** The lane whose squash-merge did not land on a partial merge, else ''. */
+  failedLane: string
+  /** The CLI's error text (git's conflict output) on a failed merge, else ''. */
+  error?: string
+  /** Paths the failed lane's squash conflicted on. */
+  conflictFiles?: string[]
+  /** .datum/runs/<run>/merge-conflict-<lane>.json when a conflict was recorded, else ''. */
+  report?: string
 }
 
 export interface DocsArgs {
   completedLanes: string[]
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   runId: string
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 export interface DocsResult {
   synced: boolean
   files?: string[]
+  /** Set when a commit was attempted: did it land? */
+  committed?: boolean
+  commit_sha?: string
+  /** Why docs were written but not committed (or not written). */
+  failure_reason?: string
 }
 
 export interface TriageArgs {
   failures: string[]
   blocked: LaneOutcome[]
   results: Record<string, LaneOutcome>
-  lanePlan: LanePlan
+  lanePlan: LanePlanDigest
   runId: string
   epicBranch: string
   agentTypes?: AgentTypeConfig
@@ -78,6 +171,19 @@ export interface LanePlan {
   total_lanes: number
 }
 
+/**
+ * What the Act scheduler holds in-script: `datum lane-plan-digest`'s output.
+ * Same shape as LanePlan minus the per-lane prose (acceptance_criteria,
+ * red_note, ...) plus a per-lane `spec_hash` computed by the pinned Python
+ * port of laneSpecHash. The full lane is fetched per lane at intake. The
+ * plan file itself never travels through an LLM turn.
+ */
+export interface LanePlanDigest extends LanePlan {
+  schema_version: number
+  /** git blob sha of the lane-plan.json the digest was built from. */
+  lane_plan_sha: string
+}
+
 export interface Lane {
   title: string
   files: string[]
@@ -85,7 +191,13 @@ export interface Lane {
   depends_on?: string[]
   acceptance_criteria?: string[]
   red_note?: string
-  stage?: 'structural' | 'behavioral'
+  /** Lifecycle status written by the producers (datum/lane_plan.py,
+   *  datum/github_issues.py): "queued" | "red" | "green" | "done" | ... —
+   *  NOT the lane kind. */
+  stage?: string
+  /** Docs-only / config-only lanes skip RED/GREEN and go straight to REFACTOR.
+   *  Produced by the planner via tasks.json `kind` (#369). Absent = behavioral. */
+  kind?: 'structural' | 'behavioral'
   green_model?: ModelName
   /** Verbatim test command override for lanes the repo-wide command can't
    *  reach (e.g. files in a sub-package with its own Package.swift). When set,
@@ -93,6 +205,10 @@ export interface Lane {
    *  scoping. Excluded from laneSpecHash: changing it never invalidates a
    *  completed lane marker. */
   test_command?: string
+  /** GitHub sub-issue number, written back by `datum plan-issues` (datum/github_issues.py). */
+  github_issue?: number
+  /** Present on digest lanes only: laneSpecHash of the full lane, computed by datum/lane_hash.py. */
+  spec_hash?: string
 }
 
 export interface PipelineConfig {
@@ -110,6 +226,10 @@ export interface PipelineConfig {
    *  so the lane bundle (its own copy of the agent-types state) can
    *  configure itself. */
   agentTypes?: AgentTypeConfig
+  /** Resume cache key — see PhaseArgs.configFingerprint. */
+  configFingerprint?: string
+  /** Repo root measured by the orchestrator boot batch; every batch cd-s there first (setBatchRoot). */
+  repoRoot?: string
 }
 
 export interface LaneOutcome {
@@ -121,6 +241,8 @@ export interface LaneOutcome {
    *  a `blocked` GREEN outcome; the orchestrator surfaces it once as a single
    *  lead-approval question. */
   needs_write?: string[]
+  /** Skeptic single-lens findings written to .datum/runs/<run>/follow-ups/<lane>.json for Closeout to file (caliper#564). */
+  follow_ups?: number
 }
 
 // Agent result types
@@ -163,14 +285,6 @@ export interface ContractPreflight {
   needs_write: string[]
   reason: string
   pytest_exit_code?: number | null
-}
-
-export interface CommitResult {
-  committed: boolean
-  commit_sha?: string
-  files_staged?: string[]
-  violations?: string[]
-  failure_reason?: string
 }
 
 export interface ReflectResult {
@@ -230,8 +344,10 @@ export interface TaskPacket {
   title: string
   working_directory: string
   test_command: string
-  acceptance_criteria: string[]
-  red_note: string
+  /** The lane's acceptance criteria, red_note and contract_summary live in
+   *  this worktree file (written by `datum lane-spec-export`); the agent
+   *  reads it and proves the read with read_witness = sha prefix. */
+  lane_spec_file: { path: string; bytes: number }
   allowed_write_files: string[]
   forbidden_write_files: string[]
   commit_prefix: string

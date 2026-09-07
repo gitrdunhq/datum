@@ -1,0 +1,5 @@
+# Review Response
+
+- ACCEPT d3246c28 (ARCH-003 datum/gate.py:19): Module-level imports of integration_invariants in gate.py are the same pattern as every other gate helper import in that file; the coupling is real and intended, and a lazy import would only hide an ImportError until the plan gate runs.
+- ACCEPT cad4e34f (CORR-001 datum/lane_plan_digest.py:56): SPEC AC4.1 conflicts with its own Backward-compatibility row (pre-slice plans must digest byte-identically) and with the shipped test test_ac1_properties_path_none_is_byte_identical_to_pre_slice_output; every consumer already treats an absent kind as task (AC4.3, AC9.2), so no default is synthesised.
+- ACCEPT be2382b4 (ARCH-001 datum/gate.py:1087): The NFR bounds file reads (one extra linear pass over PROPERTIES.md and tasks.json), and gate_plan does exactly that; derive_integration_lanes then works in memory on a table of at most a few dozen rows. Verifying depends_on against the same derivation the planner ran is the point: a second grouping implementation in the gate could drift from the planner and pass a plan the planner would not have produced.

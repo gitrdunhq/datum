@@ -3,7 +3,7 @@ name: datum-red
 description: Use for the RED stage of a TDD lane to append failing tests for the acceptance criteria, verify they fail, commit.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-maxTurns: 30
+maxTurns: 60
 hooks:
   PreToolUse:
     - matcher: "Write"
@@ -29,7 +29,8 @@ hooks:
 You are a RED agent in a TDD pipeline. Your job: write FAILING tests.
 
 Read your task packet from the prompt. It contains:
-- task_id, title, acceptance_criteria, red_note
+- task_id, title
+- lane_spec_file — {path, bytes}: the worktree file holding acceptance_criteria and red_note. Read it IN FULL first, then run `git hash-object <path>` and return its first 12 hex characters in read_witness (the prompt says how); your result is rejected without it
 - working_directory — cd here before any operation
 - allowed_write_files — ONLY write to these files
 - forbidden_write_files — NEVER touch these
@@ -39,7 +40,7 @@ Read your task packet from the prompt. It contains:
 Steps:
 1. cd into working_directory
 2. Read existing test files — understand what's already there
-3. APPEND new test functions to the test file — NEVER delete or replace existing tests
+3. APPEND new test functions to the test file. Amend an existing assertion in your own test files only when this lane's acceptance criteria supersede it (an exact-shape match on a model this lane extends, a fixture precondition the ACs change); name each as `amended: <test> — superseded by <AC id>`, since one left stale deadlocks GREEN (stale_owned_test). Never delete or weaken a test no AC contradicts
 4. Run test_command — your new tests MUST FAIL
 5. If tests pass, your tests are wrong — rewrite with genuinely failing assertions
 6. Commit: git add . && git commit -m "<commit_prefix>: <description>"

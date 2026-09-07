@@ -19,6 +19,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.integration_invariants import (
+    IntegrationInvariantError,
+    derive_integration_lanes,
+    has_integration_invariants_section,
+    parse_integration_invariants,
+    unknown_covered_tasks,
+)
 from datum.path_utils import assets_dir, existing_review_packets_dir, templates_dir
 
 
@@ -36,6 +43,7 @@ def load_config() -> dict:
     local_config = Path(".datum/config.toml")
     default_path = assets_dir() / "config.toml.default"
 
+    config: dict = {}
     for path in (project_config, local_config, default_path):
         if path.exists():
             try:
@@ -44,10 +52,27 @@ def load_config() -> dict:
                 try:
                     import tomli as tomllib  # type: ignore[import]
                 except ImportError:
-                    return {}
+                    break
             with path.open("rb") as f:
-                return tomllib.load(f)
-    return {}
+                config = tomllib.load(f)
+            break
+
+    # .datum/config.json is the pipeline's config (RepoConfig; what `datum
+    # init` writes and every workflow reads). Its keys win: review_max_iterations
+    # was documented there and never read here, so raising it changed nothing.
+    for json_path in (
+        Path(project_dir) / ".datum/config.json",
+        Path(".datum/config.json"),
+    ):
+        if json_path.exists():
+            try:
+                loaded = json.loads(json_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                loaded = None
+            if isinstance(loaded, dict):
+                config = {**config, **loaded}
+            break
+    return config
 
 
 def gate_policy(config: dict, gate_name: str) -> str:
@@ -67,6 +92,29 @@ def pass_gate(message: str = "gate passed") -> None:
 # ── Helper functions ────────────────────────────────────────────────────────
 
 
+def _transitive_closure(deps: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Expand each id's direct dependency set to include indirect deps.
+
+    Mutates and returns `deps` in place. Used by gate_plan()'s file-overlap
+    check for both units and tasks (#524 dogfooding) — a direct-only check
+    false-fails whenever ordering between two lanes sharing a file is
+    established through an intermediate lane (a -> b -> c) rather than a
+    single direct edge, which is a normal pattern for lanes that touch the
+    same core file across several sequential steps.
+    """
+    changed = True
+    while changed:
+        changed = False
+        for _id, d in deps.items():
+            old_len = len(d)
+            for dep in list(d):
+                if dep in deps:
+                    d.update(deps[dep])
+            if len(d) > old_len:
+                changed = True
+    return deps
+
+
 def resolve_epic_dir() -> Path:
     """Return docs/epics/<branch>/ based on current git branch."""
     try:
@@ -77,6 +125,8 @@ def resolve_epic_dir() -> Path:
             timeout=5,
         )
         branch = result.stdout.strip()
+        if result.returncode != 0 or not branch:
+            branch = "unknown"
     except (subprocess.TimeoutExpired, FileNotFoundError):
         branch = "unknown"
     return Path(f"docs/epics/{branch}")
@@ -154,6 +204,43 @@ def check_questions_answered(content: str) -> list[str]:
     return errors
 
 
+def answered_question_ids(content: str) -> list[str]:
+    """Return the Q<N> ids whose block has a non-empty [Answer]: line.
+
+    Mirrors check_questions_answered's block-tracking and peek-ahead logic,
+    inverted: a question is "answered" exactly when check_questions_answered
+    would NOT emit an "unanswered" error for it.
+    """
+    answered: list[str] = []
+    lines = content.split("\n")
+    current_question: str | None = None
+
+    for i in range(len(lines)):
+        line = lines[i]
+        q_match = re.match(r"^###\s+(Q\d+):", line)
+        if q_match:
+            current_question = q_match.group(1)
+            continue
+
+        a_match = re.match(r"^\[Answer\]:\s*(.*)", line)
+        if a_match:
+            answer_text = a_match.group(1).strip()
+            is_answered = bool(answer_text)
+            if not is_answered and current_question:
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j]
+                    stripped = next_line.strip()
+                    if stripped == "":
+                        continue
+                    is_answered = not re.match(r"^###\s+", next_line)
+                    break
+            if is_answered and current_question and current_question not in answered:
+                answered.append(current_question)
+            current_question = None
+
+    return answered
+
+
 def check_open_questions(spec_content: str) -> list[str]:
     """Scan the Open Questions section body for unresolved markers (#57).
 
@@ -162,7 +249,7 @@ def check_open_questions(spec_content: str) -> list[str]:
     refine gate. Returns a list of error strings.
     """
     heading = re.search(
-        r"^(#{2,6})\s+(?:\d+\.\s+)?Open Questions\b.*$",
+        r"^(#{1,6})\s+(?:\d+\.\s+)?Open Questions\b.*$",
         spec_content,
         re.MULTILINE | re.IGNORECASE,
     )
@@ -173,7 +260,7 @@ def check_open_questions(spec_content: str) -> list[str]:
     body_start = heading.end()
     # Section ends at the next heading of the same or higher level
     next_heading = re.search(
-        rf"^#{{2,{level}}}\s", spec_content[body_start:], re.MULTILINE
+        rf"^#{{1,{level}}}\s", spec_content[body_start:], re.MULTILINE
     )
     body = (
         spec_content[body_start : body_start + next_heading.start()]
@@ -184,6 +271,395 @@ def check_open_questions(spec_content: str) -> list[str]:
     if "[ ]" in body or "TBD" in body or "TODO" in body:
         return ["SPEC.md Open Questions section has unresolved items ([ ]/TBD/TODO)"]
     return []
+
+
+# Ported from the spec-write skill's scan_terms.py / banned_terms.json —
+# a criterion using an unmeasurable term is unreviewable regardless of
+# wording; conditional terms are fine once a measure is attached.
+_BANNED_TERMS_BLOCKING: dict[str, list[str]] = {
+    "subjective": [
+        "appropriate",
+        "adequate",
+        "sufficient",
+        "reasonable",
+        "user-friendly",
+        "user friendly",
+        "clean",
+        "robust",
+        "efficient",
+        "simple",
+        "intuitive",
+        "seamless",
+        "proper",
+    ],
+    "open_ended": [
+        "etc.",
+        "etc",
+        "and so on",
+        "including but not limited to",
+        "as needed",
+        "if required",
+        "where applicable",
+        "as appropriate",
+    ],
+    "superlative": [
+        "best",
+        "optimal",
+        "maximum",
+        "better",
+        "faster",
+        "improved",
+        "minimal",
+        "at least as good as",
+    ],
+    "loophole": [
+        "if possible",
+        "as far as practical",
+        "when convenient",
+        "should ideally",
+    ],
+}
+_BANNED_TERMS_CONDITIONAL: dict[str, list[str]] = {
+    "non_verifiable": [
+        "fast",
+        "quick",
+        "performant",
+        "scalable",
+        "secure",
+        "reliable",
+        "maintainable",
+    ],
+}
+_MEASURE_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"\b\d+(\.\d+)?\s*(ms|milliseconds?|s|seconds?|m|minutes?|h|hours?|days?|%|percent|bytes?|kb|mb|gb|requests?|rps|qps|items?|rows?|calls?|characters?|tokens?)\b",
+        r"\bas measured by\b",
+        r"\bat most\b",
+        r"\bno more than\b",
+        r"\bwithin\b\s+\d+",
+    ]
+]
+
+
+def _term_re(term: str) -> re.Pattern:
+    if term.endswith("."):
+        return re.compile(r"(?<!\w)" + re.escape(term), re.IGNORECASE)
+    return re.compile(
+        r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b", re.IGNORECASE
+    )
+
+
+_BLOCKING_PATTERNS = [
+    (cat, term, _term_re(term))
+    for cat, terms in _BANNED_TERMS_BLOCKING.items()
+    for term in terms
+]
+_CONDITIONAL_PATTERNS = [
+    (cat, term, _term_re(term))
+    for cat, terms in _BANNED_TERMS_CONDITIONAL.items()
+    for term in terms
+]
+
+
+def _has_section(content: str, heading_name: str) -> bool:
+    """True when a markdown heading (any level) names the section — not when
+    the words merely appear in prose (Python core review)."""
+    return (
+        re.search(
+            rf"^#{{1,6}}\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b",
+            content,
+            re.MULTILINE | re.IGNORECASE,
+        )
+        is not None
+    )
+
+
+_HIGH_OR_CRITICAL_RE = re.compile(
+    r"(?:severity|sev|priority)\s*:?\s*\**\s*(?:high|critical)\b"
+    r"|\*\*(?:high|critical)\*\*"
+    r"|\|\s*(?:high|critical)\s*\|",
+    re.IGNORECASE,
+)
+
+
+# `- ACCEPT <token> [(note)]: <reason>` or `- DEFER <token> [(note)] -> <epic>: <reason>`.
+# <token> is the row's content key (8 hex, stable across re-reviews) or, for
+# a report without a Key column, its id.
+_ACCEPT_LINE_RE = re.compile(
+    r"^\s*[-*]?\s*(ACCEPT|DEFER)\s+([A-Za-z0-9]+(?:-\d+)?)\s*(?:\([^)]*\))?\s*"
+    r"(?:->\s*(\S+)\s*)?:\s*(.*?)\s*$"
+)
+_FINDING_ROW_RE = re.compile(
+    r"^\|\s*([A-Za-z]+-\d+)\s*\|\s*\**\s*(critical|high|medium|low|info)\b",
+    re.IGNORECASE,
+)
+_KEY_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+
+DEFAULT_REVIEW_MAX_ITERATIONS = 3
+
+
+def _review_max_iterations(config: dict) -> int:
+    """review_max_iterations from .datum/config.json, default 3. Anything
+    that is not a positive integer keeps the default (never a silent 0 that
+    would hard-stop every review)."""
+    raw = config.get("review_max_iterations") if isinstance(config, dict) else None
+    if isinstance(raw, bool):
+        return DEFAULT_REVIEW_MAX_ITERATIONS
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return DEFAULT_REVIEW_MAX_ITERATIONS
+    return value if value >= 1 else DEFAULT_REVIEW_MAX_ITERATIONS
+
+
+def _report_sha(content: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+
+def _review_iterations_path(report_path: Path) -> Path:
+    """Per-epic record of the distinct blocked reports seen:
+    .datum/epics/<slug>/review-iterations.json (the pipeline-state slug)."""
+    from datum.pipeline_state import epic_state_slug
+
+    slug = epic_state_slug(str(report_path.parent).replace("docs/epics/", "", 1))
+    return Path(".datum") / "epics" / (slug or "unknown") / "review-iterations.json"
+
+
+def _blocked_reports_seen(report_path: Path) -> set[str]:
+    path = _review_iterations_path(report_path)
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return set()
+    seen = data.get("seen") if isinstance(data, dict) else None
+    return {str(s) for s in seen} if isinstance(seen, list) else set()
+
+
+def _record_blocked_report(report_path: Path, seen: set[str]) -> None:
+    path = _review_iterations_path(report_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"seen": sorted(seen)}, indent=2) + "\n")
+
+
+def accepted_review_findings(response_path: Path) -> dict[str, str]:
+    """Token (key or id, upper-cased) → reason from REVIEW-RESPONSE.md. A
+    DEFER counts as an accept whose reason names the target epic. A line
+    with no reason is not an accept: the whole point is a recorded,
+    reasoned operator decision."""
+    if not response_path.exists():
+        return {}
+    accepted: dict[str, str] = {}
+    for line in response_path.read_text().splitlines():
+        match = _ACCEPT_LINE_RE.match(line)
+        if not match or not match.group(4).strip():
+            continue
+        verb, token, target, reason = match.groups()
+        if verb == "DEFER" and target:
+            reason = f"deferred to {target}: {reason.strip()}"
+        accepted[token.upper()] = reason.strip()
+    return accepted
+
+
+_DECISION_LINE_RE = re.compile(
+    r"^\s*[-*]?\s*(ACCEPT|DEFER)\s+([A-Za-z0-9]+(?:-\d+)?)\s*"
+    r"(?:\(\s*([A-Za-z]+-\d+)\s+(\S+?):(\d+)\s*\))?\s*(?:->\s*(\S+)\s*)?:\s*(.*?)\s*$"
+)
+
+
+def review_decisions(response_path: Path) -> list[dict[str, str]]:
+    """Every reasoned ACCEPT/DEFER line with what it was recorded against:
+    {token, verb, id, file, line, reason}. `datum review-accept` writes the
+    `(<ID> <file>:<line>)` note, which is what lets a decision outlive a
+    reworded re-finding (caliper BUG R): the key hashes the text, the note
+    names the place."""
+    if not response_path.exists():
+        return []
+    out: list[dict[str, str]] = []
+    for line in response_path.read_text().splitlines():
+        m = _DECISION_LINE_RE.match(line)
+        if not m or not m.group(7).strip():
+            continue
+        verb, token, fid, path, lineno, target, reason = m.groups()
+        out.append(
+            {
+                "token": token.upper(),
+                "verb": verb,
+                "id": (fid or "").upper(),
+                "file": path or "",
+                "line": lineno or "",
+                "target": target or "",
+                "reason": reason.strip(),
+            }
+        )
+    return out
+
+
+def _lens_of(finding_id: str) -> str:
+    return finding_id.split("-", 1)[0].upper() if finding_id else ""
+
+
+_REQUIREMENT_ID_RE = re.compile(
+    r"\b(R\d+(?:\.\d+)*|(?:SAFE|LIVE|INV|BOUND|IDEM|ORD|ISOL|PERF|SEC|OBS|COMPAT)-\d+)\b"
+)
+
+
+def _requirement_ids(text: str) -> set[str]:
+    """Requirement / property ids cited in free text (R2.1, INV-003)."""
+    return {m.group(1).upper() for m in _REQUIREMENT_ID_RE.finditer(text or "")}
+
+
+def review_report_rows(content: str) -> list[dict[str, str]]:
+    """The report's finding rows as {id, severity, file, line, key} in report
+    order. `key` is '' for a report without a Key column (pre-key reports)."""
+    header_cols: list[str] = []
+    rows: list[dict[str, str]] = []
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not header_cols and cells and cells[0].lower() == "id":
+            header_cols = [c.lower() for c in cells]
+            continue
+        match = _FINDING_ROW_RE.match(line)
+        if not match:
+            continue
+
+        def cell(name: str) -> str:
+            if name in header_cols and header_cols.index(name) < len(cells):
+                return cells[header_cols.index(name)]
+            return ""
+
+        key = cell("key")
+        rows.append(
+            {
+                "id": match.group(1).upper(),
+                "severity": match.group(2).lower(),
+                "file": cell("file"),
+                "line": cell("line"),
+                "description": cell("description"),
+                "key": key.lower() if _KEY_RE.match(key) else "",
+            }
+        )
+    return rows
+
+
+def _blocking_review_findings(
+    content: str,
+    accepted: dict[str, str],
+    decisions: list[dict[str, str]] | None = None,
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """(blocking labels, ignored accept tokens, {row key: prior decision
+    token} for rows cleared by place rather than key). A high/critical row
+    is cleared by an accept of its key; failing that, by a recorded decision
+    whose note names the same lens, file and line — the key hashes the
+    finding's text, and a reviewer that restates the same finding produces
+    a new key (caliper BUG R). An id accept clears a row only when the
+    report carries no keys — ids are renumbered every review, so on a keyed
+    report it is named as ignored rather than silently binding to whatever
+    row wears that id now. A report with no id-labelled rows falls back to
+    the whole-content severity scan ("(unlabelled)")."""
+    rows = review_report_rows(content)
+    if not rows:
+        blocked = _report_has_high_or_critical(content)
+        return (["(unlabelled)"] if blocked else []), [], {}
+    keyed = any(r["key"] for r in rows)
+    placed = [d for d in (decisions or []) if d["file"] and d["line"]]
+    blocking: list[str] = []
+    matched: dict[str, str] = {}
+    for r in rows:
+        if r["severity"] not in ("high", "critical"):
+            continue
+        if r["key"] and r["key"].upper() in accepted:
+            continue
+        if not keyed and r["id"] in accepted:
+            continue
+        # The place is the identity: a decision recorded at the same file and
+        # line matches whatever lens re-raises it (elonchesd epic-2: the perf
+        # lens's scan came back under the architecture lens at the same
+        # line). A shared requirement id (R2.1, INV-003) is named when both
+        # cite it. A different line is a different finding.
+        row_reqs = _requirement_ids(r.get("description", ""))
+        prior = next(
+            (d for d in placed if d["file"] == r["file"] and d["line"] == r["line"]),
+            None,
+        )
+        if prior is not None and r["key"]:
+            shared = sorted(row_reqs & _requirement_ids(prior["reason"]))
+            rule = "file+line" + (f"+{shared[0]}" if shared else "")
+            matched[r["key"]] = f"{prior['token']}|{rule}"
+            continue
+        blocking.append(f"{r['id']} [{r['key']}]" if r["key"] else r["id"])
+    ignored: list[str] = []
+    if keyed:
+        ids = {r["id"] for r in rows}
+        ignored = [t for t in accepted if t in ids]
+    return blocking, ignored, matched
+
+
+def _report_has_high_or_critical(content: str) -> bool:
+    """Does REVIEW-REPORT.md carry a high/critical finding, however the
+    reviewer spelled the severity (\"Severity: high\", \"Priority: High\",
+    \"**critical**\", a table cell)? Four literal substrings missed the rest."""
+    return _HIGH_OR_CRITICAL_RE.search(content) is not None
+
+
+def _extract_section(spec_content: str, heading_name: str) -> str | None:
+    """Return the body text of a '## <n>. <heading_name>' section, or None if absent."""
+    heading = re.search(
+        rf"^(#{{1,6}})\s+(?:\d+\.\s+)?{re.escape(heading_name)}\b.*$",
+        spec_content,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if not heading:
+        return None
+    level = len(heading.group(1))
+    body_start = heading.end()
+    next_heading = re.search(
+        rf"^#{{1,{level}}}\s", spec_content[body_start:], re.MULTILINE
+    )
+    return (
+        spec_content[body_start : body_start + next_heading.start()]
+        if next_heading
+        else spec_content[body_start:]
+    )
+
+
+def check_banned_terms(spec_content: str) -> list[str]:
+    """Scan the Requirements section for unreviewable vague/subjective terms.
+
+    Ported from the spec-write skill's scan_terms.py. Scoped to the
+    Requirements section only, so prose elsewhere in the SPEC (Context,
+    Summary) doesn't trip the refine gate. Returns a list of error strings.
+    """
+    body = _extract_section(spec_content, "Requirements")
+    if not body:
+        return []
+
+    errors: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        has_measure = any(rx.search(stripped) for rx in _MEASURE_PATTERNS)
+        for _cat, term, rx in _BLOCKING_PATTERNS:
+            if rx.search(stripped):
+                errors.append(
+                    f"SPEC.md Requirements uses unreviewable term {term!r}: {stripped[:80]!r}"
+                )
+        if not has_measure:
+            for _cat, term, rx in _CONDITIONAL_PATTERNS:
+                if rx.search(stripped):
+                    errors.append(
+                        f"SPEC.md Requirements uses {term!r} with no stated measure: {stripped[:80]!r}"
+                    )
+    return errors
 
 
 def check_assumption_audit(
@@ -266,19 +742,25 @@ def check_assumption_audit(
             continue
 
         if status == "guess":
-            # Check if Resolves points to an answered question
-            resolves_match = re.match(r"^(Q\d+)$", resolves.strip())
-            if not resolves_match:
+            # Resolves must reference an answered question. Any Q<N> in the
+            # cell counts ("Q8 (partially)", "Q2 (related)" reference one;
+            # elonchesd wf_251cf8a3-363 lost 20 minutes of planning to an
+            # exact-match rule); 'n/a' with prose is the real violation.
+            referenced = re.findall(r"\bQ\d+\b", resolves)
+            if not referenced:
                 errors.append(
                     f"Assumption {cells[0]}: status is 'guess' but Resolves "
-                    f"is '{resolves}' (must reference Q<N>)"
+                    f"is '{resolves}' — a guess must reference an answered "
+                    f"Q<N>; fix the Assumption Audit table in SPEC.md"
                 )
-            elif resolves_match.group(1) not in answered_questions:
-                errors.append(
-                    f"Assumption {cells[0]}: status is 'guess', Resolves "
-                    f"references {resolves_match.group(1)} but that question "
-                    f"is unanswered"
-                )
+            else:
+                unanswered = [q for q in referenced if q not in answered_questions]
+                if unanswered:
+                    errors.append(
+                        f"Assumption {cells[0]}: status is 'guess', Resolves "
+                        f"references {', '.join(unanswered)} but that question "
+                        f"is unanswered (QUESTIONS.md)"
+                    )
 
     # Check for zero Refine-section questions (warning, not error)
     if questions_content:
@@ -415,7 +897,7 @@ def gate_refine(yolo: bool, config: dict) -> None:
         "Non-functional",
         "Out of scope",
     ]
-    missing = [s for s in required_sections if s.lower() not in content.lower()]
+    missing = [s for s in required_sections if not _has_section(content, s)]
     if missing:
         fail(f"SPEC.md missing sections: {missing}")
 
@@ -424,12 +906,34 @@ def gate_refine(yolo: bool, config: dict) -> None:
     if oq_errors:
         fail(oq_errors[0])
 
+    # spec-write integration: reject unreviewable vague/subjective terms in
+    # acceptance criteria (e.g. "handles errors appropriately" can't be
+    # checked against a diff; "responds within 200ms" can).
+    term_errors = check_banned_terms(content)
+    if term_errors:
+        fail(term_errors[0])
+
     # Check QUESTIONS.md for unanswered entries
     questions_path = resolve_artifact("QUESTIONS.md")
     if questions_path.exists():
         q_errors = check_questions_answered(questions_path.read_text())
         if q_errors:
             fail(f"QUESTIONS.md has unanswered questions: {q_errors}")
+
+    # Overconfidence: the Assumption Audit table is refine's own output, so
+    # it is checked here, where a fix costs seconds. The plan gate re-checks
+    # it, but a failure there arrives after every planning agent has run
+    # (elonchesd wf_251cf8a3-363: 15 agents, 20 minutes, then this).
+    overconfidence_enabled = config.get("gates", {}).get("overconfidence_check", True)
+    audit_errors, audit_warnings = check_assumption_audit(
+        content,
+        questions_path.read_text() if questions_path.exists() else None,
+        overconfidence_enabled,
+    )
+    for w in audit_warnings:
+        print(f"⚠️ Warning: {w}", file=sys.stderr)
+    if audit_errors:
+        fail(f"Overconfidence gate failed: {audit_errors}")
 
     policy = gate_policy(config, "refine_human_review")
     if policy == "required" and not yolo:
@@ -448,6 +952,21 @@ def gate_refine(yolo: bool, config: dict) -> None:
     pass_gate("Refine gate passed")
 
 
+_INT_LANE_PREFIX = "task-INT-"
+
+
+def check_zero_lanes(lane_plan: dict) -> list[str]:
+    """A lane-plan.json with zero lanes must fail the gate explicitly.
+
+    Without this, set(topological_order) != lane_ids is False when both are
+    empty, so the lane-validation loop in gate_plan() never runs and a
+    trivial/no-op decomposition proceeds silently into Act with nothing to do.
+    """
+    if not lane_plan.get("lanes"):
+        return ["lane-plan.json has zero lanes"]
+    return []
+
+
 def gate_plan(yolo: bool, config: dict) -> None:
     tasks_path = resolve_artifact("TASKS.md")
     lane_plan_path = resolve_artifact("lane-plan.json")
@@ -461,15 +980,19 @@ def gate_plan(yolo: bool, config: dict) -> None:
     with lane_plan_path.open() as f:
         lane_plan = json.load(f)
 
-    validate_payload, validate_value = _contracts()
+    validate_payload, _validate_value = _contracts()
     schema_errors = validate_payload("lane-plan.schema.json", lane_plan_path)
     if schema_errors:
         fail(f"lane-plan.json schema validation failed: {schema_errors}", hard=True)
 
+    zero_lane_errors = check_zero_lanes(lane_plan)
+    if zero_lane_errors:
+        fail(zero_lane_errors[0])
+
     lanes = lane_plan.get("lanes", {})
     lane_ids = set(lanes)
     topological_order = lane_plan.get("topological_order", [])
-    if set(topological_order) != lane_ids:
+    if len(topological_order) != len(lane_ids) or set(topological_order) != lane_ids:
         fail("lane-plan.json topological_order does not match lanes")
 
     file_to_lanes: dict[str, list[str]] = {}
@@ -496,21 +1019,104 @@ def gate_plan(yolo: bool, config: dict) -> None:
     unit_deps = {}
     if units:
         for uid, u in units.items():
+            if not isinstance(u, dict):
+                fail(f"Lane-plan.json unit {uid} must be an object")
             for tid in u.get("tasks", []):
                 task_to_unit[tid] = uid
             unit_deps[uid] = set(u.get("depends_on", []))
 
-        # compute transitive dependencies for units
-        changed = True
-        while changed:
-            changed = False
-            for _uid, deps in unit_deps.items():
-                old_len = len(deps)
-                for dep in list(deps):
-                    if dep in unit_deps:
-                        deps.update(unit_deps[dep])
-                if len(deps) > old_len:
-                    changed = True
+        _transitive_closure(unit_deps)
+
+    # Transitive task-level dependencies (#524 dogfooding): a chain like
+    # task-009 -> task-007 -> task-006 has no direct edge between task-009
+    # and task-006, but task-009 is still guaranteed to run after task-006
+    # in any correct topological schedule.
+    task_deps = {lid: set(lane.get("depends_on", [])) for lid, lane in lanes.items()}
+    _transitive_closure(task_deps)
+
+    # Integration-invariant lane checks (task-006): tasks.json and
+    # PROPERTIES.md are each read at most once here to satisfy the
+    # gate-performance NFR.
+    tasks_json_path = resolve_artifact("tasks.json")
+    if tasks_json_path.exists():
+        with tasks_json_path.open() as f:
+            tasks_data = json.load(f)
+        tasks_by_id = {
+            t["id"]: t for t in tasks_data if isinstance(t, dict) and "id" in t
+        }
+    else:
+        tasks_by_id = {}
+
+    properties_path = resolve_artifact("PROPERTIES.md")
+    invariant_rows: list[dict] = []
+    if properties_path.exists():
+        with properties_path.open() as f:
+            properties_content = f.read()
+        if has_integration_invariants_section(properties_content):
+            try:
+                invariant_rows = parse_integration_invariants(properties_content)
+            except IntegrationInvariantError:
+                invariant_rows = []
+
+    unknown_pairs = unknown_covered_tasks(invariant_rows, tasks_by_id)
+    if unknown_pairs:
+        fail(
+            "; ".join(
+                f"invariant_covers_unknown_task: {inv_id} -> {task_id}"
+                for inv_id, task_id in unknown_pairs
+            )
+        )
+
+    int_lane_ids = [lid for lid in lanes if lid.startswith(_INT_LANE_PREFIX)]
+
+    # AC9.1 cuts both ways: an INT lane with no invariant row behind it is
+    # an orphan (PROPERTIES.md lost its table, or it no longer parses), not a
+    # lane to wave through because there was nothing to compare it with.
+    if int_lane_ids and not invariant_rows:
+        fail(
+            "; ".join(
+                f"int_lane_without_invariant: {lid} has no Integration Invariants row in PROPERTIES.md"
+                for lid in int_lane_ids
+            )
+        )
+
+    if invariant_rows:
+        test_command = config.get("test_command", "pytest")
+        derived_lanes = {
+            derived["id"]: derived
+            for derived in derive_integration_lanes(
+                invariant_rows, tasks_by_id, test_command
+            )
+        }
+        depends_on_errors = []
+        for lid in int_lane_ids:
+            lane = lanes[lid]
+            actual = set(lane.get("depends_on", []))
+            derived = derived_lanes.get(lid)
+            expected = set(derived["depends_on"]) if derived else set()
+            if actual != expected:
+                depends_on_errors.append(
+                    f"{lid} depends_on {sorted(actual)} does not match invariant "
+                    f"Covers union {sorted(expected)}"
+                )
+        if depends_on_errors:
+            fail("; ".join(depends_on_errors))
+
+    direction_errors = []
+    for lid, lane in lanes.items():
+        if lane.get("kind") == "integration":
+            continue
+        for dep in lane.get("depends_on", []):
+            if dep.startswith(_INT_LANE_PREFIX):
+                direction_errors.append(
+                    f"{lid} (kind={lane.get('kind', 'task')}) depends on "
+                    f"integration lane {dep}"
+                )
+    if direction_errors:
+        fail("; ".join(direction_errors))
+
+    if not int_lane_ids and not invariant_rows:
+        print("no_integration_invariants", file=sys.stderr)
 
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
@@ -522,10 +1128,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 t1 = owners_list[i]
                 t2 = owners_list[j]
 
-                # Check task-level dependency
-                if t2 in lanes[t1].get("depends_on", []) or t1 in lanes[t2].get(
-                    "depends_on", []
-                ):
+                # Check task-level dependency (direct or transitive)
+                if t2 in task_deps.get(t1, set()) or t1 in task_deps.get(t2, set()):
                     continue
 
                 # Check unit-level dependency
@@ -588,7 +1192,7 @@ def gate_prior_art(yolo: bool, config: dict) -> None:
 
     content = prior_art_path.read_text()
 
-    tasks_path = Path("tasks.json")
+    tasks_path = resolve_artifact("tasks.json")
     if tasks_path.exists():
         tasks = json.loads(tasks_path.read_text())
         task_list = tasks if isinstance(tasks, list) else tasks.get("tasks", [])
@@ -717,6 +1321,53 @@ def gate_properties(yolo: bool, config: dict) -> None:
     if "task-" not in content.lower() and "task_" not in content.lower():
         fail("PROPERTIES.md missing traceability table (no task references found)")
 
+    if not has_integration_invariants_section(content):
+        fail("missing_integration_invariants_section")
+
+    try:
+        invariant_rows = parse_integration_invariants(content)
+    except IntegrationInvariantError as exc:
+        fail(str(exc))
+
+    for row in invariant_rows:
+        if row["source"].startswith("spec:") and len(row["covers"]) < 2:
+            fail(f"invariant_covers_insufficient: {row['id']}")
+
+    # AC1.4: a Covers entry naming no task fails here, where the author can
+    # fix it, when tasks.json exists; gate_plan checks it again (AC3.4).
+    tasks_path = resolve_artifact("tasks.json")
+    if tasks_path.exists():
+        try:
+            known = {
+                t["id"]: t for t in json.loads(tasks_path.read_text()) if "id" in t
+            }
+        except (json.JSONDecodeError, OSError, TypeError):
+            known = None
+        if known is not None:
+            unknown = unknown_covered_tasks(invariant_rows, known)
+            if unknown:
+                fail(
+                    "; ".join(
+                        f"invariant_covers_unknown_task: {inv_id} -> {task_id}"
+                        for inv_id, task_id in unknown
+                    )
+                )
+
+    questions_path = resolve_artifact("QUESTIONS.md")
+    questions_content = questions_path.read_text() if questions_path.exists() else ""
+    answered_ids = answered_question_ids(questions_content)
+
+    coverage_errors: list[str] = []
+    for qid in answered_ids:
+        source = f"question:{qid}"
+        matches = [row for row in invariant_rows if row["source"] == source]
+        if not matches:
+            coverage_errors.append(f"invariant_missing_for_question: {qid}")
+        elif len(matches) > 1:
+            coverage_errors.append(f"invariant_duplicate_for_question: {qid}")
+    if coverage_errors:
+        fail("; ".join(coverage_errors))
+
     policy = gate_policy(config, "properties_human_review")
     if policy == "required" and not yolo:
         print(
@@ -735,13 +1386,24 @@ def gate_properties(yolo: bool, config: dict) -> None:
 
 
 def gate_validate(yolo: bool, config: dict) -> None:
-    # Check test signal from most recent run
+    # The test signal is PRODUCED by the Validate phase's independent test
+    # run (skills/src/shared/validate-steps.ts write-signal step). It used to
+    # be read-if-present and the gate passed silently when it was absent —
+    # a consumer with no producer. Absent or unreadable is now a failure.
     signal_path = Path(".datum/last-test-signal.json")
-    if signal_path.exists():
-        with signal_path.open() as f:
-            signal = json.load(f)
-        if signal.get("status") not in ("pass",):
-            fail(f"Test suite not green: {signal.get('status')}")
+    if not signal_path.exists():
+        fail(
+            f"{signal_path} not found — no independent test run recorded a signal; "
+            "run the Validate phase (datum validate) before this gate"
+        )
+    try:
+        signal = json.loads(signal_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        fail(f"{signal_path} is unreadable: {exc}")
+    if not isinstance(signal, dict) or signal.get("status") != "pass":
+        status = signal.get("status") if isinstance(signal, dict) else "malformed"
+        exit_code = signal.get("exit_code") if isinstance(signal, dict) else None
+        fail(f"Test suite not green: status={status} exit_code={exit_code}")
 
     policy = gate_policy(config, "validate_human_review")
     if policy == "required" and not yolo:
@@ -760,75 +1422,107 @@ def gate_validate(yolo: bool, config: dict) -> None:
 
 
 def gate_review(yolo: bool, config: dict) -> None:
-    report_path = Path("REVIEW-REPORT.md")
-    packets_dir = existing_review_packets_dir()
+    # #368 producer/consumer fix: review-packets/unified.json (and its
+    # unified.schema.json validation) is dropped from this gate. No phase in
+    # the pipeline ever produces it — datum-review.ts writes
+    # docs/epics/<branch>/REVIEW-REPORT.md directly, and the script that would
+    # have built review-packets/unified.json (datum/dedupe.py) was deleted as a
+    # dead producer (#394). A gate requiring an artifact nothing
+    # produces can never pass, so the check below is against the report
+    # content only. REVIEW-REPORT.md is resolved the same epic-scoped way
+    # every other gate resolves its artifact (resolve_artifact), so it finds
+    # docs/epics/<branch>/REVIEW-REPORT.md instead of a repo-root copy that
+    # datum-review.ts never writes.
+    report_path = resolve_artifact("REVIEW-REPORT.md")
 
     if not report_path.exists():
         fail("REVIEW-REPORT.md not found")
-    if not packets_dir.exists():
-        fail(f"review-packets/ directory not found: {packets_dir}")
 
-    unified_json = packets_dir / "unified.json"
-    if not unified_json.exists():
-        fail(f"review-packets/unified.json not found in {packets_dir}")
+    content = report_path.read_text()
+    # Operator-accepted findings (docs/epics/<branch>/REVIEW-RESPONSE.md,
+    # written by `datum review-accept <ID> --reason ...`) do not block: an
+    # LLM lens's severity calibration must never be a hard stop with no
+    # reasoned, recorded way past it (elonchesd epic-1: five "high" findings
+    # were per-frame scans over forty items).
+    response_path = report_path.parent / "REVIEW-RESPONSE.md"
+    accepted = accepted_review_findings(response_path)
+    blocking, ignored, matched = _blocking_review_findings(
+        content, accepted, review_decisions(response_path)
+    )
+    if blocking:
+        # Satisfaction loop: an iteration is a DISTINCT blocked report, kept
+        # per epic. The old counter lived under a run id read from the wrong
+        # key (so every epic shared ".datum/runs/default") and grew on every
+        # gate call, so an operator's own `datum gate review` probes escalated
+        # the epic (elonchesd, iteration 2). Accepting or fixing every
+        # blocking finding clears the escalation: the hard stop only exists
+        # while something blocks.
+        seen = _blocked_reports_seen(report_path)
+        report_sha = _report_sha(content)
+        iteration = len(seen | {report_sha})
 
-    validate_payload, _ = _contracts()
-    unified_errors = validate_payload("unified.schema.json", unified_json)
-    if unified_errors:
-        fail(
-            "unified.json is malformed according to unified.schema.json:\n"
-            + "\n".join(unified_errors)
-        )
-
-    # Check for high-severity findings
-    content = report_path.read_text() if report_path.exists() else ""
-    if (
-        "severity: high" in content.lower()
-        or "**high**" in content.lower()
-        or "severity: critical" in content.lower()
-        or "**critical**" in content.lower()
-    ):
-        # Satisfaction Loop Logic
-        state_path = Path(".datum/state.json")
-        run_id = "default"
-        if state_path.exists():
-            import json
-
-            run_id = json.loads(state_path.read_text()).get("run_id", "default")
-
-        iter_file = Path(f".datum/runs/{run_id}/.review-iteration")
-        iteration = 1
-        if iter_file.exists():
-            iteration = int(iter_file.read_text().strip())
-
-        if iteration >= 3:
+        # Configurable: review_max_iterations in .datum/config.json (default
+        # 3). Some iterations are datum-driven, not the operator's (caliper:
+        # the BUG R key drift consumed one), and the operator decides how
+        # many passes a review loop is worth.
+        max_iterations = _review_max_iterations(config)
+        if iteration >= max_iterations:
             fail(
-                "REVIEW-REPORT.md contains HIGH/CRITICAL findings after 3 iterations. "
-                "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding.",
+                f"REVIEW-REPORT.md contains HIGH/CRITICAL findings after {max_iterations} iterations. "
+                "ESCALATION TO CHIEF OF STAFF: Architectural review required before proceeding "
+                "(raise review_max_iterations in .datum/config.json to allow another pass).",
                 hard=True,
             )
         else:
-            import subprocess
-
-            print(
-                f"Gate review failed (Iteration {iteration}/3). Generating Remediation Package..."
+            # Nothing produces a remediation package in a consumer repo (the
+            # old message claimed one was generated). Say what blocks, by id
+            # and key, and how to record an accept.
+            _record_blocked_report(report_path, seen | {report_sha})
+            ids = ", ".join(blocking) if blocking != ["(unlabelled)"] else "unlabelled"
+            ignored_note = (
+                " Ignored (ids are renumbered every review; accept by the Key column): "
+                + ", ".join(f"ACCEPT {t} ignored" for t in ignored)
+                + "."
+                if ignored
+                else ""
             )
-            subprocess.run(
-                [
-                    "python3",
-                    "scripts/remediate.py",
-                    "--run-id",
-                    run_id,
-                    "--findings",
-                    f".datum/runs/{run_id}/review-packets/unified.json",
-                ]
-            )
-            iter_file.parent.mkdir(parents=True, exist_ok=True)
-            iter_file.write_text(str(iteration + 1))
             fail(
-                f"REVIEW-REPORT.md contains high-severity findings — Remediation Package generated for Iteration {iteration}. Fix and retry."
+                f"REVIEW-REPORT.md contains high-severity findings (iteration {iteration}/{max_iterations}): {ids}. "
+                "Fix them and re-run review, or record a reasoned accept per finding with "
+                '`datum review-accept <ID-or-key> --reason "..."` (writes REVIEW-RESPONSE.md next to the report).'
+                + ignored_note
             )
 
+    policy = gate_policy(config, "review_human_approval")
+    if policy != "skipped" and not yolo:
+        print(
+            json.dumps(
+                {
+                    "passed": False,
+                    "needs_human": True,
+                    "message": "REVIEW-REPORT.md ready for human approval. Re-run with --approve to approve.",
+                    "artifact": str(report_path),
+                }
+            )
+        )
+        sys.exit(1)
+
+    if accepted or matched:
+        named = ", ".join(
+            sorted(t.lower() if _KEY_RE.match(t) else t for t in accepted)
+        )
+
+        def _describe(key: str, value: str) -> str:
+            token, _, rule = value.partition("|")
+            shown = token.lower() if _KEY_RE.match(token) else token
+            return f"{key} matched prior decision {shown} ({rule})"
+
+        by_place = "; ".join(_describe(k, v) for k, v in matched.items())
+        pass_gate(
+            f"Review gate passed ({len(accepted)} accepted by REVIEW-RESPONSE.md: {named}"
+            + (f"; {by_place}" if by_place else "")
+            + ")"
+        )
     pass_gate("Review gate passed")
 
 
@@ -927,29 +1621,6 @@ def gate_validate_profiles(config: dict) -> None:
     pass_gate("Profiles valid")
 
 
-def gate_red(yolo: bool, config: dict) -> None:
-    from datum.tdd_driver import GreenBlindnessError, verify_red_stage
-
-    print("--- [GATE] RED Test Verification ---")
-
-    if not config.get("green_blindness_strict", True):
-        print("green_blindness_strict is false, skipping verification.")
-        pass_gate("RED test verification skipped")
-        return
-
-    test_cmd = config.get("tests", {}).get("command", ["pytest", "-q"])
-    if isinstance(test_cmd, str):
-        import shlex
-
-        test_cmd = shlex.split(test_cmd)
-
-    try:
-        verify_red_stage(Path("."), test_command=test_cmd)
-        pass_gate("RED tests are failing as expected")
-    except GreenBlindnessError as e:
-        fail(str(e), hard=True)
-
-
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 
 
@@ -963,7 +1634,6 @@ GATES = {
     "validate": gate_validate,
     "review": gate_review,
     "pr-comments": gate_pr_comments,
-    "red": gate_red,
 }
 
 
