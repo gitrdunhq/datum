@@ -146,6 +146,16 @@ const PREFIX_RULES: PrefixRule[] = [
     reason: 'refactor_no_result: the REFACTOR agent returned nothing at all (maxTurns cap in agents/datum-refactor.md, an API error, or a skip) — same capacity/infra bucket as green_no_result/red_no_result.',
   },
   {
+    test: /\bstructural_check_unavailable\b/,
+    category: 'infrastructure',
+    reason: 'structural_check_unavailable: the deliverable-check batch around the STRUCTURAL stage did not run (refused/absent datum-cli result), so the lane has no verdict on its declared files — a tooling absence, not evidence about what the agent wrote.',
+  },
+  {
+    test: /\bstructural_no_result\b/,
+    category: 'infrastructure',
+    reason: 'structural_no_result: the STRUCTURAL agent returned nothing at all (maxTurns cap in agents/datum-structural.md, an API error, or a skip) — same capacity/infra bucket as the other *_no_result prefixes.',
+  },
+  {
     test: /\bagent_types_unconfigured\b/,
     category: 'infrastructure',
     reason: 'agent_types_unconfigured: stageOpts() was called before configureAgentTypes() — a pipeline wiring/ordering bug, not anything the lane\'s agents did.',
@@ -241,6 +251,11 @@ const PREFIX_RULES: PrefixRule[] = [
     test: /\brefactor_verify_failed\b/,
     category: 'agent_behavior',
     reason: 'refactor_verify_failed: independent test-verify after REFACTOR disagreed with the agent\'s self-reported result.',
+  },
+  {
+    test: /\bstructural_deliverable_missing\b|\bstructural_uncommitted\b|\bstructural_failed\b/,
+    category: 'agent_behavior',
+    reason: 'structural_*: the STRUCTURAL stage finished without every declared file existing and committed past the epic branch (#341 task-001), or reported its own failure_reason. The deliverable check is deterministic; what the agent did with a writable worktree is the finding.',
   },
   {
     test: /\brefactor_failed\b/,

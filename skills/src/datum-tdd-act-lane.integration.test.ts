@@ -232,20 +232,40 @@ describe('task-002 — integration lanes are RED-only and decided on the indepen
   // are unaffected by this lane. This is expected to already pass — the pin
   // guards against a future change to isStructural / the kind === 'behavioral'
   // fallthrough accidentally swallowing 'integration' handling into them.
-  it('AC10 (regression pin): a kind: "structural" lane still short-circuits straight to REFACTOR, untouched by the integration path', async () => {
-    const structuralLane = { title: 'structural one', files: ['docs/a.md'], acceptance_criteria: ['does a'], kind: 'structural' as const }
-    const respond: Responder = (label) => {
+  // #341 task-001: the structural path is one writing stage (datum-structural)
+  // decided by the deliverable check, never the optional REFACTOR cleanup
+  // whose pre-check said "nothing to improve" on a doc that did not exist.
+  const structuralLane = { title: 'structural one', files: ['docs/a.md'], acceptance_criteria: ['does a'], kind: 'structural' as const }
+  function structuralResponder(o: { delivered: boolean }): Responder {
+    return (label) => {
       if (label.startsWith('lane-intake:')) {
         const specSummary = { task_id: 'T1', path: SPEC_PATH, bytes: 321, sha: SPEC_SHA, spec_hash: laneSpecHash(structuralLane), ac_count: 1 }
         return batch({ 'lane-spec': JSON.stringify(specSummary) + '\n', 'lane-spec-bytes': '321\n', 'lane-spec-sha': `${SPEC_SHA}\n`, history: '', cleanup: '', 'skeleton-gen': '{}' })
       }
-      if (label.startsWith('refactor-check:')) return { should_refactor: false, reason: 'clean' }
+      if (label.startsWith('structural-check:')) return batch({ 'deliverable-check': 'MISSING docs/a.md\n', 'deliverable-commits': '' })
+      if (label.startsWith('structural:')) return { success: true, tests_pass: true, test_exit_code: 0, committed: true, commit_sha: 'abc1234', files_written: ['docs/a.md'] }
+      if (label.startsWith('structural-verify:')) {
+        return o.delivered
+          ? batch({ 'deliverable-check': '', 'deliverable-commits': 'abc1234 refactor(T1): REFACTOR complete\n' })
+          : batch({ 'deliverable-check': 'MISSING docs/a.md\n', 'deliverable-commits': '' })
+      }
       return null
     }
-    const { result, calls } = await runLane({ respond, lane: structuralLane as unknown as ReturnType<typeof integrationLane>, priorCompleted: [] })
+  }
+
+  it('AC10 (regression pin): a kind: "structural" lane runs the STRUCTURAL writing stage only, untouched by the integration path', async () => {
+    const { result, calls } = await runLane({ respond: structuralResponder({ delivered: true }), lane: structuralLane as unknown as ReturnType<typeof integrationLane>, priorCompleted: [] })
     expect(result.results.T1.status, result.results.T1.error).toBe('completed')
     expect(result.results.T1.stage).toBe('REFACTOR')
     expect(calls.some((c) => c.label.startsWith('red:'))).toBe(false)
+    expect(calls.some((c) => c.label.startsWith('refactor-check:'))).toBe(false)
+    expect(calls.some((c) => c.label.startsWith('structural:'))).toBe(true)
+  })
+
+  it('a STRUCTURAL agent that reports success while the declared file stays missing fails the lane by name', async () => {
+    const { result } = await runLane({ respond: structuralResponder({ delivered: false }), lane: structuralLane as unknown as ReturnType<typeof integrationLane>, priorCompleted: [] })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.error).toMatch(/^structural_deliverable_missing: docs\/a\.md/)
   })
 })
 

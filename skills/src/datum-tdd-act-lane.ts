@@ -29,6 +29,8 @@ import {
   propertiesFromSteps,
   digestSpecHash,
   strayCleanSteps,
+  structuralDeliverableSteps,
+  structuralDeliverablesFromSteps,
   codeTellSteps,
   parseTellScan,
   laneStartExpr,
@@ -85,6 +87,7 @@ import {
   greenPrompt,
   greenRetryPrompt,
   refactorPrompt,
+  structuralPrompt,
   reflectPrompt,
   skepticBasePrompt,
   skepticLenses,
@@ -468,9 +471,12 @@ No markdown fences, no explanation.`,
   // datum-cli call as the squash merge (#368) — not by a per-lane agent here.
 
   if (isStructural) {
-    // No tell scan on this path: the checker reads the files itself.
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, [])
-    if (!r || !r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r?.error || 'refactor failed' }
+    // #341 task-001 (wf_d76785cc-148): this path used to dispatch
+    // runRefactor, whose pre-check answered "nothing to improve" on a doc
+    // that did not exist yet, and the lane completed with no commit. A
+    // structural lane is one writing stage, decided by its deliverables.
+    const r = await runStructural(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile)
+    if (!r.verified) return { task_id: taskId, status: 'failed', stage: 'REFACTOR', error: r.error || 'structural stage failed' }
     await updateStage(issueId, 'done')
     return { task_id: taskId, status: 'completed', stage: 'REFACTOR' }
   }
@@ -1629,6 +1635,75 @@ async function runSkepticPanel(
 }
 
 // ── Refactor sub-saga ──────────────────────────────────────────────────────
+
+/**
+ * The single writing stage of a structural lane (docs-only, config-only,
+ * file moves): produce every declared file, commit. Decided by the
+ * deterministic deliverable check — every file in the lane's files[] exists
+ * in the worktree and a commit past the epic branch touches them — never by
+ * the agent's report. The stage keeps the REFACTOR label for commits and
+ * lane state so the intake/merge readers stay unchanged.
+ */
+async function runStructural(
+  taskId: string,
+  lane: Lane,
+  testFiles: string[],
+  implFiles: string[],
+  wt: string,
+  cfg: PipelineConfig,
+  specFile: ContextFile,
+): Promise<{ verified: boolean; error?: string }> {
+  const files = [...testFiles, ...implFiles]
+  const checkSteps = structuralDeliverableSteps({ wt, epicBranch: cfg.epicBranch, files })
+  const check = async (label: string) =>
+    structuralDeliverablesFromSteps(
+      await runBatch(checkSteps, stageOpts('cli', { label: `${label}:${taskId}`, phase: 'Act', model: model('fast') })),
+      files,
+    )
+
+  // Resume: a prior run may already have delivered and committed.
+  const before = await check('structural-check')
+  if (before === null) {
+    return { verified: false, error: 'structural_check_unavailable: the deliverable-check batch did not run before the STRUCTURAL stage; no verdict on the declared files' }
+  }
+  if (before.missing.length === 0 && before.committed) {
+    log(`[${taskId}] structural_already_delivered: every declared file exists and is committed past ${cfg.epicBranch} — skipping the STRUCTURAL agent`)
+    return { verified: true }
+  }
+
+  log(`[${taskId}] STRUCTURAL: writing ${files.length} deliverable(s)${before.missing.length ? ` (missing: ${before.missing.join(', ')})` : ' (present, uncommitted)'}`)
+  const packet: TaskPacket = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg, 'REFACTOR', specFile, {})
+  const result: StageResult | null = await resilientAgent(
+    structuralPrompt({
+      wt,
+      structuralCtxCmd: laneCtxCmd(packet, wt),
+      structuralPacketStr: JSON.stringify(packet),
+      allFilesList: files.join(' '),
+      commitCmd: laneCommitCommand({ wt, taskId, stage: 'REFACTOR', runId: cfg.runId }),
+    }),
+    stageOpts('structural', { label: `structural:${taskId}`, phase: 'Act', model: model('balanced'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+  )
+
+  if (!result) {
+    return { verified: false, error: 'structural_no_result: STRUCTURAL agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-structural.md, an API error, or a skip)' }
+  }
+  if (!result.success) {
+    return { verified: false, error: `structural_failed: ${result.failure_reason || result.reason || 'STRUCTURAL reported no success'}` }
+  }
+
+  const after = await check('structural-verify')
+  if (after === null) {
+    return { verified: false, error: 'structural_check_unavailable: the deliverable-check batch did not run after the STRUCTURAL stage; the agent\'s report is not evidence' }
+  }
+  if (after.missing.length > 0) {
+    return { verified: false, error: `structural_deliverable_missing: ${after.missing.join(', ')} — the STRUCTURAL stage reported success but the declared file(s) do not exist in the worktree` }
+  }
+  if (!after.committed) {
+    return { verified: false, error: `structural_uncommitted: every declared file exists but no commit past ${cfg.epicBranch} touches them (agent reported committed=${!!result.committed})` }
+  }
+  log(`[${taskId}] STRUCTURAL: delivered ${files.length} file(s) (committed: ${result.commit_sha || 'n/a'}; independent check ok)`)
+  return { verified: true }
+}
 
 async function runRefactor(
   taskId: string,

@@ -5,6 +5,7 @@ import redRetryTemplate from '../prompts/red-retry.md'
 import greenTemplate from '../prompts/green.md'
 import greenRetryTemplate from '../prompts/green-retry.md'
 import refactorTemplate from '../prompts/refactor.md'
+import structuralTemplate from '../prompts/structural.md'
 import reflectTemplate from '../prompts/reflect.md'
 import skepticBaseTemplate from '../prompts/skeptic-base.md'
 import skepticEdgeTemplate from '../prompts/skeptic-edge.md'
@@ -96,6 +97,18 @@ export function refactorPrompt(vars: {
   tellsSlot: string
 }): string {
   return PREAMBLE + renderPrompt(refactorTemplate, vars as PromptVars)
+}
+
+/**
+ * The single writing stage of a structural lane (#341 task-001): produce the
+ * declared files, commit. No suite, no tells slot — the runner decides the
+ * lane from the deliverable check, never from this agent's report.
+ */
+export function structuralPrompt(vars: {
+  wt: string; structuralCtxCmd: string; structuralPacketStr: string
+  allFilesList: string; commitCmd: string
+}): string {
+  return PREAMBLE + renderPrompt(structuralTemplate, vars as PromptVars)
 }
 
 export function reflectPrompt(vars: { wt: string; testFiles: string; laneSpec: ContextFile }): string {
