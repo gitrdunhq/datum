@@ -1223,6 +1223,12 @@ function laneSpecFromSteps(result, taskId, outPath) {
 function laneSpecContextFile(spec) {
   return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null };
 }
+function integrationVerifyCmd(testCommand, testFiles) {
+  const cmd = testCommand.trim();
+  if (testFiles.length === 0) return cmd;
+  if (!/\bpytest\b|\bvitest\s+run\b/.test(cmd)) return cmd;
+  return `${cmd} ${testFiles.join(" ")}`;
+}
 
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
@@ -1909,7 +1915,10 @@ The code under test is already merged: these tests must PASS on your first run; 
     testFuncBodyRegex,
     testFuncGrepRegex,
     ownership: deterministic,
-    verifyTestCmd: scopedTestCmd,
+    // An integration lane is decided on its own test files (run
+    // 20260907-015322: a whole-suite verify turned an unrelated red into
+    // integration_failed); the whole suite is Validate's job.
+    verifyTestCmd: isIntegration ? integrationVerifyCmd(scopedTestCmd, testFiles) : scopedTestCmd,
     baseRef: cfg2.epicBranch
   });
   const postRedRaw = await runBatch(postRed, stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") }));
