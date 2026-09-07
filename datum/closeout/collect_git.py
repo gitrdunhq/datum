@@ -61,9 +61,22 @@ def main() -> None:
 
         out = Path(f".datum/runs/{args.run_id}/closeout-raw/git.json")
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(data, indent=2))
+        text = json.dumps(data, indent=2)
+        out.write_text(text)
         marker.write_text("done")
-        print(json.dumps({"ok": True, "data": data}))
+        # A receipt, never the data: collate reads the file. Echoing the data
+        # (59 KB on a 200-commit epic) spilled the whole closeout-collect batch
+        # past the harness's tool-result cap and the runner replied empty.
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "path": str(out),
+                    "bytes": len(text.encode("utf-8")),
+                    "commit_count": len(commits),
+                }
+            )
+        )
     except RuntimeError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}))
         sys.exit(1)

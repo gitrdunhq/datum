@@ -160,9 +160,20 @@ def main() -> None:
 
     out = Path(f".datum/runs/{args.run_id}/closeout-raw/tasks.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=2))
+    text = json.dumps(data, indent=2)
+    out.write_text(text)
     marker.write_text("done")
-    print(json.dumps({"ok": True, "data": data}))
+    # A receipt, never the data (see collect_git): collate reads the file.
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "path": str(out),
+                "bytes": len(text.encode("utf-8")),
+                "total": data["total"],
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

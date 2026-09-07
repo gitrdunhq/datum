@@ -172,6 +172,14 @@ class TestCollectGit:
 
         # Verify the written file
         git_file = repo["runs_dir"] / "closeout-raw" / "git.json"
+        # stdout is a receipt, never the data: the data rides the file. A
+        # 59 KB echo of it spilled the whole closeout-collect batch past the
+        # harness's tool-result cap and the runner replied empty
+        # (integration-lanes wf_ef8d7d82-2f5; the caliper BUG N shape).
+        assert "data" not in output
+        assert output["path"].endswith("closeout-raw/git.json")
+        assert output["bytes"] == len(git_file.read_bytes())
+        assert output["commit_count"] >= 3
         assert git_file.exists(), f"Expected {git_file} to exist"
 
         data = json.loads(git_file.read_text())
@@ -296,9 +304,13 @@ class TestCollectTasks:
         ), f"stdout: {result.stdout} stderr: {result.stderr}"
         output = json.loads(result.stdout)
         assert output.get("ok") is True
+        # Receipt only, same as collect_git: the data rides the file.
+        assert "data" not in output
+        assert output["path"].endswith("closeout-raw/tasks.json")
         data = json.loads(
             (repo["runs_dir"] / "closeout-raw" / "tasks.json").read_text()
         )
+        assert output["bytes"] == len(json.dumps(data, indent=2).encode("utf-8"))
         assert data["total"] == 3
         assert data["completed"] == 2
         assert data["failed_terminal"] == 1
