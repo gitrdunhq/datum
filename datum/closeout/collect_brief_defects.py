@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 
-from datum.path_utils import closeout_raw_dir, collector_marker, state_for_run
+from datum.closeout.state_source import load_run_state
+from datum.path_utils import closeout_raw_dir, collector_marker
 
 
 def main() -> None:
@@ -19,8 +20,7 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    state_path = state_for_run(args.run_id)
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state, state_source = load_run_state(args.run_id)
     defects = state.get("brief_defects", [])
 
     out = closeout_raw_dir(args.run_id) / "brief_defects.json"

@@ -92,5 +92,8 @@ def collector_marker(run_id: str, name: str) -> Path:
 
 
 def state_for_run(run_id: str) -> Path:
-    archived = run_dir(run_id) / "state.json"
-    return archived if archived.exists() else datum_dir() / "state.json"
+    """The run's archival state export. Never the live `.datum/state.json`
+    (removed by the state-single-source-of-truth epic); a collector that
+    needs state before the archive exists reads datum.state.load_state()
+    via datum.closeout.state_source."""
+    return run_dir(run_id) / "state.json"

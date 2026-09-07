@@ -1336,3 +1336,66 @@ def test_collect_token_metrics_names_itself_when_it_has_no_source(env_with_repo)
     assert data["collected"] is False
     assert data["reason"] == output["reason"]
     assert data["total_input"] is None and data["total_output"] is None
+
+
+# ARCH-001 (#341 review): state_for_run() fell back to the live
+# `.datum/state.json`, which the epic removed, so the three collectors that
+# run before archive.py read empty state. The path helper names only the
+# archival export; a collector that needs state before the archive exists
+# reads it through the canonical accessor.
+class TestCollectorsReadCanonicalStateBeforeArchive:
+    def test_state_for_run_names_only_the_archival_export(self, env_with_repo, monkeypatch):
+        from datum.path_utils import state_for_run
+
+        repo = env_with_repo
+        monkeypatch.chdir(repo["repo_dir"])
+        p = state_for_run(repo["run_id"])
+        assert p == repo["runs_dir"] / "state.json"
+        assert ".datum/state.json" not in str(p).replace(str(repo["runs_dir"]), "")
+
+    @pytest.mark.parametrize(
+        ("module", "key", "value", "raw_name", "check"),
+        [
+            (
+                "datum.closeout.collect_brief_defects",
+                "brief_defects",
+                [{"task_id": "task-001", "missing_ac": "ac-1", "surfaced_by_stage": "RED"}],
+                "brief_defects.json",
+                lambda data: len(data) == 1,
+            ),
+            (
+                "datum.closeout.collect_lane_tools",
+                "lane_tools_added",
+                [{"lane": "task-001", "tool": "ruff"}],
+                "lane_tools.json",
+                lambda data: data["lane_tools_added"][0]["tool"] == "ruff",
+            ),
+            (
+                "datum.closeout.collect_platform",
+                "git",
+                {"work_branch": "datum/e", "merge_sha": "abc1234"},
+                "platform.json",
+                lambda data: data["merge_sha"] == "abc1234" and data["source"].endswith("state.db"),
+            ),
+        ],
+    )
+    def test_collector_reads_live_state_through_the_accessor_when_no_archive(
+        self, env_with_repo, monkeypatch, module, key, value, raw_name, check
+    ):
+        import datum.state as state_mod
+
+        repo = env_with_repo
+        monkeypatch.chdir(repo["repo_dir"])
+        assert not (repo["runs_dir"] / "state.json").exists()
+        state_mod.save_state({"run_id": repo["run_id"], key: value})
+        assert not Path(".datum/state.json").exists(), "the live write-through must stay gone"
+
+        result = subprocess.run(
+            [sys.executable, "-m", module, "--run-id", repo["run_id"]],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        data = json.loads((repo["runs_dir"] / "closeout-raw" / raw_name).read_text())
+        assert check(data), data
