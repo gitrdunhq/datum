@@ -1594,9 +1594,16 @@ def gate_validate_packets(config: dict) -> None:
 
     errors = []
     validate_payload, validate_value = _contracts()
-    for packet_path in packets_dir.glob("*.json"):
-        if packet_path.name == "unified.json":
-            continue
+    packet_paths = [p for p in packets_dir.glob("*.json") if p.name != "unified.json"]
+    # A directory that exists but has never had a packet written to it is a
+    # consumer without a producer, not a pass: the loop below never runs, so
+    # `errors` stays empty and the gate used to report "Packets valid" for a
+    # review that produced nothing (#384). Mirrors gate_validate's fix for
+    # the same shape (missing/absent artifact fails loud).
+    if not packet_paths:
+        fail(f"validate_packets_missing: no packets under {packets_dir}")
+
+    for packet_path in packet_paths:
         packet_errors = validate_payload("packet.schema.json", packet_path)
         errors.extend(f"{packet_path.name}: {err}" for err in packet_errors)
 
