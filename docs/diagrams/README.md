@@ -9,4 +9,4 @@ Rendered from the Mermaid blocks in [docs/FLOW.md](../FLOW.md) (`mmdc`, 2× scal
 | `flow-lane-sequence.png` | §3 One lane — intake, RED, GREEN, skeptic, REFACTOR |
 | `flow-lane-states.png` | §3 Lane states |
 
-Re-render after editing FLOW.md: extract each ```mermaid block to a `.mmd` file and run `mmdc -i <block>.mmd -o docs/diagrams/<name>.png -w 2000 -s 2 -b white`.
+Re-render after editing FLOW.md with `uv run python scripts/render_flow_diagrams.py` (needs `mmdc`; it extracts the four blocks in order, checks each block's diagram type against the table above, and runs `mmdc -w 2000 -s 2 -b white`).
