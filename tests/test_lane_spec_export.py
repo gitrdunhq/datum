@@ -194,6 +194,35 @@ def test_unknown_task_and_bad_plan_are_named_json_errors_exit_1(
     assert "error" in json.loads(res.output)
 
 
+def test_unreadable_plan_is_a_named_crash_not_a_traceback(tmp_path: Path):
+    # Invalid UTF-8 bytes: json.loads never runs — read_text(encoding="utf-8")
+    # raises UnicodeDecodeError, which is not a LaneSpecExportError.
+    out = tmp_path / "lane-spec.json"
+    garbage = tmp_path / "garbage.json"
+    garbage.write_bytes(b"\xff\xfe\x00\x01not utf-8")
+    res = _run(["--plan", str(garbage), "--task", "task-001", "--out", str(out)])
+    assert res.exit_code == 1
+    assert isinstance(
+        res.exception, SystemExit
+    ), "the crash must be caught and turned into typer.Exit, not re-raised raw"
+    payload = json.loads(res.output)
+    assert payload["error"].startswith("lane_spec_export_crashed: UnicodeDecodeError")
+    assert payload["task_id"] == "task-001"
+    assert not out.exists()
+
+
+def test_named_error_path_is_still_byte_identical(plan_path: Path, tmp_path: Path):
+    # The pre-existing LaneSpecExportError branch (lane_spec_missing) must be
+    # untouched by the generic-exception handler added alongside it.
+    out = tmp_path / "lane-spec.json"
+    res = _run(["--plan", str(plan_path), "--task", "task-999", "--out", str(out)])
+    assert res.exit_code == 1
+    assert json.loads(res.output) == {
+        "error": "lane_spec_missing: task-999 is not in the lane plan"
+    }
+    assert not out.exists()
+
+
 def test_export_lane_spec_pure_function_reports_bytes_and_blob_sha(tmp_path: Path):
     out = tmp_path / "spec.json"
     summary = export_lane_spec(PLAN, "task-002", out, expect_hash=None)
@@ -255,7 +284,17 @@ def test_contract_summary_truncates_ac_to_120_chars_and_tolerates_none():
 
 
 def test_export_task_id_and_spec_hash_win_over_stray_lane_keys(tmp_path: Path):
-    plan = {"lanes": {"task-001": {"title": "A", "files": [], "task_id": "bogus", "spec_hash": "bogus", "contract_summary": "bogus"}}}
+    plan = {
+        "lanes": {
+            "task-001": {
+                "title": "A",
+                "files": [],
+                "task_id": "bogus",
+                "spec_hash": "bogus",
+                "contract_summary": "bogus",
+            }
+        }
+    }
     out = tmp_path / "spec.json"
     summary = export_lane_spec(plan, "task-001", out, expect_hash=None)
     written = json.loads(out.read_text(encoding="utf-8"))

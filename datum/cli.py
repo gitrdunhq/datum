@@ -260,6 +260,16 @@ def lane_spec_export_cmd(
     except LaneSpecExportError as exc:
         typer.echo(json.dumps(exc.payload))
         raise typer.Exit(code=1) from None
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"lane_spec_export_crashed: {type(exc).__name__}: {exc}",
+                    "task_id": task,
+                }
+            )
+        )
+        raise typer.Exit(code=1) from None
     typer.echo(json.dumps(summary))
 
 
