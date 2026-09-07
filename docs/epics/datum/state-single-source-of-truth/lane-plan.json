@@ -81,7 +81,9 @@
     "tests/integration/test_int_11.py": "task-INT-11",
     "tests/integration/test_int_12.py": "task-INT-12",
     "tests/integration/test_int_13.py": "task-INT-13",
-    "tests/integration/test_int_14.py": "task-INT-14"
+    "tests/integration/test_int_14.py": "task-INT-14",
+    "tests/test_corpus_sql.py": "task-008",
+    "tests/fixtures/corpus/state.db": "task-008"
   },
   "lanes": {
     "task-001": {
@@ -285,7 +287,9 @@
         "datum/memory/corpus_sql.py",
         "datum-tui/data.py",
         "tests/test_corpus_sql_state_json_absent.py",
-        "tests/test_datum_tui_data_state.py"
+        "tests/test_datum_tui_data_state.py",
+        "tests/test_corpus_sql.py",
+        "tests/fixtures/corpus/state.db"
       ],
       "acceptance_criteria": [
         "datum/memory/corpus_sql.py has a code comment directly above its `ATTACH ... state.db` block explaining why it bypasses load_state()/save_state() (SQL-queryable interface, not a Python dict) and citing docs/architecture/state-store.md",
