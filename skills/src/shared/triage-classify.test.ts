@@ -266,6 +266,9 @@ describe('triageDestination — every taxonomy category in triage-classify.ts ha
     test_quality: 'consumer',
     dependency: 'none',
     unknown: 'consumer',
+    // task-003: integration_failed cross-lane defects are consumer-code
+    // findings — never filed to datum's own tracker.
+    code_defect: 'consumer',
   }
 
   it.each([...foundCategories].sort())('taxonomy category %s has an explicit destination table entry', (category) => {

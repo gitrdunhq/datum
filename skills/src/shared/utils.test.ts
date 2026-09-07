@@ -1339,3 +1339,21 @@ describe('extractRequiredScopeFiles — python package imports', () => {
     expect(required).not.toContain('json.py')
   })
 })
+
+// #498 (integration-lanes-2 run 20260907-013025): the integration fast path
+// completes a lane AT RED by design, and this filter read "stage is RED" as
+// "never got past RED", so all five INT lanes were dropped from the merge
+// order and then demoted to a merge_failed that no git command produced.
+// The fast path marks its outcome `red_only: true`; that lane merges.
+describe('filterGreenLanes — a lane completed at RED by design merges (#498)', () => {
+  it('red_only: true puts a stage-RED completion in greenIds; without the flag it stays red-only', () => {
+    const results: Record<string, LaneOutcome> = {
+      INT1: { task_id: 'INT1', status: 'completed', stage: 'RED', red_only: true },
+      B: { task_id: 'B', status: 'completed', stage: 'RED' },
+      A: { task_id: 'A', status: 'completed', stage: 'REFACTOR' },
+    }
+    const { greenIds, redOnlyIds } = filterGreenLanes(['A', 'INT1', 'B'], results)
+    expect(greenIds).toEqual(['A', 'INT1'])
+    expect(redOnlyIds).toEqual(['B'])
+  })
+})

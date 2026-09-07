@@ -33,6 +33,7 @@ _LANE_FIELDS = (
     "github_issue",
     "test_command",
     "expect_tests_pass",
+    "invariants",
 )
 
 

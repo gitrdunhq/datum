@@ -294,6 +294,15 @@ function classifyLaneError(error, stage) {
     };
   }
   const text = error || "";
+  if (/\bintegration_failed\b/.test(text)) {
+    const coveredMatch = text.match(/covered ([^;]+)/);
+    const coveredIds = coveredMatch ? coveredMatch[1].trim() : "unknown lane(s)";
+    return {
+      category: "code_defect",
+      confidence: "deterministic",
+      reason: `integration_failed: covered ${coveredIds} \u2014 the independent post-merge verify found the merged epic's suite red even though every covered lane's own tests passed in isolation, a genuine cross-lane code defect.`
+    };
+  }
   for (const rule of PREFIX_RULES) {
     if (rule.test.test(text)) {
       return { category: rule.category, confidence: "deterministic", reason: rule.reason };
@@ -322,6 +331,9 @@ var DESTINATION_BY_CATEGORY = {
   // without positive evidence; treat as a consumer-code finding to log, not
   // as a reason to file against datum.
   unknown: "consumer",
+  // task-003: integration_failed cross-lane defects are consumer-code
+  // findings — never filed to datum's own tracker.
+  code_defect: "consumer",
   // Already-skipped consequence of an upstream root failure — never filed
   // anywhere on its own.
   dependency: "none"
@@ -336,14 +348,16 @@ var CATEGORY_LABEL = {
   workflow_bug: "workflow-bug",
   lane_plan: "lane-plan",
   agent_behavior: "agent-behavior",
-  test_quality: "test-quality"
+  test_quality: "test-quality",
+  code_defect: "code-defect"
 };
 var LABEL_TO_CATEGORY = {
   infrastructure: "infrastructure",
   "workflow-bug": "workflow_bug",
   "lane-plan": "lane_plan",
   "agent-behavior": "agent_behavior",
-  "test-quality": "test_quality"
+  "test-quality": "test_quality",
+  "code-defect": "code_defect"
 };
 var a = args;
 configureAgentTypes(a.agentTypes || {});

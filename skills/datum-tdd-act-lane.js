@@ -58,20 +58,9 @@ var AGENT_TYPE_TABLE = {
   green: "datum-green",
   refactor: "datum-refactor",
   skeptic: "datum-skeptic",
-  // #375: the Review lenses. Not datum-skeptic — that definition's body is
-  // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
-  // PASS/FRAGILE/BROKEN), while a lens reads the epic diff and answers with a
-  // findings array. Same read-only shape, plus a Bash matcher: the lens that
-  // broke a run did it with `git checkout`, which Edit|Write cannot see.
-  review: "datum-reviewer",
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
-  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
-  // are not datum-reader: that definition says "read one file, return its
-  // contents, do not interpret" at maxTurns 4, and these calls read every
-  // file a lane touched and answer a rubric.
-  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -899,74 +888,6 @@ function getIssueId(lanePlan2, taskId) {
   return issue ? String(issue) : "";
 }
 
-// skills/src/shared/context-relay.ts
-var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
-function contextSlot(f) {
-  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
-  if (f.inlined && f.content !== null) return f.content;
-  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
-Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
-}
-function contextWitnessInstruction(files) {
-  const deferred = files.filter((f) => f.exists && !f.inlined);
-  if (deferred.length === 0) return "";
-  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
-  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nThe key is the file path exactly as written above; the value is the 12-character hash prefix. Your JSON response is invalid without this field for every file listed above.";
-}
-function extractWitnessMap(parsed) {
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-  const w = parsed.read_witness;
-  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
-  return w;
-}
-var WITNESS_MIN_HEX = 7;
-function commonPrefixLen(a2, b) {
-  let i = 0;
-  while (i < a2.length && i < b.length && a2[i] === b[i]) i++;
-  return i;
-}
-function verifyReadWitness(files, parsed) {
-  const deferred = files.filter((f) => f.exists && !f.inlined);
-  const witness = extractWitnessMap(parsed);
-  const missing = [];
-  const mismatched = [];
-  const tooShort = [];
-  const nearMiss = [];
-  const candidates = [...Object.values(witness), ...Object.keys(witness)];
-  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
-  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
-  for (const f of deferred) {
-    const sha = f.sha.toLowerCase();
-    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
-    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
-      nearMiss.push(f.path);
-      continue;
-    }
-    const keyed = witness[f.path];
-    if (typeof keyed === "string" && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path);
-    else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path);
-    else if (typeof keyed === "string" && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path);
-    else missing.push(f.path);
-  }
-  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss };
-}
-function assertReadWitness(files, parsed) {
-  const result = verifyReadWitness(files, parsed);
-  if (result.ok) return result;
-  const witness = extractWitnessMap(parsed);
-  const byPath = new Map(files.map((f2) => [f2.path, f2]));
-  const badPath = result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0];
-  const f = byPath.get(badPath);
-  if (result.tooShort.includes(badPath)) {
-    const sha = (f ? f.sha : "").toLowerCase();
-    const short = Object.values(witness).find((v) => typeof v === "string" && v.length > 0 && sha.startsWith(v.toLowerCase())) || "";
-    throw new Error(`context_read_unverified: ${badPath} \u2014 witness prefix too short (${short.length} < ${WITNESS_MIN_HEX}): the agent read the file but returned only "${short}" of blob ${f ? f.sha : "?"}`);
-  }
-  const got = witness[badPath];
-  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
-  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
-}
-
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 var ereEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -976,31 +897,12 @@ function catOrMissing(path) {
 function isMissing(raw) {
   return !raw || raw.trim() === "" || raw.trim() === "MISSING";
 }
-var PROPERTIES_DEFERRED_MARKER = "__DATUM_PROPERTIES_DEFERRED__";
 function laneIntakeSteps(o) {
   const steps = [];
   if (o.laneSpec) {
     steps.push({ name: "lane-spec", command: laneSpecExportCommand(o.laneSpec), tolerant: true });
     steps.push({ name: "lane-spec-bytes", command: `wc -c < ${q2(o.laneSpec.outPath)} | tr -d ' '`, tolerant: true });
     steps.push({ name: "lane-spec-sha", command: `git hash-object ${q2(o.laneSpec.outPath)}`, tolerant: true });
-  }
-  if (o.properties) {
-    const propPath = `${o.wt}/docs/epics/${o.properties.epicBranch}/PROPERTIES.md`;
-    steps.push({
-      name: "properties-bytes",
-      command: `if [ -f ${q2(propPath)} ]; then wc -c < ${q2(propPath)} | tr -d ' '; else printf -- '-1'; fi`,
-      tolerant: true
-    });
-    steps.push({
-      name: "properties-sha",
-      command: `if [ -f ${q2(propPath)} ]; then git hash-object ${q2(propPath)}; else printf ''; fi`,
-      tolerant: true
-    });
-    steps.push({
-      name: "properties-cat",
-      command: `__pb=$(if [ -f ${q2(propPath)} ]; then wc -c < ${q2(propPath)} | tr -d ' '; else printf -- '-1'; fi); if [ "$__pb" != "-1" ] && [ "$__pb" -le ${CONTEXT_RELAY_BUDGET_BYTES} ]; then cat ${q2(propPath)}; else printf '%s' '${PROPERTIES_DEFERRED_MARKER}'; fi`,
-      tolerant: true
-    });
   }
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s%x09%(trailers:key=Datum-Spec,valueonly,separator=%x2C)" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
@@ -1034,20 +936,14 @@ function testEnvMissing(stdout) {
   const line = stdout.split("\n").map((l) => l.trim()).find((l) => re.test(l));
   return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, "") : null;
 }
-function verifyVerdictForStep(result, label, stepName) {
-  const exit = testExitCode(stepStdout(result, stepName));
+function verifyVerdict(result, label) {
+  const exit = testExitCode(stepStdout(result, "test-verify"));
   if (exit === null) {
-    const why = result.missing ? describeFailure(result, label) : stepResult(result, stepName) ? `${label}: ${stepName} step ran but printed no TEST_EXIT line` : `${label}: ${stepName} step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
+    const why = result.missing ? describeFailure(result, label) : stepResult(result, "test-verify") ? `${label}: test-verify step ran but printed no TEST_EXIT line` : `${label}: test-verify step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
     return { kind: "unavailable", exit: null, why };
   }
   if (exit === 0) return { kind: "passed", exit: 0, why: "" };
   return { kind: "failed", exit, why: "" };
-}
-function verifyVerdict(result, label) {
-  return verifyVerdictForStep(result, label, "test-verify");
-}
-function buildVerifyVerdict(result, label) {
-  return verifyVerdictForStep(result, label, "build-verify");
 }
 function testExitCode(stdout) {
   if (!stdout) return null;
@@ -1055,7 +951,6 @@ function testExitCode(stdout) {
   if (matches.length === 0) return null;
   return Number(matches[matches.length - 1][1]);
 }
-var RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|repo_root|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`;
 function postRedSteps(o) {
   const steps = [];
   if (o.acCount > 0) {
@@ -1098,17 +993,6 @@ ${o.testFuncBodyRegex}
 PATTERN_EOF
 ` + o.testFiles.map(
       (f, i) => `grep -A1 -f "$BODYPATFILE" "$__d${i}/${f.split("/").pop()}" 2>/dev/null | grep -B1 '^\\s*pass$' 2>/dev/null`
-    ).join("\n"),
-    tolerant: true
-  });
-  steps.push({
-    name: "artifact-check",
-    command: `ARTPATFILE=$(mktemp)
-cat > "$ARTPATFILE" <<'PATTERN_EOF'
-${RUNTIME_ARTIFACT_READ_RE}
-PATTERN_EOF
-` + o.testFiles.map(
-      (f, i) => `grep -nE -f "$ARTPATFILE" "$__d${i}/${f.split("/").pop()}" 2>/dev/null | sed "s#^#${f}:#"`
     ).join("\n"),
     tolerant: true
   });
@@ -1263,14 +1147,9 @@ function postGreenSteps(o) {
   if (o.redSha) {
     steps.push({ name: "red-files", command: `git -C ${q2(o.wt)} diff-tree --no-commit-id --name-only -r ${q2(o.redSha)}`, tolerant: true });
   }
-  if (o.verifyTestCmd || o.buildCommand) {
-    steps.push(...strayCleanSteps(o.wt));
-  }
   if (o.verifyTestCmd) {
+    steps.push(...strayCleanSteps(o.wt));
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
-  }
-  if (o.buildCommand) {
-    steps.push({ name: "build-verify", command: testRunCommand(o.buildCommand, o.wt, "green-build-verify"), tolerant: true });
   }
   return steps;
 }
@@ -1344,19 +1223,79 @@ function laneSpecFromSteps(result, taskId, outPath) {
 function laneSpecContextFile(spec) {
   return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null };
 }
-function propertiesFromSteps(result, epicBranch, wt) {
-  const path = `${wt}/docs/epics/${epicBranch}/PROPERTIES.md`;
-  const bytesRaw = stepStdout(result, "properties-bytes");
-  const bytes = bytesRaw === null ? NaN : parseInt(bytesRaw.trim(), 10);
-  if (!Number.isFinite(bytes) || bytes < 0) return null;
-  const sha = (stepStdout(result, "properties-sha") || "").trim();
-  const catRaw = stepStdout(result, "properties-cat");
-  const deferred = { path, exists: true, inlined: false, bytes, sha, content: null };
-  if (catRaw === null || catRaw === PROPERTIES_DEFERRED_MARKER) return deferred;
-  const actualBytes = utf8ByteLength(catRaw);
-  if (actualBytes !== bytes) return deferred;
-  if (sha && gitBlobSha(utf8Encode(catRaw)) !== sha) return deferred;
-  return { path, exists: true, inlined: true, bytes, sha, content: catRaw };
+function integrationVerifyCmd(testCommand, testFiles) {
+  const cmd = testCommand.trim();
+  if (testFiles.length === 0) return cmd;
+  if (!/\bpytest\b|\bvitest\s+run\b/.test(cmd)) return cmd;
+  return `${cmd} ${testFiles.join(" ")}`;
+}
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+function contextSlot(f) {
+  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
+  if (f.inlined && f.content !== null) return f.content;
+  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
+}
+function contextWitnessInstruction(files) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  if (deferred.length === 0) return "";
+  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nThe key is the file path exactly as written above; the value is the 12-character hash prefix. Your JSON response is invalid without this field for every file listed above.";
+}
+function extractWitnessMap(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const w = parsed.read_witness;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return w;
+}
+var WITNESS_MIN_HEX = 7;
+function commonPrefixLen(a2, b) {
+  let i = 0;
+  while (i < a2.length && i < b.length && a2[i] === b[i]) i++;
+  return i;
+}
+function verifyReadWitness(files, parsed) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  const witness = extractWitnessMap(parsed);
+  const missing = [];
+  const mismatched = [];
+  const tooShort = [];
+  const nearMiss = [];
+  const candidates = [...Object.values(witness), ...Object.keys(witness)];
+  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
+  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
+  for (const f of deferred) {
+    const sha = f.sha.toLowerCase();
+    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
+    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
+      nearMiss.push(f.path);
+      continue;
+    }
+    const keyed = witness[f.path];
+    if (typeof keyed === "string" && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path);
+    else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path);
+    else if (typeof keyed === "string" && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path);
+    else missing.push(f.path);
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss };
+}
+function assertReadWitness(files, parsed) {
+  const result = verifyReadWitness(files, parsed);
+  if (result.ok) return result;
+  const witness = extractWitnessMap(parsed);
+  const byPath = new Map(files.map((f2) => [f2.path, f2]));
+  const badPath = result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0];
+  const f = byPath.get(badPath);
+  if (result.tooShort.includes(badPath)) {
+    const sha = (f ? f.sha : "").toLowerCase();
+    const short = Object.values(witness).find((v) => typeof v === "string" && v.length > 0 && sha.startsWith(v.toLowerCase())) || "";
+    throw new Error(`context_read_unverified: ${badPath} \u2014 witness prefix too short (${short.length} < ${WITNESS_MIN_HEX}): the agent read the file but returned only "${short}" of blob ${f ? f.sha : "?"}`);
+  }
+  const got = witness[badPath];
+  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
+  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
 
 // skills/src/shared/write-steps.ts
@@ -1466,66 +1405,62 @@ var REFACTOR_CHECK_SCHEMA = {
 };
 
 // skills/src/prompts/agent-preamble.md
-var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
 
 // skills/src/prompts/red.md
-var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n\nAPPROACH:\n1. Read the acceptance_criteria (and red_note) from the lane spec file\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nTARGET CONTEXT (import guard):\nIf the preflight output at the PREFLIGHT path below contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nCONSTRAINTS:\n- Append new test functions to existing test files. Existing tests stay as they are, with ONE exception below.\n- STALE OWNED ASSERTIONS (stale_owned_test): when an existing test in one of YOUR test files (the OWNED list below) pins behaviour that this lane\'s acceptance criteria supersede \u2014 an exact-shape `toEqual` on a model this lane extends, a fixture or precondition this lane\'s ACs change, a value the AC now defines differently \u2014 amend that assertion in the same RED commit so it states the NEW contract (prefer `toMatchObject`/partial matches over widening to "anything"). Name each amended test in test_output as `amended: <test name> \u2014 superseded by <AC id>`. GREEN is forbidden from touching test files, so an assertion you leave stale deadlocks the lane: GREEN\'s correct implementation fails the old test.\n- Never delete or weaken a test that is not contradicted by an acceptance criterion of THIS lane; tests in files you do not own are off-limits even when they are stale (report them in failure_reason as `stale_foreign_test: <file>:<line>` and continue).\n- Only write and commit the test files in the OWNED list below.\n- OFF-LIMITS: Do NOT write any file that is not in the OWNED list. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift \u2014 this is a production implementation file, not a test file. If it is not a test file, do not write it.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n- Never assert on the text of the lane\'s own source files (`expect(source).toContain(...)` / `.not.toContain(...)` against an implementation file you or a later stage will write). Assert behaviour, not spelling \u2014 a rename or reformat should not break the test.\n- Never read back a set-only accessor or a write-only property to observe a value it never exposes. Assert against something the code under test actually returns or has an observable effect on.\n- Never read pipeline state under the repository\'s own `.datum/` (lane-spec.json, pipeline-state.json, a run directory). It exists only in this worktree while the pipeline runs; a test that reads it passes here and fails everywhere else. Build the input in a temporary directory instead.\n\nVERIFY BEFORE RUNNING TESTS:\nRun the command given as COUNT below to grep your test file(s) for new test functions.\nConfirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many functions matching the COUNT command\'s pattern exist in each test file BEFORE your edits\n- Count how many exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n1. Run the suite with exactly the command given as RUN below.\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>` \u2014 that code is the real exit status. Never run the configured test command through a pipe into tail or grep: a pipe masks the exit code. Report the printed output in test_output (last 50 lines max) and TEST_EXIT in test_exit_code.\n2. Your new tests MUST fail. Report tests_pass=false and the exit code.\n3. Commit with exactly the command given as COMMIT below \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n4. Report the commit SHA in commit_sha.\n\nINPUTS\nWORKTREE: cd into {{wt}}\nSETUP: run {{skeletonCmd}} then {{redCtxCmd}}\nPREFLIGHT: .datum/runs/*/preflight-{{taskId}}.json\nTASK PACKET: {{redPacketStr}}\nOWNED: {{testFilesList}}\nCOUNT: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\nRUN: {{testRunCmd}}\nCOMMIT: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n';
+var red_default = 'RED TDD agent. Write failing tests that prove the acceptance criteria are not yet implemented.\n\nSETUP:\n1. cd into {{wt}}\n2. Run: {{skeletonCmd}}\n3. Run: {{redCtxCmd}}\n\nTARGET CONTEXT (import guard):\nIf the preflight output at .datum/runs/*/preflight-{{taskId}}.json contains a target_context\nfield, read it. It lists which modules each target depends on. Only import modules listed as\ndependencies of the target your test file belongs to. DO NOT import modules from other targets.\n\nTASK PACKET: {{redPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nFRAMEWORK DETECTION:\nBefore writing any test code, read ONE existing test file from the same directory as your target test files. Match its:\n- Import style (e.g. import XCTest vs import Testing, import pytest vs import unittest)\n- Test class/struct pattern (XCTestCase subclass vs @Test macro, etc.)\n- Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)\nIf no existing test files exist, fall back to the test_framework field in the task packet.\n\nGOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.\n{{integrationNote}}\n\nAPPROACH:\n1. Read the acceptance_criteria (and red_note) from the lane spec file\n2. For each AC, write a test that calls the method described in the AC\n3. Assert specific expected values \u2014 not just "doesn\'t crash"\n4. Call methods that don\'t exist yet \u2014 the resulting error (AttributeError in Python, compilation error in Swift/Go, TypeError in TS) is the correct RED failure\n\nVERIFY BEFORE RUNNING TESTS:\n4b. Grep your test file(s) for new test functions: grep -c \'{{testFuncPattern}}\' {{testFilesList}}\n    Confirm you have at least one new test function per AC. If any AC lacks a test, go back and write it before proceeding.\n\nSELF-CHECK (mandatory before running tests):\n- Count how many `{{testFuncPattern}}` functions exist in each test file BEFORE your edits\n- Count how many `{{testFuncPattern}}` functions exist AFTER your edits\n- The count MUST increase by at least len(acceptance_criteria) new functions\n- If count did not increase, you FAILED \u2014 do not proceed, report success=false with failure_reason="no_new_tests_written"\n- Include both counts in test_output: "Before: N tests, After: M tests, New: M-N"\n\nAFTER WRITING:\n5. Run the suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>` \u2014 that code is the real exit status. Never run {{testCommand}} through a pipe into tail or grep: a pipe masks the exit code. Report the printed output in test_output (last 50 lines max) and TEST_EXIT in test_exit_code.\n6. Your new tests MUST fail. Report tests_pass=false and the exit code.\n7. Commit test files: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n8. Report the commit SHA in commit_sha.\n\nCONSTRAINTS:\n- Append new test functions to existing test files. Existing tests stay as they are, with ONE exception below.\n- STALE OWNED ASSERTIONS (stale_owned_test): when an existing test in one of YOUR test files ({{testFilesList}}) pins behaviour that this lane\'s acceptance criteria supersede \u2014 an exact-shape `toEqual` on a model this lane extends, a fixture or precondition this lane\'s ACs change, a value the AC now defines differently \u2014 amend that assertion in the same RED commit so it states the NEW contract (prefer `toMatchObject`/partial matches over widening to "anything"). Name each amended test in test_output as `amended: <test name> \u2014 superseded by <AC id>`. GREEN is forbidden from touching test files, so an assertion you leave stale deadlocks the lane: GREEN\'s correct implementation fails the old test.\n- Never delete or weaken a test that is not contradicted by an acceptance criterion of THIS lane; tests in files you do not own are off-limits even when they are stale (report them in failure_reason as `stale_foreign_test: <file>:<line>` and continue).\n- Only write and commit test files: {{testFilesList}}\n- OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are prohibited. Example of a prohibited write: NoOpPermissionService.swift \u2014 this is a production implementation file, not a test file. If it is not a test file, do not write it.\n\nBANNED PATTERNS (any of these = pipeline rejection, no exceptions):\n- Python: `assert True`, `assert 1`, `assert not False`, `pass` as only body, `raise NotImplementedError`\n- Swift: `XCTFail()` as only assertion, empty test body, `fatalError()`\n- Go: `t.Fatal("not implemented")`, `panic("not implemented")`, empty test body\n- TS/JS: `expect(true).toBe(false)`, `throw new Error("not implemented")`, empty test body\n- `assert x is not None` / trivial nil-checks as the ONLY assertion\nEach test MUST assert a specific expected value or exception type.\n';
 
 // skills/src/prompts/red-retry.md
-var red_retry_default = `RED TDD agent \u2014 RETRY. A previous attempt at this lane failed; the reason is given as PREVIOUS FAILURE below.
+var red_retry_default = `RED TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.
 
-Start from a clean worktree: run the command given as RESET below.
+First reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
+
+SETUP: {{redCtxCmd}}
+TASK PACKET: {{redPacketStr}}
+
+LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
+{{laneSpecSlot}}
 
 Write simple, concrete tests. One test per acceptance criterion. Assert specific values.
 Call methods that don't exist yet \u2014 the language's missing-method error (AttributeError, TypeError, compilation error, etc.) is your RED signal.
 NEVER use hardcoded failure stubs (raise NotImplementedError, fatalError, panic) \u2014 test fixtures may auto-skip them.
 
-Only write and commit the test files in the OWNED list below. OFF-LIMITS: Do NOT write any file that is not in the OWNED list. Production implementation files, skeleton stubs, and non-test code are strictly prohibited (e.g., NoOpPermissionService.swift is a production impl file \u2014 do not write it).
-
 AFTER WRITING:
-1. Run the suite with exactly the command given as RUN below.
+1. Run the suite with exactly: {{testRunCmd}}
    Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Tests must fail. Report tests_pass=false and test_exit_code.
-2. Commit with exactly the command given as COMMIT below (datum author identity + Datum-* trailers); do not change the subject or author.
+2. Commit: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
+   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.
 3. Report commit_sha.
 
-INPUTS
-PREVIOUS FAILURE: {{failureReason}}
-RESET: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/
-SETUP: {{redCtxCmd}}
-TASK PACKET: {{redPacketStr}}
-OWNED: {{testFilesList}}
-RUN: {{testRunCmd}}
-COMMIT: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
-LANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
-{{laneSpecSlot}}
+Only write and commit test files: {{testFilesList}}. OFF-LIMITS: Do NOT write any files not listed in {{testFilesList}}. Production implementation files, skeleton stubs, and non-test code are strictly prohibited (e.g., NoOpPermissionService.swift is a production impl file \u2014 do not write it).
 `;
 
 // skills/src/prompts/green.md
-var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read the existing implementation files in your allowed list \u2014 extend what is there, do not replace it\n3. Implement only what the errors require\n\nTARGET CONTEXT (import guard):\nIf target_context is present in the task packet, only use imports that are valid for the target.\nCheck the dependency list before adding any import statement. DO NOT import modules that are\nnot listed as dependencies of the target you are implementing in.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)\n\nCONSTRAINTS:\n- Only write and commit the implementation files listed as ALLOWED below\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\n- If making tests pass requires modifying files outside ALLOWED (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) \u2014 one honest blocked result beats three blind attempts.\n- Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with \'Package.swift\' and a description of the required dependency.\n- For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.\n\nAFTER WRITING:\n1. Run the suite with exactly the command given as RUN below.\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). ALL tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code from it.\n2. Commit with exactly the command given as COMMIT below \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n3. Report commit_sha.\n\nINPUTS\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\nALLOWED: {{implFilesList}}\nRUN: {{testRunCmd}}\nCOMMIT: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n';
+var green_default = 'GREEN TDD agent. Make the failing tests pass with minimum implementation code.\n\nSETUP (run first): {{greenCtxCmd}}\nTASK PACKET: {{greenPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nCONTEXT MANAGEMENT:\nBefore reading implementation files, use headroom_compress on any file longer than 100 lines.\nThis saves context for reasoning. Use headroom_retrieve with a targeted query when you need\nspecific sections back (e.g. query="function signature" or query="class definition").\n\nTARGET CONTEXT (import guard):\nIf target_context is present in the task packet, only use imports that are valid for the target.\nCheck the dependency list before adding any import statement. DO NOT import modules that are\nnot listed as dependencies of the target you are implementing in.\n\nAPPROACH:\n1. Read test_signal carefully \u2014 each error tells you exactly what to implement\n2. Read impl_stubs \u2014 fill in function bodies, do not create new files\n3. Check existing_api \u2014 extend it, do not replace it\n4. Implement only what the errors require\n\nAFTER WRITING:\n5. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). ALL tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code from it.\n6. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n7. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 it pins the datum author identity and the Datum-Run/Datum-Lane/Datum-Stage trailers every lane commit carries. Do not change the subject or author.\n8. Report commit_sha.\n\nPACKET FIELDS:\n- test_signal: error messages from failing tests \u2014 your implementation spec\n- lane_spec_file: the worktree file holding acceptance_criteria, red_note and contract_summary (function signatures extracted from the criteria)\n- impl_stubs: skeleton files \u2014 fill these in\n- existing_api: current module code shape\n\nCONSTRAINTS:\n- Only write and commit implementation files: {{implFilesList}}\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\n- If making tests pass requires modifying files outside {{implFilesList}} (e.g. the RED test calls an existing class/function with arguments its current signature rejects, and that definition is outside your allowed files), do NOT write those files and do NOT keep retrying. Return the structured blocked result: {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<repo-relative path>", ...], "reason": "<which test, which symbol, why it cannot pass within the allowed files>"}. The orchestrator turns this into a single lead-approval question (or auto-widens in yolo mode) \u2014 one honest blocked result beats three blind attempts.\n- Package.swift changes are FORBIDDEN in behavioral lanes. If a new dependency is needed, report scope_exceeded with \'Package.swift\' and a description of the required dependency.\n- For Swift: target-scoped test command (with --filter) is already provided. Do NOT run a broader test command that compiles unrelated targets.\n';
 
 // skills/src/prompts/green-retry.md
-var green_retry_default = 'GREEN TDD agent \u2014 RETRY. A previous attempt at this lane failed; the reason is given as PREVIOUS FAILURE below.\n\nStart from a clean worktree: run the command given as RESET below.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nOnly write and commit the implementation files listed as ALLOWED below.\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\n- If the tests cannot pass without writing a file outside ALLOWED, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead. One honest blocked result beats three blind attempts.\n\nAFTER WRITING:\n1. Run the suite with exactly the command given as RUN below.\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. Commit with exactly the command given as COMMIT below (datum author identity + Datum-* trailers); do not change the subject or author.\n3. Report commit_sha.\n\nINPUTS\nPREVIOUS FAILURE: {{failureReason}}\nRESET: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\nALLOWED: {{implFilesList}}\nRUN: {{testRunCmd}}\nCOMMIT: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n';
+var green_retry_default = 'GREEN TDD agent \u2014 RETRY. Previous attempt failed: {{failureReason}}.\n\nFirst reset: git -C "{{wt}}" checkout -- . && git -C "{{wt}}" clean -fd --exclude=.datum/\n\nSETUP: {{greenCtxCmd}}\nTASK PACKET: {{greenRetryPacketStr}}\n\nLANE SPEC FILE \u2014 the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet\'s lane_spec_file, not in the packet:\n{{laneSpecSlot}}\n\nCONTEXT MANAGEMENT:\nUse headroom_compress on any file or test output longer than 100 lines.\nUse headroom_retrieve with a targeted query to pull back only what you need.\n\nRead test_signal errors carefully. Read existing implementation files first. Fix specific failures.\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). All tests must pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If test output exceeds 50 lines, compress it with headroom_compress and include the hash in test_output.\n3. Commit: git -C "{{wt}}" add {{implFilesList}} && {{commitCmd}}\n   Use that exact commit command (datum author identity + Datum-* trailers); do not change the subject or author.\n4. Report commit_sha.\n\nOnly write and commit implementation files: {{implFilesList}}\n- Never edit, delete or `git add` a test file, and never `git commit --amend` or rewrite the RED commit: a GREEN commit whose diff touches a test file fails the lane as green_edited_tests. If a test is wrong, report it in failure_reason instead of changing it.\nIf the tests cannot pass without writing a file outside that list, do NOT write it \u2014 return {"success": false, "tests_pass": false, "committed": false, "status": "blocked", "needs_write": ["<paths>"], "reason": "<why>"} instead.\n';
 
 // skills/src/prompts/refactor.md
-var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Remove machine-written tells: narrating comments that restate the code, chat phrases, emoji, placeholder stubs, generic names (process_data), abstractions with one caller, tutorial shape where a plain if/else does the job\n- Match the level the surrounding code operates at. Do not add a check, a comment, a type annotation or a layer the neighboring code would not have; trying to look careful is its own tell\n- Write to allowed files only\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n\nAFTER WRITING:\n1. Run the suite with exactly the command given as RUN below.\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: commit with exactly the command given as COMMIT below \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nINPUTS\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\nALLOWED: {{allFilesList}}\nRUN: {{testRunCmd}}\nCOMMIT: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\nSCANNER FINDINGS on the lines this lane added (remove every one, or mark a deliberate line `unslop-ignore`):\n{{tellsSlot}}\n';
+var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\n\nSCANNER FINDINGS on the lines this lane added (remove every one, or mark a deliberate line `unslop-ignore`):\n{{tellsSlot}}\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Remove machine-written tells: narrating comments that restate the code, chat phrases, emoji, placeholder stubs, generic names (process_data), abstractions with one caller, tutorial shape where a plain if/else does the job\n- Match the level the surrounding code operates at. Do not add a check, a comment, a type annotation or a layer the neighboring code would not have; trying to look careful is its own tell\n- Write to allowed files only\n\nAFTER WRITING:\n1. Run the suite with exactly: {{testRunCmd}}\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n   Use that exact commit command \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n';
 
 // skills/src/prompts/reflect.md
-var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nSCOPE \u2014 one rule for prior-lane tests. A test file may hold tests from prior lanes: test functions that do not relate to any of the acceptance criteria below. Those tests neither count for nor against the score \u2014 score only the test functions whose names and assertions directly relate to the criteria. But you must still read every prior-lane test in these files, because a prior-lane assertion this lane\'s criteria contradict is the one thing that can deadlock this lane, and finding it is step 4 below.\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC \u2014 this is the only rubric; a lane fails below 4, so nothing else sets the boundaries:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n\nINPUTS\nRead these test files in "{{wt}}": {{testFiles}}\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n';
+var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these test files in "{{wt}}": {{testFiles}}\n\nIMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.\n\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n';
 
 // skills/src/prompts/skeptic-base.md
-var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nTOOLS (use before manual reading):\n- `ast-grep --pattern '<pattern>' <file>` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n\nLeave the worktree exactly as you found it: do not create files in it. Reproduce a finding with an inline command (`python -c`, `node -e`, a heredoc piped to the interpreter) and quote that command as the evidence. Any file you leave behind is removed before the next stage and reported as `stray_untracked_files`; a repro test file left under tests/ was collected by the next stage's suite and failed a sound lane.\n\nEvery bug you report is one object: description, evidence, severity \u2014 what is wrong, the specific input, file or line that demonstrates it, and one of critical / high / medium / low. That is the whole output shape; the lens at the end of this prompt tells you where to look, not what to return.\n\nINPUTS\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\nProperties \u2014 the invariant reference for this epic (reason against these too, not only the acceptance criteria above):\n{{propertiesSlot}}\n";
+var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n\nTOOLS (use before manual reading):\n1. `ast-grep --pattern '<pattern>' {{implFiles}}` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n2. headroom_compress on each file after reading, then query-retrieve for specific sections\n\nCONTEXT MANAGEMENT:\nAfter reading each file, compress it with headroom_compress. This frees context for\ndeeper analysis. Use headroom_retrieve with a query (e.g. query=\"error handling\" or\nquery=\"return value\") to pull back specific sections when investigating a potential bug.\n\nFor each bug found, provide:\n- description: what is wrong\n- evidence: the specific input, file, or line that demonstrates the bug\n- severity: critical / high / medium / low\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n\nLeave the worktree exactly as you found it: do not create files in it. Reproduce a finding with an inline command (`python -c`, `node -e`, a heredoc piped to the interpreter) and quote that command as the evidence. Any file you leave behind is removed before the next stage and reported as `stray_untracked_files`; a repro test file left under tests/ was collected by the next stage's suite and failed a sound lane.\n";
 
 // skills/src/prompts/skeptic-edge.md
-var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\n";
+var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\nFor each finding: describe the input, what happens, what should happen.\n";
 
 // skills/src/prompts/skeptic-error.md
-var skeptic_error_default = "LENS: Error paths.\nCheck these failure modes against the implementation:\n- What happens when preconditions are violated?\n- Are exceptions caught and handled, or do they propagate silently?\n- Are there state transitions that can reach invalid states?\n";
+var skeptic_error_default = "LENS: Error paths.\nCheck these failure modes against the implementation:\n- What happens when preconditions are violated?\n- Are exceptions caught and handled, or do they propagate silently?\n- Are there state transitions that can reach invalid states?\nFor each finding: name the error condition and trace what happens.\n";
 
 // skills/src/prompts/skeptic-contract.md
-var skeptic_contract_default = "LENS: Behavioral contracts.\nCompare implementation behavior against the acceptance criteria:\n- Does the implementation satisfy the AC intent, not just the specific test inputs?\n- Are there inputs that satisfy the AC literally but produce wrong results?\n- Do the tests only cover the happy path while the AC implies broader coverage?\n- Evidence for this lens names the AC and a concrete input that exposes the gap\n";
+var skeptic_contract_default = "LENS: Behavioral contracts.\nCompare implementation behavior against the acceptance criteria:\n- Does the implementation satisfy the AC intent, not just the specific test inputs?\n- Are there inputs that satisfy the AC literally but produce wrong results?\n- Do the tests only cover the happy path while the AC implies broader coverage?\nFor each finding: cite the AC, the gap, and a concrete input that exposes it.\n";
 
 // skills/src/prompts/refactor-check.md
-var refactor_check_default = 'CODE QUALITY gate. Decide if the implementation needs refactoring \u2014 be conservative.\nRead-only \u2014 do NOT write or modify any files.\n\nReturn should_refactor=true ONLY if you find one of these concrete problems:\n- Duplicated logic (same code block copy-pasted in 2+ places)\n- Function longer than 50 lines that could be split at a clear seam\n- Dead code introduced by this task (unused imports, unreachable branches)\n- Misleading names that contradict what the code does, or generic names (process_data, handle_item) that hide what a function does\n- Tutorial-shaped code: sample-app structure, dummy data, or a textbook pattern where a plain if/else does the job\n- An abstraction with one caller: an interface, factory, wrapper or helper introduced for a single use\n- Code that ignores the surrounding module: a new way to log, validate, name or structure things next to code that already does it one way\n- Narrating comments that restate the next line or walk through steps ("# Step 1", "// Now we ...")\n\nDo NOT flag: defensive checks or validation (the data does not support them as a tell, and half the complaints run the other way), log lines, single variable names, blank lines, import order, missing docstrings or type hints.\nIf the code works, reads clearly, and matches the level of the code around it, return should_refactor=false.\n\nIf should_refactor=true, the reason must name the specific file and problem.\n\nINPUTS\nRead these files in "{{wt}}": {{allFiles}}\nSCANNER FINDINGS on the lines this lane added (deterministic; each is a real problem the refactor must remove):\n{{tellsSlot}}\n';
+var refactor_check_default = 'CODE QUALITY gate. Decide if the implementation needs refactoring \u2014 be conservative.\nRead-only \u2014 do NOT write or modify any files.\n\nRead these files in "{{wt}}": {{allFiles}}\n\nSCANNER FINDINGS on the lines this lane added (deterministic; each is a real problem the refactor must remove):\n{{tellsSlot}}\n\nReturn should_refactor=true ONLY if you find one of these concrete problems:\n- Duplicated logic (same code block copy-pasted in 2+ places)\n- Function longer than 50 lines that could be split at a clear seam\n- Dead code introduced by this task (unused imports, unreachable branches)\n- Misleading names that contradict what the code does, or generic names (process_data, handle_item) that hide what a function does\n- Tutorial-shaped code: sample-app structure, dummy data, or a textbook pattern where a plain if/else does the job\n- An abstraction with one caller: an interface, factory, wrapper or helper introduced for a single use\n- Code that ignores the surrounding module: a new way to log, validate, name or structure things next to code that already does it one way\n- Narrating comments that restate the next line or walk through steps ("# Step 1", "// Now we ...")\n\nDo NOT flag: defensive checks or validation (the data does not support them as a tell, and half the complaints run the other way), log lines, single variable names, blank lines, import order, missing docstrings or type hints.\nIf the code works, reads clearly, and matches the level of the code around it, return should_refactor=false.\n\nIf should_refactor=true, the reason must name the specific file and problem.\n';
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
@@ -1533,8 +1468,8 @@ function withLaneSpec(template, vars, laneSpec) {
   return PREAMBLE + renderPrompt(template, { ...vars, laneSpecSlot: contextSlot(laneSpec) }) + contextWitnessInstruction([laneSpec]);
 }
 function redPrompt(vars) {
-  const { laneSpec, ...rest } = vars;
-  return withLaneSpec(red_default, rest, laneSpec);
+  const { laneSpec, integrationNote, ...rest } = vars;
+  return withLaneSpec(red_default, { ...rest, integrationNote: integrationNote ?? "" }, laneSpec);
 }
 function redRetryPrompt(vars) {
   const { laneSpec, ...rest } = vars;
@@ -1556,10 +1491,8 @@ function reflectPrompt(vars) {
   return withLaneSpec(reflect_default, rest, laneSpec);
 }
 function skepticBasePrompt(vars) {
-  const { laneSpec, properties, ...rest } = vars;
-  const propertiesSlot = properties ? contextSlot(properties) : "PROPERTIES.md does not exist for this epic (no Properties phase ran) \u2014 reason only against the acceptance criteria above.";
-  const deferred = [laneSpec, ...properties && !properties.inlined ? [properties] : []];
-  return PREAMBLE + renderPrompt(skeptic_base_default, { ...rest, laneSpecSlot: contextSlot(laneSpec), propertiesSlot }) + contextWitnessInstruction(deferred);
+  const { laneSpec, ...rest } = vars;
+  return withLaneSpec(skeptic_base_default, rest, laneSpec);
 }
 function skepticLenses() {
   return [
@@ -1628,6 +1561,10 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   const issueId = getIssueId(lanePlan2, taskId);
   const runId = cfg2.runId;
   const isStructural = lane.kind === "structural";
+  const isIntegration = lane.kind === "integration";
+  if (isIntegration && !lane.expect_tests_pass) {
+    log(`[${taskId}] integration lane disagreement: kind is 'integration' but expect_tests_pass is missing/false \u2014 kind is authoritative, taking the RED-only fast path anyway`);
+  }
   const { testFiles, implFiles } = classifyFiles(lane.files);
   const laneTestCmd = cfg2.testCommand;
   const laneCfg = { ...cfg2, testCommand: laneTestCmd };
@@ -1646,8 +1583,8 @@ async function runLane(taskId, lanePlan2, worktreePaths2, cfg2) {
   })() : null;
   const scopedTestCmd = typeof lane.test_command === "string" && lane.test_command.trim() ? lane.test_command.trim() : swiftTargetFilter ? `${cfg2.testCommand} ${swiftTargetFilter}` : cfg2.testCommand;
   const scopedLaneCfg = { ...cfg2, testCommand: scopedTestCmd };
-  const testFuncDiffRegex = laneLanguage === "swift" ? "[+][[:space:]]*(@Test|func test)" : laneLanguage === "go" ? "[+][[:space:]]*func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*(def test_|async def test_|@pytest\\.mark\\.parametrize\\(|@given\\()";
-  const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_|@pytest\\.mark\\.parametrize\\(|@given\\(";
+  const testFuncDiffRegex = laneLanguage === "swift" ? "[+][[:space:]]*(@Test|func test)" : laneLanguage === "go" ? "[+][[:space:]]*func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "[+][[:space:]]*(it\\(|test\\(|describe\\()" : "[+][[:space:]]*def test_";
+  const testFuncGrepRegex = laneLanguage === "swift" ? "@Test|func test" : laneLanguage === "go" ? "func Test" : laneLanguage === "typescript" || laneLanguage === "javascript" ? "it\\(|test\\(|describe\\(" : "def test_|async def test_";
   const testFuncBodyRegex = laneLanguage === "swift" ? "func test" : laneLanguage === "go" ? "func Test" : "def test_";
   const completionPath = runId ? `.datum/runs/${runId}/lane-state/${taskId}.json` : null;
   const deterministic = deterministicChecks();
@@ -1682,13 +1619,7 @@ No markdown fences, no explanation.`,
     planSkeletonPath,
     skeletonCmd,
     preflightPath,
-    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) },
-    // #493 — the skeptic panel reasons against PROPERTIES.md (FLOW.md's Act
-    // handoff); folded into this one intake batch rather than a second
-    // command-runner call. propertiesFromSteps() returns null when the epic
-    // has no Properties phase, which the panel's prompt turns into a
-    // one-line sentence instead of a Read instruction.
-    properties: { epicBranch: cfg2.epicBranch }
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) }
   });
   const intakeRaw = await runBatch(intakeSteps, stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") }));
   const intakeResult = intakeRaw;
@@ -1714,7 +1645,6 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "CRASH", error: spec.error };
   }
   const specFile = laneSpecContextFile(spec.spec);
-  const propertiesFile = propertiesFromSteps(intake, cfg2.epicBranch, wt);
   const laneHistoryRaw = stepStdout(intake, "history");
   const existing = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = existing;
@@ -1849,6 +1779,13 @@ No markdown fences, no explanation.`,
     commitCmd: laneCommitCommand({ wt, taskId, stage: "RED", runId, specHash: spec.spec.spec_hash }),
     taskId,
     testFuncPattern: testFuncLabel,
+    // Review ARCH-003: the note follows the fast path's own trigger (kind
+    // alone), so a lane whose expect_tests_pass drifted still hears that
+    // its tests must pass, which is how it will be judged.
+    integrationNote: isIntegration && (lane.invariants || []).length > 0 ? `
+This lane covers invariants: ${(lane.invariants || []).join(", ")}
+
+The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.` : "",
     laneSpec: specFile
   };
   let red = null;
@@ -1972,6 +1909,10 @@ No markdown fences, no explanation.`,
     { pattern: "assert 1", name: "assert 1" },
     { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
   ];
+  const integrationVerify = isIntegration ? integrationVerifyCmd(scopedTestCmd, testFiles) : scopedTestCmd;
+  if (isIntegration && testFiles.length > 0 && integrationVerify === scopedTestCmd.trim()) {
+    log(`[${taskId}] integration_verify_unscoped: "${scopedTestCmd}" takes no file arguments the runner knows (pytest, vitest run); the independent verify runs the whole suite, so an unrelated red will read as integration_failed`);
+  }
   const postRed = postRedSteps({
     wt,
     testFiles,
@@ -1981,11 +1922,31 @@ No markdown fences, no explanation.`,
     testFuncBodyRegex,
     testFuncGrepRegex,
     ownership: deterministic,
-    verifyTestCmd: scopedTestCmd,
+    // An integration lane is decided on its own test files (run
+    // 20260907-015322: a whole-suite verify turned an unrelated red into
+    // integration_failed); the whole suite is Validate's job.
+    verifyTestCmd: isIntegration ? integrationVerify : scopedTestCmd,
     baseRef: cfg2.epicBranch
   });
   const postRedRaw = await runBatch(postRed, stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") }));
   const postRedResult = postRedRaw;
+  if (isIntegration) {
+    const redVerifyVerdict = verifyVerdict(postRedResult, "red-verify");
+    if (redVerifyVerdict.kind === "unavailable") {
+      log(`[${taskId}] green_verify_unavailable: ${redVerifyVerdict.why}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error: `green_verify_unavailable: ${redVerifyVerdict.why}` };
+    }
+    if (redVerifyVerdict.kind === "failed") {
+      const covered = (lane.depends_on || []).join(", ");
+      const invariantIds = (lane.invariants || []).join(", ");
+      const error = `integration_failed: covered ${covered}; invariants ${invariantIds} (independent verify exit=${redVerifyVerdict.exit})`;
+      log(`[${taskId}] ${error}`);
+      return { task_id: taskId, status: "failed", stage: "RED", error };
+    }
+    log(`[${taskId}] integration lane RED-only fast path: independent verify passed \u2014 completing at RED`);
+    await updateStage(issueId, "done");
+    return { task_id: taskId, status: "completed", stage: "RED", red_only: true };
+  }
   if (acCount > 0) {
     let newTestCount2 = 0;
     let gatePassed = false;
@@ -2022,11 +1983,6 @@ No markdown fences, no explanation.`,
   if (assertDetail.length > 0) {
     log(`[${taskId}] RED: placeholder assertions found \u2014 ${assertDetail}`);
     return { task_id: taskId, status: "failed", stage: "RED", error: `placeholder_assertions: ${assertDetail}` };
-  }
-  const artifactDetail = (stepStdout(postRedResult, "artifact-check") || "").trim();
-  if (artifactDetail.length > 0) {
-    log(`[${taskId}] RED: a test reads pipeline state under the repo root's .datum/ \u2014 ${artifactDetail}`);
-    return { task_id: taskId, status: "failed", stage: "RED", error: `red_reads_runtime_artifact: ${artifactDetail}` };
   }
   const redVerifyExit = testExitCode(stepStdout(postRedResult, "test-verify"));
   const redEnvMissing = testEnvMissing(stepStdout(postRedResult, "test-verify"));
@@ -2130,7 +2086,7 @@ No markdown fences, no explanation.`,
       return { task_id: taskId, status: "failed", stage: "RED", error: `test quality ${reflectScore}/10` };
     }
   }
-  const greenModel = model("balanced");
+  const greenModel = lane.green_model || model("balanced");
   log(`[${taskId}] GREEN: making tests pass (model: ${greenModel})`);
   const greenExtras = {
     test_signal: { exit_code: red.test_exit_code || 1, errors: red.test_errors || [] },
@@ -2272,7 +2228,7 @@ No markdown fences, no explanation.`,
       error: "green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md \u2014 the lane may need a smaller scope, or the cap raised)"
     };
   }
-  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null });
+  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") }));
   const postGreenVerifyResult = postGreenVerifyRaw;
   const greenStrays = strayFilesFromSteps(postGreenVerifyResult);
@@ -2295,55 +2251,6 @@ No markdown fences, no explanation.`,
       stage: "GREEN",
       error: `green_verify_failed: independent test-verify step exit=${greenVerdict.exit} (agent self-reported tests_pass=${green?.tests_pass})`
     };
-  }
-  if (cfg2.buildCommand) {
-    const buildVerdict = buildVerifyVerdict(postGreenVerifyResult, "post-green-build-verify");
-    if (buildVerdict.kind === "unavailable") {
-      log(`[${taskId}] build_verify_unavailable: ${buildVerdict.why}`);
-      return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_unavailable: ${buildVerdict.why}` };
-    }
-    if (buildVerdict.kind === "failed") {
-      log(`[${taskId}] GREEN BUILD VERIFY FAILED: independent re-run of build_command (${cfg2.buildCommand}) exited ${buildVerdict.exit}`);
-      const buildTail = (stepStdout(postGreenVerifyResult, "build-verify") || "").trim().split("\n").slice(-30).join("\n");
-      const buildRetryReason = `build_verify_failed: independent re-run of build_command (${cfg2.buildCommand}) exited ${buildVerdict.exit} after your GREEN commit. Output tail:
-${buildTail}
-
-If you can fix this inside allowed_write_files [${implFiles.join(", ")}], fix it and re-commit. If the failure is rooted in a file OUTSIDE allowed_write_files, do NOT retry blindly \u2014 return status="blocked" with needs_write naming the file(s) you cannot edit, exactly like the existing GREEN scope-block contract.`;
-      const buildRetryGreen = await witnessedAgent(
-        greenRetryPrompt({
-          ...greenVars,
-          failureReason: buildRetryReason,
-          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "build_verify_failed" })
-        }),
-        stageOpts("green", { label: `green-build-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
-        specFile,
-        "GREEN"
-      );
-      const buildDecision = decideGreenBlock(buildRetryGreen, null);
-      if (buildDecision.blocked) {
-        const err = `green_blocked_needs_write: [${buildDecision.needsWrite.join(", ") || "unspecified"}] \u2014 ${buildDecision.reason} (build_verify_failed after GREEN)`;
-        log(`[${taskId}] ${err}`);
-        return { task_id: taskId, status: "blocked", stage: "GREEN", error: err, needs_write: buildDecision.needsWrite };
-      }
-      if (!buildRetryGreen || !buildRetryGreen.success) {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_failed: independent build re-run exit=${buildVerdict.exit}; retry ${!buildRetryGreen ? "returned nothing" : `failed: ${buildRetryGreen.failure_reason || "no reason"}`}` };
-      }
-      const retryBuildBatch = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand });
-      const retryBuildResult = await runBatch(retryBuildBatch, stageOpts("cli", { label: `post-green-build-reverify:${taskId}`, phase: "Act", model: model("fast") }));
-      const retryTestVerdict = verifyVerdict(retryBuildResult, "post-green-build-reverify");
-      const retryBuildVerdict = buildVerifyVerdict(retryBuildResult, "post-green-build-reverify");
-      if (retryTestVerdict.kind !== "passed") {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_failed: independent test-verify exit=${retryTestVerdict.exit ?? "null"} after the build-fix retry` };
-      }
-      if (retryBuildVerdict.kind === "unavailable") {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_unavailable: ${retryBuildVerdict.why}` };
-      }
-      if (retryBuildVerdict.kind === "failed") {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} after one retry` };
-      }
-      green = buildRetryGreen;
-      log(`[${taskId}] build_verify passed after one GREEN retry`);
-    }
   }
   if (!green || !green.success || !green.tests_pass) {
     const reason = !green ? "GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) \u2014 check the subagent transcript for this run to recover the actual failure cause" : green.failure_reason || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? "n/a"})`;
@@ -2403,14 +2310,8 @@ If you can fix this inside allowed_write_files [${implFiles.join(", ")}], fix it
       specFile,
       "GREEN"
     );
-    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryVerdict = verifyVerdict(retryVerify, "post-green-tests-retry-verify");
-    if (cfg2.buildCommand) {
-      const retryBuildVerdict = buildVerifyVerdict(retryVerify, "post-green-tests-retry-verify");
-      if (retryBuildVerdict.kind !== "passed") {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: retryBuildVerdict.kind === "unavailable" ? `build_verify_unavailable: ${retryBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} on the tests-retry` };
-      }
-    }
     if (retryVerdict.kind === "unavailable" && green && green.success) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerdict.why}` };
     }
@@ -2429,7 +2330,7 @@ If you can fix this inside allowed_write_files [${implFiles.join(", ")}], fix it
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   await updateStage(issueId, "green", green.commit_sha);
-  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile);
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
   if (skeptic.brokenCount >= 2) {
     const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
     const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join("\n") || "no bug detail available";
@@ -2447,15 +2348,9 @@ ${bugSummary}`,
       specFile,
       "GREEN"
     );
-    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null });
+    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryVerifyVerdict = verifyVerdict(retryVerifyRaw, "post-green-skeptic-retry-verify");
-    if (cfg2.buildCommand) {
-      const retrySkepticBuildVerdict = buildVerifyVerdict(retryVerifyRaw, "post-green-skeptic-retry-verify");
-      if (retrySkepticBuildVerdict.kind !== "passed") {
-        return { task_id: taskId, status: "failed", stage: "GREEN", error: retrySkepticBuildVerdict.kind === "unavailable" ? `build_verify_unavailable: ${retrySkepticBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retrySkepticBuildVerdict.exit} on the skeptic retry` };
-      }
-    }
     if (retryVerifyVerdict.kind === "unavailable" && green && green.success) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerifyVerdict.why}` };
     }
@@ -2470,7 +2365,7 @@ ${bugSummary}`,
         error: `skeptic_broken: ${confirmedBugs.length} confirmed bugs \u2014 ${summary}`
       };
     }
-    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile);
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
     if (skeptic.brokenCount >= 2) {
       const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
       const first = stillConfirmed[0];
@@ -2517,38 +2412,34 @@ ${bugSummary}`,
   await updateStage(issueId, "done");
   return followUps > 0 ? { task_id: taskId, status: "completed", stage: "REFACTOR", follow_ups: followUps } : { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
-async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile) {
+async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile) {
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
     testFiles: testFiles.join(", "),
     testCommand: scopedTestCmd,
-    laneSpec: specFile,
-    properties: propertiesFile
+    laneSpec: specFile
   });
   const lenses = skepticLenses();
   const skepticResults = await parallel(
     lenses.map(
-      (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA, worktree: wt }))
+      (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA }))
     )
   );
-  const witnessFiles = [specFile, ...propertiesFile && !propertiesFile.inlined ? [propertiesFile] : []];
   let verifiedLenses = 0;
   for (let i = 0; i < skepticResults.length; i++) {
     const r = skepticResults[i];
     if (r === null) continue;
-    const w = verifyReadWitness(witnessFiles, r);
+    const w = verifyReadWitness([specFile], r);
     if (w.ok) {
       verifiedLenses++;
       continue;
     }
-    const unverifiedPaths = [...w.missing, ...w.mismatched, ...w.tooShort];
-    log(`[${taskId}] skeptic_lens_unverified: ${taskId} \u2014 lens ${lenses[i].key} did not evidence reading ${unverifiedPaths.join(", ") || specFile.path} (${w.tooShort.length ? "prefix too short" : w.mismatched.length ? "wrong prefix" : "no witness"}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`);
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} \u2014 lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? "prefix too short" : w.mismatched.length ? "wrong prefix" : "no witness"}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`);
     skepticResults[i] = null;
   }
   if (verifiedLenses === 0) {
-    const witnessedPaths = witnessFiles.map((f) => f.path).join(", ");
-    const err = new Error(`context_read_unverified: ${witnessedPaths} \u2014 no skeptic lens evidenced reading the lane spec${propertiesFile && !propertiesFile.inlined ? " and PROPERTIES.md" : ""}; the panel is void`);
+    const err = new Error(`context_read_unverified: ${specFile.path} \u2014 no skeptic lens evidenced reading the lane spec; the panel is void`);
     err.stage = "GREEN";
     throw err;
   }
@@ -2574,7 +2465,7 @@ async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFil
   if (tells.length === 0) {
     const preCheck = await resilientAgent(
       refactorCheckPrompt({ wt, allFiles: laneFiles.join(", "), tellsSlot }),
-      stageOpts("quality", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
+      stageOpts("reader", { label: `refactor-check:${taskId}`, phase: "Act", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
     );
     if (!preCheck) {
       log(`[${taskId}] refactor_check_no_result: refactor-check agent returned nothing on both attempts \u2014 skipping the optional REFACTOR stage`);

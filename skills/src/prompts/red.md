@@ -8,6 +8,7 @@ Before writing any test code, read ONE existing test file from the same director
 If no existing test files exist, fall back to the test_framework field in the task packet.
 
 GOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.
+{{integrationNote}}
 
 APPROACH:
 1. Read the acceptance_criteria (and red_note) from the lane spec file

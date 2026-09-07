@@ -22,7 +22,6 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -498,9 +497,10 @@ class TestArchive:
         output = json.loads(result.stdout)
 
         if "archived_to" in output:
-            archived_path = Path(output["archived_to"])
             # BUG: This will fail if state.json wasn't present
+            # archived_path = Path(output["archived_to"])
             # assert archived_path.exists(), f"archived_to points to nonexistent file: {archived_path}"
+            pass
 
 
 class TestDetectSolutions:

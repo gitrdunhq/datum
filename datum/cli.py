@@ -2833,7 +2833,7 @@ def tdd_args_cmd(
             feature = _get_current_branch(str(repo_root))
         except CannotDetermineBranchError as e:
             typer.echo(f"Error: {e}", err=False)
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
     # Sanitize feature name into a git branch slug.
     slug = feature.lower()

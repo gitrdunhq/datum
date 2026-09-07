@@ -53,10 +53,14 @@ export function redPrompt(vars: {
   wt: string; skeletonCmd: string; redCtxCmd: string; redPacketStr: string
   testCommand: string; testRunCmd: string; testFilesList: string; commitPrefix: string; commitCmd: string
   testFuncPattern?: string
+  /** Integration lanes only (#485): names the invariants the lane covers and
+   *  states the tests must PASS (the code under test is already merged). '' for
+   *  every other lane — {{integrationNote}} then renders as an empty line. */
+  integrationNote?: string
   laneSpec: ContextFile
 }): string {
-  const { laneSpec, ...rest } = vars
-  return withLaneSpec(redTemplate, rest as PromptVars, laneSpec)
+  const { laneSpec, integrationNote, ...rest } = vars
+  return withLaneSpec(redTemplate, { ...rest, integrationNote: integrationNote ?? '' } as PromptVars, laneSpec)
 }
 
 export function redRetryPrompt(vars: {

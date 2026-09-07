@@ -204,7 +204,14 @@ export interface Lane {
   stage?: string
   /** Docs-only / config-only lanes skip RED/GREEN and go straight to REFACTOR.
    *  Produced by the planner via tasks.json `kind` (#369). Absent = behavioral. */
-  kind?: 'structural' | 'behavioral'
+  kind?: 'structural' | 'behavioral' | 'integration'
+  /** Integration lanes only: RED's tests must PASS on first run (code under
+   *  test is already merged), never fail. Per Assumption 9, `kind` alone is
+   *  authoritative for the RED-only fast path; this only shapes the prompt. */
+  expect_tests_pass?: boolean
+  /** Integration lanes only: invariant ids the lane's independent verify
+   *  covers, named verbatim in the RED prompt and the integration_failed error. */
+  invariants?: string[]
   /** Verbatim test command override for lanes the repo-wide command can't
    *  reach (e.g. files in a sub-package with its own Package.swift). When set,
    *  the auto Swift --filter scoping is skipped — the override carries its own
@@ -252,6 +259,10 @@ export interface LaneOutcome {
   needs_write?: string[]
   /** Skeptic single-lens findings written to .datum/runs/<run>/follow-ups/<lane>.json for Closeout to file (caliper#564). */
   follow_ups?: number
+  /** #498: an integration lane completed AT RED by design (its independent
+   *  verify passed; there is no GREEN). The merge filter lets it merge; a
+   *  stage-RED completion without this flag is still held back. */
+  red_only?: boolean
 }
 
 // Agent result types

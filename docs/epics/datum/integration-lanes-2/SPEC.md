@@ -21,7 +21,7 @@ Slice 1 (epic `datum/integration-lanes`, closed 2026-09-06) made Properties emit
 1. Runs RED exactly once.
 2. Runs the existing post-RED deterministic batch (count gate, placeholder scan, ownership diff) via `postRedSteps`, passing the lane's test command as `verifyTestCmd` so the batch also runs the independent verify (`test-verify` step) in the same call — no second `runBatch`/command-runner invocation.
 3. Does not call `runGreen`/GREEN dispatch, `runSkepticPanel`, or `runRefactor`.
-4. Builds the RED prompt for an `expect_tests_pass` lane to include, verbatim as a substring: `This lane covers invariants: <id>, <id>...` (invariant ids = the leading `ID:` tokens of the lane's acceptance criteria, in order) and the sentence `The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`
+4. Builds the RED prompt for an `expect_tests_pass` lane to include, verbatim as a substring: `This lane covers invariants: <id>, <id>...` (invariant ids = the lane's `invariants` list, stamped by Plan from the leading `ID:` tokens of its acceptance criteria in order and carried by the digest; runLane never reads criteria text — review ARCH-001) and the sentence `The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`
 
 **Acceptance criteria:**
 - AC1.1: A vitest test with a fake agent, given a lane with `kind: 'integration'`, observes RED called exactly once.
@@ -123,7 +123,7 @@ None outstanding — all material ambiguities raised during scan (error-string f
 | 2 | Lane specs already carry `expect_tests_pass` and `depends_on` to the RED agent via `lane-spec-export`'s `**lane` spread | Verified in scan: `lane_spec_export.py:172-176` | confirmed | n/a |
 | 3 | Independent verify is folded into the existing `postRedSteps` batch via its optional `verifyTestCmd` param, not a second batch call | Operator-confirmed in QUESTIONS.md Q2 | decided | n/a |
 | 4 | `integration_failed:` error string format is exactly `integration_failed: covered <ids>; invariants <ids> (independent verify exit=<n>)` | Operator-confirmed in QUESTIONS.md Q1 | decided | n/a |
-| 5 | Task ids come from `depends_on` in lane order; invariant ids come from leading `ID:` tokens of acceptance criteria in order | Operator-confirmed in QUESTIONS.md Q1 | decided | n/a |
+| 5 | Task ids come from `depends_on` in lane order; invariant ids come from the lane's `invariants` field (Plan stamps it from the leading `ID:` tokens of acceptance criteria in order; the runner may not read criteria text) | Operator-confirmed in QUESTIONS.md Q1 | decided | n/a |
 | 6 | Covered task ids are embedded as a substring in `TriageClassification.reason`, not a new structured field | Operator-confirmed in QUESTIONS.md Q3; DEV-001 (no producer without consumer) supports deferring structure | decided | n/a |
 | 7 | `green_verify_unavailable` for an integration lane uses the identical null-exit code path/conditions as GREEN's verify, since the lane's own worktree already represents the merged epic branch | Operator-confirmed in QUESTIONS.md Q4 | decided | n/a |
 | 8 | RED prompt surfaces invariant ids as plain substrings in one sentence, not a structured/fenced block | Operator-confirmed in QUESTIONS.md Q5 | decided | n/a |

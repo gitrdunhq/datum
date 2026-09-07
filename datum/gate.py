@@ -531,7 +531,9 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
         if not match:
             continue
 
-        def cell(name: str) -> str:
+        def cell(
+            name: str, header_cols: list[str] = header_cols, cells: list[str] = cells
+        ) -> str:
             if name in header_cols and header_cols.index(name) < len(cells):
                 return cells[header_cols.index(name)]
             return ""
