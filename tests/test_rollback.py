@@ -15,8 +15,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import datum.rollback as rollback_mod
 import datum.state as state_mod
 

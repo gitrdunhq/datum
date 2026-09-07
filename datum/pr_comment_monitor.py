@@ -20,10 +20,9 @@ import re
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime, timezone
 from pathlib import Path
 
-from datum.state import load_state, save_state
+from datum.state import load_state
 
 _RUN_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 

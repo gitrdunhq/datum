@@ -17,9 +17,7 @@ datum.state.load_state().
 """
 
 import json
-from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 import datum.migrate as migrate_mod

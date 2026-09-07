@@ -11,9 +11,6 @@ must resolve state via datum.state.load_state() and render the real data.
 
 from __future__ import annotations
 
-import os
-
-import pytest
 from typer.testing import CliRunner
 
 import datum.state as state

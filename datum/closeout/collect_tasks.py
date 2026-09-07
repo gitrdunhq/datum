@@ -21,7 +21,6 @@ null rather than a fabricated zero.
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 
