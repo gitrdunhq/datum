@@ -1,0 +1,74 @@
+{
+  "task_id": "task-001",
+  "slug": "digest-carries-expect-tests-pass",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_lane_plan_digest_expect_tests_pass.py",
+      "kind": "pytest",
+      "purpose": "Verify `from datum.lane_plan_digest import _LANE_FIELDS` \u2014 `'expect",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_from_datum_lane_plan_digest_import_lane_fields_expect_tests",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_from_datum_lane_plan_digest_import_lane_fields_expect_tests \u2192 tests/test_lane_plan_digest_expect_tests_pass.py\n\nimport pytest\n\n\nclass TestTask001AC1:\n    def test_ac1_from_datum_lane_plan_digest_import_lane_fields_expect_tests(self):\n        \"\"\"\n        PROP-001: `from datum.lane_plan_digest import _LANE_FIELDS` \u2014 `'expect_tests_pass' in _LAN\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_lane_plan_digest_expect_tests_pass.py",
+      "kind": "pytest",
+      "purpose": "Verify `digest_plan_file` (or the digest builder it uses) applied t",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_digest_plan_file_or_the_digest_builder_it_uses_applied_to_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_digest_plan_file_or_the_digest_builder_it_uses_applied_to_a \u2192 tests/test_lane_plan_digest_expect_tests_pass.py\n\nimport pytest\n\n\nclass TestTask001AC2:\n    def test_ac2_digest_plan_file_or_the_digest_builder_it_uses_applied_to_a(self):\n        \"\"\"\n        PROP-002: `digest_plan_file` (or the digest builder it uses) applied to a plan whose lane \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_lane_plan_digest_expect_tests_pass.py",
+      "kind": "pytest",
+      "purpose": "Verify A lane dict WITHOUT `expect_tests_pass` (a normal behavioral",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_a_lane_dict_without_expect_tests_pass_a_normal_behavioral_la",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_a_lane_dict_without_expect_tests_pass_a_normal_behavioral_la \u2192 tests/test_lane_plan_digest_expect_tests_pass.py\n\nimport pytest\n\n\nclass TestTask001AC3:\n    def test_ac3_a_lane_dict_without_expect_tests_pass_a_normal_behavioral_la(self):\n        \"\"\"\n        PROP-003: A lane dict WITHOUT `expect_tests_pass` (a normal behavioral lane) produces a di\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_lane_plan_digest_expect_tests_pass.py",
+      "kind": "pytest",
+      "purpose": "Verify A lane dict with `expect_tests_pass: False` round-trips as `",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_a_lane_dict_with_expect_tests_pass_false_round_trips_as_entr",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_a_lane_dict_with_expect_tests_pass_false_round_trips_as_entr \u2192 tests/test_lane_plan_digest_expect_tests_pass.py\n\nimport pytest\n\n\nclass TestTask001AC4:\n    def test_ac4_a_lane_dict_with_expect_tests_pass_false_round_trips_as_entr(self):\n        \"\"\"\n        PROP-004: A lane dict with `expect_tests_pass: False` round-trips as `entry['expect_tests_\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_lane_plan_digest_expect_tests_pass.py",
+      "kind": "pytest",
+      "purpose": "Verify The spec file written by `datum/lane_spec_export.py` for an ",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_the_spec_file_written_by_datum_lane_spec_export_py_for_an_in",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_the_spec_file_written_by_datum_lane_spec_export_py_for_an_in \u2192 tests/test_lane_plan_digest_expect_tests_pass.py\n\nimport pytest\n\n\nclass TestTask001AC5:\n    def test_ac5_the_spec_file_written_by_datum_lane_spec_export_py_for_an_in(self):\n        \"\"\"\n        PROP-005: The spec file written by `datum/lane_spec_export.py` for an integration lane par\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/lane_plan_digest.py": "\nfrom __future__ import annotations\n\nimport json\nimport subprocess\nfrom pathlib import Path\n\nfrom datum.lane_hash import lane_spec_hash\n\nSCHEMA_VERSION = 1\n\n# Lane fields the scheduler and the lane runner read in-script. Anything not\n# listed (acceptance_criteria, red_note, stage, description, ...) stays in\n# the file and is fetched per lane at intake.\n_LANE_FIELDS = (\n)\n\n\nclass DigestError(ValueError):\n    ...\n\n\ndef build_digest(plan: dict, lane_plan_sha: str) -> dict:\n    ...\n\n\ndef dumps_digest(digest: dict) -> str:\n    ...\n\n\ndef digest_plan_file(plan_path: Path) -> str:\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
