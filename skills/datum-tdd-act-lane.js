@@ -743,6 +743,10 @@ var RATE_LIMIT_JITTER_MS = 2e3;
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function unknownAgentType(message) {
+  const m = /agent type '([^']+)' not found/.exec(message);
+  return m ? m[1] : null;
+}
 function parseCommitVerification(logStdout, statusStdout, commitPrefix, stage) {
   if (logStdout === null || logStdout === void 0) {
     return { committed: false, detail: "independent check returned no result (log step did not run)" };
@@ -789,6 +793,15 @@ async function resilientAgent(prompt, opts, deps) {
       threw = true;
       caughtMessage = err instanceof Error ? err.message : String(err);
       lastResult = null;
+    }
+    const unknownType = threw ? unknownAgentType(caughtMessage) : null;
+    if (unknownType && opts?.agentType) {
+      logFn(`[resilientAgent] agent_type_unavailable: ${unknownType} \u2014 the host has not registered agents/${unknownType}.md (a new Claude Code session picks it up); running ${opts.label || "this call"} on the default agent instead`);
+      const rest = { ...opts };
+      delete rest.agentType;
+      opts = rest;
+      attempt--;
+      continue;
     }
     if (!threw && lastResult !== null) return lastResult;
     if (threw) {

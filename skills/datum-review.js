@@ -517,8 +517,87 @@ function commitFilesFromSteps(result) {
   if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
   return { committed: true, nothingToCommit: false, sha, error: "" };
 }
+function worktreeDirtySteps(wt) {
+  return [{ name: "status", command: `git -C ${q(wt)} status --porcelain`, tolerant: true }];
+}
+function worktreeDirtyFromSteps(result) {
+  if (result.missing) {
+    return { dirty: true, known: false, detail: `retry_guard_unverified: ${describeFailure(result, "status")}` };
+  }
+  const step = stepResult(result, "status");
+  if (!step || step.exit_code !== 0) {
+    const tail2 = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { dirty: true, known: false, detail: `retry_guard_unverified: git status exited ${step ? step.exit_code : "without running"}${tail2 ? ` \u2014 ${tail2}` : ""}` };
+  }
+  const lines = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0);
+  return { dirty: lines.length > 0, known: true, detail: lines.join(" | ") };
+}
 
 // skills/src/shared/agents.ts
+var RATE_LIMIT_MAX_RETRIES = 4;
+var RATE_LIMIT_BASE_DELAY_MS = 5e3;
+var RATE_LIMIT_JITTER_MS = 2e3;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function unknownAgentType(message) {
+  const m = /agent type '([^']+)' not found/.exec(message);
+  return m ? m[1] : null;
+}
+async function resilientAgent(prompt, opts, deps) {
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const maxRetries = opts?.maxRetries ?? RATE_LIMIT_MAX_RETRIES;
+  let lastResult = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let threw = false;
+    let caughtMessage = "";
+    try {
+      lastResult = await agentFn(prompt, opts);
+    } catch (err) {
+      threw = true;
+      caughtMessage = err instanceof Error ? err.message : String(err);
+      lastResult = null;
+    }
+    const unknownType = threw ? unknownAgentType(caughtMessage) : null;
+    if (unknownType && opts?.agentType) {
+      logFn(`[resilientAgent] agent_type_unavailable: ${unknownType} \u2014 the host has not registered agents/${unknownType}.md (a new Claude Code session picks it up); running ${opts.label || "this call"} on the default agent instead`);
+      const rest = { ...opts };
+      delete rest.agentType;
+      opts = rest;
+      attempt--;
+      continue;
+    }
+    if (!threw && lastResult !== null) return lastResult;
+    if (threw) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} threw: ${caughtMessage} \u2014 treating as retryable`);
+    } else if (attempt < maxRetries) {
+      logFn(`[resilientAgent] attempt ${attempt + 1} returned nothing (null result) \u2014 retrying`);
+    }
+    if (attempt < maxRetries && opts?.worktree) {
+      const guardSteps = worktreeDirtySteps(opts.worktree);
+      const guard = worktreeDirtyFromSteps(parseBatchResult(
+        await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),
+        guardSteps
+      ));
+      if (!guard.known) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} and the worktree state is unknown (${guard.detail}) \u2014 aborting retry to prevent duplicate writes`);
+        return lastResult;
+      }
+      if (guard.dirty) {
+        logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} but worktree is dirty \u2014 aborting retry to prevent duplicate writes (${guard.detail})`);
+        return lastResult;
+      }
+    }
+    if (attempt < maxRetries) {
+      const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt) + (attempt + 1) * 7919 % RATE_LIMIT_JITTER_MS;
+      const reason = threw ? `threw: ${caughtMessage}` : "returned null";
+      logFn(`[resilientAgent] attempt ${attempt + 1} ${reason}, backing off ${Math.round(delay / 1e3)}s before retry ${attempt + 2}/${maxRetries + 1}`);
+      await sleepMs(delay);
+    }
+  }
+  return lastResult;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
   const agentFn = deps?.agentFn ?? agent;
@@ -675,9 +754,9 @@ async function reviewFromDiff() {
   const lensWorktree = typeof a.repoRoot === "string" && a.repoRoot ? { worktree: a.repoRoot } : {};
   const reviewResults = await parallel(
     DOMAINS.map(
-      (d) => () => agent(
+      (d) => () => resilientAgent(
         withPreamble(d.domain === "Correctness" ? renderPrompt(review_correctness_spec_verify_default, { baseBranch }) : renderPrompt(review_domain_default, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
-        stageOpts("review", { label: `review-${d.domain.toLowerCase()}`, phase: "Review", model: d.model, schema: REVIEW_LENS_SCHEMA, ...lensWorktree })
+        stageOpts("review", { label: `review-${d.domain.toLowerCase()}`, phase: "Review", model: d.model, schema: REVIEW_LENS_SCHEMA, maxRetries: 0, ...lensWorktree })
       )
     )
   );
