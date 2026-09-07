@@ -75,14 +75,14 @@
         "Given a lane with `kind: 'integration'` and a fake agent runner, RED is dispatched exactly once (one `red:<taskId>`-labelled agent call)",
         "For that same lane, zero calls are dispatched to GREEN, runSkepticPanel, and runRefactor (assert on the call log's labels, following the skills/src/datum-tdd-act-lane.calls.test.ts convention)",
         "For that same lane, exactly one command-runner/`datum-cli` batch call is made (the postRedSteps batch), and it includes a `test-verify` step \u2014 no additional runBatch invocation beyond it",
-        "The RED prompt rendered for an `expect_tests_pass` lane contains, verbatim as substrings, `This lane covers invariants: ` followed by the leading `ID:` tokens of the lane's acceptance criteria in order, and the sentence `The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`",
+        "The RED prompt rendered for an `expect_tests_pass` lane contains, verbatim as substrings, `This lane covers invariants: ` followed by the lane's `invariants` list (the digest carries it; runLane never reads acceptance-criteria text) joined ', ' in order, and the sentence `The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`",
         "`test-verify` exit 0 \u2192 `result.results.T1.status === 'completed'` and `result.results.T1.stage === 'RED'`, with follow_ups unchanged from what RED/post-RED produced",
-        "`test-verify` exit 1 \u2192 `status === 'failed'` and `error === 'integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)'` for a lane with depends_on ['task-002','task-003'] and invariant ids INV-01, INV-03 (task ids from depends_on in order joined ', '; invariant ids from acceptance criteria in order joined ', ')",
+        "`test-verify` exit 1 \u2192 `status === 'failed'` and `error === 'integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)'` for a lane with depends_on ['task-002','task-003'] and invariants ['INV-01','INV-03'] (task ids from depends_on in order joined ', '; invariant ids from the lane's `invariants` list in order joined ', ')",
         "`test-verify` step omitted/refused/with no `TEST_EXIT=` line \u2192 `status !== 'completed'` and `error` starts with `green_verify_unavailable:`, produced via the same `verifyVerdict(...).kind === 'unavailable'` path GREEN uses \u2014 a null exit is never treated as a pass",
         "A lane with `kind: 'integration'` but `expect_tests_pass` missing/false still takes the RED-only fast path (kind is authoritative per Assumption 9) and logs a warning about the disagreement rather than falling back to the task-lane flow",
         "Existing structural and behavioral lanes are unaffected: a `kind: 'structural'` lane still short-circuits to runRefactor and a behavioral lane still runs RED\u2192GREEN\u2192REFACTOR"
       ],
-      "red_note": "vitest (NOT pytest \u2014 this lane is TypeScript). Create ONE new test file, skills/src/datum-tdd-act-lane.integration.test.ts; do not add cases to datum-tdd-act-lane.test.ts or datum-tdd-act-lane.calls.test.ts (other lanes' territory), but read datum-tdd-act-lane.calls.test.ts for the fake-agent / call-log harness convention and copy it. The failing test must drive a lane with kind: 'integration', depends_on ['task-002','task-003'] and acceptance criteria whose leading tokens are INV-01/INV-03 through runLane with a stubbed command runner, and assert: RED call count === 1; zero GREEN/skeptic/refactor labels in the call log; exactly one datum-cli batch containing a 'test-verify' step; and the three outcome branches (exit 0 completed@RED, exit 1 with the byte-exact integration_failed string, absent verify \u2192 green_verify_unavailable prefix). The error string is specified byte-for-byte in SPEC R2 and is consumed by the classifier in task-003 \u2014 do not paraphrase it. Reuse the existing postRedSteps `verifyTestCmd` parameter and the existing verifyVerdict helper in skills/src/shared/lane-steps.ts (read-only here); do NOT add a second runBatch call \u2014 the NFR is one command-runner invocation per lane. Do not edit any skills/*.js bundle (generated).",
+      "red_note": "vitest (NOT pytest \u2014 this lane is TypeScript). Create ONE new test file, skills/src/datum-tdd-act-lane.integration.test.ts; do not add cases to datum-tdd-act-lane.test.ts or datum-tdd-act-lane.calls.test.ts (other lanes' territory), but read datum-tdd-act-lane.calls.test.ts for the fake-agent / call-log harness convention and copy it. The failing test must drive a lane with kind: 'integration', depends_on ['task-002','task-003'] and invariants ['INV-01','INV-03'] (a digest field; runLane must not read acceptance-criteria text, a tripwire in datum-tdd-act-lane.test.ts forbids it) through runLane with a stubbed command runner, and assert: RED call count === 1; zero GREEN/skeptic/refactor labels in the call log; exactly one datum-cli batch containing a 'test-verify' step; and the three outcome branches (exit 0 completed@RED, exit 1 with the byte-exact integration_failed string, absent verify \u2192 green_verify_unavailable prefix). The error string is specified byte-for-byte in SPEC R2 and is consumed by the classifier in task-003 \u2014 do not paraphrase it. Reuse the existing postRedSteps `verifyTestCmd` parameter and the existing verifyVerdict helper in skills/src/shared/lane-steps.ts (read-only here); do NOT add a second runBatch call \u2014 the NFR is one command-runner invocation per lane. Do not edit any skills/*.js bundle (generated).",
       "introduces_stubs": false,
       "estimated_loc": 140,
       "depends_on": [],
@@ -166,7 +166,10 @@
         "task-001",
         "task-002"
       ],
-      "stage": "queued"
+      "stage": "queued",
+      "invariants": [
+        "INT-02"
+      ]
     },
     "task-INT-2": {
       "id": "task-INT-2",
@@ -185,7 +188,10 @@
         "task-002",
         "task-003"
       ],
-      "stage": "queued"
+      "stage": "queued",
+      "invariants": [
+        "INT-09"
+      ]
     },
     "task-INT-3": {
       "id": "task-INT-3",
@@ -205,7 +211,13 @@
       "depends_on": [
         "task-002"
       ],
-      "stage": "queued"
+      "stage": "queued",
+      "invariants": [
+        "INT-05",
+        "INT-07",
+        "INT-08",
+        "INT-11"
+      ]
     },
     "task-INT-4": {
       "id": "task-INT-4",
@@ -226,7 +238,13 @@
         "task-002",
         "task-003"
       ],
-      "stage": "queued"
+      "stage": "queued",
+      "invariants": [
+        "INT-01",
+        "INT-03",
+        "INT-04",
+        "INT-10"
+      ]
     },
     "task-INT-5": {
       "id": "task-INT-5",
@@ -243,7 +261,10 @@
       "depends_on": [
         "task-003"
       ],
-      "stage": "queued"
+      "stage": "queued",
+      "invariants": [
+        "INT-06"
+      ]
     }
   }
 }
