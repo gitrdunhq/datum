@@ -23,6 +23,7 @@ PROJECT BUILD CONSTRAINTS:
 The context_files section above (when present) lists project documentation that is authoritative for build order and module boundaries. Where these project docs conflict with a build order you would otherwise infer from source imports, the project docs take precedence over inferred imports — follow the documented order and note the override in the affected task's red_note.
 
 RULES:
+- VERTICAL SLICES: a task is a shippable, testable unit cut through every layer it needs (schema, logic, command, prompt, docs), so that when its lane merges a real caller can do one thing it could not do before. Never decompose layer-by-layer (all-state-then-all-UI, one layer per task, "the model", "the service", "the CLI" as three tasks); that defers every integration question to the last lane, where it is found in review instead of at the first merge. Make the first task the thinnest end-to-end slice, then widen. A plan in which no task crosses a layer boundary is reported by the gate as `plan_not_sliced`.
 - Each task maps to one lane in the TDD pipeline
 - Task ids MUST be `task-NNN` — zero-padded to three digits, numbered in the order you list them (task-001, task-002, ...). The schema gate rejects any other id shape. Put the descriptive name in the required `slug` field instead (lowercase letters, digits, hyphens; 3-61 chars; pattern `^[a-z0-9][a-z0-9-]{2,60}$`, e.g. "add-cycle-detection", "validate-input-schema"). `depends_on` references use the `task-NNN` ids, never slugs.
 - No task touches more than 5 files

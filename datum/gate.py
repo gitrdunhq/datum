@@ -1118,6 +1118,30 @@ def gate_plan(yolo: bool, config: dict) -> None:
     if not int_lane_ids and not invariant_rows:
         print("no_integration_invariants", file=sys.stderr)
 
+    # DEV-002: a task is a shippable slice cut through every layer. A plan
+    # whose every task keeps its non-test files inside one top-level
+    # directory was decomposed by module. A warning for now; a halt once one
+    # epic has run under it.
+    from datum.test_ratchet import is_test_file
+
+    task_lanes = [lanes[lid] for lid in lanes if not lid.startswith(_INT_LANE_PREFIX)]
+    if len(task_lanes) >= 3:
+
+        def _layers(lane: dict) -> set[str]:
+            return {
+                f.split("/", 1)[0]
+                for f in lane.get("files", [])
+                if "/" in f and not is_test_file(f)
+            }
+
+        if not any(len(_layers(lane)) >= 2 for lane in task_lanes):
+            print(
+                "plan_not_sliced: no task crosses a layer boundary (every task keeps its "
+                "non-test files in one top-level directory); a task is a shippable slice "
+                "cut through every layer, not a module",
+                file=sys.stderr,
+            )
+
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
             continue

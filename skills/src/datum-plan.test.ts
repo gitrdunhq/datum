@@ -585,3 +585,20 @@ describe('the decompose prompt forbids generated files in a task\'s files', () =
     expect(prompt).toMatch(/rebuilt|regenerated/i)
   })
 })
+
+// DEV-002 in the operator's coding rules: vertical slices are shippable,
+// testable units cut through every layer, one thin end-to-end slice before
+// expanding, never all-state-then-all-UI. The decompose prompt asked for
+// modules with file ownership and got one lane per module (integration-lanes
+// epic: nine module lanes, the ordering defect found only in review).
+describe('plan-decompose.md — a task is a vertical slice', () => {
+  const decompose = readFileSync(join(__dirname, 'prompts', 'plan-decompose.md'), 'utf8')
+  it('defines a task as a shippable, testable slice through every layer, first slice thin, never layer-by-layer', () => {
+    expect(decompose).toMatch(/VERTICAL SLICES/)
+    expect(decompose).toMatch(/shippable/i)
+    expect(decompose).toMatch(/every layer/i)
+    expect(decompose).toMatch(/all-state-then-all-UI|one layer per task|layer-by-layer/i)
+    expect(decompose).toMatch(/thin/i)
+    expect(decompose).toMatch(/plan_not_sliced/)
+  })
+})

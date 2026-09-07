@@ -487,3 +487,56 @@ def test_int_lane_without_any_invariant_row_fails(epic_dir, capsys):
     assert exc.value.code == 1
     message = _fail_json(capsys)["message"]
     assert "int_lane_without_invariant: task-INT-1" in message
+
+
+# ── plan_not_sliced: a plan with no task crossing a layer is a warning (DEV-002) ──
+
+
+def _lane_files(lid: str, files: list[str]) -> dict:
+    lane = _lane(lid, files)
+    lane["files"] = files
+    return lane
+
+
+def test_plan_not_sliced_warns_when_no_task_crosses_a_layer(epic_dir, capsys):
+    """Three tasks, each confined to one top-level directory of non-test files:
+    modules, not slices. The gate warns by name on stderr and still passes."""
+    lanes = {
+        "task-001": _lane_files("task-001", ["datum/a.py", "tests/test_a.py"]),
+        "task-002": _lane_files("task-002", ["datum/b.py", "tests/test_b.py"]),
+        "task-003": _lane_files("task-003", ["skills/src/c.ts", "skills/src/c.test.ts"]),
+    }
+    _write_artifacts(
+        epic_dir,
+        _plan(lanes),
+        tasks_json=[{"id": "task-001"}, {"id": "task-002"}, {"id": "task-003"}],
+        properties_md=_invariant_table([]),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "plan_not_sliced" in captured.err
+
+
+def test_plan_not_sliced_is_silent_when_a_task_crosses_layers(epic_dir, capsys):
+    lanes = {
+        "task-001": _lane_files("task-001", ["datum/a.py", "skills/src/a.ts", "tests/test_a.py"]),
+        "task-002": _lane_files("task-002", ["datum/b.py", "tests/test_b.py"]),
+        "task-003": _lane_files("task-003", ["datum/c.py", "tests/test_c.py"]),
+    }
+    _write_artifacts(
+        epic_dir,
+        _plan(lanes),
+        tasks_json=[{"id": "task-001"}, {"id": "task-002"}, {"id": "task-003"}],
+        properties_md=_invariant_table([]),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "plan_not_sliced" not in captured.err
