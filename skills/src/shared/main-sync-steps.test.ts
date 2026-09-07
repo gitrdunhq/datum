@@ -13,9 +13,22 @@ import { mainSyncSteps, mainSyncFromSteps } from './main-sync-steps'
 import { evaluateMainSync } from './utils'
 import { batchScript, parseBatchResult, stepStdout, type BatchResult } from './batch'
 
+// Hermetic env for every git/bash invocation below (mirrors
+// shared/lane-steps.test.ts and shared/routing-steps.test.ts): a developer's
+// global gitconfig/hooks/excludes (commit signing, core.hooksPath,
+// core.excludesfile) must never leak into these throwaway repos. Left
+// unset, this test was observed to fail intermittently under full-suite
+// parallel load and pass alone — commit signing racing across concurrent
+// worker processes was the suspect (#419). Each test gets its own HOME
+// (set in beforeEach below) so parallel test files never share one.
+let hermeticHome: string
+function hermeticEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', HOME: hermeticHome, XDG_CONFIG_HOME: join(hermeticHome, 'xdg') }
+}
+
 function run(cmd: string, args: string[], cwd: string): { status: number; stdout: string; stderr: string } {
   try {
-    const stdout = execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout = execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: hermeticEnv() })
     return { status: 0, stdout, stderr: '' }
   } catch (err) {
     const e = err as { status: number | null; stdout?: Buffer | string; stderr?: Buffer | string }
@@ -36,6 +49,8 @@ let repoDir: string
 let cloneDir: string
 
 beforeEach(() => {
+  hermeticHome = mkdtempSync(join(tmpdir(), 'datum-mainsync-home-'))
+
   // origin as a bare repo.
   bareDir = mkdtempSync(join(tmpdir(), 'datum-mainsync-bare-'))
   run('git', ['init', '-q', '--bare', '-b', 'main'], bareDir)
@@ -67,6 +82,7 @@ afterEach(() => {
   rmSync(bareDir, opts)
   rmSync(repoDir, opts)
   rmSync(cloneDir, opts)
+  rmSync(hermeticHome, opts)
 })
 
 function advanceOriginMain(fileName: string, content: string): void {
@@ -78,7 +94,7 @@ function advanceOriginMain(fileName: string, content: string): void {
 
 function runSync(noMergeMain: boolean): BatchResult {
   const steps = mainSyncSteps(noMergeMain)
-  const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoDir, encoding: 'utf8' })
+  const out = execFileSync('bash', ['-c', batchScript(steps)], { cwd: repoDir, encoding: 'utf8', env: hermeticEnv() })
   return parseBatchResult(out, steps)
 }
 
