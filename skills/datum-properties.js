@@ -91,7 +91,7 @@ function model(tier) {
 }
 
 // skills/src/prompts/properties-derive.md
-var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nThe full PROPERTIES.md content is markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n4. A required `## Integration Invariants` section \u2014 a table with header `| ID | Invariant | Covers | Source |`, a separator row, and one row per cross-task invariant. `ID` is a short unique tag; `Invariant` is a testable predicate spanning two or more tasks; `Covers` is a comma-separated list of the task ids it spans; `Source` is either `spec:<requirement>` (must cover 2+ tasks) or `question:Q<n>` for an invariant that answers a specific QUESTIONS.md id (exactly one row per answered question id). This table is mandatory \u2014 the gate fails without it, even if there are no genuine cross-task invariants (in that case still include the heading with a header/separator row and zero data rows).\n\nWrite that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.\n";
+var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nQUESTIONS.md (Refine's answered questions; each answered one becomes an Integration Invariant):\n{{questionsContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nThe full PROPERTIES.md content is markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n4. A required `## Integration Invariants` section \u2014 a table with header `| ID | Invariant | Covers | Source |`, a separator row, and one row per cross-task invariant. `ID` is a short unique tag; `Invariant` is a testable predicate spanning two or more tasks; `Covers` is a comma-separated list of the task ids it spans; `Source` is either `spec:<requirement>` (must cover 2+ tasks) or `question:Q<n>` for an invariant that answers a specific QUESTIONS.md id. Emit exactly one `question:Q<n>` row per answered question in QUESTIONS.md above (a question whose `[Answer]:` line is present and non-empty); an unanswered question or one with an empty answer yields no row. The gate fails on a missing or duplicated row per answered question. This table is mandatory \u2014 the gate fails without it, even if there are no genuine cross-task invariants (in that case still include the heading with a header/separator row and zero data rows).\n\nWrite that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.\n";
 
 // skills/src/shared/sha1.ts
 function rotl(x, n) {
@@ -720,14 +720,15 @@ setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
 phase("Read");
 var SPEC_REL = "docs/epics/$__eb/SPEC.md";
 var TASKS_REL = "docs/epics/$__eb/TASKS.md";
+var QUESTIONS_REL = "docs/epics/$__eb/QUESTIONS.md";
 var probeSteps = contextProbeSteps({
-  files: [SPEC_REL, TASKS_REL],
+  files: [SPEC_REL, TASKS_REL, QUESTIONS_REL],
   extraCommands: [
     { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` }
   ]
 });
 var readBatch = await runBatch(probeSteps, bootstrapOpts("cli", { label: "read-context", model: model("fast") }));
-var relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL]);
+var relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL, QUESTIONS_REL]);
 if (!(a.agentTypes && typeof a.agentTypes === "object")) {
   const agentTypesRaw = (stepStdout(readBatch, "agent-types") || "").trim();
   configureAgentTypes({ agentTypes: agentTypesRaw !== "false" });
@@ -753,21 +754,24 @@ if (!specFile.exists) throw new Error("SPEC.md not found. Run datum-refine first
 if (!tasksFile.exists) throw new Error("TASKS.md not found. Run datum-plan first.");
 var specContent = contextSlot(specFile);
 var tasksContent = contextSlot(tasksFile);
+var questionsFile = ctx.files[QUESTIONS_REL];
+var questionsContent = questionsFile.exists ? contextSlot(questionsFile) : "(no QUESTIONS.md in this epic: there are no answered questions, so emit no question:Q<n> rows)";
+var witnessFiles = questionsFile.exists ? [specFile, tasksFile, questionsFile] : [specFile, tasksFile];
 var epicDir = ctx.epicDir;
 log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? "" : " (deferred)"}, TASKS: ${tasksFile.bytes} bytes${tasksFile.inlined ? "" : " (deferred)"}`);
 phase("Derive");
 var propertiesPath = `${epicDir}/PROPERTIES.md`;
 var deriveRaw = await agent(
-  renderPrompt(properties_derive_default, { specContent, tasksContent }) + `
+  renderPrompt(properties_derive_default, { specContent, tasksContent, questionsContent }) + `
 
 AFTER DERIVING THE PROPERTIES CONTENT:
 1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
 2. Do NOT git add or git commit anything in this step \u2014 the workflow commits.
-3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}` + contextWitnessInstruction([specFile, tasksFile]),
+3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}` + contextWitnessInstruction(witnessFiles),
   { label: "derive", model: model("balanced") }
 );
 var derive = parseAgentJsonStrict(deriveRaw, "derive");
-assertReadWitness([specFile, tasksFile], derive);
+assertReadWitness(witnessFiles, derive);
 if (derive.written !== propertiesPath) {
   throw new Error(`properties_derive_failed: agent reported writing ${JSON.stringify(derive.written)}, expected ${propertiesPath}`);
 }
