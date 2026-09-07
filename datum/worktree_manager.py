@@ -139,6 +139,10 @@ def create_lane_worktree(
                 cwd=repo_root,
                 check=False,
             )
+            if result.returncode == 0:
+                _rebase_reused_lane_branch(
+                    worktree_path, lane_branch, base_sha, repo_root
+                )
         if result.returncode != 0:
             # A stale worktree from an even earlier incomplete run may still hold
             # lane_branch checked out ("already used by worktree at '<path>'").
@@ -183,6 +187,53 @@ def create_lane_worktree(
                 f"git worktree add failed for lane {lane_id}: {result.stderr.strip()}"
             )
     return worktree_path
+
+
+def _rebase_reused_lane_branch(
+    worktree_path: Path, lane_branch: str, base_sha: str, repo_root: Path
+) -> None:
+    """Bring a reused lane branch up to the base the caller named.
+
+    #341 wf_a7f50762-9d3: task-INT-1 and task-INT-5 resumed on branches
+    forked before task-001 merged, so their worktrees never had the doc the
+    epic branch already carried and the invariant tests failed on it. A
+    branch already on top of base_sha is left alone; otherwise its commits
+    replay onto base_sha (a rebase, not a merge, so the lane's diff against
+    the epic stays the lane's own work and the ownership check keeps
+    reading it). A conflict aborts the rebase, leaves the branch as it was,
+    and is raised by name for the caller to surface.
+    """
+    up_to_date = _git(
+        ["merge-base", "--is-ancestor", base_sha, "HEAD"],
+        cwd=worktree_path,
+        check=False,
+    )
+    if up_to_date.returncode == 0:
+        return
+    rebase = _git(
+        [
+            "-c",
+            "user.name=datum",
+            "-c",
+            "user.email=datum@local",
+            "rebase",
+            base_sha,
+        ],
+        cwd=worktree_path,
+        check=False,
+    )
+    if rebase.returncode == 0:
+        return
+    conflicted = _git(
+        ["diff", "--name-only", "--diff-filter=U"], cwd=worktree_path, check=False
+    ).stdout.split()
+    _git(["rebase", "--abort"], cwd=worktree_path, check=False)
+    raise RuntimeError(
+        f"lane_branch_stale_conflict: {lane_branch} does not rebase onto "
+        f"{base_sha[:12]} (conflict in {', '.join(conflicted) or 'unknown files'}); "
+        "the lane's commits are kept as they were — resolve by hand or delete "
+        "the lane branch so the lane starts fresh"
+    )
 
 
 def remove_lane_worktree(

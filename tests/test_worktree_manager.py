@@ -438,6 +438,81 @@ class TestCreateLaneWorktree:
         assert first == second
         assert second.is_dir()
 
+    def test_reused_lane_branch_is_rebased_onto_the_new_base(self, repo: Path):
+        """#341 wf_a7f50762-9d3: task-INT-1 and task-INT-5 resumed on lane
+        branches forked before task-001 merged, so their worktrees never had
+        docs/architecture/state-store.md and the invariant tests failed on a
+        file the epic branch already carried. A reused lane branch is
+        rebased onto the base the caller names: the epic's new files are
+        present, the lane's own commits replay on top, no merge commit."""
+        from datum.worktree_manager import create_lane_worktree
+
+        base1 = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        wt1 = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base1, repo_root=repo
+        )
+        (wt1 / "lane.txt").write_text("lane work\n")
+        _git(["add", "lane.txt"], cwd=wt1)
+        _git(["commit", "-q", "-m", "red(lane-a): RED complete"], cwd=wt1)
+        _git(["worktree", "remove", "--force", str(wt1)], cwd=repo)
+
+        (repo / "epic.txt").write_text("merged by an earlier batch\n")
+        _git(["add", "epic.txt"], cwd=repo)
+        _git(["commit", "-q", "-m", "act: merge 1 lanes"], cwd=repo)
+        base2 = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+
+        wt2 = create_lane_worktree(
+            "epic/test", "lane-a", "run-2", base2, repo_root=repo
+        )
+        assert (
+            wt2 / "epic.txt"
+        ).exists(), "the epic's newer commit is missing from the reused lane worktree"
+        assert (wt2 / "lane.txt").exists(), "the lane's own RED commit was lost"
+        subjects = (
+            _git(["log", "--format=%s", f"{base2}..HEAD"], cwd=wt2)
+            .stdout.strip()
+            .splitlines()
+        )
+        assert subjects == ["red(lane-a): RED complete"], subjects
+        assert not list(
+            (repo / ".git" / "worktrees").glob("*/rebase-merge")
+        ), "rebase left in progress"
+
+    def test_reused_lane_branch_that_conflicts_with_the_new_base_is_named_and_left_intact(
+        self, repo: Path
+    ):
+        from datum.worktree_manager import create_lane_worktree
+
+        base1 = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        wt1 = create_lane_worktree(
+            "epic/test", "lane-a", "run-1", base1, repo_root=repo
+        )
+        (wt1 / "README.md").write_text("lane version\n")
+        _git(["add", "README.md"], cwd=wt1)
+        _git(["commit", "-q", "-m", "red(lane-a): RED complete"], cwd=wt1)
+        lane_tip = _git(["rev-parse", "HEAD"], cwd=wt1).stdout.strip()
+        _git(["worktree", "remove", "--force", str(wt1)], cwd=repo)
+
+        (repo / "README.md").write_text("epic version\n")
+        _git(["add", "README.md"], cwd=repo)
+        _git(["commit", "-q", "-m", "act: merge 1 lanes"], cwd=repo)
+        base2 = _git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+
+        with pytest.raises(RuntimeError, match="lane_branch_stale_conflict"):
+            create_lane_worktree("epic/test", "lane-a", "run-2", base2, repo_root=repo)
+        # The lane branch keeps its commits; nothing is left mid-rebase.
+        assert (
+            _git(["rev-parse", "epic/test--lane-a"], cwd=repo).stdout.strip()
+            == lane_tip
+        )
+        status = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "REBASE_HEAD"],
+            cwd=repo / ".datum" / "worktrees" / "run-2" / "lane-a",
+            capture_output=True,
+            text=True,
+        )
+        assert status.returncode != 0
+
     def test_reclaims_lane_branch_from_a_stale_orphaned_worktree(self, repo: Path):
         """Real scenario the source comments describe: an earlier incomplete
         run left lane_branch checked out in a now-orphaned worktree dir (its
@@ -1405,14 +1480,22 @@ class TestLaneWorktreeHooksAndSyncArgs:
         hooks = repo.parent / "hooks"
         hooks.mkdir(exist_ok=True)
         _git(["config", "core.hooksPath", str(hooks)], cwd=repo)
-        mapping = setup_pipeline_worktrees("run-hooks", "epic/test", ["lane-a"], repo_root=repo)
+        mapping = setup_pipeline_worktrees(
+            "run-hooks", "epic/test", ["lane-a"], repo_root=repo
+        )
         wt = mapping["lane-a"]
-        ext = _git(["config", "--get", "extensions.worktreeConfig"], cwd=repo).stdout.strip()
+        ext = _git(
+            ["config", "--get", "extensions.worktreeConfig"], cwd=repo
+        ).stdout.strip()
         assert ext == "true"
-        per_wt = _git(["config", "--worktree", "--get", "core.hooksPath"], cwd=wt).stdout.strip()
+        per_wt = _git(
+            ["config", "--worktree", "--get", "core.hooksPath"], cwd=wt
+        ).stdout.strip()
         assert per_wt == "/dev/null"
         # the developer's own repo-level value is untouched
-        assert _git(["config", "--get", "core.hooksPath"], cwd=repo).stdout.strip() == str(hooks)
+        assert _git(
+            ["config", "--get", "core.hooksPath"], cwd=repo
+        ).stdout.strip() == str(hooks)
 
     def test_uv_sync_uses_the_args_named_in_datum_config(self, repo: Path, monkeypatch):
         from datum.worktree_manager import setup_pipeline_worktrees
@@ -1429,7 +1512,9 @@ class TestLaneWorktreeHooksAndSyncArgs:
         bin_dir = repo.parent / "fakebin"
         bin_dir.mkdir(exist_ok=True)
         log = repo.parent / "uv-args.log"
-        (bin_dir / "uv").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n")
+        (bin_dir / "uv").write_text(
+            f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n"
+        )
         (bin_dir / "uv").chmod(0o755)
         monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
         monkeypatch.chdir(repo)
@@ -1445,7 +1530,9 @@ class TestSyncArgsReadFromMainCheckout:
     lane synced with --frozen alone (numpy still missing). The config is the
     MAIN checkout's, wherever setup is invoked from."""
 
-    def test_sync_args_come_from_the_main_checkout_not_the_cwd(self, repo: Path, monkeypatch, tmp_path: Path):
+    def test_sync_args_come_from_the_main_checkout_not_the_cwd(
+        self, repo: Path, monkeypatch, tmp_path: Path
+    ):
         from datum.worktree_manager import setup_pipeline_worktrees
 
         (repo / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
@@ -1460,12 +1547,16 @@ class TestSyncArgsReadFromMainCheckout:
         bin_dir = repo.parent / "fakebin2"
         bin_dir.mkdir(exist_ok=True)
         log = repo.parent / "uv-main.log"
-        (bin_dir / "uv").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n")
+        (bin_dir / "uv").write_text(
+            f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\nmkdir -p .venv\n"
+        )
         (bin_dir / "uv").chmod(0o755)
         monkeypatch.setenv("PATH", f"{bin_dir}:{__import__('os').environ['PATH']}")
         # Invoke from a detached root worktree, the way the setup batch does.
         root_wt = tmp_path / "root-wt"
         _git(["worktree", "add", "--detach", str(root_wt), "epic/test"], cwd=repo)
         monkeypatch.chdir(root_wt)
-        setup_pipeline_worktrees("run-uv-main", "epic/test", ["lane-a"], repo_root=root_wt)
+        setup_pipeline_worktrees(
+            "run-uv-main", "epic/test", ["lane-a"], repo_root=root_wt
+        )
         assert log.read_text().splitlines() == ["sync --frozen --all-extras"]
