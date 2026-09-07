@@ -193,6 +193,75 @@ class TestCollectGit:
         assert data["commit_count"] >= 3  # At least our 3 commits
         assert isinstance(data["files_touched"], list)
 
+    def test_warning_recorded_in_git_json(self, env_with_repo):
+        """#482 — a merge-base fallback ("statistics may span more than the
+        epic") must ride in git.json, not just print to a terminal an
+        operator won't read before the closeout artifact is archived."""
+        import os
+
+        repo = env_with_repo
+        # This venv's `datum` is editable-installed against a sibling
+        # checkout (a shared-venv-across-worktrees setup) — PYTHONPATH must
+        # point subprocess imports back at *this* worktree's collect_git.py,
+        # or the test would silently exercise someone else's code.
+        worktree_root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_git",
+                "--run-id",
+                repo["run_id"],
+                "--base-sha",
+                repo["base_sha"],
+                "--merge-sha",
+                repo["merge_sha"],
+                "--warning",
+                "base_sha_fallback: merge-base with origin/main; statistics may span more than the epic",
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONPATH": str(worktree_root)},
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        git_file = repo["runs_dir"] / "closeout-raw" / "git.json"
+        data = json.loads(git_file.read_text())
+        assert data["warnings"] == [
+            "base_sha_fallback: merge-base with origin/main; statistics may span more than the epic"
+        ]
+
+    def test_no_warning_flag_means_no_warnings_key_noise(self, env_with_repo):
+        """An empty/omitted --warning must not add a warnings list — most
+        runs have a recorded or ticket-commit base and nothing to flag."""
+        import os
+
+        repo = env_with_repo
+        worktree_root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_git",
+                "--run-id",
+                repo["run_id"],
+                "--base-sha",
+                repo["base_sha"],
+                "--merge-sha",
+                repo["merge_sha"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONPATH": str(worktree_root)},
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        git_file = repo["runs_dir"] / "closeout-raw" / "git.json"
+        data = json.loads(git_file.read_text())
+        assert data["warnings"] == []
+
     def test_missing_base_sha(self, env_with_repo):
         """collect_git requires --base-sha and --merge-sha."""
         repo = env_with_repo

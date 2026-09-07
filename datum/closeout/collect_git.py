@@ -26,6 +26,13 @@ def main() -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--base-sha", required=True)
     parser.add_argument("--merge-sha", required=True)
+    # #482 — set by closeoutCollectSteps only when base-sha fell back to a
+    # merge-base (no recorded epic-base, no ticket commit): the statistics
+    # below may span more than the epic. Carried in git.json, not just
+    # printed, so it survives into the archived closeout artifact.
+    parser.add_argument(
+        "--warning", default="", help="base_sha_fallback warning, or empty"
+    )
     args = parser.parse_args()
 
     marker = Path(f".datum/runs/{args.run_id}/.collect-git.done")
@@ -57,6 +64,7 @@ def main() -> None:
             "loc_added": loc_added,
             "loc_removed": loc_removed,
             "loc_net": loc_added - loc_removed,
+            "warnings": [args.warning] if args.warning.strip() else [],
         }
 
         out = Path(f".datum/runs/{args.run_id}/closeout-raw/git.json")
