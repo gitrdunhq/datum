@@ -57,8 +57,7 @@ const distillRaw = await agent(
 
 interface DistillResult {
   preamble: string
-  preamble_full: string
-  token_estimate: { preamble: number; full: number }
+  token_estimate: { preamble: number }
 }
 
 // Strict: same reasoning as `scan` above — a placeholder "No rules
@@ -67,43 +66,33 @@ interface DistillResult {
 // agent's preamble with no trace of the failure.
 const distill: DistillResult = parseAgentJsonStrict<DistillResult>(distillRaw as string, 'distill-preamble')
 
-log(`Preamble: ~${distill.token_estimate.preamble} tokens, Full: ~${distill.token_estimate.full} tokens`)
+log(`Preamble: ~${distill.token_estimate.preamble} tokens`)
 
 // ── Commit ──
 
 phase('Commit')
 
 const preamblePath = 'skills/src/prompts/agent-preamble.md'
-const fullPath = 'skills/src/prompts/agent-preamble-full.md'
 
-// Script-held content: written through byte-verified heredoc batches and
+// Script-held content: written through a byte-verified heredoc batch and
 // committed by a commitFilesSteps batch (shared/write-steps.ts,
-// shared/commit-steps.ts) — never handed to a runner as "write these two
-// files, then commit both", whose reply was discarded.
+// shared/commit-steps.ts) — never handed to a runner as "write this file,
+// then commit it", whose reply was discarded.
 const PREAMBLE_NAMES = { mkdir: 'mkdir-preamble', write: 'write-preamble', sha: 'sha-preamble' }
-const FULL_NAMES = { mkdir: 'mkdir-full', write: 'write-full', sha: 'sha-full' }
-const writeSteps = [
-  ...writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES }),
-  ...writeFileSteps({ path: fullPath, content: distill.preamble_full, names: FULL_NAMES }),
-]
-const writeResult = await runBatch(writeSteps, { label: 'write-preambles', model: model('fast') })
-for (const verdict of [
-  writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: 'preamble', names: PREAMBLE_NAMES }),
-  writeFileFromSteps(writeResult, { path: fullPath, expectedSha: writeFileBlobSha(distill.preamble_full), prefix: 'preamble_full', names: FULL_NAMES }),
-]) {
-  if (!verdict.ok) throw new Error(verdict.error)
-}
+const writeSteps = writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES })
+const writeResult = await runBatch(writeSteps, { label: 'write-preamble', model: model('fast') })
+const verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: 'preamble', names: PREAMBLE_NAMES })
+if (!verdict.ok) throw new Error(verdict.error)
 
-const commitStepList = commitFilesSteps({ wt: '.', files: [preamblePath, fullPath], message: 'awake: regenerate agent preamble from repo scan' })
-const commit = commitFilesFromSteps(await runBatch(commitStepList, { label: 'commit-preambles', model: model('fast') }))
+const commitStepList = commitFilesSteps({ wt: '.', files: [preamblePath], message: 'awake: regenerate agent preamble from repo scan' })
+const commit = commitFilesFromSteps(await runBatch(commitStepList, { label: 'commit-preamble', model: model('fast') }))
 if (commit.error) throw new Error(`awake_commit_failed: ${commit.error}`)
-if (commit.nothingToCommit) log('Preambles unchanged since the last awake — nothing to commit')
-else log(`Written and committed: ${preamblePath} + ${fullPath} (${commit.sha})`)
+if (commit.nothingToCommit) log('Preamble unchanged since the last awake — nothing to commit')
+else log(`Written and committed: ${preamblePath} (${commit.sha})`)
 log('Run "bash scripts/build-workflows.sh" to rebuild with new preamble')
 
 export const __workflowResult = {
   language: scan.language,
   ruleSources: scan.rules?.length || 0,
   preambleTokens: distill.token_estimate.preamble,
-  fullTokens: distill.token_estimate.full,
 }

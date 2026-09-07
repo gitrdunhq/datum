@@ -1500,7 +1500,7 @@ async function runRefactor(
     // runtime throw, which used to escape as a lane CRASH (see reflect above).
     const preCheck: RefactorCheck | null = await resilientAgent(
       refactorCheckPrompt({ wt, allFiles: laneFiles.join(', '), tellsSlot }),
-      stageOpts('reader', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
+      stageOpts('quality', { label: `refactor-check:${taskId}`, phase: 'Act', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
     )
 
     if (!preCheck) {

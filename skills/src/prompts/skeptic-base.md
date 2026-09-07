@@ -8,21 +8,12 @@ Acceptance criteria — the `acceptance_criteria` array in the lane spec file:
 {{laneSpecSlot}}
 
 TOOLS (use before manual reading):
-1. `ast-grep --pattern '<pattern>' {{implFiles}}` — find structural anti-patterns:
+- `ast-grep --pattern '<pattern>' {{implFiles}}` — find structural anti-patterns:
    - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used
    - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):
      `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)
-2. headroom_compress on each file after reading, then query-retrieve for specific sections
 
-CONTEXT MANAGEMENT:
-After reading each file, compress it with headroom_compress. This frees context for
-deeper analysis. Use headroom_retrieve with a query (e.g. query="error handling" or
-query="return value") to pull back specific sections when investigating a potential bug.
-
-For each bug found, provide:
-- description: what is wrong
-- evidence: the specific input, file, or line that demonstrates the bug
-- severity: critical / high / medium / low
+Every bug you report is one object: description, evidence, severity — what is wrong, the specific input, file or line that demonstrates it, and one of critical / high / medium / low. That is the whole output shape; the lens below tells you where to look, not what to return.
 
 Read the implementation and tests. Run the test command to understand current coverage.
 Only report bugs you can demonstrate with evidence. "This might be a problem" is not a bug.

@@ -18,13 +18,8 @@ For each artifact: write the file. Do NOT git add or git commit anything — the
 
 Return JSON:
 {
-  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],
-  "follow_up_count": N,
-  "key_metrics": {
-    "tasks_completed": N,
-    "tasks_failed": N,
-    "total_tokens": N
-  }
+  "artifacts_written": ["CURRENT_STATE.md", "...", "RETRO.md", "follow-ups.json"],
+  "follow_up_count": N
 }
 
 List in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.

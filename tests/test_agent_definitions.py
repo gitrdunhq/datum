@@ -30,6 +30,24 @@ CHEAP_AGENTS = {
     # it, hash it for the witness, read every test file and survive the
     # harness schema retry (caliper eedom wf_4f739141-c8c, a464e08f).
     "datum-reflect": {"tools": ["Read", "Bash"], "model": "haiku", "maxTurns": 14},
+    # 12, not 4: the refactor and docs pre-checks read every file a lane
+    # touched and answer a rubric. datum-reader ("read one file, return its
+    # contents") could not do that in four turns, so the checks silently
+    # returned nothing and the optional stages were skipped (prompts audit
+    # 20260906, batch 2 item 10). The headroom entries are the operator's
+    # local-model runtime path for files over 100 lines; they are hedged on
+    # availability in the shared preamble.
+    "datum-quality-reader": {
+        "tools": [
+            "Read",
+            "Grep",
+            "Glob",
+            "mcp__headroom__headroom_compress",
+            "mcp__headroom__headroom_retrieve",
+        ],
+        "model": "haiku",
+        "maxTurns": 12,
+    },
 }
 STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
 # wf_b1c88e09-036: a GREEN on a 555-line file spent 30 calls (7 Edits + Reads)

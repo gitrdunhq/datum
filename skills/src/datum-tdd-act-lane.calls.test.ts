@@ -146,7 +146,10 @@ async function runLane(opts: {
 
 const cliCalls = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-cli')
 const readerCalls = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-reader')
-/** Pure file reads that ride on datum-reader (refactor-check is a reader too, but an LLM judge). */
+/** Pure file reads that ride on datum-reader. refactor-check used to ride
+ *  here too, but it is an LLM judge over every file the lane touched, not a
+ *  one-file read — it now runs as datum-quality-reader (prompts audit
+ *  20260906, batch 2 item 10). */
 const PURE_READS = new Set(['completion-check', 'skeleton-read', 'read-plan'])
 /** Command-runner calls (datum-cli + pure datum-reader reads) in call order, by label prefix. */
 const runnerLabels = (calls: Call[]) =>
@@ -170,7 +173,8 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     // deterministicChecks() — it runs whenever GREEN ran, hooks or no hooks.
     // stray-clean (caliper wf_fa38ac24-890) runs before REFACTOR the same way.
     expect(cliCalls(calls)).toHaveLength(7)
-    expect(readerCalls(calls).map((c) => c.label.split(':')[0])).toEqual(['completion-check', 'refactor-check'])
+    expect(readerCalls(calls).map((c) => c.label.split(':')[0])).toEqual(['completion-check'])
+    expect(calls.filter((c) => c.agentType === 'datum-quality-reader').map((c) => c.label.split(':')[0])).toEqual(['refactor-check'])
   })
 
   it('hooks not installed: a TypeScript lane skips the scope/contract batch (7 runner calls)', async () => {
@@ -247,7 +251,7 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(byLabel('green:')).toEqual(['datum-green'])
     expect(byLabel('reflect:')).toEqual(['datum-reflect'])
     expect(byLabel('skeptic-')).toEqual(['datum-skeptic', 'datum-skeptic', 'datum-skeptic'])
-    expect(byLabel('refactor-check:')).toEqual(['datum-reader'])
+    expect(byLabel('refactor-check:')).toEqual(['datum-quality-reader'])
     expect(calls.every((c) => typeof c.agentType === 'string')).toBe(true)
   })
 

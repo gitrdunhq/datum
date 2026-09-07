@@ -18,8 +18,6 @@ For each symbol, API, or module mentioned in the requirements:
 
 Run `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.
 
-Use headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.
-
 Return JSON:
 {
   "symbols": [

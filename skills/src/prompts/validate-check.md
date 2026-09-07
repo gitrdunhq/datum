@@ -1,7 +1,6 @@
-Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.
+Validation agent. Confirm the integrated result meets the acceptance criteria the epic planned.
 
 Working directory: {{wt}}
-SPEC path: {{specPath}}
 TASKS path: {{tasksPath}}
 Test command: {{testCommand}}
 
@@ -19,15 +18,4 @@ STEPS:
 3. For each completed task in TASKS.md, verify its acceptance criteria have
    corresponding passing tests. If an AC has no test → flag as a gap.
 
-Return JSON:
-{
-  "tests_pass": true,
-  "test_count": N,
-  "lint_clean": true,
-  "lint_fixes": ["files that were auto-fixed"],
-  "ac_gaps": ["ACs with no corresponding test"],
-  "committed_fixes": true,
-  "commit_sha": "sha if lint fixes were committed"
-}
-
-Output raw JSON only. No markdown fences.
+Report tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3. Your tests_pass is diagnostics: the workflow re-runs the same suite itself and the verdict comes from that exit code, never from your self-report.

@@ -44,7 +44,7 @@ Steps:
 5. NEVER add new tests — if missing AC found, set committed=false and explain
 6. Run test_command — ALL tests MUST PASS
 7. If nothing to refactor, that's fine — set committed=true
-8. Commit: git add . && git commit -m "<commit_prefix>: <description>"
+8. Commit with the exact commit command the prompt gives — it pins the datum author identity and the Datum-* trailers every lane commit carries. Never stage the whole worktree; stage only the files the packet allows
 
 EXCLUSION LIST — do NOT:
 - Add docstrings or comments

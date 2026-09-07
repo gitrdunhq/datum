@@ -34,7 +34,7 @@ if (a.completedLanes.length === 0) {
   // not read as "no stale references found" (phase review wf_9a69f891-462).
   const docsCheck = await resilientAgent<{ should_refactor?: boolean; reason?: string }>(
     docsCheckPrompt({ changedFiles: changedFiles.join(', ') }),
-    { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 },
+    stageOpts('quality', { label: 'docs-check', phase: 'Docs', model: model('fast'), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }),
   )
 
   if (!docsCheck) {

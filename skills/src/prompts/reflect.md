@@ -3,7 +3,7 @@ Read-only — do NOT write or modify any files.
 
 Read these test files in "{{wt}}": {{testFiles}}
 
-IMPORTANT: If the test file contains tests from prior lanes (i.e., test functions that do NOT relate to any of the acceptance criteria below), IGNORE those tests entirely. Only evaluate test functions whose names and assertions directly relate to the acceptance criteria listed below. Tests for unrelated functionality should neither count for nor against the score.
+SCOPE — one rule for prior-lane tests. A test file may hold tests from prior lanes: test functions that do not relate to any of the acceptance criteria below. Those tests neither count for nor against the score — score only the test functions whose names and assertions directly relate to the criteria. But you must still read every prior-lane test in these files, because a prior-lane assertion this lane's criteria contradict is the one thing that can deadlock this lane, and finding it is step 4 below.
 
 ACCEPTANCE CRITERIA to cover — the `acceptance_criteria` array in the lane spec file:
 {{laneSpecSlot}}

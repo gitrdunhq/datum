@@ -31,7 +31,6 @@ SEVERITY RUBRIC (high and critical block the merge, so calibrate to the project'
 RULES:
 - Only report findings in your domain — do not cross into other reviewers' territory
 - Every finding must have evidence (file + line). No speculation.
-- Use headroom_compress on the diff if it exceeds 200 lines, then query-retrieve per file.
 
 Return JSON:
 {
