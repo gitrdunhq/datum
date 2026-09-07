@@ -540,3 +540,32 @@ def test_plan_not_sliced_is_silent_when_a_task_crosses_layers(epic_dir, capsys):
     captured = capsys.readouterr()
     assert exc.value.code == 0
     assert "plan_not_sliced" not in captured.err
+
+
+def test_plan_not_sliced_counts_parent_directories_not_top_level_ones(epic_dir, capsys):
+    """integration-lanes-2, first plan under the rule: task-002 crossed the
+    lane runner, shared types, the prompt renderer and a prompt template
+    (skills/src, skills/src/shared, skills/src/prompts) and was still warned
+    as unsliced because every file sat under the one top-level `skills/`.
+    A layer is a distinct parent directory of non-test files."""
+    lanes = {
+        "task-001": _lane_files("task-001", ["datum/a.py", "datum/b.py", "tests/test_a.py"]),
+        "task-002": _lane_files(
+            "task-002",
+            ["skills/src/datum-tdd-act-lane.ts", "skills/src/shared/types.ts", "skills/src/prompts/red.md", "skills/src/x.test.ts"],
+        ),
+        "task-003": _lane_files("task-003", ["datum/c.py", "tests/test_c.py"]),
+    }
+    _write_artifacts(
+        epic_dir,
+        _plan(lanes),
+        tasks_json=[{"id": "task-001"}, {"id": "task-002"}, {"id": "task-003"}],
+        properties_md=_invariant_table([]),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "plan_not_sliced" not in captured.err
