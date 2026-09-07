@@ -393,8 +393,10 @@ describe('postRedSteps', () => {
     expect(newTestCountFromSteps(mk(['test-count-before', 'test-count-after']))).toEqual({ ok: true, before: 1, after: 3, added: 2, error: '' })
     const noBefore = newTestCountFromSteps(mk(['test-count-after']))
     expect(noBefore.ok).toBe(false)
-    expect(noBefore.error).toMatch(/^test_count_missing: test-count-before step absent/)
-    expect(newTestCountFromSteps(mk(['test-count-before'])).error).toMatch(/^test_count_missing: test-count-after/)
+    // A short array is batch_incomplete at the parser (#341 task-008); the
+    // gate still names the count step that is absent.
+    expect(noBefore.error).toMatch(/^test_count_missing: .*batch_incomplete: .*test-count-before/)
+    expect(newTestCountFromSteps(mk(['test-count-before'])).error).toMatch(/^test_count_missing: .*test-count-after/)
     expect(newTestCountFromSteps(parseBatchResult(null, [])).error).toMatch(/^test_count_missing:/)
   })
 
@@ -727,6 +729,7 @@ describe('buildVerifyVerdict', () => {
   it('is passed on TEST_EXIT=0 and failed WITH the exit code otherwise', () => {
     const steps = postGreenSteps({ wt: '/wt/T1', buildCommand: 'pnpm typecheck' })
     const passResult = parseBatchResult(JSON.stringify([
+      { name: 'ownership', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-list', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-clean', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-confirm', exit_code: 0, stdout: '', stderr: '' },
@@ -735,6 +738,7 @@ describe('buildVerifyVerdict', () => {
     expect(buildVerifyVerdict(passResult, 'label')).toEqual({ kind: 'passed', exit: 0, why: '' })
 
     const failResult = parseBatchResult(JSON.stringify([
+      { name: 'ownership', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-list', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-clean', exit_code: 0, stdout: '', stderr: '' },
       { name: 'stray-confirm', exit_code: 0, stdout: '', stderr: '' },

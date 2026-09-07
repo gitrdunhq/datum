@@ -51,6 +51,23 @@ function batch(steps: Record<string, string | { stdout?: string; exit_code?: num
   )))
 }
 
+/**
+ * A real script records every step (a short array is batch_incomplete,
+ * #341 task-008). Responders name only the steps a test cares about; the
+ * fake agent fills the rest from the script's `# step i/N: name` lines.
+ */
+function completeBatch(reply: unknown, prompt: string): unknown {
+  if (typeof reply !== 'string' || !reply.trim().startsWith('[')) return reply
+  let arr: Array<{ name: string; exit_code: number; stdout: string; stderr: string }>
+  try { arr = JSON.parse(reply) } catch { return reply }
+  const names = [...prompt.matchAll(/^# step \d+\/\d+: (\S+)/gm)].map((m) => m[1])
+  if (names.length === 0) return reply
+  const given = new Map(arr.map((r) => [r.name, r]))
+  const ordered = names.map((n) => given.get(n) ?? { name: n, exit_code: 0, stdout: '', stderr: '' })
+  for (const r of arr) if (!names.includes(r.name)) ordered.push(r)
+  return JSON.stringify(ordered)
+}
+
 const SPEC_PATH = '/wt/T1/.datum/lane-spec.json'
 const SPEC_SHA = 'c0ffee'.repeat(6) + 'abcd'
 const witness = { read_witness: { [SPEC_PATH]: SPEC_SHA.slice(0, 12) } }
@@ -116,7 +133,7 @@ async function runLane(opts: {
   const agent = async (prompt: string, o?: { label?: string; agentType?: string }) => {
     const label = o?.label || ''
     calls.push({ label, agentType: o?.agentType, prompt })
-    return opts.respond(label, prompt)
+    return completeBatch(opts.respond(label, prompt), prompt)
   }
   const parallel = async <T,>(thunks: Array<() => Promise<T>>) => {
     const out: T[] = []

@@ -252,7 +252,8 @@ describe('worktreeResetToFromSteps', () => {
   it('a dirty tree after the reset, a missing head step, or a missing batch are all worktree_reset_failed', () => {
     expect(worktreeResetToFromSteps(mk({ status: { stdout: ' M a.py\n' } }), sha).error).toMatch(/^worktree_reset_failed: .*still dirty/)
     const noHead = parseBatchResult(JSON.stringify([{ name: 'reset', exit_code: 0, stdout: '', stderr: '' }]), worktreeResetToSteps('/wt', sha))
-    expect(worktreeResetToFromSteps(noHead, sha).error).toMatch(/^worktree_reset_failed: .*head step/)
+    // A short array is batch_incomplete at the parser (#341 task-008).
+    expect(worktreeResetToFromSteps(noHead, sha).error).toMatch(/^worktree_reset_failed: .*(head step|batch_incomplete)/)
     // A ref target: HEAD must equal what the ref resolves to, not the literal.
     const refSteps = worktreeResetToSteps('/wt', 'datum/e')
     const refOk = parseBatchResult(JSON.stringify(['reset', 'clean', 'status', 'head', 'target'].map((name) => ({ name, exit_code: 0, stdout: name === 'head' || name === 'target' ? 'c'.repeat(40) + '\n' : '', stderr: '' }))), refSteps)

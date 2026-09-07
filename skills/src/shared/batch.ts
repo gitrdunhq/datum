@@ -137,7 +137,10 @@ export function innerBatchScript(steps: BatchStep[]): string {
   }
   const lines: string[] = [
     '__bo=$(mktemp); __be=$(mktemp); __r=\'[]\'',
-    '__rec() { __r=$(printf \'%s\' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" \'. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]\'); }',
+    // #517: jq's exit is checked. A step jq cannot encode is still recorded —
+    // without jq (name and exit code are validated/numeric, so a literal is
+    // safe) and named on stderr — instead of vanishing from the array.
+    '__rec() { __n=$(printf \'%s\' "$__r" | jq -c --arg n "$1" --argjson c "$2" --rawfile o "$__bo" --rawfile e "$__be" \'. + [{name:$n, exit_code:$c, stdout:$o, stderr:$e}]\') && __r="$__n" || { __sep=","; [ "$__r" = "[]" ] && __sep=""; __r="${__r%]}${__sep}{\\"name\\":\\"$1\\",\\"exit_code\\":$2,\\"stdout\\":\\"\\",\\"stderr\\":\\"batch_rec_failed: jq could not record this step (exit $2; output lost, likely not valid UTF-8)\\"}]"; }; }',
     '__end() { printf \'%s\\n\' "$__r"; rm -f "$__bo" "$__be"; }',
   ]
   steps.forEach((s, i) => {
@@ -249,7 +252,26 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
       : { steps: [], failed: null, missing: true, scriptError }
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name))
-  const failed = results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null
+  // #517: a record __rec could not encode is the batch's failure whatever
+  // its exit code — its stdout is empty by construction, not by result.
+  const recFailed = results.find((r) => r.stderr.startsWith('batch_rec_failed:')) ?? null
+  const failed = recFailed ?? results.find((r) => r.exit_code !== 0 && !tolerant.has(r.name)) ?? null
+  // #341 wf_a7f50762-9d3 task-008: 10 of 13 tolerant steps came back and the
+  // lane died test_count_missing. The script stops early only after a
+  // non-tolerant failure, so any other short array is the runner returning
+  // a partial result — named, and missing, never "those steps did not run".
+  const last = results[results.length - 1]
+  const stoppedByFailFast = failed !== null && last?.name === failed.name && !tolerant.has(failed.name)
+  if (results.length < steps.length && !stoppedByFailFast) {
+    const returned = new Set(results.map((r) => r.name))
+    const absent = steps.map((s) => s.name).filter((n) => !returned.has(n))
+    return {
+      steps: [],
+      failed: null,
+      missing: true,
+      scriptError: `batch_incomplete: ${results.length} of ${steps.length} step records returned and no non-tolerant failure stopped the batch — the runner returned a partial result (last record: ${last?.name ?? 'none'}); absent: [${absent.join(', ')}]`,
+    }
+  }
   return { steps: results, failed, missing: false }
 }
 

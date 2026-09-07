@@ -59,7 +59,7 @@ describe('tasksJsonBlobSha', () => {
     try {
       const script = batchScript(planBuildSteps({ epicDir: dir, tasksJson }).slice(0, 3))
       const out = execFileSync('bash', ['-c', script], { encoding: 'utf8', cwd: dir })
-      const result = parseBatchResult(out, planBuildSteps({ epicDir: dir, tasksJson }))
+      const result = parseBatchResult(out, planBuildSteps({ epicDir: dir, tasksJson }).slice(0, 3))
       const onDisk = result.steps.find((s) => s.name === 'tasks-sha')!.stdout.trim()
       expect(onDisk).toBe(tasksJsonBlobSha(tasksJson))
       expect(readFileSync(join(dir, 'tasks.json'), 'utf8')).toBe(tasksJson + '\n')
@@ -74,7 +74,7 @@ describe('tasksJsonBlobSha', () => {
     try {
       const script = batchScript(planBuildSteps({ epicDir: dir, tasksJson: j }).slice(0, 3))
       const out = execFileSync('bash', ['-c', script], { encoding: 'utf8', cwd: dir })
-      const onDisk = parseBatchResult(out, planBuildSteps({ epicDir: dir, tasksJson: j })).steps.find((s) => s.name === 'tasks-sha')!.stdout.trim()
+      const onDisk = parseBatchResult(out, planBuildSteps({ epicDir: dir, tasksJson: j }).slice(0, 3)).steps.find((s) => s.name === 'tasks-sha')!.stdout.trim()
       expect(onDisk).toBe(tasksJsonBlobSha(j))
     } finally {
       rmSync(dir, { recursive: true, force: true })
