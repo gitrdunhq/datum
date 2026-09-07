@@ -313,6 +313,63 @@ describe('postRedSteps', () => {
     expect(steps.find((s) => s.name === 'test-count-pattern')!.command).toContain("<<'PATTERN_EOF'\ndef test_|async def test_\nPATTERN_EOF")
   })
 
+  // #371: a property-based (hypothesis @given) or golden-file
+  // (@pytest.mark.parametrize) suite can satisfy several ACs from a handful
+  // of decorated functions. The Python testFuncDiffRegex now credits those
+  // decorator lines alongside def test_/async def test_ so scripts/
+  // test-count-gate (run under real bash, real git, against the pattern the
+  // lane runner actually sends) does not read that as zero new tests.
+  it('under real bash: scripts/test-count-gate credits @given and @pytest.mark.parametrize decorator lines, not just def test_', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-count-gate-'))
+    const pyTestFuncDiffRegex = '[+][[:space:]]*(def test_|async def test_|@pytest\\.mark\\.parametrize\\(|@given\\()'
+    try {
+      execFileSync('git', ['init', '-q', dir])
+      execFileSync('git', ['-C', dir, 'config', 'user.email', 't@t'])
+      execFileSync('git', ['-C', dir, 'config', 'user.name', 't'])
+      writeFileSync(join(dir, 'test_a.py'), 'def test_existing():\n    assert 1 == 1\n')
+      execFileSync('git', ['-C', dir, 'add', '.'])
+      execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'base'])
+      // One @given-decorated property test plus one @pytest.mark.parametrize
+      // runner: two bare `def test_` lines, still short of the three ACs
+      // under the OLD pattern (def test_ only) — the two decorator lines are
+      // what pushes the count to 3+.
+      writeFileSync(join(dir, 'test_a.py'), [
+        'def test_existing():',
+        '    assert 1 == 1',
+        '',
+        '@given(st.integers())',
+        'def test_roundtrip(n):',
+        '    assert decode(encode(n)) == n',
+        '',
+        '@pytest.mark.parametrize("n,expected", [(1, 1), (2, 4)])',
+        'def test_square(n, expected):',
+        '    assert square(n) == expected',
+        '',
+      ].join('\n'))
+      execFileSync('git', ['-C', dir, 'add', '.'])
+      execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'red'])
+
+      const scriptPath = join(__dirname, '..', '..', '..', 'scripts', 'test-count-gate')
+
+      const runGate = (pattern: string): string => {
+        try {
+          return execFileSync('bash', [scriptPath, '--repo', dir, '--files', 'test_a.py', '--pattern', pattern, '--required', '3'], { encoding: 'utf8' })
+        } catch (err) {
+          return (err as { stdout: Buffer }).stdout.toString()
+        }
+      }
+
+      // OLD pattern (def test_ only): 2 new def lines, short of 3 ACs — the
+      // bug this closure fixes.
+      expect(JSON.parse(runGate('[+][[:space:]]*def test_'))).toEqual({ new_test_count: 2, required: 3, passed: false })
+
+      // NEW pattern: the two decorator lines are credited too, clearing the gate.
+      expect(JSON.parse(runGate(pyTestFuncDiffRegex))).toEqual({ new_test_count: 4, required: 3, passed: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('drops the count gate when the lane has no acceptance criteria and the ownership read when not deterministic', () => {
     const steps = postRedSteps({ ...opts, acCount: 0, ownership: false })
     expect(names(steps)).not.toContain('count-gate')

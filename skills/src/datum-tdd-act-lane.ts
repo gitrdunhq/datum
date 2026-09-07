@@ -273,20 +273,25 @@ async function runLane(
   // to double-quoting bugs when a caller wrapped it in another pair (#288/#289).
   // Use ERE (-E) for alternation — BRE \| is a GNU extension and fails silently on macOS BSD grep
   // NB: no '^' anchor on '+' — macOS git 2.54.0 with core.pager may emit 2-space indented patch lines
+  // Python: a @pytest.mark.parametrize( or @given( decorator line is credited
+  // as one test unit alongside def test_/async def test_ — a property-based
+  // (hypothesis @given) or golden-file (one parametrized runner) suite can
+  // satisfy several ACs from a handful of decorated functions, and the count
+  // gate must not read that as zero new tests written (#371).
   const testFuncDiffRegex: string = laneLanguage === 'swift'
     ? '[+][[:space:]]*(@Test|func test)'
     : laneLanguage === 'go'
     ? '[+][[:space:]]*func Test'
     : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? '[+][[:space:]]*(it\\(|test\\(|describe\\()'
-    : '[+][[:space:]]*def test_'
+    : '[+][[:space:]]*(def test_|async def test_|@pytest\\.mark\\.parametrize\\(|@given\\()'
   const testFuncGrepRegex: string = laneLanguage === 'swift'
     ? '@Test|func test'
     : laneLanguage === 'go'
     ? 'func Test'
     : laneLanguage === 'typescript' || laneLanguage === 'javascript'
     ? 'it\\(|test\\(|describe\\('
-    : 'def test_|async def test_'
+    : 'def test_|async def test_|@pytest\\.mark\\.parametrize\\(|@given\\('
   const testFuncBodyRegex: string = laneLanguage === 'swift'
     ? 'func test'
     : laneLanguage === 'go'

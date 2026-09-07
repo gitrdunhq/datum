@@ -269,6 +269,15 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(calls.length).toBeGreaterThan(5)
   })
 
+  it('a pytest lane\'s test-function pattern credits @pytest.mark.parametrize( and @given( decorators, not just def test_/async def test_ (#371)', async () => {
+    const { calls } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: true })
+    const postRed = calls.find((c) => c.label.startsWith('post-red:'))!
+    expect(postRed.prompt).toContain('def test_')
+    expect(postRed.prompt).toContain('async def test_')
+    expect(postRed.prompt).toContain('@pytest\\.mark\\.parametrize\\(')
+    expect(postRed.prompt).toContain('@given\\(')
+  })
+
   it('the batched post-RED checks are evaluated in the script: a count-gate miss fails RED', async () => {
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => {
