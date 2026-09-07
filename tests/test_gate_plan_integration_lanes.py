@@ -456,3 +456,34 @@ def test_tasks_json_and_properties_md_each_read_exactly_once(epic_dir, capsys):
     assert exc.value.code == 0
     assert read_counts["tasks.json"] == 1
     assert read_counts["PROPERTIES.md"] == 1
+
+
+# ── AC9.1 both ways: an INT lane with no invariant behind it (review iteration 2) ──
+
+
+def test_int_lane_without_any_invariant_row_fails(epic_dir, capsys):
+    """An orphaned task-INT-* lane (PROPERTIES.md has no invariant table, or an
+    unparseable one) used to skip the depends_on check entirely because it sat
+    under `if invariant_rows:`. Named and failed instead."""
+    lanes = {
+        "task-001": _lane("task-001", ["a.py"]),
+        "task-INT-1": _lane(
+            "task-INT-1",
+            ["tests/integration/test_int_1.py"],
+            depends_on=["task-001"],
+            kind="integration",
+        ),
+    }
+    _write_artifacts(
+        epic_dir,
+        _plan(lanes),
+        tasks_json=[{"id": "task-001"}],
+        properties_md="# Properties\n\nNo integration table here.\n",
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 1
+    message = _fail_json(capsys)["message"]
+    assert "int_lane_without_invariant: task-INT-1" in message

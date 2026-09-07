@@ -1051,6 +1051,17 @@ def gate_plan(yolo: bool, config: dict) -> None:
 
     int_lane_ids = [lid for lid in lanes if lid.startswith(_INT_LANE_PREFIX)]
 
+    # AC9.1 cuts both ways: an INT lane with no invariant row behind it is
+    # an orphan (PROPERTIES.md lost its table, or it no longer parses), not a
+    # lane to wave through because there was nothing to compare it with.
+    if int_lane_ids and not invariant_rows:
+        fail(
+            "; ".join(
+                f"int_lane_without_invariant: {lid} has no Integration Invariants row in PROPERTIES.md"
+                for lid in int_lane_ids
+            )
+        )
+
     if invariant_rows:
         test_command = config.get("test_command", "pytest")
         derived_lanes = {
