@@ -9,7 +9,7 @@ import { findingKey } from './shared/review-keys'
 import { reviewBranchMoved } from './shared/review-branch'
 import { REVIEW_LENS_SCHEMA } from './shared/schemas'
 import { describeFailure } from './shared/batch'
-import { runBatch } from './shared/agents'
+import { runBatch, resilientAgent } from './shared/agents'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import type { PhaseArgs } from './shared/types'
@@ -106,13 +106,16 @@ async function reviewFromDiff(): Promise<ReviewOutcome> {
 const lensWorktree = (typeof a.repoRoot === 'string' && a.repoRoot) ? { worktree: a.repoRoot } : {}
 // Schema-validated at the tool layer: a lens that answers in prose is
 // retried by the runtime instead of halting Review on a strict parse.
-const reviewResults = await parallel<DomainResult>(
+// resilientAgent with no retries keeps agent()'s null-on-failure shape and
+// adds the unregistered-agent-type fallback (a session older than
+// agents/datum-reviewer.md cannot spawn it; the lens runs on the default agent).
+const reviewResults = await parallel<DomainResult | null>(
   DOMAINS.map((d) => () =>
-    agent(
+    resilientAgent<DomainResult>(
       withPreamble(d.domain === 'Correctness'
         ? renderPrompt(reviewCorrectnessSpecVerifyTemplate, { baseBranch })
         : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
-      stageOpts('review', { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA, ...lensWorktree }),
+      stageOpts('review', { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA, maxRetries: 0, ...lensWorktree }),
     ),
   ),
 )

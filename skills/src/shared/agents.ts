@@ -14,6 +14,12 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/** The agent type the host refused to spawn ("agent type 'x' not found"), or null. */
+export function unknownAgentType(message: string): string | null {
+  const m = /agent type '([^']+)' not found/.exec(message)
+  return m ? m[1] : null
+}
+
 // ── Independent commit verification (#274) ──────────────────────────────────
 // A stage agent self-reports `committed` in its structured output. If it
 // reports false, that's ambiguous: either it genuinely skipped the commit, or
@@ -122,6 +128,22 @@ export async function resilientAgent<T = unknown>(
       threw = true
       caughtMessage = err instanceof Error ? err.message : String(err)
       lastResult = null
+    }
+
+    // datum self-hosted 2026-09-07: the host loads .claude/agents/ once per
+    // session, so an agent definition added after the session started
+    // (datum-quality-reader, datum-reviewer) fails at spawn with "agent type
+    // 'x' not found" and the stage died before any work. A host fact, not a
+    // verdict: drop the type, say what fixes it, and go again at once — no
+    // retry spent, no dirty guard (nothing ran).
+    const unknownType = threw ? unknownAgentType(caughtMessage) : null
+    if (unknownType && opts?.agentType) {
+      logFn(`[resilientAgent] agent_type_unavailable: ${unknownType} — the host has not registered agents/${unknownType}.md (a new Claude Code session picks it up); running ${opts.label || 'this call'} on the default agent instead`)
+      const rest = { ...opts }
+      delete rest.agentType
+      opts = rest
+      attempt--
+      continue
     }
 
     if (!threw && lastResult !== null) return lastResult

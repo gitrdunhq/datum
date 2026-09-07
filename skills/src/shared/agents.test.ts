@@ -456,3 +456,33 @@ describe('runBatch — one retry on batch_timeout', () => {
   })
 })
 
+
+// datum self-hosted 2026-09-07: agents/datum-quality-reader.md and
+// datum-reviewer.md were added by the prompt-audit refactor, but the host
+// loads .claude/agents/ once per session, so a run in a session older than
+// the file gets `agent type 'datum-quality-reader' not found` at spawn and
+// the stage dies before any work. An unknown agent type is a host fact, not
+// a verdict: the call retries at once without the type and names the fix.
+describe('resilientAgent — an unregistered agent type falls back to the default agent', () => {
+  const notFound = new Error("agent({agentType}): agent type 'datum-quality-reader' not found. Available agents: claude, datum-cli")
+  it('retries without agentType, logs agent_type_unavailable, and returns the fallback result', async () => {
+    const seen: Array<string | undefined> = []
+    const logs: string[] = []
+    const r = await resilientAgent('check', { agentType: 'datum-quality-reader', label: 'refactor-check:T1', maxRetries: 1 }, {
+      agentFn: async (_p, o) => { seen.push(o?.agentType); if (o?.agentType) throw notFound; return { ok: true } },
+      logFn: (m) => logs.push(m),
+    })
+    expect(r).toEqual({ ok: true })
+    expect(seen).toEqual(['datum-quality-reader', undefined])
+    expect(logs.some((l) => /agent_type_unavailable: datum-quality-reader/.test(l) && /agents\/datum-quality-reader\.md/.test(l) && /session/i.test(l))).toBe(true)
+  })
+  it('does not spend a retry or run the dirty-worktree guard on the type fallback', async () => {
+    let calls = 0
+    const r = await resilientAgent('check', { agentType: 'datum-reviewer', worktree: '/wt', maxRetries: 0 }, {
+      agentFn: async (_p, o) => { calls++; if (o?.agentType) throw notFound; return 'ok' },
+      logFn: () => undefined,
+    })
+    expect(r).toBe('ok')
+    expect(calls).toBe(2)
+  })
+})
