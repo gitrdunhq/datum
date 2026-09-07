@@ -790,6 +790,22 @@ function withPreamble(text) {
   return PREAMBLE + text;
 }
 
+// skills/src/shared/refine-roadmap.ts
+var ROADMAP_MARK_RE = /\(addendum (\d{4}-\d{2}-\d{2})\)/;
+var ROADMAPPED_ADDENDA_CMD = "grep -oE '\\(addendum [0-9]{4}-[0-9]{2}-[0-9]{2}\\)' ROADMAP.md 2>/dev/null | sort -u || true";
+function recordedAddendumDates(stepOut) {
+  const dates = /* @__PURE__ */ new Set();
+  for (const line of (stepOut || "").split("\n")) {
+    const m = ROADMAP_MARK_RE.exec(line);
+    if (m) dates.add(m[1]);
+  }
+  return [...dates].sort();
+}
+function pendingRoadmapAddenda(addenda, recorded) {
+  const seen = new Set(recorded);
+  return addenda.filter((a2) => a2.verdict === "roadmap" && !seen.has(a2.date));
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -808,7 +824,10 @@ var probeSteps = contextProbeSteps({
     { name: "timestamp", command: "date +%Y-%m-%dT%H:%M:%S" },
     { name: "agent-types", command: `jq -r '.agent_types // true' .datum/config.json` },
     // Evaluated in the script (below) whether or not the TICKET is inlined.
-    { name: "has-addenda", command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` }
+    { name: "has-addenda", command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` },
+    // #437: the addendum dates ROADMAP.md already carries, so a re-entered
+    // refine does not append the same roadmap items again.
+    { name: "roadmapped-addenda", command: ROADMAPPED_ADDENDA_CMD }
   ]
 });
 var readBatch = await runBatch(probeSteps, bootstrapOpts("cli", { label: "read-context", model: model("fast") }));
@@ -869,19 +888,24 @@ async function refineFromTicket() {
     return commit.sha;
   }
   if (hasAddenda) {
+    const recordedDates = recordedAddendumDates(stepStdout(readBatch, "roadmapped-addenda"));
+    const recordedNote = recordedDates.length > 0 ? `
+Already on ROADMAP.md from an earlier run (do NOT append these again): addenda dated ${recordedDates.join(", ")}.` : "";
     const triageRaw = await agent(
       withPreamble(renderPrompt(refine_triage_default, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
-2. Append the roadmap items under "## Planned"
+2. Append one line per roadmap addendum under "## Planned", ending with the marker \`(addendum YYYY-MM-DD)\` using that addendum's date${recordedNote}
 Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`),
       { label: "triage-addenda", model: model("balanced") }
     );
     triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
     log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`);
+    const pending = pendingRoadmapAddenda(triageResult.addenda, recordedDates);
     if (triageResult.roadmap_items.length > 0) {
-      const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap", { allowUnchanged: false });
+      if (pending.length === 0) log(`roadmap_already_recorded: every roadmap addendum (${recordedDates.join(", ")}) is already on ROADMAP.md \u2014 not appending again`);
+      const roadmapCommit = await commitRefineFiles(["ROADMAP.md"], "roadmap: triage items from refine", "commit-roadmap", { allowUnchanged: pending.length === 0 });
       log(`ROADMAP.md committed (${roadmapCommit})`);
     }
   } else {
