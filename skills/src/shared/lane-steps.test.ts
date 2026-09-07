@@ -778,7 +778,7 @@ describe('setupSteps', () => {
       mkdirSync(bin)
       writeFileSync(join(bin, 'datum'), '#!/bin/bash\nprintf \'{"error": "lane branch datum/e--T1 is locked to stale worktree /x"}\'\nexit 1\n', { mode: 0o755 })
       const steps = setupSteps({ batchRunId: 'r1-b0', epicBranch: 'datum/e', laneIds: ['T1'], lanePlanPath: 'x' })
-      const script = `__root=${JSON.stringify(dir)}\n` + batchScript([steps[1]])
+      const script = `export __root=${JSON.stringify(dir)}\n` + batchScript([steps[1]])
       const out = execFileSync('bash', ['-c', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
       const parsed = parseBatchResult(out, [steps[1]])
       expect(parsed.failed?.name).toBe('setup-wt')
