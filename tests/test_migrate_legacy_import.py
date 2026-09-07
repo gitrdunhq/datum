@@ -183,8 +183,8 @@ def test_migrate_names_its_legacy_path_without_the_state_file_constant():
     """CORR-001 (#341 review): Requirement 1's grep for `STATE_FILE =` must
     match only state.py plus the two archival-export modules; migrate.py is
     the legacy importer (Requirement 3) and names its path LEGACY_STATE_FILE."""
-    from pathlib import Path
     import re
+    from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "datum" / "migrate.py").read_text()
     assert re.search(r"^LEGACY_STATE_FILE\s*=", src, re.M), "legacy path constant missing"
