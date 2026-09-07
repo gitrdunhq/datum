@@ -106,16 +106,17 @@ def _build_body(module: str, error: Exception | str, context: dict | None) -> st
         tb = traceback.format_exception(type(error), error, error.__traceback__)
         parts.append(f"**Traceback:**\n```\n{''.join(tb[-5:])}```")
 
-    state_path = Path(".datum/state.json")
-    if state_path.exists():
-        try:
-            state = json.loads(state_path.read_text())
+    try:
+        from datum.state import load_state
+
+        state = load_state()
+        if state:
             parts.append(
                 f"**State:** phase=`{state.get('current_phase')}`, "
                 f"run_id=`{state.get('run_id')}`"
             )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     if context:
         ctx_str = json.dumps(context, indent=2)

@@ -65,11 +65,29 @@ def test_collect_tasks_forwards_args_and_writes_its_raw_file(repo):
 
 
 def test_archive_forwards_args_and_archives_state(repo):
-    Path(".datum/state.json").write_text('{"phases": {}}\n')
+    # Superseded by AC1/AC2: seed the canonical store via datum.state.save_state
+    # and never hand-write .datum/state.json — archive.py must read from
+    # datum.state.load_state(), not shutil.copy2 of a stray state.json.
+    import datum.state as state_module
+
+    seed = {"phases": {"act": {"status": "completed"}}}
+    state_module.save_state(seed)
+    write_through = Path(".datum/state.json")
+    if write_through.exists():
+        write_through.unlink()
+    expected = state_module.load_state()
+
     result = CliRunner().invoke(app, ["closeout-archive", "--run-id", "r1"])
     assert result.exit_code == 0, result.output
-    assert Path(".datum/runs/r1/state.json").is_file()
+
+    archived = Path(".datum/runs/r1/state.json")
+    assert archived.is_file(), (
+        "archive.py must write state.json from datum.state.load_state(), "
+        "not from a .datum/state.json file that was never created"
+    )
+    assert json.loads(archived.read_text()) == expected
     assert not Path(".datum/state.json").exists()
+    assert not Path(".datum/state.db").exists()
 
 
 def test_closeout_command_exit_code_is_the_module_exit_code(repo):

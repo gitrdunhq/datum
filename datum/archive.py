@@ -72,17 +72,16 @@ def main() -> None:
 
     run_id = args.run_id or args.run_id
     if not run_id:
-        # Try to read from state
-        state_path = Path(".datum/state.json")
-        if state_path.exists():
-            with state_path.open() as f:
-                state = json.load(f)
-            run_id = state.get("run_id")
+        from datum.state import load_state
+
+        state = load_state()
+        run_id = state.get("run_id") if state else None
     if not run_id:
-        print(json.dumps({"error": "No run_id provided and no state.json found"}))
+        print(json.dumps({"error": "No run_id provided and no canonical state found"}))
         sys.exit(1)
 
     import re
+
     if not re.match(r"^[a-zA-Z0-9_-]+$", run_id):
         print(json.dumps({"error": "Invalid run_id format"}))
         sys.exit(1)

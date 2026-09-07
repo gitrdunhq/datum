@@ -277,8 +277,9 @@ def load_state() -> dict:
     with sqlite3.connect(DB_FILE) as conn:
         try:
             cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, sqlite3.DatabaseError):
             # DB file exists but was never initialized (e.g. zero-byte file)
+            # or is not a valid sqlite database at all.
             return {}
         row = cur.fetchone()
         if row:
