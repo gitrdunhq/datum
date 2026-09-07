@@ -1,0 +1,74 @@
+{
+  "task_id": "task-011",
+  "slug": "migrate-pipeline-scheduler-with-equivalence-test",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_pipeline_scheduler.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/pipeline_scheduler.py contains no `def load_state` and",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_pipeline_scheduler_py_contains_no_def_load_state_and_n",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-011 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_pipeline_scheduler_py_contains_no_def_load_state_and_n \u2192 tests/test_pipeline_scheduler.py\n\nimport pytest\n\n\nclass TestTask011AC1:\n    def test_ac1_datum_pipeline_scheduler_py_contains_no_def_load_state_and_n(self):\n        \"\"\"\n        PROP-001: datum/pipeline_scheduler.py contains no `def load_state` and no `Path(\".datum/st\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_pipeline_scheduler.py",
+      "kind": "pytest",
+      "purpose": "Verify tests/test_pipeline_scheduler.py exists and asserts the sche",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_tests_test_pipeline_scheduler_py_exists_and_asserts_the_sche",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-011 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_tests_test_pipeline_scheduler_py_exists_and_asserts_the_sche \u2192 tests/test_pipeline_scheduler.py\n\nimport pytest\n\n\nclass TestTask011AC2:\n    def test_ac2_tests_test_pipeline_scheduler_py_exists_and_asserts_the_sche(self):\n        \"\"\"\n        PROP-002: tests/test_pipeline_scheduler.py exists and asserts the scheduler's dispatch dec\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_pipeline_scheduler.py",
+      "kind": "pytest",
+      "purpose": "Verify The scheduler dispatches the same set of ready lanes for a s",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_the_scheduler_dispatches_the_same_set_of_ready_lanes_for_a_s",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-011 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_the_scheduler_dispatches_the_same_set_of_ready_lanes_for_a_s \u2192 tests/test_pipeline_scheduler.py\n\nimport pytest\n\n\nclass TestTask011AC3:\n    def test_ac3_the_scheduler_dispatches_the_same_set_of_ready_lanes_for_a_s(self):\n        \"\"\"\n        PROP-003: The scheduler dispatches the same set of ready lanes for a state dict recording \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_pipeline_scheduler.py",
+      "kind": "pytest",
+      "purpose": "Verify When datum.state.load_state() returns {} the scheduler treat",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_when_datum_state_load_state_returns_the_scheduler_treats_it",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-011 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_when_datum_state_load_state_returns_the_scheduler_treats_it \u2192 tests/test_pipeline_scheduler.py\n\nimport pytest\n\n\nclass TestTask011AC4:\n    def test_ac4_when_datum_state_load_state_returns_the_scheduler_treats_it(self):\n        \"\"\"\n        PROP-004: When datum.state.load_state() returns {} the scheduler treats it as 'no state ye\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_pipeline_scheduler.py",
+      "kind": "pytest",
+      "purpose": "Verify The module docstring no longer says it reads .datum/state.js",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_the_module_docstring_no_longer_says_it_reads_datum_state_jso",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-011 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_the_module_docstring_no_longer_says_it_reads_datum_state_jso \u2192 tests/test_pipeline_scheduler.py\n\nimport pytest\n\n\nclass TestTask011AC5:\n    def test_ac5_the_module_docstring_no_longer_says_it_reads_datum_state_jso(self):\n        \"\"\"\n        PROP-005: The module docstring no longer says it reads .datum/state.json\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/pipeline_scheduler.py": "#!/usr/bin/env python3\n\nimport json\nimport sys\nfrom pathlib import Path\n\nDEFAULT_MAX_RETRY_BACKOFF_MS = 300_000\n\nSTAGE_ORDER = [\"RED\", \"GREEN\", \"REFACTOR\"]\n\n\ndef load_state() -> dict:\n    ...\n\n\ndef load_lane_plan() -> dict:\n    ...\n\n\ndef get_lane_stage_status(state: dict, lane_id: str, stage: str) -> str:\n    ...\n\n\ndef get_lane_sub_stage(state: dict, lane_id: str) -> str | None:\n    ...\n\n\ndef is_stub_committed(state: dict, dep_lane: str) -> bool:\n    ...\n\n\ndef is_green_committed(state: dict, dep_lane: str) -> bool:\n    ...\n\n\ndef get_in_flight_file_writes(state: dict, lane_plan: dict) -> set[str]:\n    ...\n\n\ndef eligible_lanes(state: dict, lane_plan: dict) -> list[dict]:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\ndef pipeline_status(state: dict, lane_plan: dict) -> dict:\n    ...\n\n\n\n\ndef main() -> None:\n    ...\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

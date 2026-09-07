@@ -1,0 +1,75 @@
+{
+  "task_id": "task-012",
+  "slug": "drop-live-state-json-write-through",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_state_db.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/state.py's save_state() writes only to .datum/state.db",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_state_py_s_save_state_writes_only_to_datum_state_db_af",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-012 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_state_py_s_save_state_writes_only_to_datum_state_db_af \u2192 tests/test_state_db.py\n\nimport pytest\n\n\nclass TestTask012AC1:\n    def test_ac1_datum_state_py_s_save_state_writes_only_to_datum_state_db_af(self):\n        \"\"\"\n        PROP-001: datum/state.py's save_state() writes only to .datum/state.db \u2014 after `save_state\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_state_db.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/state.py's update_state() likewise creates no `.datum/",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_datum_state_py_s_update_state_likewise_creates_no_datum_stat",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-012 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_datum_state_py_s_update_state_likewise_creates_no_datum_stat \u2192 tests/test_state_db.py\n\nimport pytest\n\n\nclass TestTask012AC2:\n    def test_ac2_datum_state_py_s_update_state_likewise_creates_no_datum_stat(self):\n        \"\"\"\n        PROP-002: datum/state.py's update_state() likewise creates no `.datum/state.json`, and its\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_state_db.py",
+      "kind": "pytest",
+      "purpose": "Verify load_state(), save_state() and update_state() keep their exa",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_load_state_save_state_and_update_state_keep_their_exact_curr",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-012 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_load_state_save_state_and_update_state_keep_their_exact_curr \u2192 tests/test_state_db.py\n\nimport pytest\n\n\nclass TestTask012AC3:\n    def test_ac3_load_state_save_state_and_update_state_keep_their_exact_curr(self):\n        \"\"\"\n        PROP-003: load_state(), save_state() and update_state() keep their exact current signature\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_state_db.py",
+      "kind": "pytest",
+      "purpose": "Verify `grep -rn 'STATE_FILE\\s*=\\|Path(\"\\.datum/state\\.json\")\\|def ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_grep_rn_state_file_s_path_datum_state_json_def_load_state_de",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-012 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_grep_rn_state_file_s_path_datum_state_json_def_load_state_de \u2192 tests/test_state_db.py\n\nimport pytest\n\n\nclass TestTask012AC4:\n    def test_ac4_grep_rn_state_file_s_path_datum_state_json_def_load_state_de(self):\n        \"\"\"\n        PROP-004: `grep -rn 'STATE_FILE\\s*=\\|Path(\"\\.datum/state\\.json\")\\|def load_state\\|def save\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_state_db.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/gc.py's _PROTECTED_NAMES no longer contains 'state.jso",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_datum_gc_py_s_protected_names_no_longer_contains_state_json",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-012 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_datum_gc_py_s_protected_names_no_longer_contains_state_json \u2192 tests/test_state_db.py\n\nimport pytest\n\n\nclass TestTask012AC5:\n    def test_ac5_datum_gc_py_s_protected_names_no_longer_contains_state_json(self):\n        \"\"\"\n        PROP-005: datum/gc.py's _PROTECTED_NAMES no longer contains 'state.json' and still contain\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/state.py": "#!/usr/bin/env python3\n\nimport argparse\nimport json\nimport shutil\nimport sqlite3\nimport sys\nfrom datetime import UTC, datetime\nfrom pathlib import Path\n\nDB_FILE = Path(\".datum/state.db\")\nRUNS_DIR = Path(\".datum/runs\")\nSCHEMA_VERSION = \"1.0.0\"\n\nPHASES = [\n]\n\nVALID_STATUSES = {\"pending\", \"in_progress\", \"completed\", \"failed\", \"closeout_pending\"}\nVALID_STAGES = {\"RED\", \"GREEN\", \"REFACTOR\", \"queued\", \"completed\", \"failed_terminal\"}\nPROTECTED_BRANCHES = {\"main\", \"master\"}\n\n\ndef current_branch() -> str | None:\n    ...\n\n\n\ndef _existing_branches() -> set[str]:\n    ...\n\n\n\ndef epic_base_path(branch: str) -> Path:\n    ...\n\n\n\ndef record_epic_base(branch: str, base_branch: str) -> None:\n    ...\n\n\ndef resolve_epic_base(branch: str | None = None) -> tuple[str, str]:\n    ...\n\n\n\n\n\ndef ensure_feature_branch(title: str | None = None) -> str:\n    ...\n\n\n\n\n\n\n\n\n\n\ndef load_config() -> dict:\n    ...\n\n\n\ndef init_db():\n    ...",
+    "datum/gc.py": "\nfrom __future__ import annotations\n\nimport fnmatch\nfrom dataclasses import dataclass\nfrom datetime import UTC, datetime\nfrom pathlib import Path\nfrom typing import Protocol, runtime_checkable\n\n# \u2500\u2500 Filesystem protocol (injectable for tests) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\n@runtime_checkable\nclass Fs(Protocol):\n    ...\n\n\n\n\n\n\nclass RealFs:\n    ...\n\n\n\n\n\n\n_REAL_FS = RealFs()\n\n\n# \u2500\u2500 Configuration \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\n@dataclass\nclass GcConfig:\n    ...\n\n\n\n\n\n\n\n\n# \u2500\u2500 Result types \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\n@dataclass\nclass GcResult:\n    ...\n\n\n\n\n\n# \u2500\u2500 Artifact category definitions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n# Files in .datum/ root that must NEVER be collected regardless of age.\n_PROTECTED_NAMES = frozenset(\n)\n\n\ndef _is_protected(path: Path) -> bool:\n    ...\n\n\n# \u2500\u2500 Core helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef is_stale(mtime: float, retention_days: int) -> bool:\n    ...\n\n\ndef _age_days(mtime: float) -> int:\n    ...\n\n\n# \u2500\u2500 Collectors \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef _collect_dir(\n    subdir: Path,\n) -> list[dict]:\n    items: list[dict] = []\n        mt = fs.mtime(path)\n\n\ndef _collect_root_pattern(\n    datum_dir: Path,\n) -> list[dict]:\n    items: list[dict] = []\n        mt = fs.mtime(path)\n\n\ndef collect_stale(\n    datum_dir: Path,\n) -> list[dict]:\n    _fs = fs if fs is not None else _REAL_FS\n    results: list[dict] = []\n\n\n\n\n\n\n\n# \u2500\u2500 Purge \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef purge(\n    stale_items: list[dict],\n) -> list[Path]:\n    _fs = fs if fs is not None else _REAL_FS\n    deleted: list[Path] = []\n\n        path: Path = item[\"path\"]\n\n\n\n# \u2500\u2500 Top-level entry point \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef run_gc(\n    datum_dir: Path,\n) -> GcResult:\n    _fs = fs if fs is not None else _REAL_FS\n    stale = collect_stale(datum_dir, cfg, fs=_fs)\n    deleted = purge(stale, cfg, fs=_fs)\n\n        items=stale,\n        deleted_count=len(deleted),\n        dry_run=cfg.dry_run,\n\n\n# \u2500\u2500 Report formatter \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef format_gc_report(result: GcResult) -> str:\n    ...\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

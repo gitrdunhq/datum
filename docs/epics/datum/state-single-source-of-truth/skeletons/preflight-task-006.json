@@ -1,0 +1,74 @@
+{
+  "task_id": "task-006",
+  "slug": "retire-path-utils-state-helpers",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_path_utils_state_removed.py",
+      "kind": "pytest",
+      "purpose": "Verify A repo-wide grep for `path_utils.load_state`, `path_utils.st",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_a_repo_wide_grep_for_path_utils_load_state_path_utils_state",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-006 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_a_repo_wide_grep_for_path_utils_load_state_path_utils_state \u2192 tests/test_path_utils_state_removed.py\n\nimport pytest\n\n\nclass TestTask006AC1:\n    def test_ac1_a_repo_wide_grep_for_path_utils_load_state_path_utils_state(self):\n        \"\"\"\n        PROP-001: A repo-wide grep for `path_utils.load_state`, `path_utils.state_file`, `path_uti\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_path_utils_state_removed.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/path_utils.py contains no `def state_file`, no `def lo",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_datum_path_utils_py_contains_no_def_state_file_no_def_load_s",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-006 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_datum_path_utils_py_contains_no_def_state_file_no_def_load_s \u2192 tests/test_path_utils_state_removed.py\n\nimport pytest\n\n\nclass TestTask006AC2:\n    def test_ac2_datum_path_utils_py_contains_no_def_state_file_no_def_load_s(self):\n        \"\"\"\n        PROP-002: datum/path_utils.py contains no `def state_file`, no `def load_state`, no `def c\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_path_utils_state_removed.py",
+      "kind": "pytest",
+      "purpose": "Verify `python -c \"import datum.path_utils\"` exits 0 with no import",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_python_c_import_datum_path_utils_exits_0_with_no_import_erro",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-006 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_python_c_import_datum_path_utils_exits_0_with_no_import_erro \u2192 tests/test_path_utils_state_removed.py\n\nimport pytest\n\n\nclass TestTask006AC3:\n    def test_ac3_python_c_import_datum_path_utils_exits_0_with_no_import_erro(self):\n        \"\"\"\n        PROP-003: `python -c \"import datum.path_utils\"` exits 0 with no import error, and `datum.p\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_path_utils_state_removed.py",
+      "kind": "pytest",
+      "purpose": "Verify run_dir() and the archival path expression `run_dir(run_id) ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_run_dir_and_the_archival_path_expression_run_dir_run_id_stat",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-006 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_run_dir_and_the_archival_path_expression_run_dir_run_id_stat \u2192 tests/test_path_utils_state_removed.py\n\nimport pytest\n\n\nclass TestTask006AC4:\n    def test_ac4_run_dir_and_the_archival_path_expression_run_dir_run_id_stat(self):\n        \"\"\"\n        PROP-004: run_dir() and the archival path expression `run_dir(run_id) / \"state.json\"` (lin\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_path_utils_state_removed.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/path_utils.py's module docstring no longer claims to b",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_datum_path_utils_py_s_module_docstring_no_longer_claims_to_b",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-006 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_datum_path_utils_py_s_module_docstring_no_longer_claims_to_b \u2192 tests/test_path_utils_state_removed.py\n\nimport pytest\n\n\nclass TestTask006AC5:\n    def test_ac5_datum_path_utils_py_s_module_docstring_no_longer_claims_to_b(self):\n        \"\"\"\n        PROP-005: datum/path_utils.py's module docstring no longer claims to be the SSOT for state\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/path_utils.py": "#!/usr/bin/env python3\n\nfrom __future__ import annotations\n\nimport json\nimport os\nfrom pathlib import Path\n\n\ndef project_root() -> Path:\n    ...\n\n\ndef datum_dir() -> Path:\n    ...\n\n\ndef runs_dir() -> Path:\n    ...\n\n\ndef state_file() -> Path:\n    ...\n\n\ndef __getattr__(name: str):\n    ...\n\n\ndef skill_root() -> Path:\n    ...\n\n\ndef assets_dir() -> Path:\n    ...\n\n\ndef templates_dir() -> Path:\n    ...\n\n\ndef load_state() -> dict:\n    ...\n\n\ndef current_run_id() -> str | None:\n    ...\n\n\ndef run_dir(run_id: str) -> Path:\n    ...\n\n\ndef review_packets_dir(run_id: str | None = None) -> Path:\n    ...\n\n\ndef legacy_review_packets_dir() -> Path:\n    ...\n\n\ndef existing_review_packets_dir(run_id: str | None = None) -> Path:\n    ...\n\n\ndef closeout_raw_dir(run_id: str) -> Path:\n    ...\n\n\ndef collector_marker(run_id: str, name: str) -> Path:\n    ...\n\n\ndef state_for_run(run_id: str) -> Path:\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

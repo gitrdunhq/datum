@@ -1,0 +1,75 @@
+{
+  "task_id": "task-008",
+  "slug": "document-sql-and-tui-exceptions",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_corpus_sql_state_json_absent.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/memory/corpus_sql.py has a code comment directly above",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_memory_corpus_sql_py_has_a_code_comment_directly_above",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_memory_corpus_sql_py_has_a_code_comment_directly_above \u2192 tests/test_corpus_sql_state_json_absent.py\n\nimport pytest\n\n\nclass TestTask008AC1:\n    def test_ac1_datum_memory_corpus_sql_py_has_a_code_comment_directly_above(self):\n        \"\"\"\n        PROP-001: datum/memory/corpus_sql.py has a code comment directly above its `ATTACH ... sta\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_corpus_sql_state_json_absent.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/memory/corpus_sql.py no longer constructs a DuckDB vie",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_datum_memory_corpus_sql_py_no_longer_constructs_a_duckdb_vie",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_datum_memory_corpus_sql_py_no_longer_constructs_a_duckdb_vie \u2192 tests/test_corpus_sql_state_json_absent.py\n\nimport pytest\n\n\nclass TestTask008AC2:\n    def test_ac2_datum_memory_corpus_sql_py_no_longer_constructs_a_duckdb_vie(self):\n        \"\"\"\n        PROP-002: datum/memory/corpus_sql.py no longer constructs a DuckDB view over `datum_dir / \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_corpus_sql_state_json_absent.py",
+      "kind": "pytest",
+      "purpose": "Verify run_corpus_query returns the same result column names for it",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_run_corpus_query_returns_the_same_result_column_names_for_it",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_run_corpus_query_returns_the_same_result_column_names_for_it \u2192 tests/test_corpus_sql_state_json_absent.py\n\nimport pytest\n\n\nclass TestTask008AC3:\n    def test_ac3_run_corpus_query_returns_the_same_result_column_names_for_it(self):\n        \"\"\"\n        PROP-003: run_corpus_query returns the same result column names for its analytics queries \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_corpus_sql_state_json_absent.py",
+      "kind": "pytest",
+      "purpose": "Verify datum-tui/data.py's load_state() reads .datum/state.db via t",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_datum_tui_data_py_s_load_state_reads_datum_state_db_via_the",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_datum_tui_data_py_s_load_state_reads_datum_state_db_via_the \u2192 tests/test_corpus_sql_state_json_absent.py\n\nimport pytest\n\n\nclass TestTask008AC4:\n    def test_ac4_datum_tui_data_py_s_load_state_reads_datum_state_db_via_the(self):\n        \"\"\"\n        PROP-004: datum-tui/data.py's load_state() reads .datum/state.db via the stdlib sqlite3 mo\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_corpus_sql_state_json_absent.py",
+      "kind": "pytest",
+      "purpose": "Verify datum-tui/data.py carries a comment referencing this epic th",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_datum_tui_data_py_carries_a_comment_referencing_this_epic_th",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_datum_tui_data_py_carries_a_comment_referencing_this_epic_th \u2192 tests/test_corpus_sql_state_json_absent.py\n\nimport pytest\n\n\nclass TestTask008AC5:\n    def test_ac5_datum_tui_data_py_carries_a_comment_referencing_this_epic_th(self):\n        \"\"\"\n        PROP-005: datum-tui/data.py carries a comment referencing this epic that states it is exem\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/memory/corpus_sql.py": "\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\nfrom typing import Any\n\n# \u2500\u2500 SQL guard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n# Keywords that are forbidden anywhere in the query (normalised to uppercase).\n_DENYLIST: frozenset[str] = frozenset(\n)\n\n# Token-boundary pattern: match whole words so \"CREATED\" doesn't trigger \"CREATE\".\n_WORD_RE = re.compile(r\"\\b([A-Z_][A-Z_0-9]*)\\b\")\n\n# A query is safe only if it starts with SELECT or WITH (after stripping comments/\n# whitespace). Everything else is rejected.\n_ALLOWED_START = re.compile(r\"^\\s*(SELECT|WITH)\\b\", re.IGNORECASE)\n\n\ndef _strip_sql_strings(query: str) -> str:\n    ...\n\n\ndef sql_guard(query: str) -> str | None:\n    ...\n\n\n\n\n\n\n\n# \u2500\u2500 Row rendering \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\nMAX_ROWS = 50\nMAX_CHARS = 3800\n\n\ndef render_rows(\n    columns: list[str],\n    max_chars: int = MAX_CHARS,\n) -> str:\n\n    widths = [len(c) for c in columns]\n    str_rows: list[list[str]] = []\n        cells = [str(v) if v is not None else \"NULL\" for v in row]\n            widths[i] = max(widths[i], min(len(cell), 60))\n\n    def _fmt_row(cells: list[str]) -> str:\n        ...\n\n    sep = \"+-\" + \"-+-\".join(\"-\" * w for w in widths) + \"-+\"\n    header = _fmt_row(list(columns))\n\n    lines = [sep, header, sep]\n\n    omitted = (\n\n    result = \"\\n\".join(lines)\n\n        truncated = result[:max_chars]\n        cut = truncated.rfind(\"\\n\")\n            truncated = truncated[:cut]\n        remaining = len(result) - len(truncated)\n        result = (\n\n\n\n# \u2500\u2500 View SQL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n\ndef _transcripts_table_sql(transcripts_glob: str) -> str:\n    ...\n\n\n\n\n\ndef _inject_limit(query: str, limit: int) -> str:\n    ...\n",
+    "datum-tui/data.py": "\nfrom __future__ import annotations\n\nimport json\nimport os\nfrom pathlib import Path\n\n\ndef _project_root() -> Path:\n    ...\n\n\ndef _datum_dir() -> Path:\n    ...\n\n\ndef load_state() -> dict:\n    ...\n\n\ndef load_config() -> dict:\n    ...\n\n\ndef load_metrics() -> dict:\n    ...\n\n\n\n\n\n\ndef load_events(limit: int = 50) -> list[dict]:\n    ...\n\n\ndef load_lanes() -> list[dict]:\n    ...\n\n\ndef load_epics() -> list[str]:\n    ...\n\n\ndef load_current_state() -> str:\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

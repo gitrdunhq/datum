@@ -1,0 +1,68 @@
+{
+  "batch": true,
+  "language": "python",
+  "tasks_processed": 12,
+  "output_dir": "docs/epics/datum/state-single-source-of-truth/skeletons",
+  "tasks": {
+    "task-001": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-001.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-002": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-002.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-003": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-003.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-004": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-004.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-005": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-005.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-006": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-006.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-007": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-007.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-008": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-008.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-009": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-009.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-010": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-010.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-011": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-011.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-012": {
+      "path": "docs/epics/datum/state-single-source-of-truth/skeletons/preflight-task-012.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    }
+  }
+}

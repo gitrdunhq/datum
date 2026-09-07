@@ -1,0 +1,76 @@
+{
+  "task_id": "task-010",
+  "slug": "closeout-no-state-sentinel",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_closeout_collectors.py",
+      "kind": "pytest",
+      "purpose": "Verify When datum.state.load_state() returns {} and no lane-state m",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_when_datum_state_load_state_returns_and_no_lane_state_marker",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-010 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_when_datum_state_load_state_returns_and_no_lane_state_marker \u2192 tests/test_closeout_collectors.py\n\nimport pytest\n\n\nclass TestTask010AC1:\n    def test_ac1_when_datum_state_load_state_returns_and_no_lane_state_marker(self):\n        \"\"\"\n        PROP-001: When datum.state.load_state() returns {} and no lane-state markers exist, collec\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_closeout_collectors.py",
+      "kind": "pytest",
+      "purpose": "Verify collect_tasks.py still exits 0 with real task metrics, and n",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_collect_tasks_py_still_exits_0_with_real_task_metrics_and_no",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-010 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_collect_tasks_py_still_exits_0_with_real_task_metrics_and_no \u2192 tests/test_closeout_collectors.py\n\nimport pytest\n\n\nclass TestTask010AC2:\n    def test_ac2_collect_tasks_py_still_exits_0_with_real_task_metrics_and_no(self):\n        \"\"\"\n        PROP-002: collect_tasks.py still exits 0 with real task metrics, and no sentinel, when lan\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_closeout_collectors.py",
+      "kind": "pytest",
+      "purpose": "Verify collect_token_metrics.py writes its raw file with the same `",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_collect_token_metrics_py_writes_its_raw_file_with_the_same_s",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-010 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_collect_token_metrics_py_writes_its_raw_file_with_the_same_s \u2192 tests/test_closeout_collectors.py\n\nimport pytest\n\n\nclass TestTask010AC3:\n    def test_ac3_collect_token_metrics_py_writes_its_raw_file_with_the_same_s(self):\n        \"\"\"\n        PROP-003: collect_token_metrics.py writes its raw file with the same `{\"status\": \"no_state\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_closeout_collectors.py",
+      "kind": "pytest",
+      "purpose": "Verify collate.py's rendered `closeout-data.json` shows a non-null,",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_collate_py_s_rendered_closeout_data_json_shows_a_non_null_no",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-010 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_collate_py_s_rendered_closeout_data_json_shows_a_non_null_no \u2192 tests/test_closeout_collectors.py\n\nimport pytest\n\n\nclass TestTask010AC4:\n    def test_ac4_collate_py_s_rendered_closeout_data_json_shows_a_non_null_no(self):\n        \"\"\"\n        PROP-004: collate.py's rendered `closeout-data.json` shows a non-null, non-zero value for \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_closeout_collectors.py",
+      "kind": "pytest",
+      "purpose": "Verify collate.py no longer falls back to the live `.datum/state.js",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_collate_py_no_longer_falls_back_to_the_live_datum_state_json",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-010 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_collate_py_no_longer_falls_back_to_the_live_datum_state_json \u2192 tests/test_closeout_collectors.py\n\nimport pytest\n\n\nclass TestTask010AC5:\n    def test_ac5_collate_py_no_longer_falls_back_to_the_live_datum_state_json(self):\n        \"\"\"\n        PROP-005: collate.py no longer falls back to the live `.datum/state.json` when `.datum/run\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/closeout/collect_tasks.py": "#!/usr/bin/env python3\n\nimport json\nimport re\nimport subprocess\nimport sys\nfrom pathlib import Path\n\n\ndef _current_branch() -> str:\n    ...\n\n\ndef _epic_slug(branch: str) -> str:\n    ...\n\n\ndef _lane_plan_ids(branch: str) -> list[str] | None:\n    ...\n\n\ndef _marker_statuses(branch: str) -> dict[str, str]:\n    ...\n\n\ndef _read_marker(path: Path) -> dict | None:\n    ...\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n\n",
+    "datum/closeout/collect_token_metrics.py": "#!/usr/bin/env python3\n\nimport json\nfrom pathlib import Path\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "datum/closeout/collate.py": "#!/usr/bin/env python3\n\nimport json\nimport subprocess\nimport sys\nfrom datetime import datetime\nfrom pathlib import Path\n\nfrom pydantic import ValidationError\n\nfrom datum.models.closeout_data_schema import CloseoutData\n\nCOLLECTORS = [\n]\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
