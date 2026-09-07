@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { findingKey } from './shared/review-keys'
+import { reviewBranchMoved } from './shared/review-branch'
 
 const datumReviewSrc = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
 const correctnessPromptSrc = readFileSync(
@@ -238,7 +239,9 @@ describe('review lenses are schema-validated and diff from the epic base', () =>
   const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
   it('every lens agent call passes REVIEW_LENS_SCHEMA', () => {
     expect(src).toMatch(/import \{[^}]*REVIEW_LENS_SCHEMA[^}]*\} from '\.\/shared\/schemas'/)
-    expect(src).toMatch(/\{ label: `review-\$\{d\.domain\.toLowerCase\(\)\}`, phase: 'Review', model: d\.model, schema: REVIEW_LENS_SCHEMA \}/)
+    // The opts literal gained stageOpts('review', ...) and the worktree pin
+    // (#375); the schema is still on the same single lens dispatch.
+    expect(src).toMatch(/\{ label: `review-\$\{d\.domain\.toLowerCase\(\)\}`, phase: 'Review', model: d\.model, schema: REVIEW_LENS_SCHEMA,/)
   })
   it('reads the epic base from `datum epic-base` before the lenses run and hands it to both prompts', () => {
     const baseIdx = src.indexOf("{ name: 'base-branch', command: 'datum epic-base', tolerant: true }")
@@ -287,5 +290,68 @@ describe('datum-review — an already-passing report is not regenerated; the rub
     expect(p).toMatch(/do not re-raise/i)
     expect(p).toMatch(/cite[^\n]*(SPEC\.md|acceptance criterion|requirement id)/i)
     expect(p).toMatch(/outside SPEC\.md/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #375 — the review lenses were dispatched with no read-only protection and no
+// worktree pinning. In a real run the Architecture lens ran `git checkout
+// <other branch>` in the operator's main checkout: the diff, the synthesis and
+// the committed REVIEW-REPORT.md were for the wrong branch, and the operator's
+// checkout was left on another branch with a stray commit. Three layers now:
+// the read-only agentType (agents/datum-reviewer.md + its PreToolUse hooks),
+// worktree pinning on every lens dispatch, and a deterministic branch-drift
+// check that halts as review_branch_moved.
+// ---------------------------------------------------------------------------
+
+describe('datum-review — the lenses are read-only, pinned and branch-checked (#375)', () => {
+  const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+
+  it('dispatches every lens through the read-only review stage, not the runtime default', () => {
+    expect(src).toMatch(/stageOpts\('review',/)
+    const lensIdx = src.indexOf('DOMAINS.map((d) => () =>')
+    const block = src.slice(lensIdx, lensIdx + 800)
+    expect(block).toMatch(/stageOpts\('review',\s*\{ label: `review-\$\{d\.domain\.toLowerCase\(\)\}`/)
+    // the old comment claiming no datum-* definition fits the lenses is gone
+    expect(src).not.toMatch(/no datum-\* definition fits them/)
+  })
+
+  it("pins every lens to the review checkout with worktree, the #349 shape", () => {
+    expect(src).toMatch(/lensWorktree/)
+    const lensIdx = src.indexOf('DOMAINS.map((d) => () =>')
+    expect(src.slice(lensIdx, lensIdx + 800)).toMatch(/\.\.\.lensWorktree/)
+    expect(src).toMatch(/worktree: a\.repoRoot/)
+  })
+
+  it('reads the branch before the lenses and halts as review_branch_moved if it moved', () => {
+    const beforeIdx = src.indexOf("name: 'branch-before'")
+    const lensIdx = src.indexOf('DOMAINS.map((d) => () =>')
+    expect(beforeIdx).toBeGreaterThan(-1)
+    expect(beforeIdx).toBeLessThan(lensIdx)
+    expect(src).toMatch(/import \{ reviewBranchMoved \} from '\.\/shared\/review-branch'/)
+    expect(src).toMatch(/reviewBranchMoved\(branchBefore, branch\)/)
+    // the halt happens before the report is written to the wrong epic dir
+    const movedIdx = src.indexOf('reviewBranchMoved(branchBefore, branch)')
+    expect(movedIdx).toBeLessThan(src.indexOf('const writeSteps ='))
+    expect(src).toMatch(/review_branch_unchecked/)
+  })
+})
+
+describe('reviewBranchMoved (#375)', () => {
+  it('names the drift with both branches when the checkout moved', () => {
+    const msg = reviewBranchMoved('epic/a', 'main')
+    expect(msg).toMatch(/^review_branch_moved: /)
+    expect(msg).toContain('main')
+    expect(msg).toContain('epic/a')
+  })
+
+  it('is null when the branch is unchanged, ignoring surrounding whitespace', () => {
+    expect(reviewBranchMoved('epic/a', 'epic/a')).toBeNull()
+    expect(reviewBranchMoved(' epic/a\n', 'epic/a')).toBeNull()
+  })
+
+  it('is null (unchecked, not a false halt) when either read produced nothing', () => {
+    expect(reviewBranchMoved('', 'main')).toBeNull()
+    expect(reviewBranchMoved('main', '')).toBeNull()
   })
 })

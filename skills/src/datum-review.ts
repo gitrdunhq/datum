@@ -6,6 +6,7 @@ import { configureAgentTypes, stageOpts } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout } from './shared/batch'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { findingKey } from './shared/review-keys'
+import { reviewBranchMoved } from './shared/review-branch'
 import { REVIEW_LENS_SCHEMA } from './shared/schemas'
 import { describeFailure } from './shared/batch'
 import { runBatch } from './shared/agents'
@@ -28,9 +29,9 @@ const a = ((typeof args === 'string')
   ? (rawArgs.toLowerCase() === 'yolo' ? { yolo: true } : JSON.parse(args))
   : (args || {})) as PhaseArgs
 const yolo: boolean = !!a.yolo
-// #368: review-domain agents and the report writer stay on the runtime default —
-// no datum-* definition fits them — but honour the switch for parity with the
-// other phases (a later mapping only has to add stageOpts at the call site).
+// #375: the review lenses run under datum-reviewer (read-only tools + a Bash
+// PreToolUse hook), the command runners under datum-cli — every agent() call
+// site in this script is table-mapped.
 if (a.agentTypes && typeof a.agentTypes === 'object') configureAgentTypes(a.agentTypes)
 else configureAgentTypes({})
 // Resume cache key (#354): the review gate re-runs after a human edit.
@@ -70,9 +71,16 @@ function normaliseSeverity(raw: unknown, where: string): Finding['severity'] {
 // `datum init --name` when the epic was chained from another epic, else the
 // repo default). A chained epic diffed from `merge-base HEAD main`
 // re-reviewed all of its parent (elonchesd wf_22ad6b36-dec).
-const baseSteps = [{ name: 'base-branch', command: 'datum epic-base', tolerant: true }]
+// The same batch records the branch Review starts on: the lenses must leave
+// the checkout exactly where they found it (#375).
+const baseSteps = [
+  { name: 'base-branch', command: 'datum epic-base', tolerant: true },
+  { name: 'branch-before', command: 'git rev-parse --abbrev-ref HEAD', tolerant: true },
+]
 const baseResult = await runBatch(baseSteps, stageOpts('cli', { label: 'read-base', model: model('fast') }))
 const baseBranch = (stepStdout(baseResult, 'base-branch') || '').trim()
+const branchBefore = (stepStdout(baseResult, 'branch-before') || '').trim()
+if (!branchBefore) log('review_branch_unchecked: the pre-lens branch read returned nothing — the branch-drift check is skipped this run')
 if (!baseBranch || /\s/.test(baseBranch)) {
   throw new Error(`review_base_unresolved: datum epic-base printed ${JSON.stringify(baseBranch)} (${baseResult.missing ? 'batch returned no result' : describeFailure(baseResult, 'read-base')})`)
 }
@@ -93,6 +101,9 @@ if (alreadyComplete) log(`review_already_complete: REVIEW-REPORT.md passes the r
 interface ReviewOutcome { deduped: Finding[]; critical: Finding[] }
 
 async function reviewFromDiff(): Promise<ReviewOutcome> {
+// Pinned to the checkout under review (#349's shape): a lens that resolves
+// relative paths against the runtime's own cwd reviews the wrong tree.
+const lensWorktree = (typeof a.repoRoot === 'string' && a.repoRoot) ? { worktree: a.repoRoot } : {}
 // Schema-validated at the tool layer: a lens that answers in prose is
 // retried by the runtime instead of halting Review on a strict parse.
 const reviewResults = await parallel<DomainResult>(
@@ -101,7 +112,7 @@ const reviewResults = await parallel<DomainResult>(
       withPreamble(d.domain === 'Correctness'
         ? renderPrompt(reviewCorrectnessSpecVerifyTemplate, { baseBranch })
         : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
-      { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA },
+      stageOpts('review', { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA, ...lensWorktree }),
     ),
   ),
 )
@@ -177,6 +188,9 @@ const branchSteps = [{ name: 'branch', command: 'git rev-parse --abbrev-ref HEAD
 const branchResult = await runBatch(branchSteps, stageOpts('cli', { label: 'read-branch', model: model('fast') }))
 const branch = (stepStdout(branchResult, 'branch') || '').trim()
 if (!branch) throw new Error(`review_branch_unresolved: git rev-parse printed nothing (${branchResult.missing ? 'batch returned no result' : 'empty stdout'})`)
+// The agent definition forbids moving HEAD; this is the step that verifies it.
+const moved = reviewBranchMoved(branchBefore, branch)
+if (moved) throw new Error(moved)
 const epicDir = `docs/epics/${branch}`
 const reportPath = `${epicDir}/REVIEW-REPORT.md`
 const reportContent = reportLines.join('\n')

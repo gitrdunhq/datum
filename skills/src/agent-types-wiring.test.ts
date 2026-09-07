@@ -19,6 +19,10 @@ const FULLY_MAPPED = [
   'datum-tdd-act-lane.ts',
   'datum-tdd-act-setup.ts',
   'datum-tdd-act-merge.ts',
+  // #375: the review lenses ran with no agentType at all — no read-only
+  // definition, no hook — and one of them ran `git checkout` in the
+  // operator's checkout. Every call site here is now table-mapped.
+  'datum-review.ts',
   'shared/agents.ts',
   'shared/tracker.ts',
 ]

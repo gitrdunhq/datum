@@ -9,6 +9,10 @@ interface AgentOpts {
   schema?: object
   model?: string
   isolation?: 'worktree'
+  // The checkout the agent runs in. Lane stages have always passed it; #349
+  // (a skeptic lens that read the main checkout) and #375 (a review lens that
+  // checked out another branch) are both what its absence costs.
+  worktree?: string
   agentType?: string
 }
 

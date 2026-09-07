@@ -8,6 +8,9 @@ definitions therefore carry a strict tool allowlist, a model tier and a
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -159,3 +162,68 @@ def test_skeptic_model_is_inherit_not_a_dead_fixed_tier():
     data, body = _split(AGENTS_DIR / "datum-skeptic.md")
     assert data["model"] == "inherit", data["model"]
     assert "per lens" in body.lower() or "per-lens" in body.lower()
+
+
+# #375: the Review lenses ran with no read-only protection. The Architecture
+# lens ran `git checkout <other branch>` in the operator's main checkout, so
+# the diff, the synthesis and the committed REVIEW-REPORT.md were all for the
+# wrong branch. datum-reviewer.md is the read-only definition the lenses run
+# under; unlike datum-skeptic it must also block *Bash* mutation, because the
+# defect arrived through Bash and not through Edit/Write.
+HOOKS_DIR = AGENTS_DIR.parent / "assets" / "hooks"
+READ_ONLY_BASH_HOOK = "pre-tool-use-read-only-bash.sh"
+
+
+def test_reviewer_is_read_only_in_tools_and_hooks():
+    data, body = _split(AGENTS_DIR / "datum-reviewer.md")
+    tools = _tools(data)
+    assert "Write" not in tools and "Edit" not in tools, tools
+    assert "Read" in tools and "Bash" in tools and "Grep" in tools, tools
+    # the tier is chosen per lens at the call site (#494), never fixed here
+    assert data["model"] == "inherit", data["model"]
+
+    pre = data["hooks"]["PreToolUse"]
+    matchers = {entry["matcher"] for entry in pre}
+    assert "Edit|Write" in matchers, matchers
+    assert "Bash" in matchers, matchers
+    cmds = [h["command"] for entry in pre for h in entry["hooks"]]
+    assert any("read-only" in c and "exit 2" in c for c in cmds), cmds
+    assert any(READ_ONLY_BASH_HOOK in c for c in cmds), cmds
+    assert "read-only" in body.lower()
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="hook needs jq")
+@pytest.mark.parametrize(
+    "command,blocked",
+    [
+        ("git checkout other-branch", True),
+        ("git switch main", True),
+        ("git reset --hard HEAD~1", True),
+        ("git commit -m 'x'", True),
+        ("git worktree add /tmp/x", True),
+        ("cd repo && git rebase main", True),
+        ("rm -rf src", True),
+        ("sed -i '' 's/a/b/' src/x.ts", True),
+        ("git diff --stat main...HEAD", False),
+        ("git log --oneline -5", False),
+        ("git show HEAD", False),
+        ("git rev-parse --abbrev-ref HEAD", False),
+        ("git merge-base HEAD main", False),
+        ("rg 'checkout' src", False),
+    ],
+)
+def test_read_only_bash_hook_blocks_mutation_and_allows_inspection(
+    command: str, blocked: bool
+):
+    hook = HOOKS_DIR / READ_ONLY_BASH_HOOK
+    proc = subprocess.run(
+        [str(hook)],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+    )
+    if blocked:
+        assert proc.returncode == 2, f"{command!r} was allowed: {proc.stdout}"
+        assert "BLOCKED" in proc.stderr
+    else:
+        assert proc.returncode == 0, f"{command!r} was blocked: {proc.stderr}"
