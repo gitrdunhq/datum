@@ -39,25 +39,26 @@
   .gitignore (2 LOC)
   project.yml (160 LOC)
 AGENTS.md (141 LOC)
-CHANGELOG.md (433 LOC)
+CHANGELOG.md (480 LOC)
 CLAUDE.md (51 LOC)
 CODEX.md (3 LOC)
 COPILOT.md (3 LOC)
-CURRENT_STATE.md (119 LOC)
+CURRENT_STATE.md (118 LOC)
 GEMINI.md (3 LOC)
 KIRO.md (3 LOC)
 README.md (91 LOC)
 ROADMAP.md (29 LOC)
-SKILL.md (179 LOC)
+SKILL.md (182 LOC)
 agents/
   datum-cli.md (21 LOC)
-  datum-docs.md (69 LOC)
-  datum-green.md (55 LOC)
+  datum-docs.md (48 LOC)
+  datum-green.md (52 LOC)
+  datum-quality-reader.md (17 LOC)
   datum-reader.md (19 LOC)
   datum-red.md (69 LOC)
   datum-refactor.md (56 LOC)
-  datum-reflect.md (34 LOC)
-  datum-skeptic.md (43 LOC)
+  datum-reflect.md (29 LOC)
+  datum-skeptic.md (40 LOC)
 assets/
   config.toml.default (225 LOC)
   fixtures/
@@ -171,16 +172,16 @@ datum/
   budget.py (147 LOC)
   caliper_blast_radius.py (109 LOC)
   classify.py (137 LOC)
-  cli.py (3060 LOC)
+  cli.py (3090 LOC)
   closeout/
     archive.py (39 LOC)
     collate.py (150 LOC)
     collect_brief_defects.py (34 LOC)
-    collect_git.py (73 LOC)
+    collect_git.py (86 LOC)
     collect_gitnexus_diff.py (54 LOC)
     collect_lane_tools.py (50 LOC)
     collect_platform.py (41 LOC)
-    collect_tasks.py (169 LOC)
+    collect_tasks.py (180 LOC)
     collect_token_metrics.py (121 LOC)
     collect_wait_times.py (54 LOC)
     commit_closeout.py (195 LOC)
@@ -188,7 +189,8 @@ datum/
     file_followups.py (155 LOC)
     gitnexus_reindex.py (92 LOC)
     tag_epic.py (58 LOC)
-  closeout_cmd.py (267 LOC)
+  closeout_cmd.py (269 LOC)
+  code_tells.py (112 LOC)
   command_guard.py (103 LOC)
   config_fingerprint.py (66 LOC)
   context_skeleton.py (293 LOC)
@@ -199,18 +201,18 @@ datum/
   diff_normalize.py (83 LOC)
   failure_layer.py (179 LOC)
   floor.py (54 LOC)
-  gate.py (1568 LOC)
+  gate.py (1723 LOC)
   gc.py (368 LOC)
   github_issues.py (447 LOC)
   gitignore_check.py (79 LOC)
-  integration_invariants.py (198 LOC)
+  integration_invariants.py (206 LOC)
   knowledge_drift.py (65 LOC)
   landscape.py (334 LOC)
   lane_cleanup.py (65 LOC)
   lane_hash.py (80 LOC)
-  lane_plan.py (802 LOC)
-  lane_plan_digest.py (99 LOC)
-  lane_spec_export.py (198 LOC)
+  lane_plan.py (853 LOC)
+  lane_plan_digest.py (100 LOC)
+  lane_spec_export.py (208 LOC)
   lane_tools_runner.py (125 LOC)
   language_detect.py (133 LOC)
   learn_patterns.py (177 LOC)
@@ -286,7 +288,7 @@ datum/
       formatters.py (138 LOC)
       sanitizer.py (68 LOC)
   skeleton.py (180 LOC)
-  skeleton_creator.py (857 LOC)
+  skeleton_creator.py (879 LOC)
   skills_materialize.py (110 LOC)
   slug.py (29 LOC)
   spec_drift_detector.py (194 LOC)
@@ -319,9 +321,9 @@ diagrams/
   datum-workflow_02_flowchart_act_phase_detail.mmd (47 LOC)
   datum-workflow_02_flowchart_act_phase_detail.png (251 LOC)
 docs/
-  FLOW.md (422 LOC)
+  FLOW.md (432 LOC)
   HORIZON.md (24 LOC)
-  LANDSCAPE.md (3788 LOC)
+  LANDSCAPE.md (1161 LOC)
   adr/
     000-template.md (30 LOC)
   archive/
@@ -526,13 +528,30 @@ docs/
         QUESTIONS.md (16 LOC)
         SPEC.md (99 LOC)
         TICKET.md (59 LOC)
+      integration-lanes-2/
+        PROPERTIES.md (179 LOC)
+        QUESTIONS.md (43 LOC)
+        SPEC.md (147 LOC)
+        TASKS.md (72 LOC)
+        TICKET.md (36 LOC)
+        lane-plan.json (249 LOC)
+        skeletons/
+          batch-summary.json (28 LOC)
+          preflight-task-001.json (74 LOC)
+          preflight-task-002.json (137 LOC)
+          preflight-task-003.json (75 LOC)
+          preflight-task-004.json (75 LOC)
+        tasks.json (1 LOC)
       integration-lanes/
         PROPERTIES.md (161 LOC)
         QUESTIONS.md (30 LOC)
+        RETRO.md (86 LOC)
+        REVIEW-REPORT.md (17 LOC)
+        REVIEW-RESPONSE.md (5 LOC)
         SPEC.md (172 LOC)
         TASKS.md (220 LOC)
         TICKET.md (40 LOC)
-        lane-plan.json (292 LOC)
+        lane-plan.json (282 LOC)
         skeletons/
           batch-summary.json (53 LOC)
           preflight-task-001.json (106 LOC)
@@ -556,6 +575,8 @@ docs/
     claude-skills-audit-20260906-130507.json (565 LOC)
     claude-skills-audit-20260906-130507.md (671 LOC)
     docs-audit-20260906-152916.md (291 LOC)
+    prompts-audit-20260906-213201.md (887 LOC)
+    references-audit-20260906-164303.md (417 LOC)
 evals/
   evals.json (150 LOC)
 install.sh (403 LOC)
@@ -706,47 +727,47 @@ scripts/
   transcript_to_html.py (176 LOC)
   workflow-dashboard.py (716 LOC)
 skills/
-  datum-awake.js (505 LOC)
-  datum-closeout.js (657 LOC)
-  datum-go.js (1281 LOC)
-  datum-plan.js (1192 LOC)
-  datum-properties.js (765 LOC)
-  datum-refine.js (941 LOC)
-  datum-review.js (683 LOC)
-  datum-tdd-act-docs.js (599 LOC)
-  datum-tdd-act-lane.js (2528 LOC)
-  datum-tdd-act-merge.js (481 LOC)
-  datum-tdd-act-setup.js (408 LOC)
+  datum-awake.js (525 LOC)
+  datum-closeout.js (688 LOC)
+  datum-go.js (1300 LOC)
+  datum-plan.js (1224 LOC)
+  datum-properties.js (824 LOC)
+  datum-refine.js (973 LOC)
+  datum-review.js (718 LOC)
+  datum-tdd-act-docs.js (618 LOC)
+  datum-tdd-act-lane.js (2592 LOC)
+  datum-tdd-act-merge.js (495 LOC)
+  datum-tdd-act-setup.js (422 LOC)
   datum-tdd-act-triage.js (438 LOC)
-  datum-tdd-act.js (944 LOC)
+  datum-tdd-act.js (963 LOC)
   datum-tdd/
     SKILL.md (148 LOC)
-  datum-validate.js (713 LOC)
+  datum-validate.js (756 LOC)
   gitnexus-bug-hunt/
     SKILL.md (290 LOC)
     evals/
       evals.json (40 LOC)
   src/
-    agent-types-wiring.test.ts (150 LOC)
-    datum-awake.test.ts (53 LOC)
-    datum-awake.ts (109 LOC)
+    agent-types-wiring.test.ts (154 LOC)
+    datum-awake.test.ts (55 LOC)
+    datum-awake.ts (99 LOC)
     datum-closeout.test.ts (212 LOC)
-    datum-closeout.ts (219 LOC)
+    datum-closeout.ts (220 LOC)
     datum-go.test.ts (849 LOC)
     datum-go.ts (799 LOC)
-    datum-plan.test.ts (587 LOC)
-    datum-plan.ts (401 LOC)
-    datum-properties.test.ts (197 LOC)
-    datum-properties.ts (144 LOC)
+    datum-plan.test.ts (604 LOC)
+    datum-plan.ts (402 LOC)
+    datum-properties.test.ts (236 LOC)
+    datum-properties.ts (175 LOC)
     datum-refine.test.ts (253 LOC)
-    datum-refine.ts (347 LOC)
+    datum-refine.ts (348 LOC)
     datum-review.test.ts (291 LOC)
-    datum-review.ts (218 LOC)
+    datum-review.ts (219 LOC)
     datum-tdd-act-docs.test.ts (81 LOC)
     datum-tdd-act-docs.ts (93 LOC)
-    datum-tdd-act-lane.calls.test.ts (861 LOC)
-    datum-tdd-act-lane.test.ts (965 LOC)
-    datum-tdd-act-lane.ts (1703 LOC)
+    datum-tdd-act-lane.calls.test.ts (867 LOC)
+    datum-tdd-act-lane.test.ts (983 LOC)
+    datum-tdd-act-lane.ts (1740 LOC)
     datum-tdd-act-merge.test.ts (55 LOC)
     datum-tdd-act-merge.ts (122 LOC)
     datum-tdd-act-setup.ts (77 LOC)
@@ -755,55 +776,55 @@ skills/
     datum-tdd-act.test.ts (207 LOC)
     datum-tdd-act.ts (379 LOC)
     datum-validate.test.ts (239 LOC)
-    datum-validate.ts (156 LOC)
-    prompts-owned-tests.test.ts (31 LOC)
+    datum-validate.ts (165 LOC)
+    prompts-audit.test.ts (226 LOC)
+    prompts-code-tells.test.ts (52 LOC)
+    prompts-owned-tests.test.ts (41 LOC)
     prompts.test.ts (50 LOC)
     prompts/
-      agent-preamble-full.md (11 LOC)
       agent-preamble.md (29 LOC)
-      awake-distill.md (58 LOC)
-      awake-scan.md (68 LOC)
-      closeout-synthesize.md (30 LOC)
-      docs-check.md (12 LOC)
-      docs-sync.md (14 LOC)
-      green-retry.md (27 LOC)
-      green.md (44 LOC)
+      awake-distill.md (41 LOC)
+      awake-scan.md (63 LOC)
+      closeout-synthesize.md (29 LOC)
+      docs-check.md (14 LOC)
+      docs-sync.md (17 LOC)
+      green-retry.md (26 LOC)
+      green.md (37 LOC)
       lane-state-read.md (23 LOC)
       lane-state-write.md (17 LOC)
-      plan-approaches.md (31 LOC)
-      plan-decompose.md (65 LOC)
-      plan-deepen.md (38 LOC)
-      plan-impact.md (36 LOC)
+      plan-approaches.md (32 LOC)
+      plan-decompose.md (72 LOC)
+      plan-deepen.md (33 LOC)
+      plan-impact.md (33 LOC)
       plan-triage.md (22 LOC)
-      properties-derive.md (33 LOC)
-      red-retry.md (22 LOC)
-      red.md (65 LOC)
-      refactor-check.md (15 LOC)
-      refactor.md (19 LOC)
-      refine-classify.md (22 LOC)
-      refine-questions.md (38 LOC)
-      refine-scan.md (47 LOC)
-      refine-spec.md (32 LOC)
-      refine-triage.md (31 LOC)
+      properties-derive.md (38 LOC)
+      red-retry.md (26 LOC)
+      red.md (66 LOC)
+      refactor-check.md (22 LOC)
+      refactor.md (26 LOC)
+      refine-classify.md (23 LOC)
+      refine-questions.md (41 LOC)
+      refine-scan.md (46 LOC)
+      refine-spec.md (35 LOC)
+      refine-triage.md (32 LOC)
       reflect.md (26 LOC)
-      review-correctness-spec-verify.md (83 LOC)
-      review-domain.md (44 LOC)
-      skeptic-base.md (30 LOC)
+      review-correctness-spec-verify.md (84 LOC)
+      review-domain.md (42 LOC)
+      skeptic-base.md (22 LOC)
       skeptic-contract.md (6 LOC)
-      skeptic-edge.md (6 LOC)
-      skeptic-error.md (6 LOC)
-      util-detect-branch.md (4 LOC)
-      validate-check.md (33 LOC)
+      skeptic-edge.md (5 LOC)
+      skeptic-error.md (5 LOC)
+      validate-check.md (26 LOC)
     shared/
       agent-types-ordering.test.ts (121 LOC)
-      agent-types.test.ts (149 LOC)
-      agent-types.ts (114 LOC)
-      agents.test.ts (371 LOC)
-      agents.ts (235 LOC)
+      agent-types.test.ts (150 LOC)
+      agent-types.ts (120 LOC)
+      agents.test.ts (404 LOC)
+      agents.ts (240 LOC)
       base64.test.ts (70 LOC)
       base64.ts (58 LOC)
-      batch.test.ts (334 LOC)
-      batch.ts (251 LOC)
+      batch.test.ts (417 LOC)
+      batch.ts (275 LOC)
       boot.test.ts (253 LOC)
       boot.ts (205 LOC)
       commit-steps.test.ts (262 LOC)
@@ -814,24 +835,24 @@ skills/
       context-relay.ts (413 LOC)
       gate.test.ts (61 LOC)
       gate.ts (57 LOC)
-      lane-steps.test.ts (1633 LOC)
-      lane-steps.ts (1070 LOC)
+      lane-steps.test.ts (1697 LOC)
+      lane-steps.ts (1112 LOC)
       main-sync-steps.test.ts (244 LOC)
       main-sync-steps.ts (117 LOC)
       models.test.ts (75 LOC)
       models.ts (93 LOC)
       pipeline-state.test.ts (109 LOC)
       pipeline-state.ts (118 LOC)
-      plan-steps.test.ts (140 LOC)
-      plan-steps.ts (79 LOC)
-      prompts.ts (133 LOC)
+      plan-steps.test.ts (141 LOC)
+      plan-steps.ts (81 LOC)
+      prompts.ts (149 LOC)
       questions-steps.test.ts (82 LOC)
       questions-steps.ts (73 LOC)
       review-keys.ts (22 LOC)
       routing-steps.test.ts (81 LOC)
       routing-steps.ts (40 LOC)
       sandbox.d.ts (29 LOC)
-      schemas.ts (118 LOC)
+      schemas.ts (136 LOC)
       sha1.test.ts (75 LOC)
       sha1.ts (92 LOC)
       tracker.test.ts (110 LOC)
@@ -845,7 +866,7 @@ skills/
       utils.ts (1157 LOC)
       validate-steps.test.ts (40 LOC)
       validate-steps.ts (31 LOC)
-      verdicts.property.test.ts (156 LOC)
+      verdicts.property.test.ts (187 LOC)
       write-steps.test.ts (99 LOC)
       write-steps.ts (95 LOC)
   tsconfig.json (15 LOC)
@@ -886,33 +907,34 @@ tests/
       transcripts/
         20260101T000000Z-act_red.jsonl (3 LOC)
     lane_spec_hash_vectors.json (82 LOC)
-  test_agent_definitions.py (132 LOC)
+  test_agent_definitions.py (150 LOC)
   test_agent_loop.py (3691 LOC)
   test_agent_types_drift.py (98 LOC)
-  test_agents_materialize.py (548 LOC)
+  test_agents_materialize.py (549 LOC)
   test_artifact_score.py (364 LOC)
   test_budget.py (185 LOC)
   test_caliper_blast_radius.py (271 LOC)
   test_classify.py (186 LOC)
   test_classify_cli.py (73 LOC)
   test_cli_flag_contract.py (132 LOC)
-  test_cli_init.py (429 LOC)
+  test_cli_init.py (431 LOC)
   test_cli_json_output.py (102 LOC)
   test_closeout_cli.py (78 LOC)
   test_closeout_cmd.py (184 LOC)
   test_closeout_collate.py (257 LOC)
-  test_closeout_collectors.py (1147 LOC)
-  test_closeout_followups.py (129 LOC)
+  test_closeout_collectors.py (1159 LOC)
+  test_closeout_followups.py (130 LOC)
   test_closeout_scripts.py (1112 LOC)
+  test_code_tells.py (166 LOC)
   test_command_guard.py (144 LOC)
-  test_config_fingerprint.py (164 LOC)
+  test_config_fingerprint.py (183 LOC)
   test_context_skeleton.py (353 LOC)
   test_contract_preflight.py (247 LOC)
   test_contract_preflight_cli.py (25 LOC)
   test_contracts.py (61 LOC)
   test_contracts_validate_value.py (358 LOC)
   test_corpus_sql.py (654 LOC)
-  test_datum_hardening.py (263 LOC)
+  test_datum_hardening.py (275 LOC)
   test_detect_characterization.py (702 LOC)
   test_diagnose_failure.py (96 LOC)
   test_epic26_config_overlay.py (274 LOC)
@@ -926,38 +948,43 @@ tests/
   test_file_followups.py (128 LOC)
   test_floor_cli.py (36 LOC)
   test_gate_banned_terms.py (65 LOC)
-  test_gate_enhancements.py (337 LOC)
+  test_gate_enhancements.py (360 LOC)
   test_gate_fixes.py (26 LOC)
   test_gate_open_questions.py (85 LOC)
   test_gate_plan.py (367 LOC)
+  test_gate_plan_integration_lanes.py (571 LOC)
   test_gate_plan_transitive_deps.py (106 LOC)
   test_gate_plan_zero_lanes.py (23 LOC)
   test_gate_prior_art_tasks_path.py (83 LOC)
   test_gate_properties.py (100 LOC)
-  test_gate_properties_integration.py (348 LOC)
+  test_gate_properties_integration.py (391 LOC)
   test_gate_resolve_artifact.py (295 LOC)
   test_gate_review.py (526 LOC)
   test_gate_validate.py (64 LOC)
   test_gc.py (467 LOC)
   test_github_issues.py (154 LOC)
   test_gitignore_check.py (121 LOC)
-  test_integration_invariants_frontier.py (196 LOC)
-  test_integration_invariants_parse.py (138 LOC)
+  test_integration_invariants_frontier.py (216 LOC)
+  test_integration_invariants_parse.py (139 LOC)
   test_landscape.py (235 LOC)
   test_lane_cleanup.py (93 LOC)
   test_lane_hash.py (55 LOC)
   test_lane_plan_conflicts.py (251 LOC)
-  test_lane_plan_digest.py (141 LOC)
+  test_lane_plan_digest.py (156 LOC)
+  test_lane_plan_digest_expect_tests_pass.py (90 LOC)
   test_lane_plan_from_epic_cli.py (114 LOC)
   test_lane_plan_generated_files.py (91 LOC)
+  test_lane_plan_integration_lanes.py (272 LOC)
   test_lane_plan_kind.py (47 LOC)
   test_lane_plan_schema_int_ids.py (130 LOC)
   test_lane_plan_spm_test_command.py (125 LOC)
   test_lane_plan_test_command.py (171 LOC)
   test_lane_run_command.py (131 LOC)
   test_lane_spec_export.py (264 LOC)
+  test_lane_spec_export_integration.py (152 LOC)
+  test_lane_spec_export_integration_fields.py (41 LOC)
   test_lane_state_cli.py (649 LOC)
-  test_lane_state_markers.py (720 LOC)
+  test_lane_state_markers.py (719 LOC)
   test_lane_tools_grep.py (76 LOC)
   test_local_llm_config_dup.py (124 LOC)
   test_local_llm_hardening.py (1263 LOC)
@@ -984,9 +1011,10 @@ tests/
   test_render.py (96 LOC)
   test_retrospect.py (744 LOC)
   test_ruff_precheck.py (21 LOC)
-  test_schemas_truncate.py (175 LOC)
+  test_schemas_truncate.py (173 LOC)
   test_skeleton_append.py (85 LOC)
-  test_skeleton_creator.py (771 LOC)
+  test_skeleton_creator.py (773 LOC)
+  test_skeleton_integration_lane.py (284 LOC)
   test_skeleton_naming.py (46 LOC)
   test_skeleton_test_convention.py (64 LOC)
   test_skill_bundles_have_consumers.py (47 LOC)
@@ -998,7 +1026,7 @@ tests/
   test_task_slug.py (120 LOC)
   test_tdd_args.py (27 LOC)
   test_tdd_args_cli.py (150 LOC)
-  test_tdd_cli_commands.py (72 LOC)
+  test_tdd_cli_commands.py (71 LOC)
   test_tdd_driver.py (170 LOC)
   test_ticket_from_issue_cli.py (114 LOC)
   test_todo_tools.py (289 LOC)
@@ -1025,7 +1053,7 @@ vitest.config.ts (10 LOC)
 
 | Directory | LOC |
 |-----------|-----|
-| (root) | 4886 |
+| (root) | 4935 |
 | .caliper | 42970 |
 | .claude | 532 |
 | .claude/skills | 532 |
@@ -1040,13 +1068,13 @@ vitest.config.ts (10 LOC)
 | .opencode | 560 |
 | .opencode/plugins | 548 |
 | .serena | 162 |
-| agents | 366 |
+| agents | 351 |
 | assets | 1185 |
 | assets/fixtures | 188 |
 | assets/fixtures/contracts | 188 |
 | assets/hooks | 703 |
 | assets/schemas | 69 |
-| datum | 32440 |
+| datum | 32855 |
 | datum-tui | 7204 |
 | datum-tui/reference-openrouter | 6738 |
 | datum-tui/reference-openrouter/references | 2108 |
@@ -1057,7 +1085,7 @@ vitest.config.ts (10 LOC)
 | datum/assets | 117 |
 | datum/assets/schemas | 69 |
 | datum/bootstrap | 579 |
-| datum/closeout | 1359 |
+| datum/closeout | 1383 |
 | datum/memory | 3783 |
 | datum/models | 1198 |
 | datum/shared | 786 |
@@ -1065,14 +1093,14 @@ vitest.config.ts (10 LOC)
 | datum/steering | 984 |
 | datum/test_ratchet | 101 |
 | diagrams | 972 |
-| docs | 23556 |
+| docs | 23457 |
 | docs/adr | 30 |
 | docs/archive | 444 |
 | docs/diagrams | 2579 |
-| docs/epics | 14625 |
+| docs/epics | 15839 |
 | docs/epics/claude | 35 |
 | docs/epics/claude/agentic-lang-pipeline-8dqtgr | 35 |
-| docs/epics/datum | 14388 |
+| docs/epics/datum | 15602 |
 | docs/epics/datum/bug-squash-167 | 1057 |
 | docs/epics/datum/bug-squash-167-act | 745 |
 | docs/epics/datum/bug-squash-281 | 950 |
@@ -1108,12 +1136,14 @@ vitest.config.ts (10 LOC)
 | docs/epics/datum/fail-fast-validation | 803 |
 | docs/epics/datum/gh-issues-as-source-of-truth | 954 |
 | docs/epics/datum/hermetic-test-git-fixtures | 174 |
-| docs/epics/datum/integration-lanes | 1845 |
+| docs/epics/datum/integration-lanes | 1943 |
+| docs/epics/datum/integration-lanes-2 | 1116 |
+| docs/epics/datum/integration-lanes-2/skeletons | 389 |
 | docs/epics/datum/integration-lanes/skeletons | 929 |
 | docs/epics/datum/state-single-source-of-truth | 85 |
 | docs/epics/main | 119 |
 | docs/practice | 3 |
-| docs/research | 1527 |
+| docs/research | 2831 |
 | evals | 150 |
 | observability | 241 |
 | observability/alerts | 64 |
@@ -1124,16 +1154,16 @@ vitest.config.ts (10 LOC)
 | references | 11139 |
 | scripts | 3985 |
 | scripts/lane-tools | 934 |
-| skills | 36509 |
+| skills | 37653 |
 | skills/datum-tdd | 148 |
 | skills/gitnexus-bug-hunt | 330 |
 | skills/gitnexus-bug-hunt/evals | 40 |
-| skills/src | 23881 |
-| skills/src/prompts | 1087 |
-| skills/src/shared | 12654 |
+| skills/src | 24624 |
+| skills/src/prompts | 1059 |
+| skills/src/shared | 12980 |
 | specs | 45 |
 | templates | 3434 |
-| tests | 35214 |
+| tests | 36955 |
 | tests/Unit | 19 |
 | tests/Unit/src | 19 |
 | tests/fixtures | 118 |
