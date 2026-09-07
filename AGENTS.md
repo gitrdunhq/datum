@@ -92,7 +92,7 @@ assert args.skip_human is True
 datum bugfile <module> "<one-line description>" --trace "<traceback>"
 ```
 
-This deduplicates against open issues, attaches the current `.datum/state.json` snapshot, and labels with `datum-bug`. Agents and scripts can also call `datum.report_bug.report_bug(module, error, context)` directly from Python.
+This deduplicates against open issues, attaches the current phase and run_id read from live state (`datum.state.load_state`), and labels with `datum-bug`. Agents and scripts can also call `datum.report_bug.report_bug(module, error, context)` directly from Python.
 
 **Then:** Continue if the error is non-fatal (log it and proceed). Halt if fatal (missing script, broken state).
 
