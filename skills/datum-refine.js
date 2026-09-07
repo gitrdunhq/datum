@@ -410,6 +410,11 @@ var AGENT_TYPE_TABLE = {
   red: "datum-red",
   green: "datum-green",
   refactor: "datum-refactor",
+  // #341 task-001: a structural lane's single writing stage. Not
+  // datum-refactor — that definition says "clean up without changing
+  // behaviour" and its pre-check answered "nothing to improve" on a file
+  // that did not exist yet, so docs-only lanes completed with no commit.
+  structural: "datum-structural",
   skeptic: "datum-skeptic",
   // #375: the Review lenses. Not datum-skeptic — that definition's body is
   // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer

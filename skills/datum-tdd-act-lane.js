@@ -57,6 +57,11 @@ var AGENT_TYPE_TABLE = {
   red: "datum-red",
   green: "datum-green",
   refactor: "datum-refactor",
+  // #341 task-001: a structural lane's single writing stage. Not
+  // datum-refactor — that definition says "clean up without changing
+  // behaviour" and its pre-check answered "nothing to improve" on a file
+  // that did not exist yet, so docs-only lanes completed with no commit.
+  structural: "datum-structural",
   skeptic: "datum-skeptic",
   // #375: the Review lenses. Not datum-skeptic — that definition's body is
   // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
@@ -1295,6 +1300,21 @@ function postGreenSteps(o) {
   }
   return steps;
 }
+function structuralDeliverableSteps(o) {
+  const checks = o.files.map((f) => `test -e ${q2(o.wt)}/${q2(f)} || echo "MISSING ${f}"`).join("; ");
+  const scoped = o.files.map(q2).join(" ");
+  return [
+    { name: "deliverable-check", command: checks || "true", tolerant: true },
+    { name: "deliverable-commits", command: `git -C ${q2(o.wt)} log --oneline ${q2(o.epicBranch)}..HEAD -- ${scoped}`, tolerant: true }
+  ];
+}
+function structuralDeliverablesFromSteps(result, files) {
+  const check = stepStdout(result, "deliverable-check");
+  const commits = stepStdout(result, "deliverable-commits");
+  if (check === null || commits === null) return null;
+  const flagged = new Set(check.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("MISSING ")).map((l) => l.slice("MISSING ".length)));
+  return { missing: files.filter((f) => flagged.has(f)), committed: commits.trim() !== "" };
+}
 var STRAY_KEEP_DIRS = [".datum", ".temp"];
 function strayCleanSteps(wt) {
   const keepFilter = STRAY_KEEP_DIRS.map((d) => `-e '^${d.replace(".", "\\.")}/'`).join(" ");
@@ -1536,6 +1556,9 @@ var green_retry_default = 'GREEN TDD agent \u2014 RETRY. A previous attempt at t
 // skills/src/prompts/refactor.md
 var refactor_default = 'REFACTOR agent. Clean up the implementation without changing behavior.\n\nSCOPE:\n- Improve naming, reduce duplication, simplify logic, remove dead code\n- Remove machine-written tells: narrating comments that restate the code, chat phrases, emoji, placeholder stubs, generic names (process_data), abstractions with one caller, tutorial shape where a plain if/else does the job\n- Match the level the surrounding code operates at. Do not add a check, a comment, a type annotation or a layer the neighboring code would not have; trying to look careful is its own tell\n- Write to allowed files only\n\nCONSTRAINTS:\n- Tests are a one-way ratchet: do not remove, skip, weaken, or disable any test\n- Do not add new features \u2014 only improve existing code\n\nAFTER WRITING:\n1. Run the suite with exactly the command given as RUN below.\n   Read the real exit status from the printed TEST_EXIT line (the suite output is written to a log file and TEST_EXIT is the real exit code \u2014 never pipe the test command into tail or grep, a pipe masks the exit code). Every test must still pass (TEST_EXIT=0). Report tests_pass and test_exit_code.\n2. If tests pass: commit with exactly the command given as COMMIT below \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as the RED and GREEN commits on this branch, so a later reader can attribute it to this lane instead of mistaking it for a stray concurrent writer. Do not change the subject or author.\n3. If tests FAIL: report tests_pass=false, do NOT commit. Report failure_reason.\n\nINPUTS\nSETUP (run first): {{refactorCtxCmd}}\nTASK PACKET: {{refactorPacketStr}}\nALLOWED: {{allFilesList}}\nRUN: {{testRunCmd}}\nCOMMIT: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\nSCANNER FINDINGS on the lines this lane added (remove every one, or mark a deliberate line `unslop-ignore`):\n{{tellsSlot}}\n';
 
+// skills/src/prompts/structural.md
+var structural_default = 'STRUCTURAL agent. Produce every deliverable file of a structural lane, then commit.\n\nA structural lane has no testable behaviour: its deliverable is documentation (an ADR, a decision record, a README section), configuration, or a file move. The lane is decided by the files, not by your report: after you finish, the runner checks that every file listed as ALLOWED exists in the worktree and that a commit past the epic branch touches them. A lane with a missing file fails by name, whatever the result says.\n\nSCOPE:\n- Write every file listed as ALLOWED. A file that already satisfies its criteria is left as it is\n- Read the lane spec file named in the packet first; its acceptance criteria decide the content. Read the files the criteria cite (SPEC.md, QUESTIONS.md, existing docs) so the deliverable records the decision actually made\n- Write to allowed files only\n\nCONSTRAINTS:\n- Do not write tests and do not run the test suite: there is nothing to test. Report tests_pass=true and test_exit_code=0 to say the stage has no suite\n- Do not add code, and do not change files outside ALLOWED, even to "fix" something you notice\n- A criterion that cannot be met from the files you can read: write what can be decided, do not commit, report success=false with failure_reason naming the criterion and the file that would settle it\n\nAFTER WRITING:\n1. Confirm every file listed as ALLOWED exists (`ls` each path).\n2. Commit with exactly the command given as COMMIT below \u2014 same datum author identity and Datum-Run/Datum-Lane/Datum-Stage trailers as every lane commit, so a later reader attributes it to this lane. Do not change the subject or author.\n3. Report success=true, committed=true, commit_sha, and files_written listing every file you wrote.\n\nINPUTS\nSETUP (run first): {{structuralCtxCmd}}\nTASK PACKET: {{structuralPacketStr}}\nALLOWED: {{allFilesList}}\nCOMMIT: git -C "{{wt}}" add {{allFilesList}} && {{commitCmd}}\n';
+
 // skills/src/prompts/reflect.md
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nSCOPE \u2014 one rule for prior-lane tests. A test file may hold tests from prior lanes: test functions that do not relate to any of the acceptance criteria below. Those tests neither count for nor against the score \u2014 score only the test functions whose names and assertions directly relate to the criteria. But you must still read every prior-lane test in these files, because a prior-lane assertion this lane\'s criteria contradict is the one thing that can deadlock this lane, and finding it is step 4 below.\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC \u2014 this is the only rubric; a lane fails below 4, so nothing else sets the boundaries:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n\nINPUTS\nRead these test files in "{{wt}}": {{testFiles}}\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n';
 
@@ -1577,6 +1600,9 @@ function greenRetryPrompt(vars) {
 }
 function refactorPrompt(vars) {
   return PREAMBLE + renderPrompt(refactor_default, vars);
+}
+function structuralPrompt(vars) {
+  return PREAMBLE + renderPrompt(structural_default, vars);
 }
 function reflectPrompt(vars) {
   const { laneSpec, ...rest } = vars;
@@ -1765,8 +1791,8 @@ No markdown fences, no explanation.`,
   }
   let greenStaleHint = null;
   if (isStructural) {
-    const r = await runRefactor(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile, []);
-    if (!r || !r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r?.error || "refactor failed" };
+    const r = await runStructural(taskId, lane, testFiles, implFiles, wt, scopedLaneCfg, specFile);
+    if (!r.verified) return { task_id: taskId, status: "failed", stage: "REFACTOR", error: r.error || "structural stage failed" };
     await updateStage(issueId, "done");
     return { task_id: taskId, status: "completed", stage: "REFACTOR" };
   }
@@ -2627,6 +2653,52 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
     }
   }
   return { allBugs, brokenCount, crossValidated };
+}
+async function runStructural(taskId, lane, testFiles, implFiles, wt, cfg2, specFile) {
+  const files = [...testFiles, ...implFiles];
+  const checkSteps = structuralDeliverableSteps({ wt, epicBranch: cfg2.epicBranch, files });
+  const check = async (label) => structuralDeliverablesFromSteps(
+    await runBatch(checkSteps, stageOpts("cli", { label: `${label}:${taskId}`, phase: "Act", model: model("fast") })),
+    files
+  );
+  const before = await check("structural-check");
+  if (before === null) {
+    return { verified: false, error: "structural_check_unavailable: the deliverable-check batch did not run before the STRUCTURAL stage; no verdict on the declared files" };
+  }
+  if (before.missing.length === 0 && before.committed) {
+    log(`[${taskId}] structural_already_delivered: every declared file exists and is committed past ${cfg2.epicBranch} \u2014 skipping the STRUCTURAL agent`);
+    return { verified: true };
+  }
+  log(`[${taskId}] STRUCTURAL: writing ${files.length} deliverable(s)${before.missing.length ? ` (missing: ${before.missing.join(", ")})` : " (present, uncommitted)"}`);
+  const packet = buildPacket(taskId, testFiles, implFiles, lane, wt, cfg2, "REFACTOR", specFile, {});
+  const result = await resilientAgent(
+    structuralPrompt({
+      wt,
+      structuralCtxCmd: laneCtxCmd(packet, wt),
+      structuralPacketStr: JSON.stringify(packet),
+      allFilesList: files.join(" "),
+      commitCmd: laneCommitCommand({ wt, taskId, stage: "REFACTOR", runId: cfg2.runId })
+    }),
+    stageOpts("structural", { label: `structural:${taskId}`, phase: "Act", model: model("balanced"), schema: STAGE_RESULT_SCHEMA, worktree: wt })
+  );
+  if (!result) {
+    return { verified: false, error: "structural_no_result: STRUCTURAL agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-structural.md, an API error, or a skip)" };
+  }
+  if (!result.success) {
+    return { verified: false, error: `structural_failed: ${result.failure_reason || result.reason || "STRUCTURAL reported no success"}` };
+  }
+  const after = await check("structural-verify");
+  if (after === null) {
+    return { verified: false, error: "structural_check_unavailable: the deliverable-check batch did not run after the STRUCTURAL stage; the agent's report is not evidence" };
+  }
+  if (after.missing.length > 0) {
+    return { verified: false, error: `structural_deliverable_missing: ${after.missing.join(", ")} \u2014 the STRUCTURAL stage reported success but the declared file(s) do not exist in the worktree` };
+  }
+  if (!after.committed) {
+    return { verified: false, error: `structural_uncommitted: every declared file exists but no commit past ${cfg2.epicBranch} touches them (agent reported committed=${!!result.committed})` };
+  }
+  log(`[${taskId}] STRUCTURAL: delivered ${files.length} file(s) (committed: ${result.commit_sha || "n/a"}; independent check ok)`);
+  return { verified: true };
 }
 async function runRefactor(taskId, lane, testFiles, implFiles, wt, cfg2, specFile, tells) {
   log(`[${taskId}] REFACTOR: checking if needed`);
