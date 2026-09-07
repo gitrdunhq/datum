@@ -39,6 +39,30 @@ function batch(steps: Record<string, string | { stdout?: string; exit_code?: num
   )))
 }
 
+/** A batch reply the fake agent must hand over as-is (a deliberately partial array). */
+function partialBatch(json: string): { partialBatch: string } {
+  return { partialBatch: json }
+}
+
+/**
+ * A real script records every step (the parser now names a short array
+ * batch_incomplete, #341 task-008). Responders name only the steps a test
+ * cares about; the fake agent fills the rest from the script's own
+ * `# step i/N: name` lines with exit 0 and empty output, in script order.
+ */
+function completeBatch(reply: unknown, prompt: string): unknown {
+  if (reply && typeof reply === 'object' && 'partialBatch' in reply) return (reply as { partialBatch: string }).partialBatch
+  if (typeof reply !== 'string' || !reply.trim().startsWith('[')) return reply
+  let arr: Array<{ name: string; exit_code: number; stdout: string; stderr: string }>
+  try { arr = JSON.parse(reply) } catch { return reply }
+  const names = [...prompt.matchAll(/^# step \d+\/\d+: (\S+)/gm)].map((m) => m[1])
+  if (names.length === 0) return reply
+  const given = new Map(arr.map((r) => [r.name, r]))
+  const ordered = names.map((n) => given.get(n) ?? { name: n, exit_code: 0, stdout: '', stderr: '' })
+  for (const r of arr) if (!names.includes(r.name)) ordered.push(r)
+  return JSON.stringify(ordered)
+}
+
 const SPEC_PATH = '/wt/T1/.datum/lane-spec.json'
 const SPEC_SHA = 'c0ffee'.repeat(6) + 'abcd'
 /** What every agent that read the lane-spec file must carry (assertReadWitness). */
@@ -115,7 +139,7 @@ async function runLane(opts: {
   const agent = async (prompt: string, o?: { label?: string; agentType?: string; worktree?: string }) => {
     const label = o?.label || ''
     calls.push({ label, agentType: o?.agentType, prompt, worktree: o?.worktree })
-    return opts.respond(label, prompt)
+    return completeBatch(opts.respond(label, prompt), prompt)
   }
   const parallel = async <T,>(thunks: Array<() => Promise<T>>) => {
     const out: T[] = []
@@ -223,7 +247,7 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
 
   it('deterministic ownership: a GREEN commit touching its own test file is green_edited_tests, and stops there when the reset for the retry cannot be confirmed', async () => {
     const base = happyPathResponder({ pytest: false })
-    const respond: Responder = (label, prompt) => (label.startsWith('post-green:') ? batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' }) : base(label, prompt))
+    const respond: Responder = (label, prompt) => (label.startsWith('post-green:') ? batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n', 'red-files': 'src/a.test.ts\n' }) : base(label, prompt))
     const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.stage).toBe('GREEN')
@@ -535,14 +559,15 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const respond: Responder = (label, prompt) => {
       if (label.startsWith('post-red:')) {
         const arr = JSON.parse(base(label, prompt) as string) as Array<{ name: string }>
-        return JSON.stringify(arr.filter((s) => s.name !== 'test-count-before'))
+        // Deliberately short: the parser names it batch_incomplete (#341 task-008).
+        return partialBatch(JSON.stringify(arr.filter((s) => s.name !== 'test-count-before')))
       }
       return base(label, prompt)
     }
     const { result, calls } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
     expect(result.results.T1.status).toBe('failed')
     expect(result.results.T1.stage).toBe('RED')
-    expect(result.results.T1.error).toMatch(/^test_count_missing: test-count-before/)
+    expect(result.results.T1.error).toMatch(/batch_incomplete: .*absent: \[.*test-count-before/)
     expect(calls.some((c) => c.label.startsWith('reflect:'))).toBe(false)
   })
 
@@ -553,7 +578,7 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     const base = happyPathResponder({ pytest: false })
     let postGreenCalls = 0
     const respond: Responder = (label, prompt) => {
-      if (label.startsWith('post-green:')) { postGreenCalls++; return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' }) }
+      if (label.startsWith('post-green:')) { postGreenCalls++; return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n', 'red-files': 'src/a.test.ts\n' }) }
       if (label.startsWith('green-tests-reset:')) return batch({ reset: '', clean: '', status: '', head: 'aaa111\n' })
       if (label.startsWith('green-tests-retry:')) return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ddd444', files_written: ['src/a.ts'], test_exit_code: 0 }
       if (label.startsWith('post-green-tests-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })
@@ -571,7 +596,7 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
   it('a GREEN that touches its test file again on the retry fails the lane as green_edited_tests, never "owned by another lane"', async () => {
     const base = happyPathResponder({ pytest: false })
     const respond: Responder = (label, prompt) => {
-      if (label.startsWith('post-green:') || label.startsWith('post-green-tests-retry:')) return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n' })
+      if (label.startsWith('post-green:') || label.startsWith('post-green-tests-retry:')) return batch({ ownership: 'src/a.ts\nsrc/a.test.ts\n', 'red-files': 'src/a.test.ts\n' })
       if (label.startsWith('green-tests-reset:')) return batch({ reset: '', clean: '', status: '', head: 'aaa111\n' })
       if (label.startsWith('green-tests-retry:')) return { ...witness, success: true, tests_pass: true, committed: true, commit_sha: 'ddd444', files_written: ['src/a.ts'], test_exit_code: 0 }
       if (label.startsWith('post-green-tests-retry-verify:')) return batch({ ownership: '', 'test-verify': 'TEST_EXIT=0\n' })

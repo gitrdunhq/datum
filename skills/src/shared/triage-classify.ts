@@ -146,6 +146,11 @@ const PREFIX_RULES: PrefixRule[] = [
     reason: 'refactor_no_result: the REFACTOR agent returned nothing at all (maxTurns cap in agents/datum-refactor.md, an API error, or a skip) — same capacity/infra bucket as green_no_result/red_no_result.',
   },
   {
+    test: /\bbatch_incomplete\b|\bbatch_rec_failed\b/,
+    category: 'infrastructure',
+    reason: 'batch_incomplete / batch_rec_failed: the datum-cli runner returned a partial step array (#341 task-008: 10 of 13 tolerant steps, no fail-fast) or a step jq could not record (#517). The batch did not evidence every step; a runner/tooling failure, not a code or plan defect.',
+  },
+  {
     test: /\bstructural_check_unavailable\b/,
     category: 'infrastructure',
     reason: 'structural_check_unavailable: the deliverable-check batch around the STRUCTURAL stage did not run (refused/absent datum-cli result), so the lane has no verdict on its declared files — a tooling absence, not evidence about what the agent wrote.',

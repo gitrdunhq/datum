@@ -147,9 +147,9 @@ describe('parseBatchResult', () => {
 
   it('accepts a fenced string, a bare string, or an already-parsed array', () => {
     const arr = [{ name: 'a', exit_code: 0, stdout: 'x', stderr: '' }]
-    expect(parseBatchResult('```json\n' + JSON.stringify(arr) + '\n```', steps).steps).toHaveLength(1)
-    expect(parseBatchResult(JSON.stringify(arr), steps).steps).toHaveLength(1)
-    expect(parseBatchResult(arr, steps).steps).toHaveLength(1)
+    expect(parseBatchResult('```json\n' + JSON.stringify(arr) + '\n```', [steps[0]]).steps).toHaveLength(1)
+    expect(parseBatchResult(JSON.stringify(arr), [steps[0]]).steps).toHaveLength(1)
+    expect(parseBatchResult(arr, [steps[0]]).steps).toHaveLength(1)
   })
 
   // datum integration-lanes wf_aec6a61b-94a task-007: the intake verify
@@ -212,7 +212,7 @@ describe('parseBatchResult', () => {
   })
 
   it('drops malformed entries and coerces string exit codes', () => {
-    const r = parseBatchResult([null, 'junk', { name: 'a', exit_code: '0', stdout: 'ok' }], steps)
+    const r = parseBatchResult([null, 'junk', { name: 'a', exit_code: '0', stdout: 'ok' }], [steps[0]])
     expect(r.steps).toEqual([{ name: 'a', exit_code: 0, stdout: 'ok', stderr: '' }])
   })
 })
@@ -458,5 +458,61 @@ describe('batchScript executes the step file with bash, never by sourcing it', (
     const r = parseBatchResult(out, steps)
     expect(r.missing).toBe(false)
     expect(stepStdout(r, 'a')).toBe('from-a\n')
+  })
+})
+
+// #341 wf_a7f50762-9d3 task-008 (#517): the post-RED batch came back as a
+// well-formed array of 10 records where the script has 13 tolerant steps —
+// test-count-before, test-count-after and test-verify were simply absent —
+// and the lane died test_count_missing. Every step is tolerant, so the script
+// cannot have stopped early on its own: the runner returned a partial result.
+// A batch is complete only when every step has a record, or a non-tolerant
+// failure is the last record (fail-fast).
+describe('batch_incomplete: a well-formed array short of records is a partial result, never a batch that ran', () => {
+  const steps: BatchStep[] = [
+    { name: 'a', command: 'echo a', tolerant: true },
+    { name: 'b', command: 'echo b', tolerant: true },
+    { name: 'c', command: 'echo c', tolerant: true },
+  ]
+  const rec = (name: string, exit_code = 0) => ({ name, exit_code, stdout: `${name}\n`, stderr: '' })
+
+  it('names the missing steps and is missing, so consumers take the describeFailure path', () => {
+    const r = parseBatchResult(JSON.stringify([rec('a'), rec('b')]), steps)
+    expect(r.missing).toBe(true)
+    expect(r.scriptError).toMatch(/^batch_incomplete: 2 of 3 step records returned/)
+    expect(r.scriptError).toContain('c')
+    expect(describeFailure(r, 'post-red:T1')).toContain('batch_incomplete')
+  })
+
+  it('a batch stopped by a non-tolerant failure is complete at that failure', () => {
+    const strict: BatchStep[] = [{ name: 'a', command: 'echo a' }, { name: 'b', command: 'false' }, { name: 'c', command: 'echo c' }]
+    const r = parseBatchResult(JSON.stringify([rec('a'), rec('b', 1)]), strict)
+    expect(r.missing).toBe(false)
+    expect(r.failed?.name).toBe('b')
+  })
+
+  it('a full array is complete', () => {
+    const r = parseBatchResult(JSON.stringify([rec('a'), rec('b'), rec('c')]), steps)
+    expect(r.missing).toBe(false)
+    expect(r.failed).toBeNull()
+  })
+})
+
+// #517: __rec's jq call had no exit-code check, so a step whose output jq
+// could not encode was dropped from the array with no trace. The record is
+// now written without jq, names the failure on stderr, and the parser
+// treats it as the batch's failed step so no consumer reads its empty
+// stdout as a real result.
+describe('batch_rec_failed: a step jq cannot record is still a record, and a named failure', () => {
+  it('under real bash: a broken jq loses the stdout but not the step', () => {
+    const steps: BatchStep[] = [
+      { name: 'break-jq', command: 'jq() { return 7; }; echo lost', tolerant: true },
+      { name: 'after', command: 'echo hi', tolerant: true },
+    ]
+    const r = parseBatchResult(runScript(batchScript(steps)), steps)
+    expect(r.steps.map((s) => s.name)).toEqual(['break-jq', 'after'])
+    expect(stepResult(r, 'break-jq')?.stderr).toMatch(/^batch_rec_failed:/)
+    expect(r.failed?.name).toBe('break-jq')
+    expect(describeFailure(r, 'post-red:T1')).toContain('batch_rec_failed')
   })
 })

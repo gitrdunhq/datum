@@ -868,7 +868,10 @@ No markdown fences, no explanation.`,
         task_id: taskId,
         status: 'failed',
         stage: 'RED',
-        error: `count_gate_no_output: test-count-check returned null — cannot verify ${acCount} new test functions were committed`,
+        // The batch's own name for its absence rides along (batch_incomplete,
+        // batch_timeout, runner_permission_denied): triage reads the error,
+        // not the log (#341 task-008).
+        error: `count_gate_no_output: test-count-check returned null (${describeFailure(postRedResult, 'post-red batch')}) — cannot verify ${acCount} new test functions were committed`,
       }
     } else {
       const text = countRaw.trim()

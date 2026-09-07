@@ -45,7 +45,7 @@ describe('parseBatchResult / describeFailure', () => {
         expect(r.steps).toEqual([])
         expect(r.failed).toBeNull()
         // absence is named: one of the runner-failure names, never a bare "failed"
-        expect(text).toMatch(/runner_empty_result|runner_no_json|runner_permission_denied|batch_script_corrupt|batch_root_missing/)
+        expect(text).toMatch(/runner_empty_result|runner_no_json|runner_permission_denied|batch_script_corrupt|batch_root_missing|batch_script_failed|batch_timeout|batch_incomplete/)
       } else {
         // a failed step is always one of the parsed steps with a non-zero exit, never tolerant
         if (r.failed) {

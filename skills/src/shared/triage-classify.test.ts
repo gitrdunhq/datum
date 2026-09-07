@@ -76,6 +76,9 @@ describe('classifyLaneError — deterministic *_no_result prefixes (stage agent 
     ['red_no_result', 'red_no_result: RED agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-red.md — the lane may need a smaller scope, or the cap raised)'],
     ['refactor_no_result', 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'],
     ['structural_no_result', 'structural_no_result: STRUCTURAL agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-structural.md, an API error, or a skip)'],
+    ['batch_incomplete', 'test_count_missing: post-red batch: batch_incomplete: 10 of 13 step records returned and no non-tolerant failure stopped the batch'],
+    ['batch_rec_failed', 'post-red batch: step "test-count-before" exited 0 — batch_rec_failed: jq could not record this step'],
+    ['lane_branch_stale_conflict', 'lane_intake_failed: lane_branch_stale_conflict: epic/test--task-INT-1 does not rebase onto abc123 (conflict in docs/a.md)'],
   ]
 
   it.each(noResultCases)('%s classifies as infrastructure with deterministic confidence', (_label, error) => {
