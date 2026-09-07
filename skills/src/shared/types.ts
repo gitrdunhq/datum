@@ -250,6 +250,10 @@ export interface LaneOutcome {
   needs_write?: string[]
   /** Skeptic single-lens findings written to .datum/runs/<run>/follow-ups/<lane>.json for Closeout to file (caliper#564). */
   follow_ups?: number
+  /** #498: an integration lane completed AT RED by design (its independent
+   *  verify passed; there is no GREEN). The merge filter lets it merge; a
+   *  stage-RED completion without this flag is still held back. */
+  red_only?: boolean
 }
 
 // Agent result types

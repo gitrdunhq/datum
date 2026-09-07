@@ -106,7 +106,7 @@ async function runLane(opts: {
   lane?: ReturnType<typeof integrationLane>
   priorCompleted?: string[]
   logs?: string[]
-}): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }> {
+}): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number; red_only?: boolean }> } }> {
   const bundle = readFileSync(bundlePath, 'utf8')
   const body = bundle.replace(/^export const meta = /m, 'const meta = ')
   const AsyncFunction = Object.getPrototypeOf(async function () { /* */ }).constructor as new (...a: string[]) => (...b: unknown[]) => Promise<unknown>
@@ -140,7 +140,7 @@ async function runLane(opts: {
     batchTag: '',
   }
   const result = await script(agent, parallel, () => undefined, (m: string) => { if (opts.logs) opts.logs.push(m) }, args, async () => ({}), { total: null, spent: () => 0, remaining: () => 0 })
-  return { calls, result: result as { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number }> } }
+  return { calls, result: result as { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number; red_only?: boolean }> } }
 }
 
 const cliCalls = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-cli')
@@ -198,6 +198,7 @@ describe('task-002 — integration lanes are RED-only and decided on the indepen
     const { result } = await runLane({ respond: integrationResponder({ testVerify: 'pass' }) })
     expect(result.results.T1.status, result.results.T1.error).toBe('completed')
     expect(result.results.T1.stage).toBe('RED')
+    expect(result.results.T1.red_only, '#498: the merge filter needs this to let a RED completion merge').toBe(true)
     expect(result.results.T1.follow_ups).toBeUndefined()
   })
 

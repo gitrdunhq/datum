@@ -283,14 +283,19 @@ export function groupBlockedByRoot(
 // filterGreenLanes — GREEN merge gate. A completed-lane id whose recorded
 // stage is 'RED' never reaches the squash-merge step, even if some upstream
 // caller mistakenly marked it 'completed' — it's reported and left in place.
+// #498: an integration lane completes AT RED by design and says so with
+// `red_only: true`; that one merges. Stage alone cannot tell "stuck at RED"
+// from "done at RED", and reading it that way dropped five lanes from the
+// merge order and demoted them to a merge_failed no git command produced.
 // ---------------------------------------------------------------------------
 
 export function filterGreenLanes(
   completedIds: string[],
   results: Record<string, LaneOutcome>,
 ): { greenIds: string[]; redOnlyIds: string[] } {
-  const greenIds = completedIds.filter((id) => results?.[id]?.stage !== 'RED')
-  const redOnlyIds = completedIds.filter((id) => results?.[id]?.stage === 'RED')
+  const heldAtRed = (id: string): boolean => results?.[id]?.stage === 'RED' && results?.[id]?.red_only !== true
+  const greenIds = completedIds.filter((id) => !heldAtRed(id))
+  const redOnlyIds = completedIds.filter(heldAtRed)
   return { greenIds, redOnlyIds }
 }
 

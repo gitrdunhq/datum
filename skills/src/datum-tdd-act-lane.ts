@@ -806,7 +806,11 @@ No markdown fences, no explanation.`,
     }
     log(`[${taskId}] integration lane RED-only fast path: independent verify passed — completing at RED`)
     await updateStage(issueId, 'done')
-    return { task_id: taskId, status: 'completed', stage: 'RED' }
+    // #498: `red_only` tells the merge filter this RED is a completion by
+    // design, not a lane that never got past RED; without it the lane was
+    // dropped from the merge order and demoted to a merge_failed that no git
+    // command produced.
+    return { task_id: taskId, status: 'completed', stage: 'RED', red_only: true }
   }
 
   // ── New-test-function count gate — deterministic script execution, no LLM mediation (#253) ──
