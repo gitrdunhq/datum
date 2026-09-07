@@ -25,6 +25,21 @@ const PREAMBLE = preambleTemplate + '\n\n---\n\n'
 type PromptVars = { [key: string]: string }
 
 /**
+ * Prepend the shared rule header to a prompt built outside this module.
+ *
+ * The lane and docs helpers below already do this; the Refine, Plan,
+ * Properties, Review, Validate, Closeout and Awake scripts render their
+ * templates themselves and used to send them bare, so the SPEC writer, the
+ * four review lenses and the pipeline's final correctness call never saw
+ * "test command comes from `.datum/config.json` — read it, don't guess"
+ * (prompts audit 20260906). It is also the largest stable prefix in the
+ * pipeline, and it belongs first in every one of them.
+ */
+export function withPreamble(text: string): string {
+  return PREAMBLE + text
+}
+
+/**
  * Render a stage template whose criteria live in the exported lane-spec
  * file: `{{laneSpecSlot}}` becomes the mandatory Read instruction for that
  * file and the read-witness paragraph is appended, so the agent's JSON must

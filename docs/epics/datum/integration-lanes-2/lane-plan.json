@@ -1,0 +1,249 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 9,
+  "topological_order": [
+    "task-001",
+    "task-002",
+    "task-003",
+    "task-004",
+    "task-INT-1",
+    "task-INT-2",
+    "task-INT-3",
+    "task-INT-4",
+    "task-INT-5"
+  ],
+  "file_ownership": {
+    "datum/lane_plan_digest.py": "task-001",
+    "tests/test_lane_plan_digest_expect_tests_pass.py": "task-001",
+    "tests/test_lane_spec_export_integration_fields.py": "task-001",
+    "skills/src/datum-tdd-act-lane.ts": "task-002",
+    "skills/src/shared/types.ts": "task-002",
+    "skills/src/shared/prompts.ts": "task-002",
+    "skills/src/prompts/red.md": "task-002",
+    "skills/src/datum-tdd-act-lane.integration.test.ts": "task-002",
+    "skills/src/shared/triage-classify.ts": "task-003",
+    "skills/src/datum-tdd-act-triage.ts": "task-003",
+    "skills/src/shared/triage-classify-code-defect.test.ts": "task-003",
+    "skills/src/shared/triage-classify.test.ts": "task-003",
+    "skills/src/shared/verdicts.property.test.ts": "task-003",
+    "docs/FLOW.md": "task-004",
+    "SKILL.md": "task-004",
+    "tests/integration/test_int_1.py": "task-INT-1",
+    "tests/integration/test_int_2.py": "task-INT-2",
+    "tests/integration/test_int_3.py": "task-INT-3",
+    "tests/integration/test_int_4.py": "task-INT-4",
+    "tests/integration/test_int_5.py": "task-INT-5"
+  },
+  "lanes": {
+    "task-001": {
+      "id": "task-001",
+      "title": "Lane digest and exported lane spec carry expect_tests_pass for integration lanes",
+      "files": [
+        "datum/lane_plan_digest.py",
+        "tests/test_lane_plan_digest_expect_tests_pass.py",
+        "tests/test_lane_spec_export_integration_fields.py"
+      ],
+      "acceptance_criteria": [
+        "`from datum.lane_plan_digest import _LANE_FIELDS` \u2014 `'expect_tests_pass' in _LANE_FIELDS` is True, and `'depends_on'` and `'kind'` are still present (no reordering-driven removal)",
+        "`digest_plan_file` (or the digest builder it uses) applied to a plan whose lane dict contains `{'kind': 'integration', 'expect_tests_pass': True, 'depends_on': ['task-002','task-003']}` yields a per-lane digest entry where `entry['expect_tests_pass'] is True`, `entry['kind'] == 'integration'`, and `entry['depends_on'] == ['task-002','task-003']`",
+        "A lane dict WITHOUT `expect_tests_pass` (a normal behavioral lane) produces a digest entry with no `expect_tests_pass` key at all (the existing `if field in lane and lane[field] is not None` behaviour is unchanged \u2014 absent, not False)",
+        "A lane dict with `expect_tests_pass: False` round-trips as `entry['expect_tests_pass'] is False`, not dropped",
+        "The spec file written by `datum/lane_spec_export.py` for an integration lane parses as JSON containing `expect_tests_pass: true` and `depends_on` equal to the lane's covered task ids, in lane order"
+      ],
+      "red_note": "pytest. Write tests/test_lane_plan_digest_expect_tests_pass.py asserting `'expect_tests_pass' in _LANE_FIELDS` and that a digest built from an integration lane dict carries the flag, the kind, and depends_on through \u2014 plus the absent/False cases so the fix cannot be a blanket setdefault. Write tests/test_lane_spec_export_integration_fields.py as a pure assertion against the ALREADY-WORKING `**lane` spread in datum/lane_spec_export.py (do NOT modify lane_spec_export.py \u2014 it is in reads, verification only): export a lane spec for an integration lane and assert the written JSON contains expect_tests_pass: true and the covered depends_on ids. The digest test must fail today because _LANE_FIELDS lacks 'expect_tests_pass'; the export test may pass on first run \u2014 that is expected and is the regression pin AC4.3 asks for, state it in the test docstring. Do not touch datum/lane_plan.py or datum/integration_invariants.py (slice 1, out of scope per SPEC \u00a76).",
+      "introduces_stubs": false,
+      "estimated_loc": 60,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "digest-carries-expect-tests-pass",
+      "kind": "behavioral",
+      "github_issue": 484
+    },
+    "task-002": {
+      "id": "task-002",
+      "title": "runLane executes an integration lane RED-only and decides it on the independent verify",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "skills/src/shared/types.ts",
+        "skills/src/shared/prompts.ts",
+        "skills/src/prompts/red.md",
+        "skills/src/datum-tdd-act-lane.integration.test.ts"
+      ],
+      "acceptance_criteria": [
+        "`Lane` in skills/src/shared/types.ts accepts `kind: 'integration'` and `expect_tests_pass?: boolean` with no cast (both additive/optional; 'structural' and 'behavioral' still accepted)",
+        "Given a lane with `kind: 'integration'` and a fake agent runner, RED is dispatched exactly once (one `red:<taskId>`-labelled agent call)",
+        "For that same lane, zero calls are dispatched to GREEN, runSkepticPanel, and runRefactor (assert on the call log's labels, following the skills/src/datum-tdd-act-lane.calls.test.ts convention)",
+        "For that same lane, exactly one command-runner/`datum-cli` batch call is made (the postRedSteps batch), and it includes a `test-verify` step \u2014 no additional runBatch invocation beyond it",
+        "The RED prompt rendered for an `expect_tests_pass` lane contains, verbatim as substrings, `This lane covers invariants: ` followed by the leading `ID:` tokens of the lane's acceptance criteria in order, and the sentence `The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`",
+        "`test-verify` exit 0 \u2192 `result.results.T1.status === 'completed'` and `result.results.T1.stage === 'RED'`, with follow_ups unchanged from what RED/post-RED produced",
+        "`test-verify` exit 1 \u2192 `status === 'failed'` and `error === 'integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)'` for a lane with depends_on ['task-002','task-003'] and invariant ids INV-01, INV-03 (task ids from depends_on in order joined ', '; invariant ids from acceptance criteria in order joined ', ')",
+        "`test-verify` step omitted/refused/with no `TEST_EXIT=` line \u2192 `status !== 'completed'` and `error` starts with `green_verify_unavailable:`, produced via the same `verifyVerdict(...).kind === 'unavailable'` path GREEN uses \u2014 a null exit is never treated as a pass",
+        "A lane with `kind: 'integration'` but `expect_tests_pass` missing/false still takes the RED-only fast path (kind is authoritative per Assumption 9) and logs a warning about the disagreement rather than falling back to the task-lane flow",
+        "Existing structural and behavioral lanes are unaffected: a `kind: 'structural'` lane still short-circuits to runRefactor and a behavioral lane still runs RED\u2192GREEN\u2192REFACTOR"
+      ],
+      "red_note": "vitest (NOT pytest \u2014 this lane is TypeScript). Create ONE new test file, skills/src/datum-tdd-act-lane.integration.test.ts; do not add cases to datum-tdd-act-lane.test.ts or datum-tdd-act-lane.calls.test.ts (other lanes' territory), but read datum-tdd-act-lane.calls.test.ts for the fake-agent / call-log harness convention and copy it. The failing test must drive a lane with kind: 'integration', depends_on ['task-002','task-003'] and acceptance criteria whose leading tokens are INV-01/INV-03 through runLane with a stubbed command runner, and assert: RED call count === 1; zero GREEN/skeptic/refactor labels in the call log; exactly one datum-cli batch containing a 'test-verify' step; and the three outcome branches (exit 0 completed@RED, exit 1 with the byte-exact integration_failed string, absent verify \u2192 green_verify_unavailable prefix). The error string is specified byte-for-byte in SPEC R2 and is consumed by the classifier in task-003 \u2014 do not paraphrase it. Reuse the existing postRedSteps `verifyTestCmd` parameter and the existing verifyVerdict helper in skills/src/shared/lane-steps.ts (read-only here); do NOT add a second runBatch call \u2014 the NFR is one command-runner invocation per lane. Do not edit any skills/*.js bundle (generated).",
+      "introduces_stubs": false,
+      "estimated_loc": 140,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "integration-lane-red-only-fast-path",
+      "kind": "behavioral",
+      "test_command": "npx vitest run",
+      "github_issue": 485
+    },
+    "task-003": {
+      "id": "task-003",
+      "title": "Triage classifies integration_failed as a code defect naming the covered tasks",
+      "files": [
+        "skills/src/shared/triage-classify.ts",
+        "skills/src/datum-tdd-act-triage.ts",
+        "skills/src/shared/triage-classify-code-defect.test.ts",
+        "skills/src/shared/triage-classify.test.ts",
+        "skills/src/shared/verdicts.property.test.ts"
+      ],
+      "acceptance_criteria": [
+        "`classifyLaneError('integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)')` returns `category === 'code_defect'` (a member that is not `agent_behavior` and not any of the seven pre-existing values) with deterministic confidence",
+        "The same call's `reason` string contains both `task-002` and `task-003`, extracted from the error via a `covered ([^;]+)` match rather than hardcoded",
+        "An `integration_failed:` error with a single covered id yields a reason containing that one id; an `integration_failed:` error with no `covered ` segment still classifies as `code_defect` without throwing",
+        "`code_defect` has an entry in `DESTINATION_BY_CATEGORY` and a bidirectional label mapping in skills/src/datum-tdd-act-triage.ts, so the exhaustive Record types compile",
+        "Every pre-existing PREFIX_RULES prefix still classifies exactly as before \u2014 specifically `lane_intake_failed`, `green_verify_unavailable`, `count_gate_failed`, `refactor_failed` and the existing agent_behavior prefixes keep their current categories, proving the new rule was inserted without reordering the linear list"
+      ],
+      "red_note": "vitest (NOT pytest). Put the NEW assertions in a new file skills/src/shared/triage-classify-code-defect.test.ts: the exact SPEC AC3.1 error string in, `code_defect` + a reason containing task-002 and task-003 out, plus the single-id and no-`covered`-segment edge cases. Depends on task-002 because that lane produces the byte-exact `integration_failed: covered <ids>; invariants <ids> (independent verify exit=<n>)` string this rule consumes \u2014 assert against that literal, not a paraphrase. TriageClassifyCategory is enumerated exhaustively in three other places that will break when the member is added, which is why they are in files, not reads: DESTINATION_BY_CATEGORY (same file), the two label maps at skills/src/datum-tdd-act-triage.ts:14 and :26, the destination map at skills/src/shared/triage-classify.test.ts:262, and the closed-set assertion at skills/src/shared/verdicts.property.test.ts:115 \u2014 widen those enumerations, do not otherwise rewrite those files (AC3.2 requires their existing cases to keep passing unchanged). Do not add a structured taskIds field to TriageClassification (SPEC \u00a76, out of scope).",
+      "introduces_stubs": false,
+      "estimated_loc": 45,
+      "depends_on": [
+        "task-002"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "classify-integration-failed-as-code-defect",
+      "kind": "behavioral",
+      "test_command": "npx vitest run",
+      "github_issue": 486
+    },
+    "task-004": {
+      "id": "task-004",
+      "title": "Document the integration-lane runtime path in FLOW.md and mark integration_failed live in SKILL.md",
+      "files": [
+        "docs/FLOW.md",
+        "SKILL.md"
+      ],
+      "acceptance_criteria": [
+        "docs/FLOW.md \u00a73 contains a paragraph adjacent to the existing task-lane RED\u2192GREEN\u2192REFACTOR mermaid diagram that names the integration lane and describes its path: RED \u2192 post-RED batch including the independent verify \u2192 completed at stage RED, or `integration_failed` naming the covered tasks",
+        "That paragraph states explicitly that an integration lane never runs GREEN, the skeptic panel, or REFACTOR, and that a null/unavailable verify is `green_verify_unavailable`, never a pass",
+        "docs/FLOW.md \u00a75's slice-1 (`datum/integration-lanes`) ledger entry is edited so it states RED-only execution has shipped, not only Plan-side scheduling",
+        "SKILL.md no longer describes `integration_failed` as 'reserved' \u2014 it is listed as a live failure name (the word 'reserved' no longer appears adjacent to `integration_failed`)",
+        "No source file is modified by this task \u2014 the diff is docs/FLOW.md and SKILL.md only"
+      ],
+      "red_note": "Documentation-only, no testable behaviour \u2014 marked structural, so this lane runs a single commit stage with no RED/GREEN. The acceptance criteria are review-checkable prose statements about docs/FLOW.md and SKILL.md, deliberately not phrased as test assertions (a grep-for-a-word test would be a worthless test under TDD-002). Describe the behaviour exactly as task-002 and task-003 shipped it \u2014 read those files rather than restating the SPEC from memory, and keep FLOW.md prose unwrapped (one paragraph, one line, per FS-002).",
+      "introduces_stubs": false,
+      "estimated_loc": 25,
+      "depends_on": [
+        "task-002",
+        "task-003"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "document-integration-lane-runtime-path",
+      "kind": "structural",
+      "github_issue": 487
+    },
+    "task-INT-1": {
+      "id": "task-INT-1",
+      "title": "Integration invariants covering task-001, task-002",
+      "files": [
+        "tests/integration/test_int_1.py"
+      ],
+      "acceptance_criteria": [
+        "INT-02: `expect_tests_pass` and `depends_on` written by `lane_plan_digest.py`/`lane_spec_export.py` (task-001) are the exact fields `runLane` (task-002) reads to decide the RED-only fast path and to build the RED prompt and error string, with no re-derivation or renaming across the language boundary"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-002: INT-02: `expect_tests_pass` and `depends_on` written by `lane_plan_digest.py`/`lane_spec_export.py` (task-001) are the exact fields `runLane` (task-002) reads to decide the RED-only fast path and to build the RED prompt and error string, with no re-derivation or renaming across the language boundary",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "depends_on": [
+        "task-001",
+        "task-002"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-2": {
+      "id": "task-INT-2",
+      "title": "Integration invariants covering task-001, task-002, task-003",
+      "files": [
+        "tests/integration/test_int_2.py"
+      ],
+      "acceptance_criteria": [
+        "INT-09: Plan makes the final task cut with the sole rule \"no single-layer task\"; task-001 crosses digest+export (Python producer layer only per its own scope) while task-002 crosses runner+types+prompt (R1, R2, R4.2) and task-003 crosses classifier+destination-map+label-map (R3) \u2014 each of task-002 and task-003 individually spans multiple layers, and R6 is verified by this epic's own Act run rather than as a separate task"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-002, task-003: INT-09: Plan makes the final task cut with the sole rule \"no single-layer task\"; task-001 crosses digest+export (Python producer layer only per its own scope) while task-002 crosses runner+types+prompt (R1, R2, R4.2) and task-003 crosses classifier+destination-map+label-map (R3) \u2014 each of task-002 and task-003 individually spans multiple layers, and R6 is verified by this epic's own Act run rather than as a separate task",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "depends_on": [
+        "task-001",
+        "task-002",
+        "task-003"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-3": {
+      "id": "task-INT-3",
+      "title": "Integration invariants covering task-002",
+      "files": [
+        "tests/integration/test_int_3.py"
+      ],
+      "acceptance_criteria": [
+        "INT-05: The independent test verify for an integration lane runs as one additional step folded into the existing `postRedSteps` batch call (via its `verifyTestCmd` parameter), never as a second `runBatch` invocation, and the verdict is read with the existing `testExitCode` helper on that step",
+        "INT-07: The independent verify's null-exit (\"unavailable\") conditions for an integration lane are identical to GREEN's existing verify conditions and code path \u2014 no new \"merge branch not built\" case exists, because an integration lane's own worktree already represents the merged epic branch at intake",
+        "INT-08: The RED prompt for an `expect_tests_pass` lane surfaces invariant ids as plain substrings in one sentence (`This lane covers invariants: INV-01, INV-03.`) followed by the must-PASS sentence, with no fenced/structured block, and the test asserts via `contains()` on the id strings and on \"must PASS\"",
+        "INT-11: The R1/R2 vitest test for task-002 uses the fake-agent/mocked-batch-response pattern already established in `datum-tdd-act-lane.calls.test.ts` (canned `TEST_EXIT=0`/`TEST_EXIT=1` batch replies), with no real git worktree or actually-merged commits required \u2014 the real merged-branch case is verified separately by this epic's own Act run (R6)"
+      ],
+      "red_note": "Verify integration invariants covering task-002: INT-05: The independent test verify for an integration lane runs as one additional step folded into the existing `postRedSteps` batch call (via its `verifyTestCmd` parameter), never as a second `runBatch` invocation, and the verdict is read with the existing `testExitCode` helper on that step; INT-07: The independent verify's null-exit (\"unavailable\") conditions for an integration lane are identical to GREEN's existing verify conditions and code path \u2014 no new \"merge branch not built\" case exists, because an integration lane's own worktree already represents the merged epic branch at intake; INT-08: The RED prompt for an `expect_tests_pass` lane surfaces invariant ids as plain substrings in one sentence (`This lane covers invariants: INV-01, INV-03.`) followed by the must-PASS sentence, with no fenced/structured block, and the test asserts via `contains()` on the id strings and on \"must PASS\"; INT-11: The R1/R2 vitest test for task-002 uses the fake-agent/mocked-batch-response pattern already established in `datum-tdd-act-lane.calls.test.ts` (canned `TEST_EXIT=0`/`TEST_EXIT=1` batch replies), with no real git worktree or actually-merged commits required \u2014 the real merged-branch case is verified separately by this epic's own Act run (R6)",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "depends_on": [
+        "task-002"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-4": {
+      "id": "task-INT-4",
+      "title": "Integration invariants covering task-002, task-003",
+      "files": [
+        "tests/integration/test_int_4.py"
+      ],
+      "acceptance_criteria": [
+        "INT-01: The `integration_failed:` error string produced by the lane runner (task-002) and the `covered ([^;]+)` extraction regex in the classifier (task-003) agree byte-for-byte on format, so a classify() call against the runner's real output always yields a `reason` containing every covered task id",
+        "INT-03: This epic's own Properties/Plan/Act run (spanning task-001 through task-003's shipped code) must produce at least one `task-INT-<n>` lane that reaches a terminal RED-stage outcome, or the epic's own run is a slice defect, not a pass",
+        "INT-04: The `integration_failed:` error string is human-readable, two parts, semicolon-delimited, comma-separated ids, exactly `integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)`, with task ids from `depends_on` order and invariant ids from acceptance-criteria `ID:` order, and the classifier extracts task ids with exactly one regex on `covered ([^;]+)` and nothing else parses the string",
+        "INT-10: Neither Refine nor Plan hand-verifies that this epic's own Properties/Plan produced an Integration Invariants table or an INT-lane; `datum gate properties` fails without the table and `datum gate plan` warns `no_integration_invariants` when no INT lane is scheduled, making a missing lane visible at the plan gate before Act runs, and a warning here on this epic counts as the slice's first defect"
+      ],
+      "red_note": "Verify integration invariants covering task-002, task-003: INT-01: The `integration_failed:` error string produced by the lane runner (task-002) and the `covered ([^;]+)` extraction regex in the classifier (task-003) agree byte-for-byte on format, so a classify() call against the runner's real output always yields a `reason` containing every covered task id; INT-03: This epic's own Properties/Plan/Act run (spanning task-001 through task-003's shipped code) must produce at least one `task-INT-<n>` lane that reaches a terminal RED-stage outcome, or the epic's own run is a slice defect, not a pass; INT-04: The `integration_failed:` error string is human-readable, two parts, semicolon-delimited, comma-separated ids, exactly `integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)`, with task ids from `depends_on` order and invariant ids from acceptance-criteria `ID:` order, and the classifier extracts task ids with exactly one regex on `covered ([^;]+)` and nothing else parses the string; INT-10: Neither Refine nor Plan hand-verifies that this epic's own Properties/Plan produced an Integration Invariants table or an INT-lane; `datum gate properties` fails without the table and `datum gate plan` warns `no_integration_invariants` when no INT lane is scheduled, making a missing lane visible at the plan gate before Act runs, and a warning here on this epic counts as the slice's first defect",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "depends_on": [
+        "task-002",
+        "task-003"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-5": {
+      "id": "task-INT-5",
+      "title": "Integration invariants covering task-003",
+      "files": [
+        "tests/integration/test_int_5.py"
+      ],
+      "acceptance_criteria": [
+        "INT-06: Covered task ids are embedded as a substring of `TriageClassification.reason` (extracted via regex), not carried on a new structured `taskIds: string[]` field, sufficient for the issue-filer and halt message that both read `reason` in this slice"
+      ],
+      "red_note": "Verify integration invariants covering task-003: INT-06: Covered task ids are embedded as a substring of `TriageClassification.reason` (extracted via regex), not carried on a new structured `taskIds: string[]` field, sufficient for the issue-filer and halt message that both read `reason` in this slice",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "depends_on": [
+        "task-003"
+      ],
+      "stage": "queued"
+    }
+  }
+}

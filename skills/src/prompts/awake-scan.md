@@ -1,13 +1,9 @@
 Repo scanner for datum awake. Discover all rules, conventions, and patterns in this repository.
 
-Working directory: {{wt}}
-
 TOOLS (run these first for hard data):
 1. `scc --no-cocomo -s lines .` — repo shape (LOC, languages, file counts)
 2. `ast-grep --pattern 'def test_$NAME($$$)' .` (Python) or `func test$NAME` (Swift/Go) or `it($$$)` (TS/JS) — sample test naming convention
 3. `ast-grep --pattern 'class $NAME:' .` — class naming convention
-4. `headroom memory list` — read any existing headroom memories for this repo
-5. `headroom learn show` — check for learned patterns from past failures
 
 Then scan these sources IN ORDER. Read each file that exists, skip those that don't:
 
@@ -32,8 +28,6 @@ Then scan these sources IN ORDER. Read each file that exists, skip those that do
 - Read 2-3 implementation files to extract: module structure, error handling, logging, type patterns
 - Check for dependency injection, factory patterns, protocol/trait usage
 - Note the import convention (relative vs absolute, barrel exports)
-
-Use headroom_compress on any file longer than 80 lines. Query-retrieve specific sections.
 
 Return JSON:
 {
@@ -60,9 +54,10 @@ Return JSON:
     "max_file_length": "500 lines or uncapped",
     "naming": "snake_case | camelCase | PascalCase",
     "test_location": "tests/ | __tests__ | Tests/"
-  },
-  "headroom_memories": ["any relevant memories from headroom"],
-  "learned_failures": ["past failure patterns from headroom learn"]
+  }
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+Working directory: {{wt}}

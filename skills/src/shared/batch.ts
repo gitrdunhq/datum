@@ -214,12 +214,21 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     return { steps: [], failed: null, missing: true, refusal: prose }
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
+  // "[]" is an empty reply, not a batch that ran nothing (wf_d80acceb-e3e
+  // boot: the host refused the script and the runner answered with []).
+  if (results.length === 0) return { steps: [], failed: null, missing: true }
   if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0]
     // The guards (root, jq, hash) name themselves on stderr. A silent non-zero
     // exit is the host refusing the script before any step ran (exit 126 at
     // boot, wf_d913ace6-62c): named, never "the runner said nothing".
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`
+    // Only datum's own guards name themselves on stderr; any other text on a
+    // before-any-step exit is the runner's wording for the host refusing the
+    // script (wf_f79286ec-09d: "Command not found or permission denied").
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim())
+    const scriptError = guard
+      ? stderr.trim()
+      : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, ' ').slice(0, 160)}"` : ''}`
     return scriptError.startsWith('batch_script_corrupt')
       ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError }
       : { steps: [], failed: null, missing: true, scriptError }

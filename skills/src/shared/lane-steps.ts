@@ -99,7 +99,15 @@ export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
   if (!o.structural) {
     if (o.cleanupCmd) steps.push({ name: 'cleanup', command: o.cleanupCmd, tolerant: true })
     if (o.planSkeletonPath) {
-      steps.push({ name: 'skeleton-plan', command: catOrMissing(o.planSkeletonPath), tolerant: true })
+      // Projected, never the whole file: the runner reads framework,
+      // target_context and output paths. A preflight carrying a 38 KB
+      // existing_api dump spilled the intake result past the harness cap
+      // and the runner replied empty (integration-lanes-2 task-002).
+      steps.push({
+        name: 'skeleton-plan',
+        command: `jq -c '{framework, target_context, outputs: [(.outputs // [])[] | {path}]}' ${q(o.planSkeletonPath)} 2>/dev/null || echo MISSING`,
+        tolerant: true,
+      })
     }
     // The skeleton command's --output is relative to the cwd (repo root) while the
     // RED prompt reads it from inside the worktree — try both before giving up.

@@ -309,9 +309,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -404,13 +406,13 @@ function worktreeDirtyFromSteps(result) {
 }
 
 // skills/src/prompts/agent-preamble.md
-var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500-line file cap \u2014 split via functional seams\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n";
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
 
 // skills/src/prompts/docs-check.md
-var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation needs updating \u2014 do NOT write or modify files.\n\nSearch for references to these symbols in doc files (*.md, excluding CHANGELOG.md):\n{{changedFiles}}\n\nAlso check: did this task add new public functions or classes with zero documentation?\n\nReturn should_refactor=true only if:\n- An existing doc references a symbol that changed (stale doc)\n- A new public API has zero documentation anywhere\n\nReturn should_refactor=false if all docs are current or no docs reference the changed code.\n";
+var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation needs updating \u2014 do NOT write or modify files.\n\nSearch for references to the changed symbols listed below in doc files (*.md, excluding CHANGELOG.md).\nAlso check: did this task add new public functions or classes with zero documentation?\n\nReturn should_refactor=true only if:\n- An existing doc references a symbol that changed (stale doc)\n- A new public API has zero documentation anywhere\n\nReturn should_refactor=false if all docs are current or no docs reference the changed code.\n\nINPUTS\nCHANGED FILES:\n{{changedFiles}}\n";
 
 // skills/src/prompts/docs-sync.md
-var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nTASK PACKET: {{docsPacket}}\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n';
+var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n\nReturn success, the files_written list (every path you edited \u2014 a success with an empty list is read as a failure by the workflow) and, if you wrote nothing, failure_reason saying why.\n\nINPUTS\nTASK PACKET: {{docsPacket}}\n';
 
 // skills/src/shared/lane-steps.ts
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
@@ -437,6 +439,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -562,7 +569,7 @@ if (a.completedLanes.length === 0) {
   const changedFiles = [...new Set(a.completedLanes.flatMap((id) => a.lanePlan.lanes[id].files || []))];
   const docsCheck = await resilientAgent(
     docsCheckPrompt({ changedFiles: changedFiles.join(", ") }),
-    { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 }
+    stageOpts("quality", { label: "docs-check", phase: "Docs", model: model("fast"), schema: REFACTOR_CHECK_SCHEMA, maxRetries: 1 })
   );
   if (!docsCheck) {
     failureReason = "docs_check_no_result: the docs-check agent returned nothing on both attempts \u2014 docs were not checked";

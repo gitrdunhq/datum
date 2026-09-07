@@ -1127,9 +1127,13 @@ def gate_plan(yolo: bool, config: dict) -> None:
     task_lanes = [lanes[lid] for lid in lanes if not lid.startswith(_INT_LANE_PREFIX)]
     if len(task_lanes) >= 3:
 
+        # A layer is a parent directory, not a top-level one: the first plan
+        # under this rule (integration-lanes-2 task-002) crossed the runner,
+        # shared types and a prompt template, all under skills/, and was
+        # wrongly warned.
         def _layers(lane: dict) -> set[str]:
             return {
-                f.split("/", 1)[0]
+                f.rsplit("/", 1)[0]
                 for f in lane.get("files", [])
                 if "/" in f and not is_test_file(f)
             }
@@ -1137,8 +1141,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
         if not any(len(_layers(lane)) >= 2 for lane in task_lanes):
             print(
                 "plan_not_sliced: no task crosses a layer boundary (every task keeps its "
-                "non-test files in one top-level directory); a task is a shippable slice "
-                "cut through every layer, not a module",
+                "non-test files in one directory); a task is a shippable slice cut "
+                "through every layer, not a module",
                 file=sys.stderr,
             )
 

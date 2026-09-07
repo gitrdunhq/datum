@@ -1,0 +1,28 @@
+{
+  "batch": true,
+  "language": "python",
+  "tasks_processed": 4,
+  "output_dir": "docs/epics/datum/integration-lanes-2/skeletons",
+  "tasks": {
+    "task-001": {
+      "path": "docs/epics/datum/integration-lanes-2/skeletons/preflight-task-001.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-002": {
+      "path": "docs/epics/datum/integration-lanes-2/skeletons/preflight-task-002.json",
+      "skeleton_count": 10,
+      "framework": "pytest"
+    },
+    "task-003": {
+      "path": "docs/epics/datum/integration-lanes-2/skeletons/preflight-task-003.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "task-004": {
+      "path": "docs/epics/datum/integration-lanes-2/skeletons/preflight-task-004.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    }
+  }
+}

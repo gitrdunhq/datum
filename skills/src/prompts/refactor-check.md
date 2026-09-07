@@ -1,11 +1,6 @@
 CODE QUALITY gate. Decide if the implementation needs refactoring — be conservative.
 Read-only — do NOT write or modify any files.
 
-Read these files in "{{wt}}": {{allFiles}}
-
-SCANNER FINDINGS on the lines this lane added (deterministic; each is a real problem the refactor must remove):
-{{tellsSlot}}
-
 Return should_refactor=true ONLY if you find one of these concrete problems:
 - Duplicated logic (same code block copy-pasted in 2+ places)
 - Function longer than 50 lines that could be split at a clear seam
@@ -20,3 +15,8 @@ Do NOT flag: defensive checks or validation (the data does not support them as a
 If the code works, reads clearly, and matches the level of the code around it, return should_refactor=false.
 
 If should_refactor=true, the reason must name the specific file and problem.
+
+INPUTS
+Read these files in "{{wt}}": {{allFiles}}
+SCANNER FINDINGS on the lines this lane added (deterministic; each is a real problem the refactor must remove):
+{{tellsSlot}}

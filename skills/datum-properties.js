@@ -91,7 +91,7 @@ function model(tier) {
 }
 
 // skills/src/prompts/properties-derive.md
-var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nQUESTIONS.md (Refine's answered questions; each answered one becomes an Integration Invariant):\n{{questionsContent}}\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nThe full PROPERTIES.md content is markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n4. A required `## Integration Invariants` section \u2014 a table with header `| ID | Invariant | Covers | Source |`, a separator row, and one row per cross-task invariant. `ID` is a short unique tag; `Invariant` is a testable predicate spanning two or more tasks; `Covers` is a comma-separated list of the task ids it spans; `Source` is either `spec:<requirement>` (must cover 2+ tasks) or `question:Q<n>` for an invariant that answers a specific QUESTIONS.md id. Emit exactly one `question:Q<n>` row per answered question in QUESTIONS.md above (a question whose `[Answer]:` line is present and non-empty); an unanswered question or one with an empty answer yields no row. The gate fails on a missing or duplicated row per answered question. This table is mandatory \u2014 the gate fails without it, even if there are no genuine cross-task invariants (in that case still include the heading with a header/separator row and zero data rows).\n\nWrite that markdown to the file named in the instructions below; your response itself is the JSON receipt described there.\n";
+var properties_derive_default = "Properties deriver. Map every SPEC requirement to testable invariants across 11 categories.\n\nPROPERTY CATEGORIES:\n1. SAFETY \u2014 what must NEVER happen\n2. LIVENESS \u2014 what must EVENTUALLY happen\n3. INVARIANT \u2014 what must ALWAYS be true\n4. BOUNDARY \u2014 valid input ranges\n5. IDEMPOTENT \u2014 what is safe to run twice\n6. ORDERING \u2014 order invariants\n7. ISOLATION \u2014 what cannot leak between contexts\n8. PERFORMANCE \u2014 latency/throughput/size bounds\n9. SECURITY \u2014 access controls\n10. OBSERVABILITY \u2014 what must be logged or measured\n11. COMPATIBILITY \u2014 existing behavior that must be preserved\n\nFor each requirement in the SPEC, derive at least one property from each applicable category.\nFormat: PROPERTY(TYPE-NNN): <testable predicate>\n\nThen build a traceability table mapping each property to the task(s) that must prove it.\nEvery task must have at least one property. If a task has no testable property, flag it.\n\nThe full PROPERTIES.md content is markdown with:\n1. Property list grouped by category\n2. Traceability table: Property ID | Category | Predicate | Task IDs\n3. Per-task property assignments\n4. A required `## Integration Invariants` section \u2014 a table with header `| ID | Invariant | Covers | Source |`, a separator row, and one row per cross-task invariant. `ID` is a short unique tag; `Invariant` is a testable predicate spanning two or more tasks; `Covers` is a comma-separated list of the task ids it spans; `Source` is either `spec:<requirement>` (must cover 2+ tasks) or `question:Q<n>` for an invariant that answers a specific QUESTIONS.md id. Emit exactly one `question:Q<n>` row per answered question in the QUESTIONS.md section below (a question whose `[Answer]:` line is present and non-empty); an unanswered question or one with an empty answer yields no row. The gate fails on a missing or duplicated row per answered question. This table is mandatory \u2014 the gate fails without it, even if there are no genuine cross-task invariants (in that case still include the heading with a header/separator row and zero data rows).\n\nWrite that markdown to the file named in the instructions after the inputs below; your response itself is the JSON receipt described there.\n\nINPUTS\nSPEC content:\n{{specContent}}\n\nTASKS (for traceability):\n{{tasksContent}}\n\nQUESTIONS.md (Refine's answered questions; each answered one becomes an Integration Invariant):\n{{questionsContent}}\n";
 
 // skills/src/shared/sha1.ts
 function rotl(x, n) {
@@ -303,9 +303,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -390,6 +392,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -710,6 +717,19 @@ function assertReadWitness(files, parsed) {
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-properties.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -762,12 +782,12 @@ log(`Branch: ${ctx.branch}, SPEC: ${specFile.bytes} bytes${specFile.inlined ? ""
 phase("Derive");
 var propertiesPath = `${epicDir}/PROPERTIES.md`;
 var deriveRaw = await agent(
-  renderPrompt(properties_derive_default, { specContent, tasksContent, questionsContent }) + `
+  withPreamble(renderPrompt(properties_derive_default, { specContent, tasksContent, questionsContent }) + `
 
 AFTER DERIVING THE PROPERTIES CONTENT:
 1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
 2. Do NOT git add or git commit anything in this step \u2014 the workflow commits.
-3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}` + contextWitnessInstruction(witnessFiles),
+3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}` + contextWitnessInstruction(witnessFiles)),
   { label: "derive", model: model("balanced") }
 );
 var derive = parseAgentJsonStrict(deriveRaw, "derive");

@@ -1,8 +1,6 @@
 DOCS RELEVANCE checker. Evaluate whether documentation needs updating — do NOT write or modify files.
 
-Search for references to these symbols in doc files (*.md, excluding CHANGELOG.md):
-{{changedFiles}}
-
+Search for references to the changed symbols listed below in doc files (*.md, excluding CHANGELOG.md).
 Also check: did this task add new public functions or classes with zero documentation?
 
 Return should_refactor=true only if:
@@ -10,3 +8,7 @@ Return should_refactor=true only if:
 - A new public API has zero documentation anywhere
 
 Return should_refactor=false if all docs are current or no docs reference the changed code.
+
+INPUTS
+CHANGED FILES:
+{{changedFiles}}

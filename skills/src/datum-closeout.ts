@@ -9,6 +9,7 @@ import { housekeepSteps, housekeepFromSteps } from './shared/lane-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
+import { withPreamble } from './shared/prompts'
 
 /** Collector steps whose non-zero exit is logged individually — #368 follow-up. */
 const COLLECTOR_STEPS = ['collect-git', 'collect-tasks', 'collect-token-metrics', 'collate']
@@ -115,13 +116,13 @@ const changelogInstruction = changelogManaged
   : 'CHANGELOG.md — append entries for what shipped'
 
 const synthResult = await agent(
-  renderPrompt(closeoutSynthTemplate, {
+  withPreamble(renderPrompt(closeoutSynthTemplate, {
     closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
     reviewResponsePath: `${epicDir}/REVIEW-RESPONSE.md`,
     changelogInstruction,
     branch,
     runId: rid,
-  }),
+  })),
   { label: 'synthesize', model: model('balanced') },
 )
 

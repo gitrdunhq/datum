@@ -9,7 +9,7 @@
 ## Coding Rules
 - Functional core / imperative shell — business logic is pure, side effects at edges
 - Boundary validation — validate external input immediately (Pydantic/Zod)
-- 500-line file cap — split via functional seams
+- 500 lines is a review trigger: split only on a real functional seam, never to hit a number
 - Structured errors — never silently swallow, return {code, message}
 - No silent fallbacks — fail fast, don't mask missing data
 - Idempotent mutations — upserts, dedup before side effects
@@ -25,5 +25,5 @@
 - Follow the repo's existing style (detected by datum-awake)
 - No `eval()`, `os.system()`, `shell=True`
 
-## Full Context
-- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns
+## Context Budget
+- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on — never block on them, never report a hash you did not produce

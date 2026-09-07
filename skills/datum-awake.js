@@ -4,8 +4,8 @@ export const meta = {
   description: "Scan repo rules and conventions, distill into cached agent preamble (llms.txt pattern)",
   phases: [
     { title: "Scan", detail: "read CLAUDE.md, AGENTS.md, configs, test files, code patterns" },
-    { title: "Distill", detail: "compress into agent-preamble.md + agent-preamble-full.md" },
-    { title: "Commit", detail: "write preamble files and commit" }
+    { title: "Distill", detail: "compress into agent-preamble.md" },
+    { title: "Commit", detail: "write the preamble file and commit" }
   ]
 };
 
@@ -301,9 +301,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -464,10 +466,26 @@ function writeFileFromSteps(result, o) {
 }
 
 // skills/src/prompts/awake-scan.md
-var awake_scan_default = 'Repo scanner for datum awake. Discover all rules, conventions, and patterns in this repository.\n\nWorking directory: {{wt}}\n\nTOOLS (run these first for hard data):\n1. `scc --no-cocomo -s lines .` \u2014 repo shape (LOC, languages, file counts)\n2. `ast-grep --pattern \'def test_$NAME($$$)\' .` (Python) or `func test$NAME` (Swift/Go) or `it($$$)` (TS/JS) \u2014 sample test naming convention\n3. `ast-grep --pattern \'class $NAME:\' .` \u2014 class naming convention\n4. `headroom memory list` \u2014 read any existing headroom memories for this repo\n5. `headroom learn show` \u2014 check for learned patterns from past failures\n\nThen scan these sources IN ORDER. Read each file that exists, skip those that don\'t:\n\n## Config & Rules\n- CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md (agent instructions)\n- .claude/rules/*.md (Claude Code rules)\n- .editorconfig, .prettierrc, .eslintrc*, biome.json (formatting)\n- pyproject.toml [tool.ruff], [tool.black], [tool.pytest] sections (Python)\n- tsconfig.json, package.json, biome.json (TypeScript/JavaScript)\n- Package.swift, .swiftlint.yml, .swift-format (Swift)\n- go.mod, go.sum (Go)\n- Cargo.toml, rustfmt.toml (Rust)\n- build.gradle.kts, pom.xml (Kotlin/Java)\n- Gemfile (Ruby)\n\n## Test Conventions\n- Read 2-3 existing test files to extract: naming pattern, import style, fixture approach, assertion style\n- Identify test framework: pytest, jest, vitest, XCTest, Swift Testing\n- Note any test fixtures/helpers (conftest.py / TestHelper.swift / testutil_test.go / jest.setup.ts)\n\n## Project Patterns\n- Read 2-3 implementation files to extract: module structure, error handling, logging, type patterns\n- Check for dependency injection, factory patterns, protocol/trait usage\n- Note the import convention (relative vs absolute, barrel exports)\n\nUse headroom_compress on any file longer than 80 lines. Query-retrieve specific sections.\n\nReturn JSON:\n{\n  "language": "python|typescript|swift|go|mixed",\n  "test_framework": "pytest|jest|vitest|xctest|swift-testing",\n  "repo_shape": {"total_loc": 0, "languages": {}, "file_count": 0},\n  "rules": [\n    {"source": "CLAUDE.md", "rules": ["rule 1 summary", "rule 2 summary"]},\n    {"source": "pyproject.toml | package.json | Package.swift", "rules": ["linter/formatter config summary"]}\n  ],\n  "test_conventions": {\n    "naming": "test_<function>_<scenario> or describe/it",\n    "fixtures": "conftest.py | jest.setup.ts | TestHelper.swift | setUp",\n    "assertions": "assert x == y | expect(x).toBe(y) | XCTAssertEqual | #expect",\n    "example_imports": "from module import func | import { func } from \'./module\'"\n  },\n  "code_patterns": {\n    "error_handling": "how errors are handled",\n    "logging": "structlog | console.log | os.log",\n    "typing": "fully typed | partial | none",\n    "module_structure": "flat | layered | domain-driven"\n  },\n  "file_conventions": {\n    "max_file_length": "500 lines or uncapped",\n    "naming": "snake_case | camelCase | PascalCase",\n    "test_location": "tests/ | __tests__ | Tests/"\n  },\n  "headroom_memories": ["any relevant memories from headroom"],\n  "learned_failures": ["past failure patterns from headroom learn"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var awake_scan_default = 'Repo scanner for datum awake. Discover all rules, conventions, and patterns in this repository.\n\nTOOLS (run these first for hard data):\n1. `scc --no-cocomo -s lines .` \u2014 repo shape (LOC, languages, file counts)\n2. `ast-grep --pattern \'def test_$NAME($$$)\' .` (Python) or `func test$NAME` (Swift/Go) or `it($$$)` (TS/JS) \u2014 sample test naming convention\n3. `ast-grep --pattern \'class $NAME:\' .` \u2014 class naming convention\n\nThen scan these sources IN ORDER. Read each file that exists, skip those that don\'t:\n\n## Config & Rules\n- CLAUDE.md, AGENTS.md, GEMINI.md, CODEX.md (agent instructions)\n- .claude/rules/*.md (Claude Code rules)\n- .editorconfig, .prettierrc, .eslintrc*, biome.json (formatting)\n- pyproject.toml [tool.ruff], [tool.black], [tool.pytest] sections (Python)\n- tsconfig.json, package.json, biome.json (TypeScript/JavaScript)\n- Package.swift, .swiftlint.yml, .swift-format (Swift)\n- go.mod, go.sum (Go)\n- Cargo.toml, rustfmt.toml (Rust)\n- build.gradle.kts, pom.xml (Kotlin/Java)\n- Gemfile (Ruby)\n\n## Test Conventions\n- Read 2-3 existing test files to extract: naming pattern, import style, fixture approach, assertion style\n- Identify test framework: pytest, jest, vitest, XCTest, Swift Testing\n- Note any test fixtures/helpers (conftest.py / TestHelper.swift / testutil_test.go / jest.setup.ts)\n\n## Project Patterns\n- Read 2-3 implementation files to extract: module structure, error handling, logging, type patterns\n- Check for dependency injection, factory patterns, protocol/trait usage\n- Note the import convention (relative vs absolute, barrel exports)\n\nReturn JSON:\n{\n  "language": "python|typescript|swift|go|mixed",\n  "test_framework": "pytest|jest|vitest|xctest|swift-testing",\n  "repo_shape": {"total_loc": 0, "languages": {}, "file_count": 0},\n  "rules": [\n    {"source": "CLAUDE.md", "rules": ["rule 1 summary", "rule 2 summary"]},\n    {"source": "pyproject.toml | package.json | Package.swift", "rules": ["linter/formatter config summary"]}\n  ],\n  "test_conventions": {\n    "naming": "test_<function>_<scenario> or describe/it",\n    "fixtures": "conftest.py | jest.setup.ts | TestHelper.swift | setUp",\n    "assertions": "assert x == y | expect(x).toBe(y) | XCTAssertEqual | #expect",\n    "example_imports": "from module import func | import { func } from \'./module\'"\n  },\n  "code_patterns": {\n    "error_handling": "how errors are handled",\n    "logging": "structlog | console.log | os.log",\n    "typing": "fully typed | partial | none",\n    "module_structure": "flat | layered | domain-driven"\n  },\n  "file_conventions": {\n    "max_file_length": "500 lines or uncapped",\n    "naming": "snake_case | camelCase | PascalCase",\n    "test_location": "tests/ | __tests__ | Tests/"\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nWorking directory: {{wt}}\n';
 
 // skills/src/prompts/awake-distill.md
-var awake_distill_default = 'Distill repo scan results into a token-efficient agent preamble.\n\nSCAN RESULTS:\n{{scanResults}}\n\nProduce TWO outputs:\n\n## OUTPUT 1: agent-preamble.md (lightweight \u2014 every agent gets this)\n\nWrite a concise preamble that will be PREPENDED to every agent prompt. Format as llms.txt:\n\n```\n# [Project Name]\n\n> One-line project description\n\n[Distilled rules \u2014 keep under 60 lines total]\n\n## Coding Rules\n- [rule]: brief description\n\n## Test Conventions\n- [convention]: brief description\n\n## File Conventions\n- [convention]: brief description\n\n## Full Context\n- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns\n```\n\nRULES FOR THE PREAMBLE:\n- Must be EXACTLY the same text every time for prompt cache hits\n- No dynamic content (no dates, no branch names, no file counts)\n- Under 60 lines / ~2000 tokens \u2014 this gets prepended to EVERY agent call\n- Actionable rules only \u2014 "use the project\'s test runner" not "the project has tests"\n- Use imperative voice \u2014 "Always X" not "The project uses X"\n\n## OUTPUT 2: agent-preamble-full.md (expanded \u2014 agents pull this when they need depth)\n\nWrite an expanded version with:\n- All rules from the preamble PLUS detailed explanations\n- Code examples showing the correct pattern for this repo\n- Test examples showing the naming/fixture/assertion conventions\n- Error handling examples\n- Import convention examples\n- Anti-patterns to avoid (extracted from linter configs)\n\nThe full version can be 200+ lines. It\'s not cached \u2014 agents fetch it on demand.\n\nReturn JSON:\n{\n  "preamble": "full contents of agent-preamble.md as a string",\n  "preamble_full": "full contents of agent-preamble-full.md as a string",\n  "token_estimate": {"preamble": N, "full": N}\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var awake_distill_default = 'Distill repo scan results into a token-efficient agent preamble.\n\n## OUTPUT: agent-preamble.md\n\nWrite a concise preamble that is PREPENDED to every stage, refine, plan, properties, review, validate and closeout prompt. Format as llms.txt:\n\n```\n# [Project Name]\n\n> One-line project description\n\n[Distilled rules \u2014 keep under 60 lines total]\n\n## Coding Rules\n- [rule]: brief description\n\n## Test Conventions\n- [convention]: brief description\n\n## File Conventions\n- [convention]: brief description\n```\n\nRULES FOR THE PREAMBLE:\n- Must be EXACTLY the same text every time for prompt cache hits\n- No dynamic content (no dates, no branch names, no file counts)\n- Under 60 lines / ~2000 tokens \u2014 this gets prepended to EVERY agent call\n- Actionable rules only \u2014 "use the project\'s test runner" not "the project has tests"\n- Use imperative voice \u2014 "Always X" not "The project uses X"\n\nReturn JSON:\n{\n  "preamble": "full contents of agent-preamble.md as a string",\n  "token_estimate": {"preamble": N}\n}\n\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nSCAN RESULTS:\n{{scanResults}}\n';
+
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
 
 // skills/src/datum-awake.ts
 var awakeArgs = typeof args === "object" && args ? args : {};
@@ -475,43 +493,33 @@ setBatchCacheKey(awakeArgs.configFingerprint || "");
 setBatchRoot(awakeArgs.repoRoot || "");
 phase("Scan");
 var scanRaw = await agent(
-  renderPrompt(awake_scan_default, { wt: "." }),
+  withPreamble(renderPrompt(awake_scan_default, { wt: "." })),
   { label: "scan-repo", model: model("balanced") }
 );
 var scan = parseAgentJsonStrict(scanRaw, "scan-repo");
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`);
 phase("Distill");
 var distillRaw = await agent(
-  renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) }),
+  withPreamble(renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) })),
   { label: "distill-preamble", model: model("balanced") }
 );
 var distill = parseAgentJsonStrict(distillRaw, "distill-preamble");
-log(`Preamble: ~${distill.token_estimate.preamble} tokens, Full: ~${distill.token_estimate.full} tokens`);
+log(`Preamble: ~${distill.token_estimate.preamble} tokens`);
 phase("Commit");
 var preamblePath = "skills/src/prompts/agent-preamble.md";
-var fullPath = "skills/src/prompts/agent-preamble-full.md";
 var PREAMBLE_NAMES = { mkdir: "mkdir-preamble", write: "write-preamble", sha: "sha-preamble" };
-var FULL_NAMES = { mkdir: "mkdir-full", write: "write-full", sha: "sha-full" };
-var writeSteps = [
-  ...writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES }),
-  ...writeFileSteps({ path: fullPath, content: distill.preamble_full, names: FULL_NAMES })
-];
-var writeResult = await runBatch(writeSteps, { label: "write-preambles", model: model("fast") });
-for (const verdict of [
-  writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: "preamble", names: PREAMBLE_NAMES }),
-  writeFileFromSteps(writeResult, { path: fullPath, expectedSha: writeFileBlobSha(distill.preamble_full), prefix: "preamble_full", names: FULL_NAMES })
-]) {
-  if (!verdict.ok) throw new Error(verdict.error);
-}
-var commitStepList = commitFilesSteps({ wt: ".", files: [preamblePath, fullPath], message: "awake: regenerate agent preamble from repo scan" });
-var commit = commitFilesFromSteps(await runBatch(commitStepList, { label: "commit-preambles", model: model("fast") }));
+var writeSteps = writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES });
+var writeResult = await runBatch(writeSteps, { label: "write-preamble", model: model("fast") });
+var verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: "preamble", names: PREAMBLE_NAMES });
+if (!verdict.ok) throw new Error(verdict.error);
+var commitStepList = commitFilesSteps({ wt: ".", files: [preamblePath], message: "awake: regenerate agent preamble from repo scan" });
+var commit = commitFilesFromSteps(await runBatch(commitStepList, { label: "commit-preamble", model: model("fast") }));
 if (commit.error) throw new Error(`awake_commit_failed: ${commit.error}`);
-if (commit.nothingToCommit) log("Preambles unchanged since the last awake \u2014 nothing to commit");
-else log(`Written and committed: ${preamblePath} + ${fullPath} (${commit.sha})`);
+if (commit.nothingToCommit) log("Preamble unchanged since the last awake \u2014 nothing to commit");
+else log(`Written and committed: ${preamblePath} (${commit.sha})`);
 log('Run "bash scripts/build-workflows.sh" to rebuild with new preamble');
 return {
   language: scan.language,
   ruleSources: scan.rules?.length || 0,
-  preambleTokens: distill.token_estimate.preamble,
-  fullTokens: distill.token_estimate.full
+  preambleTokens: distill.token_estimate.preamble
 };

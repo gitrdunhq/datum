@@ -80,7 +80,7 @@ Compute the inputs fingerprint first and pass it in `args`. `Workflow({resumeFro
 
 ```
 FP=$(datum config-fingerprint)
-Workflow({ scriptPath: "<skills_dir>/datum-go.js", args: { yolo: true, configFingerprint: "<FP>" } })
+Workflow({ scriptPath: "<skills_dir>/datum-go.js", args: { yolo: true, configFingerprint: "<FP>", repoRoot: "<absolute repo root>" } })
 ```
 
 Without `configFingerprint` the script logs a warning and a resumed run replays every stale read.

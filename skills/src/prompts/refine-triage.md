@@ -1,7 +1,5 @@
 Addendum triage agent. Read the full TICKET.md and classify each section.
 
-Read: {{ticketPath}}
-
 The TICKET may have appended addendum sections (marked with `## Addendum — YYYY-MM-DD`).
 For each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.
 
@@ -29,3 +27,6 @@ Return JSON:
 
 If the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.
 Output raw JSON only. No markdown fences.
+
+INPUTS
+Read: {{ticketPath}}

@@ -1,0 +1,75 @@
+{
+  "task_id": "task-003",
+  "slug": "classify-integration-failed-as-code-defect",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/triage-classify-code-defect.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify `classifyLaneError('integration_failed: covered task-002, ta",
+      "property_id": "INV",
+      "function_name": "test_ac1_classifylaneerror_integration_failed_covered_task_002_task_0",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC1 \u2014 INV\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_classifylaneerror_integration_failed_covered_task_002_task_0 \u2192 skills/src/shared/triage-classify-code-defect.test.ts\n\nimport pytest\n\n\nclass TestTask003AC1:\n    def test_ac1_classifylaneerror_integration_failed_covered_task_002_task_0(self):\n        \"\"\"\n        INV: `classifyLaneError('integration_failed: covered task-002, task-003; invariants I\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove INV\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/triage-classify-code-defect.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The same call's `reason` string contains both `task-002` and",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_same_call_s_reason_string_contains_both_task_002_and_tas",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_same_call_s_reason_string_contains_both_task_002_and_tas \u2192 skills/src/shared/triage-classify-code-defect.test.ts\n\nimport pytest\n\n\nclass TestTask003AC2:\n    def test_ac2_the_same_call_s_reason_string_contains_both_task_002_and_tas(self):\n        \"\"\"\n        PROP-002: The same call's `reason` string contains both `task-002` and `task-003`, extract\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/triage-classify-code-defect.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify An `integration_failed:` error with a single covered id yiel",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_an_integration_failed_error_with_a_single_covered_id_yields",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_an_integration_failed_error_with_a_single_covered_id_yields \u2192 skills/src/shared/triage-classify-code-defect.test.ts\n\nimport pytest\n\n\nclass TestTask003AC3:\n    def test_ac3_an_integration_failed_error_with_a_single_covered_id_yields(self):\n        \"\"\"\n        PROP-003: An `integration_failed:` error with a single covered id yields a reason containi\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/shared/triage-classify-code-defect.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify `code_defect` has an entry in `DESTINATION_BY_CATEGORY` and ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_code_defect_has_an_entry_in_destination_by_category_and_a_bi",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_code_defect_has_an_entry_in_destination_by_category_and_a_bi \u2192 skills/src/shared/triage-classify-code-defect.test.ts\n\nimport pytest\n\n\nclass TestTask003AC4:\n    def test_ac4_code_defect_has_an_entry_in_destination_by_category_and_a_bi(self):\n        \"\"\"\n        PROP-004: `code_defect` has an entry in `DESTINATION_BY_CATEGORY` and a bidirectional labe\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/shared/triage-classify-code-defect.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Every pre-existing PREFIX_RULES prefix still classifies exac",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_every_pre_existing_prefix_rules_prefix_still_classifies_exac",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_every_pre_existing_prefix_rules_prefix_still_classifies_exac \u2192 skills/src/shared/triage-classify-code-defect.test.ts\n\nimport pytest\n\n\nclass TestTask003AC5:\n    def test_ac5_every_pre_existing_prefix_rules_prefix_still_classifies_exac(self):\n        \"\"\"\n        PROP-005: Every pre-existing PREFIX_RULES prefix still classifies exactly as before \u2014 spec\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/triage-classify.ts": "// Deterministic pre-classification of lane failures before they ever reach an\n// LLM triage prompt. The Act pipeline already stamps every infrastructure /\n// tooling failure with a stable machine-readable prefix on `LaneOutcome.error`\n// (see skills/src/datum-tdd-act-lane.ts, datum-validate.ts, datum-go.ts,\n// datum-plan.ts, datum-refine.ts, shared/utils.ts groupBlockedByRoot/\n// computeBlockedLanes). When that prefix is present the category is already\n// known with certainty \u2014 the LLM re-guessing from the error text alone is how\n// #387 (blamed the RED agent for skeleton stubs left in the ROOT checkout)\n// and #392 (blamed a \"fixtures-only lane\" when the count-gate diffed the\n// wrong range) went wrong. This module is pure and has no agent/IO dependency\n// so it can run before any `agent()` call.\n\nexport type TriageClassifyCategory =\n\nexport interface TriageClassification {\n}\n\ninterface PrefixRule {\n}\n\n// Order matters: more specific prefixes (e.g. `count_gate_no_output`) must be\n// checked before shorter prefixes that could also match a substring of them.\nconst PREFIX_RULES: PrefixRule[] = [\n\n\n\n]\n\n/**\nexport function classifyLaneError(\n): TriageClassification {\n      reason: 'stage=SKIPPED or a \"blocked: ...\" error \u2014 this lane never ran; it is a consequence of an upstream root failure, not an independent bug.',\n\n  const text = error || ''\n\n}\n\nexport type TriageDestination = 'datum' | 'consumer' | 'none'\n\n// Where a classified failure's issue (if any) belongs. #417 landed a\n// skeptic-confirmed CONSUMER-repo code bug (\"resolveConvert recomputes\n// fog-of-war from stale board state\" in Shroud Chess) into datum's own\n// tracker, because datum-tdd-act-triage.ts hardcodes `gh issue create --repo\n// gitrdunhq/datum` for every failure regardless of what actually broke. This\n// map is the single source of truth for which categories mean *datum's own*\n// pipeline/tooling is at fault (file to datum) vs. which mean the lane's\n// work / the consumer repo's code is what's wrong (never datum's tracker \u2014\n// the consumer may have no configured remote, so datum does not attempt to\n// file there either; it only stops misfiling).\n//\n// Declared as a `Record<TriageClassifyCategory, TriageDestination>` so\n// TypeScript's exhaustiveness check fails to compile the moment a new\n// category is added to `TriageClassifyCategory` without a destination\n// decision here (the #417 failure mode: a new category silently defaulting\n// to 'datum' and misfiling a consumer-code finding).\nconst DESTINATION_BY_CATEGORY: Record<TriageClassifyCategory, TriageDestination> = {\n}\n\n/**\nexport function triageDestination(\n): TriageDestination {\n}\n",
+    "skills/src/datum-tdd-act-triage.ts": "import { model } from './shared/models'\nimport type { TriageArgs, TriageAnalysis } from './shared/types'\nimport { TRIAGE_SCHEMA } from './shared/schemas'\nimport { groupBlockedByRoot } from './shared/utils'\nimport { configureAgentTypes } from './shared/agent-types'\nimport { classifyLaneError, triageDestination, type TriageClassifyCategory } from './shared/triage-classify'\n\n// classifyLaneError's underscore categories map onto the hyphenated\n// TriageCategory label the rest of the pipeline (schema, GitHub labels) uses.\nconst CATEGORY_LABEL: Record<Exclude<TriageClassifyCategory, 'dependency' | 'unknown'>, string> = {\n}\n\n// Inverse of CATEGORY_LABEL, for when the LLM assigns the category (no\n// deterministic classification exists for the lane) \u2014 still needed to decide\n// `triageDestination` so an LLM-assigned 'agent-behavior'/'lane-plan'/etc.\n// finding doesn't fall through to the 'datum' branch by default.\nconst LABEL_TO_CATEGORY: Record<string, TriageClassifyCategory> = {\n}\n\nexport const meta = {\n}\n\nconst a = args as TriageArgs\nconfigureAgentTypes(a.agentTypes || {})\nphase('Triage')\n\nlet filed = 0\nlet consumer_findings = 0\nlet skipped = 0\n\nif (a.failures.length === 0) {\n} else {\n  const blockedIds = (a.blocked || []).map((r) => r.task_id)\n  const groups = groupBlockedByRoot(a.lanePlan, a.failures, blockedIds)\n\n    const r = a.results[fid]\n    classifications[fid] = classifyLaneError(r?.error, r?.stage)\n\n  const dependencyFailures = a.failures.filter((fid) => classifications[fid].category === 'dependency')\n  const triageableFailures = a.failures.filter((fid) => classifications[fid].category !== 'dependency')\n\n\n    const failureDetails = triageableFailures.map(fid => {\n      const r = a.results[fid]\n      const lane = a.lanePlan.lanes[fid]\n      const descendants = groups[fid] || []\n      const chainNote = descendants.length > 0\n      const cls = classifications[fid]\n      const worktreePath = (r as unknown as { worktree_path?: string } | undefined)?.worktree_path\n      const evidence = `[evidence: stage=${r?.stage || 'UNKNOWN'}${worktreePath ? `, worktree=${worktreePath}` : ''}]`\n      const categoryNote = cls.confidence === 'deterministic'\n\n    const triage = await agent(\n\n        const category = (cls && cls.confidence === 'deterministic')\n        const effectiveClassification = (cls && cls.confidence === 'deterministic')\n        const destination = triageDestination(effectiveClassification, issue.body)\n\n\n        const labels = `datum-bug,${category}`\n        const safeTitle = issue.title.slice(0, 80).replace(/'/g, \"'\\\\''\")\n        const safeSearch = issue.title.slice(0, 50).replace(/'/g, \"'\\\\''\")\n        const safeBody = issue.body.replace(/'/g, \"'\\\\''\")\n        const fileResult = await agent(\n}\n\nexport const __workflowResult = { filed, consumer_findings, skipped }\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -1,8 +1,5 @@
 Ambiguity classifier. Read the TICKET and classify how much clarification Refine needs.
 
-TICKET content:
-{{ticketContent}}
-
 CLASSIFICATION LEVELS:
 - HIGH: vague or conceptual — intent unclear, architecture unspecified
 - MEDIUM: clear intent, detectable gaps in failure modes, NFRs, or scope
@@ -20,3 +17,7 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+TICKET content:
+{{ticketContent}}

@@ -92,19 +92,19 @@ function model(tier) {
 }
 
 // skills/src/prompts/refine-triage.md
-var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nRead: {{ticketPath}}\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n';
+var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nRead: {{ticketPath}}\n';
 
 // skills/src/prompts/refine-classify.md
-var refine_classify_default = 'Ambiguity classifier. Read the TICKET and classify how much clarification Refine needs.\n\nTICKET content:\n{{ticketContent}}\n\nCLASSIFICATION LEVELS:\n- HIGH: vague or conceptual \u2014 intent unclear, architecture unspecified\n- MEDIUM: clear intent, detectable gaps in failure modes, NFRs, or scope\n- LOW: specific and concrete \u2014 intent, scope, failure modes all clear\n- TRIVIAL: rename, tooltip, wording fix, single-line config change\n\nIf you must assume a structural pattern to understand the ticket, classify as MEDIUM.\n\nReturn JSON:\n{\n  "level": "high|medium|low|trivial",\n  "reasoning": "why this classification",\n  "gaps": ["list of detected gaps that need clarification"],\n  "assumptions": ["list of assumptions the ticket relies on"]\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var refine_classify_default = 'Ambiguity classifier. Read the TICKET and classify how much clarification Refine needs.\n\nCLASSIFICATION LEVELS:\n- HIGH: vague or conceptual \u2014 intent unclear, architecture unspecified\n- MEDIUM: clear intent, detectable gaps in failure modes, NFRs, or scope\n- LOW: specific and concrete \u2014 intent, scope, failure modes all clear\n- TRIVIAL: rename, tooltip, wording fix, single-line config change\n\nIf you must assume a structural pattern to understand the ticket, classify as MEDIUM.\n\nReturn JSON:\n{\n  "level": "high|medium|low|trivial",\n  "reasoning": "why this classification",\n  "gaps": ["list of detected gaps that need clarification"],\n  "assumptions": ["list of assumptions the ticket relies on"]\n}\n\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nTICKET content:\n{{ticketContent}}\n';
 
 // skills/src/prompts/refine-scan.md
-var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<symbol>\' .` \u2014 AST-aware structural search (finds defs, not just strings)\n2. `scc .` \u2014 repo shape: LOC per language, file counts, complexity (run once, report in classification)\n3. GitNexus (gitnexus_context, gitnexus_query) if available\n4. grep/find as fallback\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Use ast-grep to confirm it exists structurally (function def, class def, import)\n2. Read the relevant source file to understand current behavior\n3. Use ast-grep to find callers: `ast-grep --pattern \'<symbol>($$$)\' .`\n4. Assess blast radius from caller count\n\nRun `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.\n\nUse headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file",\n      "related_files": ["tests/test_file", "src/other/caller"],\n      "callers_count": 3,\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"],\n  "repo_shape": {\n    "total_loc": 0,\n    "languages": {"Python": 0, "TypeScript": 0},\n    "file_count": 0\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var refine_scan_default = 'Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.\n\nTOOLS (use in preference order):\n1. `ast-grep --pattern \'<symbol>\' .` \u2014 AST-aware structural search (finds defs, not just strings)\n2. `scc .` \u2014 repo shape: LOC per language, file counts, complexity (run once, report in classification)\n3. GitNexus (gitnexus_context, gitnexus_query) if available\n4. grep/find as fallback\n\nFor each symbol, API, or module mentioned in the requirements:\n1. Use ast-grep to confirm it exists structurally (function def, class def, import)\n2. Read the relevant source file to understand current behavior\n3. Use ast-grep to find callers: `ast-grep --pattern \'<symbol>($$$)\' .`\n4. Assess blast radius from caller count\n\nRun `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.\n\nReturn JSON:\n{\n  "symbols": [\n    {\n      "name": "symbol_name",\n      "exists": true,\n      "file": "path/to/file",\n      "related_files": ["tests/test_file", "src/other/caller"],\n      "callers_count": 3,\n      "blast_radius": "low|medium|high",\n      "notes": "current behavior summary"\n    }\n  ],\n  "missing_symbols": ["symbols referenced but not found in codebase"],\n  "test_framework": "pytest|jest|vitest|swift-testing|xctest",\n  "test_conventions": "how existing tests in this area are structured",\n  "patterns": ["existing patterns relevant to the requirements"],\n  "repo_shape": {\n    "total_loc": 0,\n    "languages": {"Python": 0, "TypeScript": 0},\n    "file_count": 0\n  }\n}\n\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nWorking directory: {{wt}}\nRequirements to verify:\n{{requirements}}\n';
 
 // skills/src/prompts/refine-spec.md
-var refine_spec_default = "SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.\n\nTICKET content:\n{{ticketContent}}\n\nCodebase scan results:\n{{scanResults}}\n\nAmbiguity classification: {{ambiguityLevel}}\nDetected gaps: {{gaps}}\nAssumptions: {{assumptions}}\n\nWrite a SPEC.md following this structure exactly:\n\n1. **Summary** \u2014 2-3 sentences: what changes and why\n2. **Context** \u2014 how this connects to the existing system (use scan results)\n3. **Requirements** \u2014 numbered, each with testable acceptance criteria. Base these on the TICKET requirements, refined with codebase knowledge.\n4. **Failure Modes** \u2014 table: what can go wrong + handling\n5. **Non-Functional Requirements** \u2014 table: requirement + target\n6. **Out of Scope** \u2014 from TICKET's \"Not This\" section + any additional exclusions\n7. **Open Questions** \u2014 gaps that need human answers (empty if trivial/low ambiguity)\n8. **Assumption Audit** \u2014 table: #, Assumption, Justification, Status (confirmed/decided/guess), Resolves (Q# or n/a). Use `decided` for intentional product/design decisions, `confirmed` for code-verified facts, `guess` for technical unknowns that need a QUESTIONS.md entry\n9. **Classification Metadata** \u2014 YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions\n\nRULES:\n- Every AC must be testable \u2014 if it can't become a test assertion, rewrite it\n- Use the scan results to ground requirements in real file paths and function names\n- Flag any symbols from the TICKET that don't exist in the codebase\n- If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions\n- If ambiguity is LOW/TRIVIAL, Open Questions should be empty\n\nOutput the full SPEC.md content as markdown. No JSON wrapping.\n";
+var refine_spec_default = 'SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.\n\nWrite a SPEC.md with these sections. Each is a markdown heading, `## ` and the name, exactly as spelled here \u2014 the gate greps for the heading, not for a bold list item, and a numbered form (`## 8. Assumption Audit`) is the only variation it accepts:\n\n## Summary \u2014 2-3 sentences: what changes and why\n## Context \u2014 how this connects to the existing system (use scan results)\n## Requirements \u2014 numbered, each with testable acceptance criteria. Base these on the TICKET requirements, refined with codebase knowledge.\n## Failure Modes \u2014 table: what can go wrong + handling\n## Non-Functional Requirements \u2014 table: requirement + target\n## Out of Scope \u2014 from TICKET\'s "Not This" section + any additional exclusions\n## Open Questions \u2014 gaps that need human answers (empty if trivial/low ambiguity)\n## Assumption Audit \u2014 table: #, Assumption, Justification, Status (confirmed/decided/guess), Resolves (Q# or n/a). Use `decided` for intentional product/design decisions, `confirmed` for code-verified facts, `guess` for a technical unknown a QUESTIONS.md entry already answers\n## Classification Metadata \u2014 YAML block with estimated_files, estimated_loc, clusters_touched, new_public_api, dependency_additions\n\nRULES:\n- Every AC must be testable \u2014 if it can\'t become a test assertion, rewrite it\n- BANNED TERMS \u2014 never use in an acceptance criterion; the gate rejects the SPEC on any of them, because a criterion that uses one is unreviewable however it is worded: appropriate, adequate, sufficient, reasonable, user-friendly, clean, robust, efficient, simple, intuitive, seamless, proper, etc., etc, and so on, including but not limited to, as needed, if required, where applicable, as appropriate, best, optimal, maximum, better, faster, improved, minimal, at least as good as, if possible, as far as practical, when convenient, should ideally. Name the measure instead: not "fast enough", but "under 200 ms at 10k rows"\n- A `guess` must name an answered Q<n> in its Resolves cell \u2014 the gate rejects a `guess` whose Resolves is `n/a` or points at a question nobody has answered yet. On a first pass no question is answered, so a genuine unknown is an Open Questions entry plus a QUESTIONS.md question, not a `guess` row; it becomes a `guess` row on the resume pass once the operator answers it\n- Use the scan results to ground requirements in real file paths and function names\n- Flag any symbols from the TICKET that don\'t exist in the codebase\n- If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions\n- If ambiguity is LOW/TRIVIAL, Open Questions should be empty\n\nOutput the full SPEC.md content as markdown.\n\nINPUTS\nAmbiguity classification: {{ambiguityLevel}}\nDetected gaps: {{gaps}}\nAssumptions: {{assumptions}}\n\nTICKET content:\n{{ticketContent}}\n\nCodebase scan results:\n{{scanResults}}\n';
 
 // skills/src/prompts/refine-questions.md
-var refine_questions_default = 'QUESTIONS writer. Generate clarifying questions from detected gaps.\n\nGaps to address:\n{{gaps}}\n\nAssumptions to validate:\n{{assumptions}}\n\nAmbiguity level: {{ambiguityLevel}}\n\nExisting QUESTIONS.md (empty if none):\n{{existingQuestions}}\n\nCARRY-FORWARD RULE \u2014 answered questions are operator decisions:\n- Keep every existing section, question, context block and `[Answer]:` line VERBATIM, in place. Never rewrite, renumber or drop an answered question.\n- Do not ask again anything an existing answer already settles; treat those answers as facts.\n- Add only genuinely new questions, under a new `## Refine \u2014 {{date}}` heading appended after the existing content, numbered after the highest existing Qn.\n- The workflow verifies every previously answered line still exists before committing; a dropped answer fails the phase.\n\nWrite a QUESTIONS.md following this format:\n\n## Refine \u2014 {{date}}\n\n### Q1: [Category] Question text?\n> Context explaining why this matters and what depends on the answer.\n\n[Answer]:\n\n### Q2: [Category] ...\n\nRULES:\n- Each question addresses one specific gap or assumption\n- Categories: Scope, Architecture, Behavior, NFR, Integration, Security\n- The context block must explain what decision hinges on the answer\n- Anchor assumptions: "I\'m assuming X \u2014 is that right, or Y?"\n- If there are no gaps (trivial/low ambiguity), write: "No clarifying questions needed \u2014 intent is clear."\n\nOutput the full QUESTIONS.md content as markdown. No JSON wrapping.\n';
+var refine_questions_default = 'QUESTIONS writer. Generate clarifying questions from detected gaps.\n\nCARRY-FORWARD RULE \u2014 answered questions are operator decisions:\n- Keep every existing section, question, context block and `[Answer]:` line VERBATIM, in place. Never rewrite, renumber or drop an answered question.\n- Do not ask again anything an existing answer already settles; treat those answers as facts.\n- Add only genuinely new questions, under a new `## Refine \u2014 <DATE>` heading appended after the existing content, numbered after the highest existing Qn.\n- The workflow verifies every previously answered line still exists before committing; a dropped answer fails the phase.\n\nRULES:\n- Each question addresses one specific gap or assumption\n- Categories: Scope, Architecture, Behavior, NFR, Integration, Security\n- The context block must explain what decision hinges on the answer\n- Anchor assumptions: "I\'m assuming X \u2014 is that right, or Y?"\n- If there are no gaps (trivial/low ambiguity), write: "No clarifying questions needed \u2014 intent is clear."\n- An empty `[Answer]:` line is how a question waits for the operator: `datum gate refine` holds the phase until every one is filled in. That hold is the design, not a failure to work around.\n\nWrite a QUESTIONS.md following this format, with `<DATE>` replaced by the DATE given below and `###` / `[Answer]:` at column 0 exactly as shown \u2014 the gate matches them literally:\n\n## Refine \u2014 <DATE>\n\n### Q1: [Category] Question text?\n> Context explaining why this matters and what depends on the answer.\n\n[Answer]:\n\n### Q2: [Category] ...\n\nOutput the full QUESTIONS.md content as markdown. No JSON wrapping.\n\nINPUTS\nDATE: {{date}}\nAmbiguity level: {{ambiguityLevel}}\n\nGaps to address:\n{{gaps}}\n\nAssumptions to validate:\n{{assumptions}}\n\nExisting QUESTIONS.md (empty if none):\n{{existingQuestions}}\n';
 
 // skills/src/shared/sha1.ts
 function rotl(x, n) {
@@ -316,9 +316,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -403,6 +405,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -770,6 +777,19 @@ function answersKeptFromSteps(result, answered) {
   };
 }
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -850,12 +870,12 @@ async function refineFromTicket() {
   }
   if (hasAddenda) {
     const triageRaw = await agent(
-      renderPrompt(refine_triage_default, { ticketPath }) + `
+      withPreamble(renderPrompt(refine_triage_default, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
-Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`,
+Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`),
       { label: "triage-addenda", model: model("balanced") }
     );
     triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
@@ -868,7 +888,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
     log("No addenda \u2014 single-scope TICKET");
   }
   const classifyRaw = await agent(
-    renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
+    withPreamble(renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile])),
     { label: "classify-ambiguity", model: model("fast") }
   );
   const classify = parseAgentJsonStrict(classifyRaw, "classify-ambiguity");
@@ -876,7 +896,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
   log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
   const requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
   const scanRaw = await agent(
-    renderPrompt(refine_scan_default, { wt: ".", requirements }),
+    withPreamble(renderPrompt(refine_scan_default, { wt: ".", requirements })),
     { label: "scan-codebase", model: model("balanced") }
   );
   const scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
@@ -886,7 +906,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
   const specPath = `${epicDir}/SPEC.md`;
   const questionsPath = `${epicDir}/QUESTIONS.md`;
   const specRaw = await agent(
-    `You have TWO tasks. Do them in order.
+    withPreamble(`You have TWO tasks. Do them in order.
 
 TASK 1 \u2014 Write SPEC.md:
 ${renderPrompt(refine_spec_default, {
@@ -911,7 +931,7 @@ ${renderPrompt(refine_questions_default, {
 Write the QUESTIONS to "${questionsPath}".
 
 Do NOT git add or git commit anything \u2014 the workflow commits both files after you return.
-Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile]),
+Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile])),
     { label: "write-spec-and-questions", model: model("balanced") }
   );
   const spec = parseAgentJsonStrict(specRaw, "write-spec-and-questions");

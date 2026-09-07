@@ -1,13 +1,8 @@
 Distill repo scan results into a token-efficient agent preamble.
 
-SCAN RESULTS:
-{{scanResults}}
+## OUTPUT: agent-preamble.md
 
-Produce TWO outputs:
-
-## OUTPUT 1: agent-preamble.md (lightweight — every agent gets this)
-
-Write a concise preamble that will be PREPENDED to every agent prompt. Format as llms.txt:
+Write a concise preamble that is PREPENDED to every stage, refine, plan, properties, review, validate and closeout prompt. Format as llms.txt:
 
 ```
 # [Project Name]
@@ -24,9 +19,6 @@ Write a concise preamble that will be PREPENDED to every agent prompt. Format as
 
 ## File Conventions
 - [convention]: brief description
-
-## Full Context
-- [agent-preamble-full.md](agent-preamble-full.md): expanded rules with code examples and patterns
 ```
 
 RULES FOR THE PREAMBLE:
@@ -36,23 +28,14 @@ RULES FOR THE PREAMBLE:
 - Actionable rules only — "use the project's test runner" not "the project has tests"
 - Use imperative voice — "Always X" not "The project uses X"
 
-## OUTPUT 2: agent-preamble-full.md (expanded — agents pull this when they need depth)
-
-Write an expanded version with:
-- All rules from the preamble PLUS detailed explanations
-- Code examples showing the correct pattern for this repo
-- Test examples showing the naming/fixture/assertion conventions
-- Error handling examples
-- Import convention examples
-- Anti-patterns to avoid (extracted from linter configs)
-
-The full version can be 200+ lines. It's not cached — agents fetch it on demand.
-
 Return JSON:
 {
   "preamble": "full contents of agent-preamble.md as a string",
-  "preamble_full": "full contents of agent-preamble-full.md as a string",
-  "token_estimate": {"preamble": N, "full": N}
+  "token_estimate": {"preamble": N}
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+SCAN RESULTS:
+{{scanResults}}

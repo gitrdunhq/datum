@@ -157,6 +157,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -397,9 +402,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -589,7 +596,7 @@ function configFromSteps(result) {
 }
 
 // skills/src/prompts/validate-check.md
-var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var validate_check_default = "Validation agent. Confirm the integrated result meets the acceptance criteria the epic planned.\n\nYour tests_pass is diagnostics: the workflow re-runs the same suite itself and the verdict comes from that exit code, never from your self-report.\n\nSTEPS:\n1. Run the full test suite with exactly the command given as RUN below.\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run the configured test command through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Match the level the surrounding code operates at: do not add a check, a comment, a type annotation or a layer the neighboring code would not have.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReport tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3.\n\nINPUTS\nWorking directory: {{wt}}\nTASKS path: {{tasksPath}}\nConfigured test command: {{testCommand}}\nRUN: {{testRunCmd}}\n";
 
 // skills/src/shared/gate.ts
 function gateSteps(phase2, flags) {
@@ -633,6 +640,31 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/schemas.ts
+var VALIDATE_CHECK_SCHEMA = {
+  type: "object",
+  properties: {
+    tests_pass: { type: "boolean" },
+    test_count: { type: "number" },
+    lint_clean: { type: "boolean" },
+    lint_fixes: { type: "array", items: { type: "string" } },
+    ac_gaps: { type: "array", items: { type: "string" } }
+  },
+  required: ["tests_pass", "test_count", "lint_clean", "lint_fixes", "ac_gaps"]
+};
+
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-validate.ts
 var a = parseValidateArgs(args);
 var yolo = a.yolo;
@@ -665,19 +697,18 @@ if (!mainSync.ok) {
   log(`Main sync: ${mainSync.message}`);
 }
 var checkResult = !mainSync.ok ? null : await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
+  withPreamble(`First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validate_check_default, {
     wt: ".",
-    specPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md",
     tasksPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md",
     testCommand,
     testRunCmd: testRunCommand(testCommand, ".", "validate")
-  })}`,
-  { label: "validate-check", model: model("balanced") }
+  })}`),
+  { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
-var check = typeof checkResult === "string" ? parseAgentJson(checkResult, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] }) : checkResult;
+var check = checkResult;
 var verifySteps = validateVerifySteps(testCommand, ".");
 var verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
@@ -688,7 +719,7 @@ var testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, "test-verify"
 var testsPassed = testExit === 0;
 log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit === null ? "n/a" : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || "?"} tests)`);
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
-if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
+if (check?.ac_gaps && check.ac_gaps.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
 var gatePassed = false;
 var gateMessage = "";
 var gateNeedsHuman = false;

@@ -154,3 +154,34 @@ describe('verifyReadWitness', () => {
     }), { numRuns: 500 })
   })
 })
+
+// The host refused the boot script four times today and the runner answered
+// four different ways: nothing, prose, a __script row with its own stderr,
+// and "[]". Each shape was fixed one at a time; this pins the class.
+describe('parseBatchResult — every reply that is not an array of step rows is missing, named, and never a verdict', () => {
+  const steps: BatchStep[] = [{ name: 'cfg', command: 'true' }]
+  const noRow = (s: string): boolean => !/"name"\s*:/.test(s)
+  it('strings with no step row are missing', () => {
+    fc.assert(fc.property(fc.string({ maxLength: 200 }).filter(noRow), (reply) => {
+      const r = parseBatchResult(reply, steps)
+      expect(r.missing).toBe(true)
+      expect(r.steps).toEqual([])
+      expect(describeFailure(r, 'boot')).toMatch(/^boot: (runner_empty_result|runner_no_json|runner_permission_denied|batch_script_failed)/)
+    }), { numRuns: 300 })
+  })
+  it('arrays of objects that are not step rows are missing', () => {
+    fc.assert(fc.property(fc.array(fc.dictionary(fc.string().filter((k) => k !== 'name'), fc.oneof(fc.string(), fc.integer())), { maxLength: 4 }), (arr) => {
+      const r = parseBatchResult(arr, steps)
+      expect(r.missing).toBe(true)
+      expect(describeFailure(r, 'boot')).toMatch(/^boot: runner_empty_result/)
+    }), { numRuns: 200 })
+  })
+  it('a lone __script failure is missing and carries a scriptError whatever its stderr says', () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 255 }), fc.string({ maxLength: 120 }), (code, err) => {
+      const r = parseBatchResult(JSON.stringify([{ name: '__script', exit_code: code, stdout: '', stderr: err }]), steps)
+      expect(r.missing).toBe(true)
+      expect(typeof r.scriptError).toBe('string')
+      expect(r.scriptError!.length).toBeGreaterThan(0)
+    }), { numRuns: 200 })
+  })
+})

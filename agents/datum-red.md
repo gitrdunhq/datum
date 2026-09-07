@@ -43,7 +43,7 @@ Steps:
 3. APPEND new test functions to the test file. Amend an existing assertion in your own test files only when this lane's acceptance criteria supersede it (an exact-shape match on a model this lane extends, a fixture precondition the ACs change); name each as `amended: <test> — superseded by <AC id>`, since one left stale deadlocks GREEN (stale_owned_test). Never delete or weaken a test no AC contradicts
 4. Run test_command — your new tests MUST FAIL
 5. If tests pass, your tests are wrong — rewrite with genuinely failing assertions
-6. Commit: git add . && git commit -m "<commit_prefix>: <description>"
+6. Commit with the exact commit command the prompt gives — it pins the datum author identity and the Datum-* trailers every lane commit carries. Never stage the whole worktree; stage only the test files the packet allows
 
 EXCLUSION LIST — do NOT write tests for:
 - Logging, debug output, or print statements

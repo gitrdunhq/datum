@@ -381,3 +381,37 @@ describe('a prose reply describing exit 126 is batch_script_failed too', () => {
     expect(describeFailure(r, 'boot')).toMatch(/runner_no_json/)
   })
 })
+
+// wf_f79286ec-09d boot: the host refused the script (exit 126) and the
+// runner filled stderr with its own words, "Command not found or permission
+// denied". Only datum's guards name themselves on stderr; anything else on a
+// silent-before-any-step exit is still the host refusing the script.
+describe('a __script failure whose stderr is not a datum guard is batch_script_failed', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  it('keeps the runner text as detail and names the failure', () => {
+    const r = parseBatchResult(JSON.stringify([{ name: '__script', exit_code: 126, stdout: '', stderr: 'Command not found or permission denied' }]), steps)
+    expect(r.scriptError).toMatch(/^batch_script_failed: the batch script exited 126 before any step ran/)
+    expect(r.scriptError).toContain('Command not found or permission denied')
+  })
+  it('still passes a datum guard message through by name', () => {
+    for (const guard of ['batch_root_missing: /nowhere', 'batch_tool_missing: jq is not on the runner PATH']) {
+      const r = parseBatchResult(JSON.stringify([{ name: '__script', exit_code: 1, stdout: '', stderr: guard }]), steps)
+      expect(r.scriptError).toBe(guard)
+    }
+  })
+})
+
+// wf_d80acceb-e3e boot: the host refused the script (exit 126) and the
+// runner replied "[]". An array with no step rows parsed as a batch that
+// ran nothing, so boot read "no config step" instead of retrying.
+describe('an empty array is an empty reply', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  it('is missing and named runner_empty_result, so runBatch retries it', () => {
+    for (const raw of ['[]', '```json\n[]\n```', []]) {
+      const r = parseBatchResult(raw, steps)
+      expect(r.missing).toBe(true)
+      expect(r.refusal).toBeUndefined()
+      expect(describeFailure(r, 'boot')).toMatch(/^boot: runner_empty_result/)
+    }
+  })
+})

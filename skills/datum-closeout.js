@@ -64,6 +64,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -332,9 +337,11 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
-    const scriptError = stderr.trim() || `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")`;
+    const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
+    const scriptError = guard ? stderr.trim() : `batch_script_failed: the batch script exited ${exit_code} before any step ran (the host shell refused to execute it; exit 126 is "cannot execute")${stderr.trim() ? `; runner said: "${stderr.trim().replace(/\s+/g, " ").slice(0, 160)}"` : ""}`;
     return scriptError.startsWith("batch_script_corrupt") ? { steps: [], failed: null, missing: true, corrupt: scriptError, scriptError } : { steps: [], failed: null, missing: true, scriptError };
   }
   const tolerant = new Set(steps.filter((s) => s.tolerant).map((s) => s.name));
@@ -450,7 +457,7 @@ async function runBatch(steps, opts, deps) {
 }
 
 // skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
+var closeout_synthesize_default = 'Closeout synthesis agent. Read the closeout data and produce post-epic artifacts.\n\nEvery factual claim must be grounded in the files named below. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. The changelog artifact described as CHANGELOG below\n3. RETRO.md at the RETRO path below \u2014 metrics, observations, brief defects\n4. follow-ups.json at the FOLLOW-UPS path below \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "...", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n\nINPUTS\nDATA: read {{closeoutDataPath}}\nREVIEW-RESPONSE: read {{reviewResponsePath}} if it exists (the operator\'s recorded review decisions)\nRETRO: docs/epics/{{branch}}/RETRO.md\nFOLLOW-UPS: .datum/runs/{{runId}}/follow-ups.json\nCHANGELOG: {{changelogInstruction}}\n';
 
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
@@ -563,6 +570,18 @@ function closeoutArchiveSteps(o) {
   return steps;
 }
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-closeout.ts
 var COLLECTOR_STEPS = ["collect-git", "collect-tasks", "collect-token-metrics", "collate"];
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -608,13 +627,13 @@ var preserved = (stepStdout(collectResult, "preserve-current-state") || "").trim
 if (preserved.startsWith("moved-aside")) log(`current_state_preserved: an untracked root CURRENT_STATE.md was ${preserved}`);
 var changelogInstruction = changelogManaged ? "SKIP CHANGELOG.md entirely: this repository's CHANGELOG.md is managed by release-please and is generated from the conventional commits. Do not create, edit or mention it in artifacts_written." : "CHANGELOG.md \u2014 append entries for what shipped";
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, {
+  withPreamble(renderPrompt(closeout_synthesize_default, {
     closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
     reviewResponsePath: `${epicDir}/REVIEW-RESPONSE.md`,
     changelogInstruction,
     branch,
     runId: rid
-  }),
+  })),
   { label: "synthesize", model: model("balanced") }
 );
 if (!synthResult) {

@@ -159,6 +159,7 @@ const contextFilesSection: string = buildContextFilesSection(
 for (const warning of contextFilesWarnings) log(`context_files: ${warning}`)
 
 import planDecomposeTemplate from './prompts/plan-decompose.md'
+import { withPreamble } from './shared/prompts'
 
 // ── Prerequisite: refine's own gate, structurally, before any planning agent ──
 // elonchesd datum/player-guidance wf_251cf8a3-363: 15 agents and 20 minutes
@@ -183,7 +184,7 @@ phase('Decompose')
 // common case; when deferred, it demands a git-hash-object witness in the
 // agent's JSON output, and assertReadWitness gates it below.
 const approachesRaw = await agent(
-  renderPrompt(planApproachesTemplate, { specContent, currentState: currentState || '(not available)' }) + contextWitnessInstruction([specFile]),
+  withPreamble(renderPrompt(planApproachesTemplate, { specContent, currentState: currentState || '(not available)' }) + contextWitnessInstruction([specFile])),
   { label: 'propose-approaches', model: model('balanced') },
 )
 
@@ -207,7 +208,7 @@ log(`Selected: ${chosen?.name || 'default'} — ${approaches.recommendation_reas
 // below), never parsed as JSON, so there is no JSON field to carry a
 // read_witness in.
 const impactRaw = await agent(
-  renderPrompt(planImpactTemplate, { wt: '.', filesList: (chosen?.modules_touched || []).join('\n') || specContent }),
+  withPreamble(renderPrompt(planImpactTemplate, { wt: '.', filesList: (chosen?.modules_touched || []).join('\n') || specContent })),
   { label: 'impact-analysis', model: model('balanced') },
 )
 const impactStr: string = typeof impactRaw === 'string' ? impactRaw : JSON.stringify(impactRaw)
@@ -226,8 +227,8 @@ if (isComplex) log('Complex epic — using opus for decomposition')
 
 const decomposeFiles: ContextFile[] = [specFile, ...contextFileEntries]
 const tasksRaw = await agent(
-  renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection })
-    + contextWitnessWrapInstruction(decomposeFiles, 'tasks'),
+  withPreamble(renderPrompt(planDecomposeTemplate, { specContent, chosenApproach: JSON.stringify(chosen), scanContext: impactStr, priorFailures, language, testFramework, contextFilesSection })
+    + contextWitnessWrapInstruction(decomposeFiles, 'tasks')),
   { label: 'decompose-tasks', model: decomposeModel },
 )
 

@@ -108,6 +108,24 @@ export const TRIAGE_SCHEMA = {
   required: ['issues'],
 } as const
 
+// Validate's one substantive agent call. A schema for the same reason
+// REVIEW_LENS_SCHEMA is one (see above): it was the last LLM call in the
+// pipeline still answering a prose "return raw JSON only" instruction
+// through parseAgentJson's fallback. Every field here has a reader in
+// datum-validate.ts; the retired `committed_fixes`/`commit_sha` asked for a
+// receipt for a commit no step instructs.
+export const VALIDATE_CHECK_SCHEMA = {
+  type: 'object',
+  properties: {
+    tests_pass: { type: 'boolean' },
+    test_count: { type: 'number' },
+    lint_clean: { type: 'boolean' },
+    lint_fixes: { type: 'array', items: { type: 'string' } },
+    ac_gaps: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['tests_pass', 'test_count', 'lint_clean', 'lint_fixes', 'ac_gaps'],
+} as const
+
 export const REFACTOR_CHECK_SCHEMA = {
   type: 'object',
   properties: {

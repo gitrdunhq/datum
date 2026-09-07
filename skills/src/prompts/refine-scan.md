@@ -1,9 +1,5 @@
 Codebase scanner for Refine. Verify every symbol, API, and module referenced in the TICKET.
 
-Working directory: {{wt}}
-Requirements to verify:
-{{requirements}}
-
 TOOLS (use in preference order):
 1. `ast-grep --pattern '<symbol>' .` — AST-aware structural search (finds defs, not just strings)
 2. `scc .` — repo shape: LOC per language, file counts, complexity (run once, report in classification)
@@ -17,8 +13,6 @@ For each symbol, API, or module mentioned in the requirements:
 4. Assess blast radius from caller count
 
 Run `scc --no-cocomo -s lines .` once to get repo shape for Classification Metadata.
-
-Use headroom_compress on any file longer than 100 lines. Query-retrieve specific sections as needed.
 
 Return JSON:
 {
@@ -45,3 +39,8 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+Working directory: {{wt}}
+Requirements to verify:
+{{requirements}}

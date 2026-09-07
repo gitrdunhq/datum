@@ -26,7 +26,11 @@ const FULLY_MAPPED = [
 /** Files where command runners / stage agents are mapped but author or
  *  review-domain agents deliberately stay on the runtime default. */
 const PARTIALLY_MAPPED: Record<string, number> = {
-  'datum-tdd-act-docs.ts': 1,
+  // 2, not 1: docs-check moved off the runtime default onto the 'quality'
+  // stage (prompts audit 20260906), so every call site in this file is now
+  // mapped. The scanner sees two of the three — its `resilientAgent(` regex
+  // does not match the generic form `resilientAgent<T>(` docs-check uses.
+  'datum-tdd-act-docs.ts': 2,
   'datum-validate.ts': 3,
   'datum-plan.ts': 6,
   'datum-refine.ts': 1,

@@ -1679,3 +1679,19 @@ describe('ownership diff starts at the stage start, not HEAD~1', () => {
     expect(cmd).toBe('git -C "/wt/T1" diff --name-only "$(git -C "/wt/T1" merge-base HEAD "datum/e")" HEAD')
   })
 })
+
+// integration-lanes-2 wf_c190fac0-56b task-002: the intake batch `cat`ed the
+// Plan-phase preflight JSON whole. That file carried a 38 KB `existing_api`
+// dump the runner never reads; the batch result spilled past the harness
+// cap, the runner replied empty twice, and the lane failed at intake. The
+// step now prints only the fields the runner consumes.
+describe('laneIntakeSteps — skeleton-plan projects the preflight to what the runner reads', () => {
+  it('uses jq to keep framework, target_context and output paths only, and still names a missing file', () => {
+    const steps = laneIntakeSteps({ wt: '/wt/T1', epicBranch: 'datum/e', laneSpec: null, completionPath: null, cleanupCmd: null, planSkeletonPath: 'docs/epics/e/skeletons/preflight-task-002.json', skeletonCmd: 'datum skeleton', preflightPath: 'x.json', structural: false, verifyTestCmd: null })
+    const cmd = steps.find((s) => s.name === 'skeleton-plan')!.command
+    expect(cmd).toContain("jq -c '{framework, target_context, outputs: [(.outputs // [])[] | {path}]}'")
+    expect(cmd).toContain('docs/epics/e/skeletons/preflight-task-002.json')
+    expect(cmd).not.toMatch(/^cat /)
+    expect(cmd).toContain('MISSING')
+  })
+})

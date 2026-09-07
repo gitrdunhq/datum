@@ -42,6 +42,7 @@ describe('AGENT_TYPE_TABLE drift guard', () => {
     expect(AGENT_TYPE_TABLE.reflect).toBe('datum-reflect')
     expect(AGENT_TYPE_TABLE.docs).toBe('datum-docs')
     expect(AGENT_TYPE_TABLE.reader).toBe('datum-reader')
+    expect(AGENT_TYPE_TABLE.quality).toBe('datum-quality-reader')
     expect(AGENT_TYPE_TABLE.cli).toBe('datum-cli')
   })
 })

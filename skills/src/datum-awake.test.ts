@@ -31,22 +31,24 @@ describe('datum-awake — scan and distill use the strict parser', () => {
   })
 })
 
-// The distilled preambles are script-held content; they were handed to a
+// The distilled preamble is script-held content; it was handed to a
 // runner as "Write these two files ... Then commit both" — the last
 // prompt-driven commit in skills/src. Same treatment as the review report:
 // byte-verified heredoc writes, then a commitFilesSteps batch.
-describe('datum-awake — preambles are written and committed by batches', () => {
-  it('writes both files through writeFileSteps in one batch and verifies each blob sha', () => {
+// agent-preamble-full.md is gone (prompts audit 20260906): it was written on
+// every awake and read by nothing, and the "agents fetch it on demand" path
+// it described did not exist — a dead field under FLOW principle 1.
+describe('datum-awake — the preamble is written and committed by batches', () => {
+  it('writes the preamble through writeFileSteps in one batch and verifies its blob sha', () => {
     expect(src).not.toMatch(/Write these two files/)
     expect(src).not.toMatch(/Then commit both/)
     expect(src).toMatch(/writeFileSteps\(\{ path: preamblePath, content: distill\.preamble, names: PREAMBLE_NAMES \}\)/)
-    expect(src).toMatch(/writeFileSteps\(\{ path: fullPath, content: distill\.preamble_full, names: FULL_NAMES \}\)/)
     expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: preamblePath, expectedSha: writeFileBlobSha\(distill\.preamble\), prefix: 'preamble', names: PREAMBLE_NAMES \}\)/)
-    expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: fullPath, expectedSha: writeFileBlobSha\(distill\.preamble_full\), prefix: 'preamble_full', names: FULL_NAMES \}\)/)
+    expect(src).not.toMatch(/preamble_full/)
   })
 
   it('commits through commitFilesSteps and halts as awake_commit_failed', () => {
-    expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[preamblePath, fullPath\], message: 'awake: regenerate agent preamble from repo scan' \}\)/)
+    expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[preamblePath\], message: 'awake: regenerate agent preamble from repo scan' \}\)/)
     expect(src).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(src).toMatch(/throw new Error\(`awake_commit_failed: /)
   })

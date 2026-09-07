@@ -1,4 +1,4 @@
-import { renderPrompt, parseAgentJson, parseValidateArgs, evaluateMainSync, testRunCommand } from './shared/utils'
+import { renderPrompt, parseValidateArgs, evaluateMainSync, testRunCommand } from './shared/utils'
 import type { MainSyncResult } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
@@ -10,6 +10,8 @@ import { runBatch } from './shared/agents'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
 import validateCheckTemplate from './prompts/validate-check.md'
 import { gateSteps, parseGateResult } from './shared/gate'
+import { VALIDATE_CHECK_SCHEMA } from './shared/schemas'
+import { withPreamble } from './shared/prompts'
 
 export const meta = {
   name: 'datum-validate',
@@ -73,27 +75,34 @@ if (!mainSync.ok) {
 }
 
 // Validate agent reads context itself (collapsed read-context)
+interface ValidateCheck {
+  tests_pass?: boolean
+  test_count?: number
+  lint_clean?: boolean
+  lint_fixes?: string[]
+  ac_gaps?: string[]
+}
+
 const checkResult = !mainSync.ok ? null : await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
+  withPreamble(`First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validateCheckTemplate, {
     wt: '.',
-    specPath: 'docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md',
     tasksPath: 'docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md',
     testCommand,
     testRunCmd: testRunCommand(testCommand, '.', 'validate'),
-  })}`,
-  { label: 'validate-check', model: model('balanced') },
+  })}`),
+  { label: 'validate-check', model: model('balanced'), schema: VALIDATE_CHECK_SCHEMA },
 )
 
-// Safe: gatePassed/testsPassed below never read `check.tests_pass` — they
-// come from the independent `testExit` re-run — so an unparseable
-// validate-check result only degrades the lint/AC-gap telemetry logged and
-// returned in __workflowResult, never the pass/fail verdict itself.
-const check = typeof checkResult === 'string'
-  ? parseAgentJson(checkResult as string, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] })
-  : checkResult
+// VALIDATE_CHECK_SCHEMA makes this an object at the tool layer, so there is
+// nothing to parse — but agent() still returns null when the call is skipped
+// or terminally fails, so every read below stays optional. Safe either way:
+// gatePassed/testsPassed never read `check.tests_pass` — they come from the
+// independent `testExit` re-run — so a missing result only degrades the
+// lint/AC-gap telemetry, never the pass/fail verdict itself.
+const check = checkResult as ValidateCheck | null
 
 // ── Deterministic test-verify (green-blindness gate, mirrors RED's post-red
 // batch) ───────────────────────────────────────────────────────────────────
@@ -116,7 +125,7 @@ const testsPassed = testExit === 0
 
 log(`Tests: ${testsPassed ? 'PASS' : 'FAIL'} (independent run exit=${testExit === null ? 'n/a' : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || '?'} tests)`)
 log(`Lint: ${check?.lint_clean ? 'clean' : `${(check?.lint_fixes || []).length} files fixed`}`)
-if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join('; ')}`)
+if (check?.ac_gaps && check.ac_gaps.length > 0) log(`AC gaps: ${check.ac_gaps.join('; ')}`)
 
 let gatePassed = false
 // datum-go reads these on every validate halt path (phase review wf_9a69f891-462).
