@@ -882,6 +882,74 @@ function getIssueId(lanePlan2, taskId) {
   return issue ? String(issue) : "";
 }
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+function contextSlot(f) {
+  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
+  if (f.inlined && f.content !== null) return f.content;
+  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
+Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
+}
+function contextWitnessInstruction(files) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  if (deferred.length === 0) return "";
+  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
+  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nThe key is the file path exactly as written above; the value is the 12-character hash prefix. Your JSON response is invalid without this field for every file listed above.";
+}
+function extractWitnessMap(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const w = parsed.read_witness;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return w;
+}
+var WITNESS_MIN_HEX = 7;
+function commonPrefixLen(a2, b) {
+  let i = 0;
+  while (i < a2.length && i < b.length && a2[i] === b[i]) i++;
+  return i;
+}
+function verifyReadWitness(files, parsed) {
+  const deferred = files.filter((f) => f.exists && !f.inlined);
+  const witness = extractWitnessMap(parsed);
+  const missing = [];
+  const mismatched = [];
+  const tooShort = [];
+  const nearMiss = [];
+  const candidates = [...Object.values(witness), ...Object.keys(witness)];
+  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
+  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
+  for (const f of deferred) {
+    const sha = f.sha.toLowerCase();
+    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
+    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
+      nearMiss.push(f.path);
+      continue;
+    }
+    const keyed = witness[f.path];
+    if (typeof keyed === "string" && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path);
+    else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path);
+    else if (typeof keyed === "string" && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path);
+    else missing.push(f.path);
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss };
+}
+function assertReadWitness(files, parsed) {
+  const result = verifyReadWitness(files, parsed);
+  if (result.ok) return result;
+  const witness = extractWitnessMap(parsed);
+  const byPath = new Map(files.map((f2) => [f2.path, f2]));
+  const badPath = result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0];
+  const f = byPath.get(badPath);
+  if (result.tooShort.includes(badPath)) {
+    const sha = (f ? f.sha : "").toLowerCase();
+    const short = Object.values(witness).find((v) => typeof v === "string" && v.length > 0 && sha.startsWith(v.toLowerCase())) || "";
+    throw new Error(`context_read_unverified: ${badPath} \u2014 witness prefix too short (${short.length} < ${WITNESS_MIN_HEX}): the agent read the file but returned only "${short}" of blob ${f ? f.sha : "?"}`);
+  }
+  const got = witness[badPath];
+  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
+  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
+}
+
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 var ereEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -891,12 +959,31 @@ function catOrMissing(path) {
 function isMissing(raw) {
   return !raw || raw.trim() === "" || raw.trim() === "MISSING";
 }
+var PROPERTIES_DEFERRED_MARKER = "__DATUM_PROPERTIES_DEFERRED__";
 function laneIntakeSteps(o) {
   const steps = [];
   if (o.laneSpec) {
     steps.push({ name: "lane-spec", command: laneSpecExportCommand(o.laneSpec), tolerant: true });
     steps.push({ name: "lane-spec-bytes", command: `wc -c < ${q2(o.laneSpec.outPath)} | tr -d ' '`, tolerant: true });
     steps.push({ name: "lane-spec-sha", command: `git hash-object ${q2(o.laneSpec.outPath)}`, tolerant: true });
+  }
+  if (o.properties) {
+    const propPath = `${o.wt}/docs/epics/${o.properties.epicBranch}/PROPERTIES.md`;
+    steps.push({
+      name: "properties-bytes",
+      command: `if [ -f ${q2(propPath)} ]; then wc -c < ${q2(propPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: "properties-sha",
+      command: `if [ -f ${q2(propPath)} ]; then git hash-object ${q2(propPath)}; else printf ''; fi`,
+      tolerant: true
+    });
+    steps.push({
+      name: "properties-cat",
+      command: `__pb=$(if [ -f ${q2(propPath)} ]; then wc -c < ${q2(propPath)} | tr -d ' '; else printf -- '-1'; fi); if [ "$__pb" != "-1" ] && [ "$__pb" -le ${CONTEXT_RELAY_BUDGET_BYTES} ]; then cat ${q2(propPath)}; else printf '%s' '${PROPERTIES_DEFERRED_MARKER}'; fi`,
+      tolerant: true
+    });
   }
   if (o.completionPath) steps.push({ name: "completion", command: catOrMissing(o.completionPath), tolerant: true });
   steps.push({ name: "history", command: `git -C ${q2(o.wt)} log --format="%H %s%x09%(trailers:key=Datum-Spec,valueonly,separator=%x2C)" ${q2(o.epicBranch)}..HEAD`, tolerant: true });
@@ -1217,73 +1304,19 @@ function laneSpecFromSteps(result, taskId, outPath) {
 function laneSpecContextFile(spec) {
   return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null };
 }
-
-// skills/src/shared/context-relay.ts
-var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
-function contextSlot(f) {
-  if (!f.exists) throw new Error(`context file ${f.path} does not exist \u2014 caller must handle a missing file before building the prompt`);
-  if (f.inlined && f.content !== null) return f.content;
-  return `[FILE NOT INLINED \u2014 ${f.bytes} bytes is over the relay budget]
-Before doing anything else, read ${f.path} IN FULL with the Read tool (all ${f.bytes} bytes). Treat its contents exactly as if they were pasted here. Do not summarise it, do not skip sections, and do not proceed on memory of a previous read.`;
-}
-function contextWitnessInstruction(files) {
-  const deferred = files.filter((f) => f.exists && !f.inlined);
-  if (deferred.length === 0) return "";
-  const entries = deferred.map((f) => `    "${f.path}": "<first 12 hex chars of the blob hash \u2014 run \`git hash-object ${f.path}\` with the Bash tool and copy its output>"`).join(",\n");
-  return '\n\nMANDATORY READ WITNESS: for every file above marked [FILE NOT INLINED], you must actually read it, then run `git hash-object <path>` yourself with the Bash tool for that exact path and copy its output. Your JSON response MUST include a "read_witness" field, keyed by path, whose value is the first 12 hex characters of that command\'s output \u2014 taken from the first line of the file you read, computed fresh, never guessed or reused from memory:\n{\n  "read_witness": {\n' + entries + "\n  }\n}\nThe key is the file path exactly as written above; the value is the 12-character hash prefix. Your JSON response is invalid without this field for every file listed above.";
-}
-function extractWitnessMap(parsed) {
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-  const w = parsed.read_witness;
-  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
-  return w;
-}
-var WITNESS_MIN_HEX = 7;
-function commonPrefixLen(a2, b) {
-  let i = 0;
-  while (i < a2.length && i < b.length && a2[i] === b[i]) i++;
-  return i;
-}
-function verifyReadWitness(files, parsed) {
-  const deferred = files.filter((f) => f.exists && !f.inlined);
-  const witness = extractWitnessMap(parsed);
-  const missing = [];
-  const mismatched = [];
-  const tooShort = [];
-  const nearMiss = [];
-  const candidates = [...Object.values(witness), ...Object.keys(witness)];
-  const hexValues = candidates.filter((v) => typeof v === "string" && /^[0-9a-f]+$/i.test(v));
-  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX);
-  for (const f of deferred) {
-    const sha = f.sha.toLowerCase();
-    if (values.some((v) => sha.startsWith(v.toLowerCase()))) continue;
-    if (values.some((v) => commonPrefixLen(sha, v.toLowerCase()) >= WITNESS_MIN_HEX)) {
-      nearMiss.push(f.path);
-      continue;
-    }
-    const keyed = witness[f.path];
-    if (typeof keyed === "string" && /^[0-9a-f]+$/i.test(keyed) && keyed.length < WITNESS_MIN_HEX && sha.startsWith(keyed.toLowerCase())) tooShort.push(f.path);
-    else if (hexValues.some((v) => v.length < WITNESS_MIN_HEX && sha.startsWith(v.toLowerCase()))) tooShort.push(f.path);
-    else if (typeof keyed === "string" && keyed.length >= WITNESS_MIN_HEX) mismatched.push(f.path);
-    else missing.push(f.path);
-  }
-  return { ok: missing.length === 0 && mismatched.length === 0 && tooShort.length === 0, missing, mismatched, tooShort, nearMiss };
-}
-function assertReadWitness(files, parsed) {
-  const result = verifyReadWitness(files, parsed);
-  if (result.ok) return result;
-  const witness = extractWitnessMap(parsed);
-  const byPath = new Map(files.map((f2) => [f2.path, f2]));
-  const badPath = result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0];
-  const f = byPath.get(badPath);
-  if (result.tooShort.includes(badPath)) {
-    const sha = (f ? f.sha : "").toLowerCase();
-    const short = Object.values(witness).find((v) => typeof v === "string" && v.length > 0 && sha.startsWith(v.toLowerCase())) || "";
-    throw new Error(`context_read_unverified: ${badPath} \u2014 witness prefix too short (${short.length} < ${WITNESS_MIN_HEX}): the agent read the file but returned only "${short}" of blob ${f ? f.sha : "?"}`);
-  }
-  const got = witness[badPath];
-  const gotStr = typeof got === "string" && got.length > 0 ? got : "missing";
-  throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
+function propertiesFromSteps(result, epicBranch, wt) {
+  const path = `${wt}/docs/epics/${epicBranch}/PROPERTIES.md`;
+  const bytesRaw = stepStdout(result, "properties-bytes");
+  const bytes = bytesRaw === null ? NaN : parseInt(bytesRaw.trim(), 10);
+  if (!Number.isFinite(bytes) || bytes < 0) return null;
+  const sha = (stepStdout(result, "properties-sha") || "").trim();
+  const catRaw = stepStdout(result, "properties-cat");
+  const deferred = { path, exists: true, inlined: false, bytes, sha, content: null };
+  if (catRaw === null || catRaw === PROPERTIES_DEFERRED_MARKER) return deferred;
+  const actualBytes = utf8ByteLength(catRaw);
+  if (actualBytes !== bytes) return deferred;
+  if (sha && gitBlobSha(utf8Encode(catRaw)) !== sha) return deferred;
+  return { path, exists: true, inlined: true, bytes, sha, content: catRaw };
 }
 
 // skills/src/shared/write-steps.ts
@@ -1440,7 +1473,7 @@ var refactor_default = 'REFACTOR agent. Clean up the implementation without chan
 var reflect_default = 'TEST QUALITY evaluator. Read the test files and assess coverage of the acceptance criteria.\nRead-only \u2014 do NOT write or modify any files.\n\nSCOPE \u2014 one rule for prior-lane tests. A test file may hold tests from prior lanes: test functions that do not relate to any of the acceptance criteria below. Those tests neither count for nor against the score \u2014 score only the test functions whose names and assertions directly relate to the criteria. But you must still read every prior-lane test in these files, because a prior-lane assertion this lane\'s criteria contradict is the one thing that can deadlock this lane, and finding it is step 4 below.\n\nEVALUATE:\n1. For each AC, identify which test function covers it (cite the function name)\n2. Check assertion strength: does each test assert specific values, not just "no error"?\n3. Identify gaps: ACs with no test, tests with weak assertions, missing negative/edge cases\n4. STALE OWNED ASSERTIONS: for each AC, look for an EXISTING test in these files whose assertion the AC contradicts (an exact-shape equality on a model the AC extends, a fixture order or precondition the AC changes, a value the AC redefines). RED was allowed to amend those; one left standing will fail GREEN\'s correct implementation, since GREEN may not touch tests. Report each as a gap prefixed `stale_owned_test: <test name> contradicts <AC id>` \u2014 this is a gap even when every AC has a strong new test.\n5. List each gap found\n\nSCORING RUBRIC \u2014 this is the only rubric; a lane fails below 4, so nothing else sets the boundaries:\n- 9-10: Every AC has a strong test with specific assertions\n- 7-8: All ACs covered but some assertions could be stronger\n- 5-6: Most ACs covered, 1-2 gaps\n- 3-4: Significant gaps \u2014 multiple ACs untested or only smoke-tested\n- 1-2: Tests exist but barely cover the ACs\n- 0: No meaningful test coverage\n\nReturn reasoning FIRST (with evidence), then gaps, then score.\n\nINPUTS\nRead these test files in "{{wt}}": {{testFiles}}\nACCEPTANCE CRITERIA to cover \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n';
 
 // skills/src/prompts/skeptic-base.md
-var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nTOOLS (use before manual reading):\n- `ast-grep --pattern '<pattern>' <file>` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n\nLeave the worktree exactly as you found it: do not create files in it. Reproduce a finding with an inline command (`python -c`, `node -e`, a heredoc piped to the interpreter) and quote that command as the evidence. Any file you leave behind is removed before the next stage and reported as `stray_untracked_files`; a repro test file left under tests/ was collected by the next stage's suite and failed a sound lane.\n\nEvery bug you report is one object: description, evidence, severity \u2014 what is wrong, the specific input, file or line that demonstrates it, and one of critical / high / medium / low. That is the whole output shape; the lens at the end of this prompt tells you where to look, not what to return.\n\nINPUTS\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\n";
+var skeptic_base_default = "Adversarial code reviewer. Find bugs the test suite misses.\n\nTOOLS (use before manual reading):\n- `ast-grep --pattern '<pattern>' <file>` \u2014 find structural anti-patterns:\n   - Unchecked return values: `ast-grep --pattern '$_ = $F($$$)' <file>` then check if result is used\n   - Bare exception handlers that swallow errors (Python: `except: pass`, Swift: empty `catch {}`, Go: ignoring `err`, TS: empty `catch {}`):\n     `ast-grep --pattern 'except: pass' <file>` (Python), `ast-grep --pattern 'catch { }' <file>` (Swift/TS)\n\nRead the implementation and tests. Run the test command to understand current coverage.\nOnly report bugs you can demonstrate with evidence. \"This might be a problem\" is not a bug.\n\nLeave the worktree exactly as you found it: do not create files in it. Reproduce a finding with an inline command (`python -c`, `node -e`, a heredoc piped to the interpreter) and quote that command as the evidence. Any file you leave behind is removed before the next stage and reported as `stray_untracked_files`; a repro test file left under tests/ was collected by the next stage's suite and failed a sound lane.\n\nEvery bug you report is one object: description, evidence, severity \u2014 what is wrong, the specific input, file or line that demonstrates it, and one of critical / high / medium / low. That is the whole output shape; the lens at the end of this prompt tells you where to look, not what to return.\n\nINPUTS\nWorking directory: \"{{wt}}\"\nImplementation files: {{implFiles}}\nTest files: {{testFiles}}\nTest command: {{testCommand}}\nAcceptance criteria \u2014 the `acceptance_criteria` array in the lane spec file:\n{{laneSpecSlot}}\nProperties \u2014 the invariant reference for this epic (reason against these too, not only the acceptance criteria above):\n{{propertiesSlot}}\n";
 
 // skills/src/prompts/skeptic-edge.md
 var skeptic_edge_default = "LENS: Edge cases.\nTest these inputs against the implementation:\n- Empty inputs, None/null values, single-element collections\n- Boundary values (0, -1, max int, empty string)\n- Off-by-one errors in loops and ranges\n";
@@ -1483,8 +1516,10 @@ function reflectPrompt(vars) {
   return withLaneSpec(reflect_default, rest, laneSpec);
 }
 function skepticBasePrompt(vars) {
-  const { laneSpec, ...rest } = vars;
-  return withLaneSpec(skeptic_base_default, rest, laneSpec);
+  const { laneSpec, properties, ...rest } = vars;
+  const propertiesSlot = properties ? contextSlot(properties) : "PROPERTIES.md does not exist for this epic (no Properties phase ran) \u2014 reason only against the acceptance criteria above.";
+  const deferred = [laneSpec, ...properties && !properties.inlined ? [properties] : []];
+  return PREAMBLE + renderPrompt(skeptic_base_default, { ...rest, laneSpecSlot: contextSlot(laneSpec), propertiesSlot }) + contextWitnessInstruction(deferred);
 }
 function skepticLenses() {
   return [
@@ -1607,7 +1642,13 @@ No markdown fences, no explanation.`,
     planSkeletonPath,
     skeletonCmd,
     preflightPath,
-    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) }
+    laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan2, taskId) },
+    // #493 — the skeptic panel reasons against PROPERTIES.md (FLOW.md's Act
+    // handoff); folded into this one intake batch rather than a second
+    // command-runner call. propertiesFromSteps() returns null when the epic
+    // has no Properties phase, which the panel's prompt turns into a
+    // one-line sentence instead of a Read instruction.
+    properties: { epicBranch: cfg2.epicBranch }
   });
   const intakeRaw = await runBatch(intakeSteps, stageOpts("cli", { label: `lane-intake:${taskId}`, phase: "Act", model: model("fast") }));
   const intakeResult = intakeRaw;
@@ -1633,6 +1674,7 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: "failed", stage: "CRASH", error: spec.error };
   }
   const specFile = laneSpecContextFile(spec.spec);
+  const propertiesFile = propertiesFromSteps(intake, cfg2.epicBranch, wt);
   const laneHistoryRaw = stepStdout(intake, "history");
   const existing = detectExistingLaneCommits(laneHistoryRaw || "", taskId);
   let { hasRed: redAlreadyCommitted, hasGreen: greenAlreadyCommitted } = existing;
@@ -2287,7 +2329,7 @@ No markdown fences, no explanation.`,
   }
   log(`[${taskId}] GREEN verified \u2014 all tests pass (committed: ${green.commit_sha || "n/a"})`);
   await updateStage(issueId, "green", green.commit_sha);
-  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile);
   if (skeptic.brokenCount >= 2) {
     const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
     const bugSummary = confirmedBugs.map((b) => `- [${b.severity}] ${b.description} (evidence: ${b.evidence})`).join("\n") || "no bug detail available";
@@ -2322,7 +2364,7 @@ ${bugSummary}`,
         error: `skeptic_broken: ${confirmedBugs.length} confirmed bugs \u2014 ${summary}`
       };
     }
-    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile);
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile);
     if (skeptic.brokenCount >= 2) {
       const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs;
       const first = stillConfirmed[0];
@@ -2369,13 +2411,14 @@ ${bugSummary}`,
   await updateStage(issueId, "done");
   return followUps > 0 ? { task_id: taskId, status: "completed", stage: "REFACTOR", follow_ups: followUps } : { task_id: taskId, status: "completed", stage: "REFACTOR" };
 }
-async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile) {
+async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile) {
   const base = skepticBasePrompt({
     wt,
     implFiles: implFiles.join(", "),
     testFiles: testFiles.join(", "),
     testCommand: scopedTestCmd,
-    laneSpec: specFile
+    laneSpec: specFile,
+    properties: propertiesFile
   });
   const lenses = skepticLenses();
   const skepticResults = await parallel(
@@ -2383,20 +2426,23 @@ async function runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, 
       (lens) => () => agent(base + lens.prompt, stageOpts("skeptic", { label: `skeptic-${lens.key}:${taskId}`, phase: "Act", model: lens.model, schema: SKEPTIC_SCHEMA, worktree: wt }))
     )
   );
+  const witnessFiles = [specFile, ...propertiesFile && !propertiesFile.inlined ? [propertiesFile] : []];
   let verifiedLenses = 0;
   for (let i = 0; i < skepticResults.length; i++) {
     const r = skepticResults[i];
     if (r === null) continue;
-    const w = verifyReadWitness([specFile], r);
+    const w = verifyReadWitness(witnessFiles, r);
     if (w.ok) {
       verifiedLenses++;
       continue;
     }
-    log(`[${taskId}] skeptic_lens_unverified: ${taskId} \u2014 lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? "prefix too short" : w.mismatched.length ? "wrong prefix" : "no witness"}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`);
+    const unverifiedPaths = [...w.missing, ...w.mismatched, ...w.tooShort];
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} \u2014 lens ${lenses[i].key} did not evidence reading ${unverifiedPaths.join(", ") || specFile.path} (${w.tooShort.length ? "prefix too short" : w.mismatched.length ? "wrong prefix" : "no witness"}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`);
     skepticResults[i] = null;
   }
   if (verifiedLenses === 0) {
-    const err = new Error(`context_read_unverified: ${specFile.path} \u2014 no skeptic lens evidenced reading the lane spec; the panel is void`);
+    const witnessedPaths = witnessFiles.map((f) => f.path).join(", ");
+    const err = new Error(`context_read_unverified: ${witnessedPaths} \u2014 no skeptic lens evidenced reading the lane spec${propertiesFile && !propertiesFile.inlined ? " and PROPERTIES.md" : ""}; the panel is void`);
     err.stage = "GREEN";
     throw err;
   }

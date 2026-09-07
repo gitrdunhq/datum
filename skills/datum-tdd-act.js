@@ -476,6 +476,9 @@ function describeFailure(r, label) {
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
 }
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {
@@ -567,9 +570,6 @@ function digestSpecHash(digest, taskId) {
   if (typeof lane.spec_hash !== "string" || !lane.spec_hash) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} carries no spec_hash`);
   return lane.spec_hash;
 }
-
-// skills/src/shared/context-relay.ts
-var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
