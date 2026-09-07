@@ -214,6 +214,9 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     return { steps: [], failed: null, missing: true, refusal: prose }
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
+  // "[]" is an empty reply, not a batch that ran nothing (wf_d80acceb-e3e
+  // boot: the host refused the script and the runner answered with []).
+  if (results.length === 0) return { steps: [], failed: null, missing: true }
   if (results.length === 1 && results[0].name === '__script' && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0]
     // The guards (root, jq, hash) name themselves on stderr. A silent non-zero

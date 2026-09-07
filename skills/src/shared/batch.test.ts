@@ -400,3 +400,18 @@ describe('a __script failure whose stderr is not a datum guard is batch_script_f
     }
   })
 })
+
+// wf_d80acceb-e3e boot: the host refused the script (exit 126) and the
+// runner replied "[]". An array with no step rows parsed as a batch that
+// ran nothing, so boot read "no config step" instead of retrying.
+describe('an empty array is an empty reply', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  it('is missing and named runner_empty_result, so runBatch retries it', () => {
+    for (const raw of ['[]', '```json\n[]\n```', []]) {
+      const r = parseBatchResult(raw, steps)
+      expect(r.missing).toBe(true)
+      expect(r.refusal).toBeUndefined()
+      expect(describeFailure(r, 'boot')).toMatch(/^boot: runner_empty_result/)
+    }
+  })
+})
