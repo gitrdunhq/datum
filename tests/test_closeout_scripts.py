@@ -1029,13 +1029,30 @@ class TestCommitCloseout:
 
 
 class TestGitnexusReindex:
-    """Test gitnexus_reindex.py script."""
+    """gitnexus_reindex.py, run against a fake `gitnexus` on PATH.
 
-    def test_gitnexus_reindex_happy_path(self, env_with_repo):
-        """gitnexus_reindex attempts to run gitnexus analyze and logs result."""
-        repo = env_with_repo
+    The old tests shelled out to whatever `gitnexus` the machine had: they
+    passed here and failed inside a lane worktree during a pipeline run
+    (integration-lanes-2 run 20260907-015322, where the host's gitnexus was
+    mid-rebuild), and that unrelated red turned an INT lane's verify into
+    `integration_failed`. A test's verdict may not depend on the machine.
+    """
 
-        result = subprocess.run(
+    @staticmethod
+    def _fake_gitnexus(tmp_path: Path, exit_code: int) -> dict:
+        bin_dir = tmp_path / "fakebin"
+        bin_dir.mkdir()
+        script = bin_dir / "gitnexus"
+        script.write_text(f"#!/bin/sh\necho fake gitnexus $*\nexit {exit_code}\n")
+        script.chmod(0o755)
+        import os
+
+        env = dict(os.environ)
+        env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+        return env
+
+    def _run(self, repo: dict, env: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
             [
                 sys.executable,
                 "-m",
@@ -1046,47 +1063,32 @@ class TestGitnexusReindex:
             cwd=repo["repo_dir"],
             capture_output=True,
             text=True,
+            env=env,
         )
 
-        # Exit code depends on whether gitnexus is installed and succeeds
-        # But output must always be valid JSON
-        try:
-            output = json.loads(result.stdout)
-            assert "ok" in output or "error" in output
-
-            # Log file should be created
-            log_file = repo["runs_dir"] / "gitnexus-reindex.log"
-            if "log" in output:
-                log_path = Path(output["log"])
-                # Log file may or may not exist depending on gitnexus availability
-        except json.JSONDecodeError:
-            pytest.fail(f"gitnexus_reindex output is not valid JSON: {result.stdout}")
-
-    def test_gitnexus_reindex_nonzero_exit_still_outputs_json(self, env_with_repo):
-        """gitnexus_reindex outputs JSON even on nonzero exit."""
+    def test_gitnexus_reindex_happy_path(self, env_with_repo, tmp_path):
+        """A reindex that succeeds is ok: true, exit 0, and its log exists."""
         repo = env_with_repo
+        result = self._run(repo, self._fake_gitnexus(tmp_path, 0))
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "datum.closeout.gitnexus_reindex",
-                "--run-id",
-                repo["run_id"],
-            ],
-            cwd=repo["repo_dir"],
-            capture_output=True,
-            text=True,
-        )
-
-        # Always outputs JSON
         output = json.loads(result.stdout)
+        assert output["ok"] is True
+        assert result.returncode == 0
+        assert (repo["repo_dir"] / output["log"]).exists()
 
-        # If exit code is 0, ok should be True
-        # If exit code is 0 but ok is False, that's a contract violation
-        # (the TS side likely only checks exit code)
-        if result.returncode == 0:
-            assert output.get("ok") is True
+    def test_gitnexus_reindex_failure_is_ok_false_and_nonzero_exit(
+        self, env_with_repo, tmp_path
+    ):
+        """A reindex that fails still prints JSON, says ok: false, and exits
+        non-zero — an exit 0 with ok: false is the contract violation the
+        old test only caught by accident."""
+        repo = env_with_repo
+        result = self._run(repo, self._fake_gitnexus(tmp_path, 1))
+
+        output = json.loads(result.stdout)
+        assert output["ok"] is False
+        assert output["error"] == "reindex failed"
+        assert result.returncode != 0
 
 
 class TestCloseoutArchiveCommand:
