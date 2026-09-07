@@ -402,3 +402,28 @@ describe('runBatch — one retry on batch_script_failed (the host refused the sc
     expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_script_failed: the batch script exited 126/)
   })
 })
+
+// wf_2581bc04-604 boot: the host refused the script twice (exit 126) and the
+// runner then wrote a `batch_root_missing` row itself, copying the guard's
+// text out of the script. A guard row cannot be told from a forged one, so
+// it earns one fresh retry like a corrupt script; a real missing root says
+// so again on the second attempt and that answer is terminal.
+describe('runBatch — one retry on a guard row (batch_root_missing / batch_tool_missing)', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  const forged = JSON.stringify([{ name: '__script', exit_code: 1, stdout: '', stderr: 'batch_root_missing: /Volumes/Extra/repos/gitrdunhq/datum' }])
+  const ok = JSON.stringify([{ name: 'cfg', exit_code: 0, stdout: '{}', stderr: '' }])
+  it('re-sends once and uses the second reply', async () => {
+    const labels: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'boot', model: 'm' }, {
+      agentFn: async (_p, o) => { labels.push(o?.label || ''); return n++ === 0 ? forged : ok },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['boot', 'boot:retry'])
+  })
+  it('a second guard row is terminal and keeps the guard name', async () => {
+    const r = await runBatch(steps, { label: 'boot', model: 'm' }, { agentFn: async () => forged, logFn: () => undefined })
+    expect(describeFailure(r, 'boot')).toMatch(/^boot: batch_root_missing: \/Volumes/)
+  })
+})
