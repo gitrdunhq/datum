@@ -222,6 +222,10 @@ describe('task-002 — integration lanes are RED-only and decided on the indepen
     expect(result.results.T1.stage).toBe('RED')
     expect(calls.some((c) => c.label.startsWith('green:'))).toBe(false)
     expect(logs.some((l) => /expect_tests_pass/i.test(l) && /kind/i.test(l))).toBe(true)
+    // Review ARCH-003: the RED agent is told its tests must pass whenever the
+    // fast path will judge them that way, drift or not.
+    const red = calls.find((c) => c.label.startsWith('red:'))!
+    expect(red.prompt).toContain('these tests must PASS on your first run')
   })
 
   // Regression pin, not a new behaviour: existing structural/behavioral lanes

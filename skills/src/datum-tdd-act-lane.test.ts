@@ -393,7 +393,8 @@ describe('deterministic RED green-blindness gate', () => {
   it('passes verifyTestCmd to postRedSteps so the independent test-verify step runs', () => {
     // An integration lane verifies its own files (run 20260907-015322); every
     // other lane runs the scoped suite command.
-    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,700}verifyTestCmd:\s*isIntegration \? integrationVerifyCmd\(scopedTestCmd, testFiles\) : scopedTestCmd/)
+    expect(laneSource).toMatch(/const integrationVerify = isIntegration \? integrationVerifyCmd\(scopedTestCmd, testFiles\) : scopedTestCmd/)
+    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,700}verifyTestCmd:\s*isIntegration \? integrationVerify : scopedTestCmd/)
   })
 
   it('fails RED on the independently re-run exit code, not only on the agent self-report', () => {
