@@ -168,7 +168,7 @@ class TestInt08RedPromptInvariantSentence:
         red_md = RED_MD.read_text()
         lines = red_md.splitlines()
         note_line_idx = next(
-            i for i, l in enumerate(lines) if l.strip() == "{{integrationNote}}"
+            i for i, line in enumerate(lines) if line.strip() == "{{integrationNote}}"
         )
         # Not wrapped in a fenced code block (no ``` immediately before/after).
         assert lines[note_line_idx - 1].strip() != "```"
