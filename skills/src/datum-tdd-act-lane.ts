@@ -1161,6 +1161,12 @@ No markdown fences, no explanation.`,
         return { task_id: taskId, status: 'failed', stage: 'RED', error: `red_repair_failed: ${why}` }
       }
       log(`[${taskId}] RED repair committed (${repaired.commit_sha || 'n/a'}); post-RED gates passed — re-running GREEN once`)
+      // The repair commit is now the lane's RED: the post-GREEN ownership
+      // diff, the red-files list and any reset-to-RED must start there, or
+      // the repair's own test edits are read as GREEN touching forbidden
+      // files (#341 task-012 wf_59334c2b-c11: file_ownership_violation on
+      // four test files the repair had just amended).
+      if (repaired.commit_sha) red = { ...red, commit_sha: repaired.commit_sha }
       green = await witnessedAgent(
         greenRetryPrompt({
           ...greenVars,

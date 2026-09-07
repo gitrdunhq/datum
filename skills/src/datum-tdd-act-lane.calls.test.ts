@@ -990,6 +990,13 @@ describe('a GREEN blocked on the lane\'s own test file re-dispatches RED once wi
     expect(order.indexOf('red-repair')).toBeGreaterThan(order.indexOf('green'))
     expect(order.indexOf('post-red-repair')).toBeGreaterThan(order.indexOf('red-repair'))
     expect(order.indexOf('green-red-repair')).toBeGreaterThan(order.indexOf('post-red-repair'))
+    // #341 task-012 (wf_59334c2b-c11): the post-GREEN ownership diff must
+    // start at the REPAIR commit, or the repair's own test edits read as
+    // GREEN touching forbidden files (file_ownership_violation on the four
+    // tests the repair had just amended).
+    const postGreen = calls.find((c) => c.label.startsWith('post-green:'))!
+    expect(postGreen.prompt).toContain('diff --name-only aaa222 HEAD')
+    expect(postGreen.prompt).not.toContain('aaa111 HEAD')
   })
 
   it('a second block of the same shape after the repair fails as green_blocked_needs_write', async () => {
