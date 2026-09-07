@@ -215,6 +215,92 @@ def test_int_10_gate_properties_fails_without_integration_invariants_table(
     assert "missing_integration_invariants_section" in result["message"]
 
 
+# ── INV-Q2: load_state/save_state/update_state canonical contract ───────
+#
+# This section covers *this* lane's own acceptance criterion (INV-Q2,
+# depends_on task-001/task-004): the state module's public read/write/mutate
+# contract is adopted unchanged. These assertions pin the exact signatures
+# and observable behaviour of datum.state.load_state / save_state /
+# update_state as already merged — a genuine finding here is format/contract
+# drift, not "not implemented yet".
+
+import inspect
+
+import datum.state as state_mod
+
+
+def test_int_q2_load_state_has_the_canonical_zero_arg_signature():
+    sig = inspect.signature(state_mod.load_state)
+    assert list(sig.parameters) == []
+
+
+def test_int_q2_save_state_has_the_canonical_single_positional_signature():
+    sig = inspect.signature(state_mod.save_state)
+    assert list(sig.parameters) == ["state"]
+
+
+def test_int_q2_update_state_has_the_canonical_mutator_signature():
+    sig = inspect.signature(state_mod.update_state)
+    assert list(sig.parameters) == ["mutator"]
+
+
+def test_int_q2_load_state_returns_empty_dict_with_no_db(tmp_path, monkeypatch):
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+
+    assert state_mod.load_state() == {}
+
+
+def test_int_q2_save_state_then_load_state_round_trips_unchanged(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+
+    state_mod.save_state({"run_id": "epic-q2-test", "current_phase": "plan"})
+    loaded = state_mod.load_state()
+
+    assert loaded["run_id"] == "epic-q2-test"
+    assert loaded["current_phase"] == "plan"
+    assert "updated_at" in loaded
+
+
+def test_int_q2_save_state_writes_write_through_json_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+
+    state_mod.save_state({"run_id": "epic-q2-cache"})
+
+    cache_path = tmp_path / ".datum" / "state.json"
+    assert cache_path.exists()
+    cached = json.loads(cache_path.read_text())
+    assert cached["run_id"] == "epic-q2-cache"
+
+
+def test_int_q2_update_state_applies_mutator_and_returns_true(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+    state_mod.save_state({"run_id": "epic-q2-mutate", "in_flight_count": 0})
+
+    def bump(state):
+        state["in_flight_count"] += 1
+
+    result = state_mod.update_state(bump)
+
+    assert result is True
+    assert state_mod.load_state()["in_flight_count"] == 1
+
+
+def test_int_q2_update_state_returns_false_when_no_state_exists(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+
+    result = state_mod.update_state(lambda state: state.update(x=1))
+
+    assert result is False
+    out = capsys.readouterr().out
+    assert json.loads(out.strip().splitlines()[-1])["error"] == "no_state"
+
+
 def test_int_10_gate_plan_warns_no_integration_invariants_when_no_int_lane(
     epic_dir, capsys
 ):
