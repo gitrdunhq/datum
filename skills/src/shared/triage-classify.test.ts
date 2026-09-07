@@ -58,6 +58,9 @@ describe('classifyLaneError — deterministic agent_behavior prefixes', () => {
     ['green_verify_failed', 'green_verify_failed: independent test-verify step exit=1 (agent self-reported tests_pass=true)'],
     ['refactor_verify_failed', 'refactor_verify_failed: independent test-verify step exit=1 after refactor'],
     ['build_verify_failed', 'build_verify_failed: independent build_command re-run exit=2 after one retry'],
+    ['structural_deliverable_missing', 'structural_deliverable_missing: docs/architecture/state-store.md — the structural stage completed without producing the lane\'s declared files'],
+    ['structural_uncommitted', 'structural_uncommitted: every declared file exists but no commit past datum/e touches them'],
+    ['structural_failed', 'structural_failed: could not decide the ADR without the SPEC'],
   ]
 
   it.each(agentBehaviorCases)('%s classifies as agent_behavior with deterministic confidence', (_label, error) => {
@@ -72,6 +75,7 @@ describe('classifyLaneError — deterministic *_no_result prefixes (stage agent 
     ['green_no_result', 'green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md — the lane may need a smaller scope, or the cap raised)'],
     ['red_no_result', 'red_no_result: RED agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-red.md — the lane may need a smaller scope, or the cap raised)'],
     ['refactor_no_result', 'refactor_no_result: REFACTOR agent returned nothing (likely the maxTurns cap in agents/datum-refactor.md, an API error, or a skip)'],
+    ['structural_no_result', 'structural_no_result: STRUCTURAL agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-structural.md, an API error, or a skip)'],
   ]
 
   it.each(noResultCases)('%s classifies as infrastructure with deterministic confidence', (_label, error) => {

@@ -52,11 +52,16 @@ CHEAP_AGENTS = {
         "maxTurns": 12,
     },
 }
-STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor"}
+STAGE_AGENTS = {"datum-red", "datum-green", "datum-refactor", "datum-structural"}
 # wf_b1c88e09-036: a GREEN on a 555-line file spent 30 calls (7 Edits + Reads)
 # and was cut off before running tests or committing; the retry hit 30
 # again. GREEN needs the most headroom (read → edit → test → commit).
-STAGE_MAX_TURNS = {"datum-red": 60, "datum-green": 80, "datum-refactor": 60}
+STAGE_MAX_TURNS = {
+    "datum-red": 60,
+    "datum-green": 80,
+    "datum-refactor": 60,
+    "datum-structural": 60,
+}
 REQUIRED_KEYS = ("name", "description", "tools", "model")
 
 

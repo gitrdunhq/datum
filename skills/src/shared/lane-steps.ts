@@ -659,6 +659,43 @@ export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
   return steps
 }
 
+// ── Structural deliverables ─────────────────────────────────────────────────
+// #341 task-001 (wf_d76785cc-148): a structural lane is decided by its
+// declared files. The stage agent's report is not evidence; these two steps
+// are: every file exists in the worktree, and a commit past the epic branch
+// touches them.
+
+export interface StructuralDeliverableOpts {
+  wt: string
+  epicBranch: string
+  files: string[]
+}
+
+export function structuralDeliverableSteps(o: StructuralDeliverableOpts): BatchStep[] {
+  const checks = o.files.map((f) => `test -e ${q(o.wt)}/${q(f)} || echo "MISSING ${f}"`).join('; ')
+  const scoped = o.files.map(q).join(' ')
+  return [
+    { name: 'deliverable-check', command: checks || 'true', tolerant: true },
+    { name: 'deliverable-commits', command: `git -C ${q(o.wt)} log --oneline ${q(o.epicBranch)}..HEAD -- ${scoped}`, tolerant: true },
+  ]
+}
+
+export interface StructuralDeliverables {
+  /** Declared files absent from the worktree, in declaration order. */
+  missing: string[]
+  /** true when at least one commit past the epic branch touches a declared file. */
+  committed: boolean
+}
+
+/** null when the batch did not run — a named absence, never "delivered". */
+export function structuralDeliverablesFromSteps(result: BatchResult, files: string[]): StructuralDeliverables | null {
+  const check = stepStdout(result, 'deliverable-check')
+  const commits = stepStdout(result, 'deliverable-commits')
+  if (check === null || commits === null) return null
+  const flagged = new Set(check.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('MISSING ')).map((l) => l.slice('MISSING '.length)))
+  return { missing: files.filter((f) => flagged.has(f)), committed: commits.trim() !== '' }
+}
+
 // ── Strays: untracked files between stages ──────────────────────────────────
 // Every stage commits its work, so anything untracked in the lane worktree
 // between stages is scratch an agent left behind. caliper eedom

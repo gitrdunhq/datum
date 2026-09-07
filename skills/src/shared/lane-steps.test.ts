@@ -52,6 +52,8 @@ import {
   buildVerifyVerdict,
   propertiesFromSteps,
   integrationVerifyCmd,
+  structuralDeliverableSteps,
+  structuralDeliverablesFromSteps,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
@@ -2041,5 +2043,78 @@ describe('integrationVerifyCmd — an INT lane verifies its own files, not the w
   it('leaves an opaque command (a script wrapper) and an empty file list alone', () => {
     expect(integrationVerifyCmd('bash scripts/test-run.sh --affected', ['tests/integration/test_int_1.py'])).toBe('bash scripts/test-run.sh --affected')
     expect(integrationVerifyCmd('uv run pytest -x -q', [])).toBe('uv run pytest -x -q')
+  })
+})
+
+// #341 task-001 (wf_d76785cc-148): a structural lane's only deliverable was
+// docs/architecture/state-store.md; the lane "completed" without a commit and
+// two integration lanes then failed on the missing file. A structural lane is
+// decided by its deliverables: every declared file exists in the worktree and
+// at least one commit past the epic branch touches them.
+describe('structuralDeliverableSteps — a structural lane is decided by its declared files', () => {
+  function initRepo(): { dir: string; git: (...a: string[]) => string } {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-structural-'))
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', HOME: dir }
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env })
+    git('init', '-q', '-b', 'datum/e')
+    git('config', 'core.hooksPath', '/dev/null')
+    git('config', 'user.email', 't@t')
+    git('config', 'user.name', 't')
+    writeFileSync(join(dir, 'README.md'), '# x\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'base')
+    git('checkout', '-q', '-b', 'datum/e--task-001')
+    return { dir, git }
+  }
+  const files = ['docs/architecture/state-store.md', 'docs/architecture/index.md']
+
+  it('builds one tolerant exists-check per file and one commit-range step scoped to the files', () => {
+    const steps = structuralDeliverableSteps({ wt: '/wt/T1', epicBranch: 'datum/e', files })
+    expect(names(steps)).toEqual(['deliverable-check', 'deliverable-commits'])
+    for (const s of steps) expect(s.tolerant).toBe(true)
+    expect(steps[0].command).toContain('docs/architecture/state-store.md')
+    expect(steps[1].command).toContain('"datum/e"..HEAD')
+    expect(steps[1].command).toContain('docs/architecture/index.md')
+  })
+
+  it('under real bash: nothing written and nothing committed names every file missing', () => {
+    const { dir } = initRepo()
+    try {
+      const steps = structuralDeliverableSteps({ wt: dir, epicBranch: 'datum/e', files })
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(structuralDeliverablesFromSteps(r, files)).toEqual({ missing: files, committed: false })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('under real bash: one file written but uncommitted is missing:[the other], committed:false', () => {
+    const { dir } = initRepo()
+    try {
+      mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true })
+      writeFileSync(join(dir, 'docs', 'architecture', 'state-store.md'), '# decision\n')
+      const steps = structuralDeliverableSteps({ wt: dir, epicBranch: 'datum/e', files })
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(structuralDeliverablesFromSteps(r, files)).toEqual({ missing: ['docs/architecture/index.md'], committed: false })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('under real bash: every file present and committed past the epic branch is delivered', () => {
+    const { dir, git } = initRepo()
+    try {
+      mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true })
+      for (const f of files) writeFileSync(join(dir, f), '# doc\n')
+      git('add', '-A'); git('commit', '-q', '-m', 'refactor(task-001): REFACTOR complete')
+      const steps = structuralDeliverableSteps({ wt: dir, epicBranch: 'datum/e', files })
+      const r = parseBatchResult(execFileSync('bash', ['-c', batchScript(steps)], { cwd: dir, encoding: 'utf8' }), steps)
+      expect(structuralDeliverablesFromSteps(r, files)).toEqual({ missing: [], committed: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a batch that did not run is a named absence, never "delivered"', () => {
+    expect(structuralDeliverablesFromSteps(parseBatchResult('', structuralDeliverableSteps({ wt: '/wt', epicBranch: 'datum/e', files })), files)).toBeNull()
   })
 })

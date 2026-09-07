@@ -889,9 +889,9 @@ describe('REFACTOR failures surface the real reason, never a bare "refactor fail
     expect(finalCallSite).toMatch(/refResult\?\.error \|\| 'refactor failed'/)
   })
 
-  it('the structural and both-committed fast-paths already surface r.error (still hold post-#331)', () => {
-    const structuralBlock = laneSrc.slice(laneSrc.indexOf('if (isStructural) {'), laneSrc.indexOf('if (isStructural) {') + 400)
-    expect(structuralBlock).toMatch(/r\?\.error \|\| 'refactor failed'/)
+  it('the structural fast-path surfaces r.error, never a bare fallback (still holds post-#331, now via runStructural)', () => {
+    const structuralBlock = laneSrc.slice(laneSrc.indexOf('if (isStructural) {'), laneSrc.indexOf('if (isStructural) {') + 700)
+    expect(structuralBlock).toMatch(/r\.error \|\| 'structural stage failed'/)
   })
 })
 
@@ -1045,5 +1045,62 @@ describe('RED — a test that reads the repo root\'s .datum/ is red_reads_runtim
     expect(assertIdx).toBeGreaterThan(0)
     expect(artifactIdx).toBeGreaterThan(assertIdx)
     expect(laneSource).toMatch(/error: `red_reads_runtime_artifact: \$\{artifactDetail\}`/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #341 task-001 (wf_d76785cc-148): the structural fast path dispatched
+// runRefactor, whose pre-check answered "nothing to improve" on a file that did
+// not exist yet, and the lane completed with no commit. A structural lane is a
+// single writing stage that must produce its declared files, verified by the
+// deterministic deliverable check — never by the agent's own report.
+// ---------------------------------------------------------------------------
+
+describe('structural lanes run a writing stage and are decided by their deliverables', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+  const structuralBlock = laneSource.slice(laneSource.indexOf('if (isStructural) {'), laneSource.indexOf('if (redAlreadyCommitted && greenAlreadyCommitted) {'))
+  const structuralFn = laneSource.slice(laneSource.indexOf('async function runStructural'), laneSource.indexOf('async function runRefactor'))
+
+  it('the structural fast path calls runStructural, not the optional REFACTOR cleanup', () => {
+    expect(structuralBlock).toMatch(/await runStructural\(/)
+    expect(structuralBlock).not.toMatch(/runRefactor\(/)
+  })
+
+  it('runStructural dispatches the structural prompt under the structural stage agent and checks deliverables with the batch, after the agent', () => {
+    expect(structuralFn).toMatch(/structuralPrompt\(/)
+    expect(structuralFn).toMatch(/stageOpts\('structural'/)
+    expect(structuralFn).toMatch(/structuralDeliverableSteps\(/)
+    expect(structuralFn.indexOf('structuralPrompt(')).toBeLessThan(structuralFn.indexOf("check('structural-verify')"))
+  })
+
+  it('names every failure: no result, agent failure, missing deliverables, nothing committed', () => {
+    expect(structuralFn).toMatch(/structural_no_result/)
+    expect(structuralFn).toMatch(/structural_failed/)
+    expect(structuralFn).toMatch(/structural_deliverable_missing: \$\{/)
+    expect(structuralFn).toMatch(/structural_uncommitted/)
+    expect(structuralFn).toMatch(/structural_check_unavailable/)
+  })
+
+  it('a lane whose deliverables are already committed (resume) completes without re-dispatching the agent', () => {
+    expect(structuralFn).toMatch(/structural_already_delivered/)
+    expect(structuralFn.indexOf('structural_already_delivered')).toBeLessThan(structuralFn.indexOf('structuralPrompt('))
+  })
+
+  it('the structural prompt exists, commits via {{commitCmd}}, allows only the lane files and never asks for tests', () => {
+    const text = readFileSync(join(__dirname, 'prompts', 'structural.md'), 'utf8')
+    expect(text).toMatch(/\{\{commitCmd\}\}/)
+    expect(text).toMatch(/\{\{allFilesList\}\}/)
+    expect(text).not.toMatch(/git -C "\{\{wt\}\}" commit -m/)
+    expect(text).toMatch(/do not (write|add) tests/i)
+    expect(text).toMatch(/every file listed/i)
+  })
+
+  it('the datum-structural agent definition exists as a writing stage and is what the table names', () => {
+    const def = readFileSync(join(__dirname, '..', '..', 'agents', 'datum-structural.md'), 'utf8')
+    expect(def).toMatch(/^name: datum-structural$/m)
+    expect(def).toMatch(/pre-tool-use-lane-file-guard\.sh/)
+    expect(def).toMatch(/pre-tool-use-commit-format\.sh/)
+    expect(def).toMatch(/exact commit command the prompt gives/i)
+    expect(readFileSync(join(__dirname, 'shared', 'agent-types.ts'), 'utf8')).toMatch(/structural: 'datum-structural'/)
   })
 })
