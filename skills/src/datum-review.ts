@@ -115,7 +115,10 @@ const reviewResults = await parallel<DomainResult | null>(
       withPreamble(d.domain === 'Correctness'
         ? renderPrompt(reviewCorrectnessSpecVerifyTemplate, { baseBranch })
         : renderPrompt(reviewDomainTemplate, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
-      stageOpts('review', { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA, maxRetries: 0, ...lensWorktree }),
+      // One retry (#341 wf_ae694af5-a70): three lenses hit the turn cap on a
+      // 115-file diff without calling StructuredOutput; with no retry the
+      // phase halted on the first of them.
+      stageOpts('review', { label: `review-${d.domain.toLowerCase()}`, phase: 'Review', model: d.model, schema: REVIEW_LENS_SCHEMA, maxRetries: 1, ...lensWorktree }),
     ),
   ),
 )

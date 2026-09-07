@@ -23,6 +23,7 @@ For each finding provide:
 RULES:
 - Only report findings in your domain — do not cross into other reviewers' territory
 - Every finding must have evidence (file + line). No speculation.
+- READ BUDGET: you have at most 30 tool calls. Start with the diff's file list (`--stat`), read the files that matter to your domain first, and when you reach 25 calls stop reading and answer with what you have. A review returned with partial coverage (say which files you did not reach in the findings' descriptions) is worth more than a complete one never returned; a run that ends without your structured answer counts as no review at all.
 - If the diff is too large to read whole, use ast-grep to search the changed files for the patterns your domain focus names
 
 Return JSON:

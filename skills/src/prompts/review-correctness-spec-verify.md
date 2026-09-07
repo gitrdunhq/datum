@@ -9,6 +9,8 @@ individual requirement up to a pass, because the impression is dominated by
 whatever was most prominent in the diff. Per-requirement isolation and named
 evidence exist to stop that impression from becoming the answer.
 
+READ BUDGET: you have at most 30 tool calls. Resolve the diff's file list first, read SPEC.md, then read only the files each requirement's evidence needs; when you reach 25 calls stop reading and answer with what you have, marking every requirement you could not reach UNVERIFIABLE with the files you did not read named. A verdict returned with UNVERIFIABLE rows is worth more than a complete one never returned; a run that ends without your structured answer counts as no review at all.
+
 ## Step 1 — resolve the diff
 
 Run the command given as DIFF at the end of this prompt (fall back to the

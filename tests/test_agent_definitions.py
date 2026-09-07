@@ -186,6 +186,10 @@ def test_reviewer_is_read_only_in_tools_and_hooks():
     assert "Read" in tools and "Bash" in tools and "Grep" in tools, tools
     # the tier is chosen per lens at the call site (#494), never fixed here
     assert data["model"] == "inherit", data["model"]
+    # #341 wf_ae694af5-a70: 40 turns was not enough to read a 115-file diff
+    # and still call StructuredOutput; the prompt budgets reads, the cap
+    # leaves room for the answer.
+    assert data.get("maxTurns") == 60, data.get("maxTurns")
 
     pre = data["hooks"]["PreToolUse"]
     matchers = {entry["matcher"] for entry in pre}
