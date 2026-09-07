@@ -930,14 +930,20 @@ function testEnvMissing(stdout) {
   const line = stdout.split("\n").map((l) => l.trim()).find((l) => re.test(l));
   return line ? line.replace(/^\s*ERR_PNPM\S*\s*/, "") : null;
 }
-function verifyVerdict(result, label) {
-  const exit = testExitCode(stepStdout(result, "test-verify"));
+function verifyVerdictForStep(result, label, stepName) {
+  const exit = testExitCode(stepStdout(result, stepName));
   if (exit === null) {
-    const why = result.missing ? describeFailure(result, label) : stepResult(result, "test-verify") ? `${label}: test-verify step ran but printed no TEST_EXIT line` : `${label}: test-verify step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
+    const why = result.missing ? describeFailure(result, label) : stepResult(result, stepName) ? `${label}: ${stepName} step ran but printed no TEST_EXIT line` : `${label}: ${stepName} step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
     return { kind: "unavailable", exit: null, why };
   }
   if (exit === 0) return { kind: "passed", exit: 0, why: "" };
   return { kind: "failed", exit, why: "" };
+}
+function verifyVerdict(result, label) {
+  return verifyVerdictForStep(result, label, "test-verify");
+}
+function buildVerifyVerdict(result, label) {
+  return verifyVerdictForStep(result, label, "build-verify");
 }
 function testExitCode(stdout) {
   if (!stdout) return null;
@@ -1141,9 +1147,14 @@ function postGreenSteps(o) {
   if (o.redSha) {
     steps.push({ name: "red-files", command: `git -C ${q2(o.wt)} diff-tree --no-commit-id --name-only -r ${q2(o.redSha)}`, tolerant: true });
   }
-  if (o.verifyTestCmd) {
+  if (o.verifyTestCmd || o.buildCommand) {
     steps.push(...strayCleanSteps(o.wt));
+  }
+  if (o.verifyTestCmd) {
     steps.push({ name: "test-verify", command: testRunCommand(o.verifyTestCmd, o.wt, "green-verify"), tolerant: true });
+  }
+  if (o.buildCommand) {
+    steps.push({ name: "build-verify", command: testRunCommand(o.buildCommand, o.wt, "green-build-verify"), tolerant: true });
   }
   return steps;
 }
@@ -2185,7 +2196,7 @@ No markdown fences, no explanation.`,
       error: "green_no_result: GREEN agent returned nothing on both attempts (likely the maxTurns cap in agents/datum-green.md \u2014 the lane may need a smaller scope, or the cap raised)"
     };
   }
-  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
+  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null });
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts("cli", { label: `post-green-verify:${taskId}`, phase: "Act", model: model("fast") }));
   const postGreenVerifyResult = postGreenVerifyRaw;
   const greenStrays = strayFilesFromSteps(postGreenVerifyResult);
@@ -2208,6 +2219,55 @@ No markdown fences, no explanation.`,
       stage: "GREEN",
       error: `green_verify_failed: independent test-verify step exit=${greenVerdict.exit} (agent self-reported tests_pass=${green?.tests_pass})`
     };
+  }
+  if (cfg2.buildCommand) {
+    const buildVerdict = buildVerifyVerdict(postGreenVerifyResult, "post-green-build-verify");
+    if (buildVerdict.kind === "unavailable") {
+      log(`[${taskId}] build_verify_unavailable: ${buildVerdict.why}`);
+      return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_unavailable: ${buildVerdict.why}` };
+    }
+    if (buildVerdict.kind === "failed") {
+      log(`[${taskId}] GREEN BUILD VERIFY FAILED: independent re-run of build_command (${cfg2.buildCommand}) exited ${buildVerdict.exit}`);
+      const buildTail = (stepStdout(postGreenVerifyResult, "build-verify") || "").trim().split("\n").slice(-30).join("\n");
+      const buildRetryReason = `build_verify_failed: independent re-run of build_command (${cfg2.buildCommand}) exited ${buildVerdict.exit} after your GREEN commit. Output tail:
+${buildTail}
+
+If you can fix this inside allowed_write_files [${implFiles.join(", ")}], fix it and re-commit. If the failure is rooted in a file OUTSIDE allowed_write_files, do NOT retry blindly \u2014 return status="blocked" with needs_write naming the file(s) you cannot edit, exactly like the existing GREEN scope-block contract.`;
+      const buildRetryGreen = await witnessedAgent(
+        greenRetryPrompt({
+          ...greenVars,
+          failureReason: buildRetryReason,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: "build_verify_failed" })
+        }),
+        stageOpts("green", { label: `green-build-retry:${taskId}`, phase: "Act", model: model("deep"), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile,
+        "GREEN"
+      );
+      const buildDecision = decideGreenBlock(buildRetryGreen, null);
+      if (buildDecision.blocked) {
+        const err = `green_blocked_needs_write: [${buildDecision.needsWrite.join(", ") || "unspecified"}] \u2014 ${buildDecision.reason} (build_verify_failed after GREEN)`;
+        log(`[${taskId}] ${err}`);
+        return { task_id: taskId, status: "blocked", stage: "GREEN", error: err, needs_write: buildDecision.needsWrite };
+      }
+      if (!buildRetryGreen || !buildRetryGreen.success) {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_failed: independent build re-run exit=${buildVerdict.exit}; retry ${!buildRetryGreen ? "returned nothing" : `failed: ${buildRetryGreen.failure_reason || "no reason"}`}` };
+      }
+      const retryBuildBatch = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand });
+      const retryBuildResult = await runBatch(retryBuildBatch, stageOpts("cli", { label: `post-green-build-reverify:${taskId}`, phase: "Act", model: model("fast") }));
+      const retryTestVerdict = verifyVerdict(retryBuildResult, "post-green-build-reverify");
+      const retryBuildVerdict = buildVerifyVerdict(retryBuildResult, "post-green-build-reverify");
+      if (retryTestVerdict.kind !== "passed") {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_failed: independent test-verify exit=${retryTestVerdict.exit ?? "null"} after the build-fix retry` };
+      }
+      if (retryBuildVerdict.kind === "unavailable") {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_unavailable: ${retryBuildVerdict.why}` };
+      }
+      if (retryBuildVerdict.kind === "failed") {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} after one retry` };
+      }
+      green = buildRetryGreen;
+      log(`[${taskId}] build_verify passed after one GREEN retry`);
+    }
   }
   if (!green || !green.success || !green.tests_pass) {
     const reason = !green ? "GREEN agent call returned no result after retries (subagent crashed, was skipped, or exhausted rate-limit backoff) \u2014 check the subagent transcript for this run to recover the actual failure cause" : green.failure_reason || `GREEN failed with no failure_reason reported (success=${green.success}, tests_pass=${green.tests_pass}, exit_code=${green.test_exit_code ?? "n/a"})`;
@@ -2267,8 +2327,14 @@ No markdown fences, no explanation.`,
       specFile,
       "GREEN"
     );
-    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
+    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null }), stageOpts("cli", { label: `post-green-tests-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryVerdict = verifyVerdict(retryVerify, "post-green-tests-retry-verify");
+    if (cfg2.buildCommand) {
+      const retryBuildVerdict = buildVerifyVerdict(retryVerify, "post-green-tests-retry-verify");
+      if (retryBuildVerdict.kind !== "passed") {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: retryBuildVerdict.kind === "unavailable" ? `build_verify_unavailable: ${retryBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} on the tests-retry` };
+      }
+    }
     if (retryVerdict.kind === "unavailable" && green && green.success) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerdict.why}` };
     }
@@ -2305,9 +2371,15 @@ ${bugSummary}`,
       specFile,
       "GREEN"
     );
-    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd });
+    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg2.buildCommand || null });
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts("cli", { label: `post-green-skeptic-retry-verify:${taskId}`, phase: "Act", model: model("fast") }));
     const retryVerifyVerdict = verifyVerdict(retryVerifyRaw, "post-green-skeptic-retry-verify");
+    if (cfg2.buildCommand) {
+      const retrySkepticBuildVerdict = buildVerifyVerdict(retryVerifyRaw, "post-green-skeptic-retry-verify");
+      if (retrySkepticBuildVerdict.kind !== "passed") {
+        return { task_id: taskId, status: "failed", stage: "GREEN", error: retrySkepticBuildVerdict.kind === "unavailable" ? `build_verify_unavailable: ${retrySkepticBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retrySkepticBuildVerdict.exit} on the skeptic retry` };
+      }
+    }
     if (retryVerifyVerdict.kind === "unavailable" && green && green.success) {
       return { task_id: taskId, status: "failed", stage: "GREEN", error: `green_verify_unavailable: ${retryVerifyVerdict.why}` };
     }

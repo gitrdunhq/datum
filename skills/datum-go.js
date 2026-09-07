@@ -207,6 +207,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
+  /** #425/#424: optional post-GREEN/Validate build check, alongside test_command. */
+  build_command: "",
   skills_dir: "",
   context_files: [],
   /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
@@ -1039,6 +1041,7 @@ if (shouldRun("act", 3)) {
   let inFlightBatch = null;
   try {
     const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command;
+    const buildCommand = globalCfg.build_command || DEFAULT_CONFIG.build_command;
     const language = globalCfg.language || DEFAULT_CONFIG.language;
     const testFramework = globalCfg.test_framework;
     const actStart = actStartSteps({
@@ -1136,7 +1139,7 @@ if (shouldRun("act", 3)) {
           batchTag,
           // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
           // in the lane runner, same as datum-tdd-act passes it.
-          cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
+          cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, buildCommand: buildCommand || void 0, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
           priorFailures: actFailures,
           priorCompleted: actCompleted
         }

@@ -22,6 +22,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
+  /** #425/#424: optional post-GREEN/Validate build check, alongside test_command. */
+  build_command: "",
   skills_dir: "",
   context_files: [],
   /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
@@ -713,6 +715,7 @@ if (repoCfg.models && typeof repoCfg.models === "object") setModelTiers(repoCfg.
 configureAgentTypes(readAgentTypeConfig(repoCfg));
 var sk = (name) => skillPath(repoCfg.skills_dir || "", name);
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
+var buildCommand = a.buildCommand || repoCfg.build_command || DEFAULT_CONFIG.build_command;
 var language = a.language || repoCfg.language || DEFAULT_CONFIG.language;
 var test_framework = a.test_framework || repoCfg.test_framework;
 var epicBranch = a.epicBranch || "";
@@ -819,7 +822,7 @@ ${"=".repeat(60)}`);
         lanePlan,
         worktreePaths: setup.worktreePaths,
         batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "", repoRoot: a.repoRoot || "" },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, buildCommand: buildCommand || void 0, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || "", repoRoot: a.repoRoot || "" },
         priorFailures: failures,
         priorCompleted: completedLanes
       }

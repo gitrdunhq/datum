@@ -151,6 +151,11 @@ var PREFIX_RULES = [
     reason: "validate_run_failed: the independent test-verify run at the Validate stage did not execute \u2014 a runner/tooling failure."
   },
   {
+    test: /\bbuild_verify_unavailable\b/,
+    category: "infrastructure",
+    reason: "build_verify_unavailable: the optional post-GREEN/Validate build_command batch returned nothing parseable, so there is no exit code \u2014 no evidence about the code either way, same fail-closed shape as green_verify_unavailable. A runner failure, not agent behaviour."
+  },
+  {
     test: /\blane_plan_relay_mismatch\b/,
     category: "infrastructure",
     reason: "lane_plan_relay_mismatch: the relayed lane plan shape differs from the file on disk \u2014 a pipeline plumbing bug, not a plan-quality problem."
@@ -258,6 +263,11 @@ var PREFIX_RULES = [
     test: /\bgreen_verify_failed\b/,
     category: "agent_behavior",
     reason: "green_verify_failed: independent test-verify disagreed with the GREEN agent's self-reported tests_pass."
+  },
+  {
+    test: /\bbuild_verify_failed\b/,
+    category: "agent_behavior",
+    reason: "build_verify_failed: an independent re-run of build_command (e.g. `pnpm typecheck`, `go build ./...`) after GREEN exited non-zero, and the bounded GREEN retry did not resolve it \u2014 a code defect of the lane's own implementation, same shape as green_verify_failed. (A retry that instead reported blocked on a file outside allowed_write_files surfaces as green_blocked_needs_write, a lane_plan finding, not this one.)"
   },
   {
     test: /\brefactor_verify_failed\b/,

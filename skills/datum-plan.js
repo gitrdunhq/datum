@@ -150,6 +150,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
+  /** #425/#424: optional post-GREEN/Validate build check, alongside test_command. */
+  build_command: "",
   skills_dir: "",
   context_files: [],
   /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */

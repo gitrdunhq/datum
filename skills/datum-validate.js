@@ -129,6 +129,8 @@ var DEFAULT_CONFIG = {
   language: "",
   test_framework: "",
   test_command: "",
+  /** #425/#424: optional post-GREEN/Validate build check, alongside test_command. */
+  build_command: "",
   skills_dir: "",
   context_files: [],
   /** #368: pass agentType on every mapped agent() call (off for runtimes without it). */
@@ -447,6 +449,18 @@ function describeFailure(r, label) {
 }
 
 // skills/src/shared/lane-steps.ts
+function verifyVerdictForStep(result, label, stepName) {
+  const exit = testExitCode(stepStdout(result, stepName));
+  if (exit === null) {
+    const why = result.missing ? describeFailure(result, label) : stepResult(result, stepName) ? `${label}: ${stepName} step ran but printed no TEST_EXIT line` : `${label}: ${stepName} step did not run (${result.failed ? `stopped at "${result.failed.name}"` : "not in the batch result"})`;
+    return { kind: "unavailable", exit: null, why };
+  }
+  if (exit === 0) return { kind: "passed", exit: 0, why: "" };
+  return { kind: "failed", exit, why: "" };
+}
+function buildVerifyVerdict(result, label) {
+  return verifyVerdictForStep(result, label, "build-verify");
+}
 function testExitCode(stdout) {
   if (!stdout) return null;
   const matches = [...stdout.matchAll(/TEST_EXIT=(\d+)/g)];
@@ -458,16 +472,25 @@ var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/shared/validate-steps.ts
 var TEST_SIGNAL_PATH = ".datum/last-test-signal.json";
-function validateVerifySteps(testCommand2, cwd) {
+function validateVerifySteps(testCommand2, cwd, buildCommand2) {
   const signalPath = `${cwd.replace(/\/+$/, "")}/${TEST_SIGNAL_PATH}`;
-  return [
+  const steps = [
     { name: "test-verify", command: testRunCommand(testCommand2, cwd, "validate-verify"), tolerant: true },
+    // The signal is written immediately after test-verify, from the SAME
+    // shell's $TEST_EXIT, before build-verify (below) can overwrite that
+    // variable with its own exit code — the signal is about test_command
+    // only; build_command's independent exit code is read from its own
+    // batch step by name, never through $TEST_EXIT.
     {
       name: "write-signal",
       command: `mkdir -p "$(dirname "${signalPath}")" && jq -n --arg status "$([ "\${TEST_EXIT:-1}" -eq 0 ] && echo pass || echo fail)" --argjson exit_code "\${TEST_EXIT:-1}" --arg command ${JSON.stringify(testCommand2)} --arg recorded_at "$(date +%Y-%m-%dT%H:%M:%S)" '{status: $status, exit_code: $exit_code, command: $command, recorded_at: $recorded_at}' > "${signalPath}" && cat "${signalPath}"`,
       tolerant: true
     }
   ];
+  if (buildCommand2) {
+    steps.push({ name: "build-verify", command: testRunCommand(buildCommand2, cwd, "validate-build-verify"), tolerant: true });
+  }
+  return steps;
 }
 
 // skills/src/shared/main-sync-steps.ts
@@ -686,6 +709,7 @@ if (!a.testCommand) {
 }
 if (!(a.agentTypes && typeof a.agentTypes === "object")) configureAgentTypes(readAgentTypeConfig(repoCfg));
 var testCommand = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command;
+var buildCommand = repoCfg.build_command || DEFAULT_CONFIG.build_command;
 phase("Validate");
 var syncSteps = mainSyncSteps(noMergeMain, repoCfg.main_branch);
 var syncBatch = await runBatch(syncSteps, stageOpts("cli", { label: "main-sync", model: model("fast") }));
@@ -715,7 +739,7 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
 var check = checkResult;
-var verifySteps = validateVerifySteps(testCommand, ".");
+var verifySteps = validateVerifySteps(testCommand, ".", buildCommand || null);
 var verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
   stageOpts("cli", { label: "validate-verify", phase: "Validate", model: model("fast") })
@@ -724,6 +748,10 @@ var verifyResult = parseBatchResult(verifyRaw, verifySteps);
 var testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, "test-verify")) : null;
 var testsPassed = testExit === 0;
 log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit === null ? "n/a" : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || "?"} tests)`);
+var buildVerdict = mainSync.ok && buildCommand ? buildVerifyVerdict(verifyResult, "validate-build-verify") : null;
+if (buildVerdict) {
+  log(`Build: ${buildVerdict.kind === "passed" ? "PASS" : buildVerdict.kind === "failed" ? `FAIL (exit=${buildVerdict.exit})` : `UNAVAILABLE (${buildVerdict.why})`}`);
+}
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
 if (check?.ac_gaps && check.ac_gaps.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
 var gatePassed = false;
@@ -738,6 +766,12 @@ if (!mainSync.ok) {
   log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else if (testExit !== 0) {
   gateMessage = `tests red: independent run exited ${testExit}${check?.tests_pass ? ", despite agent self-report of tests_pass=true" : ""}`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
+} else if (buildVerdict && buildVerdict.kind === "unavailable") {
+  gateMessage = `build_verify_unavailable: ${buildVerdict.why}`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
+} else if (buildVerdict && buildVerdict.kind === "failed") {
+  gateMessage = `build_verify_failed: independent build_command re-run exited ${buildVerdict.exit}`;
   log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else {
   const gateStepList = gateSteps("validate", yolo ? " --approve" : "");
