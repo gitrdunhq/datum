@@ -237,7 +237,10 @@ describe('path-boundary-file-ownership — AC4', () => {
 
     const bundled = readFileSync(join(repoRoot, 'skills', 'datum-tdd-act-lane.js'), 'utf8')
     expect(bundled.startsWith('// @generated — DO NOT EDIT. Source: skills/src/')).toBe(true)
-  })
+  // This test runs the whole esbuild pass. Under a parallel suite it exceeds
+  // vitest's 5 s default and failed a sound GREEN's independent verify
+  // (integration-lanes-2 wf_979a2d54-458 task-002); the #419 flake was this.
+  }, 90_000)
 })
 
 // ---------------------------------------------------------------------------
