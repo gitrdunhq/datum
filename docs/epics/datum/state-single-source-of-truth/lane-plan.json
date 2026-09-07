@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "total_lanes": 12,
+  "total_lanes": 26,
   "topological_order": [
     "task-001",
     "task-002",
@@ -13,7 +13,21 @@
     "task-009",
     "task-010",
     "task-011",
-    "task-012"
+    "task-012",
+    "task-INT-1",
+    "task-INT-2",
+    "task-INT-3",
+    "task-INT-4",
+    "task-INT-5",
+    "task-INT-6",
+    "task-INT-7",
+    "task-INT-8",
+    "task-INT-9",
+    "task-INT-10",
+    "task-INT-11",
+    "task-INT-12",
+    "task-INT-13",
+    "task-INT-14"
   ],
   "file_ownership": {
     "docs/architecture/state-store.md": "task-001",
@@ -53,7 +67,21 @@
     "datum/state.py": "task-012",
     "datum/gc.py": "task-012",
     "tests/test_state_db.py": "task-012",
-    "tests/test_gc.py": "task-012"
+    "tests/test_gc.py": "task-012",
+    "tests/integration/test_int_1.py": "task-INT-1",
+    "tests/integration/test_int_2.py": "task-INT-2",
+    "tests/integration/test_int_3.py": "task-INT-3",
+    "tests/integration/test_int_4.py": "task-INT-4",
+    "tests/integration/test_int_5.py": "task-INT-5",
+    "tests/integration/test_int_6.py": "task-INT-6",
+    "tests/integration/test_int_7.py": "task-INT-7",
+    "tests/integration/test_int_8.py": "task-INT-8",
+    "tests/integration/test_int_9.py": "task-INT-9",
+    "tests/integration/test_int_10.py": "task-INT-10",
+    "tests/integration/test_int_11.py": "task-INT-11",
+    "tests/integration/test_int_12.py": "task-INT-12",
+    "tests/integration/test_int_13.py": "task-INT-13",
+    "tests/integration/test_int_14.py": "task-INT-14"
   },
   "lanes": {
     "task-001": {
@@ -76,7 +104,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "record-state-store-decision",
-      "kind": "structural"
+      "kind": "structural",
+      "github_issue": 501
     },
     "task-002": {
       "id": "task-002",
@@ -102,7 +131,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "migrate-status-render-to-canonical-accessor",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 502
     },
     "task-003": {
       "id": "task-003",
@@ -130,7 +160,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "migrate-report-bug-and-archive-readers",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 503
     },
     "task-004": {
       "id": "task-004",
@@ -158,7 +189,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "migrate-rollback-and-no-diff-guard",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 504
     },
     "task-005": {
       "id": "task-005",
@@ -186,7 +218,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "migrate-pr-monitor-and-drift-detector",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 505
     },
     "task-006": {
       "id": "task-006",
@@ -212,7 +245,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "retire-path-utils-state-helpers",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 506
     },
     "task-007": {
       "id": "task-007",
@@ -241,7 +275,8 @@
       },
       "stage": "queued",
       "slug": "retarget-migrate-as-legacy-importer",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 507
     },
     "task-008": {
       "id": "task-008",
@@ -269,7 +304,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "document-sql-and-tui-exceptions",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 508
     },
     "task-009": {
       "id": "task-009",
@@ -296,7 +332,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "archive-live-state-from-canonical-store",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 509
     },
     "task-010": {
       "id": "task-010",
@@ -325,7 +362,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "closeout-no-state-sentinel",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 510
     },
     "task-011": {
       "id": "task-011",
@@ -351,7 +389,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "migrate-pipeline-scheduler-with-equivalence-test",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 511
     },
     "task-012": {
       "id": "task-012",
@@ -386,7 +425,321 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "drop-live-state-json-write-through",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 512
+    },
+    "task-INT-1": {
+      "id": "task-INT-1",
+      "title": "Integration invariants covering task-001",
+      "files": [
+        "tests/integration/test_int_1.py"
+      ],
+      "acceptance_criteria": [
+        "INV-Q5: `docs/architecture/state-store.md` records that Q5's answer (a `SCHEMA_VERSION` constant plus a `kv_state` key/owner docstring table) is deliberately NOT implemented by any task in this epic \u2014 `state.db`'s schema stays unversioned beyond task-001's own doc, a scope gap explicitly flagged for the epic owner rather than silently dropped",
+        "INV-Q6: `docs/architecture/state-store.md` records that Q6's answer (a 5s `busy_timeout` on every connection) is deliberately NOT implemented \u2014 `update_state()` retains only its existing `EXCLUSIVE` transaction, per SPEC's Out-of-Scope bar on new locking primitives, a scope gap explicitly flagged rather than silently dropped"
+      ],
+      "red_note": "Verify integration invariants covering task-001: INV-Q5: `docs/architecture/state-store.md` records that Q5's answer (a `SCHEMA_VERSION` constant plus a `kv_state` key/owner docstring table) is deliberately NOT implemented by any task in this epic \u2014 `state.db`'s schema stays unversioned beyond task-001's own doc, a scope gap explicitly flagged for the epic owner rather than silently dropped; INV-Q6: `docs/architecture/state-store.md` records that Q6's answer (a 5s `busy_timeout` on every connection) is deliberately NOT implemented \u2014 `update_state()` retains only its existing `EXCLUSIVE` transaction, per SPEC's Out-of-Scope bar on new locking primitives, a scope gap explicitly flagged rather than silently dropped",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-Q5",
+        "INV-Q6"
+      ],
+      "depends_on": [
+        "task-001"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-2": {
+      "id": "task-INT-2",
+      "title": "Integration invariants covering task-001, task-002, task-011",
+      "files": [
+        "tests/integration/test_int_2.py"
+      ],
+      "acceptance_criteria": [
+        "INV-Q3: Migration lands incrementally, one module per lane, in the fixed order (tested modules first, `pipeline_scheduler.py` last), each independently reviewable and revertible"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-002, task-011: INV-Q3: Migration lands incrementally, one module per lane, in the fixed order (tested modules first, `pipeline_scheduler.py` last), each independently reviewable and revertible",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-Q3"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-002",
+        "task-011"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-3": {
+      "id": "task-INT-3",
+      "title": "Integration invariants covering task-001, task-002, task-012",
+      "files": [
+        "tests/integration/test_int_3.py"
+      ],
+      "acceptance_criteria": [
+        "INV-Q7: `docs/architecture/state-store.md` records that Q7's answer (\"a missing db must raise a named error, never return `{}`\") is superseded by SPEC's Failure-Modes contract \u2014 `load_state()` continues returning `{}` on a missing/uninitialized `state.db` and must never raise, which every migrated module's empty-state AC (task-002 through task-011) and task-012's AC depend on"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-002, task-012: INV-Q7: `docs/architecture/state-store.md` records that Q7's answer (\"a missing db must raise a named error, never return `{}`\") is superseded by SPEC's Failure-Modes contract \u2014 `load_state()` continues returning `{}` on a missing/uninitialized `state.db` and must never raise, which every migrated module's empty-state AC (task-002 through task-011) and task-012's AC depend on",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-Q7"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-002",
+        "task-012"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-4": {
+      "id": "task-INT-4",
+      "title": "Integration invariants covering task-001, task-004",
+      "files": [
+        "tests/integration/test_int_4.py"
+      ],
+      "acceptance_criteria": [
+        "INV-Q2: `load_state`/`save_state`/`update_state` are adopted unchanged as the canonical contract; any hardening happens only under a concrete migrated-module test gap, never as a shape/signature redesign"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-004: INV-Q2: `load_state`/`save_state`/`update_state` are adopted unchanged as the canonical contract; any hardening happens only under a concrete migrated-module test gap, never as a shape/signature redesign",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-Q2"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-004"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-5": {
+      "id": "task-INT-5",
+      "title": "Integration invariants covering task-001, task-007",
+      "files": [
+        "tests/integration/test_int_5.py"
+      ],
+      "acceptance_criteria": [
+        "INV-3: `migrate.py`'s fate (one-shot legacy importer) is fixed by task-001's decision doc and implemented unchanged by task-007"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-007: INV-3: `migrate.py`'s fate (one-shot legacy importer) is fixed by task-001's decision doc and implemented unchanged by task-007",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-3"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-007"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-6": {
+      "id": "task-INT-6",
+      "title": "Integration invariants covering task-001, task-008",
+      "files": [
+        "tests/integration/test_int_6.py"
+      ],
+      "acceptance_criteria": [
+        "INV-5: `corpus_sql.py`'s and `datum-tui/data.py`'s documented exceptions both derive their justification from the same task-001 decision doc"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-008: INV-5: `corpus_sql.py`'s and `datum-tui/data.py`'s documented exceptions both derive their justification from the same task-001 decision doc",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-5"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-008"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-7": {
+      "id": "task-INT-7",
+      "title": "Integration invariants covering task-001, task-012",
+      "files": [
+        "tests/integration/test_int_7.py"
+      ],
+      "acceptance_criteria": [
+        "INV-6: `gc.py`'s protected-names set is updated to match the Requirement-1 decision, and `gate.py`/`gc.py` otherwise remain untouched by accessor migration",
+        "INV-Q1: `.datum/state.json` as a live write-through cache is dropped entirely; only `.datum/runs/<run_id>/state.json` (archival export) and `datum-tui`'s state.db-backed read survive"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-012: INV-6: `gc.py`'s protected-names set is updated to match the Requirement-1 decision, and `gate.py`/`gc.py` otherwise remain untouched by accessor migration; INV-Q1: `.datum/state.json` as a live write-through cache is dropped entirely; only `.datum/runs/<run_id>/state.json` (archival export) and `datum-tui`'s state.db-backed read survive",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-6",
+        "INV-Q1"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-012"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-8": {
+      "id": "task-INT-8",
+      "title": "Integration invariants covering task-002, task-003",
+      "files": [
+        "tests/integration/test_int_8.py"
+      ],
+      "acceptance_criteria": [
+        "INV-4: `report_bug.py` and `archive.py` contain zero live `.datum/state.json` literal reads after migration"
+      ],
+      "red_note": "Verify integration invariants covering task-002, task-003: INV-4: `report_bug.py` and `archive.py` contain zero live `.datum/state.json` literal reads after migration",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-4"
+      ],
+      "depends_on": [
+        "task-002",
+        "task-003"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-9": {
+      "id": "task-INT-9",
+      "title": "Integration invariants covering task-002, task-003, task-004, task-005, task-006, task-007, task-008, task-009, task-010, task-011, task-012",
+      "files": [
+        "tests/integration/test_int_9.py"
+      ],
+      "acceptance_criteria": [
+        "INV-1: The db-backed accessor (`load_state`/`save_state`/`update_state`) is the single read/write path for live state across every migrated module, with unchanged signatures",
+        "INV-8: task-012's removal of the write-through cache is safe only because every live-cache reader (task-002 through task-011) has already migrated off `state.json`"
+      ],
+      "red_note": "Verify integration invariants covering task-002, task-003, task-004, task-005, task-006, task-007, task-008, task-009, task-010, task-011, task-012: INV-1: The db-backed accessor (`load_state`/`save_state`/`update_state`) is the single read/write path for live state across every migrated module, with unchanged signatures; INV-8: task-012's removal of the write-through cache is safe only because every live-cache reader (task-002 through task-011) has already migrated off `state.json`",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-1",
+        "INV-8"
+      ],
+      "depends_on": [
+        "task-002",
+        "task-003",
+        "task-004",
+        "task-005",
+        "task-006",
+        "task-007",
+        "task-008",
+        "task-009",
+        "task-010",
+        "task-011",
+        "task-012"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-10": {
+      "id": "task-INT-10",
+      "title": "Integration invariants covering task-002, task-004, task-005, task-006, task-011",
+      "files": [
+        "tests/integration/test_int_10.py"
+      ],
+      "acceptance_criteria": [
+        "INV-2: Each of the 7 migrated modules contains zero local `STATE_FILE`/`load_state`/`save_state` redefinitions post-migration"
+      ],
+      "red_note": "Verify integration invariants covering task-002, task-004, task-005, task-006, task-011: INV-2: Each of the 7 migrated modules contains zero local `STATE_FILE`/`load_state`/`save_state` redefinitions post-migration",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-2"
+      ],
+      "depends_on": [
+        "task-002",
+        "task-004",
+        "task-005",
+        "task-006",
+        "task-011"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-11": {
+      "id": "task-INT-11",
+      "title": "Integration invariants covering task-004, task-011",
+      "files": [
+        "tests/integration/test_int_11.py"
+      ],
+      "acceptance_criteria": [
+        "INV-10: The new equivalence/round-trip tests (`test_rollback.py`, `test_pipeline_scheduler.py`) prove task-004's and task-011's migrated modules produce identical observable behavior through the same canonical accessor"
+      ],
+      "red_note": "Verify integration invariants covering task-004, task-011: INV-10: The new equivalence/round-trip tests (`test_rollback.py`, `test_pipeline_scheduler.py`) prove task-004's and task-011's migrated modules produce identical observable behavior through the same canonical accessor",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-10"
+      ],
+      "depends_on": [
+        "task-004",
+        "task-011"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-12": {
+      "id": "task-INT-12",
+      "title": "Integration invariants covering task-007, task-008",
+      "files": [
+        "tests/integration/test_int_12.py"
+      ],
+      "acceptance_criteria": [
+        "INV-Q4: Only `corpus_sql.py` (SQL-queryable need) and `migrate.py` (one-shot legacy import) are permitted documented exceptions; every other of the 12 modules ends on the canonical accessor with zero exceptions"
+      ],
+      "red_note": "Verify integration invariants covering task-007, task-008: INV-Q4: Only `corpus_sql.py` (SQL-queryable need) and `migrate.py` (one-shot legacy import) are permitted documented exceptions; every other of the 12 modules ends on the canonical accessor with zero exceptions",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-Q4"
+      ],
+      "depends_on": [
+        "task-007",
+        "task-008"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-13": {
+      "id": "task-INT-13",
+      "title": "Integration invariants covering task-008, task-012",
+      "files": [
+        "tests/integration/test_int_13.py"
+      ],
+      "acceptance_criteria": [
+        "INV-7: `datum-tui/data.py` remains exempt from importing `datum` but swaps its backing store to `state.db` before task-012 drops the JSON cache it used to read"
+      ],
+      "red_note": "Verify integration invariants covering task-008, task-012: INV-7: `datum-tui/data.py` remains exempt from importing `datum` but swaps its backing store to `state.db` before task-012 drops the JSON cache it used to read",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-7"
+      ],
+      "depends_on": [
+        "task-008",
+        "task-012"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-14": {
+      "id": "task-INT-14",
+      "title": "Integration invariants covering task-009, task-010",
+      "files": [
+        "tests/integration/test_int_14.py"
+      ],
+      "acceptance_criteria": [
+        "INV-9: The `no_state_available` sentinel produced by task-010's collectors survives task-009's archive rewrite and collate.py's rendering into `closeout-data.json` unchanged"
+      ],
+      "red_note": "Verify integration invariants covering task-009, task-010: INV-9: The `no_state_available` sentinel produced by task-010's collectors survives task-009's archive rewrite and collate.py's rendering into `closeout-data.json` unchanged",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "INV-9"
+      ],
+      "depends_on": [
+        "task-009",
+        "task-010"
+      ],
+      "stage": "queued"
     }
   }
 }
