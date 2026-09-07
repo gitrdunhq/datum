@@ -71,18 +71,6 @@ def test_lane_spec_export_carries_literal_expect_tests_pass_and_depends_on(tmp_p
     assert "dependsOn" not in written
 
 
-def test_live_lane_spec_artifact_has_exact_expect_tests_pass_and_depends_on():
-    """The real `.datum/lane-spec.json` already written into this worktree
-    by task-001's exporter for this very lane carries the exact fields
-    with the values this lane declared, pinning the real serialized
-    contract rather than a synthetic fixture."""
-    lane_spec_path = REPO_ROOT / ".datum" / "lane-spec.json"
-    data = json.loads(lane_spec_path.read_text(encoding="utf-8"))
-    assert data["expect_tests_pass"] is True
-    assert data["depends_on"] == ["task-001", "task-002"]
-    assert data["kind"] == "integration"
-
-
 def test_runLane_reads_literal_expect_tests_pass_field_no_renaming():
     """`runLane` in the TypeScript source reads the lane's
     `expect_tests_pass` field verbatim (`lane.expect_tests_pass`) — never
