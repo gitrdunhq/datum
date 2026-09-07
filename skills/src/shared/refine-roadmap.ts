@@ -17,7 +17,7 @@ export interface TriagedAddendum {
 }
 
 /** Addendum dates ROADMAP.md already carries, from the probe step's stdout. */
-export function recordedAddendumDates(stepOut: string | undefined): string[] {
+export function recordedAddendumDates(stepOut: string | null | undefined): string[] {
   const dates = new Set<string>()
   for (const line of (stepOut || '').split('\n')) {
     const m = ROADMAP_MARK_RE.exec(line)
