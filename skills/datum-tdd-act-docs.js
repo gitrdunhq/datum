@@ -309,6 +309,7 @@ function parseBatchResult(raw, steps) {
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
+  if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
     const { exit_code, stderr } = results[0];
     const guard = /^batch_(script_corrupt|root_missing|tool_missing)\b/.test(stderr.trim());
