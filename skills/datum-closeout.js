@@ -64,6 +64,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -452,7 +457,7 @@ async function runBatch(steps, opts, deps) {
 }
 
 // skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "CHANGELOG.md", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N,\n  "key_metrics": {\n    "tasks_completed": N,\n    "tasks_failed": N,\n    "total_tokens": N\n  }\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
+var closeout_synthesize_default = 'Closeout synthesis agent. Read closeout-data.json and produce post-epic artifacts.\n\nRead: {{closeoutDataPath}}\nAlso read, if it exists: {{reviewResponsePath}} (the operator\'s recorded review decisions).\n\nEvery factual claim must be grounded in those files. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. {{changelogInstruction}}\n3. RETRO.md at docs/epics/{{branch}}/RETRO.md \u2014 metrics, observations, brief defects\n4. follow-ups.json at .datum/runs/{{runId}}/follow-ups.json \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "...", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n';
 
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;

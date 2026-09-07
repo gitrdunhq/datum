@@ -157,6 +157,11 @@ var AGENT_TYPE_TABLE = {
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
+  // Read-only LLM *judges* (refactor pre-check, docs-staleness check). They
+  // are not datum-reader: that definition says "read one file, return its
+  // contents, do not interpret" at maxTurns 4, and these calls read every
+  // file a lane touched and answer a rubric.
+  quality: "datum-quality-reader",
   cli: "datum-cli"
 };
 var state = { agentTypes: true, hooksInstalled: false };
@@ -591,7 +596,7 @@ function configFromSteps(result) {
 }
 
 // skills/src/prompts/validate-check.md
-var validate_check_default = 'Validation agent. Confirm the integrated result meets SPEC and PROPERTIES.\n\nWorking directory: {{wt}}\nSPEC path: {{specPath}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReturn JSON:\n{\n  "tests_pass": true,\n  "test_count": N,\n  "lint_clean": true,\n  "lint_fixes": ["files that were auto-fixed"],\n  "ac_gaps": ["ACs with no corresponding test"],\n  "committed_fixes": true,\n  "commit_sha": "sha if lint fixes were committed"\n}\n\nOutput raw JSON only. No markdown fences.\n';
+var validate_check_default = "Validation agent. Confirm the integrated result meets the acceptance criteria the epic planned.\n\nWorking directory: {{wt}}\nTASKS path: {{tasksPath}}\nTest command: {{testCommand}}\n\nSTEPS:\n1. Run the full test suite with exactly this command: {{testRunCmd}}\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run {{testCommand}} through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReport tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3. Your tests_pass is diagnostics: the workflow re-runs the same suite itself and the verdict comes from that exit code, never from your self-report.\n";
 
 // skills/src/shared/gate.ts
 function gateSteps(phase2, flags) {
@@ -635,6 +640,19 @@ function parseGateResult(result) {
   };
 }
 
+// skills/src/shared/schemas.ts
+var VALIDATE_CHECK_SCHEMA = {
+  type: "object",
+  properties: {
+    tests_pass: { type: "boolean" },
+    test_count: { type: "number" },
+    lint_clean: { type: "boolean" },
+    lint_fixes: { type: "array", items: { type: "string" } },
+    ac_gaps: { type: "array", items: { type: "string" } }
+  },
+  required: ["tests_pass", "test_count", "lint_clean", "lint_fixes", "ac_gaps"]
+};
+
 // skills/src/datum-validate.ts
 var a = parseValidateArgs(args);
 var yolo = a.yolo;
@@ -672,14 +690,13 @@ var checkResult = !mainSync.ok ? null : await agent(
 Then perform validation:
 ${renderPrompt(validate_check_default, {
     wt: ".",
-    specPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/SPEC.md",
     tasksPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md",
     testCommand,
     testRunCmd: testRunCommand(testCommand, ".", "validate")
   })}`,
-  { label: "validate-check", model: model("balanced") }
+  { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
-var check = typeof checkResult === "string" ? parseAgentJson(checkResult, { tests_pass: false, test_count: 0, lint_clean: false, lint_fixes: [], ac_gaps: [] }) : checkResult;
+var check = checkResult;
 var verifySteps = validateVerifySteps(testCommand, ".");
 var verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
@@ -690,7 +707,7 @@ var testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, "test-verify"
 var testsPassed = testExit === 0;
 log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit === null ? "n/a" : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || "?"} tests)`);
 log(`Lint: ${check?.lint_clean ? "clean" : `${(check?.lint_fixes || []).length} files fixed`}`);
-if (check?.ac_gaps?.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
+if (check?.ac_gaps && check.ac_gaps.length > 0) log(`AC gaps: ${check.ac_gaps.join("; ")}`);
 var gatePassed = false;
 var gateMessage = "";
 var gateNeedsHuman = false;
