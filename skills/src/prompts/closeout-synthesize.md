@@ -2,7 +2,7 @@ Closeout synthesis agent. Read the closeout data and produce post-epic artifacts
 
 Every factual claim must be grounded in the files named below. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics' lanes and are not this epic's work.
 
-Review decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding — a paraphrase of an operator's reason is a new claim nobody made.
+Review decisions: in CURRENT_STATE.md, wrap this section in `<!-- review-decisions:start -->` / `<!-- review-decisions:end -->` markers so `datum review-accept` can patch it later without rewriting the rest of the file. Quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason) inside those markers. Never paraphrase or restate an accepted finding — a paraphrase of an operator's reason is a new claim nobody made. If REVIEW-RESPONSE.md does not exist yet, write exactly: "No review decisions recorded yet; `datum review-accept` will update this line." — never a sentence that reads as final, since the operator may record decisions after this closeout runs (#460).
 
 Produce these artifacts IN ORDER (each depends on previous):
 

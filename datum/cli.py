@@ -2378,6 +2378,16 @@ def review_accept_cmd(
     ]
     kept.append(f"- {verb} {bound}{note}{target}: {why}")
     response.write_text("\n".join(kept).rstrip("\n") + "\n")
+
+    # #460 — CURRENT_STATE.md is written by closeout before any decisions
+    # exist; re-render its Review Decisions section now so it reflects what
+    # has actually been decided, not the stale "no REVIEW-RESPONSE.md" the
+    # pipeline saw at synthesis time. A no-op if CURRENT_STATE.md doesn't
+    # exist yet (closeout hasn't run) or the section is already current.
+    from datum.closeout.review_decisions import upsert_review_decisions_section
+
+    upsert_review_decisions_section(Path("CURRENT_STATE.md"), response)
+
     typer.echo(
         json.dumps(
             {
