@@ -3,7 +3,8 @@ import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { runBatch } from './shared/agents'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
+import { lanePlanCommand } from './shared/plan-steps'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
@@ -141,4 +142,27 @@ const gate = parseGateResult(await runBatch(gateStepList, stageOpts('cli', { lab
 if (gate.passed) log('Properties gate PASSED')
 else log(`Properties gate: ${gate.message || 'needs review'}${gate.needsHuman ? ' (needs human approval)' : ''}${gate.hardStop ? ' (hard stop)' : ''}`)
 
-export const __workflowResult = { branch: ctx.branch, gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman }
+// ── Schedule integration lanes ──
+// datum go runs Plan before Properties, so the planner's --properties read
+// in Plan saw no file and no task-INT-<n> lane was ever scheduled (review
+// iteration 3). The planner runs again here, on the gated PROPERTIES.md;
+// the regenerated plan is committed and the plan gate re-run.
+let integrationLanes = 0
+if (gate.passed) {
+  const scheduleSteps = [
+    { name: 'lane-plan', command: lanePlanCommand(epicDir) },
+    { name: 'int-count', command: `grep -c '"task-INT-' ${JSON.stringify(`${epicDir}/lane-plan.json`)} || true`, tolerant: true },
+    ...commitFilesSteps({ wt: '.', files: [`${epicDir}/lane-plan.json`, `${epicDir}/TASKS.md`], message: 'properties: schedule integration lanes' }),
+  ]
+  const scheduled = await runBatch(scheduleSteps, stageOpts('cli', { label: 'schedule-integration-lanes', model: model('fast') }))
+  const lanePlanStep = stepResult(scheduled, 'lane-plan')
+  if (!lanePlanStep || lanePlanStep.exit_code !== 0) throw new Error(`integration_lanes_failed: datum lane-plan ${lanePlanStep ? `exited ${lanePlanStep.exit_code}` : 'did not run'} — ${describeFailure(scheduled, 'schedule-integration-lanes')}`)
+  const scheduleCommit = commitFilesFromSteps(scheduled)
+  if (scheduleCommit.error) throw new Error(`integration_lanes_failed: ${scheduleCommit.error}`)
+  integrationLanes = parseInt((stepStdout(scheduled, 'int-count') || '0').trim(), 10) || 0
+  const planGate = parseGateResult(await runBatch(gateSteps('plan', ' --approve'), stageOpts('cli', { label: 'gate-plan-after-properties', model: model('fast') })))
+  if (!planGate.passed) throw new Error(`integration_lanes_failed: plan gate after scheduling: ${planGate.message || 'failed'}`)
+  log(integrationLanes > 0 ? `integration_lanes_scheduled: ${integrationLanes} task-INT lane(s) in lane-plan.json${scheduleCommit.sha ? ` (${scheduleCommit.sha})` : ''}` : 'integration_lanes_none: PROPERTIES.md derived no integration lane')
+}
+
+export const __workflowResult = { branch: ctx.branch, gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman, integrationLanes }

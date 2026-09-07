@@ -195,3 +195,22 @@ describe('a mismatched inline relay is re-fetched once, then deferred', () => {
     expect(src).toMatch(/context_relay_mismatch on /)
   })
 })
+
+// Review iteration 3, CORR-001: datum go runs Plan before Properties, so the
+// planner's --properties read hit a file that did not exist yet and no
+// task-INT lane was ever scheduled. Properties now re-runs the planner after
+// PROPERTIES.md is committed and gated, commits the regenerated plan, and
+// re-runs the plan gate.
+describe('datum-properties — schedules integration lanes after its own gate', () => {
+  it('re-runs datum lane-plan with PROPERTIES.md, commits lane-plan.json + TASKS.md, and re-gates plan, only after the properties gate passed', () => {
+    const propGate = propertiesSrc.indexOf("gateSteps('properties'")
+    const lanePlan = propertiesSrc.indexOf('lanePlanCommand(')
+    const planGate = propertiesSrc.indexOf("gateSteps('plan'")
+    expect(propGate).toBeGreaterThan(0)
+    expect(lanePlan).toBeGreaterThan(propGate)
+    expect(planGate).toBeGreaterThan(lanePlan)
+    expect(propertiesSrc.slice(propGate, lanePlan)).toMatch(/gate\.passed/)
+    expect(propertiesSrc).toMatch(/lane-plan\.json[^\n]*TASKS\.md|TASKS\.md[^\n]*lane-plan\.json/)
+    expect(propertiesSrc).toMatch(/integration_lanes_scheduled|integration_lanes_none/)
+  })
+})
