@@ -664,6 +664,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+  } else if (result.missing && /^batch_(root_missing|tool_missing)/.test(result.scriptError || "")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner (a guard row is not trusted until it repeats)`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
   }
   return result;
 }
