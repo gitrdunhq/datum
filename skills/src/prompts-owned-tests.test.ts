@@ -39,3 +39,19 @@ describe('owned test files: RED may amend what the ACs supersede; reflect checks
     expect(reflect).toMatch(/stale_owned_test/)
   })
 })
+
+// #491: two assertion-quality rules alongside the existing BANNED PATTERNS —
+// asserting on the lane's own source text (spelling, not behaviour) and
+// reading back a set-only/write-only accessor both pass RED's other checks
+// (a specific expected value, not a placeholder) while proving nothing about
+// behaviour.
+describe('red.md assertion-quality rules: no source-text assertions, no reading back write-only accessors (#491)', () => {
+  it('forbids asserting on the text of the lane\'s own source files', () => {
+    expect(red).toMatch(/expect\(source\)\.toContain/)
+    expect(red).toMatch(/assert behaviour, not spelling/i)
+  })
+
+  it('forbids reading back a set-only accessor or a write-only property to observe a value', () => {
+    expect(red).toMatch(/set-only accessor|write-only property/i)
+  })
+})
