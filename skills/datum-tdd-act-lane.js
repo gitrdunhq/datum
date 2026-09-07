@@ -891,7 +891,11 @@ function laneIntakeSteps(o) {
   if (!o.structural) {
     if (o.cleanupCmd) steps.push({ name: "cleanup", command: o.cleanupCmd, tolerant: true });
     if (o.planSkeletonPath) {
-      steps.push({ name: "skeleton-plan", command: catOrMissing(o.planSkeletonPath), tolerant: true });
+      steps.push({
+        name: "skeleton-plan",
+        command: `jq -c '{framework, target_context, outputs: [(.outputs // [])[] | {path}]}' ${q2(o.planSkeletonPath)} 2>/dev/null || echo MISSING`,
+        tolerant: true
+      });
     }
     const gen = `${o.skeletonCmd}
 cat ${q2(`${o.wt}/${o.preflightPath}`)} 2>/dev/null || cat ${q2(o.preflightPath)} 2>/dev/null || echo "{}"`;
