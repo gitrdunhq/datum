@@ -274,10 +274,12 @@ function batchScript(steps) {
     inner.replace(/\n$/, ""),
     BATCH_EOF,
     '__h=$(git hash-object "$__f" 2>&1)',
-    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
-    // shell, so anything defined before the script (the tests' `__root=`
-    // prelude, a `cd`) is visible exactly as it was before the wrapper.
-    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`
+    // `bash "$__f"`, not sourced: the runner's Bash tool was zsh 5.9 on the
+    // datum host (2026-09-07) and zsh refused to source the file with exit
+    // 126 while bash ran it — every "boot refused the script" halt of the
+    // week. The wrapper's cwd and exported PATH reach the child; a prelude
+    // variable must be exported to be seen (the tests' `export __root=`).
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else bash "$__f"; fi`
   ].join("\n") + "\n";
 }
 var BATCH_EOF = "DATUM_BATCH_EOF";
@@ -461,10 +463,16 @@ async function runBatch(steps, opts, deps) {
 
 # attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps);
   } else if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
-    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying with a fresh runner (up to two retries)`);
     result = parseBatchResult(await agentFn(`${prompt}
 
-# attempt 2 of 2 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+# attempt 2 of 3 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps);
+    if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+      logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 2 \u2014 last retry with a fresh runner`);
+      result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 3 of 3 \u2014 two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps);
+    }
   } else if (result.missing && result.scriptError?.startsWith("batch_timeout")) {
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with the timeout instruction repeated`);
     result = parseBatchResult(await agentFn(`${prompt}
