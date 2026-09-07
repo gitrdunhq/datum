@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -489,12 +490,37 @@ class TestRunCorpusQueryViews:
         assert "lane-001" in result
 
     def test_run_state_view_returns_rows(self, corpus_root: Path):
+        # amended: test_run_state_view_returns_rows — superseded by AC2/AC3.
+        # run_state is now sourced exclusively from state.db (AC2 removes
+        # the state.json-backed view entirely), so this test builds a
+        # state.db in the fixture corpus and asserts on *its* values —
+        # deliberately distinct from the fixture's stale state.json values
+        # ("test-run-001"/"green") — to prove the view reads state.db and
+        # not the JSON file.
+        db_path = corpus_root / ".datum" / "state.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE kv_state (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute(
+            "INSERT INTO kv_state (key, value) VALUES ('current', ?)",
+            (
+                json.dumps(
+                    {
+                        "run_id": "db-run-002",
+                        "current_phase": "validate",
+                        "phases": {},
+                    }
+                ),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
         result = run_corpus_query(
             "SELECT run_id, current_phase FROM run_state LIMIT 1",
             repo_root=corpus_root,
         )
-        assert "test-run-001" in result
-        assert "green" in result
+        assert "db-run-002" in result
+        assert "validate" in result
 
     def test_transcripts_view_returns_rows(self, corpus_root: Path):
         result = run_corpus_query(
