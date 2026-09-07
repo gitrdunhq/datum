@@ -233,8 +233,15 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
   } else if (result.missing && result.scriptError?.startsWith('batch_script_failed')) {
     // wf_d913ace6-62c boot: the host shell refused the script (exit 126, no
     // stderr) — a runner-side refusal like the classifier's, retried once.
-    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner`)
-    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner's shell refused to execute the script; run it again`, retryOpts), steps)
+    // The refusal is intermittent by nature (datum self-hosted: refused twice,
+    // ran on the third fresh runner, about a dozen boots this week), so it
+    // gets a second retry; a third refusal is terminal under its name.
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying with a fresh runner (up to two retries)`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 3 — the previous runner's shell refused to execute the script; run it again`, retryOpts), steps)
+    if (result.missing && result.scriptError?.startsWith('batch_script_failed')) {
+      logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 2 — last retry with a fresh runner`)
+      result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 3 of 3 — two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps)
+    }
   } else if (result.missing && result.scriptError?.startsWith('batch_timeout')) {
     // #496: the runner's shell cut a full-suite verify at the Bash tool's
     // two-minute default. One retry, with the timeout instruction repeated.
