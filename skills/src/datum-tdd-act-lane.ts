@@ -1440,7 +1440,7 @@ async function runSkepticPanel(
   const lenses = skepticLenses()
   const skepticResults = await parallel<SkepticResult>(
     lenses.map((lens) => () =>
-      agent(base + lens.prompt, stageOpts('skeptic', { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model as ModelName, schema: SKEPTIC_SCHEMA }))
+      agent(base + lens.prompt, stageOpts('skeptic', { label: `skeptic-${lens.key}:${taskId}`, phase: 'Act', model: lens.model as ModelName, schema: SKEPTIC_SCHEMA, worktree: wt }))
     ),
   )
 

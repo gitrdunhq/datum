@@ -18,7 +18,7 @@ import { gitBlobSha } from './shared/sha1'
 
 const bundlePath = join(__dirname, '..', 'datum-tdd-act-lane.js')
 
-interface Call { label: string; agentType?: string; prompt: string }
+interface Call { label: string; agentType?: string; prompt: string; worktree?: string }
 
 type Responder = (label: string, prompt: string) => unknown
 
@@ -112,9 +112,9 @@ async function runLane(opts: {
   const script = new AsyncFunction('agent', 'parallel', 'phase', 'log', 'args', 'workflow', 'budget', body)
 
   const calls: Call[] = []
-  const agent = async (prompt: string, o?: { label?: string; agentType?: string }) => {
+  const agent = async (prompt: string, o?: { label?: string; agentType?: string; worktree?: string }) => {
     const label = o?.label || ''
-    calls.push({ label, agentType: o?.agentType, prompt })
+    calls.push({ label, agentType: o?.agentType, prompt, worktree: o?.worktree })
     return opts.respond(label, prompt)
   }
   const parallel = async <T,>(thunks: Array<() => Promise<T>>) => {
@@ -253,6 +253,13 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
     expect(byLabel('skeptic-')).toEqual(['datum-skeptic', 'datum-skeptic', 'datum-skeptic'])
     expect(byLabel('refactor-check:')).toEqual(['datum-quality-reader'])
     expect(calls.every((c) => typeof c.agentType === 'string')).toBe(true)
+  })
+
+  it('every skeptic lens dispatch carries the lane worktree, so its tools resolve paths there and not in the main checkout (#349)', async () => {
+    const { calls } = await runLane({ respond: happyPathResponder({ pytest: true }), agentTypes: { agentTypes: true, hooksInstalled: false }, pytest: true })
+    const skepticCalls = calls.filter((c) => c.label.startsWith('skeptic-'))
+    expect(skepticCalls.length).toBeGreaterThan(0)
+    for (const c of skepticCalls) expect(c.worktree).toBe('/wt/T1')
   })
 
   it('agent_types off: no call carries an agentType, behaviour otherwise unchanged', async () => {
