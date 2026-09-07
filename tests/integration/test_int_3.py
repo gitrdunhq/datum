@@ -31,6 +31,7 @@ actually-merged commits required.
 from __future__ import annotations
 
 import re
+import sqlite3
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +41,7 @@ PROMPTS_TS = REPO_ROOT / "skills/src/shared/prompts.ts"
 RED_MD = REPO_ROOT / "skills/src/prompts/red.md"
 INTEGRATION_TEST_TS = REPO_ROOT / "skills/src/datum-tdd-act-lane.integration.test.ts"
 CALLS_TEST_TS = REPO_ROOT / "skills/src/datum-tdd-act-lane.calls.test.ts"
+STATE_STORE_MD = REPO_ROOT / "docs/architecture/state-store.md"
 
 
 class TestInt05VerifyFoldedIntoPostRedBatch:
@@ -251,3 +253,71 @@ class TestInt11VitestUsesFakeAgentMockedBatchPattern:
         assert integration_batch is not None
         assert "JSON.stringify(Object.entries(steps)" in calls_batch.group(0)
         assert "JSON.stringify(Object.entries(steps)" in integration_batch.group(0)
+
+
+class TestInvQ7MissingDbNeverRaisesAndDocRecordsSupersession:
+    """INV-Q7: `docs/architecture/state-store.md` records that Q7's answer
+    ("a missing db must raise a named error, never return `{}`") is
+    superseded by SPEC's Failure-Modes contract. `load_state()` must
+    continue to return `{}` on a missing/uninitialized `state.db`, never
+    raise — every migrated module's empty-state AC (task-002..task-011)
+    and task-012's AC depend on this."""
+
+    def test_state_store_doc_records_q7_superseded_by_failure_modes(self) -> None:
+        doc = STATE_STORE_MD.read_text()
+        assert "Q7" in doc
+        assert (
+            "a missing db must raise a named error, never return `{}`" in doc
+        ), "doc must quote Q7's original answer verbatim"
+        assert "Failure Modes" in doc
+        assert "load_state()" in doc
+        assert "does not raise" in doc or "must never raise" in doc
+        assert "continues to return `{}`" in doc or "continue to return" in doc
+
+    def test_load_state_returns_empty_dict_on_missing_db_file(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from datum import state as state_mod
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+        assert not state_mod.DB_FILE.exists()
+
+        result = state_mod.load_state()
+
+        assert result == {}
+
+    def test_load_state_returns_empty_dict_on_zero_byte_db_file_and_never_raises(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from datum import state as state_mod
+
+        db_path = tmp_path / ".datum" / "state.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        db_path.write_bytes(b"")  # zero-byte file: not a valid sqlite db
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(state_mod, "DB_FILE", db_path)
+
+        # Must not raise sqlite3.DatabaseError/OperationalError.
+        result = state_mod.load_state()
+
+        assert result == {}
+
+    def test_load_state_returns_empty_dict_when_db_exists_but_kv_state_table_missing(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from datum import state as state_mod
+
+        db_path = tmp_path / ".datum" / "state.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        # A real sqlite db, but never initialized via init_db() — no
+        # kv_state table exists yet.
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("CREATE TABLE unrelated (id INTEGER)")
+            conn.commit()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(state_mod, "DB_FILE", db_path)
+
+        result = state_mod.load_state()
+
+        assert result == {}
