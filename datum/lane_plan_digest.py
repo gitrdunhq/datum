@@ -34,6 +34,7 @@ _LANE_FIELDS = (
     "test_command",
     "green_model",
     "expect_tests_pass",
+    "invariants",
 )
 
 

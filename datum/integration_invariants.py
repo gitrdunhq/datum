@@ -147,10 +147,13 @@ def derive_integration_lanes(
         return []
 
     groups: dict[tuple, list[str]] = {}
+    ids: dict[tuple, list[str]] = {}
     for inv in invariants:
         key = tuple(sorted(set(inv["covers"])))
         # The id leads the AC text: the skeleton names the test after it.
         groups.setdefault(key, []).append(f"{inv['id']}: {inv['invariant']}")
+        # The runner never reads criteria text, so the ids travel on their own.
+        ids.setdefault(key, []).append(inv["id"])
 
     memo: dict = {}
     ancestors: dict = {}
@@ -194,6 +197,7 @@ def derive_integration_lanes(
                 "kind": "integration",
                 "expect_tests_pass": True,
                 "depends_on": list(key),
+                "invariants": list(ids[key]),
                 "acceptance_criteria": list(groups[key]),
                 "files": files,
                 "title": f"Integration invariants covering {covered}",

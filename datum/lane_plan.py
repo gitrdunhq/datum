@@ -675,6 +675,7 @@ def build_lane_plan(
                         "red_note": int_lane["red_note"],
                         "kind": int_lane["kind"],
                         "expect_tests_pass": int_lane["expect_tests_pass"],
+                        "invariants": int_lane["invariants"],
                         "depends_on": int_lane["depends_on"],
                         "stage": "queued",
                     }

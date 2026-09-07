@@ -255,7 +255,15 @@ def test_regenerating_lane_plan_keeps_each_lanes_github_issue(tmp_path, monkeypa
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "tasks.json").write_text(json.dumps(_tasks()))
-    args = ["lane-plan", "--input", "tasks.json", "--output", "lane-plan.json", "--md-output", "TASKS.md"]
+    args = [
+        "lane-plan",
+        "--input",
+        "tasks.json",
+        "--output",
+        "lane-plan.json",
+        "--md-output",
+        "TASKS.md",
+    ]
     assert CliRunner().invoke(app, args).exit_code == 0
     plan = json.loads((tmp_path / "lane-plan.json").read_text())
     plan["lanes"]["task-001"]["github_issue"] = 41
@@ -263,10 +271,49 @@ def test_regenerating_lane_plan_keeps_each_lanes_github_issue(tmp_path, monkeypa
     (tmp_path / "lane-plan.json").write_text(json.dumps(plan))
 
     (tmp_path / "PROPERTIES.md").write_text(_PROPERTIES_WITH_INVARIANT)
-    assert CliRunner().invoke(app, args + ["--properties", "PROPERTIES.md"]).exit_code == 0
+    assert (
+        CliRunner().invoke(app, args + ["--properties", "PROPERTIES.md"]).exit_code == 0
+    )
 
     regenerated = json.loads((tmp_path / "lane-plan.json").read_text())
     assert regenerated["lanes"]["task-001"]["github_issue"] == 41
     assert regenerated["lanes"]["task-002"]["github_issue"] == 42
     assert "task-INT-1" in regenerated["lanes"]
     assert "github_issue" not in regenerated["lanes"]["task-INT-1"]
+
+
+_PROPERTIES_TWO_INVARIANTS = """# PROPERTIES.md
+
+## Integration Invariants
+
+| ID | Invariant | Covers | Source |
+| --- | --- | --- | --- |
+| INV-01 | The first thing holds | task-001 | spec:section-1 |
+| INV-03 | The third thing holds | task-001 | spec:section-3 |
+"""
+
+
+def test_int_lane_carries_its_invariant_ids_in_order_and_the_digest_keeps_them(
+    tmp_path,
+):
+    """runLane may not read acceptance-criteria text (a tripwire forbids
+    it), yet its RED prompt and its `integration_failed` string must name
+    the invariant ids. The synthesiser knows them, so the lane carries
+    `invariants` and the digest passes the list through."""
+    tasks, sorted_ids, ownership = _plan_args()
+    properties_path = tmp_path / "PROPERTIES.md"
+    properties_path.write_text(_PROPERTIES_TWO_INVARIANTS)
+
+    plan = build_lane_plan(
+        tasks,
+        sorted_ids,
+        ownership,
+        global_test_command="uv run pytest -x -q",
+        properties_path=properties_path,
+    )
+
+    assert plan["lanes"]["task-INT-1"]["invariants"] == ["INV-01", "INV-03"]
+    assert "invariants" not in plan["lanes"]["task-001"]
+    digest = build_digest(plan, "deadbeef")
+    assert digest["lanes"]["task-INT-1"]["invariants"] == ["INV-01", "INV-03"]
+    assert "invariants" not in digest["lanes"]["task-001"]
