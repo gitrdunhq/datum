@@ -287,7 +287,13 @@ function parseBatchResult(raw, steps2) {
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? parseAgentJson(raw, null) : null;
   if (!Array.isArray(arr)) {
     const text = typeof raw === "string" ? raw.replace(/```[a-z]*/gi, "").trim() : "";
-    return text ? { steps: [], failed: null, missing: true, refusal: raw.trim() } : { steps: [], failed: null, missing: true };
+    if (!text) return { steps: [], failed: null, missing: true };
+    const prose = raw.trim();
+    const exited = /exit(?:ed)?(?: with)? code (\d+)/i.exec(prose);
+    if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
+      return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
+    }
+    return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
