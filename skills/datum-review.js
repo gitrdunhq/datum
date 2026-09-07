@@ -102,6 +102,12 @@ var AGENT_TYPE_TABLE = {
   green: "datum-green",
   refactor: "datum-refactor",
   skeptic: "datum-skeptic",
+  // #375: the Review lenses. Not datum-skeptic — that definition's body is
+  // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
+  // PASS/FRAGILE/BROKEN), while a lens reads the epic diff and answers with a
+  // findings array. Same read-only shape, plus a Bash matcher: the lens that
+  // broke a run did it with `git checkout`, which Edit|Write cannot see.
+  review: "datum-reviewer",
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",
@@ -428,6 +434,14 @@ function findingKey(domain, file, description) {
   return sha1Hex(utf8Encode(material)).slice(0, 8);
 }
 
+// skills/src/shared/review-branch.ts
+function reviewBranchMoved(before, after) {
+  const b = (before || "").trim();
+  const a2 = (after || "").trim();
+  if (!b || !a2 || b === a2) return null;
+  return `review_branch_moved: the review lenses left the checkout on ${a2}, but Review started on ${b} \u2014 the diff, the synthesis and REVIEW-REPORT.md would all be for the wrong branch`;
+}
+
 // skills/src/shared/schemas.ts
 var REVIEW_LENS_SCHEMA = {
   type: "object",
@@ -616,9 +630,14 @@ function normaliseSeverity(raw, where) {
   log(`review_severity_unknown: ${where} reported severity ${JSON.stringify(raw)} \u2014 counted as high (fail closed)`);
   return "high";
 }
-var baseSteps = [{ name: "base-branch", command: "datum epic-base", tolerant: true }];
+var baseSteps = [
+  { name: "base-branch", command: "datum epic-base", tolerant: true },
+  { name: "branch-before", command: "git rev-parse --abbrev-ref HEAD", tolerant: true }
+];
 var baseResult = await runBatch(baseSteps, stageOpts("cli", { label: "read-base", model: model("fast") }));
 var baseBranch = (stepStdout(baseResult, "base-branch") || "").trim();
+var branchBefore = (stepStdout(baseResult, "branch-before") || "").trim();
+if (!branchBefore) log("review_branch_unchecked: the pre-lens branch read returned nothing \u2014 the branch-drift check is skipped this run");
 if (!baseBranch || /\s/.test(baseBranch)) {
   throw new Error(`review_base_unresolved: datum epic-base printed ${JSON.stringify(baseBranch)} (${baseResult.missing ? "batch returned no result" : describeFailure(baseResult, "read-base")})`);
 }
@@ -628,11 +647,12 @@ var earlyGate = parseGateResult(await runBatch(earlyGateSteps, stageOpts("cli", 
 var alreadyComplete = earlyGate.passed;
 if (alreadyComplete) log(`review_already_complete: REVIEW-REPORT.md passes the review gate (${earlyGate.message || "no blocking findings"}) \u2014 lenses not re-run`);
 async function reviewFromDiff() {
+  const lensWorktree = typeof a.repoRoot === "string" && a.repoRoot ? { worktree: a.repoRoot } : {};
   const reviewResults = await parallel(
     DOMAINS.map(
       (d) => () => agent(
         withPreamble(d.domain === "Correctness" ? renderPrompt(review_correctness_spec_verify_default, { baseBranch }) : renderPrompt(review_domain_default, { domain: d.domain, domainPrefix: d.prefix, domainFocus: d.focus, baseBranch })),
-        { label: `review-${d.domain.toLowerCase()}`, phase: "Review", model: d.model, schema: REVIEW_LENS_SCHEMA }
+        stageOpts("review", { label: `review-${d.domain.toLowerCase()}`, phase: "Review", model: d.model, schema: REVIEW_LENS_SCHEMA, ...lensWorktree })
       )
     )
   );
@@ -685,6 +705,8 @@ async function reviewFromDiff() {
   const branchResult = await runBatch(branchSteps, stageOpts("cli", { label: "read-branch", model: model("fast") }));
   const branch = (stepStdout(branchResult, "branch") || "").trim();
   if (!branch) throw new Error(`review_branch_unresolved: git rev-parse printed nothing (${branchResult.missing ? "batch returned no result" : "empty stdout"})`);
+  const moved = reviewBranchMoved(branchBefore, branch);
+  if (moved) throw new Error(moved);
   const epicDir = `docs/epics/${branch}`;
   const reportPath = `${epicDir}/REVIEW-REPORT.md`;
   const reportContent = reportLines.join("\n");

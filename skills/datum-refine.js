@@ -402,6 +402,12 @@ var AGENT_TYPE_TABLE = {
   green: "datum-green",
   refactor: "datum-refactor",
   skeptic: "datum-skeptic",
+  // #375: the Review lenses. Not datum-skeptic — that definition's body is
+  // the lane panel's (read .datum/lane-spec.json, emit a read_witness, answer
+  // PASS/FRAGILE/BROKEN), while a lens reads the epic diff and answers with a
+  // findings array. Same read-only shape, plus a Bash matcher: the lens that
+  // broke a run did it with `git checkout`, which Edit|Write cannot see.
+  review: "datum-reviewer",
   reflect: "datum-reflect",
   docs: "datum-docs",
   reader: "datum-reader",

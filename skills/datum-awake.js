@@ -420,6 +420,19 @@ async function runBatch(steps, opts, deps) {
   return result;
 }
 
+// skills/src/shared/toolchain.ts
+var TS7_CONVENTION_LINE = 'typescript >= 7: the classic compiler API is gone; `ts.createSourceFile` and friends do not exist (`import ts from "typescript"` resolves to a module exporting only `version`); use `typescript/unstable/ast` or avoid the TS API.';
+function pinsTypeScript7(range) {
+  const raw = (range || "").trim();
+  if (!raw || raw.startsWith("<")) return false;
+  const m = raw.match(/\d+/);
+  if (!m) return false;
+  return Number(m[0]) >= 7;
+}
+function toolchainConventionLines(typescriptRange) {
+  return pinsTypeScript7(typescriptRange) ? [TS7_CONVENTION_LINE] : [];
+}
+
 // skills/src/shared/write-steps.ts
 var HEREDOC_TERMINATOR = "DATUM_WRITE_EOF";
 var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
@@ -498,6 +511,15 @@ var scanRaw = await agent(
 );
 var scan = parseAgentJsonStrict(scanRaw, "scan-repo");
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`);
+var toolchainSteps = [{
+  name: "ts-version",
+  command: "jq -r '.devDependencies.typescript // .dependencies.typescript // empty' package.json",
+  tolerant: true
+}];
+var toolchainResult = await runBatch(toolchainSteps, { label: "read-toolchain", model: model("fast") });
+var tsRange = (stepStdout(toolchainResult, "ts-version") || "").trim();
+var conventionLines = toolchainConventionLines(tsRange);
+for (const line of conventionLines) log(`Toolchain convention: ${line}`);
 phase("Distill");
 var distillRaw = await agent(
   withPreamble(renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) })),
@@ -508,9 +530,13 @@ log(`Preamble: ~${distill.token_estimate.preamble} tokens`);
 phase("Commit");
 var preamblePath = "skills/src/prompts/agent-preamble.md";
 var PREAMBLE_NAMES = { mkdir: "mkdir-preamble", write: "write-preamble", sha: "sha-preamble" };
-var writeSteps = writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES });
+var preambleContent = conventionLines.length ? `${distill.preamble.replace(/\s+$/, "")}
+
+${conventionLines.join("\n")}
+` : distill.preamble;
+var writeSteps = writeFileSteps({ path: preamblePath, content: preambleContent, names: PREAMBLE_NAMES });
 var writeResult = await runBatch(writeSteps, { label: "write-preamble", model: model("fast") });
-var verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: "preamble", names: PREAMBLE_NAMES });
+var verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(preambleContent), prefix: "preamble", names: PREAMBLE_NAMES });
 if (!verdict.ok) throw new Error(verdict.error);
 var commitStepList = commitFilesSteps({ wt: ".", files: [preamblePath], message: "awake: regenerate agent preamble from repo scan" });
 var commit = commitFilesFromSteps(await runBatch(commitStepList, { label: "commit-preamble", model: model("fast") }));
