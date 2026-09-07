@@ -1779,7 +1779,10 @@ No markdown fences, no explanation.`,
     commitCmd: laneCommitCommand({ wt, taskId, stage: "RED", runId, specHash: spec.spec.spec_hash }),
     taskId,
     testFuncPattern: testFuncLabel,
-    integrationNote: isIntegration && lane.expect_tests_pass && (lane.invariants || []).length > 0 ? `
+    // Review ARCH-003: the note follows the fast path's own trigger (kind
+    // alone), so a lane whose expect_tests_pass drifted still hears that
+    // its tests must pass, which is how it will be judged.
+    integrationNote: isIntegration && (lane.invariants || []).length > 0 ? `
 This lane covers invariants: ${(lane.invariants || []).join(", ")}
 
 The code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.` : "",
@@ -1906,6 +1909,10 @@ The code under test is already merged: these tests must PASS on your first run; 
     { pattern: "assert 1", name: "assert 1" },
     { pattern: "raise NotImplementedError", name: "raise NotImplementedError" }
   ];
+  const integrationVerify = isIntegration ? integrationVerifyCmd(scopedTestCmd, testFiles) : scopedTestCmd;
+  if (isIntegration && testFiles.length > 0 && integrationVerify === scopedTestCmd.trim()) {
+    log(`[${taskId}] integration_verify_unscoped: "${scopedTestCmd}" takes no file arguments the runner knows (pytest, vitest run); the independent verify runs the whole suite, so an unrelated red will read as integration_failed`);
+  }
   const postRed = postRedSteps({
     wt,
     testFiles,
@@ -1918,7 +1925,7 @@ The code under test is already merged: these tests must PASS on your first run; 
     // An integration lane is decided on its own test files (run
     // 20260907-015322: a whole-suite verify turned an unrelated red into
     // integration_failed); the whole suite is Validate's job.
-    verifyTestCmd: isIntegration ? integrationVerifyCmd(scopedTestCmd, testFiles) : scopedTestCmd,
+    verifyTestCmd: isIntegration ? integrationVerify : scopedTestCmd,
     baseRef: cfg2.epicBranch
   });
   const postRedRaw = await runBatch(postRed, stageOpts("cli", { label: `post-red:${taskId}`, phase: "Act", model: model("fast") }));
