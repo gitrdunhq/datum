@@ -82,7 +82,22 @@ class TestInt05VerifyFoldedIntoPostRedBatch:
         )
         assert fn_match is not None, "verifyVerdict() not found in lane-steps.ts"
         body = fn_match.group(1)
-        assert "testExitCode(stepStdout(result, 'test-verify'))" in body
+        # verifyVerdict reads the 'test-verify' step through the shared
+        # testExitCode helper, directly or through verifyVerdictForStep (the
+        # build_command generalisation on dev, #425); either way the step name
+        # is 'test-verify' and the exit is parsed by testExitCode.
+        if "verifyVerdictForStep(result, label, 'test-verify')" in body:
+            inner = re.search(
+                r"function verifyVerdictForStep\([^)]*\)[^{]*\{(.*?)\n\}\n",
+                src,
+                re.DOTALL,
+            )
+            assert (
+                inner is not None
+            ), "verifyVerdictForStep() not found in lane-steps.ts"
+            assert "testExitCode(stepStdout(result, stepName))" in inner.group(1)
+        else:
+            assert "testExitCode(stepStdout(result, 'test-verify'))" in body
         # The integration RED path in datum-tdd-act-lane.ts calls verifyVerdict
         # against the very same postRedResult the batch above produced — no
         # separate verify batch is read.
@@ -114,14 +129,22 @@ class TestInt07UnavailableConditionsMatchGreen:
         # a step name to look up — so the RED-only integration call
         # (label='red-verify') and every GREEN call (label='post-green-verify',
         # 'post-green-tests-retry-verify', ...) read the exact same step.
+        # On dev the body delegates to verifyVerdictForStep(result, label,
+        # 'test-verify') (#425 generalised the verdict for build-verify); the
+        # step name is still the literal 'test-verify' and label only travels
+        # into the diagnostics.
         step_lookups = re.findall(
-            r"stepResult\(result, '([^']+)'\)|stepStdout\(result, '([^']+)'\)", body
+            r"stepResult\(result, '([^']+)'\)|stepStdout\(result, '([^']+)'\)"
+            r"|verifyVerdictForStep\(result, label, '([^']+)'\)",
+            body,
         )
-        step_names = {name for pair in step_lookups for name in pair if name}
+        step_names = {name for tup in step_lookups for name in tup if name}
         assert step_names == {"test-verify"}
         assert "label" not in re.sub(r"`\$\{label\}[^`]*`", "", body).replace(
             "result: BatchResult, label: string", ""
-        ).replace("describeFailure(result, label)", "")
+        ).replace("describeFailure(result, label)", "").replace(
+            "verifyVerdictForStep(result, label, 'test-verify')", ""
+        )
 
     def test_no_bespoke_merge_branch_not_built_case_exists(self) -> None:
         act_src = ACT_LANE_TS.read_text()
@@ -150,7 +173,7 @@ class TestInt08RedPromptInvariantSentence:
     def test_integration_note_sentence_shape_in_source(self) -> None:
         act_src = ACT_LANE_TS.read_text()
         note_match = re.search(
-            r"integrationNote: isIntegration && lane\.expect_tests_pass && \(lane\.invariants \|\| \[\]\)\.length > 0\s*\n\s*\? `([^`]*)`",
+            r"integrationNote: isIntegration && \(lane\.invariants \|\| \[\]\)\.length > 0\s*\n\s*\? `([^`]*)`",
             act_src,
         )
         assert note_match is not None, "integrationNote template literal not found"

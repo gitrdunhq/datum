@@ -7,8 +7,7 @@ Before writing any test code, read ONE existing test file from the same director
 - Assertion style (XCTAssertEqual vs #expect, assert vs self.assertEqual)
 If no existing test files exist, fall back to the test_framework field in the task packet.
 
-GOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it.
-{{integrationNote}}
+GOAL: Write one test function per acceptance criterion. Each test must FAIL when you run it — unless the LANE MODE line at the end says this is an integration lane, whose tests must PASS.
 
 APPROACH:
 1. Read the acceptance_criteria (and red_note) from the lane spec file
@@ -66,5 +65,7 @@ OWNED: {{testFilesList}}
 COUNT: grep -c '{{testFuncPattern}}' {{testFilesList}}
 RUN: {{testRunCmd}}
 COMMIT: git -C "{{wt}}" add {{testFilesList}} && {{commitCmd}}
+LANE MODE (empty for a task lane; an integration lane's tests must PASS, see GOAL):
+{{integrationNote}}
 LANE SPEC FILE — the acceptance_criteria, red_note and contract_summary for this task are in the file named by the packet's lane_spec_file, not in the packet:
 {{laneSpecSlot}}
