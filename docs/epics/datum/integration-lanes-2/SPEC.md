@@ -47,7 +47,7 @@ The `test-verify` step's exit code (read via the existing `testExitCode(stepStdo
 
 **Acceptance criteria:**
 - AC3.1: `classify('integration_failed: covered task-002, task-003; invariants INV-01, INV-03 (independent verify exit=1)')` returns a category that is not `agent_behavior` (the new code-defect category) and a `reason` string containing `task-002` and `task-003`.
-- AC3.2: Existing classifier tests for other prefixes (`lane_intake_failed`, `green_verify_unavailable`, `count_gate_failed`, etc.) remain unchanged/passing (no regression to `PREFIX_RULES` ordering).
+- AC3.2: Existing classifier tests for other prefixes (every prefix already in `PREFIX_RULES`, including `lane_intake_failed`, `green_verify_unavailable` and `count_gate_failed`) remain unchanged and passing (no regression to `PREFIX_RULES` ordering).
 
 ### R4 — `lane-spec-export` and the digest carry `expect_tests_pass` and covered task ids
 
