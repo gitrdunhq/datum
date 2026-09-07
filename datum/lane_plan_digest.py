@@ -33,6 +33,7 @@ _LANE_FIELDS = (
     "github_issue",
     "test_command",
     "green_model",
+    "expect_tests_pass",
 )
 
 
