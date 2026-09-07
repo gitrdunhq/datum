@@ -46,14 +46,17 @@ phase('Read')
 // what fits the budget, hand anything larger to the agents by path + hash.
 const SPEC_REL = 'docs/epics/$__eb/SPEC.md'
 const TASKS_REL = 'docs/epics/$__eb/TASKS.md'
+// QUESTIONS.md is optional (a hand-driven epic may have none); the derive
+// agent needs it to emit one Integration Invariant per answered question.
+const QUESTIONS_REL = 'docs/epics/$__eb/QUESTIONS.md'
 const probeSteps = contextProbeSteps({
-  files: [SPEC_REL, TASKS_REL],
+  files: [SPEC_REL, TASKS_REL, QUESTIONS_REL],
   extraCommands: [
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
   ],
 })
 const readBatch = await runBatch(probeSteps, bootstrapOpts('cli', { label: 'read-context', model: model('fast') }))
-const relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL])
+const relayPlan = contextRelayPlan(readBatch, [SPEC_REL, TASKS_REL, QUESTIONS_REL])
 
 // #368: standalone run (no parent args) — the agent_types field the batch pulled from config.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) {
@@ -89,6 +92,9 @@ if (!tasksFile.exists) throw new Error('TASKS.md not found. Run datum-plan first
 // instruction (contextSlot) — the prompt slot takes either.
 const specContent: string = contextSlot(specFile)
 const tasksContent: string = contextSlot(tasksFile)
+const questionsFile = ctx.files[QUESTIONS_REL]
+const questionsContent: string = questionsFile.exists ? contextSlot(questionsFile) : '(no QUESTIONS.md in this epic: there are no answered questions, so emit no question:Q<n> rows)'
+const witnessFiles = questionsFile.exists ? [specFile, tasksFile, questionsFile] : [specFile, tasksFile]
 
 const epicDir: string = ctx.epicDir
 
@@ -108,18 +114,18 @@ phase('Derive')
 // or stray files, and its exit code — not an LLM's say-so — is the verdict.
 const propertiesPath = `${epicDir}/PROPERTIES.md`
 const deriveRaw = await agent(
-  renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent })
+  renderPrompt(propertiesDeriveTemplate, { specContent, tasksContent, questionsContent })
   + `\n\nAFTER DERIVING THE PROPERTIES CONTENT:
 1. Write the full PROPERTIES.md markdown to "${propertiesPath}" (create dirs if needed).
 2. Do NOT git add or git commit anything in this step — the workflow commits.
 3. Your response is raw JSON only (no markdown fences, no prose): {"written": "${propertiesPath}"}`
-  + contextWitnessInstruction([specFile, tasksFile]),
+  + contextWitnessInstruction(witnessFiles),
   { label: 'derive', model: model('balanced') },
 )
 
 interface DeriveReceipt { written: string; read_witness?: Record<string, string> }
 const derive = parseAgentJsonStrict<DeriveReceipt>(deriveRaw as string, 'derive')
-assertReadWitness([specFile, tasksFile], derive)
+assertReadWitness(witnessFiles, derive)
 if (derive.written !== propertiesPath) {
   throw new Error(`properties_derive_failed: agent reported writing ${JSON.stringify(derive.written)}, expected ${propertiesPath}`)
 }

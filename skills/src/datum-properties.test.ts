@@ -128,7 +128,9 @@ describe('datum-properties — read-witness gate on derive (FLOW.md open gap 2)'
     const idx = propertiesSrc.indexOf("label: 'derive'")
     expect(idx).toBeGreaterThan(-1)
     const block = propertiesSrc.slice(Math.max(0, idx - 900), idx)
-    expect(block).toMatch(/contextWitnessInstruction\(\[specFile, tasksFile\]\)/)
+    // witnessFiles = [specFile, tasksFile] plus questionsFile when the epic has one.
+    expect(block).toMatch(/contextWitnessInstruction\(witnessFiles\)/)
+    expect(propertiesSrc).toMatch(/const witnessFiles = questionsFile\.exists \? \[specFile, tasksFile, questionsFile\] : \[specFile, tasksFile\]/)
   })
 
   it('the derive agent no longer commits — the prompt forbids git and asks for a JSON receipt', () => {
@@ -141,7 +143,7 @@ describe('datum-properties — read-witness gate on derive (FLOW.md open gap 2)'
 
   it('parses the receipt strictly and gates it with assertReadWitness before committing', () => {
     const parseIdx = propertiesSrc.indexOf("parseAgentJsonStrict<DeriveReceipt>(deriveRaw as string, 'derive')")
-    const assertIdx = propertiesSrc.indexOf('assertReadWitness([specFile, tasksFile], derive)')
+    const assertIdx = propertiesSrc.indexOf('assertReadWitness(witnessFiles, derive)')
     const commitIdx = propertiesSrc.indexOf('commitFilesSteps(')
     expect(parseIdx).toBeGreaterThan(-1)
     expect(assertIdx).toBeGreaterThan(parseIdx)
@@ -212,5 +214,23 @@ describe('datum-properties — schedules integration lanes after its own gate', 
     expect(propertiesSrc.slice(propGate, lanePlan)).toMatch(/gate\.passed/)
     expect(propertiesSrc).toMatch(/lane-plan\.json[^\n]*TASKS\.md|TASKS\.md[^\n]*lane-plan\.json/)
     expect(propertiesSrc).toMatch(/integration_lanes_scheduled|integration_lanes_none/)
+  })
+})
+
+// Review iteration 4, CORR-001: AC2.1/AC2.3/AC2.4 require one Integration
+// Invariant row per answered QUESTIONS.md id, but the derive agent was never
+// given QUESTIONS.md and the prompt never said so.
+describe('datum-properties — QUESTIONS.md reaches the derive agent', () => {
+  it('relays QUESTIONS.md beside SPEC.md and TASKS.md (optional: a missing file is a named slot, not a halt) and passes it to the prompt', () => {
+    expect(propertiesSrc).toMatch(/const QUESTIONS_REL = 'docs\/epics\/\$__eb\/QUESTIONS\.md'/)
+    expect(propertiesSrc).toMatch(/files: \[SPEC_REL, TASKS_REL, QUESTIONS_REL\]/)
+    expect(propertiesSrc).toMatch(/questionsContent/)
+    expect(propertiesSrc).not.toMatch(/QUESTIONS\.md not found/)
+  })
+  it('properties-derive.md tells the agent to emit exactly one row per answered question and none for unanswered ones', () => {
+    const prompt = readFileSync(join(__dirname, 'prompts', 'properties-derive.md'), 'utf8')
+    expect(prompt).toContain('{{questionsContent}}')
+    expect(prompt).toMatch(/exactly one .*row per answered question/i)
+    expect(prompt).toMatch(/unanswered|empty answer/i)
   })
 })
