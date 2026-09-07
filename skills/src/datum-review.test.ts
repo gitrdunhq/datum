@@ -355,3 +355,34 @@ describe('reviewBranchMoved (#375)', () => {
     expect(reviewBranchMoved('main', '')).toBeNull()
   })
 })
+
+// #341 wf_ae694af5-a70: on a 115-file, 8000-line epic diff three of four
+// lenses ran out of turns without ever calling StructuredOutput, the lens
+// policy allowed no retry, and Review halted agent_output_unparseable. A
+// lens has a stated tool-call budget and returns what it has before the cap;
+// a lens that still returns nothing is retried once.
+describe('review lenses budget their reads and get one retry', () => {
+  const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+
+  it('every lens dispatch allows one retry, never zero', () => {
+    const lensCall = src.slice(src.indexOf('const reviewResults = await parallel'), src.indexOf('const allFindings'))
+    expect(lensCall).toMatch(/maxRetries: 1/)
+    expect(lensCall).not.toMatch(/maxRetries: 0/)
+  })
+
+  it('both review templates state a tool-call budget and tell the lens to answer with what it has, in the rules (before the first slot)', () => {
+    for (const f of ['review-domain.md', 'review-correctness-spec-verify.md']) {
+      const text = readFileSync(join(__dirname, 'prompts', f), 'utf8')
+      const idx = text.search(/tool calls?/i)
+      expect(idx, f).toBeGreaterThan(-1)
+      expect(text, f).toMatch(/at most \d+ tool calls/i)
+      expect(text, f).toMatch(/answer with (what|the findings) you have/i)
+      expect(idx, `${f}: budget rule must sit in the stable prefix`).toBeLessThan(text.indexOf('{{'))
+    }
+  })
+
+  it('the reviewer definition has room for a large diff (maxTurns 60)', () => {
+    const def = readFileSync(join(__dirname, '..', '..', 'agents', 'datum-reviewer.md'), 'utf8')
+    expect(def).toMatch(/^maxTurns: 60$/m)
+  })
+})

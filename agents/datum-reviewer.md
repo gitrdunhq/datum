@@ -3,7 +3,7 @@ name: datum-reviewer
 description: Use for a Review lens to inspect the epic's diff read-only and return domain findings as JSON.
 tools: Read, Bash, Grep, Glob, mcp__headroom__headroom_compress, mcp__headroom__headroom_retrieve
 model: inherit
-maxTurns: 40
+maxTurns: 60
 hooks:
   PreToolUse:
     - matcher: "Edit|Write"
