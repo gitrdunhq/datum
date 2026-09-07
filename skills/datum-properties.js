@@ -494,10 +494,16 @@ async function runBatch(steps, opts, deps) {
   return result;
 }
 
+// skills/src/shared/plan-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function lanePlanCommand(epicDir2) {
+  return `datum lane-plan --input ${q2(`${epicDir2}/tasks.json`)} --output ${q2(`${epicDir2}/lane-plan.json`)} --md-output ${q2(`${epicDir2}/TASKS.md`)} --properties ${q2(`${epicDir2}/PROPERTIES.md`)}`;
+}
+
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 var NOT_FOUND_MARKER = "__DATUM_CTXFILE_NOT_FOUND__";
-function q2(p) {
+function q3(p) {
   return `"${p.replace(/(["\\`])/g, "\\$1")}"`;
 }
 function contextProbeSteps(o) {
@@ -508,12 +514,12 @@ function contextProbeSteps(o) {
   o.files.forEach((relPath, i) => {
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then wc -c < ${q3(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-sha-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then git hash-object ${q2(relPath)}; else printf ''; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then git hash-object ${q3(relPath)}; else printf ''; fi`,
       tolerant: true
     });
   });
@@ -556,12 +562,12 @@ function contextInlineSteps(inlineFiles) {
   inlineFiles.forEach((relPath, i) => {
     steps.push({
       name: `ctx-cat-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then cat ${q2(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then cat ${q3(relPath)}; else printf '%s' '${NOT_FOUND_MARKER}'; fi`,
       tolerant: true
     });
     steps.push({
       name: `ctx-wc-${i}`,
-      command: `if [ -f ${q2(relPath)} ]; then wc -c < ${q2(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      command: `if [ -f ${q3(relPath)} ]; then wc -c < ${q3(relPath)} | tr -d ' '; else printf -- '-1'; fi`,
       tolerant: true
     });
   });
@@ -774,4 +780,21 @@ var gateStepList = gateSteps("properties", yolo ? " --approve" : "");
 var gate = parseGateResult(await runBatch(gateStepList, stageOpts("cli", { label: "gate", model: model("fast") })));
 if (gate.passed) log("Properties gate PASSED");
 else log(`Properties gate: ${gate.message || "needs review"}${gate.needsHuman ? " (needs human approval)" : ""}${gate.hardStop ? " (hard stop)" : ""}`);
-return { branch: ctx.branch, gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman };
+var integrationLanes = 0;
+if (gate.passed) {
+  const scheduleSteps = [
+    { name: "lane-plan", command: lanePlanCommand(epicDir) },
+    { name: "int-count", command: `grep -c '"task-INT-' ${JSON.stringify(`${epicDir}/lane-plan.json`)} || true`, tolerant: true },
+    ...commitFilesSteps({ wt: ".", files: [`${epicDir}/lane-plan.json`, `${epicDir}/TASKS.md`], message: "properties: schedule integration lanes" })
+  ];
+  const scheduled = await runBatch(scheduleSteps, stageOpts("cli", { label: "schedule-integration-lanes", model: model("fast") }));
+  const lanePlanStep = stepResult(scheduled, "lane-plan");
+  if (!lanePlanStep || lanePlanStep.exit_code !== 0) throw new Error(`integration_lanes_failed: datum lane-plan ${lanePlanStep ? `exited ${lanePlanStep.exit_code}` : "did not run"} \u2014 ${describeFailure(scheduled, "schedule-integration-lanes")}`);
+  const scheduleCommit = commitFilesFromSteps(scheduled);
+  if (scheduleCommit.error) throw new Error(`integration_lanes_failed: ${scheduleCommit.error}`);
+  integrationLanes = parseInt((stepStdout(scheduled, "int-count") || "0").trim(), 10) || 0;
+  const planGate = parseGateResult(await runBatch(gateSteps("plan", " --approve"), stageOpts("cli", { label: "gate-plan-after-properties", model: model("fast") })));
+  if (!planGate.passed) throw new Error(`integration_lanes_failed: plan gate after scheduling: ${planGate.message || "failed"}`);
+  log(integrationLanes > 0 ? `integration_lanes_scheduled: ${integrationLanes} task-INT lane(s) in lane-plan.json${scheduleCommit.sha ? ` (${scheduleCommit.sha})` : ""}` : "integration_lanes_none: PROPERTIES.md derived no integration lane");
+}
+return { branch: ctx.branch, gatePassed: gate.passed, gateMessage: gate.message, gateNeedsHuman: gate.needsHuman, integrationLanes };
