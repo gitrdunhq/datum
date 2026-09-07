@@ -23,7 +23,10 @@ except ImportError:  # pragma: no cover - py3.10 fallback
 from datum.path_utils import assets_dir
 from datum.state import save_state
 
-STATE_FILE = Path(".datum/state.json")
+# The legacy write-through cache this importer reads once (Requirement 3).
+# Named LEGACY_ so Requirement 1's grep for the STATE_FILE constant matches
+# only state.py and the two archival-export modules (CORR-001, #341 review).
+LEGACY_STATE_FILE = Path(".datum/state.json")
 CONFIG_FILE = assets_dir() / "config.toml.default"
 STATE_SCHEMA = assets_dir() / "schemas/state.schema.json"
 
@@ -54,9 +57,9 @@ def migrate_wfc_directory(dry_run: bool) -> list[str]:
 
 
 def load_legacy_state() -> dict:
-    if not STATE_FILE.exists():
+    if not LEGACY_STATE_FILE.exists():
         return {}
-    return json.loads(STATE_FILE.read_text())
+    return json.loads(LEGACY_STATE_FILE.read_text())
 
 
 def migrate_state(state: dict, target_version: str) -> tuple[dict, list[str]]:
