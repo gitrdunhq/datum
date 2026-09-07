@@ -49,6 +49,7 @@ import {
   laneSpecContextFile,
   laneSpecExportCommand,
   LANE_PLAN_DIGEST_BUDGET_BYTES,
+  buildVerifyVerdict,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
@@ -682,6 +683,62 @@ describe('postGreenSteps', () => {
     expect(step.command).toContain('pytest -q')
     expect(step.command).toContain('TEST_EXIT=$?')
     expect(step.command).toContain('/wt/T1')
+  })
+
+  // #425/#424: build_command is optional — present only when configured.
+  it('omits the build-verify step when buildCommand is not given', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: 'pytest -q' })
+    expect(names(steps)).not.toContain('build-verify')
+  })
+
+  it('appends a build-verify step, independently re-running build_command, when buildCommand is given', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', verifyTestCmd: 'pytest -q', buildCommand: 'pnpm typecheck' })
+    expect(names(steps)).toContain('build-verify')
+    const step = steps.find((s) => s.name === 'build-verify')!
+    expect(step.tolerant).toBe(true)
+    expect(step.command).toContain('pnpm typecheck')
+    expect(step.command).toContain('TEST_EXIT=$?')
+    expect(step.command).toContain('/wt/T1')
+    // build-verify comes after test-verify, same shape as the test check.
+    expect(names(steps).indexOf('build-verify')).toBeGreaterThan(names(steps).indexOf('test-verify'))
+  })
+
+  it('runs the stray clean and build-verify even when verifyTestCmd is not given but buildCommand is', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', buildCommand: 'go build ./...' })
+    expect(names(steps)).toContain('build-verify')
+    expect(names(steps)).not.toContain('test-verify')
+    expect(names(steps)).toContain('stray-list')
+  })
+})
+
+describe('buildVerifyVerdict', () => {
+  it('is unavailable when the build-verify step did not run', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1' })
+    const result = parseBatchResult(JSON.stringify([{ name: 'ownership', exit_code: 0, stdout: '', stderr: '' }]), steps)
+    const v = buildVerifyVerdict(result, 'post-green-build-verify')
+    expect(v.kind).toBe('unavailable')
+    expect(v.exit).toBeNull()
+  })
+
+  it('is passed on TEST_EXIT=0 and failed WITH the exit code otherwise', () => {
+    const steps = postGreenSteps({ wt: '/wt/T1', buildCommand: 'pnpm typecheck' })
+    const passResult = parseBatchResult(JSON.stringify([
+      { name: 'stray-list', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'stray-clean', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'stray-confirm', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'build-verify', exit_code: 0, stdout: 'TEST_EXIT=0\n', stderr: '' },
+    ]), steps)
+    expect(buildVerifyVerdict(passResult, 'label')).toEqual({ kind: 'passed', exit: 0, why: '' })
+
+    const failResult = parseBatchResult(JSON.stringify([
+      { name: 'stray-list', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'stray-clean', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'stray-confirm', exit_code: 0, stdout: '', stderr: '' },
+      { name: 'build-verify', exit_code: 0, stdout: 'TEST_EXIT=2\n', stderr: '' },
+    ]), steps)
+    const failVerdict = buildVerifyVerdict(failResult, 'label')
+    expect(failVerdict.kind).toBe('failed')
+    expect(failVerdict.exit).toBe(2)
   })
 })
 

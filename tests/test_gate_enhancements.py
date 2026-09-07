@@ -358,3 +358,41 @@ def test_load_config_reads_datum_config_json_over_toml(tmp_path, monkeypatch):
 
     assert _review_max_iterations(config) == 5
     assert config["gates"]["plan_human_approval"] == "required"
+
+
+# ── build_command config loading (#425/#424) ──────────────────────────────
+
+
+def test_load_config_reads_build_command_from_config_json(tmp_path, monkeypatch):
+    """.datum/config.json gains an optional build_command, read alongside
+    test_command the same way — a build check run in the same batch as the
+    post-GREEN test-verify (Act) and again in Validate. load_config is a
+    generic dict merge, so no special-cased key handling is needed here;
+    this pins that the key round-trips like any other config.json field."""
+    from datum.gate import load_config
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    (tmp_path / ".datum" / "config.json").write_text(
+        '{"test_command": "pytest -q", "build_command": "pnpm typecheck"}'
+    )
+
+    config = load_config()
+
+    assert config["test_command"] == "pytest -q"
+    assert config["build_command"] == "pnpm typecheck"
+
+
+def test_load_config_build_command_absent_when_unset(tmp_path, monkeypatch):
+    """Unset (the default) means load_config never invents a value — every
+    downstream reader falls back to '' / skips the build-verify step, so an
+    unconfigured repo sees no behaviour change."""
+    from datum.gate import load_config
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".datum").mkdir()
+    (tmp_path / ".datum" / "config.json").write_text('{"test_command": "pytest -q"}')
+
+    config = load_config()
+
+    assert "build_command" not in config

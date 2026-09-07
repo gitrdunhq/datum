@@ -191,18 +191,32 @@ export type VerifyVerdict =
   | { kind: 'failed'; exit: number; why: '' }
   | { kind: 'unavailable'; exit: null; why: string }
 
-export function verifyVerdict(result: BatchResult, label: string): VerifyVerdict {
-  const exit = testExitCode(stepStdout(result, 'test-verify'))
+function verifyVerdictForStep(result: BatchResult, label: string, stepName: string): VerifyVerdict {
+  const exit = testExitCode(stepStdout(result, stepName))
   if (exit === null) {
     const why = result.missing
       ? describeFailure(result, label)
-      : stepResult(result, 'test-verify')
-        ? `${label}: test-verify step ran but printed no TEST_EXIT line`
-        : `${label}: test-verify step did not run (${result.failed ? `stopped at "${result.failed.name}"` : 'not in the batch result'})`
+      : stepResult(result, stepName)
+        ? `${label}: ${stepName} step ran but printed no TEST_EXIT line`
+        : `${label}: ${stepName} step did not run (${result.failed ? `stopped at "${result.failed.name}"` : 'not in the batch result'})`
     return { kind: 'unavailable', exit: null, why }
   }
   if (exit === 0) return { kind: 'passed', exit: 0, why: '' }
   return { kind: 'failed', exit, why: '' }
+}
+
+export function verifyVerdict(result: BatchResult, label: string): VerifyVerdict {
+  return verifyVerdictForStep(result, label, 'test-verify')
+}
+
+/**
+ * Same shape as verifyVerdict, but for the optional `build-verify` step
+ * (#425/#424: an independent re-run of `.datum/config.json`'s build_command,
+ * alongside test_command). A missing/absent step is `unavailable`, never a
+ * pass — mirroring green_verify_unavailable's fail-closed contract.
+ */
+export function buildVerifyVerdict(result: BatchResult, label: string): VerifyVerdict {
+  return verifyVerdictForStep(result, label, 'build-verify')
 }
 
 export function testExitCode(stdout: string | null | undefined): number | null {
@@ -555,6 +569,14 @@ export interface PostGreenOpts {
    * (caliper BUG P: a doc and a deliverable fixture failed a sound GREEN).
    */
   redSha?: string | null
+  /**
+   * #425/#424: when given, independently re-run this build command against
+   * `wt` (e.g. `pnpm typecheck`, `go build ./...`) in the same batch as the
+   * test-verify, as a `build-verify` step. Null/omitted/absent skips it
+   * entirely — a repo that never sets `.datum/config.json`'s build_command
+   * sees no behaviour change.
+   */
+  buildCommand?: string | null
 }
 
 export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
@@ -562,11 +584,16 @@ export function postGreenSteps(o: PostGreenOpts): BatchStep[] {
   if (o.redSha) {
     steps.push({ name: 'red-files', command: `git -C ${q(o.wt)} diff-tree --no-commit-id --name-only -r ${q(o.redSha)}`, tolerant: true })
   }
-  if (o.verifyTestCmd) {
+  if (o.verifyTestCmd || o.buildCommand) {
     // Strays first: the verify must run against the committed tree, never
     // against scratch files an agent left behind (see strayCleanSteps).
     steps.push(...strayCleanSteps(o.wt))
+  }
+  if (o.verifyTestCmd) {
     steps.push({ name: 'test-verify', command: testRunCommand(o.verifyTestCmd, o.wt, 'green-verify'), tolerant: true })
+  }
+  if (o.buildCommand) {
+    steps.push({ name: 'build-verify', command: testRunCommand(o.buildCommand, o.wt, 'green-build-verify'), tolerant: true })
   }
   return steps
 }

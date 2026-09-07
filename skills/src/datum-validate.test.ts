@@ -227,6 +227,23 @@ describe('determinism fix — config read is a deterministic batch, not an LLM r
 // Phase review wf_9a69f891-462: datum-go reads gateMessage / gateNeedsHuman /
 // hardStop off the validate result on every halt path (datum-go.ts:679) and
 // validate never exported them — every validate hold printed "needs review".
+// #425/#424: optional build_command check, reported in the same halt as
+// the tests — a build_verify_failed/unavailable is a validate failure, not
+// a silent pass, and an unconfigured repo (buildCommand='') sees no change.
+describe('datum-validate — optional build_command check', () => {
+  const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
+  it('threads repoCfg.build_command into validateVerifySteps, same fallback shape as test_command', () => {
+    expect(src).toMatch(/repoCfg\.build_command \|\| DEFAULT_CONFIG\.build_command/)
+    expect(src).toMatch(/validateVerifySteps\(testCommand, '\.', buildCommand \|\| null\)/)
+  })
+
+  it('imports buildVerifyVerdict from shared/lane-steps and halts on failed/unavailable, same shape as the test gate', () => {
+    expect(src).toMatch(/buildVerifyVerdict/)
+    expect(src).toMatch(/build_verify_unavailable:/)
+    expect(src).toMatch(/build_verify_failed:/)
+  })
+})
+
 describe('datum-validate — the gate verdict fields datum-go reads are exported', () => {
   const src = readFileSync(join(__dirname, 'datum-validate.ts'), 'utf8')
   it('exports gateMessage, gateNeedsHuman and hardStop from the deterministic gate verdict', () => {

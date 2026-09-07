@@ -533,6 +533,53 @@ describe('deterministic GREEN green-blindness gate (#386)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// #425/#424: an optional build_command check, same shape as the test verify
+// above. Unset means postGreenSteps never emits build-verify and nothing
+// here runs. Set, a failure retries GREEN once, telling it about the build
+// failure and requiring it to report status='blocked'+needs_write (reusing
+// the #356 contract) instead of retrying blind into the maxTurns cap (#424).
+// ---------------------------------------------------------------------------
+
+describe('optional build_command verify (#425/#424)', () => {
+  const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
+
+  it('passes cfg.buildCommand to the same postGreenSteps batch as the test verify', () => {
+    expect(laneSource).toMatch(/postGreenSteps\(\{[\s\S]{0,300}buildCommand:\s*cfg\.buildCommand \|\| null/)
+  })
+
+  it('is gated entirely behind cfg.buildCommand — an unconfigured repo runs none of this code', () => {
+    const gateIdx = laneSource.indexOf('if (cfg.buildCommand) {')
+    expect(gateIdx).toBeGreaterThan(-1)
+    const blockEndIdx = laneSource.indexOf('build_verify passed after one GREEN retry')
+    expect(blockEndIdx).toBeGreaterThan(gateIdx)
+  })
+
+  it('computes the verdict through buildVerifyVerdict (same shape as verifyVerdict) and names both failure modes', () => {
+    expect(laneSource).toMatch(/buildVerdict\s*=\s*buildVerifyVerdict\(postGreenVerifyResult, 'post-green-build-verify'\)/)
+    expect(laneSource).toContain('build_verify_unavailable:')
+    expect(laneSource).toContain('build_verify_failed:')
+  })
+
+  it('#424: a build failure retries GREEN once via greenRetryPrompt, then requires blocked+needs_write instead of retrying forever on a failure outside allowed_write_files', () => {
+    const failIdx = laneSource.indexOf("buildVerdict.kind === 'failed'")
+    expect(failIdx).toBeGreaterThan(-1)
+    const block = laneSource.slice(failIdx, failIdx + 2500)
+    expect(block).toMatch(/greenRetryPrompt\(/)
+    expect(block).toMatch(/decideGreenBlock\(buildRetryGreen, null\)/)
+    expect(block).toMatch(/status:\s*'blocked'/)
+    expect(block).toMatch(/needs_write naming the file/)
+    expect(block).toMatch(/green_blocked_needs_write:/)
+  })
+
+  it('re-verifies both the tests and the build after the retry before trusting it', () => {
+    const failIdx = laneSource.indexOf("buildVerdict.kind === 'failed'")
+    const block = laneSource.slice(failIdx, failIdx + 3500)
+    expect(block).toMatch(/retryTestVerdict\s*=\s*verifyVerdict\(retryBuildResult/)
+    expect(block).toMatch(/retryBuildVerdict\s*=\s*buildVerifyVerdict\(retryBuildResult/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // REFACTOR is verified independently too. runRefactor trusted the agent's
 // self-reported tests_pass; a hallucinated "true" merged a refactor that
 // broke the suite, and a self-reported "false" was followed by returning
@@ -916,8 +963,9 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     // context_read_unverified on a missing/forged witness.
     const runLaneOnly = body.slice(0, body.indexOf('async function runSkepticPanel'))
     expect(runLaneOnly.match(/await resilientAgent\(/g) || []).toEqual([])
-    // 12 since #440: the RED repair and the GREEN after it are witnessed too.
-    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(12)
+    // 13 since #425/#424: the RED repair and the GREEN after it (#440) plus
+    // the build_verify_failed GREEN retry are witnessed too.
+    expect((runLaneOnly.match(/await witnessedAgent\(/g) || []).length).toBe(13)
     expect(laneSource).toMatch(/assertReadWitness\(\[?specFile\]?, /)
   })
 
@@ -925,7 +973,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(laneSource).toMatch(/error: e instanceof Error \? e\.message : String\(e\)/)
     expect(laneSource).toMatch(/stage: staged \|\| 'CRASH'/)
     // Every witnessed call names its stage; skeptic lenses are GREEN-stage evidence.
-    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(12)
+    expect((laneSource.match(/specFile, '(RED|GREEN)',/g) || []).length).toBe(13)
     expect(laneSource).toMatch(/skeptic_lens_unverified/)
     expect(laneSource).toMatch(/no skeptic lens evidenced reading/)
   })

@@ -10,12 +10,21 @@ import { testRunCommand } from './utils'
 
 export const TEST_SIGNAL_PATH = '.datum/last-test-signal.json'
 
-export function validateVerifySteps(testCommand: string, cwd: string): BatchStep[] {
+/**
+ * #425/#424: buildCommand is optional — null/undefined/'' means no
+ * `build-verify` step, and the signal file keeps its pre-existing shape
+ * unchanged (no repo that never sets `.datum/config.json`'s build_command
+ * sees any behaviour change here).
+ */
+export function validateVerifySteps(testCommand: string, cwd: string, buildCommand?: string | null): BatchStep[] {
   const signalPath = `${cwd.replace(/\/+$/, '')}/${TEST_SIGNAL_PATH}`
-  // JSON-quote the command for the signal file (jq is already a hard
-  // dependency of the lane-state steps).
-  return [
+  const steps: BatchStep[] = [
     { name: 'test-verify', command: testRunCommand(testCommand, cwd, 'validate-verify'), tolerant: true },
+    // The signal is written immediately after test-verify, from the SAME
+    // shell's $TEST_EXIT, before build-verify (below) can overwrite that
+    // variable with its own exit code — the signal is about test_command
+    // only; build_command's independent exit code is read from its own
+    // batch step by name, never through $TEST_EXIT.
     {
       name: 'write-signal',
       command:
@@ -28,4 +37,8 @@ export function validateVerifySteps(testCommand: string, cwd: string): BatchStep
       tolerant: true,
     },
   ]
+  if (buildCommand) {
+    steps.push({ name: 'build-verify', command: testRunCommand(buildCommand, cwd, 'validate-build-verify'), tolerant: true })
+  }
+  return steps
 }

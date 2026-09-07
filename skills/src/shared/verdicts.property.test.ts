@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { parseBatchResult, describeFailure, type BatchStep } from './batch'
-import { testExitCode, verifyVerdict, strayFilesFromSteps, strayCleanSteps } from './lane-steps'
+import { testExitCode, verifyVerdict, buildVerifyVerdict, strayFilesFromSteps, strayCleanSteps } from './lane-steps'
 import { classifyLaneError, triageDestination } from './triage-classify'
 import { verifyReadWitness, type ContextFile } from './context-relay'
 
@@ -85,6 +85,30 @@ describe('testExitCode / verifyVerdict', () => {
       }
       // the verdict is a pure function of the parsed exit code
       const exit = testExitCode(r.steps.find((s) => s.name === 'test-verify')?.stdout ?? null)
+      expect(v.kind).toBe(exit === null ? 'unavailable' : exit === 0 ? 'passed' : 'failed')
+    }), { numRuns: 400 })
+  })
+})
+
+// #425/#424: build_command's independent verify is the exact same shape as
+// the test verify — same three named outcomes, same fail-closed absence.
+describe('buildVerifyVerdict', () => {
+  it('a build verdict is passed, failed WITH an exit code, or unavailable — never failed on an absent code', () => {
+    fc.assert(fc.property(runnerReply, (reply) => {
+      const steps: BatchStep[] = [{ name: 'build-verify', command: 'pnpm typecheck', tolerant: true }]
+      const r = parseBatchResult(reply, steps)
+      const v = buildVerifyVerdict(r, 'post-green-build-verify')
+      expect(['passed', 'failed', 'unavailable']).toContain(v.kind)
+      if (v.kind === 'failed') {
+        expect(typeof v.exit).toBe('number')
+        expect(v.exit).not.toBe(0)
+      }
+      if (v.kind === 'passed') expect(v.exit).toBe(0)
+      if (v.kind === 'unavailable') {
+        expect(v.exit).toBeNull()
+        expect(v.why.startsWith('post-green-build-verify: ')).toBe(true)
+      }
+      const exit = testExitCode(r.steps.find((s) => s.name === 'build-verify')?.stdout ?? null)
       expect(v.kind).toBe(exit === null ? 'unavailable' : exit === 0 ? 'passed' : 'failed')
     }), { numRuns: 400 })
   })

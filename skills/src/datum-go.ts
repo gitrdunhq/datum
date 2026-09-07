@@ -403,6 +403,8 @@ if (shouldRun('act', 3)) {
   try {
 
   const testCommand = globalCfg.test_command || DEFAULT_CONFIG.test_command
+  // #425/#424: mirrors testCommand — '' (unset) skips the build-verify step.
+  const buildCommand = globalCfg.build_command || DEFAULT_CONFIG.build_command
   const language = globalCfg.language || DEFAULT_CONFIG.language
   // Mirrors datum-tdd-act.ts's cfg exactly (#524 dogfooding audit) — this
   // inline Act block exists specifically to replicate that standalone
@@ -548,7 +550,7 @@ if (shouldRun('act', 3)) {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
         // yolo (#356): lets a blocked GREEN auto-widen allowed_write_files
         // in the lane runner, same as datum-tdd-act passes it.
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, buildCommand: buildCommand || undefined, language, test_framework: testFramework, skeletonDir, yolo, agentTypes: agentTypeArgs(), configFingerprint, repoRoot: boot.repoRoot },
         priorFailures: actFailures,
         priorCompleted: actCompleted,
       },

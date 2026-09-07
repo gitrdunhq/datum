@@ -8,6 +8,11 @@ export interface RepoConfig {
   language?: string
   test_framework?: string
   test_command?: string
+  /** #425/#424: optional post-GREEN/Validate build check run alongside
+   *  test_command (e.g. `pnpm typecheck`, `go build ./...`). Unset (the
+   *  default) means the build-verify step is skipped entirely — nothing
+   *  changes for a repo that never sets it. */
+  build_command?: string
   skills_dir?: string
   context_files?: string[]
   agent_types?: boolean
@@ -52,6 +57,8 @@ export interface CloseoutArgs extends PhaseArgs {
 export interface TddActArgs {
   yolo?: boolean
   testCommand?: string
+  /** #425/#424: optional build check, threaded the same way as testCommand. */
+  buildCommand?: string
   language?: string
   test_framework?: string
   lanePlanPath?: string
@@ -215,6 +222,9 @@ export interface PipelineConfig {
   epicBranch: string
   runId: string
   testCommand: string
+  /** #425/#424: optional independent build check run after the test-verify
+   *  in postGreenSteps and again in Validate. Undefined/empty skips it. */
+  buildCommand?: string
   language: string
   test_framework?: string  // e.g. 'xctest', 'swift-testing', 'pytest', 'jest'
   skeletonDir?: string

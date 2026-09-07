@@ -3,7 +3,7 @@ import type { MainSyncResult } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
-import { testExitCode } from './shared/lane-steps'
+import { testExitCode, buildVerifyVerdict } from './shared/lane-steps'
 import { validateVerifySteps } from './shared/validate-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
 import { runBatch } from './shared/agents'
@@ -43,6 +43,9 @@ if (!a.testCommand) {
 // Standalone run (no parent args): the repo config, else the defaults.
 if (!(a.agentTypes && typeof a.agentTypes === 'object')) configureAgentTypes(readAgentTypeConfig(repoCfg))
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
+// #425/#424: optional — '' (unset) means validateVerifySteps skips the
+// build-verify step entirely, same as the Act-side postGreenSteps.
+const buildCommand: string = repoCfg.build_command || DEFAULT_CONFIG.build_command
 
 // ── Validate (collapsed: read-context fields embedded, one substantive agent + gate) ──
 
@@ -114,7 +117,7 @@ const check = checkResult as ValidateCheck | null
 // that exit code, never the agent's self-report.
 // The batch also PRODUCES .datum/last-test-signal.json from the same shell
 // (`datum gate validate` consumes it — it had no producer before).
-const verifySteps = validateVerifySteps(testCommand, '.')
+const verifySteps = validateVerifySteps(testCommand, '.', buildCommand || null)
 const verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
   stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }),
@@ -124,6 +127,13 @@ const testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, 'test-verif
 const testsPassed = testExit === 0
 
 log(`Tests: ${testsPassed ? 'PASS' : 'FAIL'} (independent run exit=${testExit === null ? 'n/a' : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || '?'} tests)`)
+
+// #425/#424: same independent-verify shape as Act's postGreenSteps, reported
+// in the same halt as the tests below — never a separate silent pass.
+const buildVerdict = mainSync.ok && buildCommand ? buildVerifyVerdict(verifyResult, 'validate-build-verify') : null
+if (buildVerdict) {
+  log(`Build: ${buildVerdict.kind === 'passed' ? 'PASS' : buildVerdict.kind === 'failed' ? `FAIL (exit=${buildVerdict.exit})` : `UNAVAILABLE (${buildVerdict.why})`}`)
+}
 log(`Lint: ${check?.lint_clean ? 'clean' : `${(check?.lint_fixes || []).length} files fixed`}`)
 if (check?.ac_gaps && check.ac_gaps.length > 0) log(`AC gaps: ${check.ac_gaps.join('; ')}`)
 
@@ -141,6 +151,12 @@ if (!mainSync.ok) {
   log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
 } else if (testExit !== 0) {
   gateMessage = `tests red: independent run exited ${testExit}${check?.tests_pass ? ', despite agent self-report of tests_pass=true' : ''}`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
+} else if (buildVerdict && buildVerdict.kind === 'unavailable') {
+  gateMessage = `build_verify_unavailable: ${buildVerdict.why}`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
+} else if (buildVerdict && buildVerdict.kind === 'failed') {
+  gateMessage = `build_verify_failed: independent build_command re-run exited ${buildVerdict.exit}`
   log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
 } else {
   // Deterministic: the verdict is `datum gate`'s exit code read from a batch

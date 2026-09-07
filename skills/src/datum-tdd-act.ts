@@ -39,6 +39,8 @@ if (repoCfg.models && typeof repoCfg.models === 'object') setModelTiers(repoCfg.
 configureAgentTypes(readAgentTypeConfig(repoCfg))
 const sk = (name: string) => skillPath(repoCfg.skills_dir || '', name)
 const testCommand: string = a.testCommand || repoCfg.test_command || DEFAULT_CONFIG.test_command
+// #425/#424: optional — '' (unset) means postGreenSteps/Validate skip the build-verify step entirely.
+const buildCommand: string = a.buildCommand || repoCfg.build_command || DEFAULT_CONFIG.build_command
 const language: string = a.language || repoCfg.language || DEFAULT_CONFIG.language
 const test_framework: string | undefined = a.test_framework || repoCfg.test_framework
 
@@ -186,7 +188,7 @@ for (let bi = 0; bi < batches.length; bi++) {
       { scriptPath: sk('datum-tdd-act-lane') },
       {
         batchLaneIds: runnableBatchIds, lanePlan, worktreePaths: setup.worktreePaths, batchTag,
-        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '', repoRoot: a.repoRoot || '' },
+        cfg: { lanePlanPath, epicBranch, runId: batchRunId, testCommand, buildCommand: buildCommand || undefined, language, test_framework, skeletonDir, yolo: !!a.yolo, agentTypes: agentTypeArgs(), configFingerprint: a.configFingerprint || '', repoRoot: a.repoRoot || '' },
         priorFailures: failures,
         priorCompleted: completedLanes,
       }

@@ -16,6 +16,7 @@ describe('classifyLaneError — deterministic infrastructure prefixes', () => {
     ['context_relay_mismatch', 'context_relay_mismatch: batch agent returned no parseable result for context_files'],
     ['runner_permission_denied', 'lane_intake_failed: lane intake: runner_permission_denied — the datum-cli runner was refused by the host permission classifier: "blocked by the auto-mode classifier"'],
     ['no worktree path', 'no worktree path for task-004 (setup returned undefined) — refusing to run outside an isolated worktree'],
+    ['build_verify_unavailable', 'build_verify_unavailable: post-green-build-verify: runner_empty_result — batch agent returned no parseable result (empty reply)'],
   ]
 
   it('green_blocked_needs_write is a lane-plan defect (widen the lane\'s files), classified deterministically', () => {
@@ -55,6 +56,7 @@ describe('classifyLaneError — deterministic agent_behavior prefixes', () => {
     ['skeptic_broken', 'skeptic_broken: 2 confirmed bugs — off-by-one in loop bound'],
     ['green_verify_failed', 'green_verify_failed: independent test-verify step exit=1 (agent self-reported tests_pass=true)'],
     ['refactor_verify_failed', 'refactor_verify_failed: independent test-verify step exit=1 after refactor'],
+    ['build_verify_failed', 'build_verify_failed: independent build_command re-run exit=2 after one retry'],
   ]
 
   it.each(agentBehaviorCases)('%s classifies as agent_behavior with deterministic confidence', (_label, error) => {

@@ -22,6 +22,7 @@ import {
   ownershipFromStdout,
   testExitCode,
   verifyVerdict,
+  buildVerifyVerdict,
   testEnvMissing,
   laneSpecFromSteps,
   laneSpecContextFile,
@@ -1172,7 +1173,7 @@ No markdown fences, no explanation.`,
   // here (whenever GREEN ran at all — this is not gated behind
   // deterministicChecks(), unlike the ownership read below) and trust that
   // result over the agent's self-report, before ever consulting it.
-  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
+  const postGreenVerify = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg.buildCommand || null })
   const postGreenVerifyRaw = await runBatch(postGreenVerify, stageOpts('cli', { label: `post-green-verify:${taskId}`, phase: 'Act', model: model('fast') }))
   const postGreenVerifyResult = postGreenVerifyRaw
   const greenStrays = strayFilesFromSteps(postGreenVerifyResult)
@@ -1199,6 +1200,62 @@ No markdown fences, no explanation.`,
       status: 'failed',
       stage: 'GREEN',
       error: `green_verify_failed: independent test-verify step exit=${greenVerdict.exit} (agent self-reported tests_pass=${green?.tests_pass})`,
+    }
+  }
+
+  // #425/#424: optional build_command check, same shape and same batch as
+  // the test verify above. Unset (cfg.buildCommand falsy) means postGreenSteps
+  // never emits the build-verify step and buildVerdict is always 'unavailable'
+  // — never checked below — so an unconfigured repo sees no behaviour change.
+  if (cfg.buildCommand) {
+    const buildVerdict = buildVerifyVerdict(postGreenVerifyResult, 'post-green-build-verify')
+    if (buildVerdict.kind === 'unavailable') {
+      log(`[${taskId}] build_verify_unavailable: ${buildVerdict.why}`)
+      return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `build_verify_unavailable: ${buildVerdict.why}` }
+    }
+    if (buildVerdict.kind === 'failed') {
+      log(`[${taskId}] GREEN BUILD VERIFY FAILED: independent re-run of build_command (${cfg.buildCommand}) exited ${buildVerdict.exit}`)
+      // #424: a build failure rooted OUTSIDE allowed_write_files (e.g. a
+      // typecheck error in a file this lane cannot touch) used to be retried
+      // blind, identically, until the maxTurns cap. Tell GREEN the failure
+      // and — reusing the exact green_blocked_needs_write contract #356
+      // already gives it (StageResult.status='blocked' + needs_write) —
+      // require it to report blocked by name instead of retrying forever.
+      const buildTail = (stepStdout(postGreenVerifyResult, 'build-verify') || '').trim().split('\n').slice(-30).join('\n')
+      const buildRetryReason = `build_verify_failed: independent re-run of build_command (${cfg.buildCommand}) exited ${buildVerdict.exit} after your GREEN commit. Output tail:\n${buildTail}\n\nIf you can fix this inside allowed_write_files [${implFiles.join(', ')}], fix it and re-commit. If the failure is rooted in a file OUTSIDE allowed_write_files, do NOT retry blindly — return status="blocked" with needs_write naming the file(s) you cannot edit, exactly like the existing GREEN scope-block contract.`
+      const buildRetryGreen: StageResult | null = await witnessedAgent(
+        greenRetryPrompt({
+          ...greenVars,
+          failureReason: buildRetryReason,
+          greenRetryPacketStr: JSON.stringify({ ...greenPacket, retry_hint: 'build_verify_failed' }),
+        }),
+        stageOpts('green', { label: `green-build-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
+        specFile, 'GREEN',
+      )
+      const buildDecision = decideGreenBlock(buildRetryGreen, null)
+      if (buildDecision.blocked) {
+        const err = `green_blocked_needs_write: [${buildDecision.needsWrite.join(', ') || 'unspecified'}] — ${buildDecision.reason} (build_verify_failed after GREEN)`
+        log(`[${taskId}] ${err}`)
+        return { task_id: taskId, status: 'blocked', stage: 'GREEN', error: err, needs_write: buildDecision.needsWrite }
+      }
+      if (!buildRetryGreen || !buildRetryGreen.success) {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `build_verify_failed: independent build re-run exit=${buildVerdict.exit}; retry ${!buildRetryGreen ? 'returned nothing' : `failed: ${buildRetryGreen.failure_reason || 'no reason'}`}` }
+      }
+      const retryBuildBatch = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg.buildCommand })
+      const retryBuildResult = await runBatch(retryBuildBatch, stageOpts('cli', { label: `post-green-build-reverify:${taskId}`, phase: 'Act', model: model('fast') }))
+      const retryTestVerdict = verifyVerdict(retryBuildResult, 'post-green-build-reverify')
+      const retryBuildVerdict = buildVerifyVerdict(retryBuildResult, 'post-green-build-reverify')
+      if (retryTestVerdict.kind !== 'passed') {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_failed: independent test-verify exit=${retryTestVerdict.exit ?? 'null'} after the build-fix retry` }
+      }
+      if (retryBuildVerdict.kind === 'unavailable') {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `build_verify_unavailable: ${retryBuildVerdict.why}` }
+      }
+      if (retryBuildVerdict.kind === 'failed') {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} after one retry` }
+      }
+      green = buildRetryGreen
+      log(`[${taskId}] build_verify passed after one GREEN retry`)
     }
   }
 
@@ -1282,8 +1339,14 @@ No markdown fences, no explanation.`,
       stageOpts('green', { label: `green-tests-retry:${taskId}`, phase: 'Act', model: model('deep'), schema: STAGE_RESULT_SCHEMA, worktree: wt }),
       specFile, 'GREEN',
     )
-    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd }), stageOpts('cli', { label: `post-green-tests-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
+    const retryVerify = await runBatch(postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg.buildCommand || null }), stageOpts('cli', { label: `post-green-tests-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
     const retryVerdict = verifyVerdict(retryVerify, 'post-green-tests-retry-verify')
+    if (cfg.buildCommand) {
+      const retryBuildVerdict = buildVerifyVerdict(retryVerify, 'post-green-tests-retry-verify')
+      if (retryBuildVerdict.kind !== 'passed') {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: retryBuildVerdict.kind === 'unavailable' ? `build_verify_unavailable: ${retryBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retryBuildVerdict.exit} on the tests-retry` }
+      }
+    }
     if (retryVerdict.kind === 'unavailable' && green && green.success) {
       return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_unavailable: ${retryVerdict.why}` }
     }
@@ -1329,9 +1392,15 @@ No markdown fences, no explanation.`,
 
     // Independent re-verification of the retry — never trust the retry
     // agent's own self-report alone (same green-blindness concern as #386).
-    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd })
+    const retryVerifySteps = postGreenSteps({ wt, verifyTestCmd: scopedTestCmd, buildCommand: cfg.buildCommand || null })
     const retryVerifyRaw = await runBatch(retryVerifySteps, stageOpts('cli', { label: `post-green-skeptic-retry-verify:${taskId}`, phase: 'Act', model: model('fast') }))
     const retryVerifyVerdict = verifyVerdict(retryVerifyRaw, 'post-green-skeptic-retry-verify')
+    if (cfg.buildCommand) {
+      const retrySkepticBuildVerdict = buildVerifyVerdict(retryVerifyRaw, 'post-green-skeptic-retry-verify')
+      if (retrySkepticBuildVerdict.kind !== 'passed') {
+        return { task_id: taskId, status: 'failed', stage: 'GREEN', error: retrySkepticBuildVerdict.kind === 'unavailable' ? `build_verify_unavailable: ${retrySkepticBuildVerdict.why}` : `build_verify_failed: independent build re-run exit=${retrySkepticBuildVerdict.exit} on the skeptic retry` }
+      }
+    }
 
     if (retryVerifyVerdict.kind === 'unavailable' && green && green.success) {
       return { task_id: taskId, status: 'failed', stage: 'GREEN', error: `green_verify_unavailable: ${retryVerifyVerdict.why}` }
