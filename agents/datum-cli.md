@@ -17,5 +17,6 @@ Run exactly the command(s) given in the prompt, in the order given, and nothing 
 
 Return only the JSON the prompt describes: the command's output verbatim, unparsed and unsummarised.
 If a command fails, return its exit code and stderr in that same JSON shape.
+If the Bash tool itself fails to run the script (an error such as `Exit code 126` with no output), reply with that tool error text verbatim in one line. Never write a step row yourself and never copy an error message out of the script's own text.
 
 Never read, write or edit files. Never improvise, retry, or add commands.
