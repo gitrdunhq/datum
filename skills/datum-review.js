@@ -276,10 +276,12 @@ function batchScript(steps) {
     inner.replace(/\n$/, ""),
     BATCH_EOF,
     '__h=$(git hash-object "$__f" 2>&1)',
-    // Sourced, not `bash "$__f"`: the steps keep running in the invoking
-    // shell, so anything defined before the script (the tests' `__root=`
-    // prelude, a `cd`) is visible exactly as it was before the wrapper.
-    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else . "$__f"; fi`
+    // `bash "$__f"`, not sourced: the runner's Bash tool was zsh 5.9 on the
+    // datum host (2026-09-07) and zsh refused to source the file with exit
+    // 126 while bash ran it — every "boot refused the script" halt of the
+    // week. The wrapper's cwd and exported PATH reach the child; a prelude
+    // variable must be exported to be seen (the tests' `export __root=`).
+    `if [ "$__h" != "${sha}" ]; then printf '[{"name":"__script","exit_code":1,"stdout":"","stderr":"batch_script_corrupt: expected %s, got %s"}]\\n' "${sha}" "$__h"; else bash "$__f"; fi`
   ].join("\n") + "\n";
 }
 var BATCH_EOF = "DATUM_BATCH_EOF";
