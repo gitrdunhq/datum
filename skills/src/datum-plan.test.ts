@@ -602,3 +602,17 @@ describe('plan-decompose.md — a task is a vertical slice', () => {
     expect(decompose).toMatch(/plan_not_sliced/)
   })
 })
+
+// #372: two independent lanes each created a new ADR under docs/adr/ and both
+// chose 012, so the second lane hit file_ownership_violation at GREEN. The
+// gate now halts as plan_adr_sequence_collision; the planner is told the rule
+// so it does not produce the plan in the first place.
+describe('plan-decompose.md — ADR sequence numbers are unique across lanes', () => {
+  const decompose = readFileSync(join(__dirname, 'prompts', 'plan-decompose.md'), 'utf8')
+  it('tells the planner to make docs/adr/NNN unique and continue from the highest existing number', () => {
+    expect(decompose).toMatch(/docs\/adr\/NNN/)
+    expect(decompose).toMatch(/unique/i)
+    expect(decompose).toMatch(/highest/i)
+    expect(decompose).toMatch(/plan_adr_sequence_collision/)
+  })
+})

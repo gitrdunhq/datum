@@ -325,6 +325,132 @@ def test_independent_lanes_sharing_file_without_dependency_fails(epic_dir, capsy
     )
 
 
+# ── ADR sequence numbers (#372) ──────────────────────────────────────────
+# Two independent lanes each created a new ADR under docs/adr/ and both chose
+# 012, so the second lane's GREEN hit file_ownership_violation. The paths
+# differ, so the file-overlap rule above never sees it — the collision is in
+# the sequence number, not the path.
+
+
+def test_adr_sequence_collision_across_lanes_fails(epic_dir, capsys):
+    lanes = {
+        "task-003": _lane("task-003", ["docs/adr/012-cache-keys.md", "src/a.py"]),
+        "task-007": _lane("task-007", ["docs/adr/012-lane-ids.md", "src/b.py"]),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 1
+    assert _fail_json(capsys)["message"] == (
+        "plan_adr_sequence_collision: docs/adr/012-*.md claimed by task-003 and task-007"
+    )
+
+
+def test_adr_sequence_collision_fails_even_with_a_dependency_edge(epic_dir, capsys):
+    """A dependency edge sequences the lanes but does not renumber the ADR:
+    both still write a docs/adr/012-*.md and the second one is wrong."""
+    lanes = {
+        "task-001": _lane("task-001", ["docs/adr/012-a.md"]),
+        "task-002": _lane("task-002", ["docs/adr/012-b.md"], depends_on=["task-001"]),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 1
+    assert "plan_adr_sequence_collision" in _fail_json(capsys)["message"]
+
+
+def test_distinct_adr_sequence_numbers_pass(epic_dir, capsys):
+    lanes = {
+        "task-003": _lane("task-003", ["docs/adr/012-cache-keys.md", "src/a.py"]),
+        "task-007": _lane("task-007", ["docs/adr/013-lane-ids.md", "src/b.py"]),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 0
+    assert _fail_json(capsys) == {"passed": True, "message": "Plan gate passed"}
+
+
+def test_one_lane_owning_two_adrs_is_not_a_collision(epic_dir, capsys):
+    lanes = {
+        "task-001": _lane("task-001", ["docs/adr/012-a.md", "docs/adr/012-b.md"]),
+        "task-002": _lane("task-002", ["src/b.py"]),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 0
+
+
+def test_non_adr_files_and_unnumbered_adr_paths_are_ignored(epic_dir, capsys):
+    """Only docs/adr/NNN-*.md counts: an ADR README, a numbered file in some
+    other directory, and a same-named file under src/adr must not collide."""
+    lanes = {
+        "task-001": _lane(
+            "task-001", ["docs/adr/README.md", "src/adr/012-x.md", "docs/012-note.md"]
+        ),
+        "task-002": _lane(
+            "task-002", ["docs/adr/index.md", "src/adr/012-y.md", "docs/012-memo.md"]
+        ),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 0
+
+
+def test_identical_adr_path_is_left_to_the_file_overlap_rule(epic_dir, capsys):
+    """Same path, not just same number: that is a file overlap, and reporting
+    it twice would double-report one defect (and would newly fail a legitimate
+    dependency-linked pair that shares one file)."""
+    lanes = {
+        "task-001": _lane("task-001", ["docs/adr/012-a.md"]),
+        "task-002": _lane("task-002", ["docs/adr/012-a.md"]),
+    }
+    _write_artifacts(epic_dir, _plan(lanes))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 1
+    assert _fail_json(capsys)["message"].startswith("File overlap docs/adr/012-a.md")
+
+
+# ── the pure helper ──────────────────────────────────────────────────────
+
+
+def test_adr_sequence_collisions_helper_reports_sorted_pairs():
+    lanes = {
+        "task-007": {"files": ["docs/adr/012-b.md"]},
+        "task-003": {"files": ["docs/adr/012-a.md"]},
+    }
+
+    assert gate.adr_sequence_collisions(lanes) == [
+        "plan_adr_sequence_collision: docs/adr/012-*.md claimed by task-003 and task-007"
+    ]
+
+
+def test_adr_sequence_collisions_helper_is_empty_for_a_clean_plan():
+    lanes = {
+        "task-001": {"files": ["docs/adr/012-a.md"]},
+        "task-002": {"files": ["docs/adr/013-b.md", "src/x.py"]},
+        "task-003": {"files": []},
+    }
+
+    assert gate.adr_sequence_collisions(lanes) == []
+
+
 # ── happy path / yolo vs human-approval ─────────────────────────────────
 
 

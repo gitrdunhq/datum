@@ -967,6 +967,41 @@ def check_zero_lanes(lane_plan: dict) -> list[str]:
     return []
 
 
+_ADR_PATH_RE = re.compile(r"^docs/adr/(\d+)-[^/]*\.md$")
+
+
+def adr_sequence_collisions(lanes: dict) -> list[str]:
+    """Named failures for ADR sequence numbers two lanes both claim (#372).
+
+    Two independent lanes each created a new ADR under ``docs/adr/`` and both
+    picked 012; the second one hit ``file_ownership_violation`` at GREEN. The
+    paths differ, so the file-overlap check never sees it — the collision is in
+    the sequence number.
+
+    A dependency edge does not excuse it: sequencing the lanes does not
+    renumber the ADR, and both still write ``docs/adr/012-*.md``. The identical
+    *path* case is deliberately left alone; that is a file overlap and the
+    overlap rule (which correctly exempts dependency-linked lanes) owns it.
+    """
+    by_seq: dict[str, dict[str, set[str]]] = {}
+    for lid, lane in lanes.items():
+        for f in lane.get("files") or []:
+            m = _ADR_PATH_RE.match(str(f))
+            if m:
+                by_seq.setdefault(m.group(1), {}).setdefault(str(f), set()).add(lid)
+
+    errors: list[str] = []
+    for seq in sorted(by_seq):
+        paths = by_seq[seq]
+        owners = sorted({lid for ids in paths.values() for lid in ids})
+        if len(paths) > 1 and len(owners) > 1:
+            errors.append(
+                f"plan_adr_sequence_collision: docs/adr/{seq}-*.md "
+                f"claimed by {' and '.join(owners)}"
+            )
+    return errors
+
+
 def gate_plan(yolo: bool, config: dict) -> None:
     tasks_path = resolve_artifact("TASKS.md")
     lane_plan_path = resolve_artifact("lane-plan.json")
@@ -1145,6 +1180,10 @@ def gate_plan(yolo: bool, config: dict) -> None:
                 "through every layer, not a module",
                 file=sys.stderr,
             )
+
+    adr_errors = adr_sequence_collisions(lanes)
+    if adr_errors:
+        fail("; ".join(adr_errors))
 
     for f, owners in file_to_lanes.items():
         if len(owners) < 2:
