@@ -46,7 +46,10 @@ def test_archive_resolves_run_id_when_json_cache_absent(tmp_path, monkeypatch, c
     source of truth, not the cache file)."""
     monkeypatch.chdir(tmp_path)
     state_mod.save_state({"run_id": "z9"})
-    Path(".datum/state.json").unlink()
+    # amended: test_archive_resolves_run_id_when_json_cache_absent — superseded by AC1
+    # save_state() no longer writes the legacy JSON cache at all (AC1), so the
+    # file is unconditionally absent; unlink(missing_ok=True) tolerates that.
+    Path(".datum/state.json").unlink(missing_ok=True)
 
     monkeypatch.setattr(sys, "argv", ["archive.py"])
 

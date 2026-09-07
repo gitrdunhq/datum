@@ -81,7 +81,10 @@ def test_ac2_poll_once_reads_pr_url_via_canonical_state_accessor(tmp_path, monke
             },
         }
     )
-    (tmp_path / ".datum" / "state.json").unlink()
+    # amended: test_ac2_poll_once_reads_pr_url_via_canonical_state_accessor — superseded by AC1
+    # save_state() no longer writes the legacy JSON cache at all (AC1), so the
+    # file is unconditionally absent; unlink(missing_ok=True) tolerates that.
+    (tmp_path / ".datum" / "state.json").unlink(missing_ok=True)
 
     monkeypatch.setattr(
         pr_monitor_mod,
@@ -119,7 +122,10 @@ def test_ac3_poll_once_preserves_trust_boundary_behavior_via_canonical_state(
             }
         }
     )
-    (tmp_path / ".datum" / "state.json").unlink()
+    # amended: test_ac3_poll_once_preserves_trust_boundary_behavior_via_canonical_state — superseded by AC1
+    # save_state() no longer writes the legacy JSON cache at all (AC1), so the
+    # file is unconditionally absent; unlink(missing_ok=True) tolerates that.
+    (tmp_path / ".datum" / "state.json").unlink(missing_ok=True)
 
     replies = []
     monkeypatch.setattr(

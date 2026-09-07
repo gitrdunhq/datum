@@ -33,9 +33,11 @@ def test_enrichment_reads_run_id_and_phase_from_canonical_state(tmp_path, monkey
     out of state.json."""
     monkeypatch.chdir(tmp_path)
     state_mod.save_state({"run_id": "epic-77", "current_phase": "act"})
-    # Simulate a world where the write-through JSON cache is gone — only the
-    # canonical accessor (state.db, via load_state()) still has the data.
-    Path(".datum/state.json").unlink()
+    # amended: test_enrichment_reads_run_id_and_phase_from_canonical_state — superseded by AC1
+    # save_state() no longer writes the legacy JSON cache at all (AC1), so the
+    # file is unconditionally absent; unlink(missing_ok=True) tolerates that.
+    # Only the canonical accessor (state.db, via load_state()) has the data.
+    Path(".datum/state.json").unlink(missing_ok=True)
 
     body = _build_body("datum.act", RuntimeError("boom"), None)
 

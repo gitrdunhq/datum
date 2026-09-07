@@ -22,8 +22,9 @@ from datum.cli import app
 
 
 def _write_db_only_state(tmp_path, monkeypatch, extra: dict | None = None) -> dict:
-    """Persist state via datum.state.save_state() only, then delete the
-    write-through .datum/state.json cache so only state.db remains."""
+    """amended: superseded by task-012 AC1 — save_state() no longer writes a
+    legacy .datum/state.json cache at all, so there is nothing left to
+    delete here; only .datum/state.db is ever produced."""
     monkeypatch.chdir(tmp_path)
     fixture = {
         "run_id": "20260907-000042",
@@ -42,9 +43,7 @@ def _write_db_only_state(tmp_path, monkeypatch, extra: dict | None = None) -> di
         fixture.update(extra)
     state.save_state(fixture)
     json_cache = tmp_path / ".datum" / "state.json"
-    assert json_cache.exists(), "save_state should have written the legacy cache"
-    os.remove(json_cache)
-    assert not json_cache.exists()
+    assert not json_cache.exists(), "save_state must not write a legacy cache"
     assert (tmp_path / ".datum" / "state.db").exists()
     return fixture
 

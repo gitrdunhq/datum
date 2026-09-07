@@ -297,12 +297,6 @@ def save_state(state: dict) -> None:
         )
         conn.commit()
 
-    # Write-through cache for backwards compatibility with legacy scripts
-    json_path = Path(".datum/state.json")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    with json_path.open("w") as f:
-        json.dump(state, f, indent=2)
-
 
 def next_epic_number() -> int:
     numbers: list[int] = []
@@ -385,7 +379,10 @@ def cmd_init(args: argparse.Namespace) -> None:
         "run_id": run_id,
         "skill_version": "1.0.0",
         "current_phase": "refine",
-        "phases": {phase: {"status": "pending"} for phase in PHASES},
+        "phases": {
+            phase: {"status": "in_progress" if phase == "refine" else "pending"}
+            for phase in PHASES
+        },
         "lanes": {},
         "in_flight_count": 0,
         "in_flight_cap": 7,
@@ -442,11 +439,6 @@ def update_state(mutator: callable) -> bool:
         )
         conn.commit()
 
-    # Write-through cache
-    json_path = Path(".datum/state.json")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    with json_path.open("w") as f:
-        json.dump(state, f, indent=2)
     return True
 
 

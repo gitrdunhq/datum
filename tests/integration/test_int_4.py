@@ -262,16 +262,20 @@ def test_int_q2_save_state_then_load_state_round_trips_unchanged(tmp_path, monke
     assert "updated_at" in loaded
 
 
-def test_int_q2_save_state_writes_write_through_json_cache(tmp_path, monkeypatch):
+def test_int_q2_save_state_does_not_write_json_cache(tmp_path, monkeypatch):
+    """amended: test_int_q2_save_state_writes_write_through_json_cache —
+    superseded by task-012 AC1. save_state() must write only to
+    .datum/state.db; the legacy write-through .datum/state.json cache is
+    removed. docs/architecture/state-store.md documents the removal."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
 
     state_mod.save_state({"run_id": "epic-q2-cache"})
 
     cache_path = tmp_path / ".datum" / "state.json"
-    assert cache_path.exists()
-    cached = json.loads(cache_path.read_text())
-    assert cached["run_id"] == "epic-q2-cache"
+    assert not cache_path.exists()
+    loaded = state_mod.load_state()
+    assert loaded["run_id"] == "epic-q2-cache"
 
 
 def test_int_q2_update_state_applies_mutator_and_returns_true(tmp_path, monkeypatch):

@@ -66,7 +66,10 @@ def test_ac4_write_drift_event_preserves_existing_state_keys(tmp_path, monkeypat
     monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
 
     state_mod.save_state({"run_id": "run-9", "current_phase": "act"})
-    (tmp_path / ".datum" / "state.json").unlink()
+    # amended: test_ac4_write_drift_event_preserves_existing_state_keys — superseded by AC1
+    # save_state() no longer writes the legacy JSON cache at all (AC1), so the
+    # file is unconditionally absent; unlink(missing_ok=True) tolerates that.
+    (tmp_path / ".datum" / "state.json").unlink(missing_ok=True)
 
     drift_mod.write_drift_event(
         "run-9",
