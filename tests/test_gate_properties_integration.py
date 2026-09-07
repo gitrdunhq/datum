@@ -230,6 +230,56 @@ def test_gate_properties_fails_with_duplicate_invariant_for_question(epic_repo, 
     assert "invariant_duplicate_for_question: Q1" in payload["message"]
 
 
+# ── AC: invariant_covers_empty (#461 follow-up) ──────────────────────────
+#
+# gate_properties only requires `len(covers) >= 2` for a `spec:`-sourced
+# row (AC1.4-era check); a `question:Q<n>` row may legitimately cover just
+# ONE task, so that check is skipped for it. But nothing stopped a
+# question-sourced row from covering ZERO tasks: an empty Covers cell still
+# satisfies "exactly one row per answered question" (invariant_missing_for_
+# question / invariant_duplicate_for_question only count rows by Source,
+# not by whether Covers names anything), so the gate passed with the
+# answer recorded and attached to no task's work — the #461 shape,
+# reproduced structurally instead of through a live pipeline run.
+
+
+def test_gate_properties_fails_when_a_question_invariant_covers_no_task(
+    epic_repo, capsys
+):
+    invariants = _invariants_table(
+        [("INV-001", "path-aware globstar", "", "question:Q1")]
+    )
+    _write(epic_repo, "PROPERTIES.md", _properties_md(invariants))
+    _write(epic_repo, "QUESTIONS.md", _questions_md([("Q1", "yes")]))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_properties(True, {})
+
+    assert exc.value.code == 1
+    payload = _fail_json(capsys)
+    assert payload["passed"] is False
+    assert "invariant_covers_empty: INV-001" in payload["message"]
+
+
+def test_gate_properties_still_fails_spec_rows_covering_fewer_than_two_tasks(
+    epic_repo, capsys
+):
+    """The pre-existing spec: check (>= 2 tasks) still fires first/independently."""
+    invariants = _invariants_table(
+        [("INV-001", "spec invariant", "task-001", "spec:req-1")]
+    )
+    _write(epic_repo, "PROPERTIES.md", _properties_md(invariants))
+    _write(epic_repo, "QUESTIONS.md", _questions_md([]))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_properties(True, {})
+
+    assert exc.value.code == 1
+    payload = _fail_json(capsys)
+    assert payload["passed"] is False
+    assert "invariant_covers_insufficient: INV-001" in payload["message"]
+
+
 # ── AC: passes when every answered question has exactly one row ─────────
 
 
@@ -352,7 +402,9 @@ def test_gate_properties_reads_each_artifact_exactly_once(
 
 
 def test_gate_properties_fails_when_covers_names_an_unknown_task(epic_repo, capsys):
-    _write(epic_repo, "tasks.json", json.dumps([{"id": "task-001"}, {"id": "task-002"}]))
+    _write(
+        epic_repo, "tasks.json", json.dumps([{"id": "task-001"}, {"id": "task-002"}])
+    )
     _write(
         epic_repo,
         "PROPERTIES.md",
@@ -368,7 +420,10 @@ def test_gate_properties_fails_when_covers_names_an_unknown_task(epic_repo, caps
         gate.gate_properties(True, {})
 
     assert exc.value.code == 1
-    assert "invariant_covers_unknown_task: INV-001 -> task-999" in _fail_json(capsys)["message"]
+    assert (
+        "invariant_covers_unknown_task: INV-001 -> task-999"
+        in _fail_json(capsys)["message"]
+    )
 
 
 def test_gate_properties_skips_the_covers_check_without_tasks_json(epic_repo, capsys):
