@@ -482,6 +482,11 @@ var AGENT_TYPE_TABLE = {
   quality: "datum-quality-reader",
   cli: "datum-cli"
 };
+var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cli"];
+var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
+function isReadOnlyAgentType(agentType) {
+  return typeof agentType === "string" && READ_ONLY_AGENT_TYPES.has(agentType);
+}
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
 function configureAgentTypes(opts) {
@@ -540,7 +545,7 @@ async function resilientAgent(prompt, opts, deps) {
     } else if (attempt < maxRetries) {
       logFn(`[resilientAgent] attempt ${attempt + 1} returned nothing (null result) \u2014 retrying`);
     }
-    if (attempt < maxRetries && opts?.worktree) {
+    if (attempt < maxRetries && opts?.worktree && !isReadOnlyAgentType(opts.agentType)) {
       const guardSteps = worktreeDirtySteps(opts.worktree);
       const guard = worktreeDirtyFromSteps(parseBatchResult(
         await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),

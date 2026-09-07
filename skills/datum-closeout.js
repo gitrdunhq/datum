@@ -82,6 +82,8 @@ var AGENT_TYPE_TABLE = {
   quality: "datum-quality-reader",
   cli: "datum-cli"
 };
+var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cli"];
+var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
 function configureAgentTypes(opts) {
