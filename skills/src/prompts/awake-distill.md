@@ -1,8 +1,5 @@
 Distill repo scan results into a token-efficient agent preamble.
 
-SCAN RESULTS:
-{{scanResults}}
-
 ## OUTPUT: agent-preamble.md
 
 Write a concise preamble that is PREPENDED to every stage, refine, plan, properties, review, validate and closeout prompt. Format as llms.txt:
@@ -38,3 +35,7 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+SCAN RESULTS:
+{{scanResults}}

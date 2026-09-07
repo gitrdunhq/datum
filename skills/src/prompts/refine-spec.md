@@ -1,15 +1,5 @@
 SPEC writer. Transform the TICKET + codebase context into a complete SPEC.md.
 
-TICKET content:
-{{ticketContent}}
-
-Codebase scan results:
-{{scanResults}}
-
-Ambiguity classification: {{ambiguityLevel}}
-Detected gaps: {{gaps}}
-Assumptions: {{assumptions}}
-
 Write a SPEC.md with these sections. Each is a markdown heading, `## ` and the name, exactly as spelled here — the gate greps for the heading, not for a bold list item, and a numbered form (`## 8. Assumption Audit`) is the only variation it accepts:
 
 ## Summary — 2-3 sentences: what changes and why
@@ -31,4 +21,15 @@ RULES:
 - If ambiguity is HIGH/MEDIUM, put unresolved gaps in Open Questions
 - If ambiguity is LOW/TRIVIAL, Open Questions should be empty
 
-Output the full SPEC.md content as markdown. No JSON wrapping.
+Output the full SPEC.md content as markdown.
+
+INPUTS
+Ambiguity classification: {{ambiguityLevel}}
+Detected gaps: {{gaps}}
+Assumptions: {{assumptions}}
+
+TICKET content:
+{{ticketContent}}
+
+Codebase scan results:
+{{scanResults}}

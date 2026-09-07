@@ -129,3 +129,33 @@ describe('dead prompt files are gone', () => {
     expect(P('closeout-synthesize.md')).not.toMatch(/key_metrics/)
   })
 })
+
+// Unit 2: cache-friendly order. Every template's shape is
+//   role line → stable rules/procedure → output contract → INPUTS
+// so the stable half is a prefix the model can cache across lanes, epics and
+// runs. The audit measured the opposite everywhere: first slot on line 1-4 in
+// every slot-bearing template, 82-99.6% of the bytes re-paid on every call —
+// 8.9 KB of it on the opus tier in plan-decompose.md alone.
+//
+// The two lane-state templates are excluded: fencedScript() strips everything
+// outside their ``` block before dispatch, and shared/lane-steps.test.ts runs
+// the extracted script under real bash, so their layout is a bash concern.
+describe('every template puts its stable half before its first variable', () => {
+  const SCRIPTS = new Set(['lane-state-read.md', 'lane-state-write.md'])
+
+  it('the first {{slot}} starts at or past 55% of the file', () => {
+    const dir = join(__dirname, 'prompts')
+    const offenders: string[] = []
+    let checked = 0
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.md') && !SCRIPTS.has(n))) {
+      const text = P(f)
+      const first = text.indexOf('{{')
+      if (first === -1) continue
+      checked++
+      const share = first / text.length
+      if (share < 0.55) offenders.push(`${f}: first slot at ${(share * 100).toFixed(1)}%`)
+    }
+    expect(checked, 'templates with slots').toBeGreaterThan(15)
+    expect(offenders).toEqual([])
+  })
+})

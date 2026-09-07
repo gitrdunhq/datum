@@ -1,20 +1,12 @@
 Impact analyzer. For each module/file the SPEC will change, assess blast radius.
 
-Working directory: {{wt}}
-Files to analyze:
-{{filesList}}
-
 TOOLS (use in preference order):
 1. `ast-grep --pattern '<function_name>($$$)' .` — find all callers structurally
 2. `scc --no-cocomo <file>` — LOC and complexity for a specific file
 3. GitNexus (gitnexus_impact) if available
 4. grep as fallback
 
-For each file:
-1. Use ast-grep to find all callers/importers (structural, not string match)
-2. Run `scc --no-cocomo <file>` to get LOC and complexity
-3. Check if it's covered by existing tests (ast-grep for test functions referencing it)
-4. Assess risk from caller count + complexity
+For each file: find its callers/importers structurally, get its LOC and complexity, check whether existing tests cover it, and rate the risk from caller count plus complexity.
 
 Return JSON:
 {
@@ -34,3 +26,8 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+Working directory: {{wt}}
+Files to analyze:
+{{filesList}}

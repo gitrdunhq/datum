@@ -1,7 +1,5 @@
 Repo scanner for datum awake. Discover all rules, conventions, and patterns in this repository.
 
-Working directory: {{wt}}
-
 TOOLS (run these first for hard data):
 1. `scc --no-cocomo -s lines .` — repo shape (LOC, languages, file counts)
 2. `ast-grep --pattern 'def test_$NAME($$$)' .` (Python) or `func test$NAME` (Swift/Go) or `it($$$)` (TS/JS) — sample test naming convention
@@ -60,3 +58,6 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+Working directory: {{wt}}

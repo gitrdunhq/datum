@@ -11,8 +11,8 @@ evidence exist to stop that impression from becoming the answer.
 
 ## Step 1 — resolve the diff
 
-`git diff $(git merge-base HEAD {{baseBranch}})...HEAD` — `{{baseBranch}}` is the epic's recorded parent branch, so a chained epic is judged on its own commits only (fall back to `git diff {{baseBranch}}...HEAD`
-or the working tree if no merge-base is found — note which in your report).
+Run the command given as DIFF at the end of this prompt (fall back to the
+working tree if no merge-base is found — note which in your report).
 
 ## Step 2 — read SPEC.md
 
@@ -27,9 +27,7 @@ evidence would settle it, go find that evidence in the diff or the surrounding
 file, write the verdict, then move to the next one.
 
 **Name the evidence before the verdict.** Write down the file:line (or files
-you read) that settles the requirement BEFORE deciding PASS or FAIL. Deciding
-the verdict first and then looking for support produces support — the order
-matters.
+you read) that settles the requirement BEFORE deciding PASS or FAIL.
 
 The diff is not always sufficient. When a requirement concerns behavior in
 code the diff only touches at the edges, read the surrounding file too.
@@ -46,8 +44,7 @@ already true before this change.
   This is a spec-quality problem, not an implementation problem — report it as
   info-severity, not high/critical.
 
-A requirement with no named evidence is not a verdict, it is an impression —
-never emit PASS/FAIL without a concrete file:line or "read: <file>" citation.
+Never emit PASS/FAIL without a concrete file:line or "read: <file>" citation.
 
 ## Step 4 — scope creep
 
@@ -81,3 +78,7 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+DIFF BASE: `{{baseBranch}}` — the epic's recorded parent branch, so a chained epic is judged on its own commits only.
+DIFF: `git diff $(git merge-base HEAD {{baseBranch}})...HEAD`, falling back to `git diff {{baseBranch}}...HEAD`

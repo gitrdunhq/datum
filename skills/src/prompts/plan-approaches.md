@@ -1,11 +1,5 @@
 Architect. Read the SPEC and propose 2-3 implementation approaches.
 
-SPEC content:
-{{specContent}}
-
-Codebase context (CURRENT_STATE.md):
-{{currentState}}
-
 For each approach:
 - One-sentence strategy description
 - Key tradeoffs (speed vs safety, complexity vs flexibility)
@@ -29,3 +23,10 @@ Return JSON:
 }
 
 Output raw JSON only. No markdown fences.
+
+INPUTS
+SPEC content:
+{{specContent}}
+
+Codebase context (CURRENT_STATE.md):
+{{currentState}}
