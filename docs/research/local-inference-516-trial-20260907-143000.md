@@ -123,3 +123,73 @@ reasoning_effort low, same prompt, max_tokens 4000. Turn 1 (37.5 s incl. swap) r
 3. Compute the read witness from the tool log instead of asking the model. The driver sees every Read and every git hash-object it executed; assertReadWitness for local stages should check that a Read of the path returning at least its byte count was observed (plus the hash if run), and the prompt paragraph shrinks to "read the file". C-truth's fabricated hashes become impossible and the two runs that computed the hash then never submitted stop wasting the turn. Pair with the reasoning rule qwen38 exposed: writers on qwen38 at reasoning_effort none, or max_tokens above the server's reasoning budget.
 
 Below the top three: writer temperature 0.6 with a repeat penalty (the loops are greedy-decoding shaped); keep decompose and the contract lens hosted; run the 9B skeptic only as edge/error lenses under the 2-of-3 rule.
+
+## 8. 35B-A3B re-run
+
+Re-run wall 30 min, all requests sequential, same harness, test bed, gates and caps; audit dirs Q-red/, Q-red-retry/, QT-red/, Q-skeptic-{truth,broken,green-agent}/ under .temp/qwopus-trial/. Two additions to the harness for this run: every turn records the resident models from /running before the request, and MAX_PROMPT/MAX_TOKENS became env overrides (28000 / 4000 for "qwen", 22000 / 8000 for "qwen-think"). Requests to "qwen" sent reasoning_effort none, no chat_template_kwargs.
+
+Endpoint state. Before the first call qwen38 and qwopus9b were resident. The first "qwen" request swapped qwen38 out (turn 1 wall 33.4 s). /running for qwen: llm-serve -m /opt/models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -c 32768 -b 4096 -ub 2048 -fa on -ctk q4_0 -ctv q4_0 --jinja --reasoning off --slot-save-path /opt/kv-cache --metrics --port 5804 (no --parallel pin, no temp flags, no MTP). The "qwen-think" request swapped qwen out (turn 1 wall 36.4 s); its launch args were not captured because by the time the stage ended /running listed only qwopus9b again. qwopus9b stayed resident throughout.
+
+Test-bed note: the qwopus9b skeptic probes in the first trial had run save_state() with cwd = the scratch repo, leaving an untracked .datum/state.json ({"run_id": "r-snapshot"}) and state.db behind. The first qwen RED attempt found it (turn 20) and two of its tests passed because of it. Both files were deleted before the retry and before every later run; the first trial's results are unaffected.
+
+| Stage | turns | prompt tok | completion tok | cached (share) | wall | retries | tool calls (errors) | outcome |
+|---|---|---|---|---|---|---|---|---|
+| A-red qwopus9b | 13 | 252151 | 3915 | 229067 (0.91) | 70 s | 0 | 19 (2) | submitted, not committed |
+| A-red-retry qwopus9b | 40 | 1139606 | 33657 | 1121151 (0.98) | 437 s | 0 | 43 (2) | max_turns (loop) |
+| A-red-qwen38 low | 7 | 90028 | 9409 | 70377 (0.78) | 404 s | 1 | 8 (1) | empty_reply x2 |
+| Q-red qwen | 22 | 464404 | 9651 | 441266 (0.95) | 308 s | 1 | 27 (0) | http_500 (context ceiling) |
+| Q-red-retry qwen | 15 | 286579 | 12030 | 267435 (0.93) | 339 s | 1 | 17 (0) | http_500 (context ceiling) |
+| QT-red qwen-think (max_tokens 8000) | 7 | 76030 | 17216 | 56472 (0.74) | 483 s | 1 | 14 (2) | empty_reply x2 |
+| C-skeptic truth qwopus9b | 4 | 55196 | 4812 | 21433 (0.39) | 82 s | 1 | 8 (0) | FRAGILE, witness fabricated |
+| C-skeptic broken qwopus9b | 6 | 74340 | 1647 | 58741 (0.79) | 32 s | 0 | 18 (6) | FRAGILE, bug caught |
+| C-skeptic green-agent qwopus9b | 40 | 800647 | 7288 | 783722 (0.98) | 111 s | 0 | 46 (0) | max_turns (loop) |
+| Q-skeptic truth qwen | 31 | 622206 | 8160 | 602872 (0.97) | 228 s | 0 | 37 (2) | http_400 (context ceiling) |
+| Q-skeptic broken qwen | 17 | 376754 | 4847 | 352692 (0.94) | 152 s | 1 | 21 (0) | FRAGILE, bug caught |
+| Q-skeptic green-agent qwen | 30 | 768483 | 7738 | 743959 (0.97) | 247 s | 1 | 34 (0) | http_500 (context ceiling) |
+
+### A. RED on qwen (Q-red/, Q-red-retry/)
+
+Gates, attempt 1 -> retry:
+- Writes only in owned test files: yes -> yes.
+- Ran SETUP: no skeleton, no laneCtxCmd -> RESET was run, but AFTER writing both test files (turn 9, `git clean -fd` removed both), so it rewrote them (turns 10-11); no laneCtxCmd; hooks inert in both.
+- Used the exact RUN command (mkdir -p ... > log; TEST_EXIT): yes, both attempts (the 9B never did).
+- Tests fail on BASE for the right reason: 8 written, 6 fail with AssertionError/SystemExit, 2 PASS on BASE (test_ac2_enrichment_payload_has_state_fields, test_ac5_archive_writes_snapshot) -> 8 written, 6 fail, 2 pass (same two ACs); both attempts diagnosed the passing tests themselves and were rewriting them when the context ran out.
+- Count gate / placeholder / artifact: not evaluable (no commit); the on-disk files are clean of placeholders.
+- Commit: NO COMMIT -> NO COMMIT.
+- read_witness: computed at turn 2 (`git hash-object`, 8865d3daddae) -> computed at turn 1; neither submitted.
+- Outcome: HTTP 500 from llama.cpp at turn 23 "Failed to parse tool call arguments as JSON ... missing closing quote": the Write's arguments were cut off when prompt 31843 + completion 925 hit the 32768 ceiling -> same 500 at turn 16 (prompt 31148).
+
+Concrete mistakes, attempt 1: (1) whole-file Writes of 6.3 KB and 5.3 KB test files (1945 and 1475 completion tokens each) and then a full rewrite of both when two tests passed, at 32k context that is the budget; (2) a syntax error on the first write (a `finally:` at module level), fixed with one Edit; (3) the same source-text assertion as the 9B and the real RED, `assert ".datum/state.json" not in source`; (4) the MAX_PROMPT guard fired at turn 18 (28 227 tokens) with tool_choice forced to submit_answer, and the model answered with a Bash call instead; llama.cpp did not enforce the forced function for this model (it did for qwopus9b in C-truth), so the guard was advisory only.
+
+Concrete mistakes, retry: (1) RESET after writing; (2) the same whole-file rewrite pattern, 1924 + 1776 tokens, twice; (3) turn 14 hit the guard, ignored it, and turn 15 died mid-Write.
+
+What it did better than the 9B: witness at turn 1-2; read tests/conftest.py and tests/test_state_db.py for conventions; used the exact RUN command and read TEST_EXIT; counted tests before/after as the prompt asks; recognised the two green-blind tests and the AC they map to; never invoked report_bug() (called _build_body); no repetition loop (27 and 17 distinct tool calls).
+
+qwen-think (QT-red/, max_tokens 8000, MAX_PROMPT 22000): swap 36.4 s; turns 1-5 read the spec, computed the witness and read the three modules; turns 6 and 7 each returned finish_reason length with 8000 completion tokens and empty content (215 s and 208 s), reasoning consumed the whole budget both times; the empty-reply guard retried once and the stage ended with nothing written. Doubling max_tokens from 4000 to 8000 did not change the failure mode seen on qwen38 low, it doubled its cost.
+
+Verdict A on the 35B-A3B: no, as-is. The failure is different in kind from the 9B (no loops, no inverted success, sound tests) and is entirely a budget failure: the 32k window cannot hold the RED prompt (~4.5k), the reads it needs (~10k), two whole-file test writes (~3.5k) and one rewrite. With the guard actually enforced and Edit-based amendments instead of rewrites it is the most plausible local RED writer of the three.
+
+### C. Skeptic contract lens on qwen (Q-skeptic-*/)
+
+Same prompt (lane spec + PROPERTIES.md deferred, two witnesses), read-only Bash hook enforced, zero blocks; tree clean and HEAD unchanged after every run.
+- broken: witnesses ok, ok (computed with `git hash-object ... | cut -c1-12` at turn 2). FRAGILE / confidence 9 (0-10 scale as the schema says; the 9B answered 0.95). Finding 1, severity high: "_build_body() in report_bug.py appends **State:** line even when load_state() returns empty dict {}, producing phantom state fields (phase=None, run_id=None) instead of omitting state-derived fields entirely", evidence = the failing test plus an inline repro and the correct root cause ("the try/except only catches exceptions from load_state(), but when the DB is missing load_state() returns {}"). Finding 2, low: the pre-existing `args.run_id or args.run_id` typo, marked "functionally harmless". The best single skeptic answer of the whole trial: repro command, AC named, mechanism right, severity split sensibly. Still called a failing lane test FRAGILE rather than BROKEN. 17 turns, 152 s, one prose-only turn then the forced submit was honoured.
+- truth: witnesses computed at turn 2, never submitted. 24 Bash probes, all distinct (no loop): found the `args.run_id or args.run_id` line at turn 8 and then spent 20 turns probing argparse and f-string rendering, reading tests and modules a second time, until turn 32 asked for 34 449 tokens against the 32 768 window (HTTP 400). The MAX_PROMPT guard never fired because the last successful request was 27 042 tokens and the next jumped past the ceiling in one Read.
+- green-agent (the 9B's GREEN commit): witnesses computed at turn 2, never submitted. 24 distinct Bash probes, the same argparse rabbit hole; the guard fired at turn 18 with tool_choice forced to submit_answer and the model kept calling Bash (forced function not enforced, as in RED); turn 31 died with HTTP 500 at the ceiling. It never wrote up that this GREEN dropped the try/except the AC preserves.
+
+Verdict C on the 35B-A3B: not as-is, for a different reason than the 9B. The 9B's failure modes were fabrication (truth) and an identical-call loop (green-agent); qwen fabricated nothing and never looped, it explored without closure until the 32k window ran out, 2 of 3 runs. Behind an enforced budget guard (driver-side: stop issuing tools and send one final request with only submit_answer in the tool list, since tool_choice on this server is not honoured for this model) it is a credible contract lens; on the broken variant it produced exactly the evidence the datum-skeptic prompt asks for.
+
+### Comparison across the three models on this lane
+
+- RED committed: qwopus9b 0/2, qwen38 0/1, qwen 0/2, qwen-think 0/1. No local model committed a RED.
+- RED tests written and failing for the right reason: qwopus9b attempt 1 yes (5 of 6, one green-blind, one source-text, two live gh calls); qwen both attempts yes (6 of 8, two green-blind and self-diagnosed, one source-text, no gh calls, exact RUN command used); qwen38 and qwen-think wrote nothing.
+- Witness: qwopus9b 7 of 8 computed, 1 fabricated; qwen 6 of 6 computed; qwen38/qwen-think computed at turn 1-2.
+- Loops: qwopus9b 3 of 10 runs; qwen 0 of 6; instead 4 of 6 qwen runs ended at the 32k ceiling (2 x HTTP 400, 2 x HTTP 500 mid-tool-call).
+- Skeptic on broken: both caught it; qwen's evidence is a repro command with the mechanism, the 9B's is the test name. Skeptic on truth: 9B fabricated and said FRAGILE; qwen never finished. Skeptic on the 9B GREEN: neither finished.
+- Speed: qwen decode 30-45 tok/s on these prompts vs 60-110 for the 9B; a whole-file test Write costs 37-64 s on qwen vs 10-15 s on the 9B; swap in 33-36 s each way.
+- Forced tool_choice: honoured by llama.cpp for qwopus9b (C-truth) and for qwen after a prose-only turn (broken), ignored by qwen when it was mid tool-loop (Q-red turn 19, Q-red-retry turn 15, Q-skeptic-green-agent turn 19). Any budget guard for this model must be enforced by the driver (drop every tool but submit_answer from the request), not by tool_choice.
+
+### Verdicts, 35B-A3B
+
+RED no as-is (budget, not judgement; the strongest candidate of the three with an enforced guard, Edit-based amendments and a 64k context, which -c 32768 currently denies); skeptic contract no as-is (2 of 3 runs never converge; behind an enforced guard it is the only local lens that produced a full-quality finding); qwen-think for RED no (thinking consumes 8000 tokens at 37 tok/s and returns nothing, twice; 7 min wasted plus a 36 s swap).
+
+Changes this re-run adds to the ranked list from §7: the loop breaker in change 1 must be a budget enforcer that rewrites the request (tools list = [submit_answer]) rather than relying on tool_choice, and for the main-group models the budget is 28k of a 32k window unless arcPi raises -c; and the "thinking" rule in change 3 hardens to: never run a writer with reasoning on at any max_tokens on this box (qwen38 low at 4000 and qwen-think at 8000 both returned empty twice).
