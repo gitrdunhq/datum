@@ -49,6 +49,7 @@ import {
   laneSpecContextFile,
   laneSpecExportCommand,
   LANE_PLAN_DIGEST_BUDGET_BYTES,
+  integrationVerifyCmd,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
@@ -1722,5 +1723,22 @@ describe('scripts/test-count-gate always prints a JSON envelope (#495)', () => {
     const r = run(['--repo', repoRoot, '--bogus'])
     expect(r.code).not.toBe(0)
     expect(JSON.parse(r.out.trim()).error).toMatch(/^count_gate_crashed: /)
+  })
+})
+
+// integration-lanes-2 run 20260907-015322: task-INT-5's own nine tests passed
+// and its verify still failed, because the verify ran the whole suite and a
+// pre-existing, machine-dependent test was red; the lane reported
+// `integration_failed: covered task-003`, an invariant finding that was not
+// one. An integration lane's verify runs its own test files when the command
+// is pytest- or vitest-shaped; the whole suite stays Validate's job.
+describe('integrationVerifyCmd — an INT lane verifies its own files, not the whole suite', () => {
+  it('appends the lane test files to a pytest or vitest command', () => {
+    expect(integrationVerifyCmd('uv run pytest -x -q', ['tests/integration/test_int_5.py'])).toBe('uv run pytest -x -q tests/integration/test_int_5.py')
+    expect(integrationVerifyCmd('npx vitest run', ['src/int.test.ts'])).toBe('npx vitest run src/int.test.ts')
+  })
+  it('leaves an opaque command (a script wrapper) and an empty file list alone', () => {
+    expect(integrationVerifyCmd('bash scripts/test-run.sh --affected', ['tests/integration/test_int_1.py'])).toBe('bash scripts/test-run.sh --affected')
+    expect(integrationVerifyCmd('uv run pytest -x -q', [])).toBe('uv run pytest -x -q')
   })
 })

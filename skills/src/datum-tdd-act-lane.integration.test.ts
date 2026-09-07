@@ -244,3 +244,14 @@ describe('task-002 — integration lanes are RED-only and decided on the indepen
     expect(calls.some((c) => c.label.startsWith('red:'))).toBe(false)
   })
 })
+
+// run 20260907-015322: INT-5's verify ran the whole suite and an unrelated
+// red became `integration_failed`. The post-red verify for an integration
+// lane names the lane's own test files.
+describe('integration lane — the independent verify runs the lane\'s own test files', () => {
+  it('the post-red batch\'s test-verify command carries the lane test file, not the bare suite command', async () => {
+    const { calls } = await runLane({ respond: integrationResponder({ testVerify: 'pass' }) })
+    const postRed = cliCalls(calls).find((c) => c.label.startsWith('post-red:'))!
+    expect(postRed.prompt).toContain('npx vitest run src/int.test.ts')
+  })
+})

@@ -363,7 +363,7 @@ describe('lane intake: missing result is a hard failure, history is bounded', ()
   })
 
   it('passes the epic branch to postRedSteps so the count gate diffs from the merge-base, not HEAD~1', () => {
-    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,300}baseRef/)
+    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,700}baseRef/)
   })
 })
 
@@ -391,7 +391,9 @@ describe('deterministic RED green-blindness gate', () => {
   const laneSource = readFileSync(join(__dirname, 'datum-tdd-act-lane.ts'), 'utf8')
 
   it('passes verifyTestCmd to postRedSteps so the independent test-verify step runs', () => {
-    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,200}verifyTestCmd:\s*scopedTestCmd/)
+    // An integration lane verifies its own files (run 20260907-015322); every
+    // other lane runs the scoped suite command.
+    expect(laneSource).toMatch(/postRedSteps\(\{[\s\S]{0,700}verifyTestCmd:\s*isIntegration \? integrationVerifyCmd\(scopedTestCmd, testFiles\) : scopedTestCmd/)
   })
 
   it('fails RED on the independently re-run exit code, not only on the agent self-report', () => {

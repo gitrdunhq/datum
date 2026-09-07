@@ -31,6 +31,7 @@ import {
   parseTellScan,
   laneStartExpr,
   strayFilesFromSteps,
+  integrationVerifyCmd,
 } from './shared/lane-steps'
 import { worktreeResetSteps, worktreeResetToSteps, worktreeResetToFromSteps, commitFilesSteps, commitFilesFromSteps, preserveHeadRefSteps } from './shared/commit-steps'
 import { assertReadWitness, verifyReadWitness, type ContextFile } from './shared/context-relay'
@@ -778,7 +779,10 @@ No markdown fences, no explanation.`,
       ]
   const postRed = postRedSteps({
     wt, testFiles, acCount, testFuncDiffRegex, sgPatterns, testFuncBodyRegex, testFuncGrepRegex, ownership: deterministic,
-    verifyTestCmd: scopedTestCmd,
+    // An integration lane is decided on its own test files (run
+    // 20260907-015322: a whole-suite verify turned an unrelated red into
+    // integration_failed); the whole suite is Validate's job.
+    verifyTestCmd: isIntegration ? integrationVerifyCmd(scopedTestCmd, testFiles) : scopedTestCmd,
     baseRef: cfg.epicBranch,
   })
   const postRedRaw = await runBatch(postRed, stageOpts('cli', { label: `post-red:${taskId}`, phase: 'Act', model: model('fast') }))

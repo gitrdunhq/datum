@@ -1110,3 +1110,17 @@ export function closeoutArchiveSteps(o: CloseoutArchiveOpts): BatchStep[] {
   return steps
 }
 
+
+// ── Integration lanes: the independent verify runs the lane's own files ──
+// run 20260907-015322: task-INT-5's nine tests passed and its verify still
+// failed, because it ran the whole suite and a pre-existing, machine-
+// dependent test was red; the lane reported `integration_failed: covered
+// task-003`, an invariant finding that was not one. The whole suite is
+// Validate's job. A pytest- or vitest-shaped command takes the lane's test
+// files as arguments; an opaque wrapper (a script) is left alone.
+export function integrationVerifyCmd(testCommand: string, testFiles: string[]): string {
+  const cmd = testCommand.trim()
+  if (testFiles.length === 0) return cmd
+  if (!/\bpytest\b|\bvitest\s+run\b/.test(cmd)) return cmd
+  return `${cmd} ${testFiles.join(' ')}`
+}
