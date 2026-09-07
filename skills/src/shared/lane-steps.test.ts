@@ -49,6 +49,7 @@ import {
   laneSpecContextFile,
   laneSpecExportCommand,
   LANE_PLAN_DIGEST_BUDGET_BYTES,
+  propertiesFromSteps,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
@@ -1185,6 +1186,55 @@ describe('laneIntakeSteps lane-spec export + laneSpecFromSteps', () => {
     expect(laneSpecFromSteps(res(text, 0, { bytes: '413\n' }), 'T1', OUT).error).toMatch(/^lane_spec_relay_mismatch: T1 — the summary says 412 bytes/)
     expect(laneSpecFromSteps(res(text, 0, { sha: 'b'.repeat(40) + '\n' }), 'T1', OUT).error).toMatch(/^lane_spec_relay_mismatch: T1/)
     expect(laneSpecFromSteps(res(text, 0, { bytes: '' }), 'T1', OUT).ok).toBe(false)
+  })
+})
+
+describe('laneIntakeSteps properties probe + propertiesFromSteps (#493 — the skeptic panel needs PROPERTIES.md)', () => {
+  const opts = {
+    wt: '/wt/T1', epicBranch: 'datum/e', completionPath: null, structural: true, cleanupCmd: null,
+    planSkeletonPath: '', skeletonCmd: '', preflightPath: '',
+  }
+
+  it('adds three tolerant properties- steps when properties is given, none when omitted', () => {
+    const withProps = laneIntakeSteps({ ...opts, properties: { epicBranch: 'datum/e' } })
+    expect(names(withProps)).toEqual(['properties-bytes', 'properties-sha', 'properties-cat', 'history'])
+    for (const s of withProps.slice(0, 3)) expect(s.tolerant).toBe(true)
+    expect(names(laneIntakeSteps(opts))).toEqual(['history'])
+  })
+
+  it('does not add a second batch — one laneIntakeSteps call carries both lane-spec and properties steps', () => {
+    const laneSpec = { planPath: '/wt/T1/.datum/lane-plan.json', taskId: 'T1', outPath: '/wt/T1/.datum/lane-spec.json', expectHash: 'fnv1a64:0000000000000001' }
+    const steps = laneIntakeSteps({ ...opts, laneSpec, properties: { epicBranch: 'datum/e' } })
+    expect(names(steps)).toEqual(['lane-spec', 'lane-spec-bytes', 'lane-spec-sha', 'properties-bytes', 'properties-sha', 'properties-cat', 'history'])
+  })
+
+  const propPath = 'docs/epics/datum/e/PROPERTIES.md'
+  const stepsRes = (bytesOut: string, shaOut: string, catOut: string) => parseBatchResult(JSON.stringify([
+    { name: 'properties-bytes', exit_code: 0, stdout: bytesOut, stderr: '' },
+    { name: 'properties-sha', exit_code: 0, stdout: shaOut, stderr: '' },
+    { name: 'properties-cat', exit_code: 0, stdout: catOut, stderr: '' },
+  ]), [{ name: 'properties-bytes', command: '' }, { name: 'properties-sha', command: '' }, { name: 'properties-cat', command: '' }])
+
+  it('returns null (absent) when PROPERTIES.md does not exist', () => {
+    expect(propertiesFromSteps(stepsRes('-1', '', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e')).toBeNull()
+  })
+
+  it('returns an inlined ContextFile when the cat content byte- and sha-verifies', () => {
+    const content = '## Correctness\nsome invariant text\n'
+    const sha = gitBlobSha(utf8Encode(content))
+    const r = propertiesFromSteps(stepsRes(String(utf8ByteLength(content)), sha, content), 'datum/e')
+    expect(r).toEqual({ path: propPath, exists: true, inlined: true, bytes: utf8ByteLength(content), sha, content })
+  })
+
+  it('returns a deferred ContextFile (content null) when the cat step reports the over-budget marker', () => {
+    const bigBytes = 20000
+    const r = propertiesFromSteps(stepsRes(String(bigBytes), 'deadbeef', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e')
+    expect(r).toEqual({ path: propPath, exists: true, inlined: false, bytes: bigBytes, sha: 'deadbeef', content: null })
+  })
+
+  it('defers instead of trusting content whose relayed bytes disagree with the probe (in-transit corruption)', () => {
+    const r = propertiesFromSteps(stepsRes('9999', 'deadbeef', 'short'), 'datum/e')
+    expect(r).toEqual({ path: propPath, exists: true, inlined: false, bytes: 9999, sha: 'deadbeef', content: null })
   })
 })
 

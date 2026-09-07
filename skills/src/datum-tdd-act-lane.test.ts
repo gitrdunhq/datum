@@ -907,7 +907,7 @@ describe('runLane exports the lane spec to a worktree file at intake', () => {
     expect(body).toMatch(/buildPacket\(taskId, testFiles, implFiles, lane, wt, laneCfg, 'RED', specFile/)
     expect(body).toMatch(/buildPacket\(taskId, testFiles, implFiles, lane, wt, scopedLaneCfg, 'GREEN', specFile/)
     expect(body).toMatch(/reflectPrompt\(\{ wt, testFiles: testFiles\.join\(', '\), laneSpec: specFile \}\)/)
-    expect(body).toMatch(/runSkepticPanel\(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile\)/)
+    expect(body).toMatch(/runSkepticPanel\(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile\)/)
     // The prompt builders carry the file reference so the witness paragraph is part of the prompt.
     expect(body).toMatch(/laneSpec: specFile,?\s*\n\s*\}\s*\n\s*(let|const) red/)
     // No stage call inside runLane goes through bare resilientAgent any more

@@ -9,6 +9,7 @@ import type { BatchStep, BatchResult } from './batch'
 import { stepStdout, stepResult, describeFailure } from './batch'
 import { verifyFileOwnership, testRunCommand, parseAgentJson } from './utils'
 import type { ContextFile } from './context-relay'
+import { CONTEXT_RELAY_BUDGET_BYTES } from './context-relay'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
 import type { Lane, LanePlanDigest } from './types'
@@ -73,7 +74,22 @@ export interface LaneIntakeOpts {
    * laneSpecFromSteps. Null/omitted skips it.
    */
   laneSpec?: LaneSpecExportOpts | null
+  /**
+   * Probe `docs/epics/<epicBranch>/PROPERTIES.md` for the skeptic panel
+   * (#493 — FLOW.md's Act handoff says the panel reasons against
+   * PROPERTIES.md but nothing relayed it). Folded into this batch rather
+   * than a second command-runner call: three tolerant steps that measure
+   * the file's size and blob sha and cat it only when it fits the relay
+   * budget, same shape as contextProbeSteps/contextInlineSteps but combined
+   * into one script since the decision ("inline or defer") is a pure size
+   * check bash can make itself, with no LLM turn in between. Evaluated by
+   * propertiesFromSteps. Null/omitted skips it (unchanged behavior).
+   */
+  properties?: { epicBranch: string } | null
 }
+
+/** Printed by the properties-cat step when the file is absent or over budget — never trusted as content. */
+export const PROPERTIES_DEFERRED_MARKER = '__DATUM_PROPERTIES_DEFERRED__'
 
 export interface LaneSpecExportOpts {
   planPath: string
@@ -91,6 +107,24 @@ export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
     // bash so a rewritten bytes/sha cannot pass as the witness reference.
     steps.push({ name: 'lane-spec-bytes', command: `wc -c < ${q(o.laneSpec.outPath)} | tr -d ' '`, tolerant: true })
     steps.push({ name: 'lane-spec-sha', command: `git hash-object ${q(o.laneSpec.outPath)}`, tolerant: true })
+  }
+  if (o.properties) {
+    const propPath = `docs/epics/${o.properties.epicBranch}/PROPERTIES.md`
+    steps.push({
+      name: 'properties-bytes',
+      command: `if [ -f ${q(propPath)} ]; then wc -c < ${q(propPath)} | tr -d ' '; else printf -- '-1'; fi`,
+      tolerant: true,
+    })
+    steps.push({
+      name: 'properties-sha',
+      command: `if [ -f ${q(propPath)} ]; then git hash-object ${q(propPath)}; else printf ''; fi`,
+      tolerant: true,
+    })
+    steps.push({
+      name: 'properties-cat',
+      command: `__pb=$(if [ -f ${q(propPath)} ]; then wc -c < ${q(propPath)} | tr -d ' '; else printf -- '-1'; fi); if [ "$__pb" != "-1" ] && [ "$__pb" -le ${CONTEXT_RELAY_BUDGET_BYTES} ]; then cat ${q(propPath)}; else printf '%s' '${PROPERTIES_DEFERRED_MARKER}'; fi`,
+      tolerant: true,
+    })
   }
   if (o.completionPath) steps.push({ name: 'completion', command: catOrMissing(o.completionPath), tolerant: true })
   // Subject plus the Datum-Spec trailer (tab-separated): the resume check
@@ -953,6 +987,29 @@ export function laneSpecFromSteps(
 /** The exported lane file as a deferred ContextFile: contextSlot() tells the agent to read it, assertReadWitness() proves it did. */
 export function laneSpecContextFile(spec: LaneSpecSummary): ContextFile {
   return { path: spec.path, exists: true, inlined: false, bytes: spec.bytes, sha: spec.sha, content: null }
+}
+
+/**
+ * Evaluate the properties-bytes/-sha/-cat steps (#493) into a ContextFile
+ * skepticBasePrompt can pass to contextSlot() — inlined when the cat step
+ * verified byte-for-byte and sha-for-sha against the probe, deferred
+ * (content null) when the file was over budget or the relay disagreed with
+ * the probe, or null when PROPERTIES.md does not exist for this epic (no
+ * Properties phase ran — the caller renders a one-line sentence instead).
+ */
+export function propertiesFromSteps(result: BatchResult, epicBranch: string): ContextFile | null {
+  const path = `docs/epics/${epicBranch}/PROPERTIES.md`
+  const bytesRaw = stepStdout(result, 'properties-bytes')
+  const bytes = bytesRaw === null ? NaN : parseInt(bytesRaw.trim(), 10)
+  if (!Number.isFinite(bytes) || bytes < 0) return null
+  const sha = (stepStdout(result, 'properties-sha') || '').trim()
+  const catRaw = stepStdout(result, 'properties-cat')
+  const deferred: ContextFile = { path, exists: true, inlined: false, bytes, sha, content: null }
+  if (catRaw === null || catRaw === PROPERTIES_DEFERRED_MARKER) return deferred
+  const actualBytes = utf8ByteLength(catRaw)
+  if (actualBytes !== bytes) return deferred
+  if (sha && gitBlobSha(utf8Encode(catRaw)) !== sha) return deferred
+  return { path, exists: true, inlined: true, bytes, sha, content: catRaw }
 }
 
 // ── Closeout collect: branch/shas/config + the four collectors + data-exists ──

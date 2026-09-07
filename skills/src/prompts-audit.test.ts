@@ -80,6 +80,16 @@ describe('the skeptic panel: lenses are independent, the definition is thin', ()
     expect(d).not.toMatch(/empty collection/i)
     expect(d).toMatch(/missing defensive/i)
   })
+  // #493 — FLOW.md's Act handoff: "PROPERTIES.md as the invariant reference
+  // the skeptic panel ... reason against." Every lens is `skepticBasePrompt()
+  // + lens.prompt` (datum-tdd-act-lane.ts runSkepticPanel), so the base
+  // template carrying the slot is what makes every lens carry it.
+  it('skeptic-base.md carries a properties context slot, so every lens (base + lens.prompt) reasons against PROPERTIES.md too', () => {
+    const base = P('skeptic-base.md')
+    expect(base).toMatch(/\{\{propertiesSlot\}\}/)
+    expect(base).toMatch(/Properties/i)
+  })
+
   it('skeptic-base.md states the output shape once, as the schema does, and each lens defers to it', () => {
     for (const lens of ['skeptic-edge.md', 'skeptic-error.md', 'skeptic-contract.md']) {
       expect(P(lens), lens).not.toMatch(/For each finding:/)

@@ -20,3 +20,5 @@ Test files: {{testFiles}}
 Test command: {{testCommand}}
 Acceptance criteria — the `acceptance_criteria` array in the lane spec file:
 {{laneSpecSlot}}
+Properties — the invariant reference for this epic (reason against these too, not only the acceptance criteria above):
+{{propertiesSlot}}

@@ -99,9 +99,29 @@ export function reflectPrompt(vars: { wt: string; testFiles: string; laneSpec: C
   return withLaneSpec(reflectTemplate, rest as PromptVars, laneSpec)
 }
 
-export function skepticBasePrompt(vars: { wt: string; implFiles: string; testFiles: string; testCommand: string; laneSpec: ContextFile }): string {
-  const { laneSpec, ...rest } = vars
-  return withLaneSpec(skepticBaseTemplate, rest as PromptVars, laneSpec)
+/**
+ * #493 — FLOW.md's Act handoff says the skeptic panel reasons against
+ * PROPERTIES.md; until now nothing relayed it. `properties` is null when
+ * the epic has no PROPERTIES.md (no Properties phase ran) — the slot then
+ * says so in one line instead of a Read instruction. When it exists, the
+ * slot is `contextSlot()`: inline content within budget, else a mandatory
+ * witnessed Read — the same shape as the lane spec, and the deferred file
+ * (if any) joins the lane spec in the read-witness demand appended below.
+ */
+export function skepticBasePrompt(vars: {
+  wt: string; implFiles: string; testFiles: string; testCommand: string
+  laneSpec: ContextFile; properties: ContextFile | null
+}): string {
+  const { laneSpec, properties, ...rest } = vars
+  const propertiesSlot = properties
+    ? contextSlot(properties)
+    : 'PROPERTIES.md does not exist for this epic (no Properties phase ran) — reason only against the acceptance criteria above.'
+  const deferred = [laneSpec, ...(properties && !properties.inlined ? [properties] : [])]
+  return (
+    PREAMBLE +
+    renderPrompt(skepticBaseTemplate, { ...rest, laneSpecSlot: contextSlot(laneSpec), propertiesSlot } as PromptVars) +
+    contextWitnessInstruction(deferred)
+  )
 }
 
 export function skepticLenses(): SkepticLens[] {
