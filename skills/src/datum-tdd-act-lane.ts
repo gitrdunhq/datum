@@ -414,7 +414,7 @@ No markdown fences, no explanation.`,
   // into a ContextFile (inlined/deferred) or null when the epic has no
   // PROPERTIES.md. Threaded to the skeptic panel only; RED/GREEN/reflect
   // still reason against the lane spec's criteria array alone.
-  const propertiesFile = propertiesFromSteps(intake, cfg.epicBranch)
+  const propertiesFile = propertiesFromSteps(intake, cfg.epicBranch, wt)
 
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
@@ -1474,11 +1474,13 @@ async function runSkepticPanel(
     if (r === null) continue
     const w = verifyReadWitness(witnessFiles, r)
     if (w.ok) { verifiedLenses++; continue }
-    log(`[${taskId}] skeptic_lens_unverified: ${taskId} — lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? 'prefix too short' : w.mismatched.length ? 'wrong prefix' : 'no witness'}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`)
+    const unverifiedPaths = [...w.missing, ...w.mismatched, ...w.tooShort]
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} — lens ${lenses[i].key} did not evidence reading ${unverifiedPaths.join(', ') || specFile.path} (${w.tooShort.length ? 'prefix too short' : w.mismatched.length ? 'wrong prefix' : 'no witness'}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`)
     skepticResults[i] = null
   }
   if (verifiedLenses === 0) {
-    const err = new Error(`context_read_unverified: ${specFile.path} — no skeptic lens evidenced reading the lane spec; the panel is void`)
+    const witnessedPaths = witnessFiles.map((f) => f.path).join(', ')
+    const err = new Error(`context_read_unverified: ${witnessedPaths} — no skeptic lens evidenced reading the lane spec${propertiesFile && !propertiesFile.inlined ? ' and PROPERTIES.md' : ''}; the panel is void`)
     ;(err as Error & { stage?: LaneOutcome['stage'] }).stage = 'GREEN'
     throw err
   }

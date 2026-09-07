@@ -1208,7 +1208,11 @@ describe('laneIntakeSteps properties probe + propertiesFromSteps (#493 — the s
     expect(names(steps)).toEqual(['lane-spec', 'lane-spec-bytes', 'lane-spec-sha', 'properties-bytes', 'properties-sha', 'properties-cat', 'history'])
   })
 
-  const propPath = 'docs/epics/datum/e/PROPERTIES.md'
+  // Worktree-relative, like laneSpecContextFile's absolute /wt/T1/... path —
+  // NOT repo-root-relative. The batch's cwd is the ROOT checkout
+  // (setBatchRoot(cfg.repoRoot)), not guaranteed to be on the epic branch
+  // while a lane runs; wt IS that lane's checkout of the epic branch.
+  const propPath = '/wt/T1/docs/epics/datum/e/PROPERTIES.md'
   const stepsRes = (bytesOut: string, shaOut: string, catOut: string) => parseBatchResult(JSON.stringify([
     { name: 'properties-bytes', exit_code: 0, stdout: bytesOut, stderr: '' },
     { name: 'properties-sha', exit_code: 0, stdout: shaOut, stderr: '' },
@@ -1216,24 +1220,24 @@ describe('laneIntakeSteps properties probe + propertiesFromSteps (#493 — the s
   ]), [{ name: 'properties-bytes', command: '' }, { name: 'properties-sha', command: '' }, { name: 'properties-cat', command: '' }])
 
   it('returns null (absent) when PROPERTIES.md does not exist', () => {
-    expect(propertiesFromSteps(stepsRes('-1', '', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e')).toBeNull()
+    expect(propertiesFromSteps(stepsRes('-1', '', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e', '/wt/T1')).toBeNull()
   })
 
   it('returns an inlined ContextFile when the cat content byte- and sha-verifies', () => {
     const content = '## Correctness\nsome invariant text\n'
     const sha = gitBlobSha(utf8Encode(content))
-    const r = propertiesFromSteps(stepsRes(String(utf8ByteLength(content)), sha, content), 'datum/e')
+    const r = propertiesFromSteps(stepsRes(String(utf8ByteLength(content)), sha, content), 'datum/e', '/wt/T1')
     expect(r).toEqual({ path: propPath, exists: true, inlined: true, bytes: utf8ByteLength(content), sha, content })
   })
 
   it('returns a deferred ContextFile (content null) when the cat step reports the over-budget marker', () => {
     const bigBytes = 20000
-    const r = propertiesFromSteps(stepsRes(String(bigBytes), 'deadbeef', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e')
+    const r = propertiesFromSteps(stepsRes(String(bigBytes), 'deadbeef', '__DATUM_PROPERTIES_DEFERRED__'), 'datum/e', '/wt/T1')
     expect(r).toEqual({ path: propPath, exists: true, inlined: false, bytes: bigBytes, sha: 'deadbeef', content: null })
   })
 
   it('defers instead of trusting content whose relayed bytes disagree with the probe (in-transit corruption)', () => {
-    const r = propertiesFromSteps(stepsRes('9999', 'deadbeef', 'short'), 'datum/e')
+    const r = propertiesFromSteps(stepsRes('9999', 'deadbeef', 'short'), 'datum/e', '/wt/T1')
     expect(r).toEqual({ path: propPath, exists: true, inlined: false, bytes: 9999, sha: 'deadbeef', content: null })
   })
 })

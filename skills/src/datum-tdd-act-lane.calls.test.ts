@@ -394,7 +394,9 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
   // call, just three more named steps evaluated by propertiesFromSteps.
   // ---------------------------------------------------------------------------
 
-  const PROPERTIES_PATH = 'docs/epics/e/PROPERTIES.md'
+  // Worktree-relative — the batch's cwd is the ROOT checkout, not
+  // guaranteed to be on the epic branch, so the path is anchored at /wt/T1.
+  const PROPERTIES_PATH = '/wt/T1/docs/epics/e/PROPERTIES.md'
 
   it('lane-intake stays ONE batch call and probes PROPERTIES.md by size and blob sha alongside the lane spec', async () => {
     const { calls } = await runLane({ respond: happyPathResponder({ pytest: false }), agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
@@ -465,6 +467,30 @@ describe('#368 — lane command-runner calls, counted against a fake agent()', (
       expect(c.prompt).not.toContain(bigSha.slice(0, 12))
     }
     expect(logs.some((l) => /skeptic_lens_unverified:/.test(l))).toBe(true)
+  })
+
+  // Design decision: a deferred PROPERTIES.md is witnessed with the SAME
+  // rigor as the lane spec (verifyReadWitness requires every deferred file,
+  // not just the majority) — a lens carrying only the spec witness is
+  // dropped from the vote exactly as one carrying neither would be. If
+  // every lens misses the properties witness the panel is void, same as
+  // today's all-lenses-miss-the-spec-witness case.
+  it('all three lenses missing the PROPERTIES.md witness voids the panel: context_read_unverified at GREEN', async () => {
+    const bigBytes = 20000
+    const bigSha = 'd'.repeat(40)
+    const base = happyPathResponder({ pytest: false })
+    const respond: Responder = (label, prompt) => {
+      if (label.startsWith('lane-intake:')) {
+        return batch({ 'lane-spec': JSON.stringify({ task_id: 'T1', path: SPEC_PATH, bytes: 321, sha: SPEC_SHA, spec_hash: laneSpecHash(fullLane({ pytest: false })), ac_count: 2 }) + '\n', 'lane-spec-bytes': '321\n', 'lane-spec-sha': `${SPEC_SHA}\n`, 'properties-bytes': `${bigBytes}\n`, 'properties-sha': `${bigSha}\n`, 'properties-cat': '__DATUM_PROPERTIES_DEFERRED__', history: '', cleanup: '', 'skeleton-gen': '{}' })
+      }
+      // Every lens carries the spec witness but none carries the properties witness.
+      if (label.startsWith('skeptic-')) return { read_witness: { [SPEC_PATH]: SPEC_SHA.slice(0, 12) }, bugs_found: [], confidence: 0.9, verdict: 'PASS' }
+      return base(label, prompt)
+    }
+    const { result } = await runLane({ respond, agentTypes: { agentTypes: true, hooksInstalled: true }, pytest: false })
+    expect(result.results.T1.status).toBe('failed')
+    expect(result.results.T1.stage).toBe('GREEN')
+    expect(result.results.T1.error).toMatch(/^context_read_unverified: .*PROPERTIES\.md/)
   })
 
   it('a RED result without the read witness fails the lane as context_read_unverified before any gate', async () => {

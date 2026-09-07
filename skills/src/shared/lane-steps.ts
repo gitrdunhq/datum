@@ -109,7 +109,15 @@ export function laneIntakeSteps(o: LaneIntakeOpts): BatchStep[] {
     steps.push({ name: 'lane-spec-sha', command: `git hash-object ${q(o.laneSpec.outPath)}`, tolerant: true })
   }
   if (o.properties) {
-    const propPath = `docs/epics/${o.properties.epicBranch}/PROPERTIES.md`
+    // Worktree-relative, like every other path in this batch (`git -C wt`,
+    // `cat "wt/.datum/..."`) — the batch's cwd is the ROOT checkout
+    // (setBatchRoot(cfg.repoRoot)), which is not guaranteed to be on the
+    // epic branch while a lane runs. `wt` IS that lane's checkout of the
+    // epic branch, so docs/epics/<epicBranch>/PROPERTIES.md is guaranteed
+    // there if Properties committed it. A bare repo-root-relative path
+    // would read -1 (absent) whenever the root checkout is elsewhere,
+    // silently telling the panel PROPERTIES.md does not exist.
+    const propPath = `${o.wt}/docs/epics/${o.properties.epicBranch}/PROPERTIES.md`
     steps.push({
       name: 'properties-bytes',
       command: `if [ -f ${q(propPath)} ]; then wc -c < ${q(propPath)} | tr -d ' '; else printf -- '-1'; fi`,
@@ -997,8 +1005,8 @@ export function laneSpecContextFile(spec: LaneSpecSummary): ContextFile {
  * the probe, or null when PROPERTIES.md does not exist for this epic (no
  * Properties phase ran — the caller renders a one-line sentence instead).
  */
-export function propertiesFromSteps(result: BatchResult, epicBranch: string): ContextFile | null {
-  const path = `docs/epics/${epicBranch}/PROPERTIES.md`
+export function propertiesFromSteps(result: BatchResult, epicBranch: string, wt: string): ContextFile | null {
+  const path = `${wt}/docs/epics/${epicBranch}/PROPERTIES.md`
   const bytesRaw = stepStdout(result, 'properties-bytes')
   const bytes = bytesRaw === null ? NaN : parseInt(bytesRaw.trim(), 10)
   if (!Number.isFinite(bytes) || bytes < 0) return null
