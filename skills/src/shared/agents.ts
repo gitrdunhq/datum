@@ -1,6 +1,6 @@
 import { model } from './models'
 import { utf8ByteLength } from './utf8'
-import { stageOpts } from './agent-types'
+import { stageOpts, isReadOnlyAgentType } from './agent-types'
 import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
 import { worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
@@ -164,7 +164,9 @@ export async function resilientAgent<T = unknown>(
     // told to "Run: git status" and echo the output: an echoed "" — or a null
     // reply — for a dirty tree let the retry replay onto half-applied edits.
     // Unknown state (missing batch, git error) is never treated as clean.
-    if (attempt < maxRetries && opts?.worktree) {
+    // A read-only agent type (review lens, skeptic, reflect, readers) cannot
+    // have written, so its retry needs no guard; a writer's retry keeps it.
+    if (attempt < maxRetries && opts?.worktree && !isReadOnlyAgentType(opts.agentType)) {
       const guardSteps = worktreeDirtySteps(opts.worktree)
       const guard = worktreeDirtyFromSteps(parseBatchResult(
         await agentFn(batchCommandPrompt(guardSteps), stageOpts('cli', { label: 'retry-guard', model: 'haiku' })),

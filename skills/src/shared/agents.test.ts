@@ -165,6 +165,46 @@ describe('resilientAgent', () => {
     )
   })
 
+  // #341 wf_ecd9c174-040: the Architecture lens threw on attempt 1 and its
+  // retry was aborted because the main checkout had an untracked
+  // graphify-out/ (the operator's own tool) — a read-only lens cannot have
+  // written anything, so the guard has nothing to protect and must not run.
+  it('a read-only agent type retries without the dirty-worktree guard', async () => {
+    vi.useFakeTimers()
+    try {
+      const logFn = vi.fn()
+      const agentFn = vi.fn()
+        .mockImplementationOnce(async () => {
+          throw new Error('subagent completed without calling StructuredOutput')
+        })
+        .mockImplementationOnce(async () => ({ domain: 'Architecture', findings: [] }))
+
+      const pending = resilientAgent(
+        'review the diff',
+        { maxRetries: 1, worktree: '/some/wt', agentType: 'datum-reviewer' },
+        { agentFn, logFn },
+      )
+      await vi.runAllTimersAsync()
+      const result = await pending
+
+      expect(result).toEqual({ domain: 'Architecture', findings: [] })
+      expect(agentFn).toHaveBeenCalledTimes(2)
+      expect(agentFn.mock.calls[1][0]).not.toContain('status --porcelain')
+      expect(logFn).not.toHaveBeenCalledWith(expect.stringContaining('worktree is dirty'))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a writing agent type keeps the guard', async () => {
+    const agentFn = vi.fn()
+      .mockImplementationOnce(async () => { throw new Error('stalled') })
+      .mockImplementationOnce(async () => statusBatch('?? graphify-out/\n'))
+    const result = await resilientAgent('green', { maxRetries: 1, worktree: '/some/wt', agentType: 'datum-green' }, { agentFn, logFn: vi.fn() })
+    expect(result).toBeNull()
+    expect(agentFn.mock.calls[1][0]).toContain('status --porcelain')
+  })
+
   it('a guard batch that returned nothing parseable aborts the retry (unknown state is not clean)', async () => {
     const logFn = vi.fn()
     const agentFn = vi.fn()
