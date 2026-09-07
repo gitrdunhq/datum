@@ -2,6 +2,52 @@
 
 All notable changes to DATUM are documented here.
 
+## [Integration Lanes 2] — 2026-09-07 (run 20260907-022030)
+
+### Added
+
+Epic `docs/epics/datum/integration-lanes-2/` ("slice 2a — an integration lane runs
+RED-only, end to end", ticket commit `2dd8143e`) merged at
+`c824e42f03b5cacff0059f533e4d663649d1d1fd`. 9/9 tasks completed (`say_do_ratio` 1.0, 0
+`failed_terminal`) per `docs/epics/datum/integration-lanes-2/tasks.json`
+(`task-001`..`task-004`, `task-INT-1`..`task-INT-5`).
+
+`git` block: 53 commits, +4423/-111 LOC (net +4312) across 71 files, `92f2dd8a`..
+`c824e42f`.
+
+Review closed with two operator ACCEPT decisions recorded verbatim in
+`docs/epics/datum/integration-lanes-2/REVIEW-RESPONSE.md`:
+
+- **ACCEPT `2a3ee4a4`** (ARCH-001, `datum/integration_invariants.py:150`): "The SPEC's
+  literal mechanism (parse invariant ids from acceptance-criteria text at runtime) is
+  forbidden by the existing tripwire in `datum-tdd-act-lane.test.ts`: runLane never
+  reads criteria text, they travel by file to the stage agents. GREEN diagnosed exactly
+  that and stopped (`green_blocked_needs_write`). The invariants field is the smallest
+  producer that already exists at synthesis time, one line in `derive_integration_lanes`
+  and one allowlist entry in the digest; the derivation logic of slice 1 is untouched.
+  Documented in `docs/FLOW.md` Closed ('A plan handed a lane a criterion whose input had
+  no producer'). SPEC Assumption 5 will be amended at closeout."
+- **ACCEPT `d41bdc38`** (ARCH-002, `datum/gate.py:1123`): "`plan_not_sliced` landed on
+  dev (`92f2dd8a`, `c9bccb59`) before this epic branched and reached it through the dev
+  history, not through this slice's lanes; the review base is the merge-base with main,
+  so dev's own commits appear in the diff (same conflation FLOW.md records for closeout
+  statistics, #482). Not a change of this slice; slice 2c still owns turning the warning
+  into a halt."
+
+### Known Gaps
+
+- **Telemetry gap (repeat of FU-4, run `20260707-173926`; also seen run
+  `20260906-163354`).** `token_metrics.collected` is `false`: "no state.db at
+  `.datum/runs/20260907-022030/state.db` or `.datum/state.db` (no producer writes one)"
+  (logged in `collector_warnings`) — third consecutive run with this gap.
+- `gitnexus_diff` and `solutions` are `null`; `platform` is `null`; `lane_tools` is
+  empty; `brief_defects` is empty — none reported by this run's collectors.
+- This run's `git` block does not show the multi-epic scope-conflation pattern flagged
+  in the prior two closeouts (FU-3 / repeat) — the listed commit range reads as scoped
+  to this epic.
+
+---
+
 ## [Integration Lanes] — 2026-09-06 (run 20260906-163354)
 
 ### Added
