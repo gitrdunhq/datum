@@ -463,7 +463,7 @@ async function runBatch(steps, opts, deps) {
 }
 
 // skills/src/prompts/closeout-synthesize.md
-var closeout_synthesize_default = 'Closeout synthesis agent. Read the closeout data and produce post-epic artifacts.\n\nEvery factual claim must be grounded in the files named below. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason). Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made.\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. The changelog artifact described as CHANGELOG below\n3. RETRO.md at the RETRO path below \u2014 metrics, observations, brief defects\n4. follow-ups.json at the FOLLOW-UPS path below \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "...", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n\nINPUTS\nDATA: read {{closeoutDataPath}}\nREVIEW-RESPONSE: read {{reviewResponsePath}} if it exists (the operator\'s recorded review decisions)\nRETRO: docs/epics/{{branch}}/RETRO.md\nFOLLOW-UPS: .datum/runs/{{runId}}/follow-ups.json\nCHANGELOG: {{changelogInstruction}}\n';
+var closeout_synthesize_default = 'Closeout synthesis agent. Read the closeout data and produce post-epic artifacts.\n\nEvery factual claim must be grounded in the files named below. Do not read source files for fresh data. `tasks` may be null and `collector_warnings` may name collectors that did not run: say so in the retro rather than inventing numbers. Task counts come from `tasks.total` / `tasks.completed` for THIS epic only; `ignored_foreign_markers`, if present, are other epics\' lanes and are not this epic\'s work.\n\nReview decisions: in CURRENT_STATE.md, wrap this section in `<!-- review-decisions:start -->` / `<!-- review-decisions:end -->` markers so `datum review-accept` can patch it later without rewriting the rest of the file. Quote each ACCEPT/DEFER line from REVIEW-RESPONSE.md verbatim (id, key, reason) inside those markers. Never paraphrase or restate an accepted finding \u2014 a paraphrase of an operator\'s reason is a new claim nobody made. If REVIEW-RESPONSE.md does not exist yet, write exactly: "No review decisions recorded yet; `datum review-accept` will update this line." \u2014 never a sentence that reads as final, since the operator may record decisions after this closeout runs (#460).\n\nProduce these artifacts IN ORDER (each depends on previous):\n\n1. CURRENT_STATE.md \u2014 full rewrite of project state post-epic\n2. The changelog artifact described as CHANGELOG below\n3. RETRO.md at the RETRO path below \u2014 metrics, observations, brief defects\n4. follow-ups.json at the FOLLOW-UPS path below \u2014 gaps as machine-readable entries\n\nFor each artifact: write the file. Do NOT git add or git commit anything \u2014 the workflow commits the tracked artifacts after you return (follow-ups.json lives under the untracked .datum/runs/ directory).\n\nReturn JSON:\n{\n  "artifacts_written": ["CURRENT_STATE.md", "...", "RETRO.md", "follow-ups.json"],\n  "follow_up_count": N\n}\n\nList in artifacts_written only the files you actually wrote. Output raw JSON only. No markdown fences.\n\nINPUTS\nDATA: read {{closeoutDataPath}}\nREVIEW-RESPONSE: read {{reviewResponsePath}} if it exists (the operator\'s recorded review decisions)\nRETRO: docs/epics/{{branch}}/RETRO.md\nFOLLOW-UPS: .datum/runs/{{runId}}/follow-ups.json\nCHANGELOG: {{changelogInstruction}}\n';
 
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
@@ -495,20 +495,69 @@ function closeoutCollectSteps(o) {
       tolerant: true
     },
     {
-      // The base branch is resolved, never hard-coded origin/main (same class
-      // as main-sync, be0cd7fc): origin/HEAD, then origin/main|master, then a
-      // local main|master — a repo with no remote still gets a merge-base.
+      // The base is resolved, never hard-coded origin/main (same class as
+      // main-sync, be0cd7fc): (1) the epic's recorded parent (`datum
+      // epic-base`), (2) the ticket commit's parent when no base was
+      // recorded — an epic branched off `dev` (not a protected branch, so
+      // `datum init` never records a base for it, #482) still gets a
+      // deterministic start rather than every commit since the merge-base
+      // with main, (3) merge-base with origin/HEAD or origin/main|master —
+      // this last rung sets $__base_warning because it can span more than
+      // the epic (a repo with no remote still gets a merge-base).
       name: "base-sha",
       command: [
-        // The epic's recorded parent first (a chained epic's "what changed"
-        // is its own commits, not its parent epic's); the shell chain only
-        // when the CLI is unavailable.
-        'BASE=$(datum epic-base 2>&1) || BASE=""',
-        'if [ -z "$BASE" ]; then BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>&1); case "$BASE" in fatal*) BASE="";; esac; fi',
-        'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then BASE="origin/$b"; break; fi; done; fi',
-        'if [ -z "$BASE" ]; then for b in main master; do if git show-ref --verify --quiet "refs/heads/$b"; then BASE="$b"; break; fi; done; fi',
-        '[ -n "$BASE" ] || BASE=main',
-        `__base=$(git merge-base HEAD "$BASE") && printf '%s' "$__base"`
+        // `datum epic-base` itself falls back (origin/HEAD, origin/main,
+        // local main, "main" assumed) when nothing was recorded, so a
+        // non-empty result does NOT mean a real recorded base — only
+        // source=="recorded" does. Anything else is no better than this
+        // step's own fallback chain below, so it's treated as unresolved
+        // and the ticket-commit rung gets first refusal.
+        'BASE=""',
+        'SRC=""',
+        '__ebjson=$(datum epic-base --json 2>&1) || __ebjson=""',
+        'if [ -n "$__ebjson" ]; then',
+        `  __rsrc=$(printf '%s' "$__ebjson" | jq -r '.source // empty') || __rsrc=""`,
+        '  if [ "$__rsrc" = "recorded" ]; then',
+        `    __rb=$(printf '%s' "$__ebjson" | jq -r '.base_branch // empty') || __rb=""`,
+        '    if [ -n "$__rb" ]; then BASE="$__rb"; SRC="recorded"; fi',
+        "  fi",
+        "fi",
+        // The rung-3 ref, resolved up front: origin/HEAD, then
+        // origin/main|master, then local main|master, else "main" assumed.
+        // Used both as the last-resort base and as a floor for the ticket
+        // rung below — a ticket commit older than merge-base with this ref
+        // would undershoot it (worse than the #482 bug being fixed).
+        'FALLBACK=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>&1); case "$FALLBACK" in fatal*) FALLBACK="";; esac',
+        'if [ -z "$FALLBACK" ]; then for b in main master; do if git show-ref --verify --quiet "refs/remotes/origin/$b"; then FALLBACK="origin/$b"; break; fi; done; fi',
+        'if [ -z "$FALLBACK" ]; then for b in main master; do if git show-ref --verify --quiet "refs/heads/$b"; then FALLBACK="$b"; break; fi; done; fi',
+        'if [ -z "$FALLBACK" ]; then FALLBACK=main; fi',
+        '__mb=$(git merge-base HEAD "$FALLBACK" 2>&1) || __mb=""',
+        'case "$__mb" in fatal*) __mb="";; esac',
+        // Ticket commit: the first commit that added docs/epics/<eb>/TICKET.md.
+        // Its parent is the epic's real start — deterministic, no merge-base —
+        // but only when it is at least as recent as the merge-base floor
+        // above; an older TICKET.md commit (e.g. reachable from a `dev` that
+        // already carries prior merged epics) is rejected, not trusted.
+        'if [ -z "$BASE" ]; then',
+        "  __eb=$(git rev-parse --abbrev-ref HEAD)",
+        '  __tsha=$(git log --diff-filter=A --format=%H -- "docs/epics/$__eb/TICKET.md" | tail -1)',
+        '  if [ -n "$__tsha" ]; then',
+        '    __tparent=$(git rev-parse "$__tsha^" 2>&1) || __tparent=""',
+        '    case "$__tparent" in fatal*) __tparent="";; esac',
+        '    if [ -n "$__tparent" ] && { [ -z "$__mb" ] || git merge-base --is-ancestor "$__mb" "$__tparent"; }; then',
+        '      BASE="$__tparent"; SRC="ticket"',
+        "    fi",
+        "  fi",
+        "fi",
+        'if [ -z "$BASE" ]; then BASE="$FALLBACK"; SRC="fallback"; fi',
+        '__base_warning=""',
+        'if [ "$SRC" = "ticket" ]; then',
+        '  __base="$BASE"',
+        "else",
+        '  __base=$(git merge-base HEAD "$BASE")',
+        '  if [ "$SRC" = "fallback" ]; then __base_warning="base_sha_fallback: merge-base with $BASE; statistics may span more than the epic"; fi',
+        "fi",
+        `printf '%s' "$__base"`
       ].join("\n"),
       tolerant: true
     },
@@ -531,7 +580,7 @@ function closeoutCollectSteps(o) {
     },
     {
       name: "collect-git",
-      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge"`,
+      command: `datum closeout-collect-git --run-id "$__rid" --base-sha "$__base" --merge-sha "$__merge" --warning "\${__base_warning:-}"`,
       tolerant: true
     },
     { name: "collect-tasks", command: `datum closeout-collect-tasks --run-id "$__rid"`, tolerant: true },

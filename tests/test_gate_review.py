@@ -488,6 +488,56 @@ def test_review_accept_cli_writes_the_response_file_idempotently(epic_repo):
     assert empty.exit_code == 1
 
 
+def test_review_accept_re_renders_the_review_decisions_section_of_current_state(
+    epic_repo,
+):
+    """#460 — CURRENT_STATE.md is written by closeout before any decisions
+    exist, so its Review Decisions section says review-accept hasn't run
+    yet. Once an operator runs it, the section must stop saying that."""
+    from typer.testing import CliRunner
+
+    from datum.cli import app
+    from datum.closeout.review_decisions import (
+        ABSENT_SENTENCE,
+        render_review_decisions_section,
+    )
+
+    repo_root = Path.cwd()
+    current_state = repo_root / "CURRENT_STATE.md"
+    current_state.write_text(
+        "# Project State\n\n"
+        + render_review_decisions_section(epic_repo / "REVIEW-RESPONSE.md")
+        + "\n"
+    )
+    assert ABSENT_SENTENCE in current_state.read_text()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app, ["review-accept", "PERF-001", "--reason", "40 pieces, microseconds"]
+    )
+    assert result.exit_code == 0, result.output
+
+    text = current_state.read_text()
+    assert ABSENT_SENTENCE not in text
+    assert "ACCEPT PERF-001: 40 pieces, microseconds" in text
+    assert "# Project State" in text  # untouched outside the markers
+
+
+def test_review_accept_does_not_create_current_state_when_absent(epic_repo):
+    """review-accept patches an existing CURRENT_STATE.md; it never creates
+    one — that would be closeout writing its own artifact out of turn."""
+    from typer.testing import CliRunner
+
+    from datum.cli import app
+
+    repo_root = Path.cwd()
+    result = CliRunner().invoke(
+        app, ["review-accept", "PERF-001", "--reason", "40 pieces, microseconds"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not (repo_root / "CURRENT_STATE.md").exists()
+
+
 # ── human-approval policy parity with the other gates ────────────────────
 
 

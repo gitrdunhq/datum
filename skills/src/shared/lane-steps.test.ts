@@ -1223,7 +1223,8 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
     // The epic's recorded parent first (`datum epic-base`, elonchesd: a chained
     // epic diffed against master re-reviewed its whole parent epic), then the
     // shell chain when the CLI is unavailable.
-    expect(base.command).toMatch(/^BASE=\$\(datum epic-base 2>&1\)/)
+    expect(base.command).toContain('datum epic-base --json')
+    expect(base.command).toContain('.source // empty')
     expect(base.command).toContain('git symbolic-ref --short refs/remotes/origin/HEAD')
     expect(base.command).toContain('refs/remotes/origin/$b')
     expect(base.command).toContain('refs/heads/$b')
@@ -1245,6 +1246,85 @@ describe('closeoutCollectSteps (#368 follow-up — deterministic closeout collec
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  // #482 — an epic branched from `dev` (far ahead of main) had no recorded
+  // epic-base, so base-sha fell straight to merge-base with origin/main and
+  // closeout reported 513 commits / +51K LOC for an ~80-commit epic. The
+  // ticket commit — the first commit that added docs/epics/<eb>/TICKET.md —
+  // is a deterministic middle rung: its parent is the epic's real start.
+  it('falls back to the ticket commit\'s parent (not merge-base) when datum epic-base is unset', () => {
+    const base = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+    expect(base.command).toContain('docs/epics/')
+    expect(base.command).toContain('TICKET.md')
+    expect(base.command).toContain('--diff-filter=A')
+    expect(base.command).toMatch(/\^/) // parent-of-ticket-commit syntax
+  })
+
+  it('under real git, the ticket-commit fallback resolves to the parent of the commit that added TICKET.md, not merge-base with main', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-closeout-ticket-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+      execFileSync('git', ['config', 'core.hooksPath', '/dev/null'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'root'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'more main work'], { cwd: dir })
+      // dev, far ahead of main
+      execFileSync('git', ['checkout', '-q', '-b', 'dev'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'dev drift 1'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'dev drift 2'], { cwd: dir })
+      const wantedBase = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()
+      execFileSync('git', ['checkout', '-q', '-b', 'datum/e'], { cwd: dir })
+      mkdirSync(join(dir, 'docs', 'epics', 'datum', 'e'), { recursive: true })
+      writeFileSync(join(dir, 'docs', 'epics', 'datum', 'e', 'TICKET.md'), '# ticket\n')
+      execFileSync('git', ['add', '.'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'ticket(datum/e): add ticket'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'epic work'], { cwd: dir })
+      const step = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+      const out = execFileSync('bash', ['-c', batchScript([step])], { cwd: dir, encoding: 'utf8' })
+      expect(stepStdout(parseBatchResult(out, [step]), 'base-sha')?.trim()).toBe(wantedBase)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a ticket commit older than the merge-base floor and falls back (with a warning) instead of undershooting it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datum-closeout-old-ticket-'))
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+      execFileSync('git', ['config', 'core.hooksPath', '/dev/null'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'root'], { cwd: dir })
+      // TICKET.md already existed on main, from an earlier (e.g. abandoned)
+      // attempt — the commit that added it is an ancestor of the eventual
+      // fork point, so its parent is older than any sound base.
+      mkdirSync(join(dir, 'docs', 'epics', 'datum', 'e'), { recursive: true })
+      writeFileSync(join(dir, 'docs', 'epics', 'datum', 'e', 'TICKET.md'), '# ticket\n')
+      execFileSync('git', ['add', '.'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'ticket(datum/e): add ticket'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'more main work after the ticket commit'], { cwd: dir })
+      const forkPoint = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()
+      execFileSync('git', ['checkout', '-q', '-b', 'datum/e'], { cwd: dir })
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'epic work'], { cwd: dir })
+      const step = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+      const out = execFileSync('bash', ['-c', batchScript([step])], { cwd: dir, encoding: 'utf8' })
+      const got = stepStdout(parseBatchResult(out, [step]), 'base-sha')?.trim()
+      // The ticket commit's parent (root) predates the merge-base with main
+      // (forkPoint) — rejected. Fallback rung wins: merge-base(HEAD, main) == forkPoint.
+      expect(got).toBe(forkPoint)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('the base-sha script guards the ticket rung with a merge-base ancestor check before trusting it', () => {
+    const base = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+    expect(base.command).toContain('git merge-base --is-ancestor "$__mb" "$__tparent"')
+  })
+
+  it('sets a base_sha_fallback warning only when the merge-base fallback (not the recorded or ticket base) is used', () => {
+    const base = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'base-sha')!
+    expect(base.command).toContain('base_sha_fallback: merge-base with')
+    const collectGit = closeoutCollectSteps({ runId: 'r1' }).find((s) => s.name === 'collect-git')!
+    expect(collectGit.command).toContain('--warning "${__base_warning:-}"')
   })
 
   it('uses the given runId verbatim instead of generating a fresh timestamp', () => {
