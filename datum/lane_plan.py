@@ -817,8 +817,18 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Write lane-plan.json
+    # Write lane-plan.json. A regenerated plan (Properties re-runs this after
+    # Plan published issues) carries each lane's github_issue forward.
     out_path = Path(args.output)
+    if out_path.is_file():
+        try:
+            previous = json.loads(out_path.read_text()).get("lanes", {})
+        except (json.JSONDecodeError, OSError, AttributeError):
+            previous = {}
+        for lid, lane in lane_plan["lanes"].items():
+            issue = (previous.get(lid) or {}).get("github_issue")
+            if issue is not None and "github_issue" not in lane:
+                lane["github_issue"] = issue
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w") as f:
         json.dump(lane_plan, f, indent=2)

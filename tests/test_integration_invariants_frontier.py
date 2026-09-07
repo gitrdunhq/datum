@@ -196,3 +196,21 @@ class TestUnknownCoveredTasks:
         # Data only: no gate-message formatting like "invariant_covers_unknown_task:"
         assert pairs == [("INV-200", "task-nope")]
         assert all(":" not in pair[0] and ":" not in pair[1] for pair in pairs)
+
+
+class TestIntegrationTestFileLanguage:
+    """Review iteration 3, ARCH-001: the .py/.ts choice follows the same
+    test_command language detection Plan uses for every other lane, and an
+    unset or unrecognised command defaults to pytest paths, matching
+    gate_plan's default, instead of silently producing .ts in a Python repo."""
+
+    def test_pytest_and_ts_runners(self) -> None:
+        py = derive_integration_lanes(INVARIANTS, TASKS, "uv run pytest -x -q")
+        ts = derive_integration_lanes(INVARIANTS, TASKS, "npx vitest run")
+        assert all(l["files"][0].endswith(".py") for l in py)
+        assert all(l["files"][0].endswith(".test.ts") for l in ts)
+
+    def test_unset_or_unrecognised_command_defaults_to_pytest_paths(self) -> None:
+        for cmd in ("", "bash scripts/test.sh"):
+            lanes = derive_integration_lanes(INVARIANTS, TASKS, cmd)
+            assert all(l["files"][0].endswith(".py") for l in lanes), cmd

@@ -243,3 +243,30 @@ def test_ac8_main_accepts_optional_properties_argument(tmp_path, monkeypatch):
 
     written = json.loads(output_path.read_text())
     assert "task-INT-1" in written["lanes"]
+
+
+def test_regenerating_lane_plan_keeps_each_lanes_github_issue(tmp_path, monkeypatch):
+    """Properties re-runs `datum lane-plan` after Plan published issues and
+    wrote `github_issue` into lane-plan.json; a regenerated plan must carry
+    those numbers forward or Act loses its issue tracking (review iteration 3)."""
+    from typer.testing import CliRunner
+
+    from datum.cli import app
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "tasks.json").write_text(json.dumps(_tasks()))
+    args = ["lane-plan", "--input", "tasks.json", "--output", "lane-plan.json", "--md-output", "TASKS.md"]
+    assert CliRunner().invoke(app, args).exit_code == 0
+    plan = json.loads((tmp_path / "lane-plan.json").read_text())
+    plan["lanes"]["task-001"]["github_issue"] = 41
+    plan["lanes"]["task-002"]["github_issue"] = 42
+    (tmp_path / "lane-plan.json").write_text(json.dumps(plan))
+
+    (tmp_path / "PROPERTIES.md").write_text(_PROPERTIES_WITH_INVARIANT)
+    assert CliRunner().invoke(app, args + ["--properties", "PROPERTIES.md"]).exit_code == 0
+
+    regenerated = json.loads((tmp_path / "lane-plan.json").read_text())
+    assert regenerated["lanes"]["task-001"]["github_issue"] == 41
+    assert regenerated["lanes"]["task-002"]["github_issue"] == 42
+    assert "task-INT-1" in regenerated["lanes"]
+    assert "github_issue" not in regenerated["lanes"]["task-INT-1"]

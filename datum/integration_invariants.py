@@ -116,8 +116,19 @@ def _group_is_ancestor(a_tasks: tuple, b_tasks: tuple, ancestors: dict) -> bool:
     return all(a in ancestors[b] for a in a_tasks for b in b_tasks)
 
 
-def _is_pytest_command(test_command: str) -> bool:
-    return "pytest" in test_command
+def _integration_test_path(test_command: str, n: int) -> str:
+    """The INT lane's one test file. The language comes from the same
+    test_command detection Plan uses for every other lane; an unset or
+    unrecognised command (a shell wrapper) defaults to pytest paths, the
+    same default gate_plan applies, never silently to TypeScript."""
+    from datum.lane_plan import (
+        detect_command_language,  # lazy: lane_plan imports this module
+    )
+
+    lang = detect_command_language(test_command)
+    if lang in ("typescript", "javascript", "node"):
+        return f"src/integration/int-{n}.test.ts"
+    return f"tests/integration/test_int_{n}.py"
 
 
 def unknown_covered_tasks(invariants: list[dict], tasks: dict) -> list[tuple[str, str]]:
@@ -173,13 +184,9 @@ def derive_integration_lanes(
         for succ in successors[chosen]:
             in_degree[succ] -= 1
 
-    is_pytest = _is_pytest_command(test_command)
     lanes = []
     for n, key in enumerate(ordered, start=1):
-        if is_pytest:
-            files = [f"tests/integration/test_int_{n}.py"]
-        else:
-            files = [f"src/integration/int-{n}.test.ts"]
+        files = [_integration_test_path(test_command, n)]
         covered = ", ".join(key)
         lanes.append(
             {

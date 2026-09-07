@@ -1315,6 +1315,26 @@ def gate_properties(yolo: bool, config: dict) -> None:
         if row["source"].startswith("spec:") and len(row["covers"]) < 2:
             fail(f"invariant_covers_insufficient: {row['id']}")
 
+    # AC1.4: a Covers entry naming no task fails here, where the author can
+    # fix it, when tasks.json exists; gate_plan checks it again (AC3.4).
+    tasks_path = resolve_artifact("tasks.json")
+    if tasks_path.exists():
+        try:
+            known = {
+                t["id"]: t for t in json.loads(tasks_path.read_text()) if "id" in t
+            }
+        except (json.JSONDecodeError, OSError, TypeError):
+            known = None
+        if known is not None:
+            unknown = unknown_covered_tasks(invariant_rows, known)
+            if unknown:
+                fail(
+                    "; ".join(
+                        f"invariant_covers_unknown_task: {inv_id} -> {task_id}"
+                        for inv_id, task_id in unknown
+                    )
+                )
+
     questions_path = resolve_artifact("QUESTIONS.md")
     questions_content = questions_path.read_text() if questions_path.exists() else ""
     answered_ids = answered_question_ids(questions_content)

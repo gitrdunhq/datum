@@ -346,3 +346,46 @@ def test_gate_properties_reads_each_artifact_exactly_once(
     assert exc.value.code == 0
     assert read_counts.get("PROPERTIES.md") == 1
     assert read_counts.get("QUESTIONS.md") == 1
+
+
+# ── AC1.4: Covers naming an unknown task fails at the Properties gate (review iteration 3, CORR-002) ──
+
+
+def test_gate_properties_fails_when_covers_names_an_unknown_task(epic_repo, capsys):
+    _write(epic_repo, "tasks.json", json.dumps([{"id": "task-001"}, {"id": "task-002"}]))
+    _write(
+        epic_repo,
+        "PROPERTIES.md",
+        _properties_md(
+            _invariants_table(
+                [("INV-001", "Outputs agree", "task-001, task-999", "spec:section-2")]
+            )
+        ),
+    )
+    _write(epic_repo, "QUESTIONS.md", _questions_md([]))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_properties(True, {})
+
+    assert exc.value.code == 1
+    assert "invariant_covers_unknown_task: INV-001 -> task-999" in _fail_json(capsys)["message"]
+
+
+def test_gate_properties_skips_the_covers_check_without_tasks_json(epic_repo, capsys):
+    """Properties can run before tasks.json exists in a hand-driven flow; the
+    plan gate remains the second enforcement point (AC3.4)."""
+    _write(
+        epic_repo,
+        "PROPERTIES.md",
+        _properties_md(
+            _invariants_table(
+                [("INV-001", "Outputs agree", "task-001, task-999", "spec:section-2")]
+            )
+        ),
+    )
+    _write(epic_repo, "QUESTIONS.md", _questions_md([]))
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_properties(True, {})
+
+    assert exc.value.code == 0
