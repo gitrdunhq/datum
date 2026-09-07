@@ -1178,7 +1178,7 @@ if (shouldRun("act", 3)) {
       inFlightBatch = null;
       if (mergedIds.length > 0 && (!mergeResult || mergeResult.failed || !mergeResult.merged)) {
         const failedLane = mergeResult && typeof mergeResult.failedLane === "string" ? mergeResult.failedLane : "";
-        const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : "squash-merge step exited non-zero" : "merge workflow returned null";
+        const why = mergeResult ? failedLane ? `squash-merge of ${failedLane} did not land` : mergeResult.failed ? "squash-merge step exited non-zero" : "merge_skipped_no_eligible_lane: no completed lane was eligible to merge (held at RED)" : "merge workflow returned null";
         const landed = new Set(mergeResult && Array.isArray(mergeResult.mergedIds) ? mergeResult.mergedIds : []);
         const unmerged = mergedIds.filter((id) => !landed.has(id));
         const conflictFiles = mergeResult && Array.isArray(mergeResult.conflictFiles) ? mergeResult.conflictFiles : [];

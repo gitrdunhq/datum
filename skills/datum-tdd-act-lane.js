@@ -1929,7 +1929,7 @@ The code under test is already merged: these tests must PASS on your first run; 
     }
     log(`[${taskId}] integration lane RED-only fast path: independent verify passed \u2014 completing at RED`);
     await updateStage(issueId, "done");
-    return { task_id: taskId, status: "completed", stage: "RED" };
+    return { task_id: taskId, status: "completed", stage: "RED", red_only: true };
   }
   if (acCount > 0) {
     let newTestCount2 = 0;

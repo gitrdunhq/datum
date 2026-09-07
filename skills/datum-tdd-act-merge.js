@@ -18,8 +18,9 @@ function model(tier) {
 
 // skills/src/shared/utils.ts
 function filterGreenLanes(completedIds, results) {
-  const greenIds2 = completedIds.filter((id) => results?.[id]?.stage !== "RED");
-  const redOnlyIds2 = completedIds.filter((id) => results?.[id]?.stage === "RED");
+  const heldAtRed = (id) => results?.[id]?.stage === "RED" && results?.[id]?.red_only !== true;
+  const greenIds2 = completedIds.filter((id) => !heldAtRed(id));
+  const redOnlyIds2 = completedIds.filter(heldAtRed);
   return { greenIds: greenIds2, redOnlyIds: redOnlyIds2 };
 }
 function findMatchingBracketEnd(text, start) {
