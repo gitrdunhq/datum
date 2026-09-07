@@ -173,9 +173,17 @@ describe('datum-refine — write and commit are separated; commits are batches',
     expect(after).toMatch(/commitRefineFiles\(\[`\$\{epicDir\}\/SPEC\.md`, `\$\{epicDir\}\/QUESTIONS\.md`\], 'refine: write SPEC.md \+ QUESTIONS.md'/)
   })
 
-  it('ROADMAP.md is committed by the script only when addenda were roadmapped, and an unchanged file is a named failure', () => {
-    expect(src).toMatch(/if \(triageResult\.roadmap_items\.length > 0\) \{/)
-    expect(src).toMatch(/commitRefineFiles\(\['ROADMAP\.md'\], 'roadmap: triage items from refine'/)
+  // #437: re-entry re-appended every roadmapped addendum. The probe batch
+  // lists the addendum dates ROADMAP.md already carries, the agent is told
+  // them and the marker shape, and the commit is strict only when an
+  // unrecorded roadmap addendum exists.
+  it('ROADMAP.md is committed only for unrecorded roadmap addenda; a fully recorded set is not a failure', () => {
+    expect(src).toMatch(/name: 'roadmapped-addenda'/)
+    expect(src).toMatch(/recordedAddendumDates\(stepStdout\(readBatch, 'roadmapped-addenda'\)\)/)
+    expect(src).toMatch(/pendingRoadmapAddenda\(triageResult\.addenda, recordedDates\)/)
+    expect(src).toMatch(/\(addendum YYYY-MM-DD\)/)
+    expect(src).toMatch(/commitRefineFiles\(\['ROADMAP\.md'\], 'roadmap: triage items from refine', 'commit-roadmap', \{ allowUnchanged: pending\.length === 0 \}\)/)
+    expect(src).toMatch(/roadmap_already_recorded/)
   })
 
   it('commitRefineFiles wraps commitFilesSteps/commitFilesFromSteps and halts as refine_commit_failed', () => {
