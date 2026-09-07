@@ -363,3 +363,21 @@ describe('a __script row that failed before any step is batch_script_failed, not
     expect(r.scriptError).not.toMatch(/batch_script_failed/)
   })
 })
+
+// wf_4cd23ab6-9f8 boot: the runner described the refusal in prose ("The bash
+// command exited with code 126 ... failed to execute") instead of the
+// __script row, and datum named it runner_no_json with no retry.
+describe('a prose reply describing exit 126 is batch_script_failed too', () => {
+  const steps = [{ name: 'cfg', command: 'cat .datum/config.json' }]
+  it('names it and keeps the excerpt', () => {
+    const r = parseBatchResult('The bash command exited with code 126. There is no stdout to return; the script failed to execute.', steps)
+    expect(r.missing).toBe(true)
+    expect(r.scriptError).toMatch(/^batch_script_failed: the batch script exited 126 before any step ran/)
+    expect(describeFailure(r, 'boot')).toContain('exited 126')
+  })
+  it('leaves ordinary prose as runner_no_json', () => {
+    const r = parseBatchResult('Here is a summary of what happened.', steps)
+    expect(r.scriptError).toBeUndefined()
+    expect(describeFailure(r, 'boot')).toMatch(/runner_no_json/)
+  })
+})
