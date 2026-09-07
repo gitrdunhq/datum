@@ -160,5 +160,24 @@ def test_cli_json_output(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == {
-        "configFingerprint": config_fingerprint(repo, home)
+        "configFingerprint": config_fingerprint(repo, home),
+        "repoRoot": str(repo.resolve()),
     }
+
+
+def test_cli_json_carries_the_repo_root_for_the_launch_args(tmp_path, monkeypatch):
+    """datum-go applies its `cd` root guard to the boot batch only when the
+    launch args carry repoRoot; without it boot ran in whatever directory the
+    host spawned the runner in (integration-lanes-2 wf_8e33d186-fb1: exit 126,
+    then `cat: .datum/config.json: No such file`). The fingerprint command
+    prints both values so one call feeds the launch line."""
+    import json
+
+    from datum.cli import app
+
+    (tmp_path / ".datum").mkdir()
+    (tmp_path / ".datum" / "config.json").write_text("{}")
+    monkeypatch.chdir(tmp_path)
+    out = json.loads(CliRunner().invoke(app, ["config-fingerprint", "--json"]).stdout)
+    assert out["configFingerprint"].startswith("sha256:")
+    assert out["repoRoot"] == str(tmp_path.resolve())

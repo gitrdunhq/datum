@@ -417,6 +417,8 @@ def test_init_prints_the_scriptpath_launch_line(git_repo):
     assert expected in result.output, result.output
     assert 'Workflow({ name: "datum-go"' not in result.output
     assert "configFingerprint" in result.output
+    # repoRoot gives boot the same `cd` guard as every later batch.
+    assert f'repoRoot: "{git_repo.resolve()}"' in result.output, result.output
 
 
 def test_init_refresh_prints_the_scriptpath_launch_line(git_repo):

@@ -426,7 +426,11 @@ def config_fingerprint_cmd(
 
     fp = config_fingerprint(Path.cwd(), Path.home(), epic_dir=resolve_epic_dir())
     if json_output:
-        print(json.dumps({"configFingerprint": fp}))
+        # repoRoot rides along so one call feeds the launch args: datum-go
+        # applies its `cd` root guard to the boot batch only when given it.
+        print(
+            json.dumps({"configFingerprint": fp, "repoRoot": str(Path.cwd().resolve())})
+        )
     else:
         print(fp)
 
@@ -805,7 +809,8 @@ def _print_launch_line(skills_dir: str) -> None:
     typer.echo(
         "Launch (scriptPath, never name — the registry copy can be stale for the session):\n"
         "  FP=$(datum config-fingerprint)\n"
-        f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>" }} }})'
+        f'  Workflow({{ scriptPath: "{skills_dir}/datum-go.js", args: {{ yolo: true, configFingerprint: "<FP>", repoRoot: "{Path.cwd().resolve()}" }} }})'
+        "\n  (repoRoot gives the boot batch the same `cd` root guard as every later batch; without it boot runs wherever the host spawned the runner.)"
         "\nPermissions: the pipeline resets its own scratch worktrees; a host permission classifier may refuse that.\n"
         "  `datum permissions-snippet` prints the allow rules to paste into .claude/settings.local.json (datum never writes them);\n"
         '  add the file before the session starts (or run /hooks), and consider `/auto-mode-setup` at user level too. See SKILL.md "Permissions".'
