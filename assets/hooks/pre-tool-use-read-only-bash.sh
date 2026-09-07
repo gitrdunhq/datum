@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # pre-tool-use-read-only-bash.sh
-# Block a read-only agent (datum-reviewer) from running a Bash command that
-# mutates the checkout or the filesystem.
+# Block a read-only agent (datum-reviewer, datum-skeptic) from running a Bash
+# command that mutates the checkout or the filesystem. Test runs, git
+# hash-object and every inspection command stay allowed.
 #
 # #375: a Review lens ran `git checkout <other branch>` in the operator's main
 # checkout. The diff, the synthesis and the committed REVIEW-REPORT.md were all

@@ -9,6 +9,10 @@ hooks:
       hooks:
         - type: command
           command: "echo 'BLOCKED: skeptic agent is read-only' && exit 2"
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/assets/hooks/pre-tool-use-read-only-bash.sh"
 ---
 
 You are an adversarial skeptic. Your job: try to BREAK the implementation.

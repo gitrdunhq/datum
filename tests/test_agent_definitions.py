@@ -227,3 +227,17 @@ def test_read_only_bash_hook_blocks_mutation_and_allows_inspection(
         assert "BLOCKED" in proc.stderr
     else:
         assert proc.returncode == 0, f"{command!r} was blocked: {proc.stderr}"
+
+
+def test_skeptic_bash_is_guarded_by_the_read_only_hook():
+    """#375's sibling: the skeptic's hook matched only Edit|Write, so a lens
+    could still `git checkout` or `git reset` through Bash. It carries the
+    same read-only Bash hook the reviewer got."""
+    data, _ = _split(AGENTS_DIR / "datum-skeptic.md")
+    bash_hooks = [
+        h["command"]
+        for entry in data["hooks"]["PreToolUse"]
+        if entry["matcher"] == "Bash"
+        for h in entry["hooks"]
+    ]
+    assert any("pre-tool-use-read-only-bash.sh" in c for c in bash_hooks), bash_hooks
