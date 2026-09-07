@@ -54,6 +54,20 @@ export const AGENT_TYPE_TABLE: Readonly<Record<StageKind, string>> = {
   cli: 'datum-cli',
 }
 
+/**
+ * Agent types whose definitions cannot write (no Edit/Write tool, read-only
+ * Bash hook). A retry of one of these can never duplicate a write, so the
+ * dirty-worktree retry guard has nothing to protect (#341 wf_ecd9c174-040:
+ * a review lens's retry was aborted over the operator's untracked
+ * graphify-out/ in the main checkout).
+ */
+const READ_ONLY_STAGES: readonly StageKind[] = ['skeptic', 'review', 'reflect', 'reader', 'quality', 'cli']
+const READ_ONLY_AGENT_TYPES: ReadonlySet<string> = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]))
+
+export function isReadOnlyAgentType(agentType: string | undefined): boolean {
+  return typeof agentType === 'string' && READ_ONLY_AGENT_TYPES.has(agentType)
+}
+
 export interface AgentTypeConfig {
   agentTypes: boolean
   hooksInstalled: boolean
