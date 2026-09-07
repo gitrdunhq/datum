@@ -216,6 +216,14 @@ async function runLane(
   // `kind`, never `stage`: stage is the lifecycle status every producer writes
   // ("queued"...), so comparing it to 'structural' made this path dead (#369).
   const isStructural: boolean = lane.kind === 'structural'
+  // Per Assumption 9, `kind` alone decides the RED-only fast path — never
+  // `expect_tests_pass`, which only shapes the RED prompt. A lane that
+  // disagrees (kind: 'integration' without expect_tests_pass) still takes
+  // the fast path; only warn about the disagreement.
+  const isIntegration: boolean = lane.kind === 'integration'
+  if (isIntegration && !lane.expect_tests_pass) {
+    log(`[${taskId}] integration lane disagreement: kind is 'integration' but expect_tests_pass is missing/false — kind is authoritative, taking the RED-only fast path anyway`)
+  }
   const { testFiles, implFiles } = classifyFiles(lane.files)
    const laneTestCmd: string = cfg.testCommand
    const laneCfg: PipelineConfig = { ...cfg, testCommand: laneTestCmd }
@@ -608,6 +616,9 @@ No markdown fences, no explanation.`,
     commitCmd: laneCommitCommand({ wt, taskId, stage: 'RED', runId, specHash: spec.spec.spec_hash }),
     taskId,
     testFuncPattern: testFuncLabel,
+    integrationNote: isIntegration && lane.expect_tests_pass && (lane.invariants || []).length > 0
+      ? `\nThis lane covers invariants: ${(lane.invariants || []).join(', ')}\n\nThe code under test is already merged: these tests must PASS on your first run; a failing test is a finding, report it, do not weaken it.`
+      : '',
     laneSpec: specFile,
   }
 
@@ -772,6 +783,31 @@ No markdown fences, no explanation.`,
   })
   const postRedRaw = await runBatch(postRed, stageOpts('cli', { label: `post-red:${taskId}`, phase: 'Act', model: model('fast') }))
   const postRedResult = postRedRaw
+
+  // ── Integration lanes (#485): RED-only fast path, decided entirely on the
+  // independent `test-verify` step already inside the post-RED batch above
+  // (no second runBatch call — the NFR is one command-runner invocation per
+  // lane). No GREEN, no skeptic panel, no REFACTOR: the code under test is
+  // already merged, so RED's job was only to prove the new tests exist and
+  // pass. `kind` alone is authoritative (Assumption 9) — the warning about
+  // an expect_tests_pass disagreement was already logged above.
+  if (isIntegration) {
+    const redVerifyVerdict = verifyVerdict(postRedResult, 'red-verify')
+    if (redVerifyVerdict.kind === 'unavailable') {
+      log(`[${taskId}] green_verify_unavailable: ${redVerifyVerdict.why}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error: `green_verify_unavailable: ${redVerifyVerdict.why}` }
+    }
+    if (redVerifyVerdict.kind === 'failed') {
+      const covered = (lane.depends_on || []).join(', ')
+      const invariantIds = (lane.invariants || []).join(', ')
+      const error = `integration_failed: covered ${covered}; invariants ${invariantIds} (independent verify exit=${redVerifyVerdict.exit})`
+      log(`[${taskId}] ${error}`)
+      return { task_id: taskId, status: 'failed', stage: 'RED', error }
+    }
+    log(`[${taskId}] integration lane RED-only fast path: independent verify passed — completing at RED`)
+    await updateStage(issueId, 'done')
+    return { task_id: taskId, status: 'completed', stage: 'RED' }
+  }
 
   // ── New-test-function count gate — deterministic script execution, no LLM mediation (#253) ──
   if (acCount > 0) {

@@ -197,7 +197,14 @@ export interface Lane {
   stage?: string
   /** Docs-only / config-only lanes skip RED/GREEN and go straight to REFACTOR.
    *  Produced by the planner via tasks.json `kind` (#369). Absent = behavioral. */
-  kind?: 'structural' | 'behavioral'
+  kind?: 'structural' | 'behavioral' | 'integration'
+  /** Integration lanes only: RED's tests must PASS on first run (code under
+   *  test is already merged), never fail. Per Assumption 9, `kind` alone is
+   *  authoritative for the RED-only fast path; this only shapes the prompt. */
+  expect_tests_pass?: boolean
+  /** Integration lanes only: invariant ids the lane's independent verify
+   *  covers, named verbatim in the RED prompt and the integration_failed error. */
+  invariants?: string[]
   green_model?: ModelName
   /** Verbatim test command override for lanes the repo-wide command can't
    *  reach (e.g. files in a sub-package with its own Package.swift). When set,
