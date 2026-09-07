@@ -1399,6 +1399,15 @@ def gate_properties(yolo: bool, config: dict) -> None:
     for row in invariant_rows:
         if row["source"].startswith("spec:") and len(row["covers"]) < 2:
             fail(f"invariant_covers_insufficient: {row['id']}")
+        # #461 follow-up: a spec: row failing the >=2 check above already
+        # implies non-empty, but a question: row has no minimum-count check
+        # at all (an answered question may legitimately name just ONE
+        # task), which let a row with an EMPTY Covers cell still satisfy
+        # "exactly one row per answered question" below — the answer
+        # recorded, attached to no task, so no RED test could ever exist
+        # for it. Every row must cover at least one task regardless of source.
+        if not row["covers"]:
+            fail(f"invariant_covers_empty: {row['id']}")
 
     # AC1.4: a Covers entry naming no task fails here, where the author can
     # fix it, when tasks.json exists; gate_plan checks it again (AC3.4).

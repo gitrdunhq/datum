@@ -26,6 +26,7 @@ import {
   testEnvMissing,
   laneSpecFromSteps,
   laneSpecContextFile,
+  propertiesFromSteps,
   digestSpecHash,
   strayCleanSteps,
   codeTellSteps,
@@ -365,6 +366,12 @@ No markdown fences, no explanation.`,
   const intakeSteps = laneIntakeSteps({
     wt, epicBranch: cfg.epicBranch, completionPath: deterministic ? completionPath : null, structural: isStructural, cleanupCmd, planSkeletonPath, skeletonCmd, preflightPath,
     laneSpec: { planPath: `${wt}/.datum/lane-plan.json`, taskId, outPath: `${wt}/.datum/lane-spec.json`, expectHash: digestSpecHash(lanePlan, taskId) },
+    // #493 — the skeptic panel reasons against PROPERTIES.md (FLOW.md's Act
+    // handoff); folded into this one intake batch rather than a second
+    // command-runner call. propertiesFromSteps() returns null when the epic
+    // has no Properties phase, which the panel's prompt turns into a
+    // one-line sentence instead of a Read instruction.
+    properties: { epicBranch: cfg.epicBranch },
   })
   const intakeRaw = await runBatch(intakeSteps, stageOpts('cli', { label: `lane-intake:${taskId}`, phase: 'Act', model: model('fast') }))
   const intakeResult = intakeRaw
@@ -404,6 +411,11 @@ No markdown fences, no explanation.`,
     return { task_id: taskId, status: 'failed', stage: 'CRASH', error: spec.error }
   }
   const specFile = laneSpecContextFile(spec.spec)
+  // #493 — same intake batch's properties-bytes/-sha/-cat steps, evaluated
+  // into a ContextFile (inlined/deferred) or null when the epic has no
+  // PROPERTIES.md. Threaded to the skeptic panel only; RED/GREEN/reflect
+  // still reason against the lane spec's criteria array alone.
+  const propertiesFile = propertiesFromSteps(intake, cfg.epicBranch, wt)
 
   // ── Pre-dispatch check: lane branch may already have RED/GREEN commits (#331) ──
   // A stale lane-plan snapshot, a retried batch, or a lane re-queued after a
@@ -1372,7 +1384,7 @@ No markdown fences, no explanation.`,
   // green-retry path), and the retry is independently re-verified (test-verify
   // + a second skeptic pass) before the lane is allowed into REFACTOR as if
   // GREEN were sound. FRAGILE stays log-only, unchanged.
-  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile)
+  let skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile)
 
   if (skeptic.brokenCount >= 2) {
     const confirmedBugs = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
@@ -1418,7 +1430,7 @@ No markdown fences, no explanation.`,
     }
 
     // A second, independent skeptic pass over the retried implementation.
-    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile)
+    skeptic = await runSkepticPanel(taskId, wt, implFiles, testFiles, scopedTestCmd, specFile, propertiesFile)
     if (skeptic.brokenCount >= 2) {
       const stillConfirmed = skeptic.crossValidated.length > 0 ? skeptic.crossValidated : skeptic.allBugs
       const first = stillConfirmed[0]
@@ -1506,10 +1518,11 @@ async function runSkepticPanel(
   testFiles: string[],
   scopedTestCmd: string,
   specFile: ContextFile,
+  propertiesFile: ContextFile | null,
 ): Promise<SkepticPanelResult> {
   const base: string = skepticBasePrompt({
     wt, implFiles: implFiles.join(', '), testFiles: testFiles.join(', '),
-    testCommand: scopedTestCmd, laneSpec: specFile,
+    testCommand: scopedTestCmd, laneSpec: specFile, properties: propertiesFile,
   })
   const lenses = skepticLenses()
   const skepticResults = await parallel<SkepticResult>(
@@ -1518,21 +1531,25 @@ async function runSkepticPanel(
     ),
   )
 
-  // A lens that did not evidence reading the spec file did not review against
-  // the criteria: drop it from the vote by name (caliper BUG K3 — one haiku
-  // lens mangled its witness while two verified). Only when NO lens verified
-  // is the panel void, and that fails the lane at GREEN.
+  // A lens that did not evidence reading the spec file (or, when deferred,
+  // PROPERTIES.md too) did not review against the criteria: drop it from the
+  // vote by name (caliper BUG K3 — one haiku lens mangled its witness while
+  // two verified). Only when NO lens verified is the panel void, and that
+  // fails the lane at GREEN.
+  const witnessFiles = [specFile, ...(propertiesFile && !propertiesFile.inlined ? [propertiesFile] : [])]
   let verifiedLenses = 0
   for (let i = 0; i < skepticResults.length; i++) {
     const r = skepticResults[i]
     if (r === null) continue
-    const w = verifyReadWitness([specFile], r)
+    const w = verifyReadWitness(witnessFiles, r)
     if (w.ok) { verifiedLenses++; continue }
-    log(`[${taskId}] skeptic_lens_unverified: ${taskId} — lens ${lenses[i].key} did not evidence reading ${specFile.path} (${w.tooShort.length ? 'prefix too short' : w.mismatched.length ? 'wrong prefix' : 'no witness'}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`)
+    const unverifiedPaths = [...w.missing, ...w.mismatched, ...w.tooShort]
+    log(`[${taskId}] skeptic_lens_unverified: ${taskId} — lens ${lenses[i].key} did not evidence reading ${unverifiedPaths.join(', ') || specFile.path} (${w.tooShort.length ? 'prefix too short' : w.mismatched.length ? 'wrong prefix' : 'no witness'}); its ${r.verdict} verdict and ${(r.bugs_found || []).length} bug(s) are dropped from the vote`)
     skepticResults[i] = null
   }
   if (verifiedLenses === 0) {
-    const err = new Error(`context_read_unverified: ${specFile.path} — no skeptic lens evidenced reading the lane spec; the panel is void`)
+    const witnessedPaths = witnessFiles.map((f) => f.path).join(', ')
+    const err = new Error(`context_read_unverified: ${witnessedPaths} — no skeptic lens evidenced reading the lane spec${propertiesFile && !propertiesFile.inlined ? ' and PROPERTIES.md' : ''}; the panel is void`)
     ;(err as Error & { stage?: LaneOutcome['stage'] }).stage = 'GREEN'
     throw err
   }

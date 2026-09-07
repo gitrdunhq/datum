@@ -414,12 +414,12 @@ var docs_check_default = "DOCS RELEVANCE checker. Evaluate whether documentation
 // skills/src/prompts/docs-sync.md
 var docs_sync_default = 'Documentation sync agent. Update existing doc files to reflect code changes.\nWrite updated files \u2014 do NOT run any git commands.\n\nRULES (non-negotiable):\n- Do NOT create new doc files \u2014 only edit existing ones\n- Do NOT touch CHANGELOG.md\n- CLI references use "datum <cmd>", never "uv run" or "python3 scripts/"\n\nACTIONS:\n1. Fix any existing docs that reference changed code incorrectly\n2. If new public APIs were added with zero docs, add a section in the nearest relevant existing doc file\n3. Keep additions concise \u2014 one paragraph per new API, with a usage example\n\nReturn success, the files_written list (every path you edited \u2014 a success with an empty list is read as a failure by the workflow) and, if you wrote nothing, failure_reason saying why.\n\nINPUTS\nTASK PACKET: {{docsPacket}}\n';
 
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
 // skills/src/shared/lane-steps.ts
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
-
-// skills/src/shared/context-relay.ts
-var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 
 // skills/src/shared/prompts.ts
 var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
