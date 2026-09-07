@@ -570,6 +570,18 @@ function closeoutArchiveSteps(o) {
   return steps;
 }
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-closeout.ts
 var COLLECTOR_STEPS = ["collect-git", "collect-tasks", "collect-token-metrics", "collate"];
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
@@ -615,13 +627,13 @@ var preserved = (stepStdout(collectResult, "preserve-current-state") || "").trim
 if (preserved.startsWith("moved-aside")) log(`current_state_preserved: an untracked root CURRENT_STATE.md was ${preserved}`);
 var changelogInstruction = changelogManaged ? "SKIP CHANGELOG.md entirely: this repository's CHANGELOG.md is managed by release-please and is generated from the conventional commits. Do not create, edit or mention it in artifacts_written." : "CHANGELOG.md \u2014 append entries for what shipped";
 var synthResult = await agent(
-  renderPrompt(closeout_synthesize_default, {
+  withPreamble(renderPrompt(closeout_synthesize_default, {
     closeoutDataPath: `.datum/runs/${rid}/closeout-data.json`,
     reviewResponsePath: `${epicDir}/REVIEW-RESPONSE.md`,
     changelogInstruction,
     branch,
     runId: rid
-  }),
+  })),
   { label: "synthesize", model: model("balanced") }
 );
 if (!synthResult) {

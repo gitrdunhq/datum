@@ -777,6 +777,19 @@ function answersKeptFromSteps(result, answered) {
   };
 }
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-refine.ts
 var rawArgs = typeof args === "string" ? args.trim().replace(/^"|"$/g, "").trim() : "";
 var a = typeof args === "string" ? rawArgs.toLowerCase() === "yolo" ? { yolo: true } : JSON.parse(args) : args || {};
@@ -857,12 +870,12 @@ async function refineFromTicket() {
   }
   if (hasAddenda) {
     const triageRaw = await agent(
-      renderPrompt(refine_triage_default, { ticketPath }) + `
+      withPreamble(renderPrompt(refine_triage_default, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
 2. Append the roadmap items under "## Planned"
-Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`,
+Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md after you return.`),
       { label: "triage-addenda", model: model("balanced") }
     );
     triageResult = parseAgentJsonStrict(triageRaw, "triage-addenda");
@@ -875,7 +888,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
     log("No addenda \u2014 single-scope TICKET");
   }
   const classifyRaw = await agent(
-    renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile]),
+    withPreamble(renderPrompt(refine_classify_default, { ticketContent }) + contextWitnessInstruction([ticketFile])),
     { label: "classify-ambiguity", model: model("fast") }
   );
   const classify = parseAgentJsonStrict(classifyRaw, "classify-ambiguity");
@@ -883,7 +896,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
   log(`Ambiguity: ${classify.level} \u2014 ${classify.reasoning}`);
   const requirements = triageResult.merged_requirements.length > 0 ? triageResult.merged_requirements.join("\n") : ticketContent;
   const scanRaw = await agent(
-    renderPrompt(refine_scan_default, { wt: ".", requirements }),
+    withPreamble(renderPrompt(refine_scan_default, { wt: ".", requirements })),
     { label: "scan-codebase", model: model("balanced") }
   );
   const scanResults = typeof scanRaw === "string" ? scanRaw : JSON.stringify(scanRaw);
@@ -893,7 +906,7 @@ Do NOT git add or git commit anything \u2014 the workflow commits ROADMAP.md aft
   const specPath = `${epicDir}/SPEC.md`;
   const questionsPath = `${epicDir}/QUESTIONS.md`;
   const specRaw = await agent(
-    `You have TWO tasks. Do them in order.
+    withPreamble(`You have TWO tasks. Do them in order.
 
 TASK 1 \u2014 Write SPEC.md:
 ${renderPrompt(refine_spec_default, {
@@ -918,7 +931,7 @@ ${renderPrompt(refine_questions_default, {
 Write the QUESTIONS to "${questionsPath}".
 
 Do NOT git add or git commit anything \u2014 the workflow commits both files after you return.
-Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile]),
+Your response is raw JSON only (no markdown fences, no prose): {"written": ["${specPath}", "${questionsPath}"]}` + contextWitnessInstruction([ticketFile])),
     { label: "write-spec-and-questions", model: model("balanced") }
   );
   const spec = parseAgentJsonStrict(specRaw, "write-spec-and-questions");

@@ -4,8 +4,8 @@ export const meta = {
   description: "Scan repo rules and conventions, distill into cached agent preamble (llms.txt pattern)",
   phases: [
     { title: "Scan", detail: "read CLAUDE.md, AGENTS.md, configs, test files, code patterns" },
-    { title: "Distill", detail: "compress into agent-preamble.md + agent-preamble-full.md" },
-    { title: "Commit", detail: "write preamble files and commit" }
+    { title: "Distill", detail: "compress into agent-preamble.md" },
+    { title: "Commit", detail: "write the preamble file and commit" }
   ]
 };
 
@@ -471,20 +471,36 @@ var awake_scan_default = 'Repo scanner for datum awake. Discover all rules, conv
 // skills/src/prompts/awake-distill.md
 var awake_distill_default = 'Distill repo scan results into a token-efficient agent preamble.\n\n## OUTPUT: agent-preamble.md\n\nWrite a concise preamble that is PREPENDED to every stage, refine, plan, properties, review, validate and closeout prompt. Format as llms.txt:\n\n```\n# [Project Name]\n\n> One-line project description\n\n[Distilled rules \u2014 keep under 60 lines total]\n\n## Coding Rules\n- [rule]: brief description\n\n## Test Conventions\n- [convention]: brief description\n\n## File Conventions\n- [convention]: brief description\n```\n\nRULES FOR THE PREAMBLE:\n- Must be EXACTLY the same text every time for prompt cache hits\n- No dynamic content (no dates, no branch names, no file counts)\n- Under 60 lines / ~2000 tokens \u2014 this gets prepended to EVERY agent call\n- Actionable rules only \u2014 "use the project\'s test runner" not "the project has tests"\n- Use imperative voice \u2014 "Always X" not "The project uses X"\n\nReturn JSON:\n{\n  "preamble": "full contents of agent-preamble.md as a string",\n  "token_estimate": {"preamble": N}\n}\n\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nSCAN RESULTS:\n{{scanResults}}\n';
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/lane-steps.ts
+var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
+var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-awake.ts
 var awakeArgs = typeof args === "object" && args ? args : {};
 setBatchCacheKey(awakeArgs.configFingerprint || "");
 setBatchRoot(awakeArgs.repoRoot || "");
 phase("Scan");
 var scanRaw = await agent(
-  renderPrompt(awake_scan_default, { wt: "." }),
+  withPreamble(renderPrompt(awake_scan_default, { wt: "." })),
   { label: "scan-repo", model: model("balanced") }
 );
 var scan = parseAgentJsonStrict(scanRaw, "scan-repo");
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`);
 phase("Distill");
 var distillRaw = await agent(
-  renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) }),
+  withPreamble(renderPrompt(awake_distill_default, { scanResults: JSON.stringify(scan) })),
   { label: "distill-preamble", model: model("balanced") }
 );
 var distill = parseAgentJsonStrict(distillRaw, "distill-preamble");

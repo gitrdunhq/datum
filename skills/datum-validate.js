@@ -653,6 +653,18 @@ var VALIDATE_CHECK_SCHEMA = {
   required: ["tests_pass", "test_count", "lint_clean", "lint_fixes", "ac_gaps"]
 };
 
+// skills/src/prompts/agent-preamble.md
+var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// skills/src/shared/context-relay.ts
+var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
+
+// skills/src/shared/prompts.ts
+var PREAMBLE = agent_preamble_default + "\n\n---\n\n";
+function withPreamble(text) {
+  return PREAMBLE + text;
+}
+
 // skills/src/datum-validate.ts
 var a = parseValidateArgs(args);
 var yolo = a.yolo;
@@ -685,7 +697,7 @@ if (!mainSync.ok) {
   log(`Main sync: ${mainSync.message}`);
 }
 var checkResult = !mainSync.ok ? null : await agent(
-  `First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
+  withPreamble(`First: determine the branch with \`git rev-parse --abbrev-ref HEAD\` and set epic_dir to docs/epics/$(git rev-parse --abbrev-ref HEAD).
 
 Then perform validation:
 ${renderPrompt(validate_check_default, {
@@ -693,7 +705,7 @@ ${renderPrompt(validate_check_default, {
     tasksPath: "docs/epics/$(git rev-parse --abbrev-ref HEAD)/TASKS.md",
     testCommand,
     testRunCmd: testRunCommand(testCommand, ".", "validate")
-  })}`,
+  })}`),
   { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
 var check = checkResult;
