@@ -42,8 +42,10 @@ describe('datum-awake — the preamble is written and committed by batches', () 
   it('writes the preamble through writeFileSteps in one batch and verifies its blob sha', () => {
     expect(src).not.toMatch(/Write these two files/)
     expect(src).not.toMatch(/Then commit both/)
-    expect(src).toMatch(/writeFileSteps\(\{ path: preamblePath, content: distill\.preamble, names: PREAMBLE_NAMES \}\)/)
-    expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: preamblePath, expectedSha: writeFileBlobSha\(distill\.preamble\), prefix: 'preamble', names: PREAMBLE_NAMES \}\)/)
+    // preambleContent, not distill.preamble: the deterministic toolchain
+    // conventions (#481) are appended to the distilled body before the write.
+    expect(src).toMatch(/writeFileSteps\(\{ path: preamblePath, content: preambleContent, names: PREAMBLE_NAMES \}\)/)
+    expect(src).toMatch(/writeFileFromSteps\(writeResult, \{ path: preamblePath, expectedSha: writeFileBlobSha\(preambleContent\), prefix: 'preamble', names: PREAMBLE_NAMES \}\)/)
     expect(src).not.toMatch(/preamble_full/)
   })
 
@@ -51,5 +53,34 @@ describe('datum-awake — the preamble is written and committed by batches', () 
     expect(src).toMatch(/commitFilesSteps\(\{ wt: '\.', files: \[preamblePath\], message: 'awake: regenerate agent preamble from repo scan' \}\)/)
     expect(src).toMatch(/commitFilesFromSteps\(await runBatch\(/)
     expect(src).toMatch(/throw new Error\(`awake_commit_failed: /)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #481 — TypeScript 7 removed the classic compiler API, so a GREEN agent that
+// writes `ts.createSourceFile` (trained on TS 5) burns its retries against a
+// module that exports only `version`. The pin is a fact in package.json, not
+// a judgement: awake reads it with jq and a pure function decides, rather
+// than asking the model to notice.
+// ---------------------------------------------------------------------------
+
+describe('datum-awake — the TypeScript-7 convention comes from package.json, deterministically', () => {
+  it('reads the typescript pin with a tolerant jq batch step, not from the scan agent', () => {
+    expect(src).toMatch(/name: 'ts-version'/)
+    expect(src).toMatch(/jq -r '\.devDependencies\.typescript \/\/ \.dependencies\.typescript \/\/ empty' package\.json/)
+    expect(src).toMatch(/tolerant: true/)
+    expect(src).toMatch(/label: 'read-toolchain'/)
+    // awake never calls configureAgentTypes, so its batches must not route
+    // through stageOpts (which throws agent_types_unconfigured).
+    expect(src).not.toMatch(/stageOpts\(/)
+  })
+
+  it('decides with the pure predicate and appends the line to the preamble it writes', () => {
+    expect(src).toMatch(/import \{[^}]*toolchainConventionLines[^}]*\} from '\.\/shared\/toolchain'/)
+    expect(src).toMatch(/toolchainConventionLines\(tsRange\)/)
+    expect(src).toMatch(/const preambleContent =/)
+    const decideIdx = src.indexOf('toolchainConventionLines(tsRange)')
+    expect(decideIdx).toBeGreaterThan(-1)
+    expect(decideIdx).toBeLessThan(src.indexOf('const writeSteps ='))
   })
 })

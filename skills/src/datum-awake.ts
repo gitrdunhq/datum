@@ -1,7 +1,8 @@
 import { runBatch } from './shared/agents'
 import { renderPrompt, parseAgentJsonStrict } from './shared/utils'
 import { model } from './shared/models'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout } from './shared/batch'
+import { toolchainConventionLines } from './shared/toolchain'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import awakeScanTemplate from './prompts/awake-scan.md'
@@ -47,6 +48,22 @@ interface ScanResult {
 const scan = parseAgentJsonStrict<ScanResult>(scanRaw as string, 'scan-repo')
 log(`Scanned: ${scan.language} project, ${scan.rules?.length || 0} rule sources`)
 
+// #481: the toolchain half of the scan is a fact in package.json, not a
+// judgement — read it, let a pure function decide (shared/toolchain.ts), and
+// state the consequence in the preamble. A repo with no package.json (every
+// Python/Swift/Go consumer) yields an empty range and no line; the step is
+// tolerant so a missing file is not a failure. No stageOpts here: awake never
+// calls configureAgentTypes, so its batches stay on the runtime default.
+const toolchainSteps = [{
+  name: 'ts-version',
+  command: "jq -r '.devDependencies.typescript // .dependencies.typescript // empty' package.json",
+  tolerant: true,
+}]
+const toolchainResult = await runBatch(toolchainSteps, { label: 'read-toolchain', model: model('fast') })
+const tsRange = (stepStdout(toolchainResult, 'ts-version') || '').trim()
+const conventionLines = toolchainConventionLines(tsRange)
+for (const line of conventionLines) log(`Toolchain convention: ${line}`)
+
 // ── Distill ──
 
 phase('Distill')
@@ -80,9 +97,13 @@ const preamblePath = 'skills/src/prompts/agent-preamble.md'
 // shared/commit-steps.ts) — never handed to a runner as "write this file,
 // then commit it", whose reply was discarded.
 const PREAMBLE_NAMES = { mkdir: 'mkdir-preamble', write: 'write-preamble', sha: 'sha-preamble' }
-const writeSteps = writeFileSteps({ path: preamblePath, content: distill.preamble, names: PREAMBLE_NAMES })
+// The distilled body plus the deterministic toolchain conventions (#481).
+const preambleContent = conventionLines.length
+  ? `${distill.preamble.replace(/\s+$/, '')}\n\n${conventionLines.join('\n')}\n`
+  : distill.preamble
+const writeSteps = writeFileSteps({ path: preamblePath, content: preambleContent, names: PREAMBLE_NAMES })
 const writeResult = await runBatch(writeSteps, { label: 'write-preamble', model: model('fast') })
-const verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(distill.preamble), prefix: 'preamble', names: PREAMBLE_NAMES })
+const verdict = writeFileFromSteps(writeResult, { path: preamblePath, expectedSha: writeFileBlobSha(preambleContent), prefix: 'preamble', names: PREAMBLE_NAMES })
 if (!verdict.ok) throw new Error(verdict.error)
 
 const commitStepList = commitFilesSteps({ wt: '.', files: [preamblePath], message: 'awake: regenerate agent preamble from repo scan' })
