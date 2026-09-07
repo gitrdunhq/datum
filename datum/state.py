@@ -414,7 +414,12 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 
 def update_state(mutator: callable) -> bool:
-    init_db()
+    try:
+        init_db()
+    except sqlite3.DatabaseError:
+        # DB file exists but is not a valid sqlite database.
+        print(json.dumps({"error": "no_state"}))
+        return False
     with sqlite3.connect(DB_FILE, isolation_level="EXCLUSIVE", timeout=30.0) as conn:
         conn.execute("BEGIN EXCLUSIVE")
         try:
@@ -424,7 +429,7 @@ def update_state(mutator: callable) -> bool:
                 print(json.dumps({"error": "no_state"}))
                 return False
             state = json.loads(row[0])
-        except sqlite3.OperationalError:
+        except sqlite3.DatabaseError:
             print(json.dumps({"error": "no_state"}))
             return False
 

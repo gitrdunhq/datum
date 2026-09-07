@@ -110,19 +110,23 @@ def main() -> None:
     plan_ids = _lane_plan_ids(branch)
     statuses = _marker_statuses(branch)
     if plan_ids is None and not statuses:
+        data = {"status": "no_state_available"}
+        out = Path(f".datum/runs/{args.run_id}/closeout-raw/tasks.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        text = json.dumps(data, indent=2)
+        out.write_text(text)
+        marker.write_text("done")
         print(
             json.dumps(
                 {
-                    "error": (
-                        f"no lane-plan.json for branch {branch or '(unknown)'} "
-                        "(docs/epics/<branch>/lane-plan.json or .datum/lane-plan.json) "
-                        "and no lane-state markers under .datum/epics/<slug>/lane-state/ "
-                        "or .datum/runs/*/lane-state/ — nothing to collect task metrics from"
-                    )
+                    "ok": True,
+                    "path": str(out),
+                    "bytes": len(text.encode("utf-8")),
+                    "status": "no_state_available",
                 }
             )
         )
-        sys.exit(1)
+        return
 
     # With a lane plan, ONLY its lanes count: .datum/runs/ holds markers from
     # other epics' runs too (caliper BUG T: 23 counted where the plan had 9).

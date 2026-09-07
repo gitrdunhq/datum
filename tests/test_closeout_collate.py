@@ -230,6 +230,99 @@ def test_collate_resolves_the_epic_number_from_the_branch_when_the_flag_is_absen
     assert data["epic_number"] == 23
 
 
+def _run_collect_tasks(repo_root: Path, run_id: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "datum.closeout.collect_tasks", "--run-id", run_id],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_collate_propagates_the_no_state_available_sentinel_for_tasks(repo):
+    """task-010 AC4: end-to-end — with no lane-plan.json and no lane-state
+    markers, the real collect_tasks collector must run (not exit 1) and
+    the rendered closeout-data.json must carry the same non-null,
+    non-zero `{"status": "no_state_available"}` sentinel for `tasks` —
+    not None, not 0. Today collect_tasks exits 1, closeout-raw/tasks.json
+    is never written, and collate records tasks as None with a warning."""
+    run_id = "run-006"
+    raw_dir = repo / ".datum" / "runs" / run_id / "closeout-raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "git.json").write_text(
+        json.dumps(
+            {
+                "commits": [],
+                "files_touched": ["a.py"],
+                "loc_added": 1,
+                "loc_removed": 0,
+                "loc_net": 1,
+            }
+        )
+    )
+    (raw_dir / "token_metrics.json").write_text(
+        json.dumps({"total_input": 10, "total_output": 20})
+    )
+
+    collect_result = _run_collect_tasks(repo, run_id)
+    assert collect_result.returncode == 0, collect_result.stdout + collect_result.stderr
+
+    result = _run_collate(repo, run_id, _merge_sha(repo))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
+    assert data["tasks"] is not None
+    assert data["tasks"] != 0
+    assert data["tasks"]["status"] == "no_state_available"
+    assert "tasks: no closeout-raw/tasks.json" not in " ".join(
+        data.get("collector_warnings") or []
+    )
+
+
+def test_collate_ignores_the_live_state_json_fallback_for_no_state_sentinel(repo):
+    """task-010 AC5: collate no longer falls back to reading the live
+    `.datum/state.json` when `.datum/runs/<run_id>/state.json` is absent.
+    A decoy live state.json with plausible legacy `lanes` data must not
+    leak into closeout-data.json's tasks/lanes — the real collect_tasks
+    sentinel is the only source of truth for the no-state case."""
+    run_id = "run-007"
+    raw_dir = repo / ".datum" / "runs" / run_id / "closeout-raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "git.json").write_text(
+        json.dumps(
+            {
+                "commits": [],
+                "files_touched": ["a.py"],
+                "loc_added": 1,
+                "loc_removed": 0,
+                "loc_net": 1,
+            }
+        )
+    )
+    (raw_dir / "token_metrics.json").write_text(
+        json.dumps({"total_input": 10, "total_output": 20})
+    )
+    # No .datum/runs/<run_id>/state.json — a live decoy at the repo root
+    # simulates a stale legacy state.json still lying around.
+    decoy = repo / ".datum" / "state.json"
+    decoy.write_text(json.dumps({"lanes": {"task-999": {"final_status": "completed"}}}))
+
+    collect_result = _run_collect_tasks(repo, run_id)
+    assert collect_result.returncode == 0, collect_result.stdout + collect_result.stderr
+
+    result = _run_collate(repo, run_id, _merge_sha(repo))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = json.loads(
+        (repo / ".datum" / "runs" / run_id / "closeout-data.json").read_text()
+    )
+    assert data["tasks"]["status"] == "no_state_available"
+    assert data.get("lanes") in (None, [])
+    assert "task-999" not in json.dumps(data)
+
+
 def test_collate_without_a_parseable_branch_uses_the_unknown_sentinel(repo):
     from datum.closeout_cmd import UNKNOWN_EPIC_NUMBER
 

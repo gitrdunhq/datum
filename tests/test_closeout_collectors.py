@@ -431,6 +431,11 @@ class TestCollectTasks:
         assert data["ignored_foreign_markers"] == ["task-003", "task-004", "task-005"]
 
     def test_no_lane_plan_and_no_markers_is_a_named_failure(self, env_with_repo):
+        """task-010 AC1: no lane-plan.json and no lane-state markers means
+        `datum.state.load_state()` has nothing to report either — collect_tasks
+        no longer dies with sys.exit(1); it writes the explicit
+        `{"status": "no_state_available"}` sentinel to closeout-raw/tasks.json
+        and exits 0 so collate can propagate the sentinel downstream."""
         repo = env_with_repo
 
         result = subprocess.run(
@@ -446,10 +451,16 @@ class TestCollectTasks:
             text=True,
         )
 
-        assert result.returncode != 0
+        assert (
+            result.returncode == 0
+        ), f"stdout: {result.stdout} stderr: {result.stderr}"
         output = json.loads(result.stdout)
-        assert "lane-plan.json" in output["error"] and "lane-state" in output["error"]
-        assert "state.json" not in output["error"]
+        assert output.get("ok") is True
+        assert "error" not in output
+        tasks_file = repo["runs_dir"] / "closeout-raw" / "tasks.json"
+        assert tasks_file.exists()
+        data = json.loads(tasks_file.read_text())
+        assert data["status"] == "no_state_available"
 
     def test_skip_on_marker(self, env_with_repo):
         """collect_tasks skips if .collect-tasks.done marker exists."""
@@ -474,6 +485,80 @@ class TestCollectTasks:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output.get("skipped") is True
+
+    def test_no_state_sentinel_writes_completion_marker_and_is_skippable(
+        self, env_with_repo
+    ):
+        """task-010 AC1: the no-state run must still write the
+        `.collect-tasks.done` marker (today the process exits before
+        reaching that line), and a second invocation must take the normal
+        skip path rather than re-attempting to collect."""
+        repo = env_with_repo
+
+        first = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_tasks",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+        assert first.returncode == 0, first.stdout + first.stderr
+        marker = repo["runs_dir"] / ".collect-tasks.done"
+        assert marker.exists()
+
+        second = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_tasks",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+        assert second.returncode == 0
+        second_output = json.loads(second.stdout)
+        assert second_output.get("skipped") is True
+
+    def test_happy_path_never_writes_the_no_state_sentinel(self, env_with_repo):
+        """task-010 AC2: with real lane-plan/lane-state data present, the
+        happy path is unchanged — no `status` key, real counted metrics."""
+        repo = env_with_repo
+        _write_lane_plan(
+            repo["repo_dir"], "datum/epic-123", ["task-001", "task-002", "task-003"]
+        )
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-001", "completed")
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-002", "completed")
+        _write_epic_marker(repo["repo_dir"], "datum-epic-123", "task-003", "failed")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_tasks",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        data = json.loads(
+            (repo["runs_dir"] / "closeout-raw" / "tasks.json").read_text()
+        )
+        assert "status" not in data
+        assert data["total"] == 3
+        assert data["completed"] == 2
+        assert data["failed_terminal"] == 1
 
 
 class TestCollectTokenMetrics:
@@ -566,6 +651,32 @@ class TestCollectTokenMetrics:
         assert data["total_input"] is None
         assert data["total_output"] is None
         assert data["total"] is None
+
+    def test_missing_db_writes_no_state_available_sentinel(self, env_with_repo):
+        """task-010 AC3: with no state.db at either
+        `.datum/runs/<run_id>/state.db` or `.datum/state.db`, the raw file
+        must carry the explicit `{"status": "no_state_available"}` sentinel
+        — the same contract collect_tasks uses — not only a free-text
+        `reason`."""
+        repo = env_with_repo
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.collect_token_metrics",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        metrics_file = repo["runs_dir"] / "closeout-raw" / "token_metrics.json"
+        data = json.loads(metrics_file.read_text())
+        assert data["status"] == "no_state_available"
 
     def test_skip_on_marker(self, env_with_repo):
         """collect_token_metrics skips if .collect-token-metrics.done exists."""
