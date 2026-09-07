@@ -378,8 +378,8 @@
       ],
       "acceptance_criteria": [
         "datum/pipeline_scheduler.py contains no `def load_state` and no `Path(\".datum/state.json\")`; it reads live state via datum.state.load_state()",
-        "tests/test_pipeline_scheduler.py exists and asserts the scheduler's dispatch decision for a given lane-plan plus state fixture is byte-identical to the decision produced from the same fixture dict under the pre-migration JSON path",
-        "The scheduler dispatches the same set of ready lanes for a state dict recording completed upstream lanes, whether that dict was seeded via datum.state.save_state or (pre-migration) via .datum/state.json",
+        "tests/test_pipeline_scheduler.py exists and asserts the scheduler's dispatch decision for a given lane-plan plus a state fixture seeded through datum.state.save_state() is byte-identical to the golden decision the pre-migration implementation produced from the same fixture dict (the golden value is a literal in the test, not recomputed by reading .datum/state.json)",
+        "The scheduler dispatches the same set of ready lanes for a state dict recording completed upstream lanes seeded via datum.state.save_state, and a stale .datum/state.json present alongside (agreeing or disagreeing with the live store) does not change that set",
         "When datum.state.load_state() returns {} the scheduler treats it as 'no state yet' and dispatches the lane-plan's root lanes without raising",
         "The module docstring no longer says it reads .datum/state.json"
       ],
