@@ -14,6 +14,7 @@ import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { answeredQuestions, answersKeptSteps, answersKeptFromSteps } from './shared/questions-steps'
 import type { PhaseArgs } from './shared/types'
 import { withPreamble } from './shared/prompts'
+import { ROADMAPPED_ADDENDA_CMD, recordedAddendumDates, pendingRoadmapAddenda } from './shared/refine-roadmap'
 
 export const meta = {
   name: 'datum-refine',
@@ -70,6 +71,9 @@ const probeSteps = contextProbeSteps({
     { name: 'agent-types', command: `jq -r '.agent_types // true' .datum/config.json` },
     // Evaluated in the script (below) whether or not the TICKET is inlined.
     { name: 'has-addenda', command: `grep -c '^## Addendum' "docs/epics/$__eb/TICKET.md" 2>/dev/null || true` },
+    // #437: the addendum dates ROADMAP.md already carries, so a re-entered
+    // refine does not append the same roadmap items again.
+    { name: 'roadmapped-addenda', command: ROADMAPPED_ADDENDA_CMD },
   ],
 })
 const readBatch = await runBatch(probeSteps, bootstrapOpts('cli', { label: 'read-context', model: model('fast') }))
@@ -188,13 +192,18 @@ async function commitRefineFiles(files: string[], message: string, label: string
 
 if (hasAddenda) {
   // Triage agent also updates ROADMAP.md if needed (collapsed update-roadmap);
-  // the script commits it below.
+  // the script commits it below. #437: it is told which addendum dates are
+  // already on the roadmap and must key every appended line by date.
+  const recordedDates = recordedAddendumDates(stepStdout(readBatch, 'roadmapped-addenda'))
+  const recordedNote = recordedDates.length > 0
+    ? `\nAlready on ROADMAP.md from an earlier run (do NOT append these again): addenda dated ${recordedDates.join(', ')}.`
+    : ''
   const triageRaw = await agent(
     withPreamble(renderPrompt(refineTriageTemplate, { ticketPath }) + `
 
 ADDITIONAL TASK: If any addenda are triaged as "roadmap" (different feature), also:
 1. Read ROADMAP.md
-2. Append the roadmap items under "## Planned"
+2. Append one line per roadmap addendum under "## Planned", ending with the marker \`(addendum YYYY-MM-DD)\` using that addendum's date${recordedNote}
 Do NOT git add or git commit anything — the workflow commits ROADMAP.md after you return.`),
     { label: 'triage-addenda', model: model('balanced') },
   )
@@ -205,10 +214,14 @@ Do NOT git add or git commit anything — the workflow commits ROADMAP.md after 
   // phase instead.
   triageResult = parseAgentJsonStrict<TriageResult>(triageRaw as string, 'triage-addenda')
   log(`Triage: ${triageResult.addenda.length} addenda, ${triageResult.roadmap_items.length} roadmapped`)
+  const pending = pendingRoadmapAddenda(triageResult.addenda, recordedDates)
   if (triageResult.roadmap_items.length > 0) {
-    // Roadmapped addenda mean ROADMAP.md must have changed; nothing to
-    // commit is the agent having skipped the append, not a clean outcome.
-    const roadmapCommit = await commitRefineFiles(['ROADMAP.md'], 'roadmap: triage items from refine', 'commit-roadmap', { allowUnchanged: false })
+    // An unrecorded roadmap addendum means ROADMAP.md must have changed;
+    // nothing to commit is then the agent having skipped the append. When
+    // every roadmap addendum is already recorded (a re-entry), an unchanged
+    // file is the correct outcome, not a failure.
+    if (pending.length === 0) log(`roadmap_already_recorded: every roadmap addendum (${recordedDates.join(', ')}) is already on ROADMAP.md — not appending again`)
+    const roadmapCommit = await commitRefineFiles(['ROADMAP.md'], 'roadmap: triage items from refine', 'commit-roadmap', { allowUnchanged: pending.length === 0 })
     log(`ROADMAP.md committed (${roadmapCommit})`)
   }
 } else {
