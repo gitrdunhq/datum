@@ -11,7 +11,7 @@ import argparse
 import json
 from pathlib import Path
 
-STATE_FILE = Path(".datum/state.json")
+from datum.state import load_state
 
 STAGE_SYMBOL = {
     "committed": "✓",
@@ -24,13 +24,6 @@ STAGE_SYMBOL = {
 }
 
 STAGE_ORDER = ["RED", "GREEN", "REFACTOR"]
-
-
-def load_state() -> dict:
-    if not STATE_FILE.exists():
-        return {}
-    with STATE_FILE.open() as f:
-        return json.load(f)
 
 
 def render_lane_row(lane_id: str, lane: dict) -> list[str]:
@@ -88,15 +81,20 @@ def render_lane_row(lane_id: str, lane: dict) -> list[str]:
 
 def detect_fallback_phase() -> str | None:
     import subprocess
+
     try:
-        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
     except Exception:
         branch = "unknown"
 
     root = Path.cwd()
     if (root / "TASKS.md").exists() and (root / "PROPERTIES.md").exists():
         return "Act"
-    
+
     epic_dir = root / "docs" / "epics" / branch
     if epic_dir.exists():
         if (epic_dir / "SPEC.md").exists() and not (root / "TASKS.md").exists():
