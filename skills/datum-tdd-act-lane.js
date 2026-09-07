@@ -2304,6 +2304,7 @@ The code under test is already merged: these tests must PASS on your first run; 
         return { task_id: taskId, status: "failed", stage: "RED", error: `red_repair_failed: ${why}` };
       }
       log(`[${taskId}] RED repair committed (${repaired.commit_sha || "n/a"}); post-RED gates passed \u2014 re-running GREEN once`);
+      if (repaired.commit_sha) red = { ...red, commit_sha: repaired.commit_sha };
       green = await witnessedAgent(
         greenRetryPrompt({
           ...greenVars,
