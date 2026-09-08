@@ -217,9 +217,8 @@ class TestFailureLayerClassification:
 
     def test_uses_failure_layer_enum_keys(self, tmp_path):
         """Keys in failures_by_layer must be valid FailureLayer values."""
-        from datum.retrospect import RetrospectConfig, run_retrospect
-
         from datum.failure_layer import FailureLayer
+        from datum.retrospect import RetrospectConfig, run_retrospect
 
         events_file = tmp_path / "runs" / "run-001" / "events.jsonl"
         _write_jsonl(
@@ -742,3 +741,31 @@ class TestMultiRunIntegration:
         # Bash used in 2 runs
         assert result.tool_usage.get("Bash", 0) == 2
         assert len(result.suggestions) > 0
+
+
+class TestRunDirectorySelection:
+    """#520: Act writes `<run>-b0`, `<run>-b1`, ... batch directories beside
+    the run directory, and runs/ holds other names too. A run, for
+    retrospect, is a non-batch directory with an events.jsonl; counting the
+    rest made `--last-n 20` run out before reaching the real runs."""
+
+    def test_batch_directories_and_non_run_names_are_not_runs(self, tmp_path):
+        from datum.retrospect import RetrospectConfig, _iter_run_dirs
+
+        runs = tmp_path / "runs"
+        for name in ["20260907-163917", "20260907-163917-b0", "20260907-163917-b1", "20260907-092806", "test", "epic-26-20260610"]:
+            (runs / name).mkdir(parents=True)
+        for name in ["20260907-163917", "20260907-092806", "20260907-163917-b0"]:
+            (runs / name / "events.jsonl").write_text("")
+        cfg = RetrospectConfig(datum_dir=tmp_path, last_n_runs=10)
+        assert [p.name for p in _iter_run_dirs(cfg)] == ["20260907-163917", "20260907-092806"]
+
+    def test_last_n_counts_base_runs_only(self, tmp_path):
+        from datum.retrospect import RetrospectConfig, _iter_run_dirs
+
+        runs = tmp_path / "runs"
+        for name in ["20260907-163917", "20260907-163917-b0", "20260907-092806", "20260907-092806-b0", "20260906-123001"]:
+            (runs / name).mkdir(parents=True)
+            (runs / name / "events.jsonl").write_text("")
+        cfg = RetrospectConfig(datum_dir=tmp_path, last_n_runs=2)
+        assert [p.name for p in _iter_run_dirs(cfg)] == ["20260907-163917", "20260907-092806"]

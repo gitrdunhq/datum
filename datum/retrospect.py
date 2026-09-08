@@ -18,12 +18,16 @@ Usage::
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from datum.failure_layer import FailureLayer
+
+# An Act batch directory (`<run>-b0`, `<run>-b1`, ...): lane-state markers, never events.
+_BATCH_DIR_RE = re.compile(r"-b\d+$")
 
 # ── Threshold: phases with total_s above this are flagged as "slow" ────────
 _SLOW_PHASE_THRESHOLD_S = 60.0
@@ -122,8 +126,18 @@ def _iter_run_dirs(cfg: RetrospectConfig) -> list[Path]:
         target = runs_root / cfg.run_id
         return [target] if target.is_dir() else []
 
+    # A run directory is `YYYYMMDD-HHMMSS`. Act's batch directories
+    # (`<run>-b0`, ...) hold lane-state markers, never events, and other
+    # names under runs/ are not runs (#520): counting them made
+    # `--last-n 20` run out before reaching the real runs.
     all_runs = sorted(
-        (p for p in runs_root.iterdir() if p.is_dir()),
+        (
+            p
+            for p in runs_root.iterdir()
+            if p.is_dir()
+            and not _BATCH_DIR_RE.search(p.name)
+            and (p / "events.jsonl").exists()
+        ),
         key=lambda p: p.name,
         reverse=True,
     )
