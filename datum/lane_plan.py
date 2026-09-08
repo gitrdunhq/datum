@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.task_ids import epic_name_for_path, iter_committed_ids
+
 
 def validate_json_schema(data: list, schema_path: Path):
     """Validate data against JSON schema if jsonschema is available."""
@@ -27,6 +29,9 @@ def validate_json_schema(data: list, schema_path: Path):
             ref_path = schema_path.parent / schema["items"]["$ref"]
             with ref_path.open() as f:
                 ref_schema = json.load(f)
+            # The inlined item schema's local `#/$defs/...` refs must resolve
+            # against the wrapper root once it lives under `items`.
+            schema.setdefault("$defs", {}).update(ref_schema.pop("$defs", {}))
             schema["items"] = ref_schema
 
         jsonschema.validate(instance=data, schema=schema)
@@ -234,28 +239,28 @@ def topological_sort(tasks: list[dict]) -> list[str]:
     return order
 
 
-_EPIC_TASKS_PATH = re.compile(r"^docs/epics/.+/tasks\.json$")
 _TASK_ID_PREFIX_PATTERN = re.compile(r"^([A-Z]{2,6})-(\d+)$")
 
 
 def epic_name_for_tasks_path(path: str) -> str:
-    """`docs/epics/<name>/tasks.json` -> `<name>` (nested names keep their
-    slashes: `docs/epics/datum/epic-1/tasks.json` -> `datum/epic-1`)."""
-    return path[len("docs/epics/") : -len("/tasks.json")]
+    """`docs/epics/<name>/tasks.json` or `.../lane-plan.json` -> `<name>`
+    (nested names keep their slashes)."""
+    return epic_name_for_path(path)
 
 
 def find_task_id_collisions(
     repo_root: Path, prefix: str, tasks: list[dict]
 ) -> list[dict]:
-    """Scan committed docs/epics/**/tasks.json content at HEAD (never the
-    uncommitted working tree, mirroring datum.task_ids.next_task_number's
-    `git ls-tree` + `git show HEAD:<path>` approach) for `<prefix>-\\d+` ids
-    that are committed under two DIFFERENT docs/epics/*/tasks.json paths.
+    """Scan committed docs/epics/*/{tasks,lane-plan}.json content at HEAD
+    (never the uncommitted working tree — see datum.task_ids.iter_committed_ids)
+    for `<prefix>-\\d+` ids DECLARED under two different epics. A tasks.json
+    and lane-plan.json of the same epic naturally share ids and never
+    collide; a depends_on reference declares nothing (review CORR-002).
 
     Only ids present in *tasks* (the current task list under review) are
     reported — a repo-wide duplicate the current lane never touches is
     outside this check's scope. Returns one record per colliding id:
-    `{"id": ..., "paths": [...]}` with all committed paths carrying that id.
+    `{"id": ..., "paths": [...]}` with all committed paths declaring that id.
 
     Outside a git work tree, or before the first commit, nothing is committed
     yet and the result is `[]`. A git failure with a HEAD present raises.
@@ -288,47 +293,22 @@ def find_task_id_collisions(
     if head.returncode != 0:
         return []
 
-    ls_tree = subprocess.run(
-        ["git", "ls-tree", "-r", "HEAD", "--name-only"],
-        cwd=git_root,
-        capture_output=True,
-        text=True,
-    )
-    if ls_tree.returncode != 0:
-        raise RuntimeError(
-            f"git ls-tree HEAD failed in {git_root}: {ls_tree.stderr.strip()}"
-        )
-    paths = [p for p in ls_tree.stdout.splitlines() if p and _EPIC_TASKS_PATH.match(p)]
+    try:
+        committed = list(iter_committed_ids(git_root))
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"git ls-tree HEAD failed in {git_root}: {e.stderr}") from e
 
+    id_to_epics: dict[str, set[str]] = {}
     id_to_paths: dict[str, set[str]] = {}
-    for path in paths:
-        show = subprocess.run(
-            ["git", "show", f"HEAD:{path}"],
-            cwd=git_root,
-            capture_output=True,
-            text=True,
-        )
-        if show.returncode != 0:
-            continue
-        try:
-            data = json.loads(show.stdout)
-        except json.JSONDecodeError:
-            continue
-        items = data.get("tasks") if isinstance(data, dict) else data
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            tid = item.get("id")
-            if isinstance(tid, str) and id_pattern.match(tid):
-                id_to_paths.setdefault(tid, set()).add(path)
+    for c in committed:
+        if c.declared and c.id in target_ids:
+            id_to_epics.setdefault(c.id, set()).add(c.epic)
+            id_to_paths.setdefault(c.id, set()).add(c.path)
 
     collisions = []
     for tid in sorted(target_ids):
-        found_paths = id_to_paths.get(tid, set())
-        if len(found_paths) >= 2:
-            collisions.append({"id": tid, "paths": sorted(found_paths)})
+        if len(id_to_epics.get(tid, set())) >= 2:
+            collisions.append({"id": tid, "paths": sorted(id_to_paths[tid])})
     return collisions
 
 

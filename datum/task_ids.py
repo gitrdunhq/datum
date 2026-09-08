@@ -1,8 +1,24 @@
+"""Repo-wide sequential task ids (#514).
+
+`next_task_number` is max(existing committed id) + 1 over the two committed
+files that declare or reference lane ids — `docs/epics/*/tasks.json` and
+`docs/epics/*/lane-plan.json` — read at HEAD through `git ls-tree` +
+`git show`, never the working tree. Nothing else is ever decoded: prose
+(SPEC.md quoting `DAT-142`), binaries and unrelated files cannot move the
+counter or crash it (review PERF-001 / CORR-001).
+"""
+
 import json
 import re
 import subprocess
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
+from typing import NamedTuple
+
+EPIC_ID_FILE_RE = re.compile(
+    r"^docs/epics/(?P<epic>.+)/(?P<name>tasks|lane-plan)\.json$"
+)
 
 
 class TaskIdPrefixError(Exception):
@@ -13,6 +29,13 @@ class TaskIdPrefixError(Exception):
             "message": message,
             "correlationId": str(uuid.uuid4()),
         }
+
+
+class CommittedId(NamedTuple):
+    path: str
+    epic: str
+    id: str
+    declared: bool  # True for a task/lane id, False for a depends_on reference
 
 
 def _derive_prefix(repo_root):
@@ -45,29 +68,79 @@ def resolve_task_id_prefix(repo_root):
     return prefix
 
 
-def next_task_number(repo_root, prefix):
-    repo_root = Path(repo_root)
+def epic_name_for_path(path: str) -> str:
+    """`docs/epics/<name>/tasks.json` or `.../lane-plan.json` -> `<name>`
+    (nested names keep their slashes: `docs/epics/datum/epic-1/tasks.json`
+    -> `datum/epic-1`). Any other path is returned unchanged."""
+    match = EPIC_ID_FILE_RE.match(path)
+    return match.group("epic") if match else path
+
+
+def _committed_epic_id_files(git_root: Path) -> list[str]:
     ls_tree = subprocess.run(
-        ["git", "ls-tree", "-r", "HEAD", "--name-only"],
-        cwd=repo_root,
+        ["git", "ls-tree", "-r", "HEAD", "--name-only", "--", "docs/epics"],
+        cwd=git_root,
         capture_output=True,
         text=True,
         check=True,
     )
-    paths = [p for p in ls_tree.stdout.splitlines() if p]
+    return [p for p in ls_tree.stdout.splitlines() if EPIC_ID_FILE_RE.match(p)]
 
-    pattern = re.compile(rf"{re.escape(prefix)}-(\d+)")
-    max_number = 0
-    for path in paths:
+
+def _items_of(data, name: str) -> list[dict]:
+    if name == "tasks":
+        items = data.get("tasks") if isinstance(data, dict) else data
+        return (
+            [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+        )
+    lanes = data.get("lanes") if isinstance(data, dict) else None
+    if not isinstance(lanes, dict):
+        return []
+    items = []
+    for key, lane in lanes.items():
+        if isinstance(lane, dict):
+            items.append(
+                {"id": lane.get("id", key), "depends_on": lane.get("depends_on", [])}
+            )
+    order = data.get("topological_order")
+    if isinstance(order, list):
+        items.extend({"id": i, "depends_on": []} for i in order if isinstance(i, str))
+    return items
+
+
+def iter_committed_ids(git_root: Path) -> Iterator[CommittedId]:
+    """Every id declared by, or referenced from, a committed
+    docs/epics/*/{tasks,lane-plan}.json at HEAD. Unparseable files are skipped."""
+    git_root = Path(git_root)
+    for path in _committed_epic_id_files(git_root):
         show = subprocess.run(
             ["git", "show", f"HEAD:{path}"],
-            cwd=repo_root,
+            cwd=git_root,
             capture_output=True,
-            text=True,
         )
         if show.returncode != 0:
             continue
-        for match in pattern.finditer(show.stdout):
-            max_number = max(max_number, int(match.group(1)))
+        try:
+            data = json.loads(show.stdout.decode("utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            continue
+        epic = epic_name_for_path(path)
+        for item in _items_of(data, EPIC_ID_FILE_RE.match(path).group("name")):
+            tid = item.get("id")
+            if isinstance(tid, str):
+                yield CommittedId(path, epic, tid, True)
+            deps = item.get("depends_on")
+            if isinstance(deps, list):
+                for dep in deps:
+                    if isinstance(dep, str):
+                        yield CommittedId(path, epic, dep, False)
 
+
+def next_task_number(repo_root, prefix):
+    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
+    max_number = 0
+    for committed in iter_committed_ids(Path(repo_root)):
+        match = pattern.match(committed.id)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
     return max_number + 1

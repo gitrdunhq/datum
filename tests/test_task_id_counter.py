@@ -190,3 +190,91 @@ def test_malformed_json_file_is_skipped_without_raising(tmp_path: Path) -> None:
     result = next_task_number(repo_root, "DAT")
 
     assert result == 6
+
+
+# ---------------------------------------------------------------------------
+# Review PERF-001 / CORR-001: the counter reads ONLY committed
+# docs/epics/*/{tasks,lane-plan}.json and parses their id fields — never raw
+# content of arbitrary files, so prose mentions and binary blobs are inert.
+# ---------------------------------------------------------------------------
+
+
+def test_prose_mention_in_spec_md_does_not_raise_the_counter(tmp_path: Path) -> None:
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/e1/tasks.json",
+        json.dumps({"tasks": [{"id": "DAT-3"}]}),
+        env,
+    )
+    _commit_file(
+        repo_root,
+        "docs/epics/e1/SPEC.md",
+        "Ids look like DAT-142 once renumbered.\n",
+        env,
+        message="add spec prose",
+    )
+    _commit_file(repo_root, "README.md", "see DAT-500 for details\n", env, "readme")
+
+    assert next_task_number(repo_root, "DAT") == 4
+
+
+def test_non_utf8_committed_blob_is_never_decoded(tmp_path: Path) -> None:
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    blob = repo_root / "assets" / "blob.bin"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"\xff\xfe\x00\x01DAT-77\x80\x81")
+    _git(["add", "assets/blob.bin"], repo_root, env)
+    _git(["commit", "-q", "-m", "add binary"], repo_root, env)
+    _commit_file(
+        repo_root,
+        "docs/epics/e1/tasks.json",
+        json.dumps({"tasks": [{"id": "DAT-2"}]}),
+        env,
+    )
+
+    assert next_task_number(repo_root, "DAT") == 3
+
+
+def test_lane_plan_ids_and_depends_on_count_toward_the_maximum(tmp_path: Path) -> None:
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    lane_plan = {
+        "lanes": {"DAT-12": {"id": "DAT-12", "depends_on": ["DAT-13"]}},
+        "topological_order": ["DAT-12"],
+        "total_lanes": 1,
+    }
+    _commit_file(
+        repo_root,
+        "docs/epics/e1/lane-plan.json",
+        json.dumps(lane_plan),
+        env,
+    )
+
+    assert next_task_number(repo_root, "DAT") == 14
+
+
+def test_only_epic_json_files_are_shown(tmp_path: Path, monkeypatch) -> None:
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(repo_root, "README.md", "hello\n", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/e1/tasks.json",
+        json.dumps({"tasks": [{"id": "DAT-1"}]}),
+        env,
+    )
+    shown: list[str] = []
+    real_run = subprocess.run
+
+    def spy(cmd, *args, **kwargs):
+        if cmd[:2] == ["git", "show"]:
+            shown.append(cmd[2])
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", spy)
+
+    assert next_task_number(repo_root, "DAT") == 2
+    assert shown == ["HEAD:docs/epics/e1/tasks.json"]

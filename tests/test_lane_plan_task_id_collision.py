@@ -330,3 +330,103 @@ def test_cli_validate_schema_and_cycle_failures_use_different_codes_from_each_ot
     assert schema_payload.get("code") is not None
     assert cycle_payload.get("code") is not None
     assert schema_payload.get("code") != cycle_payload.get("code")
+
+
+# ---------------------------------------------------------------------------
+# Review CORR-002: lane-plan.json is a committed id source too — a lane id
+# under another epic's lane-plan.json collides; the same epic's tasks.json
+# and lane-plan.json carrying one id is the normal case, not a collision; a
+# depends_on reference in another epic declares nothing.
+# ---------------------------------------------------------------------------
+
+
+def _lane_plan(*lane_ids: str) -> str:
+    return json.dumps(
+        {
+            "lanes": {i: {"id": i, "depends_on": []} for i in lane_ids},
+            "topological_order": list(lane_ids),
+            "total_lanes": len(lane_ids),
+        }
+    )
+
+
+def test_lane_id_in_another_epics_lane_plan_is_a_collision(tmp_path):
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_valid_task("DAT-9")]),
+        env,
+    )
+    _commit_file(
+        repo_root, "docs/epics/epic-b/lane-plan.json", _lane_plan("DAT-9"), env
+    )
+
+    collisions = find_task_id_collisions(repo_root, "DAT", [_valid_task("DAT-9")])
+
+    assert len(collisions) == 1
+    assert collisions[0]["id"] == "DAT-9"
+    assert set(collisions[0]["paths"]) == {
+        "docs/epics/epic-a/tasks.json",
+        "docs/epics/epic-b/lane-plan.json",
+    }
+
+
+def test_same_epic_tasks_and_lane_plan_sharing_an_id_is_not_a_collision(tmp_path):
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_valid_task("DAT-9")]),
+        env,
+    )
+    _commit_file(
+        repo_root, "docs/epics/epic-a/lane-plan.json", _lane_plan("DAT-9"), env
+    )
+
+    assert find_task_id_collisions(repo_root, "DAT", [_valid_task("DAT-9")]) == []
+
+
+def test_depends_on_reference_in_another_epic_is_not_a_collision(tmp_path):
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_valid_task("DAT-9")]),
+        env,
+    )
+    other = _valid_task("DAT-20")
+    other["depends_on"] = ["DAT-9"]
+    _commit_file(repo_root, "docs/epics/epic-b/tasks.json", json.dumps([other]), env)
+
+    assert find_task_id_collisions(repo_root, "DAT", [_valid_task("DAT-9")]) == []
+
+
+def test_lane_plan_collision_remedy_names_both_epics(tmp_path):
+    env = _hermetic_env(tmp_path)
+    repo_root = _init_repo(tmp_path / "repo", env)
+    _commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_valid_task("DAT-9")]),
+        env,
+    )
+    _commit_file(
+        repo_root, "docs/epics/epic-b/lane-plan.json", _lane_plan("DAT-9"), env
+    )
+    _commit_file(
+        repo_root,
+        "docs/epics/epic-c/tasks.json",
+        json.dumps([_valid_task("DAT-9")]),
+        env,
+    )
+
+    result = _run_validate(repo_root, "docs/epics/epic-c/tasks.json", env)
+
+    assert result.returncode != 0
+    payload = json.loads(result.stdout or result.stderr)
+    assert payload["code"] == "task_id_collision"
+    assert set(payload["collisions"][0]["epics"]) == {"epic-a", "epic-b", "epic-c"}
