@@ -97,11 +97,11 @@ class TestRetrospectPublicApi:
         assert result is not None
 
     def test_run_retrospect_returns_retrospect_result(self, tmp_path):
-        from datum.retrospect import RetrospectConfig, run_retrospect
+        from datum.retrospect import RetrospectConfig, RetrospectResult, run_retrospect
 
         cfg = RetrospectConfig(datum_dir=tmp_path)
         result = run_retrospect(cfg)
-        assert isinstance(result)
+        assert isinstance(result, RetrospectResult)
 
 
 # ── RetrospectConfig ──────────────────────────────────────────────────────────
