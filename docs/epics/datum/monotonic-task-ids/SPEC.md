@@ -96,6 +96,8 @@ The current id shape is hardcoded via `constr(pattern=r'^task-\d+$')` (or the wi
 | 6 | The `task_id_collision` gate check is a new check, not an extension of an existing named gate | Scan's `missing_symbols` confirms no `task_id_collision` symbol exists in the codebase today | confirmed | n/a |
 | 7 | Integration lanes for new epics take ids from the identical counter/sequence as regular task lanes, distinguished only by the `kind` field | Ticket: "Integration lanes ... take the next numbers the same way (no task-INT- shape for new epics; kind: integration already says what they are)" | decided | n/a |
 
+| 8 | `TASK` is an ordinary four-letter prefix like any other; the pattern does not carve it out, and the legacy malformed-id fixture case `TASK-001` in `tests/test_lane_plan_schema_int_ids.py` is updated by task-002 rather than encoded as an exclusion (addendum 2026-09-07) | The only reason to reject `TASK-001` was that the old per-epic scheme had no prefixes; under the new scheme it is a valid id, and a lookaround-free exclusion would be the Rust-regex contortion task-002's first GREEN produced | decided | Q1 |
+
 ## Classification Metadata
 
 ```yaml
