@@ -954,9 +954,6 @@ def gate_refine(yolo: bool, config: dict) -> None:
     pass_gate("Refine gate passed")
 
 
-_INT_LANE_PREFIX = "task-INT-"
-
-
 def check_zero_lanes(lane_plan: dict) -> list[str]:
     """A lane-plan.json with zero lanes must fail the gate explicitly.
 
@@ -1104,7 +1101,9 @@ def gate_plan(yolo: bool, config: dict) -> None:
             )
         )
 
-    int_lane_ids = [lid for lid in lanes if lid.startswith(_INT_LANE_PREFIX)]
+    int_lane_ids = [
+        lid for lid, lane in lanes.items() if lane.get("kind") == "integration"
+    ]
 
     # AC9.1 cuts both ways: an INT lane with no invariant row behind it is
     # an orphan (PROPERTIES.md lost its table, or it no longer parses), not a
@@ -1144,7 +1143,8 @@ def gate_plan(yolo: bool, config: dict) -> None:
         if lane.get("kind") == "integration":
             continue
         for dep in lane.get("depends_on", []):
-            if dep.startswith(_INT_LANE_PREFIX):
+            dep_lane = lanes.get(dep)
+            if dep_lane is not None and dep_lane.get("kind") == "integration":
                 direction_errors.append(
                     f"{lid} (kind={lane.get('kind', 'task')}) depends on "
                     f"integration lane {dep}"
@@ -1161,7 +1161,7 @@ def gate_plan(yolo: bool, config: dict) -> None:
     # epic has run under it.
     from datum.test_ratchet import is_test_file
 
-    task_lanes = [lanes[lid] for lid in lanes if not lid.startswith(_INT_LANE_PREFIX)]
+    task_lanes = [lane for lane in lanes.values() if lane.get("kind") != "integration"]
     if len(task_lanes) >= 3:
 
         # A layer is a parent directory, not a top-level one: the first plan
