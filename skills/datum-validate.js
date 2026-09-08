@@ -622,6 +622,63 @@ function validateVerifySteps(testCommand2, cwd, buildCommand2) {
   }
   return steps;
 }
+var qwt = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function trackedDirtySteps(wt) {
+  return [{ name: "tracked-dirty", command: `git -C ${qwt(wt)} status --porcelain --untracked-files=no`, tolerant: true }];
+}
+function trackedDirtyFiles(result) {
+  if (result.missing) return { known: false, files: [], detail: `tracked_dirty_unverified: ${describeFailure(result, "tracked-dirty")}` };
+  const step = stepResult(result, "tracked-dirty");
+  if (!step || step.exit_code !== 0) {
+    const tail = (step && (step.stderr || step.stdout) || "").trim().split("\n").slice(-3).join(" | ");
+    return { known: false, files: [], detail: `tracked_dirty_unverified: git status exited ${step ? step.exit_code : "without running"}${tail ? ` \u2014 ${tail}` : ""}` };
+  }
+  const files = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0 && !l.startsWith("??")).map((l) => l.slice(3).trim()).map((path) => path.includes(" -> ") ? path.split(" -> ")[1] : path);
+  return { known: true, files, detail: "" };
+}
+
+// skills/src/shared/commit-steps.ts
+var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var NOTHING_TO_COMMIT = "NOTHING_TO_COMMIT";
+function commitFilesSteps(o) {
+  if (/co-authored-by|claude-session|signed-off-by/i.test(o.message)) {
+    throw new Error(`commit message must not carry a trailer (policy): ${JSON.stringify(o.message)}`);
+  }
+  if (/["`$\\]/.test(o.message)) {
+    throw new Error(`commit message must not contain quotes, backticks, $ or backslashes: ${JSON.stringify(o.message)}`);
+  }
+  if (o.files.length === 0) throw new Error("commitFilesSteps: no files to commit");
+  const wt = q(o.wt);
+  const files = o.files.map(q).join(" ");
+  return [
+    { name: "status", command: `git -C ${wt} status --porcelain -- ${files}`, tolerant: true },
+    { name: "add", command: `git -C ${wt} add -- ${files}` },
+    {
+      name: "commit",
+      command: `if git -C ${wt} diff --cached --quiet -- ${files}; then echo ${NOTHING_TO_COMMIT}; else git -C ${wt} commit -q -m ${q(o.message)} -- ${files} && echo COMMITTED; fi`,
+      tolerant: true
+    },
+    { name: "sha", command: `git -C ${wt} rev-parse --short HEAD`, tolerant: true }
+  ];
+}
+function commitFilesFromSteps(result) {
+  const none = { committed: false, nothingToCommit: false, sha: "", error: "" };
+  if (result.missing) return { ...none, error: `commit_failed: batch returned no parseable result (${describeFailure(result, "commit")})` };
+  const add = stepResult(result, "add");
+  if (!add || add.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git add exited ${add ? add.exit_code : "without running"}: ${(add && (add.stderr || add.stdout) || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const commit = stepResult(result, "commit");
+  if (!commit) return { ...none, error: "commit_failed: commit step did not run" };
+  const out = (commit.stdout || "").trim();
+  if (out.split("\n").includes(NOTHING_TO_COMMIT)) return { ...none, nothingToCommit: true };
+  if (commit.exit_code !== 0) {
+    return { ...none, error: `commit_failed: git commit exited ${commit.exit_code}: ${(commit.stderr || commit.stdout || "").trim().split("\n").slice(-3).join(" | ")}` };
+  }
+  const sha = (stepStdout(result, "sha") || "").trim();
+  if (!sha) return { ...none, error: "commit_failed: commit exited 0 but no sha was printed" };
+  return { committed: true, nothingToCommit: false, sha, error: "" };
+}
 
 // skills/src/shared/main-sync-steps.ts
 var SKIP_MARKER = "SKIPPED_NO_REMOTE";
@@ -887,6 +944,16 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
 var check = checkResult;
+var lintFixes = Array.from(new Set((check?.lint_fixes || []).filter((f) => typeof f === "string" && f.trim().length > 0).map((f) => f.trim())));
+var lintCommitError = "";
+if (mainSync.ok && lintFixes.length > 0) {
+  const lintCommitSteps = commitFilesSteps({ wt: ".", files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? "" : "s"}` });
+  const lintCommit = commitFilesFromSteps(await runBatch(lintCommitSteps, stageOpts("cli", { label: "commit-lint-fixes", model: model("fast") })));
+  if (lintCommit.error) lintCommitError = lintCommit.error;
+  else if (lintCommit.nothingToCommit) log(`Lint fixes reported (${lintFixes.join(", ")}) but those files match HEAD \u2014 nothing to commit`);
+  else log(`Lint fixes committed (${lintCommit.sha}): ${lintFixes.join(", ")}`);
+}
+var dirty = !mainSync.ok || lintCommitError ? { known: true, files: [], detail: "" } : trackedDirtyFiles(await runBatch(trackedDirtySteps("."), stageOpts("cli", { label: "tracked-dirty", model: model("fast") })));
 var verifySteps = validateVerifySteps(testCommand, ".", buildCommand || null);
 var verifyRaw = !mainSync.ok ? null : await agent(
   batchCommandPrompt(verifySteps),
@@ -909,6 +976,15 @@ var hardStop = false;
 if (!mainSync.ok) {
   gateMessage = `main_sync: ${mainSync.message || "epic branch is not in sync with main"}`;
   log("Validate gate skipped \u2014 epic branch is not in sync with main.");
+} else if (lintCommitError) {
+  gateMessage = `lint_fixes_uncommitted: ${lintCommitError} (files: ${lintFixes.join(", ")})`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
+} else if (!dirty.known) {
+  gateMessage = dirty.detail;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
+} else if (dirty.files.length > 0) {
+  gateMessage = `validate_dirty_tree: tracked files modified but not committed after validate-check \u2014 ${dirty.files.join(", ")} (commit or stash them, then re-run validate)`;
+  log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
 } else if (testExit === null) {
   gateMessage = `validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, "test-verify")})`;
   log(`VALIDATION FAILED \u2014 ${gateMessage}. Cannot proceed.`);
