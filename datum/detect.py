@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 
 
@@ -184,7 +185,28 @@ def _detect_swift_test_framework(root: Path) -> str:
     return "xctest"
 
 
+def _detect_repo_runner(root: Path) -> str | None:
+    """A repo that routes tests through its own runner wins over the
+    language default (#376): eedom/caliper's `scripts/test-run.sh` runs the
+    suite in a container and a bare pytest exits before collecting. The
+    script beats a Makefile `test` target when both exist."""
+    if (root / "scripts" / "test-run.sh").is_file():
+        return "bash scripts/test-run.sh"
+    makefile = root / "Makefile"
+    if makefile.is_file():
+        try:
+            content = makefile.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        if re.search(r"^test\s*:", content, re.M):
+            return "make test"
+    return None
+
+
 def _detect_test_command(root: Path, lang: str, framework: str) -> str:
+    runner = _detect_repo_runner(root)
+    if runner:
+        return runner
     commands = {
         ("python", "pytest"): "uv run pytest -x -q",
         ("typescript", "vitest"): "npx vitest run",

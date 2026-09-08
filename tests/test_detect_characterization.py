@@ -700,3 +700,47 @@ class TestRuby:
             assert result["language"] == "ruby"
             assert result["test_framework"] == "rspec"
             assert result["test_command"] == "bundle exec rspec"
+
+
+class TestRepoRunnerConventions:
+    """#376: a repo that routes tests through its own runner (containerised
+    `scripts/test-run.sh`, a Makefile `test` target) must not get the bare
+    language default — on eedom/caliper that command is guaranteed to fail
+    before any test collects."""
+
+    def test_scripts_test_run_sh_wins_over_the_language_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "pyproject.toml").write_text("[tool.pytest]\n")
+            (root / "scripts").mkdir()
+            (root / "scripts" / "test-run.sh").write_text("#!/bin/sh\nexit 0\n")
+
+            assert detect_repo(str(root))["test_command"] == "bash scripts/test-run.sh"
+
+    def test_makefile_test_target_wins_over_the_language_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "pyproject.toml").write_text("[tool.pytest]\n")
+            (root / "Makefile").write_text("lint:\n\truff check .\n\ntest:\n\tpytest\n")
+
+            assert detect_repo(str(root))["test_command"] == "make test"
+
+    def test_runner_script_beats_makefile_when_both_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "pyproject.toml").write_text("[tool.pytest]\n")
+            (root / "Makefile").write_text("test:\n\tpytest\n")
+            (root / "scripts").mkdir()
+            (root / "scripts" / "test-run.sh").write_text("#!/bin/sh\nexit 0\n")
+
+            assert detect_repo(str(root))["test_command"] == "bash scripts/test-run.sh"
+
+    def test_makefile_without_a_test_target_keeps_the_language_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "pyproject.toml").write_text("[tool.pytest]\n")
+            (root / "Makefile").write_text(
+                "lint:\n\truff check .\n\ntest-data:\n\tmake_data\n"
+            )
+
+            assert detect_repo(str(root))["test_command"] == "uv run pytest -x -q"
