@@ -573,6 +573,29 @@ def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]
     return errors
 
 
+_RENUMBERED_ID_PATTERN = re.compile(r"^([A-Z]+)-(\d+)$")
+
+
+def _renumbered_prefix_and_start(
+    sorted_ids: list[str],
+) -> tuple[str | None, int | None]:
+    """If every task id shares one PREFIX-<n> shape (renumber_tasks already
+    ran), integration lanes continue that same counter instead of the
+    fixed task-INT-<n> scheme. Otherwise (mixed/legacy task-NNN ids) leave
+    both None so derive_integration_lanes falls back to task-INT-<n>."""
+    prefixes: set[str] = set()
+    highest = 0
+    for tid in sorted_ids:
+        m = _RENUMBERED_ID_PATTERN.match(tid)
+        if not m:
+            return None, None
+        prefixes.add(m.group(1))
+        highest = max(highest, int(m.group(2)))
+    if len(prefixes) != 1:
+        return None, None
+    return next(iter(prefixes)), highest + 1
+
+
 def build_lane_plan(
     tasks: list[dict],
     sorted_ids: list[str],
@@ -662,8 +685,13 @@ def build_lane_plan(
             md_text = properties_path.read_text(encoding="utf-8")
             invariants = parse_integration_invariants(md_text)
             if invariants:
+                int_prefix, int_start = _renumbered_prefix_and_start(sorted_ids)
                 int_lanes = derive_integration_lanes(
-                    invariants, task_map, global_test_command or ""
+                    invariants,
+                    task_map,
+                    global_test_command or "",
+                    prefix=int_prefix,
+                    start=int_start,
                 )
                 for int_lane in int_lanes:
                     int_id = int_lane["id"]

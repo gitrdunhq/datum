@@ -141,7 +141,11 @@ def unknown_covered_tasks(invariants: list[dict], tasks: dict) -> list[tuple[str
 
 
 def derive_integration_lanes(
-    invariants: list[dict], tasks: dict, test_command: str
+    invariants: list[dict],
+    tasks: dict,
+    test_command: str,
+    prefix: str | None = None,
+    start: int | None = None,
 ) -> list[dict]:
     if not invariants:
         return []
@@ -191,9 +195,13 @@ def derive_integration_lanes(
     for n, key in enumerate(ordered, start=1):
         files = [_integration_test_path(test_command, n)]
         covered = ", ".join(key)
+        if prefix is not None and start is not None:
+            lane_id = f"{prefix}-{start + n - 1}"
+        else:
+            lane_id = f"task-INT-{n}"
         lanes.append(
             {
-                "id": f"task-INT-{n}",
+                "id": lane_id,
                 "kind": "integration",
                 "expect_tests_pass": True,
                 "depends_on": list(key),
