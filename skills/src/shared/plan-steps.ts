@@ -22,6 +22,10 @@ export interface PlanBuildOpts {
   epicDir: string
   /** JSON.stringify(tasks) — one line. */
   tasksJson: string
+  /** True only for a net-new epic (no committed lane-plan.json), decided by
+   *  decideRenumber from renumberDecisionSteps's exit code — never by an
+   *  agent. Absent/false: no `--renumber` flag. */
+  renumber?: boolean
 }
 
 export function lanePlanCommand(epicDir: string): string {
@@ -37,8 +41,26 @@ export function planBuildSteps(o: PlanBuildOpts): BatchStep[] {
   if (o.tasksJson.includes(HEREDOC_TERMINATOR)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_TERMINATOR}`)
   return [
     ...writeFileSteps({ path: `${o.epicDir}/tasks.json`, content: o.tasksJson, names: TASKS_WRITE_NAMES }),
-    { name: 'lane-plan', command: lanePlanCommand(o.epicDir) },
+    { name: 'lane-plan', command: lanePlanCommand(o.epicDir) + (o.renumber ? ' --renumber' : '') },
   ]
+}
+
+/** Standalone batch (run BEFORE planBuildSteps, whose shape needs the
+ *  decision already made): a single tolerant `git show HEAD:<epicDir>/lane-plan.json`
+ *  step whose exit code tells decideRenumber whether the epic already has a
+ *  committed plan. */
+export function renumberDecisionSteps(epicDir: string): BatchStep[] {
+  return [{ name: 'lane-plan-exists', command: `git show HEAD:${epicDir}/lane-plan.json`, tolerant: true }]
+}
+
+/** Non-zero exit (no committed lane-plan.json) is net-new: renumber. Exit 0
+ *  (an existing epic) or a missing batch result (unknown state): never
+ *  renumber — renumbering an existing epic is exactly what broke task-010. */
+export function decideRenumber(result: BatchResult): boolean {
+  if (result.missing) return false
+  const step = stepResult(result, 'lane-plan-exists')
+  if (!step) return false
+  return step.exit_code !== 0
 }
 
 /** The git blob sha of what the heredoc writes: the JSON bytes plus a trailing newline. */
