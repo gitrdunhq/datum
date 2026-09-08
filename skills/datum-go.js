@@ -615,6 +615,20 @@ function laneStateReadScript(vars) {
   return fencedScript(laneStateReadPrompt(vars));
 }
 
+// skills/src/shared/events-steps.ts
+var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+function laneEventSteps(o) {
+  return Object.keys(o.results).map((id) => {
+    const r = o.results[id];
+    const reason = r.error ? ` --reason ${q2(r.error.replace(/\s+/g, " ").slice(0, 500))}` : "";
+    return {
+      name: `event-${id.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
+      command: `datum events lane --run-id ${q2(o.runId)} --task-id ${q2(id)} --status ${q2(r.status)} --stage ${q2(r.stage || "UNKNOWN")}${reason}`,
+      tolerant: true
+    };
+  });
+}
+
 // skills/src/shared/agent-types.ts
 var AGENT_TYPE_TABLE = {
   red: "datum-red",
@@ -742,12 +756,12 @@ function isStaleState(state2, currentBranch2) {
   if (!state2 || !currentBranch2) return false;
   return state2.branch !== currentBranch2;
 }
-var q2 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
+var q3 = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
 function pipelineStateSaveSteps(o) {
   const testsFlag = o.phase === "validate" ? o.testsPass ? " --tests-pass" : " --tests-fail" : "";
   return [{
     name: "save",
-    command: `datum pipeline-state-save --phase ${q2(o.phase)} --run-id ${q2(o.runId)} --route ${q2(o.route)}${testsFlag}`,
+    command: `datum pipeline-state-save --phase ${q3(o.phase)} --run-id ${q3(o.runId)} --route ${q3(o.route)}${testsFlag}`,
     tolerant: true
   }];
 }
@@ -1264,6 +1278,12 @@ if (shouldRun("act", 3)) {
         log(`    ${r?.error || ""}`);
       }
       log("  To approve: add the listed paths to that lane's `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.");
+    }
+    if (Object.keys(actResults).length > 0) {
+      const eventSteps = laneEventSteps({ runId, results: actResults });
+      const eventsRaw = await runBatch(eventSteps, stageOpts("cli", { label: "act-events", phase: "Act", model: model("fast") }));
+      const recorded = eventSteps.filter((s) => stepResult(eventsRaw, s.name)?.exit_code === 0).length;
+      if (recorded < eventSteps.length) log(`[warn] act_events_partial: ${recorded}/${eventSteps.length} lane events recorded (${describeFailure(eventsRaw, "act-events")})`);
     }
     if (actFailures.length > 0 || actNeedsWrite.length > 0) {
       try {
