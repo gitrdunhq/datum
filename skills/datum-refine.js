@@ -844,6 +844,96 @@ function answersKeptFromSteps(result, answered) {
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
 
+// assets/schemas/task.schema.json
+var task_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "DATUM Task",
+  $defs: {
+    laneId: {
+      type: "string",
+      pattern: "^(?:task-\\d+|task-INT-\\d+|[A-Z]{2,3}-\\d+|(?:[A-SU-Z][A-Z]{3}|T[B-Z][A-Z]{2}|TA[A-RT-Z][A-Z]|TAS[A-JL-Z])-\\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\\d+|[A-Z]{6}-\\d+)$",
+      description: "Single source of the lane id pattern: datum/id_pattern.py and skills/src/shared/lane-id-pattern.ts both load it from here (#514)."
+    }
+  },
+  type: "object",
+  required: [
+    "id",
+    "title",
+    "acceptance_criteria",
+    "files",
+    "red_note"
+  ],
+  properties: {
+    id: {
+      $ref: "#/$defs/laneId"
+    },
+    slug: {
+      type: "string",
+      pattern: "^[a-z0-9][a-z0-9-]{2,60}$"
+    },
+    title: {
+      type: "string",
+      minLength: 1
+    },
+    description: {
+      type: "string"
+    },
+    acceptance_criteria: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    files: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    reads: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      default: []
+    },
+    depends_on: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/laneId"
+      },
+      default: []
+    },
+    introduces_stubs: {
+      type: "boolean",
+      default: false
+    },
+    red_note: {
+      type: "string",
+      minLength: 1
+    },
+    estimated_loc: {
+      type: "integer",
+      minimum: 0,
+      default: 0
+    },
+    task_complexity: {
+      type: "string",
+      enum: [
+        "behavioral",
+        "structural"
+      ],
+      default: "behavioral"
+    }
+  }
+};
+
+// skills/src/shared/lane-id-pattern.ts
+var LANE_ID_PATTERN = task_schema_default.$defs.laneId.pattern;
+var LANE_ID_RE = new RegExp(LANE_ID_PATTERN);
+
 // skills/src/shared/lane-steps.ts
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
