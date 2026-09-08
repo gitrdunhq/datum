@@ -1102,7 +1102,7 @@ function testExitCode(stdout) {
   if (matches.length === 0) return null;
   return Number(matches[matches.length - 1][1]);
 }
-var RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|repo_root|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`;
+var RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`;
 function postRedSteps(o) {
   const steps = [];
   if (o.acCount > 0) {
