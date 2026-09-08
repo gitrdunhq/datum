@@ -323,6 +323,11 @@ function parseBatchResult(raw, steps2) {
     if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
       return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
     }
+    if (/^\[\s*\{\s*"name"\s*:/.test(text)) {
+      const names = [...text.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map((m) => m[1]);
+      const complete = names.slice(0, -1);
+      return { steps: [], failed: null, missing: true, scriptError: `batch_truncated: the runner's reply is a step array cut before it closed (${text.length} chars; last complete step: ${complete[complete.length - 1] ?? "none"}; cut inside: ${names[names.length - 1] ?? "unknown"}) \u2014 the script's stdout was too long to relay whole` };
+    }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results = arr.map(asStepResult).filter((r) => r !== null);
