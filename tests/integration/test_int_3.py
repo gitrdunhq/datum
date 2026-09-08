@@ -30,8 +30,11 @@ actually-merged commits required.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import sqlite3
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -253,6 +256,80 @@ class TestInt11VitestUsesFakeAgentMockedBatchPattern:
         assert integration_batch is not None
         assert "JSON.stringify(Object.entries(steps)" in calls_batch.group(0)
         assert "JSON.stringify(Object.entries(steps)" in integration_batch.group(0)
+
+
+class TestII003MaxExistingCounterScanPerformance:
+    """II-003: the `max(existing)` counter scan (`git ls-files` / `git
+    ls-tree -r HEAD --name-only` + one `git show HEAD:<path>` per file)
+    completes in under 2 seconds for 100 synthetic epics in a temp repo.
+    task-009 implements this scan as datum.task_ids.next_task_number."""
+
+    def test_counter_scan_completes_under_two_seconds_for_100_synthetic_epics(
+        self, tmp_path: Path
+    ) -> None:
+        import time
+
+        from datum.task_ids import next_task_number
+
+        env = os.environ.copy()
+        env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+        env["GIT_CONFIG_SYSTEM"] = os.devnull
+        env["GIT_AUTHOR_NAME"] = "Datum Test"
+        env["GIT_AUTHOR_EMAIL"] = "datum-test@example.com"
+        env["GIT_COMMITTER_NAME"] = "Datum Test"
+        env["GIT_COMMITTER_EMAIL"] = "datum-test@example.com"
+
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main"],
+            cwd=repo_root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "core.hooksPath", "/dev/null"],
+            cwd=repo_root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        for i in range(100):
+            epic_dir = repo_root / "docs" / "epics" / f"epic-{i}"
+            epic_dir.mkdir(parents=True, exist_ok=True)
+            payload = {"tasks": [{"id": f"DAT-{i + 1}", "depends_on": []}]}
+            (epic_dir / "tasks.json").write_text(json.dumps(payload))
+
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo_root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "add 100 synthetic epics"],
+            cwd=repo_root,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        start = time.monotonic()
+        result = next_task_number(repo_root, "DAT")
+        elapsed = time.monotonic() - start
+
+        assert result == 101
+        assert elapsed < 2.0, (
+            f"max(existing) counter scan over 100 synthetic epics took "
+            f"{elapsed:.3f}s, expected under 2.0s"
+        )
 
 
 class TestInvQ7MissingDbNeverRaisesAndDocRecordsSupersession:
