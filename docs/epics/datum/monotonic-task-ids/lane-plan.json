@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "total_lanes": 21,
+  "total_lanes": 22,
   "topological_order": [
     "task-001",
     "task-002",
@@ -11,6 +11,7 @@
     "task-008",
     "task-009",
     "task-010",
+    "task-016",
     "task-007",
     "task-011",
     "task-012",
@@ -74,7 +75,9 @@
     "tests/integration/test_int_5.py": "task-INT-5",
     "tests/integration/test_int_6.py": "task-INT-6",
     "tests/test_lane_plan_schema_int_ids.py": "task-002",
-    "skills/src/shared/lane-steps.test.ts": "task-006"
+    "skills/src/shared/lane-steps.test.ts": "task-006",
+    "skills/src/shared/plan-steps.ts": "task-016",
+    "skills/src/shared/plan-steps.test.ts": "task-016"
   },
   "lanes": {
     "task-001": {
@@ -323,8 +326,9 @@
         "Assignment follows dependency order: for tasks where task-001 depends_on task-002, task-002 receives the lower number, so no lane's number is greater than a lane that depends on it",
         "After renumbering, no value anywhere in the returned structure matches ^task-\\d+$ \u2014 every depends_on reference is rewritten alongside the id it targets",
         "A task whose id is already 'DAT-142' is left untouched and its number is not reissued to another lane",
-        "`datum lane-plan --input tasks.json --output ...` (no extra flag, no interactive input) rewrites tasks.json ON DISK so the file itself holds <PREFIX>-<n> ids, and does so before schema validation and lane-plan construction run",
-        "`datum lane-plan --validate --input tasks.json` on a tasks.json containing 'task-001'/'task-002' leaves that file byte-identical \u2014 the renumber step never runs on the validate path (Req 7 AC2)"
+        "`datum lane-plan --renumber --input tasks.json --output ...` rewrites tasks.json ON DISK so the file itself holds <PREFIX>-<n> ids, before schema validation and lane-plan construction run; without `--renumber`, `datum lane-plan` leaves every id untouched, so an existing epic regenerates its lane plan with its `task-NNN` ids intact",
+        "`datum lane-plan --validate --input tasks.json` leaves that file byte-identical even when `--renumber` is also passed \u2014 the renumber step never runs on the validate path (Req 7 AC2)",
+        "With `--renumber`, the prefix comes from datum.task_ids.resolve_task_id_prefix(repo_root) and the start from datum.task_ids.next_task_number(repo_root, prefix); when the repo has no git HEAD or no committed prefixed id, the start is 1 and no error is raised"
       ],
       "red_note": "pytest, two new test files: a pure-function file for renumber_tasks (topological ordering, depends_on rewrite, already-prefixed passthrough) and a wiring file that drives datum.lane_plan.main() with patched sys.argv in a tmp_path repo. The byte-identical --validate assertion is load-bearing and must be written as a RED case, not left to review: read tasks.json bytes before and after and assert equality. Note for the implementer: renumbering must mutate the file on disk, not only the in-memory list normalize_input() returns.",
       "introduces_stubs": false,
@@ -645,6 +649,29 @@
         "task-013"
       ],
       "stage": "queued"
+    },
+    "task-016": {
+      "id": "task-010",
+      "title": "The plan phase passes --renumber to datum lane-plan only for a net-new epic",
+      "files": [
+        "skills/src/shared/plan-steps.ts",
+        "skills/src/shared/plan-steps.test.ts"
+      ],
+      "acceptance_criteria": [
+        "planBuildSteps({ epicDir, tasksJson, renumber: true }) produces a `datum lane-plan` command containing ` --renumber`; with renumber false or absent the command contains no `--renumber`",
+        "datum-plan.ts decides `renumber` deterministically from the plan-build batch: a step `git show HEAD:<epicDir>/lane-plan.json` that exits non-zero (no committed plan) means net-new and renumber is true; exit 0 means an existing epic and renumber is false \u2014 the decision is read from the step's exit code, never from an agent",
+        "The `--validate` step the plan gate runs never carries `--renumber`",
+        "A plan-steps.test.ts case runs the generated command shape for both branches and pins that the validate step is unchanged"
+      ],
+      "introduces_stubs": false,
+      "estimated_loc": 180,
+      "depends_on": [
+        "task-010"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "renumber-tasks-after-decompose",
+      "kind": "behavioral"
     }
   }
 }

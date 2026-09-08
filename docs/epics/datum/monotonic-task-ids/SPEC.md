@@ -23,10 +23,10 @@ The current id shape is hardcoded via `constr(pattern=r'^task-\d+$')` (or the wi
    - AC: The counter scan is scoped to the current git branch's committed tree only; uncommitted working-tree changes and other local branches are not scanned, so two epics planned concurrently on separate branches can independently compute the same next number.
 
 3. **A deterministic post-decompose renumbering step rewrites `task-NNN` ids to `<PREFIX>-<n>` in topological order.**
-   - AC: `datum lane-plan` (or an explicit `datum lane-plan --renumber` step invoked as part of the same command) runs immediately after the decomposer emits `tasks.json` with `task-001`-style ids and before the plan gate validates the epic.
+   - AC: `datum lane-plan --renumber`, invoked by the plan phase, runs immediately after the decomposer emits `tasks.json` with `task-001`-style ids and before the plan gate validates the epic.
    - AC: Renumbering visits lanes in dependency order (a lane's id is assigned only after all lanes it depends on already have their final ids assigned), so a lower `<PREFIX>-<n>` number never depends on a higher one for lanes in the same decompose batch.
    - AC: Every `depends_on` reference in `tasks.json` that points at a renumbered `task-NNN` id is rewritten to the corresponding `<PREFIX>-<n>` value; no `depends_on` entry references a stale `task-NNN` id after renumbering completes.
-   - AC: Renumbering requires no interactive input or additional CLI flags beyond invoking `datum lane-plan`; a fully automated `datum lane-plan` run on a fresh epic produces a `tasks.json` with `<PREFIX>-<n>` ids with no operator step in between.
+   - AC: Renumbering requires no interactive input and no operator step: the plan phase passes `--renumber` to `datum lane-plan` itself for a fresh epic (one with no committed lane-plan.json), and a bare `datum lane-plan` never renumbers, so an existing epic regenerates unchanged (Assumption 9, addendum 2026-09-07).
 
 4. **Integration lanes synthesized by `build_lane_plan` take sequential `<PREFIX>-<n>` ids from the same counter, not the `task-INT-` shape.**
    - AC: For an epic planned after this change ships, every lane produced by `build_lane_plan`'s integration-lane synthesis has an id matching `<PREFIX>-\d+`, drawn from the same monotonic counter as regular task lanes (no `task-INT-` id is emitted for a new epic).
@@ -67,7 +67,7 @@ The current id shape is hardcoded via `constr(pattern=r'^task-\d+$')` (or the wi
 | Requirement | Target |
 |---|---|
 | Counter computation reads only committed content on the current branch | No working-tree file writes are scanned; `git show HEAD:<path>` (or equivalent read-only git plumbing) is the sole read path for existing ids (Req 2) |
-| Renumbering step adds no additional required CLI invocation | `datum lane-plan` alone (no separate manual step) performs decompose + renumber before the plan gate for a fresh epic (Req 3) |
+| Renumbering step adds no additional required CLI invocation | The plan phase alone (no separate manual step) runs decompose then `datum lane-plan --renumber` before the plan gate for a fresh epic; the flag is explicit so a re-run on an existing epic never renumbers (Req 3, addendum 2026-09-07) |
 | Existing epic validation has zero regressions | 100% of epics present in `docs/epics/` at ship time pass `datum lane-plan --validate` with exit code 0 and zero file diffs (Req 7) |
 | Shared pattern has exactly one source definition | Zero duplicated `task-\d+`/`task-INT-\d+`-only literal regexes remain in `datum/models/*.py`, `datum/gate.py`, `skills/src/shared/lane-steps.ts`, `skills/src/triage-classify.ts`, `skills/src/datum-tdd-act-lane.ts`, `datum/lane_plan.py` (Req 5) |
 
@@ -97,6 +97,8 @@ The current id shape is hardcoded via `constr(pattern=r'^task-\d+$')` (or the wi
 | 7 | Integration lanes for new epics take ids from the identical counter/sequence as regular task lanes, distinguished only by the `kind` field | Ticket: "Integration lanes ... take the next numbers the same way (no task-INT- shape for new epics; kind: integration already says what they are)" | decided | n/a |
 
 | 8 | `TASK` is an ordinary four-letter prefix like any other; the pattern does not carve it out, and the legacy malformed-id fixture case `TASK-001` in `tests/test_lane_plan_schema_int_ids.py` is updated by task-002 rather than encoded as an exclusion (addendum 2026-09-07) | The only reason to reject `TASK-001` was that the old per-epic scheme had no prefixes; under the new scheme it is a valid id, and a lookaround-free exclusion would be the Rust-regex contortion task-002's first GREEN produced | decided | Q1 |
+
+| 9 | Renumbering is an explicit `--renumber` flag on `datum lane-plan`, passed by the plan phase only when the epic has no committed lane-plan.json; a bare `datum lane-plan` never renumbers, so existing epics regenerate unchanged (addendum 2026-09-07) | task-010's GREEN showed an unconditional renumber breaks every existing epic's regeneration path (`test_regenerating_lane_plan_keeps_each_lanes_github_issue`); the ticket named the explicit flag as one of two shapes | decided | Q2 |
 
 ## Classification Metadata
 
