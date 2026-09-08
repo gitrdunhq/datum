@@ -118,20 +118,44 @@ def _items_of(data, name: str) -> list[dict]:
     return items
 
 
+def _committed_epic_id_blobs(
+    git_root: Path, paths: list[str]
+) -> Iterator[tuple[str, bytes]]:
+    """Yield (path, bytes) for every committed epic id file through ONE
+    `git cat-file --batch` (#514 FU-2: one `git show` per file was 26
+    spawns per call, twice per plan). Missing objects are skipped."""
+    if not paths:
+        return
+    proc = subprocess.run(
+        ["git", "cat-file", "--batch"],
+        cwd=git_root,
+        input="".join(f"HEAD:{p}\n" for p in paths).encode("utf-8"),
+        capture_output=True,
+        check=True,
+    )
+    out = proc.stdout
+    pos = 0
+    for path in paths:
+        nl = out.find(b"\n", pos)
+        if nl < 0:
+            return
+        header = out[pos:nl].decode("utf-8", errors="replace").split()
+        pos = nl + 1
+        if len(header) < 3 or header[1] == "missing":
+            continue
+        size = int(header[2])
+        yield path, out[pos : pos + size]
+        pos += size + 1  # the newline cat-file appends after each object
+
+
 def iter_committed_ids(git_root: Path) -> Iterator[CommittedId]:
     """Every id declared by, or referenced from, a committed
     docs/epics/*/{tasks,lane-plan}.json at HEAD. Unparseable files are skipped."""
     git_root = Path(git_root)
-    for path in _committed_epic_id_files(git_root):
-        show = subprocess.run(
-            ["git", "show", f"HEAD:{path}"],
-            cwd=git_root,
-            capture_output=True,
-        )
-        if show.returncode != 0:
-            continue
+    paths = _committed_epic_id_files(git_root)
+    for path, blob in _committed_epic_id_blobs(git_root, paths):
         try:
-            data = json.loads(show.stdout.decode("utf-8", errors="replace"))
+            data = json.loads(blob.decode("utf-8", errors="replace"))
         except json.JSONDecodeError:
             continue
         epic = epic_name_for_path(path)

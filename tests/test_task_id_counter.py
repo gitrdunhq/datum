@@ -256,7 +256,11 @@ def test_lane_plan_ids_and_depends_on_count_toward_the_maximum(tmp_path: Path) -
     assert next_task_number(repo_root, "DAT") == 14
 
 
-def test_only_epic_json_files_are_shown(tmp_path: Path, monkeypatch) -> None:
+def test_committed_epic_files_are_read_in_one_cat_file_batch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """#514 closeout FU-2: one `git cat-file --batch` for every epic id file,
+    never one `git show` per file (26 files x 2 calls per plan before)."""
     env = _hermetic_env(tmp_path)
     repo_root = _init_repo(tmp_path / "repo", env)
     _commit_file(repo_root, "README.md", "hello\n", env)
@@ -266,15 +270,28 @@ def test_only_epic_json_files_are_shown(tmp_path: Path, monkeypatch) -> None:
         json.dumps({"tasks": [{"id": "DAT-1"}]}),
         env,
     )
-    shown: list[str] = []
+    _commit_file(
+        repo_root,
+        "docs/epics/e2/tasks.json",
+        json.dumps({"tasks": [{"id": "DAT-4"}]}),
+        env,
+    )
+    _commit_file(
+        repo_root,
+        "docs/epics/e2/lane-plan.json",
+        json.dumps({"lanes": {"DAT-4": {"id": "DAT-4"}}}),
+        env,
+    )
+    spawned: list[list[str]] = []
     real_run = subprocess.run
 
     def spy(cmd, *args, **kwargs):
-        if cmd[:2] == ["git", "show"]:
-            shown.append(cmd[2])
+        if isinstance(cmd, list) and cmd[:1] == ["git"]:
+            spawned.append(list(cmd[:3]))
         return real_run(cmd, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", spy)
 
-    assert next_task_number(repo_root, "DAT") == 2
-    assert shown == ["HEAD:docs/epics/e1/tasks.json"]
+    assert next_task_number(repo_root, "DAT") == 5
+    assert ["git", "show"] not in [c[:2] for c in spawned]
+    assert [c[:2] for c in spawned].count(["git", "cat-file"]) == 1
