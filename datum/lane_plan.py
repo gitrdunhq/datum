@@ -943,6 +943,12 @@ def main() -> None:
                         "id": records[0]["id"],
                         "paths": records[0]["paths"],
                         "collisions": records,
+                        # II-002: the halt names the remedy; nothing renumbers on its own.
+                        "remedy": (
+                            f"{records[0]['id']} is used by "
+                            + " and ".join(records[0]["paths"])
+                            + " — run `datum lane-plan --renumber` on the newer epic"
+                        ),
                     }
                 )
             )
