@@ -526,8 +526,8 @@ var task_schema_default = {
   $defs: {
     laneId: {
       type: "string",
-      pattern: "^(?:task-\\d+|task-INT-\\d+|[A-Z]{2,3}-\\d+|(?:[A-SU-Z][A-Z]{3}|T[B-Z][A-Z]{2}|TA[A-RT-Z][A-Z]|TAS[A-JL-Z])-\\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\\d+|[A-Z]{6}-\\d+)$",
-      description: "Single source of the lane id pattern: datum/id_pattern.py and skills/src/shared/lane-id-pattern.ts both load it from here (#514)."
+      pattern: "^(?:task-\\d+|task-INT-\\d+|[A-Z]{2,4}-\\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\\d+|[A-Z]{6}-\\d+)$",
+      description: "Single source of the lane id pattern: datum/id_pattern.py and skills/src/shared/lane-id-pattern.ts both load it from here (#514). Accepts task-N, task-INT-N and PREFIX-N with a 2-6 uppercase-letter prefix; TASK is ordinary (Assumption 8). Only the literal DATUM- prefix is excluded, spelled out lookaround-free because pydantic validates with the Rust regex crate."
     }
   },
   type: "object",
