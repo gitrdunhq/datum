@@ -8,6 +8,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, conint, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class TaskComplexity(Enum):
     behavioral = "behavioral"
@@ -15,7 +17,7 @@ class TaskComplexity(Enum):
 
 
 class DatumTask(BaseModel):
-    id: constr(pattern=r"^task-\d+$")
+    id: constr(pattern=LANE_ID_PATTERN)
     # Descriptive name (#352): ids stay task-NNN for the schema/skeleton
     # contract; the human-readable handle lives here.
     slug: constr(pattern=r"^[a-z0-9][a-z0-9-]{2,60}$") | None = None
@@ -23,7 +25,7 @@ class DatumTask(BaseModel):
     description: str | None = None
     acceptance_criteria: list[str] = Field(..., min_length=1)
     files: list[str] = Field(..., min_length=1)
-    depends_on: list[constr(pattern=r"^task-\d+$")] | None = []
+    depends_on: list[constr(pattern=LANE_ID_PATTERN)] | None = []
     introduces_stubs: bool | None = False
     red_note: constr(min_length=1)
     estimated_loc: conint(ge=0) | None = 0
