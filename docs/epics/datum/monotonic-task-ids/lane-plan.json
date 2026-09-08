@@ -251,7 +251,7 @@
       "stage": "queued",
       "slug": "ts-shared-lane-id-pattern",
       "kind": "behavioral",
-      "test_command": "npx vitest run",
+      "test_command": "npx vitest run skills/src/shared/lane-id-pattern.test.ts skills/src/shared/lane-steps.test.ts",
       "github_issue": 528
     },
     "task-008": {
@@ -672,7 +672,9 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "renumber-tasks-after-decompose",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "test_command": "npx vitest run skills/src/shared/plan-steps.test.ts",
+      "red_note": "RED must fail before GREEN: at least one test calls planBuildSteps({ epicDir, tasksJson, renumber: true }) and asserts the lane-plan step's command contains ' --renumber' \u2014 that assertion fails on the current source, which has no renumber option. A RED whose tests all pass on the current code (the no-flag branch, the validate step) is green-blind and is rejected."
     }
   }
 }
