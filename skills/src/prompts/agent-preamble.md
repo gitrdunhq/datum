@@ -4,7 +4,7 @@
 
 ## CLI Rule
 - All commands use `datum <command>` — never `uv run`, `python3 scripts/`, or bare tool invocations
-- Test command comes from `.datum/config.json` `test_command` field — read it, don't guess
+- The test command is the `test_command` in your brief (the same value as `.datum/config.json`'s `test_command`, which lane worktrees carry only because datum copied it) — never guess or fall back to a default when a file is missing
 
 ## Coding Rules
 - Functional core / imperative shell — business logic is pure, side effects at edges
@@ -19,7 +19,7 @@
 - Always RED before GREEN — write failing test first, confirm failure
 - Strong assertions — verify specific values, not just "no error"
 - Negative paths required — test invalid inputs, timeouts, state violations
-- Run tests with the configured test command (from `.datum/config.json`)
+- Run tests with the configured test command (`test_command` from your brief)
 
 ## File Conventions
 - Follow the repo's existing style (detected by datum-awake)

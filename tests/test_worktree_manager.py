@@ -1560,3 +1560,57 @@ class TestSyncArgsReadFromMainCheckout:
             "run-uv-main", "epic/test", ["lane-a"], repo_root=root_wt
         )
         assert log.read_text().splitlines() == ["sync --frozen --all-extras"]
+
+
+class TestLaneWorktreeCarriesResolvedConfig:
+    """#373: .datum/config.json is gitignored, so a fresh lane worktree had
+    none and every stage that read it fell back to the default test command
+    (caliper wf_bffff293-f07: `uv run pytest -x -q` tripped the container
+    guard). Setup copies the main checkout's resolved config into each lane."""
+
+    def test_setup_copies_the_main_checkout_config_into_every_lane(self, repo: Path):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / ".datum").mkdir()
+        payload = json.dumps({"test_command": "bash scripts/test-run.sh --affected"})
+        (repo / ".datum" / "config.json").write_text(payload)
+
+        mapping = setup_pipeline_worktrees(
+            "r1", "epic/test", ["task-1", "task-2"], repo_root=repo, link_dirs=[]
+        )
+
+        for lane in ("task-1", "task-2"):
+            copied = mapping[lane] / ".datum" / "config.json"
+            assert copied.is_file(), f"{lane} has no .datum/config.json"
+            assert copied.read_text() == payload
+
+    def test_setup_without_a_main_config_creates_nothing_and_does_not_fail(
+        self, repo: Path
+    ):
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        mapping = setup_pipeline_worktrees(
+            "r1", "epic/test", ["task-1"], repo_root=repo, link_dirs=[]
+        )
+
+        assert not (mapping["task-1"] / ".datum" / "config.json").exists()
+
+    def test_setup_from_a_root_worktree_copies_the_main_checkouts_config(
+        self, repo: Path
+    ):
+        """The batch root worktree has no config either (it is a checkout);
+        the copy must come from the MAIN checkout, like sync_args does."""
+        from datum.worktree_manager import setup_pipeline_worktrees
+
+        (repo / ".datum").mkdir()
+        (repo / ".datum" / "config.json").write_text('{"test_command": "make test"}')
+        root_wt = repo / ".datum" / "worktrees" / "r1-root"
+        _git(["worktree", "add", "--detach", str(root_wt), "epic/test"], cwd=repo)
+
+        mapping = setup_pipeline_worktrees(
+            "r1", "epic/test", ["task-1"], repo_root=root_wt, link_dirs=[]
+        )
+
+        assert (mapping["task-1"] / ".datum" / "config.json").read_text() == (
+            '{"test_command": "make test"}'
+        )

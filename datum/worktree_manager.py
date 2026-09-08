@@ -496,6 +496,21 @@ def link_shared_dirs(
     return linked
 
 
+def copy_lane_config(worktree_path: Path, source_root: Path) -> bool:
+    """Copy the MAIN checkout's resolved `.datum/config.json` into a lane
+    worktree (#373). The file is gitignored, so a fresh worktree has none and
+    every stage or `datum` command that read it from cwd fell back to the
+    default test command (caliper wf_bffff293-f07: `uv run pytest -x -q`
+    tripped the container guard). Returns True when a copy was written."""
+    source = source_root / ".datum" / "config.json"
+    if not source.is_file():
+        return False
+    target = worktree_path / ".datum" / "config.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
+    return True
+
+
 def setup_pipeline_worktrees(
     run_id: str,
     epic_branch: str,
@@ -533,6 +548,7 @@ def setup_pipeline_worktrees(
             epic_branch, lane_id, run_id, base_sha, repo_root=repo_root
         )
         disable_worktree_hooks(mapping[lane_id], repo_root)
+        copy_lane_config(mapping[lane_id], source_root)
         # Own install first (pnpm/uv global cache); symlink whatever remains.
         installed = install_lane_dependencies(mapping[lane_id], sync_args)
         link_shared_dirs(
