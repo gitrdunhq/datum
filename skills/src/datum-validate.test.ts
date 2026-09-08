@@ -254,3 +254,21 @@ describe('datum-validate — the gate verdict fields datum-go reads are exported
     expect(src).toMatch(/gateMessage = `tests red/)
   })
 })
+
+describe('#519 — Validate commits the lint fixes it applied and never leaves the tree dirty', () => {
+  it('commits the agent-reported lint_fixes through commitFilesSteps before the independent verify', () => {
+    expect(validateSrc).toMatch(/import \{[^}]*commitFilesSteps[^}]*commitFilesFromSteps[^}]*\} from '\.\/shared\/commit-steps'/)
+    expect(validateSrc).toMatch(/commitFilesSteps\(\{ wt: '\.', files: lintFixes, message: /)
+    expect(validateSrc.indexOf('commit-lint-fixes')).toBeLessThan(validateSrc.indexOf("label: 'validate-verify'"))
+  })
+
+  it('a failed lint-fix commit is a named halt', () => {
+    expect(validateSrc).toMatch(/lint_fixes_uncommitted/)
+  })
+
+  it('checks tracked files after the commit and halts by name when the phase left the tree dirty', () => {
+    expect(validateSrc).toMatch(/trackedDirtySteps\('\.'\)/)
+    expect(validateSrc).toMatch(/trackedDirtyFiles\(/)
+    expect(validateSrc).toMatch(/validate_dirty_tree/)
+  })
+})

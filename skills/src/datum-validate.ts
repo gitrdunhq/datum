@@ -4,7 +4,8 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode, buildVerifyVerdict } from './shared/lane-steps'
-import { validateVerifySteps } from './shared/validate-steps'
+import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles } from './shared/validate-steps'
+import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
 import { runBatch } from './shared/agents'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
@@ -107,6 +108,25 @@ ${renderPrompt(validateCheckTemplate, {
 // lint/AC-gap telemetry, never the pass/fail verdict itself.
 const check = checkResult as ValidateCheck | null
 
+// ── #519: a phase that mutates the tree leaves a commit or nothing ─────────
+// The validate-check agent auto-fixes lint in files the epic touched and
+// reports them as lint_fixes. Nothing committed them: Review then diffed the
+// committed branch and never saw the fixed files, and the next Act found a
+// dirty checkout. Commit exactly the reported files through
+// commitFilesSteps (a failed commit is a named halt), then confirm no
+// tracked file is still dirty — a fix the agent applied but did not report
+// would otherwise slip through the same way.
+const lintFixes: string[] = Array.from(new Set((check?.lint_fixes || []).filter((f): f is string => typeof f === 'string' && f.trim().length > 0).map((f) => f.trim())))
+let lintCommitError = ''
+if (mainSync.ok && lintFixes.length > 0) {
+  const lintCommitSteps = commitFilesSteps({ wt: '.', files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? '' : 's'}` })
+  const lintCommit = commitFilesFromSteps(await runBatch(lintCommitSteps, stageOpts('cli', { label: 'commit-lint-fixes', model: model('fast') })))
+  if (lintCommit.error) lintCommitError = lintCommit.error
+  else if (lintCommit.nothingToCommit) log(`Lint fixes reported (${lintFixes.join(', ')}) but those files match HEAD — nothing to commit`)
+  else log(`Lint fixes committed (${lintCommit.sha}): ${lintFixes.join(', ')}`)
+}
+const dirty = !mainSync.ok || lintCommitError ? { known: true, files: [], detail: '' } : trackedDirtyFiles(await runBatch(trackedDirtySteps('.'), stageOpts('cli', { label: 'tracked-dirty', model: model('fast') })))
+
 // ── Deterministic test-verify (green-blindness gate, mirrors RED's post-red
 // batch) ───────────────────────────────────────────────────────────────────
 // The validate-check agent above self-reports tests_pass from a run IT
@@ -146,6 +166,15 @@ let hardStop = false
 if (!mainSync.ok) {
   gateMessage = `main_sync: ${mainSync.message || 'epic branch is not in sync with main'}`
   log('Validate gate skipped — epic branch is not in sync with main.')
+} else if (lintCommitError) {
+  gateMessage = `lint_fixes_uncommitted: ${lintCommitError} (files: ${lintFixes.join(', ')})`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
+} else if (!dirty.known) {
+  gateMessage = dirty.detail
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
+} else if (dirty.files.length > 0) {
+  gateMessage = `validate_dirty_tree: tracked files modified but not committed after validate-check — ${dirty.files.join(', ')} (commit or stash them, then re-run validate)`
+  log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)
 } else if (testExit === null) {
   gateMessage = `validate_run_failed: independent test run did not execute (${describeFailure(verifyResult, 'test-verify')})`
   log(`VALIDATION FAILED — ${gateMessage}. Cannot proceed.`)

@@ -5,7 +5,7 @@
 // and pass silently when it was absent (docs/FLOW.md gap 3).
 // tested-by: skills/src/shared/validate-steps.test.ts
 
-import type { BatchStep } from './batch'
+import { stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'
 import { testRunCommand } from './utils'
 
 export const TEST_SIGNAL_PATH = '.datum/last-test-signal.json'
@@ -41,4 +41,40 @@ export function validateVerifySteps(testCommand: string, cwd: string, buildComma
     steps.push({ name: 'build-verify', command: testRunCommand(buildCommand, cwd, 'validate-build-verify'), tolerant: true })
   }
   return steps
+}
+
+const qwt = (s: string): string => `"${s.replace(/(["\\`$])/g, '\\$1')}"`
+
+/**
+ * #519: after Validate has committed the lint fixes it applied, is any
+ * TRACKED file still modified? Untracked operator files (graphify-out/,
+ * scratch) never count — only edits the phase could have made or should
+ * have committed. One tolerant `git status --porcelain --untracked-files=no`.
+ */
+export function trackedDirtySteps(wt: string): BatchStep[] {
+  return [{ name: 'tracked-dirty', command: `git -C ${qwt(wt)} status --porcelain --untracked-files=no`, tolerant: true }]
+}
+
+export interface TrackedDirtyResult {
+  /** False when the batch was missing or git exited non-zero: unknown is never clean. */
+  known: boolean
+  /** Dirty tracked paths (renames report the new path). */
+  files: string[]
+  /** A reason when unknown; empty otherwise. */
+  detail: string
+}
+
+export function trackedDirtyFiles(result: BatchResult): TrackedDirtyResult {
+  if (result.missing) return { known: false, files: [], detail: `tracked_dirty_unverified: ${describeFailure(result, 'tracked-dirty')}` }
+  const step = stepResult(result, 'tracked-dirty')
+  if (!step || step.exit_code !== 0) {
+    const tail = ((step && (step.stderr || step.stdout)) || '').trim().split('\n').slice(-3).join(' | ')
+    return { known: false, files: [], detail: `tracked_dirty_unverified: git status exited ${step ? step.exit_code : 'without running'}${tail ? ` — ${tail}` : ''}` }
+  }
+  const files = (step.stdout || '')
+    .split('\n')
+    .filter((l) => l.trim().length > 0 && !l.startsWith('??'))
+    .map((l) => l.slice(3).trim())
+    .map((path) => (path.includes(' -> ') ? path.split(' -> ')[1] : path))
+  return { known: true, files, detail: '' }
 }
