@@ -1,0 +1,72 @@
+{
+  "task_id": "task-015",
+  "slug": "adr-repo-wide-task-ids",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_001-repo-wide-task-ids.py",
+      "kind": "pytest",
+      "purpose": "Verify docs/adr/001-repo-wide-task-ids.md exists and follows docs/a",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_docs_adr_001_repo_wide_task_ids_md_exists_and_follows_docs_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-015 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_docs_adr_001_repo_wide_task_ids_md_exists_and_follows_docs_a \u2192 tests/test_001-repo-wide-task-ids.py\n\nimport pytest\n\n\nclass TestTask015AC1:\n    def test_ac1_docs_adr_001_repo_wide_task_ids_md_exists_and_follows_docs_a(self):\n        \"\"\"\n        PROP-001: docs/adr/001-repo-wide-task-ids.md exists and follows docs/adr/000-template.md's\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_001-repo-wide-task-ids.py",
+      "kind": "pytest",
+      "purpose": "Verify It documents the prefix derivation rule (basename, letters o",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_it_documents_the_prefix_derivation_rule_basename_letters_onl",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-015 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_it_documents_the_prefix_derivation_rule_basename_letters_onl \u2192 tests/test_001-repo-wide-task-ids.py\n\nimport pytest\n\n\nclass TestTask015AC2:\n    def test_ac2_it_documents_the_prefix_derivation_rule_basename_letters_onl(self):\n        \"\"\"\n        PROP-002: It documents the prefix derivation rule (basename, letters only, uppercased, fir\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_001-repo-wide-task-ids.py",
+      "kind": "pytest",
+      "purpose": "Verify It states that task-\\d+ and task-INT-\\d+ remain permanently ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_it_states_that_task_d_and_task_int_d_remain_permanently_acce",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-015 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_it_states_that_task_d_and_task_int_d_remain_permanently_acce \u2192 tests/test_001-repo-wide-task-ids.py\n\nimport pytest\n\n\nclass TestTask015AC3:\n    def test_ac3_it_states_that_task_d_and_task_int_d_remain_permanently_acce(self):\n        \"\"\"\n        PROP-003: It states that task-\\d+ and task-INT-\\d+ remain permanently accepted with no sun\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_001-repo-wide-task-ids.py",
+      "kind": "pytest",
+      "purpose": "Verify It records that cross-branch collisions are detected after t",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_it_records_that_cross_branch_collisions_are_detected_after_t",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-015 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_it_records_that_cross_branch_collisions_are_detected_after_t \u2192 tests/test_001-repo-wide-task-ids.py\n\nimport pytest\n\n\nclass TestTask015AC4:\n    def test_ac4_it_records_that_cross_branch_collisions_are_detected_after_t(self):\n        \"\"\"\n        PROP-004: It records that cross-branch collisions are detected after the fact by task_id_c\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_001-repo-wide-task-ids.py",
+      "kind": "pytest",
+      "purpose": "Verify It records that skills/src/shared/lane-id-pattern.ts is hand",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_it_records_that_skills_src_shared_lane_id_pattern_ts_is_hand",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-015 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_it_records_that_skills_src_shared_lane_id_pattern_ts_is_hand \u2192 tests/test_001-repo-wide-task-ids.py\n\nimport pytest\n\n\nclass TestTask015AC5:\n    def test_ac5_it_records_that_skills_src_shared_lane_id_pattern_ts_is_hand(self):\n        \"\"\"\n        PROP-005: It records that skills/src/shared/lane-id-pattern.ts is hand-written and kept in\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

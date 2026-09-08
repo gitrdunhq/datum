@@ -1,0 +1,105 @@
+{
+  "task_id": "task-009",
+  "slug": "task-id-counter-from-committed-ids",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify next_task_number(repo_root, prefix) returns 1 when no commit",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_next_task_number_repo_root_prefix_returns_1_when_no_committe",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_next_task_number_repo_root_prefix_returns_1_when_no_committe \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC1:\n    def test_ac1_next_task_number_repo_root_prefix_returns_1_when_no_committe(self):\n        \"\"\"\n        PROP-001: next_task_number(repo_root, prefix) returns 1 when no committed file contains a \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify Given a committed docs/epics/e1/tasks.json containing ids 'D",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_given_a_committed_docs_epics_e1_tasks_json_containing_ids_da",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_given_a_committed_docs_epics_e1_tasks_json_containing_ids_da \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC2:\n    def test_ac2_given_a_committed_docs_epics_e1_tasks_json_containing_ids_da(self):\n        \"\"\"\n        PROP-002: Given a committed docs/epics/e1/tasks.json containing ids 'DAT-3' and 'DAT-7' an\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify Committed ids of the old shapes 'task-001' and 'task-INT-4' ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_committed_ids_of_the_old_shapes_task_001_and_task_int_4_cont",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_committed_ids_of_the_old_shapes_task_001_and_task_int_4_cont \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC3:\n    def test_ac3_committed_ids_of_the_old_shapes_task_001_and_task_int_4_cont(self):\n        \"\"\"\n        PROP-003: Committed ids of the old shapes 'task-001' and 'task-INT-4' contribute nothing t\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify An id with a different prefix ('ABC-99') does not raise the ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_an_id_with_a_different_prefix_abc_99_does_not_raise_the_dat",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_an_id_with_a_different_prefix_abc_99_does_not_raise_the_dat \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC4:\n    def test_ac4_an_id_with_a_different_prefix_abc_99_does_not_raise_the_dat(self):\n        \"\"\"\n        PROP-004: An id with a different prefix ('ABC-99') does not raise the DAT counter\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify A DAT-<n> id present only in the working tree (written but n",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_a_dat_n_id_present_only_in_the_working_tree_written_but_not",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_a_dat_n_id_present_only_in_the_working_tree_written_but_not \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC5:\n    def test_ac5_a_dat_n_id_present_only_in_the_working_tree_written_but_not(self):\n        \"\"\"\n        PROP-005: A DAT-<n> id present only in the working tree (written but not committed) is ign\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify A DAT-<n> id committed only on another local branch is ignor",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_a_dat_n_id_committed_only_on_another_local_branch_is_ignored",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_a_dat_n_id_committed_only_on_another_local_branch_is_ignored \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC6:\n    def test_ac6_a_dat_n_id_committed_only_on_another_local_branch_is_ignored(self):\n        \"\"\"\n        PROP-006: A DAT-<n> id committed only on another local branch is ignored \u2014 the scan is sco\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_task_id_counter.py",
+      "kind": "pytest",
+      "purpose": "Verify A committed tasks.json that is malformed JSON is skipped wit",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_a_committed_tasks_json_that_is_malformed_json_is_skipped_wit",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-009 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_a_committed_tasks_json_that_is_malformed_json_is_skipped_wit \u2192 tests/test_task_id_counter.py\n\nimport pytest\n\n\nclass TestTask009AC7:\n    def test_ac7_a_committed_tasks_json_that_is_malformed_json_is_skipped_wit(self):\n        \"\"\"\n        PROP-007: A committed tasks.json that is malformed JSON is skipped without raising, and th\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [
+    {
+      "path": "datum/task_ids.py",
+      "functions": [
+        "next_task_number"
+      ],
+      "stub_written": false,
+      "content": "def next_task_number(repo_root, prefix):\n    ...\n"
+    }
+  ],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -1,0 +1,65 @@
+{
+  "task_id": "task-003",
+  "slug": "widen-brief-schemas",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_brief_schemas_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify BriefRed, BriefGreen, BriefGreenContinuation and BriefRefact",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_briefred_briefgreen_briefgreencontinuation_and_briefrefactor",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_briefred_briefgreen_briefgreencontinuation_and_briefrefactor \u2192 tests/test_brief_schemas_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask003AC1:\n    def test_ac1_briefred_briefgreen_briefgreencontinuation_and_briefrefactor(self):\n        \"\"\"\n        PROP-001: BriefRed, BriefGreen, BriefGreenContinuation and BriefRefactor payloads with tas\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_brief_schemas_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify The same four payloads with task_id='task-001' still validat",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_same_four_payloads_with_task_id_task_001_still_validate",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_same_four_payloads_with_task_id_task_001_still_validate \u2192 tests/test_brief_schemas_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask003AC2:\n    def test_ac2_the_same_four_payloads_with_task_id_task_001_still_validate(self):\n        \"\"\"\n        PROP-002: The same four payloads with task_id='task-001' still validate\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_brief_schemas_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify Each of the four raises pydantic.ValidationError for task_id",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_each_of_the_four_raises_pydantic_validationerror_for_task_id",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_each_of_the_four_raises_pydantic_validationerror_for_task_id \u2192 tests/test_brief_schemas_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask003AC3:\n    def test_ac3_each_of_the_four_raises_pydantic_validationerror_for_task_id(self):\n        \"\"\"\n        PROP-003: Each of the four raises pydantic.ValidationError for task_id='dat-142' and task_\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_brief_schemas_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify No literal r'^task-\\d+$' remains in datum/models/brief_red_s",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_no_literal_r_task_d_remains_in_datum_models_brief_red_schema",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_no_literal_r_task_d_remains_in_datum_models_brief_red_schema \u2192 tests/test_brief_schemas_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask003AC4:\n    def test_ac4_no_literal_r_task_d_remains_in_datum_models_brief_red_schema(self):\n        \"\"\"\n        PROP-004: No literal r'^task-\\d+$' remains in datum/models/brief_red_schema.py, brief_gree\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/models/brief_red_schema.py": "# generated by datamodel-codegen:\n#   filename:  brief-red.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom typing import Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, RootModel, constr\n\n\nclass Property(BaseModel):\n    ...\n\n\nclass AcceptanceCriterion(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass FilesToWriteItem(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass UpstreamStub(BaseModel):\n    ...\n\n\nclass DatumRedBrief(BaseModel):\n    ...\n",
+    "datum/models/brief_green_schema.py": "# generated by datamodel-codegen:\n#   filename:  brief-green.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom enum import Enum\nfrom typing import Any, Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr\n\n\nclass AcceptanceCriterion(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass FilesToWriteItem(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass Status(Enum):\n    ...\n\n\nclass TestSignal(BaseModel):\n    ...\n\n\nclass DatumGreenBrief(BaseModel):\n    ...\n",
+    "datum/models/brief_green_continuation_schema.py": "# generated by datamodel-codegen:\n#   filename:  brief-green-continuation.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom enum import Enum\nfrom typing import Literal\n\nfrom pydantic import BaseModel, ConfigDict, conint, constr\n\n\nclass Status(Enum):\n    ...\n\n\nclass TestSignal(BaseModel):\n    ...\n\n\nclass DatumGreenContinuationBrief(BaseModel):\n    ...\n",
+    "datum/models/brief_refactor_schema.py": "# generated by datamodel-codegen:\n#   filename:  brief-refactor.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom typing import Any, Literal\n\nfrom pydantic import BaseModel, ConfigDict, Field, RootModel, constr\n\n\nclass AcceptanceCriterion(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass FilesToWriteItem(RootModel[constr(min_length=1)]):\n    ...\n\n\nclass ImplementationFile(BaseModel):\n    ...\n\n\nclass TestFile(BaseModel):\n    ...\n\n\nclass DatumRefactorBrief(BaseModel):\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

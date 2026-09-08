@@ -1,0 +1,87 @@
+{
+  "task_id": "task-002",
+  "slug": "widen-lane-plan-output-schemas",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.models.lane_plan_schema.DatumLanePlan validates a plan",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_models_lane_plan_schema_datumlaneplan_validates_a_plan",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_models_lane_plan_schema_datumlaneplan_validates_a_plan \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC1:\n    def test_ac1_datum_models_lane_plan_schema_datumlaneplan_validates_a_plan(self):\n        \"\"\"\n        PROP-001: datum.models.lane_plan_schema.DatumLanePlan validates a plan whose lane id, topo\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify The same plan with 'task-001' and with 'task-INT-1' still va",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_same_plan_with_task_001_and_with_task_int_1_still_valida",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_same_plan_with_task_001_and_with_task_int_1_still_valida \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC2:\n    def test_ac2_the_same_plan_with_task_001_and_with_task_int_1_still_valida(self):\n        \"\"\"\n        PROP-002: The same plan with 'task-001' and with 'task-INT-1' still validates (widening)\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify DatumLanePlan raises pydantic.ValidationError for lane id 'd",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_datumlaneplan_raises_pydantic_validationerror_for_lane_id_da",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_datumlaneplan_raises_pydantic_validationerror_for_lane_id_da \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC3:\n    def test_ac3_datumlaneplan_raises_pydantic_validationerror_for_lane_id_da(self):\n        \"\"\"\n        PROP-003: DatumLanePlan raises pydantic.ValidationError for lane id 'dat-142', 'DAT142' an\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.models.lane_schema's lane `id` accepts 'DAT-142' and r",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_datum_models_lane_schema_s_lane_id_accepts_dat_142_and_rejec",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_datum_models_lane_schema_s_lane_id_accepts_dat_142_and_rejec \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC4:\n    def test_ac4_datum_models_lane_schema_s_lane_id_accepts_dat_142_and_rejec(self):\n        \"\"\"\n        PROP-004: datum.models.lane_schema's lane `id` accepts 'DAT-142' and rejects 'dat-142'\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify No literal r'^task-\\d+$' or r'^task-(\\d+|INT-\\d+)$' string r",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_no_literal_r_task_d_or_r_task_d_int_d_string_remains_in_datu",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_no_literal_r_task_d_or_r_task_d_int_d_string_remains_in_datu \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC5:\n    def test_ac5_no_literal_r_task_d_or_r_task_d_int_d_string_remains_in_datu(self):\n        \"\"\"\n        PROP-005: No literal r'^task-\\d+$' or r'^task-(\\d+|INT-\\d+)$' string remains in datum/mode\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_lane_plan_schema_prefixed_ids.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.contracts.validate_payload accepts the DAT-142 plan wr",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_datum_contracts_validate_payload_accepts_the_dat_142_plan_wr",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-002 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_datum_contracts_validate_payload_accepts_the_dat_142_plan_wr \u2192 tests/test_lane_plan_schema_prefixed_ids.py\n\nimport pytest\n\n\nclass TestTask002AC6:\n    def test_ac6_datum_contracts_validate_payload_accepts_the_dat_142_plan_wr(self):\n        \"\"\"\n        PROP-006: datum.contracts.validate_payload accepts the DAT-142 plan written to a tmp_path \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/models/lane_plan_schema.py": "# generated by datamodel-codegen:\n#   filename:  lane-plan.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nfrom pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr\n\n\nclass TopologicalOrderItem(RootModel[constr(pattern=r\"^task-(\\d+|INT-\\d+)$\")]):\n    ...\n\n\nclass Lanes(BaseModel):\n    ...\n\n\nclass DatumLanePlan(BaseModel):\n    ...\n",
+    "datum/models/lane_schema.py": "# generated by datamodel-codegen:\n#   filename:  lane.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom enum import Enum\nfrom typing import Any\n\nfrom pydantic import BaseModel, Field, constr\n\n\nclass Stage(Enum):\n    ...\n\n\nclass LanePlanEntry(BaseModel):\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
