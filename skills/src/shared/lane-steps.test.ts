@@ -1898,7 +1898,11 @@ describe('codeTellSteps / parseTellScan — the deterministic tell scan', () => 
     expect(steps).toHaveLength(1)
     expect(steps[0].name).toBe('tell-scan')
     expect(steps[0].tolerant).toBe(true)
-    expect(steps[0].command).toBe('datum code-tells --repo "/wt/T1" --base "datum/e" --files "src/a.py" "src/b.ts"')
+    // #518: --files is a Typer list option — one flag per value. The
+    // space-separated form exited 2 on every multi-file lane and the
+    // tolerant step handed REFACTOR "(none)" tells.
+    expect(steps[0].command).toBe('datum code-tells --repo "/wt/T1" --base "datum/e" --files "src/a.py" --files "src/b.ts"')
+    expect(steps[0].command).not.toMatch(/--files "[^"]+" "[^"]+"/)
   })
   it('omits --base when the lane has none', () => {
     expect(codeTellSteps({ wt: '/wt/T1', files: ['src/a.py'], baseRef: null })[0].command).not.toContain('--base')

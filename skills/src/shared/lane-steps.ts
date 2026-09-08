@@ -396,7 +396,10 @@ export interface TellFinding { file: string; line: number; tag: string; text: st
  */
 export function codeTellSteps(o: { wt: string; files: string[]; baseRef: string | null }): BatchStep[] {
   const base = o.baseRef ? ` --base ${q(o.baseRef)}` : ''
-  return [{ name: 'tell-scan', command: `datum code-tells --repo ${q(o.wt)}${base} --files ${o.files.map(q).join(' ')}`, tolerant: true }]
+  // #518: --files is a Typer list option, one flag per value. Space-separated
+  // values exited 2 on every multi-file lane and, the step being tolerant,
+  // every REFACTOR pre-check ran with "(none)" tells.
+  return [{ name: 'tell-scan', command: `datum code-tells --repo ${q(o.wt)}${base}${o.files.map((f) => ` --files ${q(f)}`).join('')}`, tolerant: true }]
 }
 
 export function parseTellScan(stdout: string | null | undefined): TellFinding[] {
