@@ -449,6 +449,11 @@ function parseBatchResult(raw, steps) {
     if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
       return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, " ").slice(0, 160)}")` };
     }
+    if (/^\[\s*\{\s*"name"\s*:/.test(text)) {
+      const names = [...text.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map((m) => m[1]);
+      const complete = names.slice(0, -1);
+      return { steps: [], failed: null, missing: true, scriptError: `batch_truncated: the runner's reply is a step array cut before it closed (${text.length} chars; last complete step: ${complete[complete.length - 1] ?? "none"}; cut inside: ${names[names.length - 1] ?? "unknown"}) \u2014 the script's stdout was too long to relay whole` };
+    }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
   const results2 = arr.map(asStepResult).filter((r) => r !== null);
@@ -707,6 +712,11 @@ async function runBatch(steps, opts, deps) {
 
 # attempt 3 of 3 \u2014 two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps);
     }
+  } else if (result.missing && result.scriptError?.startsWith("batch_truncated")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's reply was cut before the JSON array closed; return the script's stdout complete and unabridged, nothing else`, retryOpts), steps);
   } else if (result.missing && result.scriptError?.startsWith("batch_timeout")) {
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with the timeout instruction repeated`);
     result = parseBatchResult(await agentFn(`${prompt}
