@@ -232,15 +232,14 @@ describe('path-boundary-file-ownership — AC4', () => {
     // own separate suffix-matching loop.
     expect(laneSource).toMatch(/verifyFileOwnership/)
 
-    const buildResult = run('bash', ['scripts/build-workflows.sh'], repoRoot)
-    expect(buildResult.status).toBe(0)
-
+    // #540: no build inside the test — running scripts/build-workflows.sh here
+    // rewrote thirteen bundles a lane worktree cannot own or commit. The
+    // committed bundle must carry the generated banner and the wiring; its
+    // freshness against source is the build script's job, not this test's.
     const bundled = readFileSync(join(repoRoot, 'skills', 'datum-tdd-act-lane.js'), 'utf8')
     expect(bundled.startsWith('// @generated — DO NOT EDIT. Source: skills/src/')).toBe(true)
-  // This test runs the whole esbuild pass. Under a parallel suite it exceeds
-  // vitest's 5 s default and failed a sound GREEN's independent verify
-  // (integration-lanes-2 wf_979a2d54-458 task-002); the #419 flake was this.
-  }, 90_000)
+    expect(bundled).toMatch(/verifyFileOwnership/)
+  })
 })
 
 // ---------------------------------------------------------------------------

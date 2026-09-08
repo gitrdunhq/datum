@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { laneSpecHash } from './shared/utils'
+import { buildWorkflowBundle } from './shared/test-bundle'
 import type { Lane } from './shared/types'
 
 // AC1 fixture: assigned to the real `Lane` type (no `as`/cast) so tsc's
@@ -37,7 +38,8 @@ const AC1_LANE_FIXTURE: Lane = {
 }
 void AC1_LANE_FIXTURE
 
-const bundlePath = join(__dirname, '..', 'datum-tdd-act-lane.js')
+// #540: built from source in process — never the committed (possibly stale) bundle.
+const laneBundle = buildWorkflowBundle('datum-tdd-act-lane')
 
 interface Call { label: string; agentType?: string; prompt: string }
 type Responder = (label: string, prompt: string) => unknown
@@ -124,7 +126,7 @@ async function runLane(opts: {
   priorCompleted?: string[]
   logs?: string[]
 }): Promise<{ calls: Call[]; result: { results: Record<string, { status: string; stage?: string; error?: string; follow_ups?: number; red_only?: boolean }> } }> {
-  const bundle = readFileSync(bundlePath, 'utf8')
+  const bundle = laneBundle
   const body = bundle.replace(/^export const meta = /m, 'const meta = ')
   const AsyncFunction = Object.getPrototypeOf(async function () { /* */ }).constructor as new (...a: string[]) => (...b: unknown[]) => Promise<unknown>
   const script = new AsyncFunction('agent', 'parallel', 'phase', 'log', 'args', 'workflow', 'budget', body)
