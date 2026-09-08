@@ -8,39 +8,41 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Kind(Enum):
-    xctest = 'xctest'
-    swift_testing = 'swift-testing'
-    vitest = 'vitest'
-    jest = 'jest'
-    pytest = 'pytest'
-    go_test = 'go-test'
+    xctest = "xctest"
+    swift_testing = "swift-testing"
+    vitest = "vitest"
+    jest = "jest"
+    pytest = "pytest"
+    go_test = "go-test"
 
 
 class Output(BaseModel):
     ac_id: str
-    path: str = Field(..., description='Relative path to the skeleton test file')
+    path: str = Field(..., description="Relative path to the skeleton test file")
     kind: Kind
     purpose: str
     property_id: str
     function_name: str | None = Field(
-        None, description='Exact test function name — RED must not rename'
+        None, description="Exact test function name — RED must not rename"
     )
     skeleton_written: bool | None = None
     implementation_required: bool | None = True
 
 
 class PreflightResult(BaseModel):
-    task_id: constr(pattern=r'^task-\d+$')
+    task_id: constr(pattern=LANE_ID_PATTERN)
     language: str
     framework: str
     no_skeletons_reason: str | None = Field(
         None,
-        description='If set, no skeletons were produced and lane proceeds to RED normally',
+        description="If set, no skeletons were produced and lane proceeds to RED normally",
     )
     target_context: str | None = Field(
         None,
-        description='Context about target membership extracted from package manager (e.g., Package.swift)',
+        description="Context about target membership extracted from package manager (e.g., Package.swift)",
     )
     outputs: list[Output]

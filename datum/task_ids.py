@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -42,3 +43,31 @@ def resolve_task_id_prefix(repo_root):
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config))
     return prefix
+
+
+def next_task_number(repo_root, prefix):
+    repo_root = Path(repo_root)
+    ls_tree = subprocess.run(
+        ["git", "ls-tree", "-r", "HEAD", "--name-only"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    paths = [p for p in ls_tree.stdout.splitlines() if p]
+
+    pattern = re.compile(rf"{re.escape(prefix)}-(\d+)")
+    max_number = 0
+    for path in paths:
+        show = subprocess.run(
+            ["git", "show", f"HEAD:{path}"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if show.returncode != 0:
+            continue
+        for match in pattern.finditer(show.stdout):
+            max_number = max(max_number, int(match.group(1)))
+
+    return max_number + 1

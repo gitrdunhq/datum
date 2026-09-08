@@ -8,62 +8,64 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, conint, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class AgentRole(Enum):
-    RED = 'RED'
-    GREEN = 'GREEN'
-    REFACTOR = 'REFACTOR'
-    ADVERSARIAL = 'ADVERSARIAL'
+    RED = "RED"
+    GREEN = "GREEN"
+    REFACTOR = "REFACTOR"
+    ADVERSARIAL = "ADVERSARIAL"
 
 
 class Status(Enum):
-    done = 'done'
-    done_with_risks = 'done_with_risks'
-    failed = 'failed'
-    missing_ac = 'missing_ac'
-    hard_stop = 'hard_stop'
+    done = "done"
+    done_with_risks = "done_with_risks"
+    failed = "failed"
+    missing_ac = "missing_ac"
+    hard_stop = "hard_stop"
 
 
 class AcceptanceCriterion(BaseModel):
-    id: str = Field(..., description='Matches AC ID from TASKS.md (AC1, AC2, ...)')
+    id: str = Field(..., description="Matches AC ID from TASKS.md (AC1, AC2, ...)")
     satisfied: bool
     evidence: str | None = Field(
         None,
-        description='File:line reference or test output excerpt proving satisfaction',
+        description="File:line reference or test output excerpt proving satisfaction",
     )
     skeleton_function: str | None = Field(
         None,
-        description='Test function name from preflight-result.json that proves this AC',
+        description="Test function name from preflight-result.json that proves this AC",
     )
     reason: str | None = Field(
         None,
-        description='If satisfied=false: why not satisfied. If this is a RED result: why the test fails for the right reason.',
+        description="If satisfied=false: why not satisfied. If this is a RED result: why the test fails for the right reason.",
     )
 
 
 class Type(Enum):
-    stub = 'stub'
-    test = 'test'
-    implementation = 'implementation'
-    refactor = 'refactor'
+    stub = "stub"
+    test = "test"
+    implementation = "implementation"
+    refactor = "refactor"
 
 
 class Commit(BaseModel):
     type: Type
     files: list[str]
-    patch: str = Field(..., description='Unified diff')
+    patch: str = Field(..., description="Unified diff")
     message: constr(
-        pattern=r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([\w\-\.]+\))?!?: .+'
+        pattern=r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([\w\-\.]+\))?!?: .+"
     ) = Field(
         ...,
-        description='Must follow Conventional Commits format (e.g. feat(task-001): added x)',
+        description="Must follow Conventional Commits format (e.g. feat(task-001): added x or feat(DAT-142): added x)",
     )
 
 
 class Severity(Enum):
-    high = 'high'
-    medium = 'medium'
-    low = 'low'
+    high = "high"
+    medium = "medium"
+    low = "low"
 
 
 class Risk(BaseModel):
@@ -75,9 +77,9 @@ class Risk(BaseModel):
 
 class TechDebtItem(BaseModel):
     file: str
-    description: str = Field(..., description='What is stubbed/shimmed and why')
+    description: str = Field(..., description="What is stubbed/shimmed and why")
     removal_condition: str = Field(
-        ..., description='What needs to happen for this to be removed/fixed'
+        ..., description="What needs to happen for this to be removed/fixed"
     )
 
 
@@ -89,38 +91,38 @@ class MissingAc(BaseModel):
 class ExecutorResultPerAcVerdict(BaseModel):
     contract_version: str
     agent_role: AgentRole
-    task_id: constr(pattern=r'^task-\d+$')
+    task_id: constr(pattern=LANE_ID_PATTERN)
     status: Status
     acceptance_criteria: list[AcceptanceCriterion] = Field(
         ...,
-        description='Every AC from the task brief must appear here — no omissions.',
+        description="Every AC from the task brief must appear here — no omissions.",
         min_length=1,
     )
     commits: list[Commit] | None = None
     verified_red: bool | None = Field(
         None,
-        description='RED only: test_signal.py returned fail with property_id present',
+        description="RED only: test_signal.py returned fail with property_id present",
     )
     verified_green: bool | None = Field(
-        None, description='GREEN/REFACTOR: test_signal.py returned pass'
+        None, description="GREEN/REFACTOR: test_signal.py returned pass"
     )
     risks: list[Risk] | None = Field(
         None,
-        description='For done_with_risks status: residual concerns that need supervisor attention',
+        description="For done_with_risks status: residual concerns that need supervisor attention",
     )
     tech_debt: list[TechDebtItem] | None = Field(
         None,
-        description='Any TODOs, FIXMEs, shims, or temporary stubs left in the codebase MUST be explicitly declared here.',
+        description="Any TODOs, FIXMEs, shims, or temporary stubs left in the codebase MUST be explicitly declared here.",
     )
     proof_of_work_path: str | None = Field(
-        None, description='REFACTOR only: path to proof-of-work.md in the run archive'
+        None, description="REFACTOR only: path to proof-of-work.md in the run archive"
     )
     missing_acs: list[MissingAc] | None = Field(
         None,
-        description='ACs found missing during REFACTOR review — triggers new RED-GREEN cycle',
+        description="ACs found missing during REFACTOR review — triggers new RED-GREEN cycle",
     )
     lane_tools_added: list[str] | None = None
     attempt: conint(ge=1) | None = None
     turn: conint(ge=1) | None = Field(
-        None, description='GREEN multi-turn: which turn produced this result'
+        None, description="GREEN multi-turn: which turn produced this result"
     )

@@ -9,23 +9,25 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Confidence(Enum):
-    high = 'high'
-    medium = 'medium'
-    low = 'low'
+    high = "high"
+    medium = "medium"
+    low = "low"
 
 
 class Verdict(Enum):
-    gap = 'gap'
-    likely_covered = 'likely_covered'
-    out_of_scope = 'out_of_scope'
+    gap = "gap"
+    likely_covered = "likely_covered"
+    out_of_scope = "out_of_scope"
 
 
 class RefactorVerdict(Enum):
-    real_gap = 'real_gap'
-    covered = 'covered'
-    not_applicable = 'not_applicable'
+    real_gap = "real_gap"
+    covered = "covered"
+    not_applicable = "not_applicable"
 
 
 class Candidate(BaseModel):
@@ -37,15 +39,15 @@ class Candidate(BaseModel):
     confidence: Confidence | None = None
     verdict: Verdict
     refactor_verdict: RefactorVerdict | None = Field(
-        None, description='Filled in by REFACTOR during adversarial review'
+        None, description="Filled in by REFACTOR during adversarial review"
     )
     refactor_evidence: str | None = None
 
 
 class CandidateEdgeCases(BaseModel):
     contract_version: str
-    agent_role: Literal['ADVERSARIAL']
-    task_id: constr(pattern=r'^task-\d+$')
+    agent_role: Literal["ADVERSARIAL"]
+    task_id: constr(pattern=LANE_ID_PATTERN)
     no_gaps_found: bool | None = False
     reasoning: str | None = None
     candidates: list[Candidate]
