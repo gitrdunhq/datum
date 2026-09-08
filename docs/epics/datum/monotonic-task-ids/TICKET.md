@@ -1,0 +1,15 @@
+# [feature] Sequential repo-wide task numbers (DAT-123) instead of per-epic task-001
+
+Every epic restarts at task-001, so `task-001` names a different lane in every epic and the auto-filed issues read `[task-008] ...` with no way to tell which epic they belong to. Ask: a repo-wide monotonic task number (Jira-style, e.g. `DAT-142`) assigned at plan time and used everywhere the lane id appears.
+
+## Scope decisions (operator, 2026-09-07)
+
+- **Net-new epics only. No migration.** Epics already planned keep their `task-NNN` / `task-INT-N` ids; every reader keeps accepting both shapes. Nothing rewrites an existing tasks.json, lane branch, lane-state marker, issue title or commit.
+- **Prefix** comes from `.datum/config.json` `task_id_prefix`; when absent it is derived once at plan time from the repo directory name (letters only, upper-cased, first three, e.g. `datum` → `DAT`) and written back into the config so it never drifts.
+- **Counter without a state store.** The next number is `max(existing) + 1` over every id of the form `<PREFIX>-<n>` found in committed `docs/epics/*/tasks.json` on the current branch (and `lane-plan.json`). Git carries the counter, so two machines see the same value; two epics planned concurrently on separate branches can collide and the plan gate names that (`task_id_collision`) when the epic later rebases onto one that took the same numbers.
+- **Where ids are assigned:** the plan phase's decomposer still emits `task-001`-style ids (its prompt is unchanged), and a deterministic step right after decompose — `datum lane-plan --renumber` or a step in `datum lane-plan` build — rewrites tasks.json ids and every `depends_on` reference to `<PREFIX>-<n>`, in topological order, before the plan gate. Integration lanes synthesised by `build_lane_plan` take the next numbers the same way (no `task-INT-` shape for new epics; `kind: integration` already says what they are).
+- **Everywhere the id appears** follows automatically because it is the same string: lane branch `<epic>--DAT-142`, worktree dir, lane-state marker file, commit prefixes `red(DAT-142)`, `Datum-Lane` trailer, `[DAT-142] title` issues, closeout collectors, events.jsonl. Every regex that currently assumes `task-\d+` or `task-INT-\d+` (skills/src/shared/lane-steps.ts, triage-classify.ts, datum-tdd-act-lane.ts, datum/gate.py, datum/lane_plan.py validation) accepts `[A-Z]{2,6}-\d+` as well; a table-driven `laneIdPattern` shared by TS and Python (assets/schemas) replaces the scattered literals.
+- **Acceptance evidence:** a fresh epic planned on this repo gets `DAT-<n>` ids where `n` continues from the highest id already committed; a second fresh epic continues from there; every existing epic in `docs/epics/` still validates unchanged (`datum lane-plan --validate` on each); one lane run end to end under a `DAT-` id lands with the branch, commit prefix, marker and issue title all carrying it.
+
+Related: the branch-name-derived epic identity (epic id = git branch) is the root of several #524 dogfooding bugs; a stable epic id and a global task counter are the same change at two levels — this issue does the task level only.
+

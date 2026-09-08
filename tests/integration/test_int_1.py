@@ -139,3 +139,133 @@ def test_ac2_inv_q6_docs_architecture_state_store_md_records_that_q6_s_an():
     state_py = (REPO_ROOT / "datum" / "state.py").read_text(encoding="utf-8")
     assert "BEGIN EXCLUSIVE" in state_py
     assert "PRAGMA busy_timeout" not in state_py
+
+
+# ---------------------------------------------------------------------------
+# II-001: the shared lane-id pattern is consumed identically by the Python
+# loader (datum.id_pattern) and the esbuild-bundled TypeScript loader
+# (skills/src/shared/lane-id-pattern.ts), asserted over one shared
+# accept/reject fixture list with one test per language.
+#
+# The lane spec text names `assets/schemas/lane-id.json` with
+# `pattern`/`prefix_pattern`/`new_id_pattern` fields; the actual merged
+# deliverable (task-001, #523) is `datum/id_pattern.py`'s LANE_ID_PATTERN
+# constant, mirrored into `assets/schemas/task.schema.json`'s `id`/
+# `depends_on` `pattern` fields — there is no `prefix_pattern` or
+# `new_id_pattern` field anywhere in the merged code. This is recorded as a
+# finding in failure_reason; the invariant itself (same accept/reject set
+# across languages) is exercised against the actual artifacts below.
+# ---------------------------------------------------------------------------
+
+II_001_ACCEPT_IDS = ["task-1", "task-001", "task-INT-1", "DAT-142", "AB-1", "ABCDEF-9"]
+II_001_REJECT_IDS = [
+    "DAT142",
+    "dat-142",
+    "DATUM-142",
+    "task-",
+    "task-INT-",
+    "DAT-",
+    "DAT-1x",
+]
+
+LANE_ID_PATTERN_TS = REPO_ROOT / "skills" / "src" / "shared" / "lane-id-pattern.ts"
+
+
+def test_ac_ii_001_python_loader_accept_reject_matches_shared_fixture_list():
+    """Python side (datum.id_pattern.is_lane_id) over the shared fixture
+    list must accept every II_001_ACCEPT_IDS value and reject every
+    II_001_REJECT_IDS value."""
+    from datum.id_pattern import is_lane_id
+
+    accepted = [is_lane_id(value) for value in II_001_ACCEPT_IDS]
+    rejected = [is_lane_id(value) for value in II_001_REJECT_IDS]
+
+    assert accepted == [True] * len(II_001_ACCEPT_IDS), (
+        f"Python loader disagreed with the accept fixture list: "
+        f"{list(zip(II_001_ACCEPT_IDS, accepted))}"
+    )
+    assert rejected == [False] * len(II_001_REJECT_IDS), (
+        f"Python loader disagreed with the reject fixture list: "
+        f"{list(zip(II_001_REJECT_IDS, rejected))}"
+    )
+
+
+def test_ac_ii_001_ts_esbuild_bundled_loader_accept_reject_matches_python():
+    """The esbuild-bundled TypeScript loader (skills/src/shared/
+    lane-id-pattern.ts's isLaneId) must produce the exact same
+    accept/reject booleans as the Python loader over the identical shared
+    fixture list. Bundles the real .ts source with esbuild (the project's
+    actual bundler, per scripts/build-workflows.sh) and executes it under
+    node — this is not a re-parse of the Python regex."""
+    import json as _json
+    import subprocess
+    import sys
+    import tempfile
+
+    assert LANE_ID_PATTERN_TS.exists(), f"{LANE_ID_PATTERN_TS} does not exist"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle_path = Path(tmp) / "lane-id-pattern.bundle.cjs"
+        esbuild = subprocess.run(
+            [
+                "npx",
+                "esbuild",
+                str(LANE_ID_PATTERN_TS),
+                "--bundle",
+                "--platform=node",
+                "--format=cjs",
+                f"--outfile={bundle_path}",
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert esbuild.returncode == 0, (
+            f"esbuild failed to bundle {LANE_ID_PATTERN_TS}: "
+            f"{esbuild.stdout}\n{esbuild.stderr}"
+        )
+        assert bundle_path.exists(), "esbuild did not produce a bundle file"
+
+        node_script = (
+            f"const {{ isLaneId }} = require({str(bundle_path)!r});\n"
+            f"const accept = {II_001_ACCEPT_IDS!r}.map(isLaneId);\n"
+            f"const reject = {II_001_REJECT_IDS!r}.map(isLaneId);\n"
+            "process.stdout.write(JSON.stringify({accept, reject}));\n"
+        )
+
+        node_result = subprocess.run(
+            [sys.executable if False else "node", "-e", node_script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert node_result.returncode == 0, (
+            f"node failed to execute bundled TS loader: "
+            f"{node_result.stdout}\n{node_result.stderr}"
+        )
+        payload = _json.loads(node_result.stdout)
+
+    assert payload["accept"] == [True] * len(II_001_ACCEPT_IDS), (
+        f"TS loader disagreed with the accept fixture list: "
+        f"{list(zip(II_001_ACCEPT_IDS, payload['accept']))}"
+    )
+    assert payload["reject"] == [False] * len(II_001_REJECT_IDS), (
+        f"TS loader disagreed with the reject fixture list: "
+        f"{list(zip(II_001_REJECT_IDS, payload['reject']))}"
+    )
+
+    from datum.id_pattern import is_lane_id
+
+    py_accepted = [is_lane_id(value) for value in II_001_ACCEPT_IDS]
+    py_rejected = [is_lane_id(value) for value in II_001_REJECT_IDS]
+    assert payload["accept"] == py_accepted, (
+        "TS loader accept results diverge from Python loader accept results "
+        f"over the identical fixture list: ts={payload['accept']!r} "
+        f"py={py_accepted!r}"
+    )
+    assert payload["reject"] == py_rejected, (
+        "TS loader reject results diverge from Python loader reject results "
+        f"over the identical fixture list: ts={payload['reject']!r} "
+        f"py={py_rejected!r}"
+    )

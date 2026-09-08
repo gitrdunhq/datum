@@ -19,7 +19,9 @@ finding (format drift), not the normal RED "not implemented yet" signal.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -326,3 +328,171 @@ def test_int_10_gate_plan_warns_no_integration_invariants_when_no_int_lane(
     assert exc.value.code == 0
     assert "no_integration_invariants" in captured.err
     assert json.loads(captured.out) == {"passed": True, "message": "Plan gate passed"}
+
+
+# ── II-004: counter/collision checks are scoped to committed HEAD only ───
+#
+# next_task_number(repo_root, prefix) and find_task_id_collisions(repo_root,
+# prefix, tasks) both walk `git ls-tree -r HEAD` + `git show HEAD:<path>`
+# (datum/task_ids.py, datum/lane_plan.py) — never the working tree, never
+# other branches' commits that HEAD doesn't include. Consequence: an id
+# minted on an unmerged branch never bumps next_task_number on the current
+# branch, and a cross-branch duplicate id is invisible to
+# find_task_id_collisions until the branches are actually merged together
+# (caught post hoc, never prevented pre-merge).
+
+from datum.lane_plan import find_task_id_collisions
+from datum.task_ids import next_task_number
+
+
+def _ii004_hermetic_env(tmp_path: Path) -> dict:
+    env = os.environ.copy()
+    env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_AUTHOR_NAME"] = "Datum Test"
+    env["GIT_AUTHOR_EMAIL"] = "datum-test@example.com"
+    env["GIT_COMMITTER_NAME"] = "Datum Test"
+    env["GIT_COMMITTER_EMAIL"] = "datum-test@example.com"
+    return env
+
+
+def _ii004_git(args: list[str], cwd: Path, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
+    )
+
+
+def _ii004_init_repo(repo_root: Path, env: dict) -> Path:
+    repo_root.mkdir(parents=True, exist_ok=True)
+    _ii004_git(["init", "-q", "-b", "main"], repo_root, env)
+    _ii004_git(["config", "core.hooksPath", "/dev/null"], repo_root, env)
+    return repo_root
+
+
+def _ii004_commit_file(
+    repo_root: Path, rel_path: str, content: str, env: dict, message: str = "add file"
+) -> None:
+    path = repo_root / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    _ii004_git(["add", rel_path], repo_root, env)
+    _ii004_git(["commit", "-q", "-m", message], repo_root, env)
+
+
+def _ii004_valid_task(task_id: str, files: list[str] | None = None) -> dict:
+    return {
+        "id": task_id,
+        "title": f"Task {task_id}",
+        "acceptance_criteria": ["does the thing"],
+        "files": files or [f"src/{task_id.lower().replace('-', '_')}.py"],
+        "red_note": "n/a",
+        "depends_on": [],
+    }
+
+
+def test_ii004_next_task_number_ignores_ids_committed_only_on_another_branch(
+    tmp_path,
+):
+    env = _ii004_hermetic_env(tmp_path)
+    repo_root = _ii004_init_repo(tmp_path / "repo", env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-1")]),
+        env,
+    )
+
+    _ii004_git(["checkout", "-q", "-b", "feature"], repo_root, env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-a/other.json",
+        json.dumps([_ii004_valid_task("DAT-99")]),
+        env,
+        message="mint DAT-99 on unmerged feature branch",
+    )
+    _ii004_git(["checkout", "-q", "main"], repo_root, env)
+
+    number = next_task_number(repo_root, "DAT")
+
+    # main's committed HEAD only ever saw DAT-1; DAT-99 lives on the
+    # unmerged feature branch and must never count toward the max.
+    assert number == 2
+
+
+def test_ii004_next_task_number_ignores_uncommitted_working_tree_content(tmp_path):
+    env = _ii004_hermetic_env(tmp_path)
+    repo_root = _ii004_init_repo(tmp_path / "repo", env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-3")]),
+        env,
+    )
+
+    # Write, but do not commit, a file naming a much higher id.
+    uncommitted = repo_root / "docs" / "epics" / "epic-a" / "scratch.json"
+    uncommitted.write_text(json.dumps([_ii004_valid_task("DAT-500")]))
+
+    number = next_task_number(repo_root, "DAT")
+
+    assert number == 4
+
+
+def test_ii004_cross_branch_duplicate_id_not_prevented_before_merge(tmp_path):
+    env = _ii004_hermetic_env(tmp_path)
+    repo_root = _ii004_init_repo(tmp_path / "repo", env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-9")]),
+        env,
+    )
+
+    _ii004_git(["checkout", "-q", "-b", "feature"], repo_root, env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-b/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-9")]),
+        env,
+        message="mint colliding DAT-9 on unmerged feature branch",
+    )
+    _ii004_git(["checkout", "-q", "main"], repo_root, env)
+
+    # From main's own committed HEAD, epic-b/tasks.json does not exist yet:
+    # the collision is invisible pre-merge, i.e. never prevented.
+    collisions = find_task_id_collisions(repo_root, "DAT", [_ii004_valid_task("DAT-9")])
+    assert collisions == []
+
+
+def test_ii004_cross_branch_duplicate_id_caught_post_hoc_after_merge(tmp_path):
+    env = _ii004_hermetic_env(tmp_path)
+    repo_root = _ii004_init_repo(tmp_path / "repo", env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-a/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-9")]),
+        env,
+    )
+
+    _ii004_git(["checkout", "-q", "-b", "feature"], repo_root, env)
+    _ii004_commit_file(
+        repo_root,
+        "docs/epics/epic-b/tasks.json",
+        json.dumps([_ii004_valid_task("DAT-9")]),
+        env,
+        message="mint colliding DAT-9 on unmerged feature branch",
+    )
+    _ii004_git(["checkout", "-q", "main"], repo_root, env)
+    _ii004_git(
+        ["merge", "-q", "--no-ff", "-m", "merge feature", "feature"], repo_root, env
+    )
+
+    collisions = find_task_id_collisions(repo_root, "DAT", [_ii004_valid_task("DAT-9")])
+
+    assert len(collisions) == 1
+    record = collisions[0]
+    assert record["id"] == "DAT-9"
+    assert set(record["paths"]) == {
+        "docs/epics/epic-a/tasks.json",
+        "docs/epics/epic-b/tasks.json",
+    }

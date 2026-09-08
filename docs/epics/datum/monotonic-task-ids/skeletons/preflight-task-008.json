@@ -1,0 +1,93 @@
+{
+  "task_id": "task-008",
+  "slug": "task-id-prefix-resolution",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify resolve_task_id_prefix(repo_root) returns 'XYZ' verbatim whe",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_resolve_task_id_prefix_repo_root_returns_xyz_verbatim_when_d",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_resolve_task_id_prefix_repo_root_returns_xyz_verbatim_when_d \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC1:\n    def test_ac1_resolve_task_id_prefix_repo_root_returns_xyz_verbatim_when_d(self):\n        \"\"\"\n        PROP-001: resolve_task_id_prefix(repo_root) returns 'XYZ' verbatim when .datum/config.json\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify For a repo directory named 'datum' with no task_id_prefix fi",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_for_a_repo_directory_named_datum_with_no_task_id_prefix_fiel",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_for_a_repo_directory_named_datum_with_no_task_id_prefix_fiel \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC2:\n    def test_ac2_for_a_repo_directory_named_datum_with_no_task_id_prefix_fiel(self):\n        \"\"\"\n        PROP-002: For a repo directory named 'datum' with no task_id_prefix field, resolve_task_id\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify For a repo directory named 'my-project_2', derivation strips",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_for_a_repo_directory_named_my_project_2_derivation_strips_no",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_for_a_repo_directory_named_my_project_2_derivation_strips_no \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC3:\n    def test_ac3_for_a_repo_directory_named_my_project_2_derivation_strips_no(self):\n        \"\"\"\n        PROP-003: For a repo directory named 'my-project_2', derivation strips non-letters and upp\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify After a derive, .datum/config.json on disk contains task_id_",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_after_a_derive_datum_config_json_on_disk_contains_task_id_pr",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_after_a_derive_datum_config_json_on_disk_contains_task_id_pr \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC4:\n    def test_ac4_after_a_derive_datum_config_json_on_disk_contains_task_id_pr(self):\n        \"\"\"\n        PROP-004: After a derive, .datum/config.json on disk contains task_id_prefix set to the de\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify For a repo directory named '9' or '_x', resolve_task_id_pref",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_for_a_repo_directory_named_9_or_x_resolve_task_id_prefix_rai",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_for_a_repo_directory_named_9_or_x_resolve_task_id_prefix_rai \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC5:\n    def test_ac5_for_a_repo_directory_named_9_or_x_resolve_task_id_prefix_rai(self):\n        \"\"\"\n        PROP-005: For a repo directory named '9' or '_x', resolve_task_id_prefix raises TaskIdPref\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_task_id_prefix.py",
+      "kind": "pytest",
+      "purpose": "Verify Resolution is idempotent: calling it twice on a fresh repo w",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_resolution_is_idempotent_calling_it_twice_on_a_fresh_repo_wr",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-008 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_resolution_is_idempotent_calling_it_twice_on_a_fresh_repo_wr \u2192 tests/test_task_id_prefix.py\n\nimport pytest\n\n\nclass TestTask008AC6:\n    def test_ac6_resolution_is_idempotent_calling_it_twice_on_a_fresh_repo_wr(self):\n        \"\"\"\n        PROP-006: Resolution is idempotent: calling it twice on a fresh repo writes config once an\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [
+    {
+      "path": "datum/task_ids.py",
+      "functions": [
+        "resolve_task_id_prefix"
+      ],
+      "stub_written": false,
+      "content": "def resolve_task_id_prefix(repo_root):\n    ...\n"
+    }
+  ],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

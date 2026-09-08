@@ -5,7 +5,7 @@ import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } fr
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, type BatchResult } from './shared/batch'
 import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, contextWitnessWrapInstruction, unwrapWitnessedArray, assertReadWitness, type ContextFile } from './shared/context-relay'
 import { configReadSteps, configFromSteps } from './shared/config-steps'
-import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps } from './shared/plan-steps'
+import { planBuildSteps, planBuildFromSteps, tasksJsonBlobSha, skeletonBatchSteps, skeletonBatchFromSteps, renumberDecisionSteps, decideRenumber } from './shared/plan-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { writeFileSteps, writeFileFromSteps, writeFileBlobSha } from './shared/write-steps'
 import type { PhaseArgs } from './shared/types'
@@ -262,7 +262,14 @@ for (const task of tasks) {
 // bytes this script intended to write. A runner that abridged or
 // re-serialised a task used to produce a different plan than decompose
 // did, silently — now that is plan_write_mismatch and the run halts.
-const buildSteps = planBuildSteps({ epicDir, tasksJson })
+//
+// Renumber decision (task-016, #514): a net-new epic — no committed
+// lane-plan.json at HEAD — gets `--renumber` so tasks.json is rewritten to
+// <PREFIX>-<n> ids before the gate; an existing epic never does (Assumption
+// 9). The verdict is the exit code of one tolerant `git show`, never an agent.
+const renumber = decideRenumber(await runBatch(renumberDecisionSteps(epicDir), stageOpts('cli', { label: 'renumber-decision', model: model('fast') })))
+log(renumber ? 'No committed lane-plan.json — net-new epic, ids will be renumbered to <PREFIX>-<n>' : 'Committed lane-plan.json found — existing epic, ids kept as-is')
+const buildSteps = planBuildSteps({ epicDir, tasksJson, renumber })
 const build = planBuildFromSteps(await runBatch(buildSteps, stageOpts('cli', { label: 'build-lane-plan', model: model('fast') })), tasksJsonBlobSha(tasksJson))
 if (!build.ok) throw new Error(build.error)
 

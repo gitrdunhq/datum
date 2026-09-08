@@ -1,0 +1,84 @@
+{
+  "task_id": "task-014",
+  "slug": "existing-epics-and-id-propagation-regression",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify For every directory under docs/epics/ containing a tasks.jso",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_for_every_directory_under_docs_epics_containing_a_tasks_json",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_for_every_directory_under_docs_epics_containing_a_tasks_json \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC1:\n    def test_ac1_for_every_directory_under_docs_epics_containing_a_tasks_json(self):\n        \"\"\"\n        PROP-001: For every directory under docs/epics/ containing a tasks.json, `datum lane-plan \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify No existing committed tasks.json under docs/epics/ contains ",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_no_existing_committed_tasks_json_under_docs_epics_contains_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_no_existing_committed_tasks_json_under_docs_epics_contains_a \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC2:\n    def test_ac2_no_existing_committed_tasks_json_under_docs_epics_contains_a(self):\n        \"\"\"\n        PROP-002: No existing committed tasks.json under docs/epics/ contains a <PREFIX>-\\d+ id af\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify The lane branch derived for id 'DAT-142' in epic 'my-epic' i",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_the_lane_branch_derived_for_id_dat_142_in_epic_my_epic_is_my",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_the_lane_branch_derived_for_id_dat_142_in_epic_my_epic_is_my \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC3:\n    def test_ac3_the_lane_branch_derived_for_id_dat_142_in_epic_my_epic_is_my(self):\n        \"\"\"\n        PROP-003: The lane branch derived for id 'DAT-142' in epic 'my-epic' is 'my-epic--DAT-142'\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify The lane-state marker path for run R and id 'DAT-142' ends i",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_the_lane_state_marker_path_for_run_r_and_id_dat_142_ends_in",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_the_lane_state_marker_path_for_run_r_and_id_dat_142_ends_in \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC4:\n    def test_ac4_the_lane_state_marker_path_for_run_r_and_id_dat_142_ends_in(self):\n        \"\"\"\n        PROP-004: The lane-state marker path for run R and id 'DAT-142' ends in 'DAT-142.json' (or\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify Commit subjects built for id 'DAT-142' are exactly 'red(DAT-",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_commit_subjects_built_for_id_dat_142_are_exactly_red_dat_142",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_commit_subjects_built_for_id_dat_142_are_exactly_red_dat_142 \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC5:\n    def test_ac5_commit_subjects_built_for_id_dat_142_are_exactly_red_dat_142(self):\n        \"\"\"\n        PROP-005: Commit subjects built for id 'DAT-142' are exactly 'red(DAT-142): RED complete',\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_existing_epics_still_validate.py",
+      "kind": "pytest",
+      "purpose": "Verify The issue title built for lane 'DAT-142' titled 'Widen the t",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_the_issue_title_built_for_lane_dat_142_titled_widen_the_thin",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-014 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_the_issue_title_built_for_lane_dat_142_titled_widen_the_thin \u2192 tests/test_existing_epics_still_validate.py\n\nimport pytest\n\n\nclass TestTask014AC6:\n    def test_ac6_the_issue_title_built_for_lane_dat_142_titled_widen_the_thin(self):\n        \"\"\"\n        PROP-006: The issue title built for lane 'DAT-142' titled 'Widen the thing' is '[DAT-142] \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

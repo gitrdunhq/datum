@@ -955,8 +955,17 @@ function planBuildSteps(o) {
   if (o.tasksJson.includes(HEREDOC_TERMINATOR)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_TERMINATOR}`);
   return [
     ...writeFileSteps({ path: `${o.epicDir}/tasks.json`, content: o.tasksJson, names: TASKS_WRITE_NAMES }),
-    { name: "lane-plan", command: lanePlanCommand(o.epicDir) }
+    { name: "lane-plan", command: lanePlanCommand(o.epicDir) + (o.renumber ? " --renumber" : "") }
   ];
+}
+function renumberDecisionSteps(epicDir2) {
+  return [{ name: "lane-plan-exists", command: `git show ${q5(`HEAD:${epicDir2}/lane-plan.json`)}`, tolerant: true }];
+}
+function decideRenumber(result) {
+  if (result.missing) return false;
+  const step = stepResult(result, "lane-plan-exists");
+  if (!step) return false;
+  return step.exit_code !== 0;
 }
 function tasksJsonBlobSha(tasksJson2) {
   return writeFileBlobSha(tasksJson2);
@@ -1065,6 +1074,96 @@ var plan_decompose_default = 'Task decomposer. Break the SPEC into implementatio
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- Test command comes from `.datum/config.json` `test_command` field \u2014 read it, don't guess\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (from `.datum/config.json`)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
+
+// assets/schemas/task.schema.json
+var task_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "DATUM Task",
+  $defs: {
+    laneId: {
+      type: "string",
+      pattern: "^(?:task-\\d+|task-INT-\\d+|[A-Z]{2,4}-\\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\\d+|[A-Z]{6}-\\d+)$",
+      description: "Single source of the lane id pattern: datum/id_pattern.py and skills/src/shared/lane-id-pattern.ts both load it from here (#514). Accepts task-N, task-INT-N and PREFIX-N with a 2-6 uppercase-letter prefix; TASK is ordinary (Assumption 8). Only the literal DATUM- prefix is excluded, spelled out lookaround-free because pydantic validates with the Rust regex crate."
+    }
+  },
+  type: "object",
+  required: [
+    "id",
+    "title",
+    "acceptance_criteria",
+    "files",
+    "red_note"
+  ],
+  properties: {
+    id: {
+      $ref: "#/$defs/laneId"
+    },
+    slug: {
+      type: "string",
+      pattern: "^[a-z0-9][a-z0-9-]{2,60}$"
+    },
+    title: {
+      type: "string",
+      minLength: 1
+    },
+    description: {
+      type: "string"
+    },
+    acceptance_criteria: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    files: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    reads: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      default: []
+    },
+    depends_on: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/laneId"
+      },
+      default: []
+    },
+    introduces_stubs: {
+      type: "boolean",
+      default: false
+    },
+    red_note: {
+      type: "string",
+      minLength: 1
+    },
+    estimated_loc: {
+      type: "integer",
+      minimum: 0,
+      default: 0
+    },
+    task_complexity: {
+      type: "string",
+      enum: [
+        "behavioral",
+        "structural"
+      ],
+      default: "behavioral"
+    }
+  }
+};
+
+// skills/src/shared/lane-id-pattern.ts
+var LANE_ID_PATTERN = task_schema_default.$defs.laneId.pattern;
+var LANE_ID_RE = new RegExp(LANE_ID_PATTERN);
 
 // skills/src/shared/lane-steps.ts
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
@@ -1203,7 +1302,9 @@ for (const task of tasks) {
   const deps = task.depends_on && task.depends_on.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
   log(`  ${task.id}: ${task.title}${deps}`);
 }
-var buildSteps = planBuildSteps({ epicDir, tasksJson });
+var renumber = decideRenumber(await runBatch(renumberDecisionSteps(epicDir), stageOpts("cli", { label: "renumber-decision", model: model("fast") })));
+log(renumber ? "No committed lane-plan.json \u2014 net-new epic, ids will be renumbered to <PREFIX>-<n>" : "Committed lane-plan.json found \u2014 existing epic, ids kept as-is");
+var buildSteps = planBuildSteps({ epicDir, tasksJson, renumber });
 var build = planBuildFromSteps(await runBatch(buildSteps, stageOpts("cli", { label: "build-lane-plan", model: model("fast") })), tasksJsonBlobSha(tasksJson));
 if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");

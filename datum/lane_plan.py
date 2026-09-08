@@ -9,8 +9,12 @@ Usage:
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
+
+from datum.id_pattern import split_prefixed_id
+from datum.task_ids import epic_name_for_path, iter_committed_ids
 
 
 def validate_json_schema(data: list, schema_path: Path):
@@ -26,6 +30,9 @@ def validate_json_schema(data: list, schema_path: Path):
             ref_path = schema_path.parent / schema["items"]["$ref"]
             with ref_path.open() as f:
                 ref_schema = json.load(f)
+            # The inlined item schema's local `#/$defs/...` refs must resolve
+            # against the wrapper root once it lives under `items`.
+            schema.setdefault("$defs", {}).update(ref_schema.pop("$defs", {}))
             schema["items"] = ref_schema
 
         jsonschema.validate(instance=data, schema=schema)
@@ -231,6 +238,92 @@ def topological_sort(tasks: list[dict]) -> list[str]:
             visit(task["id"])
 
     return order
+
+
+def epic_name_for_tasks_path(path: str) -> str:
+    """`docs/epics/<name>/tasks.json` or `.../lane-plan.json` -> `<name>`
+    (nested names keep their slashes)."""
+    return epic_name_for_path(path)
+
+
+def find_task_id_collisions(
+    repo_root: Path, prefix: str, tasks: list[dict]
+) -> list[dict]:
+    """Scan committed docs/epics/*/{tasks,lane-plan}.json content at HEAD
+    (never the uncommitted working tree — see datum.task_ids.iter_committed_ids)
+    for `<prefix>-\\d+` ids DECLARED under two different epics. A tasks.json
+    and lane-plan.json of the same epic naturally share ids and never
+    collide; a depends_on reference declares nothing (review CORR-002).
+
+    Only ids present in *tasks* (the current task list under review) are
+    reported — a repo-wide duplicate the current lane never touches is
+    outside this check's scope. Returns one record per colliding id:
+    `{"id": ..., "paths": [...]}` with all committed paths declaring that id.
+
+    Outside a git work tree, or before the first commit, nothing is committed
+    yet and the result is `[]`. A git failure with a HEAD present raises.
+    """
+    id_pattern = re.compile(rf"^{re.escape(prefix)}-\d+$")
+    target_ids = {
+        t["id"]
+        for t in tasks
+        if isinstance(t.get("id"), str) and id_pattern.match(t["id"])
+    }
+    if not target_ids:
+        return []
+
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=Path(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    if top.returncode != 0:
+        return []
+    git_root = Path(top.stdout.strip())
+
+    head = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=git_root,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode != 0:
+        return []
+
+    try:
+        committed = list(iter_committed_ids(git_root))
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"git ls-tree HEAD failed in {git_root}: {e.stderr}") from e
+
+    id_to_epics: dict[str, set[str]] = {}
+    id_to_paths: dict[str, set[str]] = {}
+    for c in committed:
+        if c.declared and c.id in target_ids:
+            id_to_epics.setdefault(c.id, set()).add(c.epic)
+            id_to_paths.setdefault(c.id, set()).add(c.path)
+
+    collisions = []
+    for tid in sorted(target_ids):
+        if len(id_to_epics.get(tid, set())) >= 2:
+            collisions.append({"id": tid, "paths": sorted(id_to_paths[tid])})
+    return collisions
+
+
+def _cli_task_id_collisions(repo_root: Path, tasks: list[dict]) -> list[dict]:
+    """Group the current tasks by their `<PREFIX>-<n>` id shape and check
+    each prefix group for collisions. Old-shape ids (task-001, task-INT-1)
+    have no prefix per split_prefixed_id and so never participate."""
+    prefixes: set[str] = set()
+    for t in tasks:
+        split = split_prefixed_id(t.get("id"))
+        if split:
+            prefixes.add(split[0])
+
+    collisions: list[dict] = []
+    for prefix in sorted(prefixes):
+        collisions.extend(find_task_id_collisions(repo_root, prefix, tasks))
+    return collisions
 
 
 def _render_task_block(task: dict, heading_level: str = "###") -> list[str]:
@@ -573,6 +666,26 @@ def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]
     return errors
 
 
+def _renumbered_prefix_and_start(
+    sorted_ids: list[str],
+) -> tuple[str | None, int | None]:
+    """If every task id shares one PREFIX-<n> shape (renumber_tasks already
+    ran), integration lanes continue that same counter instead of the
+    fixed task-INT-<n> scheme. Otherwise (mixed/legacy task-NNN ids) leave
+    both None so derive_integration_lanes falls back to task-INT-<n>."""
+    prefixes: set[str] = set()
+    highest = 0
+    for tid in sorted_ids:
+        split = split_prefixed_id(tid)
+        if not split:
+            return None, None
+        prefixes.add(split[0])
+        highest = max(highest, split[1])
+    if len(prefixes) != 1:
+        return None, None
+    return next(iter(prefixes)), highest + 1
+
+
 def build_lane_plan(
     tasks: list[dict],
     sorted_ids: list[str],
@@ -662,8 +775,13 @@ def build_lane_plan(
             md_text = properties_path.read_text(encoding="utf-8")
             invariants = parse_integration_invariants(md_text)
             if invariants:
+                int_prefix, int_start = _renumbered_prefix_and_start(sorted_ids)
                 int_lanes = derive_integration_lanes(
-                    invariants, task_map, global_test_command or ""
+                    invariants,
+                    task_map,
+                    global_test_command or "",
+                    prefix=int_prefix,
+                    start=int_start,
                 )
                 for int_lane in int_lanes:
                     int_id = int_lane["id"]
@@ -706,12 +824,37 @@ def main() -> None:
     parser.add_argument("--output", default=".datum/lane-plan.json")
     parser.add_argument("--md-output", default="TASKS.md")
     parser.add_argument("--properties", default=None)
+    parser.add_argument("--renumber", action="store_true")
     args = parser.parse_args()
 
     input_path = Path(args.input)
     if not input_path.exists():
         print(json.dumps({"error": f"{args.input} not found"}))
         sys.exit(1)
+
+    # Renumbering rewrites tasks.json ON DISK before schema validation and
+    # lane-plan construction run, so downstream tooling (and a re-read of
+    # the file) sees PREFIX-n ids. It never runs on the --validate path
+    # (Req 7 AC2) — validate must leave the input file byte-identical.
+    if args.renumber and not args.validate:
+        from datum.task_ids import next_task_number, resolve_task_id_prefix
+        from datum.task_renumber import renumber_tasks
+
+        repo_root = Path(".").resolve()
+        prefix = resolve_task_id_prefix(repo_root)
+        try:
+            start = next_task_number(repo_root, prefix)
+        except Exception:
+            start = 1
+
+        raw_for_renumber = json.loads(input_path.read_text())
+        tasks_for_renumber, units_for_renumber = normalize_input(raw_for_renumber)
+        renumbered = renumber_tasks(tasks_for_renumber, prefix, start)
+        if isinstance(raw_for_renumber, dict):
+            raw_for_renumber["tasks"] = renumbered
+            input_path.write_text(json.dumps(raw_for_renumber))
+        else:
+            input_path.write_text(json.dumps(renumbered))
 
     try:
         raw = json.loads(input_path.read_text())
@@ -727,7 +870,15 @@ def main() -> None:
     valid, errors = validate_json_schema(tasks, schema_path)
 
     if not valid:
-        print(json.dumps({"error": "Schema validation failed", "details": errors}))
+        print(
+            json.dumps(
+                {
+                    "code": "schema_shape_invalid",
+                    "error": "Schema validation failed",
+                    "details": errors,
+                }
+            )
+        )
         sys.exit(1)
 
     if units:
@@ -746,6 +897,36 @@ def main() -> None:
             sys.exit(1)
 
     if args.validate:
+        collisions = _cli_task_id_collisions(Path(".").resolve(), tasks)
+        if collisions:
+            records = [
+                {
+                    "id": c["id"],
+                    "paths": c["paths"],
+                    "epics": [epic_name_for_tasks_path(p) for p in c["paths"]],
+                }
+                for c in collisions
+            ]
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "code": "task_id_collision",
+                        "reason": "task_id_collision",
+                        "id": records[0]["id"],
+                        "paths": records[0]["paths"],
+                        "collisions": records,
+                        # II-002: the halt names the remedy; nothing renumbers on its own.
+                        "remedy": (
+                            f"{records[0]['id']} is used by "
+                            + " and ".join(records[0]["paths"])
+                            + " — run `datum lane-plan --renumber` on the newer epic"
+                        ),
+                    }
+                )
+            )
+            sys.exit(1)
+
         try:
             inject_conflict_edges(tasks)
             read_edge_warnings = inject_read_dependency_edges(tasks)
@@ -755,7 +936,9 @@ def main() -> None:
                 result["warnings"] = read_edge_warnings
             print(json.dumps(result))
         except ValueError as e:
-            print(json.dumps({"valid": False, "error": str(e)}))
+            print(
+                json.dumps({"valid": False, "code": "topology_cycle", "error": str(e)})
+            )
             sys.exit(1)
         return
 

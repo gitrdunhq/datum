@@ -511,6 +511,96 @@ function describeFailure(r, label) {
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 
+// assets/schemas/task.schema.json
+var task_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "DATUM Task",
+  $defs: {
+    laneId: {
+      type: "string",
+      pattern: "^(?:task-\\d+|task-INT-\\d+|[A-Z]{2,4}-\\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\\d+|[A-Z]{6}-\\d+)$",
+      description: "Single source of the lane id pattern: datum/id_pattern.py and skills/src/shared/lane-id-pattern.ts both load it from here (#514). Accepts task-N, task-INT-N and PREFIX-N with a 2-6 uppercase-letter prefix; TASK is ordinary (Assumption 8). Only the literal DATUM- prefix is excluded, spelled out lookaround-free because pydantic validates with the Rust regex crate."
+    }
+  },
+  type: "object",
+  required: [
+    "id",
+    "title",
+    "acceptance_criteria",
+    "files",
+    "red_note"
+  ],
+  properties: {
+    id: {
+      $ref: "#/$defs/laneId"
+    },
+    slug: {
+      type: "string",
+      pattern: "^[a-z0-9][a-z0-9-]{2,60}$"
+    },
+    title: {
+      type: "string",
+      minLength: 1
+    },
+    description: {
+      type: "string"
+    },
+    acceptance_criteria: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    files: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      minItems: 1
+    },
+    reads: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      default: []
+    },
+    depends_on: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/laneId"
+      },
+      default: []
+    },
+    introduces_stubs: {
+      type: "boolean",
+      default: false
+    },
+    red_note: {
+      type: "string",
+      minLength: 1
+    },
+    estimated_loc: {
+      type: "integer",
+      minimum: 0,
+      default: 0
+    },
+    task_complexity: {
+      type: "string",
+      enum: [
+        "behavioral",
+        "structural"
+      ],
+      default: "behavioral"
+    }
+  }
+};
+
+// skills/src/shared/lane-id-pattern.ts
+var LANE_ID_PATTERN = task_schema_default.$defs.laneId.pattern;
+var LANE_ID_RE = new RegExp(LANE_ID_PATTERN);
+
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {

@@ -21,7 +21,9 @@ inventing its own, independent justification.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -121,3 +123,189 @@ class TestInv5NoIndependentJustificationDrift:
         src = TUI_DATA.read_text()
         assert "import datum" not in src
         assert "from datum" not in src
+
+
+# ---------------------------------------------------------------------------
+# II-002 (task-013): `datum lane-plan --validate` on a task-id collision
+# exits 1 with the exact `{"valid": false, "reason": "task_id_collision",
+# "collisions": [{"id", "epics"}]}` shape, and the halt message names both
+# colliding epic paths plus the `--renumber` remedy, without ever
+# auto-renumbering anything on its own.
+# ---------------------------------------------------------------------------
+
+
+def _ii002_hermetic_env(tmp_path: Path) -> dict:
+    env = os.environ.copy()
+    env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_AUTHOR_NAME"] = "Datum Test"
+    env["GIT_AUTHOR_EMAIL"] = "datum-test@example.com"
+    env["GIT_COMMITTER_NAME"] = "Datum Test"
+    env["GIT_COMMITTER_EMAIL"] = "datum-test@example.com"
+    return env
+
+
+def _ii002_git(args: list[str], cwd: Path, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
+    )
+
+
+def _ii002_init_repo(repo_root: Path, env: dict) -> Path:
+    repo_root.mkdir(parents=True, exist_ok=True)
+    _ii002_git(["init", "-q", "-b", "main"], repo_root, env)
+    _ii002_git(["config", "core.hooksPath", "/dev/null"], repo_root, env)
+    return repo_root
+
+
+def _ii002_commit_file(
+    repo_root: Path, rel_path: str, content: str, env: dict, message: str = "add file"
+) -> None:
+    path = repo_root / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    _ii002_git(["add", rel_path], repo_root, env)
+    _ii002_git(["commit", "-q", "-m", message], repo_root, env)
+
+
+def _ii002_valid_task(task_id: str, files: list[str] | None = None) -> dict:
+    return {
+        "id": task_id,
+        "title": f"Task {task_id}",
+        "acceptance_criteria": ["does the thing"],
+        "files": files or [f"src/{task_id.lower().replace('-', '_')}.py"],
+        "red_note": "n/a",
+        "depends_on": [],
+    }
+
+
+class TestII002ValidateCollisionExactPayloadShape:
+    """`datum lane-plan --validate` on a collision must exit 1 with exactly
+    `{"valid": false, "reason": "task_id_collision", "collisions":
+    [{"id", "epics"}]}` — not some renamed/looser variant of that shape."""
+
+    def test_validate_collision_exits_1_with_exact_payload_shape(
+        self, tmp_path
+    ) -> None:
+        env = _ii002_hermetic_env(tmp_path)
+        repo_root = _ii002_init_repo(tmp_path / "repo", env)
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-older/tasks.json",
+            json.dumps([_ii002_valid_task("DAT-500", files=["src/older.py"])]),
+            env,
+        )
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-newer/tasks.json",
+            json.dumps([_ii002_valid_task("DAT-500", files=["src/newer.py"])]),
+            env,
+        )
+
+        result = subprocess.run(
+            [
+                "datum",
+                "lane-plan",
+                "--validate",
+                "--input",
+                "docs/epics/epic-newer/tasks.json",
+            ],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["valid"] is False
+        assert payload["reason"] == "task_id_collision"
+        assert isinstance(payload["collisions"], list)
+        assert len(payload["collisions"]) == 1
+        record = payload["collisions"][0]
+        assert record["id"] == "DAT-500"
+        assert set(record["epics"]) == {"epic-older", "epic-newer"}
+
+    def test_validate_collision_halt_message_names_both_epic_paths_and_renumber_remedy(
+        self, tmp_path
+    ) -> None:
+        env = _ii002_hermetic_env(tmp_path)
+        repo_root = _ii002_init_repo(tmp_path / "repo", env)
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-alpha/tasks.json",
+            json.dumps([_ii002_valid_task("DAT-777", files=["src/alpha.py"])]),
+            env,
+        )
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-beta/tasks.json",
+            json.dumps([_ii002_valid_task("DAT-777", files=["src/beta.py"])]),
+            env,
+        )
+
+        result = subprocess.run(
+            [
+                "datum",
+                "lane-plan",
+                "--validate",
+                "--input",
+                "docs/epics/epic-beta/tasks.json",
+            ],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1, result.stdout
+        payload = json.loads(result.stdout)
+        remedy = payload["remedy"]
+        assert "docs/epics/epic-alpha/tasks.json" in remedy
+        assert "docs/epics/epic-beta/tasks.json" in remedy
+        assert "--renumber" in remedy
+
+    def test_validate_collision_never_auto_renumbers_the_input_file(
+        self, tmp_path
+    ) -> None:
+        env = _ii002_hermetic_env(tmp_path)
+        repo_root = _ii002_init_repo(tmp_path / "repo", env)
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-first/tasks.json",
+            json.dumps([_ii002_valid_task("DAT-900", files=["src/first.py"])]),
+            env,
+        )
+        newer_content = json.dumps(
+            [_ii002_valid_task("DAT-900", files=["src/second.py"])]
+        )
+        _ii002_commit_file(
+            repo_root,
+            "docs/epics/epic-second/tasks.json",
+            newer_content,
+            env,
+        )
+
+        # `--validate` on a collision must never mutate the input file in
+        # place: the halt names `--renumber` as the *remedy the operator
+        # must run themselves*, it does not run it automatically.
+        result = subprocess.run(
+            [
+                "datum",
+                "lane-plan",
+                "--validate",
+                "--input",
+                "docs/epics/epic-second/tasks.json",
+            ],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["reason"] == "task_id_collision"
+        on_disk = (repo_root / "docs/epics/epic-second/tasks.json").read_text()
+        assert on_disk == newer_content
+        assert "DAT-900" in on_disk

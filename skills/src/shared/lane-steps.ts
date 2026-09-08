@@ -13,6 +13,7 @@ import { CONTEXT_RELAY_BUDGET_BYTES } from './context-relay'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
 import type { Lane, LanePlanDigest } from './types'
+import { isLaneId } from './lane-id-pattern'
 
 const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`
 /** Escape a literal for grep -E (the pattern strings are literals, not regexes). */
@@ -843,13 +844,22 @@ export interface MergeStepsOpts {
 }
 
 const PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/
+// Ids shaped like the new short-prefix scheme (letters-digits, e.g.
+// dat-142) must also satisfy isLaneId — a lowercase or DATUM-prefixed id in
+// that shape is a typo'd short prefix, not a legacy free-form lane id like
+// "T1", which predates the short-prefix scheme and is left to PLAIN_ID_RE.
+const SHORT_PREFIX_SHAPE_RE = /^[A-Za-z]+-\d+$/
+
+function rejectsIsLaneId(taskId: string): boolean {
+  return SHORT_PREFIX_SHAPE_RE.test(taskId) && !isLaneId(taskId)
+}
 
 export function completionMarkerCommand(runId: string, taskId: string): string {
   // Both ids are interpolated inside a single-quoted printf argument; a
   // quote in either would break out of it (review finding). Task ids are
   // schema-constrained upstream (task-NNN) — refuse anything else here too.
   if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`)
-  if (!PLAIN_ID_RE.test(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`)
+  if (!PLAIN_ID_RE.test(taskId) || rejectsIsLaneId(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`)
   const dir = `.datum/runs/${runId}/lane-state`
   return `mkdir -p ${q(dir)} && printf '%s\\n' '{"task_id": "${taskId}", "status": "completed"}' > ${q(`${dir}/${taskId}.json`)}`
 }
@@ -1038,7 +1048,7 @@ export interface LaneSpecSummary {
 }
 
 export function laneSpecExportCommand(o: LaneSpecExportOpts): string {
-  if (!PLAIN_ID_RE.test(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`)
+  if (!PLAIN_ID_RE.test(o.taskId) || rejectsIsLaneId(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`)
   if (!/^[A-Za-z0-9:]+$/.test(o.expectHash)) throw new Error(`laneSpecExportCommand: spec hash must be plain, got ${JSON.stringify(o.expectHash)}`)
   return `datum lane-spec-export --plan ${q(o.planPath)} --task ${q(o.taskId)} --out ${q(o.outPath)} --expect-hash ${q(o.expectHash)}`
 }

@@ -19,6 +19,9 @@ import {
   tasksJsonBlobSha,
   skeletonBatchSteps,
   skeletonBatchFromSteps,
+  lanePlanCommand,
+  renumberDecisionSteps,
+  decideRenumber,
 } from './plan-steps'
 import { batchScript, parseBatchResult } from './batch'
 import { HEREDOC_TERMINATOR } from './write-steps'
@@ -118,6 +121,101 @@ describe('planBuildFromSteps', () => {
     expect(planBuildFromSteps(res([{ name: 'mkdir', exit_code: 0 }, { name: 'write-tasks', exit_code: 1, stderr: 'Permission denied' }]), sha).error)
       .toMatch(/^plan_build_failed: write-tasks exited 1.*Permission denied/)
     expect(planBuildFromSteps(parseBatchResult(null, steps), sha).error).toMatch(/^plan_build_failed: /)
+  })
+})
+
+// task-016: the plan phase passes --renumber to `datum lane-plan` only for a
+// net-new epic (no committed lane-plan.json), decided from a batch step's
+// exit code — never from an agent.
+describe('planBuildSteps renumber flag (task-016 AC1)', () => {
+  it('renumber: true appends " --renumber" to the lane-plan command', () => {
+    const steps = planBuildSteps({ epicDir: 'docs/epics/x', tasksJson, renumber: true })
+    const lanePlan = steps.find((s) => s.name === 'lane-plan')!
+    expect(lanePlan.command).toContain(' --renumber')
+    expect(lanePlan.command).toBe(
+      'datum lane-plan --input "docs/epics/x/tasks.json" --output "docs/epics/x/lane-plan.json" --md-output "docs/epics/x/TASKS.md" --properties "docs/epics/x/PROPERTIES.md" --renumber',
+    )
+  })
+
+  it('renumber: false produces the exact flag-free lane-plan command', () => {
+    const steps = planBuildSteps({ epicDir: 'docs/epics/x', tasksJson, renumber: false })
+    const lanePlan = steps.find((s) => s.name === 'lane-plan')!
+    expect(lanePlan.command).toBe(
+      'datum lane-plan --input "docs/epics/x/tasks.json" --output "docs/epics/x/lane-plan.json" --md-output "docs/epics/x/TASKS.md" --properties "docs/epics/x/PROPERTIES.md"',
+    )
+  })
+
+  it('renumber absent (existing epics unaffected) produces no --renumber flag', () => {
+    const steps = planBuildSteps({ epicDir: 'docs/epics/x', tasksJson })
+    const lanePlan = steps.find((s) => s.name === 'lane-plan')!
+    expect(lanePlan.command).not.toContain('--renumber')
+  })
+})
+
+// planBuildSteps takes `renumber` as an input, so the decision must be known
+// BEFORE the batch is built — the `git show` check cannot live inside the
+// same batch planBuildSteps returns (that would make the batch's shape
+// depend on its own not-yet-run step). renumberDecisionSteps is therefore a
+// separate, standalone batch the caller runs first; it must never fold into
+// planBuildSteps's ['mkdir', 'write-tasks', 'tasks-sha', 'lane-plan'] shape.
+describe('renumberDecisionSteps / decideRenumber (task-016 AC2)', () => {
+  it('is a single tolerant `git show HEAD:<epicDir>/lane-plan.json` step', () => {
+    const steps = renumberDecisionSteps('docs/epics/x')
+    expect(steps).toHaveLength(1)
+    expect(steps[0].command).toBe('git show "HEAD:docs/epics/x/lane-plan.json"')
+    expect(steps[0].tolerant).toBe(true)
+  })
+
+  it('quotes epicDir like every other builder (review SEC-001): metacharacters cannot expand', () => {
+    const steps = renumberDecisionSteps('docs/epics/a$b`c"d')
+    expect(steps[0].command).toBe('git show "HEAD:docs/epics/a\\$b\\`c\\"d/lane-plan.json"')
+  })
+
+  it('a non-zero exit (no committed plan) decides net-new: renumber is true', () => {
+    const steps = renumberDecisionSteps('docs/epics/x')
+    const result = parseBatchResult(
+      JSON.stringify([{ name: steps[0].name, exit_code: 128, stdout: '', stderr: 'fatal: invalid object name' }]),
+      steps,
+    )
+    expect(decideRenumber(result)).toBe(true)
+  })
+
+  it('exit 0 (an existing epic already has a committed lane-plan.json) decides renumber is false', () => {
+    const steps = renumberDecisionSteps('docs/epics/x')
+    const result = parseBatchResult(
+      JSON.stringify([{ name: steps[0].name, exit_code: 0, stdout: '{"lanes": {}}', stderr: '' }]),
+      steps,
+    )
+    expect(decideRenumber(result)).toBe(false)
+  })
+
+  it('a missing batch result (runner returned nothing) decides renumber is false — never renumber on an unknown state (renumbering an existing epic is exactly what broke task-010)', () => {
+    expect(decideRenumber(parseBatchResult(null, renumberDecisionSteps('docs/epics/x')))).toBe(false)
+  })
+})
+
+// The `--validate` step the plan gate runs is the shared `lanePlanCommand`
+// builder (datum-properties.ts:160 also calls it, for the schedule step) —
+// this lane's renumber flag must never leak into it.
+describe('lanePlanCommand stays --renumber-free (task-016 AC3)', () => {
+  it('lanePlanCommand(epicDir) is the exact flag-free command any validate/schedule caller reuses', () => {
+    expect(lanePlanCommand('docs/epics/x')).toBe(
+      'datum lane-plan --input "docs/epics/x/tasks.json" --output "docs/epics/x/lane-plan.json" --md-output "docs/epics/x/TASKS.md" --properties "docs/epics/x/PROPERTIES.md"',
+    )
+    expect(lanePlanCommand('docs/epics/x')).not.toContain('--renumber')
+  })
+})
+
+describe('generated command shape across both renumber branches (task-016 AC4)', () => {
+  it('the lane-plan step differs by branch, but lanePlanCommand (the validate/schedule builder) is unchanged', () => {
+    const netNew = planBuildSteps({ epicDir: 'docs/epics/x', tasksJson, renumber: true })
+    const existing = planBuildSteps({ epicDir: 'docs/epics/x', tasksJson, renumber: false })
+    const netNewLanePlan = netNew.find((s) => s.name === 'lane-plan')!.command
+    const existingLanePlan = existing.find((s) => s.name === 'lane-plan')!.command
+    expect(netNewLanePlan).not.toBe(existingLanePlan)
+    expect(netNewLanePlan).toBe(existingLanePlan + ' --renumber')
+
+    expect(lanePlanCommand('docs/epics/x')).toBe(existingLanePlan)
   })
 })
 

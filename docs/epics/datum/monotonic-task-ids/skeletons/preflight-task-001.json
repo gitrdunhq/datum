@@ -1,0 +1,123 @@
+{
+  "task_id": "task-001",
+  "slug": "shared-lane-id-pattern",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.id_pattern.LANE_ID_PATTERN is a string regex anchored ",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_id_pattern_lane_id_pattern_is_a_string_regex_anchored",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_id_pattern_lane_id_pattern_is_a_string_regex_anchored \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC1:\n    def test_ac1_datum_id_pattern_lane_id_pattern_is_a_string_regex_anchored(self):\n        \"\"\"\n        PROP-001: datum.id_pattern.LANE_ID_PATTERN is a string regex anchored with ^...$ and re.fu\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify re.fullmatch(LANE_ID_PATTERN, x) is None for 'DAT142', 'dat-",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_re_fullmatch_lane_id_pattern_x_is_none_for_dat142_dat_142_da",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_re_fullmatch_lane_id_pattern_x_is_none_for_dat142_dat_142_da \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC2:\n    def test_ac2_re_fullmatch_lane_id_pattern_x_is_none_for_dat142_dat_142_da(self):\n        \"\"\"\n        PROP-002: re.fullmatch(LANE_ID_PATTERN, x) is None for 'DAT142', 'dat-142', 'DATUM-142', '\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.id_pattern.is_lane_id('DAT-142') returns True and is_l",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_datum_id_pattern_is_lane_id_dat_142_returns_true_and_is_lane",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_datum_id_pattern_is_lane_id_dat_142_returns_true_and_is_lane \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC3:\n    def test_ac3_datum_id_pattern_is_lane_id_dat_142_returns_true_and_is_lane(self):\n        \"\"\"\n        PROP-003: datum.id_pattern.is_lane_id('DAT-142') returns True and is_lane_id('dat-142') re\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify assets/schemas/task.schema.json's `id` pattern and `depends_",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_assets_schemas_task_schema_json_s_id_pattern_and_depends_on",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_assets_schemas_task_schema_json_s_id_pattern_and_depends_on \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC4:\n    def test_ac4_assets_schemas_task_schema_json_s_id_pattern_and_depends_on(self):\n        \"\"\"\n        PROP-004: assets/schemas/task.schema.json's `id` pattern and `depends_on` item pattern bot\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.models.task_schema.DatumTask(id='DAT-142', slug='x-y-z",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_datum_models_task_schema_datumtask_id_dat_142_slug_x_y_z_tit",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_datum_models_task_schema_datumtask_id_dat_142_slug_x_y_z_tit \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC5:\n    def test_ac5_datum_models_task_schema_datumtask_id_dat_142_slug_x_y_z_tit(self):\n        \"\"\"\n        PROP-005: datum.models.task_schema.DatumTask(id='DAT-142', slug='x-y-z', title='t', accept\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify DatumTask(id='dat-142', ...) raises pydantic.ValidationError",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_datumtask_id_dat_142_raises_pydantic_validationerror",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_datumtask_id_dat_142_raises_pydantic_validationerror \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC6:\n    def test_ac6_datumtask_id_dat_142_raises_pydantic_validationerror(self):\n        \"\"\"\n        PROP-006: DatumTask(id='dat-142', ...) raises pydantic.ValidationError\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify DatumTask(id='task-001', depends_on=['task-002'], ...) still",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_datumtask_id_task_001_depends_on_task_002_still_constructs_w",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_datumtask_id_task_001_depends_on_task_002_still_constructs_w \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC7:\n    def test_ac7_datumtask_id_task_001_depends_on_task_002_still_constructs_w(self):\n        \"\"\"\n        PROP-007: DatumTask(id='task-001', depends_on=['task-002'], ...) still constructs (widenin\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "tests/test_id_pattern_shared.py",
+      "kind": "pytest",
+      "purpose": "Verify datum.lane_plan.main() run with --validate over a tasks.json",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_datum_lane_plan_main_run_with_validate_over_a_tasks_json_who",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-001 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_datum_lane_plan_main_run_with_validate_over_a_tasks_json_who \u2192 tests/test_id_pattern_shared.py\n\nimport pytest\n\n\nclass TestTask001AC8:\n    def test_ac8_datum_lane_plan_main_run_with_validate_over_a_tasks_json_who(self):\n        \"\"\"\n        PROP-008: datum.lane_plan.main() run with --validate over a tasks.json whose ids are 'DAT-\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [
+    {
+      "path": "datum/id_pattern.py",
+      "functions": [
+        "is_lane_id",
+        "fullmatch",
+        "DatumTask",
+        "main"
+      ],
+      "stub_written": false,
+      "content": "def fullmatch(LANE_ID_PATTERN, x):\n    ...\n\ndef is_lane_id('DAT-142'):\n    ...\n\ndef DatumTask(id, slug, title, acceptance_criteria, files, depends_on, red_note):\n    ...\n\ndef main():\n    ...\n"
+    }
+  ],
+  "existing_api": {
+    "assets/schemas/task.schema.json": "{\n}\n",
+    "datum/models/task_schema.py": "# generated by datamodel-codegen:\n#   filename:  task.schema.json\n#   timestamp: 2026-05-22T01:17:42+00:00\n\nfrom __future__ import annotations\n\nfrom enum import Enum\n\nfrom pydantic import BaseModel, Field, conint, constr\n\n\nclass TaskComplexity(Enum):\n    ...\n\n\nclass DatumTask(BaseModel):\n    ...\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

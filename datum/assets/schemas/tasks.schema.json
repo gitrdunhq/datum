@@ -1,9 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "DATUM Task List",
-  "type": "array",
-  "items": {
-    "$ref": "task.schema.json"
-  },
-  "minItems": 1
-}

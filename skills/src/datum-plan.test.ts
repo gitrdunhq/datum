@@ -50,7 +50,7 @@ describe('datum-plan-buildorder-and-context — AC1: cycle guard halts on cyclic
     expect(datumPlanSrc).toMatch(/assertAcyclicTasks\(\s*tasks\s*\)/)
 
     const guardIdx = datumPlanSrc.indexOf('assertAcyclicTasks(')
-    const writeTasksJsonIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson })')
+    const writeTasksJsonIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson, renumber })')
     expect(guardIdx).toBeGreaterThan(-1)
     expect(writeTasksJsonIdx).toBeGreaterThan(-1)
     expect(guardIdx).toBeLessThan(writeTasksJsonIdx)
@@ -224,7 +224,7 @@ describe('#352 — plan gate ordering', () => {
   // 'plan'; the FIRST such call must be the early one (--approve: structural
   // checks only, the human hold is re-checked by the final gate).
   const gateIdx = datumPlanSrc.indexOf("gateSteps('plan', ' --approve')")
-  const lanePlanIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson })')
+  const lanePlanIdx = datumPlanSrc.indexOf('planBuildSteps({ epicDir, tasksJson, renumber })')
   const skeletonIdx = datumPlanSrc.indexOf('skeletonBatchSteps({ epicDir, language })')
   const triageIdx = datumPlanSrc.indexOf("phase('Triage')")
 
@@ -614,5 +614,17 @@ describe('plan-decompose.md — ADR sequence numbers are unique across lanes', (
     expect(decompose).toMatch(/unique/i)
     expect(decompose).toMatch(/highest/i)
     expect(decompose).toMatch(/plan_adr_sequence_collision/)
+  })
+})
+
+describe('datum-plan — the renumber decision is wired (task-016 AC2, review round 3)', () => {
+  // task-016 shipped renumberDecisionSteps/decideRenumber in plan-steps.ts
+  // but its lane owned no datum-plan.ts, so nothing ever called them and
+  // `--renumber` was never passed: every net-new epic kept task-NNN ids.
+  it('runs renumberDecisionSteps as a batch and feeds decideRenumber into planBuildSteps', () => {
+    expect(datumPlanSrc).toMatch(/import \{[^}]*renumberDecisionSteps[^}]*\} from '\.\/shared\/plan-steps'/)
+    expect(datumPlanSrc).toMatch(/import \{[^}]*decideRenumber[^}]*\} from '\.\/shared\/plan-steps'/)
+    expect(datumPlanSrc).toMatch(/decideRenumber\(await runBatch\(renumberDecisionSteps\(epicDir\)/)
+    expect(datumPlanSrc).toMatch(/planBuildSteps\(\{ epicDir, tasksJson, renumber \}\)/)
   })
 })

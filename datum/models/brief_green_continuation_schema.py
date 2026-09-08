@@ -9,28 +9,30 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, conint, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Status(Enum):
-    fail = 'fail'
-    compile_error = 'compile_error'
-    runtime_error = 'runtime_error'
+    fail = "fail"
+    compile_error = "compile_error"
+    runtime_error = "runtime_error"
 
 
 class TestSignal(BaseModel):
     model_config = ConfigDict(
-        extra='allow',
+        extra="allow",
     )
     status: Status
 
 
 class DatumGreenContinuationBrief(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    contract_version: Literal['1.0']
-    agent_role: Literal['GREEN']
-    turn_type: Literal['continuation']
-    task_id: constr(pattern=r'^task-\d+$')
+    contract_version: Literal["1.0"]
+    agent_role: Literal["GREEN"]
+    turn_type: Literal["continuation"]
+    task_id: constr(pattern=LANE_ID_PATTERN)
     turn: conint(ge=2)
     green_max_turns: conint(ge=2)
     test_signal: TestSignal

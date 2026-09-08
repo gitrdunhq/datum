@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class AcceptanceCriterion(RootModel[constr(min_length=1)]):
     root: constr(min_length=1)
@@ -19,7 +21,7 @@ class FilesToWriteItem(RootModel[constr(min_length=1)]):
 
 class ImplementationFile(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     path: constr(min_length=1)
     content: str
@@ -27,7 +29,7 @@ class ImplementationFile(BaseModel):
 
 class TestFile(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     path: constr(min_length=1)
     content: str
@@ -35,12 +37,12 @@ class TestFile(BaseModel):
 
 class DatumRefactorBrief(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    contract_version: Literal['1.0']
-    agent_role: Literal['REFACTOR']
-    task_id: constr(pattern=r'^task-\d+$')
-    run_id: constr(pattern=r'^epic-\d+-\d{8}-\d{6}$')
+    contract_version: Literal["1.0"]
+    agent_role: Literal["REFACTOR"]
+    task_id: constr(pattern=LANE_ID_PATTERN)
+    run_id: constr(pattern=r"^epic-\d+-\d{8}-\d{6}$")
     spec_excerpt: constr(min_length=1)
     properties: list[Any] = Field(..., min_length=1)
     acceptance_criteria: list[AcceptanceCriterion] = Field(..., min_length=1)

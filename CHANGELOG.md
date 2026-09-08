@@ -2,6 +2,61 @@
 
 All notable changes to DATUM are documented here.
 
+## [Monotonic Task Ids] — 2026-09-08 (run 20260908-052437)
+
+### Added
+
+Epic `docs/epics/datum/monotonic-task-ids/` ("Sequential repo-wide task numbers
+(`DAT-NNN`) instead of per-epic `task-001`") merged at
+`a162b295488ddaf52bdcda25853f73f0f1fceb87`. 22/22 tasks completed
+(`say_do_ratio` 1.0, 0 `failed_terminal`) per
+`docs/epics/datum/monotonic-task-ids/tasks.json` (16 task lanes, 6 integration
+lanes). `git` block: 53 commits, +8952/-232 LOC (net +8720) across 95 files,
+no `base_sha_fallback` warning.
+
+New epics now get a repo-wide monotonic lane id (`<PREFIX>-<n>`, e.g.
+`DAT-142`) instead of restarting at `task-001` every time. `datum/task_ids.py`
+resolves/derives/persists `task_id_prefix` in `.datum/config.json`; a repo-wide
+counter (`max(existing) + 1` over committed `docs/epics/*/tasks.json` and
+`lane-plan.json` ids) is added; a deterministic post-decompose step
+(`datum lane-plan --renumber`, wired into the plan phase only for fresh
+epics) rewrites placeholder `task-NNN` ids to `<PREFIX>-<n>` in
+dependency-topological order and rewrites every `depends_on` reference to
+match; integration lanes synthesized by `build_lane_plan` draw from the same
+counter for new epics instead of the `task-INT-` shape. A single shared,
+table-driven id-pattern definition (`assets/schemas/task.schema.json`,
+consumed by `datum/id_pattern.py` and `skills/src/shared/lane-id-pattern.ts`)
+now accepts `task-\d+`, `task-INT-\d+`, and `[A-Z]{2,6}-\d+`, replacing
+scattered literal regexes previously duplicated across 12 Pydantic schema
+files, `datum/gate.py`, and `skills/src/shared/lane-steps.ts`. Every epic
+already committed in `docs/epics/` continues to validate unchanged — nothing
+in this change migrates or rewrites an existing `task-NNN`/`task-INT-N` id.
+
+### Fixed
+
+- `datum/lane_plan.py`/`datum/gate.py`: the `task_id_collision` halt now
+  names the `--renumber` remedy, and a renumbered integration lane is matched
+  to its invariant row by invariants rather than by id (II-005).
+- Two dead schema copies removed (`datum/assets/schemas/task.schema.json`,
+  `datum/assets/schemas/tasks.schema.json`) — `assets/schemas/task.schema.json`
+  is now the one consumed source of the lane id regex.
+- `datum/act`: the runtime-artifact gate no longer flags a test's `repo_root`
+  fixture.
+- `skills/`: a truncated batch step array (cut before it closes) is now
+  detected as `batch_truncated` and retried once (`#539`).
+
+### Known gaps (open, tracked for follow-up)
+
+- SEC-001 (medium): `resolve_task_id_prefix()` (`datum/task_ids.py:59`)
+  returns a config-supplied `task_id_prefix` unvalidated; only the derived
+  fallback enforces a shape.
+- PERF-001 (medium): `iter_committed_ids` (`datum/task_ids.py:116`) spawns one
+  `git show` subprocess per committed epic id file (~52 spawns/plan) — an N+1
+  pattern.
+- `token_metrics` still fails to collect (`no_state_available`, fifth
+  consecutive run) — no TS Workflow producer writes to `state.db`; out of
+  scope for this epic.
+
 ## [State Single Source of Truth] — 2026-09-07 (run 20260907-163917)
 
 ### Added

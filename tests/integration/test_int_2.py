@@ -20,8 +20,16 @@ INT-09 text (verbatim from the lane spec):
 """
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
+
+from datum import gate
+from datum.lane_plan import build_lane_plan, find_task_id_collisions
+from datum.task_renumber import renumber_tasks
 
 _PLAN_PATH = (
     Path(__file__).resolve().parents[2]
@@ -254,3 +262,197 @@ def test_invq3_pipeline_scheduler_depends_on_the_decision_and_the_thin_slice():
 
     assert set(task_011["depends_on"]) == {"task-001", "task-002"}
     assert task_011["kind"] == "behavioral"
+
+
+# ---------------------------------------------------------------------------
+# II-005 (from docs/epics/datum/monotonic-task-ids/lane-plan.json): a lane id
+# renumbered by task-010 in dependency order flows unchanged through
+# task-007's kind-based gate classification, task-011's counter-based
+# integration-lane synthesis, task-012's kind-based counting, and task-013's
+# collision detection -- the same `<PREFIX>-<n>` string is never reshaped
+# between these stages.
+#
+# This is a THIRD, unrelated integration lane sharing the INT-2 slot name
+# across a third epic (monotonic-task-ids). These tests exercise the actual
+# merged production code (datum.task_renumber, datum.lane_plan, datum.gate)
+# end to end and are expected to PASS on first run.
+# ---------------------------------------------------------------------------
+
+_DAT_ID_RE = re.compile(r"^DAT-\d+$")
+
+
+def _ii005_source_tasks() -> list:
+    return [
+        {
+            "id": "task-001",
+            "title": "First task",
+            "files": ["src/a.py"],
+            "acceptance_criteria": ["a works"],
+            "red_note": "n/a",
+            "depends_on": [],
+        },
+        {
+            "id": "task-002",
+            "title": "Second task",
+            "files": ["src/b.py"],
+            "acceptance_criteria": ["b works"],
+            "red_note": "n/a",
+            "depends_on": ["task-001"],
+        },
+    ]
+
+
+def _ii005_invariant_table(covers: str) -> str:
+    return (
+        "## Integration Invariants\n\n"
+        "| ID | Invariant | Covers | Source |\n"
+        "| --- | --- | --- | --- |\n"
+        f"| INV-Z | flows unchanged | {covers} | spec:ii-005 |\n"
+    )
+
+
+def test_ii005_renumbered_id_is_unchanged_string_in_int_lane_synthesis(tmp_path):
+    """task-010's renumber output feeds directly into task-011's
+    derive_integration_lanes via build_lane_plan: the task lane's renumbered
+    id must appear byte-for-byte (not reshaped) as the integration lane's
+    depends_on entry, and the integration lane's own id must continue the
+    same PREFIX-<n> counter (never containing 'INT')."""
+    renumbered = renumber_tasks(_ii005_source_tasks(), "DAT", 500)
+    ids = [t["id"] for t in renumbered]
+    assert ids == ["DAT-500", "DAT-501"]
+
+    properties_path = tmp_path / "PROPERTIES.md"
+    properties_path.write_text(_ii005_invariant_table("DAT-501"))
+
+    result = build_lane_plan(
+        tasks=renumbered,
+        sorted_ids=ids,
+        ownership={},
+        global_test_command="pytest",
+        repo_root=tmp_path,
+        properties_path=properties_path,
+    )
+
+    lanes = result["lanes"]
+    assert lanes["DAT-501"]["id"] == "DAT-501"
+
+    int_lane_ids = [
+        lid for lid, lane in lanes.items() if lane.get("kind") == "integration"
+    ]
+    assert len(int_lane_ids) == 1
+    int_lane_id = int_lane_ids[0]
+    assert _DAT_ID_RE.match(int_lane_id)
+    assert "INT" not in int_lane_id
+    # the counter continues past the highest renumbered task id (DAT-501)
+    assert int(int_lane_id.split("-")[1]) > 501
+
+    int_lane = lanes[int_lane_id]
+    # the SAME string produced by renumber_tasks, not a stale task-002
+    assert int_lane["depends_on"] == ["DAT-501"]
+    assert int_lane["kind"] == "integration"
+    assert int_lane_id in result["topological_order"]
+    assert result["topological_order"].index(int_lane_id) > result[
+        "topological_order"
+    ].index("DAT-501")
+
+
+def test_ii005_renumbered_id_recognised_by_gate_kind_classification_unreshaped(
+    tmp_path, monkeypatch, capsys
+):
+    """The exact lane-plan.json produced above (with its PREFIX-<n> ids)
+    must pass datum.gate's kind-based integration-lane classification with
+    no reshaping of the id anywhere along the way -- gate_plan must exit 0
+    ('Plan gate passed'), proving DAT-501/DAT-50x ids are recognised purely
+    via `kind`, not by a `task-INT-` prefix check."""
+    renumbered = renumber_tasks(_ii005_source_tasks(), "DAT", 500)
+    ids = [t["id"] for t in renumbered]
+
+    properties_text = _ii005_invariant_table("DAT-501")
+    properties_path = tmp_path / "PROPERTIES.md"
+    properties_path.write_text(properties_text)
+
+    result = build_lane_plan(
+        tasks=renumbered,
+        sorted_ids=ids,
+        ownership={},
+        global_test_command="pytest",
+        repo_root=tmp_path,
+        properties_path=properties_path,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(gate, "resolve_epic_dir", lambda: tmp_path / "no-such-epic-dir")
+    (tmp_path / "TASKS.md").write_text("# Tasks\n")
+    (tmp_path / "lane-plan.json").write_text(json.dumps(result))
+    (tmp_path / "tasks.json").write_text(json.dumps(renumbered))
+    (tmp_path / "PROPERTIES.md").write_text(properties_text)
+
+    with pytest.raises(SystemExit) as exc:
+        gate.gate_plan(True, {})
+
+    assert exc.value.code == 0, capsys.readouterr().out
+
+
+def _ii005_hermetic_git_env(tmp_path) -> dict:
+    env = os.environ.copy()
+    env["GIT_CONFIG_GLOBAL"] = str(tmp_path / "empty-gitconfig")
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_AUTHOR_NAME"] = "Datum Test"
+    env["GIT_AUTHOR_EMAIL"] = "datum-test@example.com"
+    env["GIT_COMMITTER_NAME"] = "Datum Test"
+    env["GIT_COMMITTER_EMAIL"] = "datum-test@example.com"
+    return env
+
+
+def _ii005_git(args, cwd, env):
+    return subprocess.run(
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
+    )
+
+
+def _ii005_commit_task(repo_root, rel_path, task_id, env):
+    path = repo_root / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": task_id,
+                    "title": f"Task {task_id}",
+                    "acceptance_criteria": ["x"],
+                    "files": [f"src/{task_id.lower().replace('-', '_')}.py"],
+                    "red_note": "n/a",
+                    "depends_on": [],
+                }
+            ]
+        )
+    )
+    _ii005_git(["add", rel_path], repo_root, env)
+    _ii005_git(["commit", "-q", "-m", f"add {task_id}"], repo_root, env)
+
+
+def test_ii005_renumbered_id_flows_unreshaped_into_collision_detection(tmp_path):
+    """The same PREFIX-<n> string task-010 produced (task-013's consumer)
+    must be the exact string matched by find_task_id_collisions -- proving
+    the id is never reshaped on its way into the collision check either."""
+    renumbered = renumber_tasks(_ii005_source_tasks(), "DAT", 500)
+    task_002_new_id = renumbered[1]["id"]
+    assert task_002_new_id == "DAT-501"
+
+    env = _ii005_hermetic_git_env(tmp_path)
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _ii005_git(["init", "-q", "-b", "main"], repo_root, env)
+    _ii005_git(["config", "core.hooksPath", "/dev/null"], repo_root, env)
+
+    _ii005_commit_task(repo_root, "docs/epics/epic-a/tasks.json", task_002_new_id, env)
+    _ii005_commit_task(repo_root, "docs/epics/epic-b/tasks.json", task_002_new_id, env)
+
+    collisions = find_task_id_collisions(repo_root, "DAT", renumbered)
+
+    assert len(collisions) == 1
+    assert collisions[0]["id"] == task_002_new_id
+    assert set(collisions[0]["paths"]) == {
+        "docs/epics/epic-a/tasks.json",
+        "docs/epics/epic-b/tasks.json",
+    }
