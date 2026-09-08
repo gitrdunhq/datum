@@ -1,0 +1,490 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 15,
+  "topological_order": [
+    "task-001",
+    "task-002",
+    "task-003",
+    "task-004",
+    "task-005",
+    "task-006",
+    "task-008",
+    "task-009",
+    "task-010",
+    "task-007",
+    "task-011",
+    "task-012",
+    "task-013",
+    "task-014",
+    "task-015"
+  ],
+  "file_ownership": {
+    "datum/id_pattern.py": "task-001",
+    "assets/schemas/task.schema.json": "task-001",
+    "datum/models/task_schema.py": "task-001",
+    "tests/test_id_pattern_shared.py": "task-001",
+    "datum/models/lane_plan_schema.py": "task-002",
+    "datum/models/lane_schema.py": "task-002",
+    "tests/test_lane_plan_schema_prefixed_ids.py": "task-002",
+    "datum/models/brief_red_schema.py": "task-003",
+    "datum/models/brief_green_schema.py": "task-003",
+    "datum/models/brief_green_continuation_schema.py": "task-003",
+    "datum/models/brief_refactor_schema.py": "task-003",
+    "tests/test_brief_schemas_prefixed_ids.py": "task-003",
+    "datum/models/result_red_schema.py": "task-004",
+    "datum/models/result_green_schema.py": "task-004",
+    "datum/models/result_refactor_schema.py": "task-004",
+    "datum/models/result_adversarial_schema.py": "task-004",
+    "tests/test_result_schemas_prefixed_ids.py": "task-004",
+    "datum/models/executor_result_schema.py": "task-005",
+    "datum/models/preflight_result_schema.py": "task-005",
+    "datum/models/candidate_edge_cases_schema.py": "task-005",
+    "tests/test_models_no_inline_task_id_regex.py": "task-005",
+    "skills/src/shared/lane-id-pattern.ts": "task-006",
+    "skills/src/shared/lane-steps.ts": "task-006",
+    "skills/src/shared/lane-id-pattern.test.ts": "task-006",
+    "tests/test_id_pattern_ts_parity.py": "task-006",
+    "datum/gate.py": "task-007",
+    "tests/test_gate_integration_lane_kind.py": "task-007",
+    "datum/task_ids.py": "task-008",
+    "tests/test_task_id_prefix.py": "task-008",
+    "tests/test_task_id_counter.py": "task-009",
+    "datum/task_renumber.py": "task-010",
+    "datum/lane_plan.py": "task-010",
+    "tests/test_task_renumber.py": "task-010",
+    "tests/test_lane_plan_renumber_wiring.py": "task-010",
+    "datum/integration_invariants.py": "task-011",
+    "tests/test_integration_lane_prefixed_ids.py": "task-011",
+    "skills/src/datum-properties.ts": "task-012",
+    "skills/src/datum-properties-int-lane-count.test.ts": "task-012",
+    "tests/test_lane_plan_task_id_collision.py": "task-013",
+    "tests/test_existing_epics_still_validate.py": "task-014",
+    "tests/test_task_id_propagation_end_to_end.py": "task-014",
+    "docs/adr/001-repo-wide-task-ids.md": "task-015"
+  },
+  "lanes": {
+    "task-001": {
+      "id": "task-001",
+      "title": "Single-source lane id pattern accepting task-N, task-INT-N and DAT-142",
+      "files": [
+        "datum/id_pattern.py",
+        "assets/schemas/task.schema.json",
+        "datum/models/task_schema.py",
+        "tests/test_id_pattern_shared.py"
+      ],
+      "acceptance_criteria": [
+        "datum.id_pattern.LANE_ID_PATTERN is a string regex anchored with ^...$ and re.fullmatch(LANE_ID_PATTERN, x) is truthy for 'task-1', 'task-001', 'task-INT-1', 'DAT-142', 'AB-1', 'ABCDEF-9'",
+        "re.fullmatch(LANE_ID_PATTERN, x) is None for 'DAT142', 'dat-142', 'DATUM-142', 'task-', 'task-INT-', 'DAT-', 'DAT-1x'",
+        "datum.id_pattern.is_lane_id('DAT-142') returns True and is_lane_id('dat-142') returns False",
+        "assets/schemas/task.schema.json's `id` pattern and `depends_on` item pattern both equal datum.id_pattern.LANE_ID_PATTERN (a test asserts equality by reading the JSON file, not by re-typing the literal)",
+        "datum.models.task_schema.DatumTask(id='DAT-142', slug='x-y-z', title='t', acceptance_criteria=['a'], files=['a'], depends_on=['DAT-141'], red_note='n') constructs without raising",
+        "DatumTask(id='dat-142', ...) raises pydantic.ValidationError",
+        "DatumTask(id='task-001', depends_on=['task-002'], ...) still constructs (widening, not tightening)",
+        "datum.lane_plan.main() run with --validate over a tasks.json whose ids are 'DAT-142'/'DAT-143' exits 0 and prints {\"valid\": true, \"task_count\": 2}"
+      ],
+      "red_note": "pytest. The failing test must (a) import datum.id_pattern.LANE_ID_PATTERN \u2014 the module does not exist yet, so the import itself is the first RED \u2014 and table-drive re.fullmatch over the accept list ['task-1','task-001','task-INT-1','DAT-142','AB-1','ABCDEF-9'] and reject list ['DAT142','dat-142','DATUM-142','task-','task-INT-','DAT-','DAT-1x']; (b) json.load assets/schemas/task.schema.json and assert its id/depends_on patterns == LANE_ID_PATTERN; (c) construct DatumTask with id 'DAT-142' and assert pydantic.ValidationError for 'dat-142'; (d) write a tasks.json with DAT- ids into tmp_path and drive datum.lane_plan.main() with --validate, asserting exit code 0. Do NOT edit tests/test_task_slug.py \u2014 it must keep passing unmodified.",
+      "introduces_stubs": false,
+      "estimated_loc": 90,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "shared-lane-id-pattern",
+      "kind": "behavioral"
+    },
+    "task-002": {
+      "id": "task-002",
+      "title": "Lane-plan output schemas accept prefixed ids",
+      "files": [
+        "datum/models/lane_plan_schema.py",
+        "datum/models/lane_schema.py",
+        "tests/test_lane_plan_schema_prefixed_ids.py"
+      ],
+      "acceptance_criteria": [
+        "datum.models.lane_plan_schema.DatumLanePlan validates a plan whose lane id, topological_order entry and file_ownership value are all 'DAT-142'",
+        "The same plan with 'task-001' and with 'task-INT-1' still validates (widening)",
+        "DatumLanePlan raises pydantic.ValidationError for lane id 'dat-142', 'DAT142' and 'DATUM-142'",
+        "datum.models.lane_schema's lane `id` accepts 'DAT-142' and rejects 'dat-142'",
+        "No literal r'^task-\\d+$' or r'^task-(\\d+|INT-\\d+)$' string remains in datum/models/lane_plan_schema.py or datum/models/lane_schema.py \u2014 both reference datum.id_pattern.LANE_ID_PATTERN",
+        "datum.contracts.validate_payload accepts the DAT-142 plan written to a tmp_path file, matching the call style used by the existing int-ids test"
+      ],
+      "red_note": "pytest, modelled on tests/test_lane_plan_schema_int_ids.py's _base_plan helper but with its own fixture in its own file. Drive validation through datum.contracts.validate_payload (not bare model construction) so the lane exercises the real caller. tests/test_lane_plan_schema_int_ids.py must NOT be modified or listed \u2014 it is the Req 4 AC3 backward-compat witness and must keep passing byte-identical. Also assert with a source-text read that no inline task-\\d literal survives in the two edited files.",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "widen-lane-plan-output-schemas",
+      "kind": "behavioral"
+    },
+    "task-003": {
+      "id": "task-003",
+      "title": "Brief packet schemas accept prefixed task ids",
+      "files": [
+        "datum/models/brief_red_schema.py",
+        "datum/models/brief_green_schema.py",
+        "datum/models/brief_green_continuation_schema.py",
+        "datum/models/brief_refactor_schema.py",
+        "tests/test_brief_schemas_prefixed_ids.py"
+      ],
+      "acceptance_criteria": [
+        "BriefRed, BriefGreen, BriefGreenContinuation and BriefRefactor payloads with task_id='DAT-142' validate through datum.contracts.validate_payload",
+        "The same four payloads with task_id='task-001' still validate",
+        "Each of the four raises pydantic.ValidationError for task_id='dat-142' and task_id='DAT142'",
+        "No literal r'^task-\\d+$' remains in datum/models/brief_red_schema.py, brief_green_schema.py, brief_green_continuation_schema.py or brief_refactor_schema.py \u2014 each references datum.id_pattern.LANE_ID_PATTERN"
+      ],
+      "red_note": "pytest. Build one minimal valid payload per brief model (read each model for its required fields), parametrise over the four models x ['DAT-142','task-001'] asserting acceptance and x ['dat-142','DAT142'] asserting pydantic.ValidationError, routing through datum.contracts.validate_payload. Add a source-text assertion that no inline task-\\d regex literal survives in the four edited files.",
+      "introduces_stubs": false,
+      "estimated_loc": 80,
+      "depends_on": [
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "widen-brief-schemas",
+      "kind": "behavioral"
+    },
+    "task-004": {
+      "id": "task-004",
+      "title": "Result packet schemas accept prefixed task ids",
+      "files": [
+        "datum/models/result_red_schema.py",
+        "datum/models/result_green_schema.py",
+        "datum/models/result_refactor_schema.py",
+        "datum/models/result_adversarial_schema.py",
+        "tests/test_result_schemas_prefixed_ids.py"
+      ],
+      "acceptance_criteria": [
+        "ResultRed, ResultGreen, ResultRefactor and ResultAdversarial payloads with task_id='DAT-142' validate through datum.contracts.validate_payload",
+        "The same four payloads with task_id='task-001' still validate",
+        "Each of the four raises pydantic.ValidationError for task_id='dat-142' and task_id='DATUM-142'",
+        "No literal r'^task-\\d+$' remains in datum/models/result_red_schema.py, result_green_schema.py, result_refactor_schema.py or result_adversarial_schema.py \u2014 each references datum.id_pattern.LANE_ID_PATTERN"
+      ],
+      "red_note": "pytest, same table-driven shape as the brief lane but in its own test file with its own fixtures \u2014 never reuse or import the brief lane's helpers. Route every assertion through datum.contracts.validate_payload so the lane exercises the real consumer, and add the source-text no-inline-literal assertion.",
+      "introduces_stubs": false,
+      "estimated_loc": 80,
+      "depends_on": [
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "widen-result-schemas",
+      "kind": "behavioral"
+    },
+    "task-005": {
+      "id": "task-005",
+      "title": "Executor, preflight and edge-case schemas accept prefixed task ids",
+      "files": [
+        "datum/models/executor_result_schema.py",
+        "datum/models/preflight_result_schema.py",
+        "datum/models/candidate_edge_cases_schema.py",
+        "tests/test_models_no_inline_task_id_regex.py"
+      ],
+      "acceptance_criteria": [
+        "ExecutorResult, PreflightResult and CandidateEdgeCases payloads with task_id='DAT-142' validate through datum.contracts.validate_payload",
+        "The same three payloads with task_id='task-001' still validate, and each raises pydantic.ValidationError for 'dat-142'",
+        "executor_result_schema's commit-message field description no longer hardcodes only 'feat(task-001)' as the example \u2014 it names the prefixed shape too, and the field itself imposes no task-\\d-only constraint",
+        "A repo-wide test asserts that no file under datum/models/ contains the literal substring 'task-\\\\d' \u2014 the last three offenders are removed by this task"
+      ],
+      "red_note": "pytest. This lane owns the repo-wide sweep assertion, so it must land after the other widening lanes: glob datum/models/*.py, read each as text, assert none contains 'task-\\\\d'. That assertion is RED today for all 14 files and stays RED until this lane's three files are converted \u2014 depends_on the other widening lanes so it is scheduled last. Also add the per-model DAT-142/task-001/dat-142 validate_payload cases for the three files this lane edits.",
+      "introduces_stubs": false,
+      "estimated_loc": 80,
+      "depends_on": [
+        "task-001",
+        "task-002",
+        "task-003",
+        "task-004"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "widen-executor-preflight-schemas",
+      "kind": "behavioral"
+    },
+    "task-006": {
+      "id": "task-006",
+      "title": "TypeScript consumes the same lane id pattern, with a Python parity test",
+      "files": [
+        "skills/src/shared/lane-id-pattern.ts",
+        "skills/src/shared/lane-steps.ts",
+        "skills/src/shared/lane-id-pattern.test.ts",
+        "tests/test_id_pattern_ts_parity.py"
+      ],
+      "acceptance_criteria": [
+        "skills/src/shared/lane-id-pattern.ts exports LANE_ID_PATTERN (string) and isLaneId(s: string): boolean",
+        "isLaneId returns true for 'task-1', 'task-INT-1' and 'DAT-142'; false for 'DAT142', 'dat-142' and 'DATUM-142'",
+        "lane-steps.ts's completionMarkerCommand and laneSpecExportCommand reject a task id that isLaneId rejects (e.g. a shell-metacharacter id) and accept 'DAT-142' without throwing",
+        "A Python test reads skills/src/shared/lane-id-pattern.ts, extracts the LANE_ID_PATTERN string literal, and asserts it equals datum.id_pattern.LANE_ID_PATTERN exactly \u2014 failing loudly if either side is edited alone"
+      ],
+      "red_note": "Two RED tests. (1) skills/src/shared/lane-id-pattern.test.ts (the project's existing TS test runner, same style as the other skills/src/shared/*.test.ts files) importing lane-id-pattern.ts \u2014 the import fails first \u2014 plus cases driving completionMarkerCommand/laneSpecExportCommand with 'DAT-142' (must not throw) and with an id containing a shell metacharacter (must throw). (2) tests/test_id_pattern_ts_parity.py reading the .ts source and asserting literal equality with datum.id_pattern.LANE_ID_PATTERN. Deliberate deviation from the chosen approach, agreed at plan time: the file is a hand-written .ts, NOT a '.generated.ts' emitted by scripts/build-workflows.sh \u2014 a generated file may not appear in any lane's files[], which would make the lane unplannable, and esbuild already bundles shared/*.ts transitively from the datum-*.ts entry points, so build-workflows.sh needs no change. Do not edit skills/src/shared/lane-steps.test.ts (owned elsewhere); put every new TS assertion in lane-id-pattern.test.ts.",
+      "introduces_stubs": false,
+      "estimated_loc": 110,
+      "depends_on": [
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "ts-shared-lane-id-pattern",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "task-008": {
+      "id": "task-008",
+      "title": "Resolve task_id_prefix from .datum/config.json or derive and persist it",
+      "files": [
+        "datum/task_ids.py",
+        "tests/test_task_id_prefix.py"
+      ],
+      "acceptance_criteria": [
+        "resolve_task_id_prefix(repo_root) returns 'XYZ' verbatim when .datum/config.json contains {\"task_id_prefix\": \"XYZ\"}, and does not rewrite the config file in that case",
+        "For a repo directory named 'datum' with no task_id_prefix field, resolve_task_id_prefix returns 'DAT'",
+        "For a repo directory named 'my-project_2', derivation strips non-letters and uppercases before truncating, returning 'MYP'",
+        "After a derive, .datum/config.json on disk contains task_id_prefix set to the derived value, every pre-existing key is preserved unchanged, and a second call returns the same value without re-deriving",
+        "For a repo directory named '9' or '_x', resolve_task_id_prefix raises TaskIdPrefixError whose payload is {'code': 'task_id_prefix_invalid', 'message': <str>, 'correlationId': <str>} and .datum/config.json is left without a task_id_prefix key",
+        "Resolution is idempotent: calling it twice on a fresh repo writes config once and leaves identical content the second time"
+      ],
+      "red_note": "pytest with tmp_path fixtures \u2014 the import of datum.task_ids is the first RED (the module does not exist). Create tmp_path/<name>/.datum/config.json with a couple of unrelated keys and assert they survive the rewrite. Follow the read/derive/persist-once pattern already used for hooks_installed/agent_types in datum/cli.py around line 659. Test the structured-error negative path with pytest.raises and assert all three keys of the payload, not just the code.",
+      "introduces_stubs": false,
+      "estimated_loc": 120,
+      "depends_on": [
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "task-id-prefix-resolution",
+      "kind": "behavioral"
+    },
+    "task-009": {
+      "id": "task-009",
+      "title": "Repo-wide counter computes max(existing)+1 from committed ids only",
+      "files": [
+        "datum/task_ids.py",
+        "tests/test_task_id_counter.py"
+      ],
+      "acceptance_criteria": [
+        "next_task_number(repo_root, prefix) returns 1 when no committed file contains a <PREFIX>-\\d+ id",
+        "Given a committed docs/epics/e1/tasks.json containing ids 'DAT-3' and 'DAT-7' and a depends_on entry 'DAT-9', next_task_number(root, 'DAT') returns 10",
+        "Committed ids of the old shapes 'task-001' and 'task-INT-4' contribute nothing to the maximum \u2014 a repo containing only those returns 1",
+        "An id with a different prefix ('ABC-99') does not raise the DAT counter",
+        "A DAT-<n> id present only in the working tree (written but not committed) is ignored \u2014 the counter reads committed content via `git show HEAD:<path>` over paths enumerated by `git ls-tree -r HEAD --name-only`, never a filesystem glob",
+        "A DAT-<n> id committed only on another local branch is ignored \u2014 the scan is scoped to HEAD of the current branch",
+        "A committed tasks.json that is malformed JSON is skipped without raising, and the counter still returns the max over the parseable files"
+      ],
+      "red_note": "pytest. Fixtures must build a HERMETIC temp git repo: pass an explicit env with GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM pointed at /dev/null (or a tmp file), core.hooksPath unset, and an explicit user.name/user.email, because this repo has previously had global git hooks (~/.config/git/hooks) and ~/.ignore change fixture outcomes. Commit files, then also write an uncommitted DAT- id and assert it is NOT counted; create a second branch with a higher DAT- id and assert it is NOT counted. This lane shares datum/task_ids.py with the prefix lane, hence the depends_on edge.",
+      "introduces_stubs": false,
+      "estimated_loc": 130,
+      "depends_on": [
+        "task-008",
+        "task-001"
+      ],
+      "file_conflict_with": {
+        "datum/task_ids.py": "task-008"
+      },
+      "stage": "queued",
+      "slug": "task-id-counter-from-committed-ids",
+      "kind": "behavioral"
+    },
+    "task-010": {
+      "id": "task-010",
+      "title": "Deterministic post-decompose renumber of task-NNN ids to PREFIX-n",
+      "files": [
+        "datum/task_renumber.py",
+        "datum/lane_plan.py",
+        "tests/test_task_renumber.py",
+        "tests/test_lane_plan_renumber_wiring.py"
+      ],
+      "acceptance_criteria": [
+        "renumber_tasks(tasks, prefix, start) on [{id:'task-001',depends_on:[]},{id:'task-002',depends_on:['task-001']}] with prefix 'DAT', start 142 returns ids 'DAT-142','DAT-143' with depends_on ['DAT-142'] on the second",
+        "Assignment follows dependency order: for tasks where task-001 depends_on task-002, task-002 receives the lower number, so no lane's number is greater than a lane that depends on it",
+        "After renumbering, no value anywhere in the returned structure matches ^task-\\d+$ \u2014 every depends_on reference is rewritten alongside the id it targets",
+        "A task whose id is already 'DAT-142' is left untouched and its number is not reissued to another lane",
+        "`datum lane-plan --input tasks.json --output ...` (no extra flag, no interactive input) rewrites tasks.json ON DISK so the file itself holds <PREFIX>-<n> ids, and does so before schema validation and lane-plan construction run",
+        "`datum lane-plan --validate --input tasks.json` on a tasks.json containing 'task-001'/'task-002' leaves that file byte-identical \u2014 the renumber step never runs on the validate path (Req 7 AC2)"
+      ],
+      "red_note": "pytest, two new test files: a pure-function file for renumber_tasks (topological ordering, depends_on rewrite, already-prefixed passthrough) and a wiring file that drives datum.lane_plan.main() with patched sys.argv in a tmp_path repo. The byte-identical --validate assertion is load-bearing and must be written as a RED case, not left to review: read tasks.json bytes before and after and assert equality. Note for the implementer: renumbering must mutate the file on disk, not only the in-memory list normalize_input() returns.",
+      "introduces_stubs": false,
+      "estimated_loc": 180,
+      "depends_on": [
+        "task-002",
+        "task-009",
+        "task-008",
+        "task-001"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "renumber-tasks-after-decompose",
+      "kind": "behavioral"
+    },
+    "task-007": {
+      "id": "task-007",
+      "title": "Plan gate identifies integration lanes by kind, not by task-INT- prefix",
+      "files": [
+        "datum/gate.py",
+        "tests/test_gate_integration_lane_kind.py"
+      ],
+      "acceptance_criteria": [
+        "For a lane plan whose integration lane has id 'DAT-150' and kind 'integration', the gate classifies it as an integration lane and applies the same frontier/dependency rules it applies to a 'task-INT-1' lane",
+        "For a lane plan still using 'task-INT-1' with kind 'integration', gate behaviour is byte-identical to today (same verdict, same error list)",
+        "A task lane whose id happens to start with 'task-INT' is NOT treated as an integration lane when its kind is 'behavioral' \u2014 kind is the sole discriminator",
+        "No `startswith(_INT_LANE_PREFIX)` call remains in datum/gate.py; any surviving id-shape validation in gate.py references datum.id_pattern.LANE_ID_PATTERN"
+      ],
+      "red_note": "pytest, in a new test file only. gate.py is the highest-risk file in scope (1780 LOC, 19 existing test files) \u2014 do not touch any existing tests/test_gate_*.py; they are the regression net and must all still pass. The RED test builds a lane-plan dict with one behavioural lane 'DAT-149' and one integration lane 'DAT-150' (kind 'integration', depends_on the first) and asserts the gate's plan verdict recognises the integration lane; today it does not, because the check is `lid.startswith('task-INT-')`. Add the paired legacy case with 'task-INT-1' asserting unchanged behaviour, and a negative case where kind is 'behavioral' but the id starts with 'task-INT'.",
+      "introduces_stubs": false,
+      "estimated_loc": 90,
+      "depends_on": [
+        "task-001",
+        "task-010"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "gate-integration-lane-by-kind",
+      "kind": "behavioral"
+    },
+    "task-011": {
+      "id": "task-011",
+      "title": "Synthesised integration lanes draw ids from the same counter",
+      "files": [
+        "datum/integration_invariants.py",
+        "datum/lane_plan.py",
+        "tests/test_integration_lane_prefixed_ids.py"
+      ],
+      "acceptance_criteria": [
+        "derive_integration_lanes, given a prefix and a starting number, emits lane ids matching ^DAT-\\d+$ and no id containing 'INT'",
+        "Integration lane numbers continue from the highest number the task lanes consumed in the same build \u2014 if task lanes end at DAT-145, the first integration lane is DAT-146",
+        "Every emitted integration lane still carries kind == 'integration' and that field survives into the built lane-plan.json",
+        "build_lane_plan's output for an epic with two invariant groups contains exactly two integration lanes, both with <PREFIX>-\\d+ ids, both present in topological_order after the task lanes they cover",
+        "Integration-lane dependency edges point at the renumbered task-lane ids, not stale task-NNN strings"
+      ],
+      "red_note": "pytest in a new test file only. tests/test_integration_invariants_frontier.py, tests/test_lane_plan_integration_lanes.py and tests/test_gate_plan_integration_lanes.py must NOT be edited or listed \u2014 Req 4 AC3 makes them the witness that already-planned task-INT-<n> epics stay valid, so they have to keep passing untouched. The RED test calls derive_integration_lanes with an explicit prefix/start and asserts on the id shape and the kind field, then drives build_lane_plan end to end and asserts the integration lanes' ids and their depends_on all match ^DAT-\\d+$. Shares datum/lane_plan.py with the renumber lane, hence the edge.",
+      "introduces_stubs": false,
+      "estimated_loc": 130,
+      "depends_on": [
+        "task-007",
+        "task-010",
+        "task-008",
+        "task-001"
+      ],
+      "file_conflict_with": {
+        "datum/lane_plan.py": "task-010"
+      },
+      "stage": "queued",
+      "slug": "integration-lanes-take-counter-ids",
+      "kind": "behavioral"
+    },
+    "task-012": {
+      "id": "task-012",
+      "title": "datum-properties counts integration lanes by kind instead of grepping task-INT-",
+      "files": [
+        "skills/src/datum-properties.ts",
+        "skills/src/datum-properties-int-lane-count.test.ts"
+      ],
+      "acceptance_criteria": [
+        "For a lane-plan.json whose two integration lanes have ids 'DAT-146'/'DAT-147' and kind 'integration', the step reports integration_lanes_scheduled with a count of 2 (today it reports integration_lanes_none)",
+        "For a legacy lane-plan.json with 'task-INT-1'/'task-INT-2' lanes carrying kind 'integration', the count is still 2 \u2014 behaviour unchanged for existing epics",
+        "For a lane-plan.json with no integration lanes the step still logs integration_lanes_none",
+        "No `'\\\"task-INT-'` literal remains in skills/src/datum-properties.ts"
+      ],
+      "red_note": "TypeScript test in a NEW file (skills/src/datum-properties.test.ts already exists and is owned elsewhere \u2014 do not edit it). Assert on the command/counting logic with three lane-plan fixtures: DAT-prefixed integration lanes, legacy task-INT- integration lanes, and none. This consumer was missed by the codebase scan's 'the id is an opaque string' claim; it is a real cross-layer break, which is why it is its own lane. Do not hand-edit any skills/*.js bundle \u2014 those are @generated from these sources.",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [
+        "task-011",
+        "task-006"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "properties-count-int-lanes-by-kind",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "task-013": {
+      "id": "task-013",
+      "title": "lane-plan --validate reports task_id_collision across merged epics",
+      "files": [
+        "datum/task_ids.py",
+        "datum/lane_plan.py",
+        "tests/test_lane_plan_task_id_collision.py"
+      ],
+      "acceptance_criteria": [
+        "find_task_id_collisions(repo_root, prefix, tasks) returns one record per duplicated id containing the colliding id and both conflicting epic/lane paths",
+        "`datum lane-plan --validate` exits non-zero when the tasks.json under validation reuses an id already committed to a different lane in another docs/epics/*/tasks.json, and its JSON output contains code 'task_id_collision', the colliding id, and both conflicting paths",
+        "The same id appearing for the SAME lane (the epic's own committed copy of itself) is not reported as a collision",
+        "When no collision exists, `datum lane-plan --validate` output contains no task_id_collision entry and exits 0",
+        "A schema-shape failure and a topology (cycle) failure each produce their own distinct error code \u2014 task_id_collision is never emitted for them, and a collision is never downgraded to a generic validation error",
+        "Old-shape ids (task-001, task-INT-1) shared across epics are not reported as collisions \u2014 only <PREFIX>-\\d+ ids participate"
+      ],
+      "red_note": "pytest against a hermetic temp git repo (same GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM/hooksPath isolation as the counter lane) with two committed docs/epics/*/tasks.json files sharing a DAT- id. Assert the exit code and parse the printed JSON for the exact 'task_id_collision' code plus both paths \u2014 assert the code string specifically, not merely that validation failed. Deliberate placement: the check lives in lane_plan.main()'s validate path, NOT gate.py, because the AC names `datum lane-plan --validate` (which routes to lane_plan.main) and gate.py is a 1780-LOC high-risk file kept to its own lane. Shares lane_plan.py and task_ids.py with earlier lanes, hence the edges.",
+      "introduces_stubs": false,
+      "estimated_loc": 160,
+      "depends_on": [
+        "task-009",
+        "task-010",
+        "task-011",
+        "task-001"
+      ],
+      "file_conflict_with": {
+        "datum/task_ids.py": "task-008",
+        "datum/lane_plan.py": "task-010"
+      },
+      "stage": "queued",
+      "slug": "task-id-collision-gate-check",
+      "kind": "behavioral"
+    },
+    "task-014": {
+      "id": "task-014",
+      "title": "Existing epics still validate and DAT ids propagate to branch, commit, marker, issue",
+      "files": [
+        "tests/test_existing_epics_still_validate.py",
+        "tests/test_task_id_propagation_end_to_end.py"
+      ],
+      "acceptance_criteria": [
+        "For every directory under docs/epics/ containing a tasks.json, `datum lane-plan --validate` exits 0 and the file's bytes are unchanged before and after the run",
+        "No existing committed tasks.json under docs/epics/ contains a <PREFIX>-\\d+ id after the suite runs \u2014 nothing migrated old ids",
+        "The lane branch derived for id 'DAT-142' in epic 'my-epic' is 'my-epic--DAT-142' and the worktree path contains 'DAT-142'",
+        "The lane-state marker path for run R and id 'DAT-142' ends in 'DAT-142.json' (or the repo's existing marker naming with DAT-142 substituted)",
+        "Commit subjects built for id 'DAT-142' are exactly 'red(DAT-142): RED complete', 'green(DAT-142): GREEN complete', 'refactor(DAT-142): REFACTOR complete', and datum.render's green/red commit regexes extract 'DAT-142' from them",
+        "The issue title built for lane 'DAT-142' titled 'Widen the thing' is '[DAT-142] Widen the thing'"
+      ],
+      "red_note": "pytest, two new files. The first walks the real docs/epics/ tree, snapshots each tasks.json's bytes, runs the validate path, and asserts exit 0 plus byte equality \u2014 it is the Req 7 guard and must fail loudly if any earlier lane renumbers a committed epic. The second asserts id propagation by calling the real Python derivation helpers (branch/worktree/marker/issue-title/commit-subject) with 'DAT-142'; where the derivation lives only in TypeScript (laneCommitCommand), assert the equivalent through datum.render's _RED_COMMIT_RE/_GREEN_COMMIT_RE extracting 'DAT-142' from the literal subject string rather than shelling out to node. This lane must run last, so it depends on every implementation lane.",
+      "introduces_stubs": false,
+      "estimated_loc": 140,
+      "depends_on": [
+        "task-005",
+        "task-006",
+        "task-012",
+        "task-013",
+        "task-010"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "existing-epics-and-id-propagation-regression",
+      "kind": "behavioral"
+    },
+    "task-015": {
+      "id": "task-015",
+      "title": "ADR: repo-wide sequential task ids",
+      "files": [
+        "docs/adr/001-repo-wide-task-ids.md"
+      ],
+      "acceptance_criteria": [
+        "docs/adr/001-repo-wide-task-ids.md exists and follows docs/adr/000-template.md's section structure",
+        "It documents the prefix derivation rule (basename, letters only, uppercased, first 3 chars), the persist-once behaviour, and the task_id_prefix_invalid failure",
+        "It states that task-\\d+ and task-INT-\\d+ remain permanently accepted with no sunset, and that no existing epic is migrated",
+        "It records that cross-branch collisions are detected after the fact by task_id_collision rather than prevented by a counter service",
+        "It records that skills/src/shared/lane-id-pattern.ts is hand-written and kept in sync by a Python parity test, and why (a @generated file cannot be owned by a lane)"
+      ],
+      "red_note": "Documentation only, no test stage. ADR number 001 is the next free sequence \u2014 docs/adr/ currently contains only 000-template.md \u2014 and no other lane in this plan writes an ADR, so there is no sequence collision.",
+      "introduces_stubs": false,
+      "estimated_loc": 60,
+      "depends_on": [
+        "task-013",
+        "task-001",
+        "task-008"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "adr-repo-wide-task-ids",
+      "kind": "structural"
+    }
+  }
+}
