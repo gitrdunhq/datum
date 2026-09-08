@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "total_lanes": 15,
+  "total_lanes": 21,
   "topological_order": [
     "task-001",
     "task-002",
@@ -16,7 +16,13 @@
     "task-012",
     "task-013",
     "task-014",
-    "task-015"
+    "task-015",
+    "task-INT-1",
+    "task-INT-2",
+    "task-INT-3",
+    "task-INT-4",
+    "task-INT-5",
+    "task-INT-6"
   ],
   "file_ownership": {
     "datum/id_pattern.py": "task-001",
@@ -60,7 +66,13 @@
     "tests/test_lane_plan_task_id_collision.py": "task-013",
     "tests/test_existing_epics_still_validate.py": "task-014",
     "tests/test_task_id_propagation_end_to_end.py": "task-014",
-    "docs/adr/001-repo-wide-task-ids.md": "task-015"
+    "docs/adr/001-repo-wide-task-ids.md": "task-015",
+    "tests/integration/test_int_1.py": "task-INT-1",
+    "tests/integration/test_int_2.py": "task-INT-2",
+    "tests/integration/test_int_3.py": "task-INT-3",
+    "tests/integration/test_int_4.py": "task-INT-4",
+    "tests/integration/test_int_5.py": "task-INT-5",
+    "tests/integration/test_int_6.py": "task-INT-6"
   },
   "lanes": {
     "task-001": {
@@ -89,7 +101,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "shared-lane-id-pattern",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 523
     },
     "task-002": {
       "id": "task-002",
@@ -116,7 +129,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "widen-lane-plan-output-schemas",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 524
     },
     "task-003": {
       "id": "task-003",
@@ -143,7 +157,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "widen-brief-schemas",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 525
     },
     "task-004": {
       "id": "task-004",
@@ -170,7 +185,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "widen-result-schemas",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 526
     },
     "task-005": {
       "id": "task-005",
@@ -199,7 +215,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "widen-executor-preflight-schemas",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 527
     },
     "task-006": {
       "id": "task-006",
@@ -226,7 +243,8 @@
       "stage": "queued",
       "slug": "ts-shared-lane-id-pattern",
       "kind": "behavioral",
-      "test_command": "npx vitest run"
+      "test_command": "npx vitest run",
+      "github_issue": 528
     },
     "task-008": {
       "id": "task-008",
@@ -252,7 +270,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "task-id-prefix-resolution",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 529
     },
     "task-009": {
       "id": "task-009",
@@ -282,7 +301,8 @@
       },
       "stage": "queued",
       "slug": "task-id-counter-from-committed-ids",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 530
     },
     "task-010": {
       "id": "task-010",
@@ -313,7 +333,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "renumber-tasks-after-decompose",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 531
     },
     "task-007": {
       "id": "task-007",
@@ -338,7 +359,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "gate-integration-lane-by-kind",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 532
     },
     "task-011": {
       "id": "task-011",
@@ -369,7 +391,8 @@
       },
       "stage": "queued",
       "slug": "integration-lanes-take-counter-ids",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 533
     },
     "task-012": {
       "id": "task-012",
@@ -395,7 +418,8 @@
       "stage": "queued",
       "slug": "properties-count-int-lanes-by-kind",
       "kind": "behavioral",
-      "test_command": "npx vitest run"
+      "test_command": "npx vitest run",
+      "github_issue": 534
     },
     "task-013": {
       "id": "task-013",
@@ -428,7 +452,8 @@
       },
       "stage": "queued",
       "slug": "task-id-collision-gate-check",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 535
     },
     "task-014": {
       "id": "task-014",
@@ -458,7 +483,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "existing-epics-and-id-propagation-regression",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "github_issue": 536
     },
     "task-015": {
       "id": "task-015",
@@ -484,7 +510,136 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "adr-repo-wide-task-ids",
-      "kind": "structural"
+      "kind": "structural",
+      "github_issue": 537
+    },
+    "task-INT-1": {
+      "id": "task-INT-1",
+      "title": "Integration invariants covering task-001, task-006",
+      "files": [
+        "tests/integration/test_int_1.py"
+      ],
+      "acceptance_criteria": [
+        "II-001: The shared `assets/schemas/lane-id.json` `pattern`/`prefix_pattern`/`new_id_pattern` fields are consumed identically by the Python loader and the esbuild-bundled TS loader, with one test per language asserting the same accept/reject set over a shared fixture list"
+      ],
+      "red_note": "Verify integration invariants covering task-001, task-006: II-001: The shared `assets/schemas/lane-id.json` `pattern`/`prefix_pattern`/`new_id_pattern` fields are consumed identically by the Python loader and the esbuild-bundled TS loader, with one test per language asserting the same accept/reject set over a shared fixture list",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-001"
+      ],
+      "depends_on": [
+        "task-001",
+        "task-006"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-2": {
+      "id": "task-INT-2",
+      "title": "Integration invariants covering task-007, task-009, task-010, task-011, task-012, task-013",
+      "files": [
+        "tests/integration/test_int_2.py"
+      ],
+      "acceptance_criteria": [
+        "II-005: A lane id renumbered by task-010 in dependency order flows unchanged through task-007's kind-based gate classification, task-011's counter-based integration-lane synthesis, task-012's kind-based counting, and task-013's collision detection \u2014 the same `<PREFIX>-<n>` string is never reshaped between these stages"
+      ],
+      "red_note": "Verify integration invariants covering task-007, task-009, task-010, task-011, task-012, task-013: II-005: A lane id renumbered by task-010 in dependency order flows unchanged through task-007's kind-based gate classification, task-011's counter-based integration-lane synthesis, task-012's kind-based counting, and task-013's collision detection \u2014 the same `<PREFIX>-<n>` string is never reshaped between these stages",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-005"
+      ],
+      "depends_on": [
+        "task-007",
+        "task-009",
+        "task-010",
+        "task-011",
+        "task-012",
+        "task-013"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-3": {
+      "id": "task-INT-3",
+      "title": "Integration invariants covering task-009",
+      "files": [
+        "tests/integration/test_int_3.py"
+      ],
+      "acceptance_criteria": [
+        "II-003: The `max(existing)` counter scan (`git ls-files` + one `git show HEAD:<path>` per file) completes in under 2 seconds for 100 synthetic epics in a temp repo, pinned by a dedicated performance test"
+      ],
+      "red_note": "Verify integration invariants covering task-009: II-003: The `max(existing)` counter scan (`git ls-files` + one `git show HEAD:<path>` per file) completes in under 2 seconds for 100 synthetic epics in a temp repo, pinned by a dedicated performance test",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-003"
+      ],
+      "depends_on": [
+        "task-009"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-4": {
+      "id": "task-INT-4",
+      "title": "Integration invariants covering task-009, task-013",
+      "files": [
+        "tests/integration/test_int_4.py"
+      ],
+      "acceptance_criteria": [
+        "II-004: The counter and collision checks are strictly scoped to the current branch's committed HEAD; unmerged/other-branch ids never count toward `next_task_number`, and cross-branch duplicates are only ever caught post hoc by `task_id_collision`, never prevented"
+      ],
+      "red_note": "Verify integration invariants covering task-009, task-013: II-004: The counter and collision checks are strictly scoped to the current branch's committed HEAD; unmerged/other-branch ids never count toward `next_task_number`, and cross-branch duplicates are only ever caught post hoc by `task_id_collision`, never prevented",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-004"
+      ],
+      "depends_on": [
+        "task-009",
+        "task-013"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-5": {
+      "id": "task-INT-5",
+      "title": "Integration invariants covering task-010, task-014",
+      "files": [
+        "tests/integration/test_int_5.py"
+      ],
+      "acceptance_criteria": [
+        "II-006: A `DAT-142` id produced by decompose+renumber propagates verbatim into the branch name, worktree path, marker file name, commit subjects, `Datum-Lane` trailer, and issue title with no intermediate reshaping across the CLI/render/github_issues boundary"
+      ],
+      "red_note": "Verify integration invariants covering task-010, task-014: II-006: A `DAT-142` id produced by decompose+renumber propagates verbatim into the branch name, worktree path, marker file name, commit subjects, `Datum-Lane` trailer, and issue title with no intermediate reshaping across the CLI/render/github_issues boundary",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-006"
+      ],
+      "depends_on": [
+        "task-010",
+        "task-014"
+      ],
+      "stage": "queued"
+    },
+    "task-INT-6": {
+      "id": "task-INT-6",
+      "title": "Integration invariants covering task-013",
+      "files": [
+        "tests/integration/test_int_6.py"
+      ],
+      "acceptance_criteria": [
+        "II-002: `datum lane-plan --validate` on a collision exits 1 with exactly `{\"valid\": false, \"reason\": \"task_id_collision\", \"collisions\": [{\"id\", \"epics\"}]}` and the plan gate surfaces the halt message naming both epic paths and the `--renumber` remedy, without auto-renumbering"
+      ],
+      "red_note": "Verify integration invariants covering task-013: II-002: `datum lane-plan --validate` on a collision exits 1 with exactly `{\"valid\": false, \"reason\": \"task_id_collision\", \"collisions\": [{\"id\", \"epics\"}]}` and the plan gate surfaces the halt message naming both epic paths and the `--renumber` remedy, without auto-renumbering",
+      "kind": "integration",
+      "expect_tests_pass": true,
+      "invariants": [
+        "II-002"
+      ],
+      "depends_on": [
+        "task-013"
+      ],
+      "stage": "queued"
     }
   }
 }
