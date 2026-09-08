@@ -36,3 +36,15 @@ LANE_ID_PATTERN: str = _load_pattern()
 
 def is_lane_id(value: str) -> bool:
     return re.fullmatch(LANE_ID_PATTERN, value) is not None
+
+
+def split_prefixed_id(value: str) -> tuple[str, int] | None:
+    """`DAT-142` -> `("DAT", 142)` for a valid short-prefix lane id; None for
+    legacy `task-N` / `task-INT-N` ids and anything the shared pattern
+    rejects. The one place a prefix is ever parsed out of an id."""
+    if not isinstance(value, str) or not is_lane_id(value):
+        return None
+    prefix, _, number = value.partition("-")
+    if not (prefix.isupper() and number.isdigit()):
+        return None
+    return prefix, int(number)

@@ -83,7 +83,6 @@ def test_ordinary_task_ids_still_validate_exactly_as_before(tmp_path):
         "task-INT-",
         "task-INT-x",
         "taskINT-1",
-        "TASK-001",
         "task-INT-1-extra",
     ],
 )
@@ -101,7 +100,6 @@ def test_malformed_ids_still_raise_validation_error_on_lane_id(malformed_id):
         "task-INT-",
         "task-INT-x",
         "taskINT-1",
-        "TASK-001",
         "task-INT-1-extra",
     ],
 )
@@ -119,7 +117,6 @@ def test_malformed_ids_still_raise_validation_error_on_topological_order(malform
         "task-INT-",
         "task-INT-x",
         "taskINT-1",
-        "TASK-001",
         "task-INT-1-extra",
     ],
 )
@@ -128,3 +125,11 @@ def test_malformed_ids_still_raise_validation_error_on_file_ownership(malformed_
 
     with pytest.raises(ValidationError):
         DatumLanePlan.model_validate(plan)
+
+
+# Assumption 8 (#514): TASK is an ordinary four-letter prefix — the old
+# per-epic scheme rejected it only because it had no prefixes at all.
+def test_task_prefixed_id_is_now_a_valid_lane_id():
+    plan = _base_plan("TASK-001", "TASK-001", "TASK-001")
+
+    DatumLanePlan.model_validate(plan)

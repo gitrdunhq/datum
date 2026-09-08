@@ -22,7 +22,7 @@ describe('lane-id-pattern — AC1: exports', () => {
 })
 
 describe('lane-id-pattern — AC2: isLaneId acceptance shape', () => {
-  it.each(['task-1', 'task-INT-1', 'DAT-142'])('accepts %s', (id) => {
+  it.each(['task-1', 'task-INT-1', 'DAT-142', 'TASK-001'])('accepts %s', (id) => {
     expect(isLaneId(id)).toBe(true)
   })
 

@@ -13,7 +13,15 @@ from pydantic import ValidationError
 
 from datum.path_utils import assets_dir
 
-ACCEPTED_IDS = ["task-1", "task-001", "task-INT-1", "DAT-142", "AB-1", "ABCDEF-9"]
+ACCEPTED_IDS = [
+    "task-1",
+    "task-001",
+    "task-INT-1",
+    "DAT-142",
+    "AB-1",
+    "ABCDEF-9",
+    "TASK-001",  # Assumption 8: TASK is an ordinary four-letter prefix
+]
 REJECTED_IDS = [
     "DAT142",
     "dat-142",
@@ -163,3 +171,36 @@ class TestLanePlanValidateAcceptsShortPrefixIds:
         assert result.returncode == 0, result.stdout + result.stderr
         payload = json.loads(result.stdout.strip().splitlines()[-1])
         assert payload == {"valid": True, "task_count": 2}
+
+
+class TestSplitPrefixedId:
+    """Review ARCH-001/ARCH-002: lane_plan.py's two inline prefix extractors
+    are replaced by one helper next to the shared pattern."""
+
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("DAT-142", ("DAT", 142)),
+            ("TASK-7", ("TASK", 7)),
+            ("ABCDEF-9", ("ABCDEF", 9)),
+        ],
+    )
+    def test_split_prefixed_id_returns_prefix_and_number(self, value, expected):
+        from datum.id_pattern import split_prefixed_id
+
+        assert split_prefixed_id(value) == expected
+
+    @pytest.mark.parametrize(
+        "value", ["task-001", "task-INT-4", "DATUM-1", "dat-1", "DAT-", "ABCDEFG-1"]
+    )
+    def test_split_prefixed_id_is_none_for_legacy_or_invalid_ids(self, value):
+        from datum.id_pattern import split_prefixed_id
+
+        assert split_prefixed_id(value) is None
+
+    def test_lane_plan_carries_no_inline_prefix_regex(self):
+        import datum.lane_plan as mod
+
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "[A-Z]" not in source
+        assert "split_prefixed_id" in source

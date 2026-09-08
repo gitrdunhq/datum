@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.id_pattern import split_prefixed_id
 from datum.task_ids import epic_name_for_path, iter_committed_ids
 
 
@@ -239,9 +240,6 @@ def topological_sort(tasks: list[dict]) -> list[str]:
     return order
 
 
-_TASK_ID_PREFIX_PATTERN = re.compile(r"^([A-Z]{2,6})-(\d+)$")
-
-
 def epic_name_for_tasks_path(path: str) -> str:
     """`docs/epics/<name>/tasks.json` or `.../lane-plan.json` -> `<name>`
     (nested names keep their slashes)."""
@@ -315,14 +313,12 @@ def find_task_id_collisions(
 def _cli_task_id_collisions(repo_root: Path, tasks: list[dict]) -> list[dict]:
     """Group the current tasks by their `<PREFIX>-<n>` id shape and check
     each prefix group for collisions. Old-shape ids (task-001, task-INT-1)
-    never match `_TASK_ID_PREFIX_PATTERN` (2-6 uppercase letters) and so
-    never participate."""
+    have no prefix per split_prefixed_id and so never participate."""
     prefixes: set[str] = set()
     for t in tasks:
-        tid = t.get("id")
-        m = _TASK_ID_PREFIX_PATTERN.match(tid) if isinstance(tid, str) else None
-        if m:
-            prefixes.add(m.group(1))
+        split = split_prefixed_id(t.get("id"))
+        if split:
+            prefixes.add(split[0])
 
     collisions: list[dict] = []
     for prefix in sorted(prefixes):
@@ -670,9 +666,6 @@ def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]
     return errors
 
 
-_RENUMBERED_ID_PATTERN = re.compile(r"^([A-Z]+)-(\d+)$")
-
-
 def _renumbered_prefix_and_start(
     sorted_ids: list[str],
 ) -> tuple[str | None, int | None]:
@@ -683,11 +676,11 @@ def _renumbered_prefix_and_start(
     prefixes: set[str] = set()
     highest = 0
     for tid in sorted_ids:
-        m = _RENUMBERED_ID_PATTERN.match(tid)
-        if not m:
+        split = split_prefixed_id(tid)
+        if not split:
             return None, None
-        prefixes.add(m.group(1))
-        highest = max(highest, int(m.group(2)))
+        prefixes.add(split[0])
+        highest = max(highest, split[1])
     if len(prefixes) != 1:
         return None, None
     return next(iter(prefixes)), highest + 1
