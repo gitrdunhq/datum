@@ -472,7 +472,7 @@
         "tests/test_task_id_propagation_end_to_end.py"
       ],
       "acceptance_criteria": [
-        "For every directory under docs/epics/ containing a tasks.json, `datum lane-plan --validate` exits 0 and the file's bytes are unchanged before and after the run",
+        "For every directory under docs/epics/ whose tasks.json validated before this change (every id matches ^task-\\d+$ or ^task-INT-\\d+$), `datum lane-plan --validate` exits 0 and the file's bytes are unchanged before and after the run; the epics whose ids are bare slugs from before the schema existed (e.g. bug-squash-round-2, consumer-first-build-order) never validated and are listed by name in the test as pre-schema and skipped \u2014 the id pattern is never widened to admit them",
         "No existing committed tasks.json under docs/epics/ contains a <PREFIX>-\\d+ id after the suite runs \u2014 nothing migrated old ids",
         "The lane branch derived for id 'DAT-142' in epic 'my-epic' is 'my-epic--DAT-142' and the worktree path contains 'DAT-142'",
         "The lane-state marker path for run R and id 'DAT-142' ends in 'DAT-142.json' (or the repo's existing marker naming with DAT-142 substituted)",
