@@ -2505,7 +2505,58 @@ def pipeline_state_save_cmd(
         completed_phases=completed,
         current_phase=None,
     )
+    # #520: the run event log. Duration is measured from the previous phase
+    # record of the same run; a first phase has none.
+    from datum.events import append_phase_event
+
+    duration_s: float | None = None
+    if prior and prior.get("runId") == run_id and prior.get("lastUpdated"):
+        try:
+            before = datetime.strptime(
+                prior["lastUpdated"], "%Y-%m-%dT%H:%M:%S"
+            ).replace(tzinfo=UTC)
+            duration_s = max(0.0, (datetime.now(UTC) - before).total_seconds())
+        except ValueError:
+            duration_s = None
+    try:
+        append_phase_event(run_id, phase, duration_s)
+    except OSError:
+        pass  # the state is written; the event log is best recorded, never a refusal
     typer.echo(json.dumps(state))
+
+
+# ── Run event log (#520) ─────────────────────────────────────────────────────
+
+events_app = typer.Typer(
+    name="events",
+    help="Append run events (.datum/runs/<run_id>/events.jsonl) for datum retrospect.",
+)
+app.add_typer(events_app)
+
+
+@events_app.command(name="lane")
+def events_lane_cmd(
+    run_id: str = typer.Option(
+        ..., "--run-id", help="Run id, or an Act batch id like <run>-b2"
+    ),
+    task_id: str = typer.Option(..., "--task-id"),
+    status: str = typer.Option(
+        ..., "--status", help="completed | failed | blocked | skipped"
+    ),
+    stage: str = typer.Option("UNKNOWN", "--stage"),
+    reason: str = typer.Option(
+        None, "--reason", help="The lane's error string (prefix names the reason)"
+    ),
+):
+    """Record one lane outcome in the run event log."""
+    from datum.events import append_lane_event
+
+    path = append_lane_event(run_id, task_id, status, stage, reason)
+    typer.echo(
+        json.dumps(
+            {"ok": True, "path": str(path), "task_id": task_id, "status": status}
+        )
+    )
 
 
 # ── Lane state markers ───────────────────────────────────────────────────────

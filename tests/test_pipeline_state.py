@@ -496,3 +496,19 @@ def test_verify_phase_act_does_not_match_a_different_run_with_the_same_prefix(
 
     found, _ = verify_phase("act", run_id="20260904-190313")
     assert found is False
+
+
+def test_pipeline_state_save_appends_a_phase_event_with_the_duration_since_the_prior_phase(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """#520: `datum retrospect` reads .datum/runs/<run_id>/events.jsonl; the
+    phase record is where the pipeline knows a phase finished."""
+    _invoke_save(monkeypatch, tmp_path, branch="datum/epic-1", phase="refine")
+    _invoke_save(monkeypatch, tmp_path, branch="datum/epic-1", phase="plan")
+    events_file = tmp_path / ".datum" / "runs" / "20260101-000000" / "events.jsonl"
+    assert events_file.exists()
+    events = [json.loads(line) for line in events_file.read_text().splitlines() if line.strip()]
+    assert [e["phase"] for e in events] == ["refine", "plan"]
+    assert all(e["event_type"] == "phase_complete" for e in events)
+    assert "duration_s" not in events[0]["payload"]
+    assert events[1]["payload"]["duration_s"] >= 0.0

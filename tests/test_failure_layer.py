@@ -259,3 +259,55 @@ class TestTagEscalation:
     def test_none_reason_escalated_yields_unknown_layer(self):
         payload = tag_escalation(escalated=True, reason=None)
         assert payload["failure_layer"] == "unknown"
+
+
+class TestWorkflowLaneVocabulary:
+    """#520: the TS Workflow pipeline names lane failures by prefix
+    (green_verify_failed, batch_incomplete, ...); none of those were in the
+    reason map, so every real failure would have landed in UNKNOWN."""
+
+    @pytest.mark.parametrize(
+        ("reason", "layer"),
+        [
+            ("green_verify_failed", FailureLayer.VERIFICATION),
+            ("red_verify_failed", FailureLayer.VERIFICATION),
+            ("refactor_verify_failed", FailureLayer.VERIFICATION),
+            ("build_verify_failed", FailureLayer.VERIFICATION),
+            ("integration_failed", FailureLayer.VERIFICATION),
+            ("skeptic_broken", FailureLayer.VERIFICATION),
+            ("no_new_tests_written", FailureLayer.VERIFICATION),
+            ("test_count_missing", FailureLayer.VERIFICATION),
+            ("placeholder_assertions", FailureLayer.VERIFICATION),
+            ("structural_deliverable_missing", FailureLayer.VERIFICATION),
+            ("context_read_unverified", FailureLayer.VERIFICATION),
+            ("file_ownership_violation", FailureLayer.CONSTRAINT),
+            ("green_edited_tests", FailureLayer.CONSTRAINT),
+            ("red_reads_runtime_artifact", FailureLayer.CONSTRAINT),
+            ("batch_incomplete", FailureLayer.INFRASTRUCTURE),
+            ("batch_timeout", FailureLayer.INFRASTRUCTURE),
+            ("batch_script_corrupt", FailureLayer.INFRASTRUCTURE),
+            ("batch_script_failed", FailureLayer.INFRASTRUCTURE),
+            ("runner_permission_denied", FailureLayer.INFRASTRUCTURE),
+            ("lane_intake_failed", FailureLayer.INFRASTRUCTURE),
+            ("lane_branch_stale_conflict", FailureLayer.INFRASTRUCTURE),
+            ("test_env_missing", FailureLayer.INFRASTRUCTURE),
+            ("agent_type_unavailable", FailureLayer.INFRASTRUCTURE),
+            ("green_no_result", FailureLayer.MODEL),
+            ("red_no_result", FailureLayer.MODEL),
+            ("structural_no_result", FailureLayer.MODEL),
+            ("agent_output_unparseable", FailureLayer.MODEL),
+            ("green_blocked_needs_write", FailureLayer.PLANNING),
+            ("integration_dependency_unmerged", FailureLayer.PLANNING),
+            ("invariant_covers_empty", FailureLayer.SPEC),
+            ("green_blocked_contradictory_tests", FailureLayer.SPEC),
+            ("plan_adr_sequence_collision", FailureLayer.PLANNING),
+        ],
+    )
+    def test_workflow_prefix_maps_to_a_layer(self, reason, layer):
+        assert FailureLayer.from_reason(reason) is layer
+
+    def test_a_full_lane_error_string_is_classified_by_its_prefix(self):
+        assert (
+            FailureLayer.from_reason("green_verify_failed: independent test-verify step exit=1")
+            is FailureLayer.VERIFICATION
+        )

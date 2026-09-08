@@ -67,7 +67,9 @@ class FailureLayer(StrEnum):
         """
         if not reason:
             return cls.UNKNOWN
-        normalised = reason.lower().strip()
+        # A full lane error ("green_verify_failed: exit=1 ...") is classified
+        # by its named prefix (#520).
+        normalised = reason.split(":", 1)[0].lower().strip()
         return cls._REASON_MAP.get(normalised, cls.UNKNOWN)
 
     @classmethod
@@ -136,6 +138,58 @@ FailureLayer._REASON_MAP = {
     "contradictory_spec": FailureLayer.SPEC,
     # ── UNKNOWN ───────────────────────────────────────────────────────────
     "unrecognized_pattern": FailureLayer.UNKNOWN,
+    # ── Workflow pipeline lane vocabulary (#520) ──────────────────────────
+    # The named prefixes datum-tdd-act-lane.ts / datum-go.ts put on a lane's
+    # `error`; the same names shared/triage-classify.ts categorises.
+    "green_verify_failed": FailureLayer.VERIFICATION,
+    "red_verify_failed": FailureLayer.VERIFICATION,
+    "refactor_verify_failed": FailureLayer.VERIFICATION,
+    "build_verify_failed": FailureLayer.VERIFICATION,
+    "integration_failed": FailureLayer.VERIFICATION,
+    "skeptic_broken": FailureLayer.VERIFICATION,
+    "no_new_tests_written": FailureLayer.VERIFICATION,
+    "no_new_test_functions_committed": FailureLayer.VERIFICATION,
+    "test_count_missing": FailureLayer.VERIFICATION,
+    "count_gate_no_output": FailureLayer.VERIFICATION,
+    "placeholder_assertions": FailureLayer.VERIFICATION,
+    "structural_deliverable_missing": FailureLayer.VERIFICATION,
+    "structural_uncommitted": FailureLayer.VERIFICATION,
+    "context_read_unverified": FailureLayer.VERIFICATION,
+    "green_stale": FailureLayer.VERIFICATION,
+    "red_spec_stale": FailureLayer.VERIFICATION,
+    "file_ownership_violation": FailureLayer.CONSTRAINT,
+    "green_edited_tests": FailureLayer.CONSTRAINT,
+    "red_reads_runtime_artifact": FailureLayer.CONSTRAINT,
+    "green_blindness_violation": FailureLayer.CONSTRAINT,
+    "batch_incomplete": FailureLayer.INFRASTRUCTURE,
+    "batch_rec_failed": FailureLayer.INFRASTRUCTURE,
+    "batch_timeout": FailureLayer.INFRASTRUCTURE,
+    "batch_script_corrupt": FailureLayer.INFRASTRUCTURE,
+    "batch_script_failed": FailureLayer.INFRASTRUCTURE,
+    "batch_root_missing": FailureLayer.INFRASTRUCTURE,
+    "batch_tool_missing": FailureLayer.INFRASTRUCTURE,
+    "runner_permission_denied": FailureLayer.INFRASTRUCTURE,
+    "runner_empty_result": FailureLayer.INFRASTRUCTURE,
+    "runner_no_json": FailureLayer.INFRASTRUCTURE,
+    "lane_intake_failed": FailureLayer.INFRASTRUCTURE,
+    "lane_branch_stale_conflict": FailureLayer.INFRASTRUCTURE,
+    "test_env_missing": FailureLayer.INFRASTRUCTURE,
+    "agent_type_unavailable": FailureLayer.INFRASTRUCTURE,
+    "agent_types_unconfigured": FailureLayer.INFRASTRUCTURE,
+    "structural_check_unavailable": FailureLayer.INFRASTRUCTURE,
+    "worktree_reset_failed": FailureLayer.INFRASTRUCTURE,
+    "green_no_result": FailureLayer.MODEL,
+    "red_no_result": FailureLayer.MODEL,
+    "refactor_no_result": FailureLayer.MODEL,
+    "structural_no_result": FailureLayer.MODEL,
+    "agent_output_unparseable": FailureLayer.MODEL,
+    "green_blocked_needs_write": FailureLayer.PLANNING,
+    "integration_dependency_unmerged": FailureLayer.PLANNING,
+    "plan_adr_sequence_collision": FailureLayer.PLANNING,
+    "invariant_covers_empty": FailureLayer.SPEC,
+    "invariant_covers_insufficient": FailureLayer.SPEC,
+    "green_blocked_contradictory_tests": FailureLayer.SPEC,
+    "red_repair_failed": FailureLayer.SPEC,
 }
 
 
