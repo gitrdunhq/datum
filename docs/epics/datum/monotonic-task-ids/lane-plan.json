@@ -494,8 +494,10 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "existing-epics-and-id-propagation-regression",
-      "kind": "behavioral",
-      "github_issue": 536
+      "kind": "integration",
+      "github_issue": 536,
+      "expect_tests_pass": true,
+      "invariants": []
     },
     "task-015": {
       "id": "task-015",
