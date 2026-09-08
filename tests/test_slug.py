@@ -1,5 +1,6 @@
-from datum.slug import make_unique, slugify
 import pytest
+
+from datum.slug import make_unique, slugify
 
 
 def test_basic_lowercase_and_hyphen():
@@ -62,3 +63,44 @@ def test_make_unique_appends_2_on_collision():
 
 def test_make_unique_skips_taken_suffixes():
     assert make_unique("post", {"post", "post-2", "post-3"}) == "post-4"
+
+
+# #521: `datum ticket-from-issue 514` turned "[feature] Sequential repo-wide
+# task numbers (DAT-123) instead of per-epic task-001" into
+# datum/feature-sequential-repo-wide-task-numbers-dat-123-instead-of — the
+# label became the first word, the parenthetical example survived, and the
+# cut landed mid-phrase.
+class TestBranchSlugFromTitle:
+    def test_strips_a_leading_bracketed_label(self):
+        from datum.slug import branch_slug_from_title
+
+        assert branch_slug_from_title("[feature] Sequential task numbers") == (
+            "sequential-task-numbers"
+        )
+
+    def test_drops_parenthesised_fragments(self):
+        from datum.slug import branch_slug_from_title
+
+        assert branch_slug_from_title("Task numbers (DAT-123) instead") == (
+            "task-numbers-instead"
+        )
+
+    def test_cuts_at_a_word_boundary_under_forty_chars(self):
+        from datum.slug import branch_slug_from_title
+
+        slug = branch_slug_from_title(
+            "[feature] Sequential repo-wide task numbers (DAT-123) instead of per-epic task-001"
+        )
+        assert slug == "sequential-repo-wide-task-numbers"
+        assert len(slug) <= 40
+        assert not slug.endswith("-")
+
+    def test_a_single_overlong_word_is_hard_cut(self):
+        from datum.slug import branch_slug_from_title
+
+        assert branch_slug_from_title("a" * 80) == "a" * 40
+
+    def test_a_title_that_is_only_a_label_yields_empty(self):
+        from datum.slug import branch_slug_from_title
+
+        assert branch_slug_from_title("[bug]") == ""

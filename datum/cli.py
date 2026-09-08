@@ -374,7 +374,7 @@ def ticket_from_issue_cmd(
     import subprocess
 
     from datum.github_issues import fetch_issue
-    from datum.slug import slugify
+    from datum.slug import branch_slug_from_title
     from datum.state import current_branch
 
     try:
@@ -383,7 +383,7 @@ def ticket_from_issue_cmd(
         console.print(f"[bold red]ticket-from-issue failed: {exc}[/bold red]")
         raise typer.Exit(1) from None
 
-    slug = slugify(issue["title"]) or f"issue-{issue_number}"
+    slug = branch_slug_from_title(issue["title"]) or f"issue-{issue_number}"
 
     # init() is a typer command but a plain function underneath — call it
     # directly (all params explicit, avoiding the typer.Option-sentinel
