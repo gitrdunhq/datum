@@ -9,18 +9,20 @@ from typing import Any
 
 from pydantic import BaseModel, Field, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Stage(Enum):
-    queued = 'queued'
-    RED = 'RED'
-    GREEN = 'GREEN'
-    REFACTOR = 'REFACTOR'
-    completed = 'completed'
-    failed_terminal = 'failed_terminal'
+    queued = "queued"
+    RED = "RED"
+    GREEN = "GREEN"
+    REFACTOR = "REFACTOR"
+    completed = "completed"
+    failed_terminal = "failed_terminal"
 
 
 class LanePlanEntry(BaseModel):
-    id: constr(pattern=r'^task-\d+$')
+    id: constr(pattern=LANE_ID_PATTERN)
     title: str | None = None
     files: list[str] = Field(..., min_length=1)
     acceptance_criteria: list[str] = Field(..., min_length=1)

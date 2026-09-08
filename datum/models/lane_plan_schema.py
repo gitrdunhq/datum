@@ -8,16 +8,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
 
-class TopologicalOrderItem(RootModel[constr(pattern=r"^task-(\d+|INT-\d+)$")]):
-    root: constr(pattern=r"^task-(\d+|INT-\d+)$")
+
+class TopologicalOrderItem(RootModel[constr(pattern=LANE_ID_PATTERN)]):
+    root: constr(pattern=LANE_ID_PATTERN)
 
 
 class Lanes(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    id: constr(pattern=r"^task-(\d+|INT-\d+)$")
+    id: constr(pattern=LANE_ID_PATTERN)
     slug: constr(pattern=r"^[a-z0-9][a-z0-9-]{2,60}$") | None = None
     title: constr(min_length=1)
     files: list[str] = Field(..., min_length=1)
@@ -33,6 +35,6 @@ class DatumLanePlan(BaseModel):
     schema_version: str
     total_lanes: conint(ge=1)
     topological_order: list[TopologicalOrderItem] = Field(..., min_length=1)
-    file_ownership: dict[str, constr(pattern=r"^task-(\d+|INT-\d+)$")]
+    file_ownership: dict[str, constr(pattern=LANE_ID_PATTERN)]
     lanes: dict[str, Lanes]
     units: dict[str, Any] | None = None
