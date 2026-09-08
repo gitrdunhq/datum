@@ -516,3 +516,31 @@ describe('batch_rec_failed: a step jq cannot record is still a record, and a nam
     expect(describeFailure(r, 'post-red:T1')).toContain('batch_rec_failed')
   })
 })
+
+// monotonic-task-ids task-006 (wf_af5b7346-797, #539): the runner's reply
+// was a JSON array cut mid-string ("stdout":"skills/src/sha) — the post-RED
+// batch's stdout was too long to relay whole. It parsed as prose, was named
+// runner_no_json, and the lane died count_gate_no_output with no retry. A
+// reply that starts as the step array but does not close is batch_truncated:
+// a named runner failure, retried once like an empty reply.
+describe('batch_truncated: a step array cut before it closes is a named runner failure', () => {
+  const steps: BatchStep[] = [{ name: 'a', command: 'echo a', tolerant: true }, { name: 'b', command: 'echo b', tolerant: true }]
+  it('names a cut array batch_truncated with the last complete step, and is missing', () => {
+    const cut = '[{"name":"a","exit_code":0,"stdout":"a\\n","stderr":""},{"name":"b","exit_code":0,"stdout":"skills/src/sha'
+    const r = parseBatchResult(cut, steps)
+    expect(r.missing).toBe(true)
+    expect(r.refusal).toBeUndefined()
+    expect(r.scriptError).toMatch(/^batch_truncated: the runner's reply is a step array cut before it closed/)
+    expect(r.scriptError).toContain('last complete step: a')
+    expect(describeFailure(r, 'post-red:T1')).toContain('batch_truncated')
+  })
+  it('a fenced cut array is the same failure', () => {
+    const r = parseBatchResult('```json\n[{"name":"a","exit_code":0,"stdout":"a', steps)
+    expect(r.scriptError).toMatch(/^batch_truncated/)
+  })
+  it('prose that merely mentions a bracket stays runner_no_json', () => {
+    const r = parseBatchResult('I ran it and the output was [nothing] useful.', steps)
+    expect(r.scriptError).toBeUndefined()
+    expect(describeFailure(r, 'x')).toMatch(/runner_no_json/)
+  })
+})

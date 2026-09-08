@@ -266,6 +266,12 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
       logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 2 — last retry with a fresh runner`)
       result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 3 of 3 — two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps)
     }
+  } else if (result.missing && result.scriptError?.startsWith('batch_truncated')) {
+    // #539: the runner relayed a step array cut mid-string. One fresh
+    // retry; a second cut reply is terminal under its name (the batch's
+    // stdout is too large for a runner, which is #538's problem to shrink).
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner's reply was cut before the JSON array closed; return the script's stdout complete and unabridged, nothing else`, retryOpts), steps)
   } else if (result.missing && result.scriptError?.startsWith('batch_timeout')) {
     // #496: the runner's shell cut a full-suite verify at the Bash tool's
     // two-minute default. One retry, with the timeout instruction repeated.
