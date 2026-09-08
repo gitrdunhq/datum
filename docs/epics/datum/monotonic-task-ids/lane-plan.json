@@ -26,7 +26,7 @@
   ],
   "file_ownership": {
     "datum/id_pattern.py": "task-001",
-    "assets/schemas/task.schema.json": "task-001",
+    "assets/schemas/task.schema.json": "task-002",
     "datum/models/task_schema.py": "task-001",
     "tests/test_id_pattern_shared.py": "task-001",
     "datum/models/lane_plan_schema.py": "task-002",
@@ -72,7 +72,9 @@
     "tests/integration/test_int_3.py": "task-INT-3",
     "tests/integration/test_int_4.py": "task-INT-4",
     "tests/integration/test_int_5.py": "task-INT-5",
-    "tests/integration/test_int_6.py": "task-INT-6"
+    "tests/integration/test_int_6.py": "task-INT-6",
+    "tests/test_lane_plan_schema_int_ids.py": "task-002",
+    "skills/src/shared/lane-steps.test.ts": "task-006"
   },
   "lanes": {
     "task-001": {
@@ -110,7 +112,9 @@
       "files": [
         "datum/models/lane_plan_schema.py",
         "datum/models/lane_schema.py",
-        "tests/test_lane_plan_schema_prefixed_ids.py"
+        "tests/test_lane_plan_schema_prefixed_ids.py",
+        "tests/test_lane_plan_schema_int_ids.py",
+        "assets/schemas/task.schema.json"
       ],
       "acceptance_criteria": [
         "datum.models.lane_plan_schema.DatumLanePlan validates a plan whose lane id, topological_order entry and file_ownership value are all 'DAT-142'",
@@ -225,7 +229,8 @@
         "skills/src/shared/lane-id-pattern.ts",
         "skills/src/shared/lane-steps.ts",
         "skills/src/shared/lane-id-pattern.test.ts",
-        "tests/test_id_pattern_ts_parity.py"
+        "tests/test_id_pattern_ts_parity.py",
+        "skills/src/shared/lane-steps.test.ts"
       ],
       "acceptance_criteria": [
         "skills/src/shared/lane-id-pattern.ts exports LANE_ID_PATTERN (string) and isLaneId(s: string): boolean",
