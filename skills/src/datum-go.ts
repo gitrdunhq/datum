@@ -1,8 +1,9 @@
 import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
 import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
+import { laneEventSteps } from './shared/events-steps'
 import { runBatch } from './shared/agents'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, pipelineStateSaveSteps, pipelineStateSaveFromSteps, type PipelineState } from './shared/pipeline-state'
@@ -667,6 +668,16 @@ if (shouldRun('act', 3)) {
       log(`    ${r?.error || ''}`)
     }
     log('  To approve: add the listed paths to that lane\'s `files` in lane-plan.json, then re-run act (datum go --start-from act). In yolo mode, paths inside src/ are widened automatically and GREEN re-runs once.')
+  }
+
+  // #520: the run event log `datum retrospect` reads — one line per lane
+  // outcome, recorded by the CLI (never a runner's summary). Tolerant: a
+  // failed record is logged, never a halt on a finished Act.
+  if (Object.keys(actResults).length > 0) {
+    const eventSteps = laneEventSteps({ runId, results: actResults })
+    const eventsRaw = await runBatch(eventSteps, stageOpts('cli', { label: 'act-events', phase: 'Act', model: model('fast') }))
+    const recorded = eventSteps.filter((s) => stepResult(eventsRaw, s.name)?.exit_code === 0).length
+    if (recorded < eventSteps.length) log(`[warn] act_events_partial: ${recorded}/${eventSteps.length} lane events recorded (${describeFailure(eventsRaw, 'act-events')})`)
   }
 
   // Triage — direct child workflow
