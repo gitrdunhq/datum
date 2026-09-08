@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -231,6 +232,122 @@ def topological_sort(tasks: list[dict]) -> list[str]:
             visit(task["id"])
 
     return order
+
+
+_EPIC_TASKS_PATH = re.compile(r"^docs/epics/.+/tasks\.json$")
+_TASK_ID_PREFIX_PATTERN = re.compile(r"^([A-Z]{2,6})-(\d+)$")
+
+
+def epic_name_for_tasks_path(path: str) -> str:
+    """`docs/epics/<name>/tasks.json` -> `<name>` (nested names keep their
+    slashes: `docs/epics/datum/epic-1/tasks.json` -> `datum/epic-1`)."""
+    return path[len("docs/epics/") : -len("/tasks.json")]
+
+
+def find_task_id_collisions(
+    repo_root: Path, prefix: str, tasks: list[dict]
+) -> list[dict]:
+    """Scan committed docs/epics/**/tasks.json content at HEAD (never the
+    uncommitted working tree, mirroring datum.task_ids.next_task_number's
+    `git ls-tree` + `git show HEAD:<path>` approach) for `<prefix>-\\d+` ids
+    that are committed under two DIFFERENT docs/epics/*/tasks.json paths.
+
+    Only ids present in *tasks* (the current task list under review) are
+    reported — a repo-wide duplicate the current lane never touches is
+    outside this check's scope. Returns one record per colliding id:
+    `{"id": ..., "paths": [...]}` with all committed paths carrying that id.
+
+    Outside a git work tree, or before the first commit, nothing is committed
+    yet and the result is `[]`. A git failure with a HEAD present raises.
+    """
+    id_pattern = re.compile(rf"^{re.escape(prefix)}-\d+$")
+    target_ids = {
+        t["id"]
+        for t in tasks
+        if isinstance(t.get("id"), str) and id_pattern.match(t["id"])
+    }
+    if not target_ids:
+        return []
+
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=Path(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    if top.returncode != 0:
+        return []
+    git_root = Path(top.stdout.strip())
+
+    head = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=git_root,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode != 0:
+        return []
+
+    ls_tree = subprocess.run(
+        ["git", "ls-tree", "-r", "HEAD", "--name-only"],
+        cwd=git_root,
+        capture_output=True,
+        text=True,
+    )
+    if ls_tree.returncode != 0:
+        raise RuntimeError(
+            f"git ls-tree HEAD failed in {git_root}: {ls_tree.stderr.strip()}"
+        )
+    paths = [p for p in ls_tree.stdout.splitlines() if p and _EPIC_TASKS_PATH.match(p)]
+
+    id_to_paths: dict[str, set[str]] = {}
+    for path in paths:
+        show = subprocess.run(
+            ["git", "show", f"HEAD:{path}"],
+            cwd=git_root,
+            capture_output=True,
+            text=True,
+        )
+        if show.returncode != 0:
+            continue
+        try:
+            data = json.loads(show.stdout)
+        except json.JSONDecodeError:
+            continue
+        items = data.get("tasks") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tid = item.get("id")
+            if isinstance(tid, str) and id_pattern.match(tid):
+                id_to_paths.setdefault(tid, set()).add(path)
+
+    collisions = []
+    for tid in sorted(target_ids):
+        found_paths = id_to_paths.get(tid, set())
+        if len(found_paths) >= 2:
+            collisions.append({"id": tid, "paths": sorted(found_paths)})
+    return collisions
+
+
+def _cli_task_id_collisions(repo_root: Path, tasks: list[dict]) -> list[dict]:
+    """Group the current tasks by their `<PREFIX>-<n>` id shape and check
+    each prefix group for collisions. Old-shape ids (task-001, task-INT-1)
+    never match `_TASK_ID_PREFIX_PATTERN` (2-6 uppercase letters) and so
+    never participate."""
+    prefixes: set[str] = set()
+    for t in tasks:
+        tid = t.get("id")
+        m = _TASK_ID_PREFIX_PATTERN.match(tid) if isinstance(tid, str) else None
+        if m:
+            prefixes.add(m.group(1))
+
+    collisions: list[dict] = []
+    for prefix in sorted(prefixes):
+        collisions.extend(find_task_id_collisions(repo_root, prefix, tasks))
+    return collisions
 
 
 def _render_task_block(task: dict, heading_level: str = "###") -> list[str]:
@@ -780,7 +897,15 @@ def main() -> None:
     valid, errors = validate_json_schema(tasks, schema_path)
 
     if not valid:
-        print(json.dumps({"error": "Schema validation failed", "details": errors}))
+        print(
+            json.dumps(
+                {
+                    "code": "schema_shape_invalid",
+                    "error": "Schema validation failed",
+                    "details": errors,
+                }
+            )
+        )
         sys.exit(1)
 
     if units:
@@ -799,6 +924,30 @@ def main() -> None:
             sys.exit(1)
 
     if args.validate:
+        collisions = _cli_task_id_collisions(Path(".").resolve(), tasks)
+        if collisions:
+            records = [
+                {
+                    "id": c["id"],
+                    "paths": c["paths"],
+                    "epics": [epic_name_for_tasks_path(p) for p in c["paths"]],
+                }
+                for c in collisions
+            ]
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "code": "task_id_collision",
+                        "reason": "task_id_collision",
+                        "id": records[0]["id"],
+                        "paths": records[0]["paths"],
+                        "collisions": records,
+                    }
+                )
+            )
+            sys.exit(1)
+
         try:
             inject_conflict_edges(tasks)
             read_edge_warnings = inject_read_dependency_edges(tasks)
@@ -808,7 +957,9 @@ def main() -> None:
                 result["warnings"] = read_edge_warnings
             print(json.dumps(result))
         except ValueError as e:
-            print(json.dumps({"valid": False, "error": str(e)}))
+            print(
+                json.dumps({"valid": False, "code": "topology_cycle", "error": str(e)})
+            )
             sys.exit(1)
         return
 
