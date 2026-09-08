@@ -50,7 +50,7 @@ export function planBuildSteps(o: PlanBuildOpts): BatchStep[] {
  *  step whose exit code tells decideRenumber whether the epic already has a
  *  committed plan. */
 export function renumberDecisionSteps(epicDir: string): BatchStep[] {
-  return [{ name: 'lane-plan-exists', command: `git show HEAD:${epicDir}/lane-plan.json`, tolerant: true }]
+  return [{ name: 'lane-plan-exists', command: `git show ${q(`HEAD:${epicDir}/lane-plan.json`)}`, tolerant: true }]
 }
 
 /** Non-zero exit (no committed lane-plan.json) is net-new: renumber. Exit 0

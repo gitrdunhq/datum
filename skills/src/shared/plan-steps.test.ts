@@ -162,8 +162,13 @@ describe('renumberDecisionSteps / decideRenumber (task-016 AC2)', () => {
   it('is a single tolerant `git show HEAD:<epicDir>/lane-plan.json` step', () => {
     const steps = renumberDecisionSteps('docs/epics/x')
     expect(steps).toHaveLength(1)
-    expect(steps[0].command).toBe('git show HEAD:docs/epics/x/lane-plan.json')
+    expect(steps[0].command).toBe('git show "HEAD:docs/epics/x/lane-plan.json"')
     expect(steps[0].tolerant).toBe(true)
+  })
+
+  it('quotes epicDir like every other builder (review SEC-001): metacharacters cannot expand', () => {
+    const steps = renumberDecisionSteps('docs/epics/a$b`c"d')
+    expect(steps[0].command).toBe('git show "HEAD:docs/epics/a\\$b\\`c\\"d/lane-plan.json"')
   })
 
   it('a non-zero exit (no committed plan) decides net-new: renumber is true', () => {
