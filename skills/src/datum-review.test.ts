@@ -386,3 +386,14 @@ describe('review lenses budget their reads and get one retry', () => {
     expect(def).toMatch(/^maxTurns: 60$/m)
   })
 })
+
+describe('review lenses — the Architecture lens runs on the balanced tier (#542)', () => {
+  // On haiku the architecture lens exhausted maxTurns 60 twice in a row while
+  // still reading (epic #514 iteration 4) and the whole gate failed with
+  // agent_output_unparseable. Security and Correctness already run balanced.
+  it('Architecture is model(\'balanced\'), not fast', () => {
+    const src = readFileSync(join(__dirname, 'datum-review.ts'), 'utf8')
+    expect(src).toMatch(/domain: 'Architecture'[^\n]*model: model\('balanced'\)/)
+    expect(src).not.toMatch(/domain: 'Architecture'[^\n]*model: model\('fast'\)/)
+  })
+})
