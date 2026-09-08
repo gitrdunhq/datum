@@ -52,10 +52,6 @@ def main() -> None:
         print(json.dumps({"error": "closeout-raw/ not found — run collectors first"}))
         sys.exit(1)
 
-    state_path = Path(f".datum/runs/{args.run_id}/state.json")
-    if not state_path.exists():
-        state_path = Path(".datum/state.json")
-
     ts_result = subprocess.run(
         ["git", "log", "-1", "--format=%aI", args.merge_sha],
         capture_output=True,

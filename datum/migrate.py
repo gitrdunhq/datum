@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Migrate .datum/state.json to the bundled skill schema version."""
+"""Migrate .datum/state.json to the bundled skill schema version.
+
+Decided fate (SPEC Requirement 3, option (b)): this module is a one-shot
+legacy .datum/state.json importer. It is the only module permitted to
+read a legacy .datum/state.json; the writer delegates to
+datum.state.save_state so migrated state lands in .datum/state.db.
+"""
 
 from __future__ import annotations
 
@@ -15,8 +21,12 @@ except ImportError:  # pragma: no cover - py3.10 fallback
     import tomli as tomllib  # type: ignore[import-not-found]
 
 from datum.path_utils import assets_dir
+from datum.state import save_state
 
-STATE_FILE = Path(".datum/state.json")
+# The legacy write-through cache this importer reads once (Requirement 3).
+# Named LEGACY_ so Requirement 1's grep for the STATE_FILE constant matches
+# only state.py and the two archival-export modules (CORR-001, #341 review).
+LEGACY_STATE_FILE = Path(".datum/state.json")
 CONFIG_FILE = assets_dir() / "config.toml.default"
 STATE_SCHEMA = assets_dir() / "schemas/state.schema.json"
 
@@ -46,17 +56,10 @@ def migrate_wfc_directory(dry_run: bool) -> list[str]:
     return changes
 
 
-def load_state() -> dict:
-    if not STATE_FILE.exists():
+def load_legacy_state() -> dict:
+    if not LEGACY_STATE_FILE.exists():
         return {}
-    return json.loads(STATE_FILE.read_text())
-
-
-def save_state(state: dict) -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=2))
-    tmp.replace(STATE_FILE)
+    return json.loads(LEGACY_STATE_FILE.read_text())
 
 
 def migrate_state(state: dict, target_version: str) -> tuple[dict, list[str]]:
@@ -89,7 +92,7 @@ def main() -> None:
 
     dir_changes = migrate_wfc_directory(args.dry_run)
 
-    state = load_state()
+    state = load_legacy_state()
     if not state and not dir_changes:
         print(
             json.dumps(

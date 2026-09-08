@@ -91,3 +91,51 @@ def test_runLane_reads_literal_depends_on_field_no_renaming():
     assert "lane.depends_on" in source
     assert "lane.dependsOn" not in source
     assert "integration_failed:" in source
+
+
+STATE_STORE_DOC = REPO_ROOT / "docs" / "architecture" / "state-store.md"
+
+
+def test_ac1_inv_q5_docs_architecture_state_store_md_records_that_q5_s_an():
+    """INV-Q5: docs/architecture/state-store.md must record that Q5's
+    answer (a SCHEMA_VERSION constant plus a kv_state key/owner docstring
+    table) is deliberately NOT implemented by any task in this epic —
+    state.db's schema stays unversioned beyond task-001's own doc, a scope
+    gap explicitly flagged for the epic owner rather than silently
+    dropped."""
+    assert STATE_STORE_DOC.exists(), (
+        f"{STATE_STORE_DOC} does not exist — task-001's deliverable doc "
+        "is missing, so INV-Q5 cannot be verified as recorded"
+    )
+    text = STATE_STORE_DOC.read_text(encoding="utf-8")
+    assert "SCHEMA_VERSION" in text
+    assert "kv_state" in text
+    # The doc must flag this as an explicit, deliberate scope gap for the
+    # epic owner — not silently omitted.
+    lowered = text.lower()
+    assert "not implemented" in lowered or "out of scope" in lowered
+    assert "scope gap" in lowered or "flagged" in lowered
+
+
+def test_ac2_inv_q6_docs_architecture_state_store_md_records_that_q6_s_an():
+    """INV-Q6: docs/architecture/state-store.md must record that Q6's
+    answer (a 5s busy_timeout on every connection) is deliberately NOT
+    implemented — update_state() retains only its existing EXCLUSIVE
+    transaction, per SPEC's Out-of-Scope bar on new locking primitives, a
+    scope gap explicitly flagged rather than silently dropped."""
+    assert STATE_STORE_DOC.exists(), (
+        f"{STATE_STORE_DOC} does not exist — task-001's deliverable doc "
+        "is missing, so INV-Q6 cannot be verified as recorded"
+    )
+    text = STATE_STORE_DOC.read_text(encoding="utf-8")
+    assert "busy_timeout" in text
+    assert "EXCLUSIVE" in text
+    lowered = text.lower()
+    assert "not implemented" in lowered or "out of scope" in lowered
+    assert "scope gap" in lowered or "flagged" in lowered
+
+    # The actual accessor must still only carry the existing EXCLUSIVE
+    # transaction — no new locking primitive introduced alongside it.
+    state_py = (REPO_ROOT / "datum" / "state.py").read_text(encoding="utf-8")
+    assert "BEGIN EXCLUSIVE" in state_py
+    assert "PRAGMA busy_timeout" not in state_py

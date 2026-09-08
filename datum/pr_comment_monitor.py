@@ -20,8 +20,9 @@ import re
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime, timezone
 from pathlib import Path
+
+from datum.state import load_state
 
 _RUN_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
@@ -31,19 +32,7 @@ def _validate_run_id(run_id: str) -> None:
         raise ValueError(f"run_id must be a safe path component: {run_id!r}")
 
 
-STATE_FILE = Path(".datum/state.json")
 PROCESSED_FILE_TEMPLATE = ".datum/runs/{run_id}/pr-comments-processed.json"
-
-
-def load_state() -> dict:
-    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
-
-
-def save_state(state: dict) -> None:
-    tmp = STATE_FILE.with_suffix(".tmp")
-    state["updated_at"] = datetime.now(UTC).isoformat()
-    tmp.write_text(json.dumps(state, indent=2))
-    tmp.replace(STATE_FILE)
 
 
 def gh(*args: str) -> subprocess.CompletedProcess:
@@ -83,7 +72,14 @@ def load_processed(run_id: str) -> set[str]:
     _validate_run_id(run_id)
     p = Path(PROCESSED_FILE_TEMPLATE.format(run_id=run_id))
     if p.exists():
-        return set(json.loads(p.read_text()))
+        try:
+            return set(json.loads(p.read_text()))
+        except (json.JSONDecodeError, OSError, TypeError) as exc:
+            # Never fall back to an empty set: that would re-process every
+            # comment and duplicate replies/actions. Fail loudly instead.
+            raise RuntimeError(
+                f"processed-comment cache is unreadable: {p} ({exc})"
+            ) from exc
     return set()
 
 
@@ -100,7 +96,7 @@ def parse_datum_command(body: str) -> str | None:
     if not stripped.lower().startswith("/datum"):
         return None
     # Extract the request after /datum
-    after = stripped[4:].strip()
+    after = stripped[len("/datum") :].strip()
     return after if after else "go"
 
 

@@ -1,0 +1,75 @@
+{
+  "task_id": "task-005",
+  "slug": "migrate-pr-monitor-and-drift-detector",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "datum/spec_drift_detector.py",
+      "kind": "pytest",
+      "purpose": "Verify datum/pr_comment_monitor.py and datum/spec_drift_detector.py",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_datum_pr_comment_monitor_py_and_datum_spec_drift_detector_py",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_datum_pr_comment_monitor_py_and_datum_spec_drift_detector_py \u2192 datum/spec_drift_detector.py\n\nimport pytest\n\n\nclass TestTask005AC1:\n    def test_ac1_datum_pr_comment_monitor_py_and_datum_spec_drift_detector_py(self):\n        \"\"\"\n        PROP-001: datum/pr_comment_monitor.py and datum/spec_drift_detector.py each contain zero `\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "datum/spec_drift_detector.py",
+      "kind": "pytest",
+      "purpose": "Verify pr_comment_monitor's monitor loop reads previously-seen comm",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_pr_comment_monitor_s_monitor_loop_reads_previously_seen_comm",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_pr_comment_monitor_s_monitor_loop_reads_previously_seen_comm \u2192 datum/spec_drift_detector.py\n\nimport pytest\n\n\nclass TestTask005AC2:\n    def test_ac2_pr_comment_monitor_s_monitor_loop_reads_previously_seen_comm(self):\n        \"\"\"\n        PROP-002: pr_comment_monitor's monitor loop reads previously-seen comment state written by\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "datum/spec_drift_detector.py",
+      "kind": "pytest",
+      "purpose": "Verify tests/test_pr_comment_monitor.py passes with the same assert",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_tests_test_pr_comment_monitor_py_passes_with_the_same_assert",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_tests_test_pr_comment_monitor_py_passes_with_the_same_assert \u2192 datum/spec_drift_detector.py\n\nimport pytest\n\n\nclass TestTask005AC3:\n    def test_ac3_tests_test_pr_comment_monitor_py_passes_with_the_same_assert(self):\n        \"\"\"\n        PROP-003: tests/test_pr_comment_monitor.py passes with the same asserted observable behavi\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "datum/spec_drift_detector.py",
+      "kind": "pytest",
+      "purpose": "Verify spec_drift_detector's drift flag write is durable via datum.",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_spec_drift_detector_s_drift_flag_write_is_durable_via_datum",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_spec_drift_detector_s_drift_flag_write_is_durable_via_datum \u2192 datum/spec_drift_detector.py\n\nimport pytest\n\n\nclass TestTask005AC4:\n    def test_ac4_spec_drift_detector_s_drift_flag_write_is_durable_via_datum(self):\n        \"\"\"\n        PROP-004: spec_drift_detector's drift flag write is durable via datum.state.save_state/upd\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "datum/spec_drift_detector.py",
+      "kind": "pytest",
+      "purpose": "Verify Neither module imports json solely to hand-roll state serial",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_neither_module_imports_json_solely_to_hand_roll_state_serial",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-005 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_neither_module_imports_json_solely_to_hand_roll_state_serial \u2192 datum/spec_drift_detector.py\n\nimport pytest\n\n\nclass TestTask005AC5:\n    def test_ac5_neither_module_imports_json_solely_to_hand_roll_state_serial(self):\n        \"\"\"\n        PROP-005: Neither module imports json solely to hand-roll state serialisation any more\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/pr_comment_monitor.py": "#!/usr/bin/env python3\n\nimport argparse\nimport json\nimport os\nimport re\nimport subprocess\nimport sys\nimport time\nfrom datetime import UTC, datetime, timezone\nfrom pathlib import Path\n\n_RUN_ID_RE = re.compile(r\"^[a-zA-Z0-9_.-]+$\")\n\n\ndef _validate_run_id(run_id: str) -> None:\n    ...\n\n\nSTATE_FILE = Path(\".datum/state.json\")\nPROCESSED_FILE_TEMPLATE = \".datum/runs/{run_id}/pr-comments-processed.json\"\n\n\ndef load_state() -> dict:\n    ...\n\n\ndef save_state(state: dict) -> None:\n    ...\n\n\ndef gh(*args: str) -> subprocess.CompletedProcess:\n    ...\n\n\ndef fetch_pr_comments(pr_url: str) -> list[dict]:\n    ...\n\n\n\ndef post_reply(pr_url: str, comment_id: str, body: str) -> None:\n    ...\n\n\ndef load_processed(run_id: str) -> set[str]:\n    ...\n\n\ndef save_processed(run_id: str, processed: set[str]) -> None:\n    ...\n\n\ndef parse_datum_command(body: str) -> str | None:\n    ...\n\n\ndef handle_command(command: str, run_id: str, pr_url: str, state: dict) -> dict:\n    ...\n\n\n\n\n\n\n\ndef poll_once(run_id: str, reply_enabled: bool) -> list[dict]:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n",
+    "datum/spec_drift_detector.py": "#!/usr/bin/env python3\n\nimport argparse\nimport hashlib\nimport json\nimport sys\nimport time\nfrom datetime import UTC, datetime, timezone\nfrom pathlib import Path\n\nSPEC_FILE = Path(\"SPEC.md\")\nSTATE_FILE = Path(\".datum/state.json\")\n\n\ndef sha256_file(path: Path) -> str:\n    ...\n\n\ndef load_state() -> dict:\n    ...\n\n\ndef save_state(state: dict) -> None:\n    ...\n\n\ndef classify_impact(old_spec: str, new_spec: str, run_id: str) -> tuple[str, list[str]]:\n    ...\n\n\n\n\n\n\n\n\n\n\ndef write_drift_event(\n    run_id: str, old_hash: str, new_hash: str, impact: str, affected_lanes: list[str]\n) -> None:\n    state = load_state()\n    event = {\n\n    flag = Path(f\".datum/runs/{run_id}/.spec-drift-detected\")\n\n\n\ndef check_once(run_id: str) -> bool:\n    ...\n\n\n\n\n\n\n\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

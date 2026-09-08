@@ -10,11 +10,12 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+import datum.state as state_mod
+
 RUNS_DIR = Path(".datum/runs")
-STATE_FILE = Path(".datum/state.json")
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -163,8 +164,7 @@ def main() -> None:
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
     }
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    state_mod.save_state(state)
 
     # Step 8: Run full test suite to verify revert
     print(

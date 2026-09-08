@@ -33,7 +33,7 @@ Run: `datum rollback --run-id <run_id>`
    datum/epic-N-rollback-<original_run_id_short>
 5. Open revert PR via gh CLI with generated description linking to original
 6. Generate new RUN_ID: epic-N-rollback-<YYYYMMDD>-<hhmmss>
-7. Write state.json for the rollback run:
+7. Write state for the rollback run via `datum.state.save_state` (the canonical accessor):
    - current_phase: pr_comments
    - rollback_of: <original_run_id>
    - git.work_branch: <rollback branch>

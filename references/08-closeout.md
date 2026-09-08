@@ -65,8 +65,10 @@ datum closeout-commit       # skips if closeout commit already exists
 datum closeout-tag          # skips if tag exists; never overwrites
 datum closeout-followups    # dedup_key per entry; checks tracker first
 datum closeout-reindex      # async, non-blocking
-datum closeout-archive      # copies state.json to runs dir, clears live state
+datum closeout-archive      # snapshots live state (state.db) to runs dir, clears live state
 ```
+
+When a collector (`collect_tasks.py`, `collect_token_metrics.py`) has nothing to read — no `state.db` for the run, or an empty `token_metrics` table — it does not fail the batch. It writes `{"status": "no_state_available", "collected": false, "reason": ...}`, and `collate.py` turns that into a `collector_warnings` entry on the closeout report rather than a missing-key schema failure.
 
 ## Failure isolation
 

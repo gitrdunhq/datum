@@ -24,7 +24,9 @@ Missing source files produce empty views, never errors (graceful degradation).
 
 from __future__ import annotations
 
+import json
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -244,18 +246,57 @@ def _failures_table_sql(failures_paths: list[str]) -> str:
     return f"CREATE OR REPLACE TABLE failures AS {unions}"
 
 
-def _run_state_table_sql(state_path: str) -> str:
-    """SQL to materialise run_state into an in-memory table."""
-    return f"""
-    CREATE OR REPLACE TABLE run_state AS
-    SELECT
-        CAST(run_id AS VARCHAR) AS run_id,
-        CAST(current_phase AS VARCHAR) AS current_phase,
-        unnest_phase.key AS phase,
-        CAST(unnest_phase.value->>'status' AS VARCHAR) AS status
-    FROM read_json_auto('{state_path}'),
-    LATERAL (SELECT * FROM json_each(phases)) AS unnest_phase(key, value)
+def _run_state_rows(state_db: Path) -> list[tuple[str | None, ...]]:
+    """Read the canonical run state out of sqlite ``state.db``.
+
+    run_state is sourced exclusively from the kv_state('current') row of
+    state.db — see docs/architecture/state-store.md.
     """
+    if not state_db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{state_db}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return []
+    try:
+        row = conn.execute(
+            "SELECT value FROM kv_state WHERE key = 'current'"
+        ).fetchone()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+
+    if not row:
+        return []
+    try:
+        state = json.loads(row[0])
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(state, dict):
+        return []
+
+    run_id = state.get("run_id")
+    current_phase = state.get("current_phase")
+    run_id = None if run_id is None else str(run_id)
+    current_phase = None if current_phase is None else str(current_phase)
+
+    phases = state.get("phases")
+    if not isinstance(phases, dict) or not phases:
+        return [(run_id, current_phase, None, None)]
+
+    rows: list[tuple[str | None, ...]] = []
+    for phase, detail in phases.items():
+        status = detail.get("status") if isinstance(detail, dict) else detail
+        rows.append(
+            (
+                run_id,
+                current_phase,
+                str(phase),
+                None if status is None else str(status),
+            )
+        )
+    return rows
 
 
 def _lane_files_table_sql(lane_plan_path: str) -> str:
@@ -428,16 +469,16 @@ def _setup_views(con: Any, datum_dir: Path) -> None:  # noqa: ANN401
         )
 
     # ── run_state ─────────────────────────────────────────────────────────────
-    state_json = datum_dir / "state.json"
-    if state_json.exists():
+    # Sourced exclusively from sqlite state.db (docs/architecture/state-store.md).
+    _empty_view(con, "run_state", ["run_id", "current_phase", "phase", "status"])
+    run_state_rows = _run_state_rows(datum_dir / "state.db")
+    if run_state_rows:
         try:
-            con.execute(_run_state_table_sql(str(state_json).replace("\\", "/")))
+            con.executemany("INSERT INTO run_state VALUES (?, ?, ?, ?)", run_state_rows)
         except Exception:
             _empty_view(
                 con, "run_state", ["run_id", "current_phase", "phase", "status"]
             )
-    else:
-        _empty_view(con, "run_state", ["run_id", "current_phase", "phase", "status"])
 
     # ── lane_files ────────────────────────────────────────────────────────────
     lane_plan = datum_dir / "lane-plan.json"
@@ -455,6 +496,11 @@ def _setup_views(con: Any, datum_dir: Path) -> None:  # noqa: ANN401
     if state_db.exists():
         try:
             db_path = str(state_db).replace("\\", "/")
+            # This corpus is a SQL-queryable interface over state.db, not a
+            # Python dict, so it deliberately bypasses the canonical
+            # load_state()/save_state() accessors and attaches the database
+            # read-only instead — one of the two documented exceptions in
+            # docs/architecture/state-store.md.
             con.execute(f"ATTACH '{db_path}' AS state_db (READ_ONLY)")
             con.execute(
                 "CREATE OR REPLACE TABLE token_metrics AS "

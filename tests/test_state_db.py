@@ -197,7 +197,10 @@ def test_cmd_init_without_title_raises_when_current_branch_is_unknown(
 
 
 def test_state_init_title_sets_descriptive_work_branch(tmp_path):
-    """`datum state init --title` records the descriptive branch in state."""
+    """amended: superseded by task-012 AC1/AC4 — `datum state init` no
+    longer produces a live `.datum/state.json`; the descriptive branch must
+    be read back through the canonical `datum state read` accessor instead
+    of the legacy write-through cache file."""
     _init_main_repo(tmp_path)
 
     proc = subprocess.run(
@@ -212,5 +215,103 @@ def test_state_init_title_sets_descriptive_work_branch(tmp_path):
     assert _git_out(tmp_path, "rev-parse", "--abbrev-ref", "HEAD") == (
         "datum/contact-form-api"
     )
-    state = json.loads((tmp_path / ".datum" / "state.json").read_text())
+    assert not (tmp_path / ".datum" / "state.json").exists()
+
+    read_proc = subprocess.run(
+        [sys.executable, "-m", "datum.state", "read"],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=30,
+    )
+    assert read_proc.returncode == 0, read_proc.stderr
+    state = json.loads(read_proc.stdout)
     assert state["git"]["work_branch"] == "datum/contact-form-api"
+
+
+# ── task-012: save_state/update_state stop writing live state.json ────────
+
+
+def test_save_state_does_not_create_state_json(tmp_path, monkeypatch):
+    """AC1: save_state() writes only to .datum/state.db — after
+    save_state({...}) in a clean repo, .datum/state.json does not exist."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+
+    state_mod.save_state({"run_id": "task-012-ac1"})
+
+    assert not (tmp_path / ".datum" / "state.json").exists()
+    assert (tmp_path / ".datum" / "state.db").exists()
+
+
+def test_save_state_does_not_touch_preexisting_state_json(tmp_path, monkeypatch):
+    """Negative path: a stale .datum/state.json left over from a legacy run
+    must be left byte-for-byte untouched by save_state() — proving the
+    write-through no longer fires at all, not merely that it's absent when
+    nothing was there to begin with."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+    stale_dir = tmp_path / ".datum"
+    stale_dir.mkdir(parents=True)
+    stale_json = stale_dir / "state.json"
+    stale_json.write_text('{"stale": true}')
+
+    state_mod.save_state({"run_id": "task-012-ac1-stale"})
+
+    assert stale_json.read_text() == '{"stale": true}'
+
+
+def test_update_state_does_not_create_state_json(tmp_path, monkeypatch):
+    """AC2: update_state() likewise creates no .datum/state.json, and the
+    mutated value round-trips through load_state()."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(state_mod, "DB_FILE", tmp_path / ".datum" / "state.db")
+    state_mod.save_state({"run_id": "task-012-ac2", "in_flight_count": 0})
+
+    def bump(state):
+        state["in_flight_count"] += 1
+
+    result = state_mod.update_state(bump)
+
+    assert result is True
+    assert not (tmp_path / ".datum" / "state.json").exists()
+    assert state_mod.load_state()["in_flight_count"] == 1
+
+
+def test_load_state_save_state_update_state_signatures_unchanged():
+    """AC3: load_state(), save_state() and update_state() keep their exact
+    current signatures."""
+    import inspect
+
+    assert list(inspect.signature(state_mod.load_state).parameters) == []
+    assert list(inspect.signature(state_mod.save_state).parameters) == ["state"]
+    assert list(inspect.signature(state_mod.update_state).parameters) == ["mutator"]
+
+
+def test_cmd_init_end_to_end_creates_no_state_json(tmp_path, monkeypatch):
+    """AC4 (behavioural): the init path (which calls save_state internally)
+    must leave .datum/state.db as the only artifact — no live
+    .datum/state.json — while `datum state read` still resolves state."""
+    _init_main_repo(tmp_path)
+
+    init_proc = subprocess.run(
+        [sys.executable, "-m", "datum.state", "init"],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=30,
+    )
+    assert init_proc.returncode == 0, init_proc.stderr
+    assert (tmp_path / ".datum" / "state.db").exists()
+    assert not (tmp_path / ".datum" / "state.json").exists()
+
+    read_proc = subprocess.run(
+        [sys.executable, "-m", "datum.state", "read"],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=30,
+    )
+    assert read_proc.returncode == 0, read_proc.stderr
+    state = json.loads(read_proc.stdout)
+    assert state["run_id"].startswith("epic-")

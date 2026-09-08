@@ -260,14 +260,18 @@ def test_collect_stale_empty_datum_dir():
 
 
 def test_collect_stale_does_not_touch_protected_files():
-    """config.toml, state.json, state.db, etc. are never collected."""
+    """amended: superseded by task-012 AC5 — state.json is no longer a
+    live artifact (see docs/architecture/state-store.md), so it is dropped
+    from the protected list; state.db and its -wal/-shm siblings remain
+    protected, along with config.toml, etc."""
     from datum.gc import GcConfig, collect_stale
 
     datum_dir = Path("/proj/.datum")
     protected = [
         datum_dir / "config.toml",
-        datum_dir / "state.json",
         datum_dir / "state.db",
+        datum_dir / "state.db-shm",
+        datum_dir / "state.db-wal",
         datum_dir / "tdd-failure.json",
         datum_dir / "tdd-success.json",
         datum_dir / "todos.json",
@@ -284,6 +288,19 @@ def test_collect_stale_does_not_touch_protected_files():
     stale_paths = {r["path"] for r in results}
     for p in protected:
         assert p not in stale_paths, f"{p.name} should never be collected"
+
+
+def test_is_protected_no_longer_protects_state_json():
+    """AC5: datum/gc.py's _PROTECTED_NAMES no longer contains 'state.json'
+    while still protecting 'config.toml', 'state.db', 'state.db-shm' and
+    'state.db-wal'."""
+    from datum.gc import _is_protected
+
+    assert _is_protected(Path("/proj/.datum/state.json")) is False
+    assert _is_protected(Path("/proj/.datum/config.toml")) is True
+    assert _is_protected(Path("/proj/.datum/state.db")) is True
+    assert _is_protected(Path("/proj/.datum/state.db-shm")) is True
+    assert _is_protected(Path("/proj/.datum/state.db-wal")) is True
 
 
 # ── Test purge ────────────────────────────────────────────────────────────

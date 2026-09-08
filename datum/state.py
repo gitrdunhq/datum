@@ -277,8 +277,9 @@ def load_state() -> dict:
     with sqlite3.connect(DB_FILE) as conn:
         try:
             cur = conn.execute("SELECT value FROM kv_state WHERE key = 'current'")
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, sqlite3.DatabaseError):
             # DB file exists but was never initialized (e.g. zero-byte file)
+            # or is not a valid sqlite database at all.
             return {}
         row = cur.fetchone()
         if row:
@@ -295,12 +296,6 @@ def save_state(state: dict) -> None:
             (json.dumps(state),),
         )
         conn.commit()
-
-    # Write-through cache for backwards compatibility with legacy scripts
-    json_path = Path(".datum/state.json")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    with json_path.open("w") as f:
-        json.dump(state, f, indent=2)
 
 
 def next_epic_number() -> int:
@@ -384,7 +379,10 @@ def cmd_init(args: argparse.Namespace) -> None:
         "run_id": run_id,
         "skill_version": "1.0.0",
         "current_phase": "refine",
-        "phases": {phase: {"status": "pending"} for phase in PHASES},
+        "phases": {
+            phase: {"status": "in_progress" if phase == "refine" else "pending"}
+            for phase in PHASES
+        },
         "lanes": {},
         "in_flight_count": 0,
         "in_flight_cap": 7,
@@ -413,7 +411,12 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 
 def update_state(mutator: callable) -> bool:
-    init_db()
+    try:
+        init_db()
+    except sqlite3.DatabaseError:
+        # DB file exists but is not a valid sqlite database.
+        print(json.dumps({"error": "no_state"}))
+        return False
     with sqlite3.connect(DB_FILE, isolation_level="EXCLUSIVE", timeout=30.0) as conn:
         conn.execute("BEGIN EXCLUSIVE")
         try:
@@ -423,7 +426,7 @@ def update_state(mutator: callable) -> bool:
                 print(json.dumps({"error": "no_state"}))
                 return False
             state = json.loads(row[0])
-        except sqlite3.OperationalError:
+        except sqlite3.DatabaseError:
             print(json.dumps({"error": "no_state"}))
             return False
 
@@ -436,11 +439,6 @@ def update_state(mutator: callable) -> bool:
         )
         conn.commit()
 
-    # Write-through cache
-    json_path = Path(".datum/state.json")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    with json_path.open("w") as f:
-        json.dump(state, f, indent=2)
     return True
 
 

@@ -84,6 +84,7 @@ def main() -> None:
         else:
             reason = "state.db has a token_metrics table with no rows"
         data = {
+            "status": "no_state_available",
             "collected": False,
             "reason": reason,
             "total_input": None,

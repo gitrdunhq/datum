@@ -7,7 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
-from datum.path_utils import closeout_raw_dir, collector_marker, state_for_run
+from datum.closeout.state_source import load_run_state
+from datum.path_utils import closeout_raw_dir, collector_marker
 
 
 def load_manifest() -> dict:
@@ -32,8 +33,7 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    state_path = state_for_run(args.run_id)
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state, state_source = load_run_state(args.run_id)
     data = {
         "lane_tools_added": state.get("lane_tools_added", []),
         "manifest": load_manifest(),

@@ -110,7 +110,6 @@ class GcResult:
 _PROTECTED_NAMES = frozenset(
     {
         "config.toml",
-        "state.json",
         "state.db",
         "state.db-shm",
         "state.db-wal",

@@ -20,6 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import datum.state as state_mod
+
 
 def git_diff_stat(base_sha: str, head_sha: str) -> int:
     """Return number of lines changed between two SHAs. 0 = no diff."""
@@ -40,16 +42,8 @@ def git_diff_stat(base_sha: str, head_sha: str) -> int:
     return sum(int(n) for n in nums) if nums else 0
 
 
-def load_state() -> dict:
-    p = Path(".datum/state.json")
-    return json.loads(p.read_text()) if p.exists() else {}
-
-
-def save_state(state: dict) -> None:
-    p = Path(".datum/state.json")
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=2))
-    tmp.replace(p)
+load_state = state_mod.load_state
+save_state = state_mod.save_state
 
 
 def main() -> None:

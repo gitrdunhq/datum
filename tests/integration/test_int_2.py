@@ -153,3 +153,104 @@ def test_int09_r6_is_not_a_dedicated_task():
         or re.search(r"\bR6\b", "; ".join(lane.get("acceptance_criteria", [])))
     ]
     assert set(r6_mentions) == {"task-INT-2", "task-INT-3"}
+
+
+# ---------------------------------------------------------------------------
+# INV-Q3 (from docs/epics/datum/state-single-source-of-truth/lane-plan.json):
+# "Migration lands incrementally, one module per lane, in the fixed order
+# (tested modules first, pipeline_scheduler.py last), each independently
+# reviewable and revertible."
+#
+# This is a second, unrelated integration lane that happens to share the
+# INT-2 slot name across two different epics. Its plan file lives at a
+# different path from the INT-09 plan above.
+# ---------------------------------------------------------------------------
+
+_STATE_PLAN_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "epics"
+    / "datum"
+    / "state-single-source-of-truth"
+    / "lane-plan.json"
+)
+
+_STATE_MODULE_TASKS = [
+    "task-002",
+    "task-003",
+    "task-004",
+    "task-005",
+    "task-006",
+    "task-007",
+    "task-008",
+    "task-009",
+    "task-010",
+    "task-011",
+]
+
+
+def _load_state_plan() -> dict:
+    return json.loads(_STATE_PLAN_PATH.read_text())
+
+
+def test_invq3_pipeline_scheduler_migrates_last_among_module_tasks():
+    plan = _load_state_plan()
+    order = plan["topological_order"]
+
+    indices = {t: order.index(t) for t in _STATE_MODULE_TASKS}
+    assert indices["task-011"] == max(indices.values()), (
+        "task-011 (pipeline_scheduler.py) must be ordered after every other "
+        f"module-migration task; indices={indices}"
+    )
+    # task-001 (the decision doc) must precede every module task.
+    assert order.index("task-001") < min(indices.values())
+
+
+def test_invq3_pipeline_scheduler_lane_owns_exactly_one_production_module():
+    plan = _load_state_plan()
+    task_011 = plan["lanes"]["task-011"]
+
+    assert task_011["files"] == [
+        "datum/pipeline_scheduler.py",
+        "tests/test_pipeline_scheduler.py",
+    ]
+    production_files = [f for f in task_011["files"] if f.startswith("datum/")]
+    assert len(production_files) == 1
+
+
+def test_invq3_pipeline_scheduler_lane_is_independently_revertible():
+    plan = _load_state_plan()
+    lanes = plan["lanes"]
+    task_011_files = set(lanes["task-011"]["files"])
+
+    for task_id, lane in lanes.items():
+        if task_id == "task-011":
+            continue
+        shared = task_011_files & set(lane.get("files", []))
+        assert not shared, (
+            f"task-011's files overlap with {task_id}'s files ({shared}); "
+            "pipeline_scheduler.py's lane would not be independently "
+            "revertible"
+        )
+
+
+def test_invq3_each_module_task_pairs_its_production_file_with_its_own_test():
+    plan = _load_state_plan()
+    lanes = plan["lanes"]
+
+    for task_id in _STATE_MODULE_TASKS:
+        files = lanes[task_id]["files"]
+        assert any(
+            f.startswith("tests/") for f in files
+        ), f"{task_id} has no owned test file: {files}"
+        assert any(
+            f.startswith("datum") for f in files
+        ), f"{task_id} has no owned production module: {files}"
+
+
+def test_invq3_pipeline_scheduler_depends_on_the_decision_and_the_thin_slice():
+    plan = _load_state_plan()
+    task_011 = plan["lanes"]["task-011"]
+
+    assert set(task_011["depends_on"]) == {"task-001", "task-002"}
+    assert task_011["kind"] == "behavioral"

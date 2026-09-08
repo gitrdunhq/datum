@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Copy state.json to run archive and clear live state."""
+"""Snapshot live state (datum.state.load_state()) to the run archive and
+clear live state."""
 
 import json
 import shutil
 from pathlib import Path
+
+from datum.state import load_state
 
 
 def main() -> None:
@@ -18,12 +21,23 @@ def main() -> None:
         print(json.dumps({"ok": True, "skipped": True}))
         return
 
-    state_src = Path(".datum/state.json")
-    run_dir = Path(f".datum/runs/{args.run_id}")
+    run_dir = Path(f".datum/runs/{args.run_id}").resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    if state_src.exists():
+    state = load_state()
+    state_src = Path(".datum/state.json")
+    wrote_state = False
+
+    if state:
+        (run_dir / "state.json").write_text(json.dumps(state, indent=2))
+        wrote_state = True
+    elif state_src.exists():
+        # Legacy repos with a hand-written/pre-existing write-through cache
+        # but no canonical state.db entry yet.
         shutil.copy2(state_src, run_dir / "state.json")
+        wrote_state = True
+
+    if state_src.exists():
         state_src.unlink()
 
     state_db = Path(".datum/state.db")
@@ -32,7 +46,11 @@ def main() -> None:
         state_db.unlink()
 
     marker.write_text("done")
-    print(json.dumps({"ok": True, "archived_to": str(run_dir / "state.json")}))
+
+    if wrote_state:
+        print(json.dumps({"ok": True, "archived_to": str(run_dir / "state.json")}))
+    else:
+        print(json.dumps({"ok": True, "archived_to": str(run_dir)}))
 
 
 if __name__ == "__main__":

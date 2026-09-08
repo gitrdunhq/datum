@@ -2,6 +2,64 @@
 
 All notable changes to DATUM are documented here.
 
+## [State Single Source of Truth] — 2026-09-07 (run 20260907-163917)
+
+### Added
+
+Epic `docs/epics/datum/state-single-source-of-truth/` ("Unify `.datum/state.json`
+readers/writers behind one db-backed accessor") merged at
+`14f8be37f7818881829297041dded862a978d4bd`. 26/26 tasks completed (`say_do_ratio`
+1.0, 0 `failed_terminal`) per
+`docs/epics/datum/state-single-source-of-truth/tasks.json` (`task-001`..`task-012`,
+`task-INT-1`..`task-INT-14`).
+
+`git` block: 167 commits, +17812/-1537 LOC (net +16275) across 269 files —
+flagged by the collector itself as `base_sha_fallback: merge-base with
+origin/main; statistics may span more than the epic`, and confirmed spanning
+several prior, already-closed-out epics (integration-lanes-2, sweep2-closeout,
+sweep3-panel, sweep-refine, sweep-ts, prompt-refactor, and others). Treat the
+LOC/file totals as an upper bound, not this epic's true diff size.
+
+`datum/state.py`'s db-backed `load_state()`/`save_state()`/`update_state()` is
+now the sole canonical live-state accessor; `.datum/state.json` as a **live
+write-through cache is dropped entirely** (decision recorded in
+`docs/architecture/state-store.md`). Seven independent JSON-only implementations
+(`spec_drift_detector.py`, `pr_comment_monitor.py`, `status_render.py`,
+`rollback.py`, `no_diff_guard.py`, `pipeline_scheduler.py`, `path_utils.py`) and
+the bare-`Path` readers in `report_bug.py`/`archive.py` migrated onto the
+canonical accessor. `datum/migrate.py` is retargeted as a one-shot legacy
+`state.json` importer. Exactly two permanent documented exceptions remain:
+`datum/memory/corpus_sql.py` (read-only SQL `ATTACH` of `state.db`) and
+`datum-tui/data.py` (reads `state.db` directly via stdlib `sqlite3`, by design
+avoids importing the `datum` package). `datum/closeout/collect_tasks.py` and
+`collect_token_metrics.py` now emit an explicit `no_state_available` sentinel
+instead of a bare `null`, closing FU-4 from run `20260707-173926`.
+
+### Fixed
+
+- `datum/worktree_manager.py`: a reused lane worktree branch is now rebased
+  onto the batch's named base (#341) — flagged by review as scope-creep
+  (CORR-002) relative to this epic's SPEC, landed anyway.
+- Skills/TS workflow layer: agent-type fallback, read-only retry guard, review
+  lens read budget/retry, batch runner hardening (bash-executed step files,
+  `batch_incomplete`/`batch_timeout` handling, guard-row retries) — also
+  flagged as scope-creep (CORR-001) relative to this epic's SPEC.
+
+### Known issues (from review, not yet fixed)
+
+- **SEC-001** (medium): `skills/src/shared/lane-steps.ts`'s `q()` quoting
+  helper only escapes double-quote characters; `structuralDeliverableSteps()`
+  builds shell commands from task-plan-derived file paths, so a path
+  containing `$(...)` or backticks is executed as a shell command.
+- **SEC-002** (low): `batch.ts` switched from sourcing (`. "$__f"`) to
+  executing (`bash "$__f"`) the generated step script, widening SEC-001's
+  blast radius.
+- **CORR-003** (info): Requirement 10's "unchanged behavior before/after
+  migration" acceptance criterion has no real pre-migration snapshot to A/B
+  against, since the pre-migration code path no longer exists in the tree.
+
+Full findings: `docs/epics/datum/state-single-source-of-truth/REVIEW-REPORT.md`.
+
 ## [Integration Lanes 2] — 2026-09-07 (run 20260907-022030)
 
 ### Added

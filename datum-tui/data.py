@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 
@@ -16,12 +17,28 @@ def _datum_dir() -> Path:
 
 
 def load_state() -> dict:
-    sf = _datum_dir() / "state.json"
-    if not sf.exists():
+    # Single-canonical-state-store epic (#508): this module is one of the two
+    # documented exceptions to the canonical datum.state accessors, because the
+    # TUI must not import the datum package. Its backing store is now
+    # .datum/state.db, read here directly via the stdlib sqlite3 module.
+    db = _datum_dir() / "state.db"
+    if not db.exists():
         return {}
     try:
-        return json.loads(sf.read_text())
-    except (json.JSONDecodeError, OSError):
+        conn = sqlite3.connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM kv_state WHERE key = 'current'"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return {}
+    if not row:
+        return {}
+    try:
+        return json.loads(row[0])
+    except (TypeError, ValueError):
         return {}
 
 

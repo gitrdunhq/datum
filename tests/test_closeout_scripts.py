@@ -354,6 +354,27 @@ class TestTagEpic:
             assert "ok" in output
 
 
+def _seed_state_db(repo_dir: Path, seed: dict) -> dict:
+    """Seed .datum/state.db via datum.state.save_state (the canonical store)
+    and return the exact dict datum.state.load_state() returns afterwards.
+
+    archive.py must archive this value, not a hand-written .datum/state.json.
+    """
+    script = (
+        "import json, sys; import datum.state as s; "
+        "s.save_state(json.loads(sys.argv[1])); "
+        "print(json.dumps(s.load_state()))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(seed)],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout.strip())
+
+
 class TestArchive:
     """Test archive.py script."""
 
@@ -473,10 +494,11 @@ class TestArchive:
         assert marker.exists()
 
     def test_archive_archived_to_points_to_existing_file(self, env_with_repo):
-        """BUG: archived_to can point to nonexistent file if state.json wasn't present.
+        """archived_to must never point at a file archive.py did not create.
 
-        The script reports archived_to even when state.json doesn't exist, pointing
-        to a path that was never created.
+        Superseded by AC4: with no state ever written (load_state() == {}),
+        archive.py must not report an archived_to path pointing at a
+        nonexistent file.
         """
         repo = env_with_repo
 
@@ -497,10 +519,198 @@ class TestArchive:
         output = json.loads(result.stdout)
 
         if "archived_to" in output:
-            # BUG: This will fail if state.json wasn't present
-            # archived_path = Path(output["archived_to"])
-            # assert archived_path.exists(), f"archived_to points to nonexistent file: {archived_path}"
-            pass
+            archived_path = Path(output["archived_to"])
+            assert (
+                archived_path.exists()
+            ), f"archived_to points to nonexistent file: {archived_path}"
+
+    def test_ac1_datum_closeout_archive_py_writes_datum_runs_run_id_state_jso(
+        self, env_with_repo
+    ):
+        """AC1: archive.py sources state.json from datum.state.load_state(),
+        not from shutil.copy2 of a pre-existing .datum/state.json."""
+        repo = env_with_repo
+        _seed_state_db(repo["repo_dir"], {"phases": {"act": {"status": "completed"}}})
+        write_through = repo["repo_dir"] / ".datum" / "state.json"
+        if write_through.exists():
+            write_through.unlink()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        archived_state = repo["runs_dir"] / "state.json"
+        assert archived_state.exists(), (
+            "archive.py must write state.json from datum.state.load_state(), "
+            "not from a .datum/state.json file that was never created"
+        )
+        assert (
+            json.loads(archived_state.read_text())["phases"]["act"]["status"]
+            == "completed"
+        )
+
+    def test_ac2_the_archived_datum_runs_run_id_state_json_contains_exactly_t(
+        self, env_with_repo
+    ):
+        """AC2: the archived state.json contains exactly the dict returned
+        by datum.state.load_state() at archive time."""
+        repo = env_with_repo
+        seeded = _seed_state_db(
+            repo["repo_dir"],
+            {
+                "phases": {"deepen": {"status": "in_progress"}},
+                "lanes": {"task-042": {"stage": "GREEN"}},
+            },
+        )
+        write_through = repo["repo_dir"] / ".datum" / "state.json"
+        if write_through.exists():
+            write_through.unlink()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        archived_state = repo["runs_dir"] / "state.json"
+        assert json.loads(archived_state.read_text()) == seeded
+
+    def test_ac3_archive_py_still_copies_datum_state_db_to_datum_runs_run_id(
+        self, env_with_repo
+    ):
+        """AC3: archive.py still copies .datum/state.db to
+        .datum/runs/<run_id>/state.db and unlinks the live state.db,
+        without regressing the new state.json-from-load_state() contract."""
+        repo = env_with_repo
+        seeded = _seed_state_db(
+            repo["repo_dir"], {"phases": {"validate": {"status": "completed"}}}
+        )
+        write_through = repo["repo_dir"] / ".datum" / "state.json"
+        if write_through.exists():
+            write_through.unlink()
+        live_db = repo["repo_dir"] / ".datum" / "state.db"
+        assert live_db.exists()
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        archived_db = repo["runs_dir"] / "state.db"
+        assert archived_db.exists()
+        assert (
+            not live_db.exists()
+        ), "live state.db must be unlinked after a successful archive"
+
+        archived_state = repo["runs_dir"] / "state.json"
+        assert archived_state.exists()
+        assert json.loads(archived_state.read_text()) == seeded
+
+    def test_ac4_when_load_state_returns_no_state_ever_written_archive_py_doe(
+        self, env_with_repo
+    ):
+        """AC4: when load_state() returns {} (no state ever written),
+        archive.py does not report an archived_to path pointing at a file
+        it did not create."""
+        repo = env_with_repo
+        # No state.db and no state.json: datum.state.load_state() == {}
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        output = json.loads(result.stdout)
+        if "archived_to" in output:
+            archived_path = Path(output["archived_to"])
+            assert archived_path.exists(), (
+                f"archived_to reports {archived_path} but archive.py never wrote it "
+                "(no state was ever recorded)"
+            )
+
+    def test_ac5_the_archive_done_marker_short_circuit_is_unchanged_a_second(
+        self, env_with_repo
+    ):
+        """AC5: the .archive.done marker short-circuit is unchanged: a
+        second invocation prints {"ok": true, "skipped": true} and performs
+        no writes."""
+        repo = env_with_repo
+        seeded = _seed_state_db(
+            repo["repo_dir"], {"phases": {"review": {"status": "completed"}}}
+        )
+        write_through = repo["repo_dir"] / ".datum" / "state.json"
+        if write_through.exists():
+            write_through.unlink()
+
+        result1 = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+        assert result1.returncode == 0, f"stderr: {result1.stderr}"
+        archived_state = repo["runs_dir"] / "state.json"
+        assert json.loads(archived_state.read_text()) == seeded
+        first_run_content = archived_state.read_text()
+
+        result2 = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "datum.closeout.archive",
+                "--run-id",
+                repo["run_id"],
+            ],
+            cwd=repo["repo_dir"],
+            capture_output=True,
+            text=True,
+        )
+        assert result2.returncode == 0, f"stderr: {result2.stderr}"
+        assert json.loads(result2.stdout) == {"ok": True, "skipped": True}
+        # second invocation performs no writes: archived state.json is untouched
+        assert archived_state.read_text() == first_run_content
 
 
 class TestDetectSolutions:

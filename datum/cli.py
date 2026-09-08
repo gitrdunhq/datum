@@ -8,7 +8,8 @@ from rich.console import Console
 
 from datum.lane_hash import lane_spec_hash
 from datum.rules_doctor import do_preflight
-from datum.status_render import load_state, render
+from datum.state import load_state
+from datum.status_render import render
 
 try:
     from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -848,18 +849,18 @@ def migrate(
 
     from datum.migrate import (
         current_skill_version,
-        load_state,
+        load_legacy_state,
         migrate_state,
         migrate_wfc_directory,
-        save_state,
     )
+    from datum.state import save_state
 
     console.print("[bold blue]Starting DATUM Migration...[/bold blue]")
     dir_changes = migrate_wfc_directory(dry_run)
     for c in dir_changes:
         console.print(f"[yellow]• {c}[/yellow]")
 
-    state = load_state()
+    state = load_legacy_state()
     if not state and not dir_changes:
         console.print(
             "[green]No legacy .wfc/ directory or .datum/state.json found. Nothing to do.[/green]"

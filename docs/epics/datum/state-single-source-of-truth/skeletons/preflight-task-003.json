@@ -1,0 +1,75 @@
+{
+  "task_id": "task-003",
+  "slug": "migrate-report-bug-and-archive-readers",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_report_bug_state.py",
+      "kind": "pytest",
+      "purpose": "Verify `grep -n '.datum/state.json' datum/report_bug.py datum/archi",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_grep_n_datum_state_json_datum_report_bug_py_datum_archive_py",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_grep_n_datum_state_json_datum_report_bug_py_datum_archive_py \u2192 tests/test_report_bug_state.py\n\nimport pytest\n\n\nclass TestTask003AC1:\n    def test_ac1_grep_n_datum_state_json_datum_report_bug_py_datum_archive_py(self):\n        \"\"\"\n        PROP-001: `grep -n '.datum/state.json' datum/report_bug.py datum/archive.py` returns zero \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_report_bug_state.py",
+      "kind": "pytest",
+      "purpose": "Verify report_bug's enrichment reads state via datum.state.load_sta",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_report_bug_s_enrichment_reads_state_via_datum_state_load_sta",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_report_bug_s_enrichment_reads_state_via_datum_state_load_sta \u2192 tests/test_report_bug_state.py\n\nimport pytest\n\n\nclass TestTask003AC2:\n    def test_ac2_report_bug_s_enrichment_reads_state_via_datum_state_load_sta(self):\n        \"\"\"\n        PROP-002: report_bug's enrichment reads state via datum.state.load_state() and still enric\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_report_bug_state.py",
+      "kind": "pytest",
+      "purpose": "Verify With .datum/state.db deleted, calling report_bug's enrichmen",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_with_datum_state_db_deleted_calling_report_bug_s_enrichment",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_with_datum_state_db_deleted_calling_report_bug_s_enrichment \u2192 tests/test_report_bug_state.py\n\nimport pytest\n\n\nclass TestTask003AC3:\n    def test_ac3_with_datum_state_db_deleted_calling_report_bug_s_enrichment(self):\n        \"\"\"\n        PROP-003: With .datum/state.db deleted, calling report_bug's enrichment step does not rais\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_report_bug_state.py",
+      "kind": "pytest",
+      "purpose": "Verify archive.py derives run_id from datum.state.load_state() when",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_archive_py_derives_run_id_from_datum_state_load_state_when_n",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_archive_py_derives_run_id_from_datum_state_load_state_when_n \u2192 tests/test_report_bug_state.py\n\nimport pytest\n\n\nclass TestTask003AC4:\n    def test_ac4_archive_py_derives_run_id_from_datum_state_load_state_when_n(self):\n        \"\"\"\n        PROP-004: archive.py derives run_id from datum.state.load_state() when no --run-id is pass\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_report_bug_state.py",
+      "kind": "pytest",
+      "purpose": "Verify archive.py still writes its snapshot to .datum/runs/<run_id>",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_archive_py_still_writes_its_snapshot_to_datum_runs_run_id_st",
+      "skeleton_written": false,
+      "content": "# Skeleton: task-003 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_archive_py_still_writes_its_snapshot_to_datum_runs_run_id_st \u2192 tests/test_report_bug_state.py\n\nimport pytest\n\n\nclass TestTask003AC5:\n    def test_ac5_archive_py_still_writes_its_snapshot_to_datum_runs_run_id_st(self):\n        \"\"\"\n        PROP-005: archive.py still writes its snapshot to .datum/runs/<run_id>/state.json unchange\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/report_bug.py": "\nfrom __future__ import annotations\n\nimport json\nimport re\nimport subprocess\nimport sys\nimport traceback\nfrom pathlib import Path\n\n_MAX_BODY_LEN = 4000\n_SECRET_PATTERNS = re.compile(\n)\n\n\ndef _sanitize(text: str) -> str:\n    ...\n\n\ndef report_bug(\n    module: str,\n) -> str | None:\n    title = f\"[datum-bug] {module}: {_sanitize(_one_line(error))}\"\n    body = _sanitize(_build_body(module, error, context))\n\n        existing = subprocess.run(\n            capture_output=True,\n            text=True,\n            timeout=10,\n            env=_clean_env(),\n\n        result = subprocess.run(\n            capture_output=True,\n            text=True,\n            timeout=15,\n            env=_clean_env(),\n            url = result.stdout.strip()\n\n\ndef _one_line(error: Exception | str) -> str:\n    ...\n\n\ndef _build_body(module: str, error: Exception | str, context: dict | None) -> str:\n    ...\n\n\n\n\n\ndef _clean_env() -> dict:\n    ...\n\n",
+    "datum/archive.py": "#!/usr/bin/env python3\n\nimport argparse\nimport json\nimport shutil\nimport sys\nfrom pathlib import Path\n\nRUNS_DIR = Path(\".datum/runs\")\n\nPHASE_ARTIFACTS: dict[str, list[str]] = {\n}\n\n\ndef archive_files(run_id: str, paths: list[Path]) -> dict:\n    ...\n\n\n\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
