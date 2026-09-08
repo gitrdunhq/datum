@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import {
   laneIntakeSteps,
   postRedSteps,
+  RUNTIME_ARTIFACT_READ_RE,
   codeTellSteps,
   parseTellScan,
   scopeContractSteps,
@@ -2124,5 +2125,30 @@ describe('structuralDeliverableSteps — a structural lane is decided by its dec
 
   it('a batch that did not run is a named absence, never "delivered"', () => {
     expect(structuralDeliverablesFromSteps(parseBatchResult('', structuralDeliverableSteps({ wt: '/wt', epicBranch: 'datum/e', files })), files)).toBeNull()
+  })
+})
+
+// #341 monotonic-task-ids task-008: the artifact gate (#499) flagged
+// `repo_root / ".datum" / "config.json"` in a test whose `repo_root` is a
+// tmp_path fixture — the lane's whole subject is that config file. The
+// gate names a read of the PIPELINE's own .datum: a root derived from the
+// test file or the process, never a fixture variable that happens to be
+// called repo_root.
+describe('RUNTIME_ARTIFACT_READ_RE names repo-root reads, not fixture roots', () => {
+  const re = new RegExp(RUNTIME_ARTIFACT_READ_RE)
+  it('matches a read rooted at the test file or the process', () => {
+    for (const line of [
+      'lane_spec_path = REPO_ROOT / ".datum" / "lane-spec.json"',
+      'const p = join(__dirname, "..", ".datum/lane-spec.json")',
+      'p = Path(__file__).resolve().parents[1] / ".datum" / "state.db"',
+      'readFileSync(process.cwd() + "/.datum/config.json")',
+    ]) expect(line, line).toMatch(re)
+  })
+  it('does not match a tmp fixture root passed into the test', () => {
+    for (const line of [
+      '    datum_dir = repo_root / ".datum"',
+      '    config_path = repo_root / ".datum" / "config.json"',
+      '    (tmp_path / ".datum").mkdir()',
+    ]) expect(line, line).not.toMatch(re)
   })
 })
