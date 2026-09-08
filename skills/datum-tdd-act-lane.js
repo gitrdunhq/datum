@@ -1195,7 +1195,7 @@ cat "$GREPPATFILE"`,
 }
 function codeTellSteps(o) {
   const base = o.baseRef ? ` --base ${q2(o.baseRef)}` : "";
-  return [{ name: "tell-scan", command: `datum code-tells --repo ${q2(o.wt)}${base} --files ${o.files.map(q2).join(" ")}`, tolerant: true }];
+  return [{ name: "tell-scan", command: `datum code-tells --repo ${q2(o.wt)}${base}${o.files.map((f) => ` --files ${q2(f)}`).join("")}`, tolerant: true }];
 }
 function parseTellScan(stdout) {
   const out = [];
