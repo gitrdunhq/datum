@@ -77,7 +77,8 @@
     "tests/test_lane_plan_schema_int_ids.py": "task-002",
     "skills/src/shared/lane-steps.test.ts": "task-006",
     "skills/src/shared/plan-steps.ts": "task-016",
-    "skills/src/shared/plan-steps.test.ts": "task-016"
+    "skills/src/shared/plan-steps.test.ts": "task-016",
+    "datum/github_issues.py": "task-014"
   },
   "lanes": {
     "task-001": {
@@ -469,7 +470,8 @@
       "title": "Existing epics still validate and DAT ids propagate to branch, commit, marker, issue",
       "files": [
         "tests/test_existing_epics_still_validate.py",
-        "tests/test_task_id_propagation_end_to_end.py"
+        "tests/test_task_id_propagation_end_to_end.py",
+        "datum/github_issues.py"
       ],
       "acceptance_criteria": [
         "For every directory under docs/epics/ whose tasks.json validated before this change (every id matches ^task-\\d+$ or ^task-INT-\\d+$), `datum lane-plan --validate` exits 0 and the file's bytes are unchanged before and after the run; the epics whose ids are bare slugs from before the schema existed (e.g. bug-squash-round-2, consumer-first-build-order) never validated and are listed by name in the test as pre-schema and skipped \u2014 the id pattern is never widened to admit them",
