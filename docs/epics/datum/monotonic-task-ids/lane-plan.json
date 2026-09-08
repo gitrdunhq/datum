@@ -646,7 +646,8 @@
         "II-002"
       ],
       "depends_on": [
-        "task-013"
+        "task-013",
+        "task-010"
       ],
       "stage": "queued"
     },
