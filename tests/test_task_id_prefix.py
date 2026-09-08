@@ -108,3 +108,31 @@ def test_resolution_is_idempotent_writes_config_once(tmp_path):
     assert first_write == second_write
     assert json.loads(second_write)["task_id_prefix"] == "DAT"
     assert config_path.stat().st_mtime_ns == first_mtime
+
+
+# #514 closeout FU-1 (review SEC-001): a config-supplied task_id_prefix seeds
+# every generated id and reaches the renumber path before any schema check,
+# so it must satisfy the same shape the derived path enforces.
+@pytest.mark.parametrize("bad", ["dat", "D", "ABCDEFG", "DATUM", "DA-T", "DA T"])
+def test_config_prefix_is_validated_like_the_derived_one(tmp_path, bad):
+    repo_root = tmp_path / "myrepo"
+    (repo_root / ".datum").mkdir(parents=True)
+    (repo_root / ".datum" / "config.json").write_text(
+        json.dumps({"task_id_prefix": bad})
+    )
+
+    with pytest.raises(TaskIdPrefixError) as exc:
+        resolve_task_id_prefix(repo_root)
+
+    assert exc.value.payload["code"] == "task_id_prefix_invalid"
+    assert bad in exc.value.payload["message"]
+
+
+def test_valid_config_prefix_of_any_allowed_length_is_returned(tmp_path):
+    for good in ("AB", "DAT", "ABCDEF"):
+        repo_root = tmp_path / good.lower()
+        (repo_root / ".datum").mkdir(parents=True)
+        (repo_root / ".datum" / "config.json").write_text(
+            json.dumps({"task_id_prefix": good})
+        )
+        assert resolve_task_id_prefix(repo_root) == good

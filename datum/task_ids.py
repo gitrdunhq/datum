@@ -16,6 +16,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
+from datum.id_pattern import is_lane_id
+
 EPIC_ID_FILE_RE = re.compile(
     r"^docs/epics/(?P<epic>.+)/(?P<name>tasks|lane-plan)\.json$"
 )
@@ -58,6 +60,14 @@ def resolve_task_id_prefix(repo_root):
         config = json.loads(config_path.read_text())
         existing = config.get("task_id_prefix")
         if existing:
+            # #514 FU-1: the configured prefix seeds every generated id and
+            # reaches --renumber before any schema check — hold it to the
+            # shape the derived path enforces (the shared lane id pattern).
+            if not isinstance(existing, str) or not is_lane_id(f"{existing}-1"):
+                raise TaskIdPrefixError(
+                    f"task_id_prefix {existing!r} in {config_path} is not a valid "
+                    "prefix: 2-6 uppercase letters, not DATUM"
+                )
             return existing
 
     prefix = _derive_prefix(repo_root)
