@@ -9,18 +9,20 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Status(Enum):
-    done = 'done'
-    done_with_risks = 'done_with_risks'
-    failed = 'failed'
-    missing_ac = 'missing_ac'
-    hard_stop = 'hard_stop'
+    done = "done"
+    done_with_risks = "done_with_risks"
+    failed = "failed"
+    missing_ac = "missing_ac"
+    hard_stop = "hard_stop"
 
 
 class AcceptanceCriterion(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     id: str
     satisfied: bool
@@ -31,11 +33,11 @@ class AcceptanceCriterion(BaseModel):
 
 class DatumRefactorResult(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    contract_version: Literal['1.0']
-    agent_role: Literal['REFACTOR']
-    task_id: constr(pattern=r'^task-\d+$')
+    contract_version: Literal["1.0"]
+    agent_role: Literal["REFACTOR"]
+    task_id: constr(pattern=LANE_ID_PATTERN)
     status: Status
     acceptance_criteria: list[AcceptanceCriterion] = Field(..., min_length=1)
     commits: list[Any] | None = None

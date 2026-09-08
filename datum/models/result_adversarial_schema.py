@@ -9,20 +9,22 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, constr
 
+from datum.id_pattern import LANE_ID_PATTERN
+
 
 class Status(Enum):
-    done = 'done'
-    failed = 'failed'
-    hard_stop = 'hard_stop'
+    done = "done"
+    failed = "failed"
+    hard_stop = "hard_stop"
 
 
 class DatumAdversarialResult(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    contract_version: Literal['1.0']
-    agent_role: Literal['ADVERSARIAL']
-    task_id: constr(pattern=r'^task-\d+$')
+    contract_version: Literal["1.0"]
+    agent_role: Literal["ADVERSARIAL"]
+    task_id: constr(pattern=LANE_ID_PATTERN)
     status: Status
     acceptance_criteria: list[Any] = Field(..., min_length=1)
     candidates: list[Any] | None = None
