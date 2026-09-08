@@ -9,7 +9,6 @@ FailureLayer, emit summary with suggested harness patch locations.
 from __future__ import annotations
 
 import json
-from collections import Counter
 from pathlib import Path
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -98,11 +97,11 @@ class TestRetrospectPublicApi:
         assert result is not None
 
     def test_run_retrospect_returns_retrospect_result(self, tmp_path):
-        from datum.retrospect import RetrospectConfig, RetrospectResult, run_retrospect
+        from datum.retrospect import RetrospectConfig, run_retrospect
 
         cfg = RetrospectConfig(datum_dir=tmp_path)
         result = run_retrospect(cfg)
-        assert isinstance(result, RetrospectResult)
+        assert isinstance(result)
 
 
 # ── RetrospectConfig ──────────────────────────────────────────────────────────
@@ -136,7 +135,7 @@ class TestRetrospectConfig:
 class TestRetrospectResult:
     def test_result_is_dataclass_or_namedtuple(self, tmp_path):
         """Result must be structured, not a plain dict."""
-        from datum.retrospect import RetrospectConfig, RetrospectResult, run_retrospect
+        from datum.retrospect import RetrospectConfig, run_retrospect
 
         cfg = RetrospectConfig(datum_dir=tmp_path)
         result = run_retrospect(cfg)

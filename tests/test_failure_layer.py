@@ -301,6 +301,8 @@ class TestWorkflowLaneVocabulary:
             ("invariant_covers_empty", FailureLayer.SPEC),
             ("green_blocked_contradictory_tests", FailureLayer.SPEC),
             ("plan_adr_sequence_collision", FailureLayer.PLANNING),
+            ("green_verify_unavailable", FailureLayer.INFRASTRUCTURE),
+            ("scope_gap", FailureLayer.PLANNING),
         ],
     )
     def test_workflow_prefix_maps_to_a_layer(self, reason, layer):
