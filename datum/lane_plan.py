@@ -706,12 +706,37 @@ def main() -> None:
     parser.add_argument("--output", default=".datum/lane-plan.json")
     parser.add_argument("--md-output", default="TASKS.md")
     parser.add_argument("--properties", default=None)
+    parser.add_argument("--renumber", action="store_true")
     args = parser.parse_args()
 
     input_path = Path(args.input)
     if not input_path.exists():
         print(json.dumps({"error": f"{args.input} not found"}))
         sys.exit(1)
+
+    # Renumbering rewrites tasks.json ON DISK before schema validation and
+    # lane-plan construction run, so downstream tooling (and a re-read of
+    # the file) sees PREFIX-n ids. It never runs on the --validate path
+    # (Req 7 AC2) — validate must leave the input file byte-identical.
+    if args.renumber and not args.validate:
+        from datum.task_ids import next_task_number, resolve_task_id_prefix
+        from datum.task_renumber import renumber_tasks
+
+        repo_root = Path(".").resolve()
+        prefix = resolve_task_id_prefix(repo_root)
+        try:
+            start = next_task_number(repo_root, prefix)
+        except Exception:
+            start = 1
+
+        raw_for_renumber = json.loads(input_path.read_text())
+        tasks_for_renumber, units_for_renumber = normalize_input(raw_for_renumber)
+        renumbered = renumber_tasks(tasks_for_renumber, prefix, start)
+        if isinstance(raw_for_renumber, dict):
+            raw_for_renumber["tasks"] = renumbered
+            input_path.write_text(json.dumps(raw_for_renumber))
+        else:
+            input_path.write_text(json.dumps(renumbered))
 
     try:
         raw = json.loads(input_path.read_text())
