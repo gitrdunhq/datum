@@ -80,11 +80,21 @@ class TestSchemaSharesPattern:
         assert "[A-Z]" not in source
         assert "task.schema.json" in source
 
-    def test_packaged_schema_copy_matches_the_consumed_one(self):
+    def test_no_second_copy_of_the_task_schema_exists_in_the_tree(self):
+        """Review ARCH-001 (round 3): the wheel ships repo-root assets/ (see
+        pyproject force-include), so a datum/assets copy is a dead duplicate."""
         root = assets_dir().parent
-        consumed = (root / "assets/schemas/task.schema.json").read_text()
-        packaged = (root / "datum/assets/schemas/task.schema.json").read_text()
-        assert packaged == consumed
+        tracked = subprocess.run(
+            ["git", "ls-files", "*task.schema.json", "*tasks.schema.json"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert sorted(tracked) == [
+            "assets/schemas/task.schema.json",
+            "assets/schemas/tasks.schema.json",
+        ]
 
 
 class TestDatumTaskAcceptsWidenedIds:
