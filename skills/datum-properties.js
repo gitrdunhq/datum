@@ -872,7 +872,7 @@ var integrationLanes = 0;
 if (gate.passed) {
   const scheduleSteps = [
     { name: "lane-plan", command: lanePlanCommand(epicDir) },
-    { name: "int-count", command: `grep -c '"task-INT-' ${JSON.stringify(`${epicDir}/lane-plan.json`)} || true`, tolerant: true },
+    { name: "int-count", command: `jq '[.lanes[] | select(.kind == "integration")] | length' ${JSON.stringify(`${epicDir}/lane-plan.json`)} || echo 0`, tolerant: true },
     ...commitFilesSteps({ wt: ".", files: [`${epicDir}/lane-plan.json`, `${epicDir}/TASKS.md`], message: "properties: schedule integration lanes" })
   ];
   const scheduled = await runBatch(scheduleSteps, stageOpts("cli", { label: "schedule-integration-lanes", model: model("fast") }));

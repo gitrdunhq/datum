@@ -1024,6 +1024,12 @@ function assertReadWitness(files, parsed) {
   throw new Error(`context_read_unverified: ${badPath} \u2014 agent did not evidence reading the deferred file (expected blob ${f ? f.sha : "?"}, got ${gotStr})`);
 }
 
+// skills/src/shared/lane-id-pattern.ts
+var LANE_ID_RE = /^(?:task-\d+|task-INT-\d+|[A-Z]{2,3}-\d+|(?:[A-SU-Z][A-Z]{3}|T[B-Z][A-Z]{2}|TA[A-RT-Z][A-Z]|TAS[A-JL-Z])-\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\d+|[A-Z]{6}-\d+)$/;
+function isLaneId(s) {
+  return LANE_ID_RE.test(s);
+}
+
 // skills/src/shared/lane-steps.ts
 var q2 = (s) => `"${s.replace(/"/g, '\\"')}"`;
 var ereEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1370,6 +1376,10 @@ function redCommittedFilesFromSteps(r) {
   return rec.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
+var SHORT_PREFIX_SHAPE_RE = /^[A-Za-z]+-\d+$/;
+function rejectsIsLaneId(taskId) {
+  return SHORT_PREFIX_SHAPE_RE.test(taskId) && !isLaneId(taskId);
+}
 var LANE_PLAN_DIGEST_BUDGET_BYTES = 16 * 1024;
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
@@ -1378,7 +1388,7 @@ function digestSpecHash(digest, taskId) {
   return lane.spec_hash;
 }
 function laneSpecExportCommand(o) {
-  if (!PLAIN_ID_RE.test(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`);
+  if (!PLAIN_ID_RE.test(o.taskId) || rejectsIsLaneId(o.taskId)) throw new Error(`laneSpecExportCommand: task id must be a plain identifier, got ${JSON.stringify(o.taskId)}`);
   if (!/^[A-Za-z0-9:]+$/.test(o.expectHash)) throw new Error(`laneSpecExportCommand: spec hash must be plain, got ${JSON.stringify(o.expectHash)}`);
   return `datum lane-spec-export --plan ${q2(o.planPath)} --task ${q2(o.taskId)} --out ${q2(o.outPath)} --expect-hash ${q2(o.expectHash)}`;
 }

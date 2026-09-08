@@ -394,6 +394,12 @@ function describeFailure(r, label) {
 // skills/src/shared/context-relay.ts
 var CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024;
 
+// skills/src/shared/lane-id-pattern.ts
+var LANE_ID_RE = /^(?:task-\d+|task-INT-\d+|[A-Z]{2,3}-\d+|(?:[A-SU-Z][A-Z]{3}|T[B-Z][A-Z]{2}|TA[A-RT-Z][A-Z]|TAS[A-JL-Z])-\d+|(?:[A-CE-Z][A-Z]{4}|D[B-Z][A-Z]{3}|DA[A-SU-Z][A-Z]{2}|DAT[A-TV-Z][A-Z]|DATU[A-LN-Z])-\d+|[A-Z]{6}-\d+)$/;
+function isLaneId(s) {
+  return LANE_ID_RE.test(s);
+}
+
 // skills/src/shared/lane-steps.ts
 var q = (s) => `"${s.replace(/"/g, '\\"')}"`;
 function fencedScript(rendered) {
@@ -403,9 +409,13 @@ function fencedScript(rendered) {
 }
 var SCOPE_READ_BUDGET_BYTES = 16 * 1024;
 var PLAIN_ID_RE = /^[A-Za-z0-9._-]+$/;
+var SHORT_PREFIX_SHAPE_RE = /^[A-Za-z]+-\d+$/;
+function rejectsIsLaneId(taskId) {
+  return SHORT_PREFIX_SHAPE_RE.test(taskId) && !isLaneId(taskId);
+}
 function completionMarkerCommand(runId, taskId) {
   if (!PLAIN_ID_RE.test(runId)) throw new Error(`completionMarkerCommand: run id must be a plain identifier, got ${JSON.stringify(runId)}`);
-  if (!PLAIN_ID_RE.test(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`);
+  if (!PLAIN_ID_RE.test(taskId) || rejectsIsLaneId(taskId)) throw new Error(`completionMarkerCommand: task id must be a plain identifier, got ${JSON.stringify(taskId)}`);
   const dir = `.datum/runs/${runId}/lane-state`;
   return `mkdir -p ${q(dir)} && printf '%s\\n' '{"task_id": "${taskId}", "status": "completed"}' > ${q(`${dir}/${taskId}.json`)}`;
 }

@@ -955,7 +955,7 @@ function planBuildSteps(o) {
   if (o.tasksJson.includes(HEREDOC_TERMINATOR)) throw new Error(`planBuildSteps: tasksJson contains the heredoc terminator ${HEREDOC_TERMINATOR}`);
   return [
     ...writeFileSteps({ path: `${o.epicDir}/tasks.json`, content: o.tasksJson, names: TASKS_WRITE_NAMES }),
-    { name: "lane-plan", command: lanePlanCommand(o.epicDir) }
+    { name: "lane-plan", command: lanePlanCommand(o.epicDir) + (o.renumber ? " --renumber" : "") }
   ];
 }
 function tasksJsonBlobSha(tasksJson2) {
