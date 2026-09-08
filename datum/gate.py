@@ -1118,17 +1118,26 @@ def gate_plan(yolo: bool, config: dict) -> None:
 
     if invariant_rows:
         test_command = config.get("test_command", "pytest")
-        derived_lanes = {
-            derived["id"]: derived
-            for derived in derive_integration_lanes(
-                invariant_rows, tasks_by_id, test_command
-            )
+        derived_list = derive_integration_lanes(
+            invariant_rows, tasks_by_id, test_command
+        )
+        derived_lanes = {derived["id"]: derived for derived in derived_list}
+        # A renumbered plan (monotonic-task-ids task-011) gives integration
+        # lanes PREFIX-n ids while derive_integration_lanes still names
+        # them task-INT-n; the lane's `invariants` field is the stable key.
+        derived_by_invariants = {
+            tuple(sorted(derived.get("invariants", []))): derived
+            for derived in derived_list
         }
         depends_on_errors = []
         for lid in int_lane_ids:
             lane = lanes[lid]
             actual = set(lane.get("depends_on", []))
             derived = derived_lanes.get(lid)
+            if derived is None and lane.get("invariants"):
+                derived = derived_by_invariants.get(
+                    tuple(sorted(lane.get("invariants", [])))
+                )
             expected = set(derived["depends_on"]) if derived else set()
             if actual != expected:
                 depends_on_errors.append(
