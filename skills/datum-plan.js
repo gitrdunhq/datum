@@ -958,6 +958,15 @@ function planBuildSteps(o) {
     { name: "lane-plan", command: lanePlanCommand(o.epicDir) + (o.renumber ? " --renumber" : "") }
   ];
 }
+function renumberDecisionSteps(epicDir2) {
+  return [{ name: "lane-plan-exists", command: `git show ${q5(`HEAD:${epicDir2}/lane-plan.json`)}`, tolerant: true }];
+}
+function decideRenumber(result) {
+  if (result.missing) return false;
+  const step = stepResult(result, "lane-plan-exists");
+  if (!step) return false;
+  return step.exit_code !== 0;
+}
 function tasksJsonBlobSha(tasksJson2) {
   return writeFileBlobSha(tasksJson2);
 }
@@ -1293,7 +1302,9 @@ for (const task of tasks) {
   const deps = task.depends_on && task.depends_on.length > 0 ? ` (depends: ${task.depends_on.join(", ")})` : "";
   log(`  ${task.id}: ${task.title}${deps}`);
 }
-var buildSteps = planBuildSteps({ epicDir, tasksJson });
+var renumber = decideRenumber(await runBatch(renumberDecisionSteps(epicDir), stageOpts("cli", { label: "renumber-decision", model: model("fast") })));
+log(renumber ? "No committed lane-plan.json \u2014 net-new epic, ids will be renumbered to <PREFIX>-<n>" : "Committed lane-plan.json found \u2014 existing epic, ids kept as-is");
+var buildSteps = planBuildSteps({ epicDir, tasksJson, renumber });
 var build = planBuildFromSteps(await runBatch(buildSteps, stageOpts("cli", { label: "build-lane-plan", model: model("fast") })), tasksJsonBlobSha(tasksJson));
 if (!build.ok) throw new Error(build.error);
 var earlyGateSteps = gateSteps("plan", " --approve");
