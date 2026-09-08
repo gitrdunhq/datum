@@ -67,3 +67,13 @@ describe('lane-id-pattern — AC3: lane-steps.ts consumes isLaneId', () => {
     ).toThrow()
   })
 })
+
+describe('lane-id-pattern — review ARCH-001: task.schema.json is the single source', () => {
+  it('LANE_ID_PATTERN is read from assets/schemas/task.schema.json $defs.laneId', async () => {
+    const schema = (await import('../../../assets/schemas/task.schema.json')).default as {
+      $defs: { laneId: { pattern: string } }
+    }
+    expect(LANE_ID_PATTERN).toBe(schema.$defs.laneId.pattern)
+    expect(new RegExp(LANE_ID_PATTERN).test('DAT-142')).toBe(true)
+  })
+})

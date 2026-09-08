@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -58,8 +59,24 @@ class TestSchemaSharesPattern:
         from datum.id_pattern import LANE_ID_PATTERN
 
         schema = json.loads((assets_dir() / "schemas/task.schema.json").read_text())
-        assert schema["properties"]["id"]["pattern"] == LANE_ID_PATTERN
-        assert schema["properties"]["depends_on"]["items"]["pattern"] == LANE_ID_PATTERN
+        assert schema["$defs"]["laneId"]["pattern"] == LANE_ID_PATTERN
+        assert schema["properties"]["id"] == {"$ref": "#/$defs/laneId"}
+        assert schema["properties"]["depends_on"]["items"] == {"$ref": "#/$defs/laneId"}
+
+    def test_python_side_carries_no_pattern_literal_of_its_own(self):
+        """Review ARCH-001/CORR-003: task.schema.json is the ONLY place the
+        pattern is written; datum/id_pattern.py loads it, never restates it."""
+        import datum.id_pattern as mod
+
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "[A-Z]" not in source
+        assert "task.schema.json" in source
+
+    def test_packaged_schema_copy_matches_the_consumed_one(self):
+        root = assets_dir().parent
+        consumed = (root / "assets/schemas/task.schema.json").read_text()
+        packaged = (root / "datum/assets/schemas/task.schema.json").read_text()
+        assert packaged == consumed
 
 
 class TestDatumTaskAcceptsWidenedIds:
