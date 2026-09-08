@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from datum.task_ids import TaskIdPrefixError, resolve_task_id_prefix
 
 

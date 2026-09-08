@@ -28,7 +28,6 @@ def test_ac1_renumber_tasks_assigns_sequential_prefixed_ids_and_rewrites_depends
 
     result = renumber_tasks(tasks, "DAT", 142)
 
-    by_old_index = {t["id"]: t for t in result}
     ids = [t["id"] for t in result]
     assert "DAT-142" in ids
     assert "DAT-143" in ids
