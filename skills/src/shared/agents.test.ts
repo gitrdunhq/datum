@@ -526,3 +526,28 @@ describe('resilientAgent — an unregistered agent type falls back to the defaul
     expect(calls).toBe(2)
   })
 })
+
+describe('runBatch — one retry on a truncated step array (batch_truncated)', () => {
+  const steps = [{ name: 'count-gate', command: 'true', tolerant: true }, { name: 'scope-read-0', command: 'true', tolerant: true }]
+  const cut = '[{"name":"count-gate","exit_code":0,"stdout":"{\\"passed\\":true}\\n","stderr":""},{"name":"scope-read-0","exit_code":0,"stdout":"skills/src/sha'
+  const ok = JSON.stringify([{ name: 'count-gate', exit_code: 0, stdout: '{"passed":true}\n', stderr: '' }, { name: 'scope-read-0', exit_code: 0, stdout: 'x\n', stderr: '' }])
+  it('re-sends once with a retry label and a shorter-output instruction; the second reply is used', async () => {
+    const labels: string[] = []
+    const prompts: string[] = []
+    const logs: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'post-red:T6', model: 'm' }, {
+      agentFn: async (p, o) => { labels.push(o?.label || ''); prompts.push(p); return n++ === 0 ? cut : ok },
+      logFn: (m) => logs.push(m),
+    })
+    expect(r.missing).toBe(false)
+    expect(labels).toEqual(['post-red:T6', 'post-red:T6:retry'])
+    expect(prompts[1]).toMatch(/attempt 2 of 2 — the previous runner's reply was cut/)
+    expect(logs.some((l) => /\[runBatch\] post-red:T6: batch_truncated/.test(l))).toBe(true)
+  })
+  it('a second cut reply is terminal under its name', async () => {
+    const r = await runBatch(steps, { label: 'post-red:T6', model: 'm' }, { agentFn: async () => cut, logFn: () => undefined })
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'post-red')).toMatch(/batch_truncated/)
+  })
+})

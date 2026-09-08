@@ -229,6 +229,15 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     if (exited && /\b126\b|cannot execute|failed to execute/i.test(prose)) {
       return { steps: [], failed: null, missing: true, refusal: prose, scriptError: `batch_script_failed: the batch script exited ${exited[1]} before any step ran (the host shell refused to execute it; runner said: "${prose.replace(/\s+/g, ' ').slice(0, 160)}")` }
     }
+    // monotonic-task-ids task-006 (#539): the reply IS the step array, cut
+    // before it closed — the runner ran the script and could not relay all
+    // of its stdout. Named, and retried once by runBatch like an empty reply;
+    // never prose, never "the count gate returned nothing".
+    if (/^\[\s*\{\s*"name"\s*:/.test(text)) {
+      const names = [...text.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map((m) => m[1])
+      const complete = names.slice(0, -1)
+      return { steps: [], failed: null, missing: true, scriptError: `batch_truncated: the runner's reply is a step array cut before it closed (${text.length} chars; last complete step: ${complete[complete.length - 1] ?? 'none'}; cut inside: ${names[names.length - 1] ?? 'unknown'}) — the script's stdout was too long to relay whole` }
+    }
     return { steps: [], failed: null, missing: true, refusal: prose }
   }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
