@@ -270,8 +270,11 @@ export function testExitCode(stdout: string | null | undefined): number | null {
 
 /** A repo-root-relative read of `.datum/` on one line: a root expression
  *  (REPO_ROOT, __dirname, process.cwd(), Path(__file__).parents[n], ...)
- *  followed within 80 chars by a quoted or slashed `.datum`. grep -E. */
-export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|repo_root|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`
+ *  followed within 80 chars by a quoted or slashed `.datum`. grep -E.
+ *  A lowercase `repo_root` is not in the list: in a test it is a tmp_path
+ *  fixture, and a lane whose subject is `.datum/config.json` reads it
+ *  legitimately (monotonic-task-ids task-008). */
+export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`
 
 export function postRedSteps(o: PostRedOpts): BatchStep[] {
   const steps: BatchStep[] = []
