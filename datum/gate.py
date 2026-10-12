@@ -567,9 +567,24 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
         def cell(
             name: str, header_cols: list[str] = header_cols, cells: list[str] = cells
         ) -> str:
-            if name in header_cols and header_cols.index(name) < len(cells):
-                return cells[header_cols.index(name)]
-            return ""
+            # A bare pipe in the free text (description, suggestion) adds
+            # cells: columns before the free text are read from the start,
+            # columns after it from the end, and the extra cells belong to
+            # the description (run 20261012-150046: ARCH-001's key was read
+            # from prose and its accept was recorded under the id).
+            if name not in header_cols:
+                return ""
+            i = header_cols.index(name)
+            extra = len(cells) - len(header_cols)
+            free = [header_cols.index(c) for c in ("description", "suggestion") if c in header_cols]
+            if extra > 0 and free:
+                if i > max(free):
+                    i += extra
+                elif name == "description":
+                    return " | ".join(cells[i : i + extra + 1])
+                elif i in free:
+                    i += extra
+            return cells[i] if i < len(cells) else ""
 
         key = cell("key")
         rows.append(
