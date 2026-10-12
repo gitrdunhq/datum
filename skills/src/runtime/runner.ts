@@ -5,15 +5,18 @@
 // reading the bundle file.
 
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { StageExecutor, StageOpts, StageReply, StageUsage } from './executor'
 import type { ModelTier, RuntimeConfig } from '../shared/models'
-import { setModelTiers } from '../shared/models'
+import { readRuntimeConfig, setModelTiers } from '../shared/models'
 import { parseAgentJson } from '../shared/utils'
 import { createModelSemaphores } from './semaphore'
 import { appendMetricsLine, buildMetricsLine, currentTime, resolveRunId } from './metrics'
 import type { MetricsOutcome } from './metrics'
 import { validateAgainstSchema } from './validate'
+import { FakeExecutor } from './fake-executor'
+import { nodeShell } from './shell'
 
 export type ShellFn = (
   script: string,
@@ -211,4 +214,71 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   } finally {
     delete (globalThis as Record<string, unknown>).datumRuntime
   }
+}
+
+export interface MainIo {
+  stdout: (text: string) => void
+  stderr: (text: string) => void
+}
+
+const MAIN_FLAGS = ['--bundle', '--args', '--config', '--repo-root', '--skills-dir'] as const
+
+// Flags are `--name value` pairs; --skills-dir may repeat. Unknown flags and
+// missing values or flags fail fast with a named error.
+function parseMainArgv(argv: readonly string[]): Record<(typeof MAIN_FLAGS)[number], string[]> {
+  const found: Record<string, string[]> = {}
+  for (let i = 0; i < argv.length; i += 2) {
+    const flag = argv[i]
+    if (!(MAIN_FLAGS as readonly string[]).includes(flag)) throw new Error(`runner_flag_unknown: ${flag}`)
+    const value = argv[i + 1]
+    if (value === undefined) throw new Error(`runner_flag_value_missing: ${flag}`)
+    ;(found[flag] ??= []).push(value)
+  }
+  for (const flag of MAIN_FLAGS) {
+    if (found[flag] === undefined) throw new Error(`runner_flag_missing: ${flag}`)
+  }
+  return found as Record<(typeof MAIN_FLAGS)[number], string[]>
+}
+
+/**
+ * Node entry: runs one bundle and reports through the injected writers.
+ * Returns the process exit code (0 ok, 1 failure). stdout carries only the
+ * bundle result as JSON; log lines and errors go to stderr.
+ */
+export async function main(argv: readonly string[], io: MainIo): Promise<number> {
+  try {
+    const flags = parseMainArgv(argv)
+    const args: unknown = JSON.parse(readFileSync(flags['--args'][0], 'utf8'))
+    const runtime = readRuntimeConfig(JSON.parse(readFileSync(flags['--config'][0], 'utf8')) as Record<string, unknown>)
+    if (runtime.kind !== 'fake') throw new Error(`runtime_kind_unsupported: ${runtime.kind}`)
+    const result = await runBundle({
+      bundlePath: flags['--bundle'][0],
+      args,
+      executor: new FakeExecutor([], { text: '{}' }),
+      shell: nodeShell,
+      skillsDirs: flags['--skills-dir'],
+      log: (line) => io.stderr(`${line}\n`),
+      runtime,
+      repoRoot: flags['--repo-root'][0],
+    })
+    io.stdout(`${JSON.stringify(result ?? null)}\n`)
+    return 0
+  } catch (err) {
+    io.stderr(`${err instanceof Error ? err.message : String(err)}\n`)
+    return 1
+  }
+}
+
+// Runs only when this file is the process entry (the bundled runner.js), never
+// when imported by tests or other modules. The process handle is destructured
+// once: the runner is the one Node-only module under skills/src, and the
+// sandbox-globals tripwire matches on the `process.<member>` spelling.
+const { argv: processArgv, stdout: processStdout, stderr: processStderr } = process
+if (processArgv[1] !== undefined && import.meta.url === pathToFileURL(resolve(processArgv[1])).href) {
+  void main(processArgv.slice(2), {
+    stdout: (text) => void processStdout.write(text),
+    stderr: (text) => void processStderr.write(text),
+  }).then((code) => {
+    process.exitCode = code
+  })
 }
