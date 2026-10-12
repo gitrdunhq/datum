@@ -60,6 +60,7 @@
     "skills/src/shared/tracker.ts": "DAT-9",
     "skills/src/shared/agent-types-ordering.test.ts": "DAT-9",
     "skills/src/shared/runbatch-only.test.ts": "DAT-9",
+    "skills/src/shared/lane-steps.ts": "DAT-9",
     "skills/src/shared/models.ts": "DAT-10",
     "skills/src/shared/models-runtime-config.test.ts": "DAT-10",
     "skills/src/runtime/executor.ts": "DAT-11",
@@ -365,7 +366,13 @@
         "skills/src/shared/context-relay.test.ts",
         "skills/src/shared/tracker.ts",
         "skills/src/shared/agent-types-ordering.test.ts",
-        "skills/src/shared/runbatch-only.test.ts"
+        "skills/src/shared/runbatch-only.test.ts",
+        "skills/src/datum-plan.ts",
+        "skills/src/datum-properties.ts",
+        "skills/src/datum-refine.ts",
+        "skills/src/shared/lane-steps.ts",
+        "skills/src/datum-plan.test.ts",
+        "skills/src/shared/agents-cli-runbatch.test.ts"
       ],
       "acceptance_criteria": [
         "A vitest scanning skills/src/**/*.ts (excluding *.test.ts) finds `batchCommandPrompt` only in skills/src/shared/batch.ts and skills/src/shared/agents.ts",
@@ -373,9 +380,10 @@
         "context-relay.ts still exports CONTEXT_INLINE_RETRY_MARKER, and context-relay.test.ts's contextInlineRetryPrompt case is rewritten to assert the marker text",
         "tracker.ts no longer imports batchCommandPrompt",
         "agent-types-ordering.test.ts pins only on runBatch( as the first batch dispatch (no batchCommandPrompt fallback), and it passes for every datum-*.ts script with setBatchCacheKey and setBatchRoot before the first runBatch",
-        "`npx tsc -p skills/tsconfig.json` exits 0, and `npx vitest run skills/src` passes except the known zsh failure in batch.test.ts"
+        "`npx tsc -p skills/tsconfig.json` exits 0, and `npx vitest run skills/src` passes except the known zsh failure in batch.test.ts",
+        "The leftover references outside the allowed set are gone: the unused batchCommandPrompt imports in datum-plan.ts, datum-properties.ts and datum-refine.ts, and the batchCommandPrompt mention in the header comment of shared/lane-steps.ts. datum-plan.test.ts (~:367) no longer expects /batchCommandPrompt/ in datum-plan.ts, and shared/agents-cli-runbatch.test.ts (~:174) builds its expected retry prompt as `${batchCommandPrompt(steps)}\\n\\n${CONTEXT_INLINE_RETRY_MARKER}` instead of calling contextInlineRetryPrompt; nothing else in those two test files changes"
       ],
-      "red_note": "The new vitest skills/src/shared/runbatch-only.test.ts walks skills/src recursively with node:fs. It collects every non-test .ts file that mentions batchCommandPrompt, runCommandPrompt or contextInlineRetryPrompt and asserts the exact allowed file sets from R2.4. It must fail now because context-relay.ts and tracker.ts still reference batchCommandPrompt. Rewrite the context-relay.test.ts case that imports contextInlineRetryPrompt so it asserts CONTEXT_INLINE_RETRY_MARKER instead. This lane runs last among the conversion lanes because removing contextInlineRetryPrompt earlier would break the plan, properties and refine sources.",
+      "red_note": "The new vitest skills/src/shared/runbatch-only.test.ts walks skills/src recursively with node:fs. It collects every non-test .ts file that mentions batchCommandPrompt, runCommandPrompt or contextInlineRetryPrompt and asserts the exact allowed file sets from R2.4. It must fail now because context-relay.ts and tracker.ts still reference batchCommandPrompt. Rewrite the context-relay.test.ts case that imports contextInlineRetryPrompt so it asserts CONTEXT_INLINE_RETRY_MARKER instead. This lane runs last among the conversion lanes because removing contextInlineRetryPrompt earlier would break the plan, properties and refine sources. Also update skills/src/datum-plan.test.ts (~:367) so it no longer expects /batchCommandPrompt/ in datum-plan.ts, and skills/src/shared/agents-cli-runbatch.test.ts (~:174) so its expected retry prompt is `${batchCommandPrompt(steps)}\\n\\n${CONTEXT_INLINE_RETRY_MARKER}` rather than a contextInlineRetryPrompt(...) call (GREEN's diagnosis from run wf_f4cdc102-9b4).",
       "introduces_stubs": false,
       "estimated_loc": 90,
       "depends_on": [
@@ -389,7 +397,12 @@
         "DAT-1"
       ],
       "file_conflict_with": {
-        "skills/src/shared/context-relay.ts": "DAT-2"
+        "skills/src/shared/context-relay.ts": "DAT-2",
+        "skills/src/datum-plan.ts": "DAT-7",
+        "skills/src/datum-properties.ts": "DAT-8",
+        "skills/src/datum-refine.ts": "DAT-8",
+        "skills/src/datum-plan.test.ts": "DAT-7",
+        "skills/src/shared/agents-cli-runbatch.test.ts": "DAT-2"
       },
       "stage": "queued",
       "slug": "runbatch-only-guard",
@@ -687,7 +700,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "workflow-run-cli",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "test_command": "uv run pytest -x -q tests/test_workflow_run_cli.py"
     },
     "DAT-20": {
       "id": "DAT-20",
@@ -713,7 +727,8 @@
       "file_conflict_with": {},
       "stage": "queued",
       "slug": "token-metrics-jsonl-collector",
-      "kind": "behavioral"
+      "kind": "behavioral",
+      "test_command": "uv run pytest -x -q tests/test_closeout_token_metrics_jsonl.py"
     }
   }
 }
