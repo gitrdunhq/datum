@@ -109,12 +109,12 @@ describe('determinism fix — main sync is a deterministic batch, not an LLM rel
 
 describe('#validate-gate-determinism — the pass/fail bit comes from an independent test run, not the LLM self-report', () => {
   it('runs the test command itself as a deterministic datum-cli batch step', () => {
-    // One agent() call built from batchCommandPrompt(...) with stageOpts('cli', ...),
+    // One runBatch(verifySteps, ...) call with stageOpts('cli', ...),
     // mirroring the RED-stage post-red batch (datum-tdd-act-lane.ts) — not the
     // validate-check agent's own self-reported test run.
-    expect(validateSrc).toMatch(/batchCommandPrompt\(/)
+    expect(validateSrc).toMatch(/runBatch\(verifySteps/)
     expect(validateSrc).toMatch(/stageOpts\(\s*'cli'/)
-    expect(validateSrc).toMatch(/parseBatchResult\(/)
+    expect(validateSrc).toMatch(/(?:const|let) verifyResult\b/)
   })
 
   it('derives testsPassed from testExitCode(...) === 0, not from the agent-reported tests_pass', () => {

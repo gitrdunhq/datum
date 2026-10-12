@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 SYNTHESIS_FILES = [
     "CURRENT_STATE.md",
     "ROADMAP.md",
@@ -23,7 +25,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     args = parser.parse_args()
 
     marker = Path(f".datum/runs/{args.run_id}/.commit-closeout.done")

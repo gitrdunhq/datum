@@ -1,5 +1,13 @@
 """Tests for oMLX inference backend integration in local_llm.py."""
 
+import importlib.util
+
+import pytest
+
+# mlx_lm (MLX) installs only on Apple Silicon. These tests exercise the in-process
+# MLX backend itself, so they run where it imports and are skipped, by name, elsewhere.
+requires_mlx = pytest.mark.skipif(importlib.util.find_spec("mlx_lm") is None, reason="mlx_lm (Apple Silicon only) is not installed")
+
 import json
 from unittest.mock import MagicMock, patch
 
@@ -141,6 +149,7 @@ def test_generate_routes_to_omlx_when_available():
     assert result["text"] == "result"
 
 
+@requires_mlx
 def test_generate_falls_back_when_omlx_down():
     """generate() falls back to direct mlx_lm when oMLX is unavailable."""
     from datum.local_llm import generate

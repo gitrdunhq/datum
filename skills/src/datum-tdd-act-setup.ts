@@ -2,7 +2,8 @@ import { model } from './shared/models'
 import type { SetupArgs } from './shared/types'
 import { parseAgentJson } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, stepStdout, describeFailure } from './shared/batch'
+import { runBatch } from './shared/agents'
 import { setupSteps, laneWorktreePathsFromSteps } from './shared/lane-steps'
 
 export const meta = {
@@ -37,11 +38,7 @@ const steps = setupSteps({
   laneIds: a.batchLaneIds,
   lanePlanPath: a.lanePlanPath,
 })
-const setupRaw = await agent(
-  batchCommandPrompt(steps),
-  stageOpts('cli', { label: `setup${a.batchTag}`, phase: 'Setup', model: model('fast') }),
-)
-const setup = parseBatchResult(setupRaw, steps)
+const setup = await runBatch(steps, stageOpts('cli', { label: `setup${a.batchTag}`, phase: 'Setup', model: model('fast') }))
 
 // Safe: an unparseable result yields {} — rootWt stays undefined, which the
 // throw immediately below already catches.

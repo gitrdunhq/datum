@@ -1,0 +1,120 @@
+{
+  "task_id": "DAT-11",
+  "slug": "runner-core-fake-executor",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify runBundle({ bundlePath, args, executor, shell, skillsDirs, l",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_runbundle_bundlepath_args_executor_shell_skillsdirs_log_runt",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_runbundle_bundlepath_args_executor_shell_skillsdirs_log_runt \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC1:\n    def test_ac1_runbundle_bundlepath_args_executor_shell_skillsdirs_log_runt(self):\n        \"\"\"\n        PROP-001: runBundle({ bundlePath, args, executor, shell, skillsDirs, log, runtime, repoRoo\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Inside a bundle, typeof agent/parallel/pipeline/phase/log/wo",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_inside_a_bundle_typeof_agent_parallel_pipeline_phase_log_wor",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_inside_a_bundle_typeof_agent_parallel_pipeline_phase_log_wor \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC2:\n    def test_ac2_inside_a_bundle_typeof_agent_parallel_pipeline_phase_log_wor(self):\n        \"\"\"\n        PROP-002: Inside a bundle, typeof agent/parallel/pipeline/phase/log/workflow/shell === 'fu\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify parallel([ok1, reject, ok2]) starts all three thunks before ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_parallel_ok1_reject_ok2_starts_all_three_thunks_before_await",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_parallel_ok1_reject_ok2_starts_all_three_thunks_before_await \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC3:\n    def test_ac3_parallel_ok1_reject_ok2_starts_all_three_thunks_before_await(self):\n        \"\"\"\n        PROP-003: parallel([ok1, reject, ok2]) starts all three thunks before awaiting any (the Fa\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify pipeline(['a','b','c'], s1, s2) runs s1 then s2 per item wit",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_pipeline_a_b_c_s1_s2_runs_s1_then_s2_per_item_with_each_stag",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_pipeline_a_b_c_s1_s2_runs_s1_then_s2_per_item_with_each_stag \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC4:\n    def test_ac4_pipeline_a_b_c_s1_s2_runs_s1_then_s2_per_item_with_each_stag(self):\n        \"\"\"\n        PROP-004: pipeline(['a','b','c'], s1, s2) runs s1 then s2 per item with each stage receivi\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify phase('p') and log('l') each call opts.log exactly once. bud",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_phase_p_and_log_l_each_call_opts_log_exactly_once_budget_tot",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_phase_p_and_log_l_each_call_opts_log_exactly_once_budget_tot \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC5:\n    def test_ac5_phase_p_and_log_l_each_call_opts_log_exactly_once_budget_tot(self):\n        \"\"\"\n        PROP-005: phase('p') and log('l') each call opts.log exactly once. budget.total === null, \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify agent(prompt, { model: 'fast-id', label: 'x' }) sends a Stag",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_agent_prompt_model_fast_id_label_x_sends_a_stagerequest_with",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_agent_prompt_model_fast_id_label_x_sends_a_stagerequest_with \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC6:\n    def test_ac6_agent_prompt_model_fast_id_label_x_sends_a_stagerequest_with(self):\n        \"\"\"\n        PROP-006: agent(prompt, { model: 'fast-id', label: 'x' }) sends a StageRequest with model \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify FakeExecutor answers with the first script entry whose label",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_fakeexecutor_answers_with_the_first_script_entry_whose_label",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_fakeexecutor_answers_with_the_first_script_entry_whose_label \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC7:\n    def test_ac7_fakeexecutor_answers_with_the_first_script_entry_whose_label(self):\n        \"\"\"\n        PROP-007: FakeExecutor answers with the first script entry whose labelPrefix prefixes req.\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify FakeExecutor.hold('h') then 3 'h\u2026' requests gives 3 recorded",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_fakeexecutor_hold_h_then_3_h_requests_gives_3_recorded_start",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_fakeexecutor_hold_h_then_3_h_requests_gives_3_recorded_start \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC8:\n    def test_ac8_fakeexecutor_hold_h_then_3_h_requests_gives_3_recorded_start(self):\n        \"\"\"\n        PROP-008: FakeExecutor.hold('h') then 3 'h\u2026' requests gives 3 recorded starts and 0 ends, \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC9",
+      "path": "skills/src/runtime/runner-core.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The runner source contains no assignment to Math.random, and",
+      "property_id": "PROP-009",
+      "function_name": "test_ac9_the_runner_source_contains_no_assignment_to_math_random_and",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-11 AC9 \u2014 PROP-009\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC9 \u2192 test_ac9_the_runner_source_contains_no_assignment_to_math_random_and \u2192 skills/src/runtime/runner-core.test.ts\n\nimport pytest\n\n\nclass TestDAT11AC9:\n    def test_ac9_the_runner_source_contains_no_assignment_to_math_random_and(self):\n        \"\"\"\n        PROP-009: The runner source contains no assignment to Math.random, and `grep -rn \"fetch(\\|\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-009\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

@@ -1,0 +1,96 @@
+{
+  "task_id": "DAT-12",
+  "slug": "runner-model-semaphores",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify With concurrency { m1: 2 } and 5 held requests for m1, the F",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_with_concurrency_m1_2_and_5_held_requests_for_m1_the_fakeexe",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_with_concurrency_m1_2_and_5_held_requests_for_m1_the_fakeexe \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC1:\n    def test_ac1_with_concurrency_m1_2_and_5_held_requests_for_m1_the_fakeexe(self):\n        \"\"\"\n        PROP-001: With concurrency { m1: 2 } and 5 held requests for m1, the FakeExecutor never re\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A model with no concurrency entry runs 1 request at a time",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_a_model_with_no_concurrency_entry_runs_1_request_at_a_time",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_a_model_with_no_concurrency_entry_runs_1_request_at_a_time \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC2:\n    def test_ac2_a_model_with_no_concurrency_entry_runs_1_request_at_a_time(self):\n        \"\"\"\n        PROP-002: A model with no concurrency entry runs 1 request at a time\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify With waiters [A1, B1, A2] queued and a finishing request of ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_with_waiters_a1_b1_a2_queued_and_a_finishing_request_of_agen",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_with_waiters_a1_b1_a2_queued_and_a_finishing_request_of_agen \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC3:\n    def test_ac3_with_waiters_a1_b1_a2_queued_and_a_finishing_request_of_agen(self):\n        \"\"\"\n        PROP-003: With waiters [A1, B1, A2] queued and a finishing request of agentType A, start o\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify With no waiter matching the finished request's agentType, th",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_with_no_waiter_matching_the_finished_request_s_agenttype_the",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_with_no_waiter_matching_the_finished_request_s_agenttype_the \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC4:\n    def test_ac4_with_no_waiter_matching_the_finished_request_s_agenttype_the(self):\n        \"\"\"\n        PROP-004: With no waiter matching the finished request's agentType, the earliest-arrived w\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Every recorded request has headers { 'X-Client': 'datum', 'X",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_every_recorded_request_has_headers_x_client_datum_x_priority",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_every_recorded_request_has_headers_x_client_datum_x_priority \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC5:\n    def test_ac5_every_recorded_request_has_headers_x_client_datum_x_priority(self):\n        \"\"\"\n        PROP-005: Every recorded request has headers { 'X-Client': 'datum', 'X-Priority': 'batch' \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Over 50 queued requests the in-flight count never exceeds co",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_over_50_queued_requests_the_in_flight_count_never_exceeds_co",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_over_50_queued_requests_the_in_flight_count_never_exceeds_co \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC6:\n    def test_ac6_over_50_queued_requests_the_in_flight_count_never_exceeds_co(self):\n        \"\"\"\n        PROP-006: Over 50 queued requests the in-flight count never exceeds concurrency[model]\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "skills/src/runtime/semaphore.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Semaphore bookkeeping for 1,000 queued requests against a Fa",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_semaphore_bookkeeping_for_1_000_queued_requests_against_a_fa",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-12 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_semaphore_bookkeeping_for_1_000_queued_requests_against_a_fa \u2192 skills/src/runtime/semaphore.test.ts\n\nimport pytest\n\n\nclass TestDAT12AC7:\n    def test_ac7_semaphore_bookkeeping_for_1_000_queued_requests_against_a_fa(self):\n        \"\"\"\n        PROP-007: Semaphore bookkeeping for 1,000 queued requests against a FakeExecutor finishes \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

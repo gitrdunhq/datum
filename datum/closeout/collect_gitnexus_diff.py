@@ -9,11 +9,12 @@ import shutil
 import subprocess
 
 from datum.path_utils import closeout_raw_dir, collector_marker
+from datum.run_ids import run_id_arg
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--base-sha")
     parser.add_argument("--merge-sha")
     args = parser.parse_args()

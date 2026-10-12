@@ -1,0 +1,74 @@
+{
+  "task_id": "DAT-18",
+  "slug": "runner-node-entry-build",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/runner-main.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify main(['--bundle', b, '--args', a, '--config', c, '--repo-roo",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_main_bundle_b_args_a_config_c_repo_root_r_skills_dir_d_on_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-18 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_main_bundle_b_args_a_config_c_repo_root_r_skills_dir_d_on_a \u2192 skills/src/runtime/runner-main.test.ts\n\nimport pytest\n\n\nclass TestDAT18AC1:\n    def test_ac1_main_bundle_b_args_a_config_c_repo_root_r_skills_dir_d_on_a(self):\n        \"\"\"\n        PROP-001: main(['--bundle', b, '--args', a, '--config', c, '--repo-root', r, '--skills-dir\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/runner-main.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A bundle that throws Error('bad') makes main return 1 and wr",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_a_bundle_that_throws_error_bad_makes_main_return_1_and_write",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-18 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_a_bundle_that_throws_error_bad_makes_main_return_1_and_write \u2192 skills/src/runtime/runner-main.test.ts\n\nimport pytest\n\n\nclass TestDAT18AC2:\n    def test_ac2_a_bundle_that_throws_error_bad_makes_main_return_1_and_write(self):\n        \"\"\"\n        PROP-002: A bundle that throws Error('bad') makes main return 1 and write 'bad' to stderr\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/runner-main.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify bash scripts/build-workflows.sh produces skills/runtime/runn",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_bash_scripts_build_workflows_sh_produces_skills_runtime_runn",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-18 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_bash_scripts_build_workflows_sh_produces_skills_runtime_runn \u2192 skills/src/runtime/runner-main.test.ts\n\nimport pytest\n\n\nclass TestDAT18AC3:\n    def test_ac3_bash_scripts_build_workflows_sh_produces_skills_runtime_runn(self):\n        \"\"\"\n        PROP-003: bash scripts/build-workflows.sh produces skills/runtime/runner.js whose first li\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/runner-main.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The datum-* loop's meta/return post-processing is not applie",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_the_datum_loop_s_meta_return_post_processing_is_not_applied",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-18 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_the_datum_loop_s_meta_return_post_processing_is_not_applied \u2192 skills/src/runtime/runner-main.test.ts\n\nimport pytest\n\n\nclass TestDAT18AC4:\n    def test_ac4_the_datum_loop_s_meta_return_post_processing_is_not_applied(self):\n        \"\"\"\n        PROP-004: The datum-* loop's meta/return post-processing is not applied to runner.js, and \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/runner-main.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify package.json dependencies are unchanged",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_package_json_dependencies_are_unchanged",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-18 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_package_json_dependencies_are_unchanged \u2192 skills/src/runtime/runner-main.test.ts\n\nimport pytest\n\n\nclass TestDAT18AC5:\n    def test_ac5_package_json_dependencies_are_unchanged(self):\n        \"\"\"\n        PROP-005: package.json dependencies are unchanged\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "scripts/build-workflows.sh": "#!/usr/bin/env bash\nset -euo pipefail\n\nSKILLS_DIR=\"$(cd \"$(dirname \"$0\")/../skills\" && pwd)\"\nSRC_DIR=\"$SKILLS_DIR/src\"\nOUT_DIR=\"$SKILLS_DIR\"\nBANNER=\"// @generated \u2014 DO NOT EDIT. Source: skills/src/\"\n\nMODE=\"${1:-build}\"\n\n# GNU sed takes -i with no argument; BSD/macOS sed needs -i ''. Detect once.\nif sed --version >/dev/null 2>&1; then SED_INPLACE=(sed -i); else SED_INPLACE=(sed -i ''); fi\n\n# \u2500\u2500 Type check \u2500\u2500\necho \"==> Type checking...\"\nnpx tsc -p \"$SKILLS_DIR/tsconfig.json\"\necho \"    tsc: OK\"\n\nif [ \"$MODE\" = \"--check\" ]; then\n  echo \"==> Check-only mode complete.\"\nfi\n\n# \u2500\u2500 Bundle with esbuild \u2500\u2500\necho \"==> Bundling with esbuild...\"\nENTRY_POINTS=$(find \"$SRC_DIR\" -maxdepth 1 -name 'datum-*.ts' -not -name '*.test.ts' | sort)\n\nfor entry in $ENTRY_POINTS; do\n  basename=$(basename \"$entry\" .ts)\n  outfile=\"$OUT_DIR/${basename}.js\"\n\n\n\n  tmpfile=$(mktemp)\nimport sys\nlines = open(sys.argv[1]).readlines()\nmeta_lines, body_lines = [], []\nin_meta, brace_depth = False, 0\nfor line in lines:\n        in_meta = True\n            in_meta = False\nwith open(sys.argv[2], 'w') as f:\n\" \"$outfile\" \"$tmpfile\"\n\ndone\n\n# \u2500\u2500 Verify \u2500\u2500\nif [ \"$MODE\" = \"--verify\" ] || [ \"$MODE\" = \"build\" ]; then\n  echo \"==> Verifying outputs...\"\n  FAIL=0\n\n    basename=$(basename \"$entry\" .ts)\n    outfile=\"$OUT_DIR/${basename}.js\"\n\n      FAIL=1\n\n      FAIL=1\n\n      FAIL=1\n\n      FAIL=1\n\nfi\n\necho \"==> Done.\"\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

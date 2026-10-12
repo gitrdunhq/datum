@@ -1,13 +1,13 @@
 import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult, DocsResult, GoArgs, RepoConfig } from './shared/types'
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
+import { setBatchCacheKey, setBatchRoot, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError, DIGEST_RETRY_MARKER } from './shared/lane-steps'
 import { laneEventSteps } from './shared/events-steps'
 import { runBatch } from './shared/agents'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
 import { parseState, detectStartFrom, isStaleState, pipelineStateSaveSteps, pipelineStateSaveFromSteps, type PipelineState } from './shared/pipeline-state'
-import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, runCommandPrompt, NO_FINGERPRINT_WARNING, newEpicBootstrapSteps, newEpicBootstrapFromSteps } from './shared/boot'
+import { resolveSkillPath, skillsDirHint, bootSteps, bootFromSteps, NO_FINGERPRINT_WARNING, newEpicBootstrapSteps, newEpicBootstrapFromSteps } from './shared/boot'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig, agentTypeArgs } from './shared/agent-types'
 
 export const meta = {
@@ -99,7 +99,7 @@ setBatchCacheKey(configFingerprint)
 // The boot batch is what measures the root; until then the launcher's value
 // (if any) applies, and '' means "wherever the runner starts".
 setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
-const bootBatch = await runBatch(bootSteps(), bootstrapOpts('cli', { label: 'boot', model: model('fast') }))
+const bootBatch = await runBatch(bootSteps(), { ...bootstrapOpts('cli', { label: 'boot', model: model('fast') }), idempotent: true })
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))
 const boot = bootFromSteps(bootBatch)
 // elonchesd: every batch of this run and of every child starts at the root
@@ -175,14 +175,32 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 // unreliable for the agent to reproduce faithfully (#378 follow-up — a
 // semantically-correct inline script still misbehaved when actually run by
 // the agent). A short, plain command gives it far less to mangle.
-const toolCheckText = await agent(
-  runCommandPrompt(
-    `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && ` +
-    `if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else ` +
-    `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; fi`,
-  ),
-  stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }),
+// The runner's cwd is not necessarily the repo (a session started one level
+// above the checkout failed here with "not a git repository"): cd to the root
+// the boot batch measured first, the same root every runBatch call uses.
+const preflightCd = boot.repoRoot ? `cd "${boot.repoRoot.replace(/(["\\$`])/g, '\\$1')}" && ` : ''
+const toolCheckResult = await runBatch(
+  [{
+    name: 'tool-check',
+    // tolerant: a stale install exits non-zero WITH its JSON verdict on stdout;
+    // the verdict below decides, not the exit code alone.
+    tolerant: true,
+    command:
+      preflightCd +
+      `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && ` +
+      `if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else ` +
+      `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; fi`,
+  }],
+  { ...stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }), idempotent: true },
 )
+// A step that did not run, or exited non-zero with no stdout, is a runner
+// failure and halts; a non-zero exit that still printed its JSON verdict
+// falls through to the strict parse + verdict check below.
+const toolStep = stepResult(toolCheckResult, 'tool-check')
+if (!toolStep || (toolStep.exit_code !== 0 && !toolStep.stdout.trim())) {
+  throw new Error(`preflight-tool-check: ${describeFailure(toolCheckResult, 'tool-check')}${toolStep ? ` (exit ${toolStep.exit_code}, no output)` : ''}`)
+}
+const toolCheckText = stepStdout(toolCheckResult, 'tool-check')
 // Strict: {ok:true} would silently treat a garbled/missing preflight
 // response as "the stale-binary check passed" — the exact failure mode this
 // preflight exists to catch (#327) — so an unparseable result must throw,
@@ -205,10 +223,15 @@ if (!toolCheck.ok) {
 // squash-merges and get blamed on agents. yolo auto-fixes (append-only,
 // idempotent); otherwise halt with the exact gaps before any agent burns
 // tokens on a run that would fail at merge time.
-const gitignoreText = await agent(
-  runCommandPrompt(`datum gitignore-check${yolo ? ' --fix' : ''}`),
-  stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }),
+const gitignoreResult = await runBatch(
+  [{ name: 'gitignore-check', tolerant: true, command: `datum gitignore-check${yolo ? ' --fix' : ''}` }],
+  { ...stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }), idempotent: true },
 )
+const gitignoreStep = stepResult(gitignoreResult, 'gitignore-check')
+if (!gitignoreStep || (gitignoreStep.exit_code !== 0 && !gitignoreStep.stdout.trim())) {
+  throw new Error(`preflight-gitignore: ${describeFailure(gitignoreResult, 'gitignore-check')}${gitignoreStep ? ` (exit ${gitignoreStep.exit_code}, no output)` : ''}`)
+}
+const gitignoreText = stepStdout(gitignoreResult, 'gitignore-check')
 // Strict: {ok:true} would silently treat a garbled/missing gitignore-check
 // response as "the scratch-path guard passed", letting generated files land
 // in `git add .` undetected — an unparseable result must throw, not default
@@ -386,7 +409,7 @@ if (shouldRun('properties', 2)) {
   // Properties' gate verdict used to be ignored here entirely.
   if (!lastResult.gatePassed) {
     haltedAt = 'properties'
-    log(`Properties gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Review PROPERTIES.md, then: datum go --start-from act`)
+    log(`Properties gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Review PROPERTIES.md and pass \`datum gate properties\`; if it has Integration Invariants, schedule their lanes with \`datum lane-plan --input <epic>/tasks.json --output <epic>/lane-plan.json --md-output <epic>/TASKS.md --properties <epic>/PROPERTIES.md\` and commit both files (Act start refuses a plan without them: integration_lanes_unscheduled); then: datum go --start-from act`)
   } else {
     log('Properties complete')
     await markPhaseComplete('properties')
@@ -429,11 +452,7 @@ if (shouldRun('act', 3)) {
       epicBranch: '$__eb', epicSlug: '', taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`,
     }),
   })
-  const actStartRaw = await agent(
-    batchCommandPrompt(actStart),
-    stageOpts('cli', { label: 'act-start', phase: 'Act', model: model('fast') }),
-  )
-  const actStartResult = parseBatchResult(actStartRaw, actStart)
+  let actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start', phase: 'Act', model: model('fast') }))
   // Safe: an unparseable result leaves epicBranch === '', which the throw
   // immediately below already catches — the {epicBranch:''} default never
   // gets acted on as though it were a real, resolved branch.
@@ -457,6 +476,14 @@ if (shouldRun('act', 3)) {
   // (wf_5791e11f-693). The scheduler runs on the compact digest
   // `datum lane-plan-digest` wrote in the act-start batch, byte-verified
   // (wc -c + git hash-object); each lane fetches its own full spec at intake.
+  // A runner that changed the digest in relay (wf_17d9c5ea-ecb inserted a
+  // test_command into a Python lane) gets one fresh runner. The act-start
+  // batch is safe to re-run: init is idempotent and the rest only reads.
+  const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
+  if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
+    log(`[act-start] ${firstDigest.error} — retrying once with a fresh runner`)
+    actStartResult = await runBatch(actStart, stageOpts('cli', { label: 'act-start:digest-retry', phase: 'Act', model: model('fast'), retryMarker: DIGEST_RETRY_MARKER }))
+  }
   const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
   if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error)
   const lanePlan: LanePlanDigest = digestResult.digest

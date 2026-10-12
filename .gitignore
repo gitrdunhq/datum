@@ -48,3 +48,6 @@ HEY_*.md
 Record-Presentation/
 tests/Unit/
 .tokensave
+
+# Node dev dependencies (vitest, esbuild, typescript)
+node_modules

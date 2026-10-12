@@ -189,6 +189,12 @@ function renderPrompt(template, vars) {
   );
 }
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -231,6 +237,7 @@ function skillPath(skillsDir, name) {
   if (skillsDir) return `${skillsDir}/${name}.js`;
   return `skills/${name}.js`;
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/prompts/agent-preamble.md
 var agent_preamble_default = "# datum\n\n> Agentic software delivery pipeline \u2014 language-agnostic, config-driven.\n\n## CLI Rule\n- All commands use `datum <command>` \u2014 never `uv run`, `python3 scripts/`, or bare tool invocations\n- The test command is the `test_command` in your brief (the same value as `.datum/config.json`'s `test_command`, which lane worktrees carry only because datum copied it) \u2014 never guess or fall back to a default when a file is missing\n\n## Coding Rules\n- Functional core / imperative shell \u2014 business logic is pure, side effects at edges\n- Boundary validation \u2014 validate external input immediately (Pydantic/Zod)\n- 500 lines is a review trigger: split only on a real functional seam, never to hit a number\n- Structured errors \u2014 never silently swallow, return {code, message}\n- No silent fallbacks \u2014 fail fast, don't mask missing data\n- Idempotent mutations \u2014 upserts, dedup before side effects\n- Timeouts on all external calls \u2014 explicit timeout + capped retries\n\n## Test Conventions\n- Always RED before GREEN \u2014 write failing test first, confirm failure\n- Strong assertions \u2014 verify specific values, not just \"no error\"\n- Negative paths required \u2014 test invalid inputs, timeouts, state violations\n- Run tests with the configured test command (`test_command` from your brief)\n\n## File Conventions\n- Follow the repo's existing style (detected by datum-awake)\n- No `eval()`, `os.system()`, `shell=True`\n\n## Context Budget\n- When `headroom_compress` and `headroom_retrieve` are available, use them for files over 100 lines: compress after reading, then retrieve with a targeted query when you need a section back. This is the expected path on the local-model runtime. When they are not available, read the file and move on \u2014 never block on them, never report a hash you did not produce\n";
@@ -395,6 +402,9 @@ var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
 }
+function getBatchRoot() {
+  return batchRoot;
+}
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
   for (const s of steps) {
@@ -426,7 +436,7 @@ function setBatchCacheKey(key) {
 var BATCH_TOOL_TIMEOUT_MS = 6e5;
 var TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i;
 function batchCommandPrompt(steps) {
-  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
+  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. Never author a step row yourself; if you cannot run the script, say so in prose instead. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
 
 ` + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
 
@@ -464,6 +474,16 @@ function parseBatchResult(raw, steps) {
     }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
+  const authored = arr.find((x) => {
+    if (!x || typeof x !== "object") return false;
+    const o = x;
+    const noExit = o.exit_code === null || o.exit_code === void 0;
+    const noOut = !String(o.stdout ?? "").trim();
+    return noExit && noOut && REFUSAL_RE.test(String(o.stderr ?? ""));
+  });
+  if (authored) {
+    return { steps: [], failed: null, missing: true, refusal: String(authored.stderr) };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
@@ -496,7 +516,7 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute)|not_run|did not run|needs? to approve)\b/i;
 function isRunnerRefusal(reply) {
   return REFUSAL_RE.test(reply);
 }
@@ -694,6 +714,10 @@ function lanePlanDigestFromSteps(result, planPath) {
   }
   return { ok: true, digest, error: "" };
 }
+function isDigestRelayError(error) {
+  return typeof error === "string" && error.startsWith("lane_plan_digest_mismatch:");
+}
+var DIGEST_RETRY_MARKER = "# attempt 2 of 2 \u2014 the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing";
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
   if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
@@ -755,10 +779,14 @@ var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cl
 var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
+function runtimeForcesAgentTypes() {
+  const rt = globalThis.datumRuntime;
+  return typeof rt === "object" && rt !== null && rt.agentTypes === true;
+}
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
-    agentTypes: o.agent_types !== false,
+    agentTypes: o.agent_types !== false || runtimeForcesAgentTypes(),
     hooksInstalled: o.hooks_installed === true
   };
 }
@@ -785,17 +813,52 @@ function agentTypeArgs() {
 }
 
 // skills/src/shared/agents.ts
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps);
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
   const promptBytes = utf8ByteLength(prompt);
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
     logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (retry === false) return result;
   const label = opts.label || "batch";
   const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
@@ -839,6 +902,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps);
   }
   return result;
 }
@@ -972,9 +1040,6 @@ function bootFromSteps(result) {
   }
   return { config, state: state2, localSkills, repoRoot, currentBranch: currentBranch2 };
 }
-function runCommandPrompt(command) {
-  return "Run exactly this command with the Bash tool and return only its stdout, nothing else. Do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task.\n\n" + command;
-}
 var SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 function newEpicBootstrapSteps(slug) {
   if (!SLUG_RE.test(slug)) throw new Error(`newEpicBootstrapSteps: invalid slug ${JSON.stringify(slug)} \u2014 expected kebab-case [a-z0-9-]`);
@@ -1034,7 +1099,7 @@ var configFingerprint = typeof a.configFingerprint === "string" ? a.configFinger
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
 setBatchCacheKey(configFingerprint);
 setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
-var bootBatch = await runBatch(bootSteps(), bootstrapOpts("cli", { label: "boot", model: model("fast") }));
+var bootBatch = await runBatch(bootSteps(), { ...bootstrapOpts("cli", { label: "boot", model: model("fast") }), idempotent: true });
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, "boot"));
 var boot = bootFromSteps(bootBatch);
 setBatchRoot(boot.repoRoot);
@@ -1067,12 +1132,22 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
   setModelTiers(globalCfg.models);
   log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);
 }
-var toolCheckText = await agent(
-  runCommandPrompt(
-    `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
-  ),
-  stageOpts("cli", { label: "preflight-tool-check", model: model("fast") })
+var preflightCd = boot.repoRoot ? `cd "${boot.repoRoot.replace(/(["\\$`])/g, "\\$1")}" && ` : "";
+var toolCheckResult = await runBatch(
+  [{
+    name: "tool-check",
+    // tolerant: a stale install exits non-zero WITH its JSON verdict on stdout;
+    // the verdict below decides, not the exit code alone.
+    tolerant: true,
+    command: preflightCd + `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
+  }],
+  { ...stageOpts("cli", { label: "preflight-tool-check", model: model("fast") }), idempotent: true }
 );
+var toolStep = stepResult(toolCheckResult, "tool-check");
+if (!toolStep || toolStep.exit_code !== 0 && !toolStep.stdout.trim()) {
+  throw new Error(`preflight-tool-check: ${describeFailure(toolCheckResult, "tool-check")}${toolStep ? ` (exit ${toolStep.exit_code}, no output)` : ""}`);
+}
+var toolCheckText = stepStdout(toolCheckResult, "tool-check");
 var toolCheck = parseAgentJsonStrict(toolCheckText, "preflight-tool-check");
 if (!toolCheck.ok) {
   const installedPath = toolCheck.installed ?? "(unknown \u2014 preflight check did not return valid JSON, see raw output above)";
@@ -1081,10 +1156,15 @@ if (!toolCheck.ok) {
     `datum CLI tool install is stale/misdirected (#327): the globally installed editable \`datum\` points at "${installedPath}" but this repo root is "${expectedPath}". Every "datum ..." command this pipeline runs would silently execute code from the wrong location. Fix: run \`uv tool install --editable . --force\` from "${expectedPath}", then re-run.`
   );
 }
-var gitignoreText = await agent(
-  runCommandPrompt(`datum gitignore-check${yolo ? " --fix" : ""}`),
-  stageOpts("cli", { label: "preflight-gitignore", model: model("fast") })
+var gitignoreResult = await runBatch(
+  [{ name: "gitignore-check", tolerant: true, command: `datum gitignore-check${yolo ? " --fix" : ""}` }],
+  { ...stageOpts("cli", { label: "preflight-gitignore", model: model("fast") }), idempotent: true }
 );
+var gitignoreStep = stepResult(gitignoreResult, "gitignore-check");
+if (!gitignoreStep || gitignoreStep.exit_code !== 0 && !gitignoreStep.stdout.trim()) {
+  throw new Error(`preflight-gitignore: ${describeFailure(gitignoreResult, "gitignore-check")}${gitignoreStep ? ` (exit ${gitignoreStep.exit_code}, no output)` : ""}`);
+}
+var gitignoreText = stepStdout(gitignoreResult, "gitignore-check");
 var gitignoreCheck = parseAgentJsonStrict(gitignoreText, "preflight-gitignore");
 if (gitignoreCheck.added?.length) {
   log(`[preflight] .gitignore was missing datum scratch paths \u2014 appended (yolo): ${gitignoreCheck.added.join(", ")}`);
@@ -1191,7 +1271,7 @@ if (shouldRun("properties", 2)) {
   lastResult = await runPhaseWorkflow(sk("datum-properties"), phaseArgs, "properties");
   if (!lastResult.gatePassed) {
     haltedAt = "properties";
-    log(`Properties gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Review PROPERTIES.md, then: datum go --start-from act`);
+    log(`Properties gate ${lastResult.gateNeedsHuman ? "held" : "FAILED"}: ${lastResult.gateMessage || "needs review"}. Review PROPERTIES.md and pass \`datum gate properties\`; if it has Integration Invariants, schedule their lanes with \`datum lane-plan --input <epic>/tasks.json --output <epic>/lane-plan.json --md-output <epic>/TASKS.md --properties <epic>/PROPERTIES.md\` and commit both files (Act start refuses a plan without them: integration_lanes_unscheduled); then: datum go --start-from act`);
   } else {
     log("Properties complete");
     await markPhaseComplete("properties");
@@ -1216,11 +1296,7 @@ if (shouldRun("act", 3)) {
         taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`
       })
     });
-    const actStartRaw = await agent(
-      batchCommandPrompt(actStart),
-      stageOpts("cli", { label: "act-start", phase: "Act", model: model("fast") })
-    );
-    const actStartResult = parseBatchResult(actStartRaw, actStart);
+    let actStartResult = await runBatch(actStart, stageOpts("cli", { label: "act-start", phase: "Act", model: model("fast") }));
     const info = parseAgentJson(stepStdout(actStartResult, "bootstrap") || "", { epicBranch: "" });
     const epicBranch = info.epicBranch;
     const runId = (stepStdout(actStartResult, "timestamp") || "").trim();
@@ -1230,6 +1306,11 @@ if (shouldRun("act", 3)) {
     const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
     const epicDir = `docs/epics/${epicBranch}`;
     const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
+    const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
+    if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
+      log(`[act-start] ${firstDigest.error} \u2014 retrying once with a fresh runner`);
+      actStartResult = await runBatch(actStart, stageOpts("cli", { label: "act-start:digest-retry", phase: "Act", model: model("fast"), retryMarker: DIGEST_RETRY_MARKER }));
+    }
     const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
     if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);
     const lanePlan = digestResult.digest;

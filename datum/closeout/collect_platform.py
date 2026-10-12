@@ -8,11 +8,12 @@ import json
 
 from datum.closeout.state_source import load_run_state
 from datum.path_utils import closeout_raw_dir, collector_marker
+from datum.run_ids import run_id_arg
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     args = parser.parse_args()
 
     marker = collector_marker(args.run_id, "platform")

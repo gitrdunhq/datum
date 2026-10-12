@@ -80,6 +80,12 @@ function renderPrompt(template, vars) {
   );
 }
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -90,6 +96,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
   return activeTiers[tier];
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/prompts/refine-triage.md
 var refine_triage_default = 'Addendum triage agent. Read the full TICKET.md and classify each section.\n\nThe TICKET may have appended addendum sections (marked with `## Addendum \u2014 YYYY-MM-DD`).\nFor each addendum, determine whether it belongs to the CURRENT epic scope or is a DIFFERENT feature.\n\nDECISION RULE:\n- SAME SCOPE: addendum touches the same files/modules as the original requirements, extends\n  existing behavior, adds edge cases, or refines acceptance criteria.\n- DIFFERENT FEATURE: zero file overlap with original requirements, introduces new public API,\n  targets a different module or subsystem entirely.\n\nTo check file overlap, scan the codebase:\n- grep or find for symbols/modules named in the original requirements\n- grep or find for symbols/modules named in the addendum\n- If the file sets intersect \u2192 SAME SCOPE\n- If zero intersection \u2192 DIFFERENT FEATURE\n\nReturn JSON:\n{\n  "original_scope": "one-line summary of the original TICKET scope",\n  "addenda": [\n    {"date": "YYYY-MM-DD", "summary": "what was added", "verdict": "same_scope|roadmap", "reason": "why"}\n  ],\n  "roadmap_items": ["one-line description for each roadmap-triaged addendum"],\n  "merged_requirements": ["full list of requirements after incorporating same-scope addenda"]\n}\n\nIf the TICKET has no addenda, return empty addenda/roadmap_items and the original requirements as merged_requirements.\nOutput raw JSON only. No markdown fences.\n\nINPUTS\nRead: {{ticketPath}}\n';
@@ -263,6 +270,9 @@ var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
 }
+function getBatchRoot() {
+  return batchRoot;
+}
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
   for (const s of steps) {
@@ -294,7 +304,7 @@ function setBatchCacheKey(key) {
 var BATCH_TOOL_TIMEOUT_MS = 6e5;
 var TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i;
 function batchCommandPrompt(steps) {
-  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
+  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. Never author a step row yourself; if you cannot run the script, say so in prose instead. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
 
 ` + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
 
@@ -332,6 +342,16 @@ function parseBatchResult(raw, steps) {
     }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
+  const authored = arr.find((x) => {
+    if (!x || typeof x !== "object") return false;
+    const o = x;
+    const noExit = o.exit_code === null || o.exit_code === void 0;
+    const noOut = !String(o.stdout ?? "").trim();
+    return noExit && noOut && REFUSAL_RE.test(String(o.stderr ?? ""));
+  });
+  if (authored) {
+    return { steps: [], failed: null, missing: true, refusal: String(authored.stderr) };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
@@ -364,7 +384,7 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute)|not_run|did not run|needs? to approve)\b/i;
 function isRunnerRefusal(reply) {
   return REFUSAL_RE.test(reply);
 }
@@ -520,17 +540,52 @@ function commitFilesFromSteps(result) {
 }
 
 // skills/src/shared/agents.ts
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps);
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
   const promptBytes = utf8ByteLength(prompt);
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
     logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (retry === false) return result;
   const label = opts.label || "batch";
   const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
@@ -574,6 +629,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps);
   }
   return result;
 }
@@ -701,11 +761,7 @@ function contextFromRelay(probe, inline, plan) {
   });
   return { branch, epicDir: epicDir2, files, warnings, mismatched };
 }
-function contextInlineRetryPrompt(steps) {
-  return `${batchCommandPrompt(steps)}
-
-# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`;
-}
+var CONTEXT_INLINE_RETRY_MARKER = "# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte";
 function mergeRelayRetry(first, second) {
   const files = { ...first.files };
   const warnings = [...first.warnings];
@@ -998,10 +1054,7 @@ if (relayPlan.inline.length > 0) {
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
 if (ctx.mismatched.length > 0) {
   log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(", ")} \u2014 re-fetching once with a fresh runner`);
-  const retryBatch = parseBatchResult(
-    await agent(contextInlineRetryPrompt(inlineSteps), stageOpts("cli", { label: "read-context-files:retry", model: model("fast") })),
-    inlineSteps
-  );
+  const retryBatch = await runBatch(inlineSteps, stageOpts("cli", { label: "read-context-files:retry", model: model("fast"), retryMarker: CONTEXT_INLINE_RETRY_MARKER }));
   ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan));
 }
 for (const warning of ctx.warnings) log(`read-context: ${warning}`);

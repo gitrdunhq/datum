@@ -19,13 +19,13 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { batchScript, batchCommandPrompt, parseBatchResult, type BatchResult, type BatchStep } from './batch'
+import { batchScript, parseBatchResult, type BatchResult, type BatchStep } from './batch'
 import {
   CONTEXT_RELAY_BUDGET_BYTES,
   contextProbeSteps,
   contextRelayPlan,
   contextInlineSteps,
-  contextInlineRetryPrompt,
+  CONTEXT_INLINE_RETRY_MARKER,
   contextFromRelay,
   mergeRelayRetry,
   contextSlot,
@@ -220,13 +220,12 @@ describe('contextFromRelay defers a mismatched inline file instead of halting; t
     expect(merged.warnings.join(' ')).toMatch(/QUESTIONS\.md.*mismatched on both attempts.*deferred to the consuming agent/)
   })
 
-  it('the retry prompt differs from the first (a cache miss on resume), and names the attempt', () => {
-    const steps = contextInlineSteps(['QUESTIONS.md'])
-    const retry = contextInlineRetryPrompt(steps)
-    expect(retry).not.toBe(batchCommandPrompt(steps))
-    expect(retry).toContain(batchScript(steps))
-    expect(retry).toMatch(/attempt 2 of 2/)
-    expect(retry).toMatch(/copy .*exactly|verbatim/i)
+  it('the retry marker names the attempt and tells the runner to copy verbatim', () => {
+    expect(CONTEXT_INLINE_RETRY_MARKER).toBe(
+      "# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte",
+    )
+    expect(CONTEXT_INLINE_RETRY_MARKER).toMatch(/attempt 2 of 2/)
+    expect(CONTEXT_INLINE_RETRY_MARKER).toMatch(/copy .*exactly|verbatim/i)
   })
 })
 

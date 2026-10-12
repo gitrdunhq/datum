@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from datum.run_ids import run_id_arg
+
 SOLUTION_PATTERNS = [
     (r"new\s+(?:protocol|interface|adapter|layer)", "new_abstraction_layer"),
     (r"(?:extracted?|moved?)\s+\w+\s+(?:to|into)\s+\w+", "extraction_refactor"),
@@ -34,7 +36,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--base-sha", required=True)
     parser.add_argument("--merge-sha", required=True)
     args = parser.parse_args()

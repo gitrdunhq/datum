@@ -230,7 +230,7 @@ describe('mainSyncFromSteps — real git fixtures', () => {
     const src = readFileSync(join(__dirname, '..', 'datum-validate.ts'), 'utf8')
     expect(src).toMatch(/mainSyncSteps\(noMergeMain, repoCfg\.main_branch\)/)
     expect(src).toMatch(/await runBatch\(syncSteps, stageOpts\('cli', \{ label: 'main-sync'/)
-    expect(src).not.toMatch(/agent\(batchCommandPrompt\(syncSteps\)/)
+    expect(src).not.toMatch(/batchCommandPrompt\(/)
   })
 
   it('a missing/unparseable batch throws main_sync_failed, never a fabricated result', () => {

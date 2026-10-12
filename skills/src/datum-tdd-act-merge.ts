@@ -2,7 +2,8 @@ import { model } from './shared/models'
 import type { MergeArgs } from './shared/types'
 import { filterGreenLanes, parseAgentJson } from './shared/utils'
 import { stageOpts, configureAgentTypes } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { runBatch } from './shared/agents'
 import { mergeSteps } from './shared/lane-steps'
 import { laneStateWriteScript } from './shared/prompts'
 
@@ -53,11 +54,7 @@ const steps = mergeSteps({
   mergeOrder,
   laneStateWriteScript: laneState,
 })
-const mergeRaw = await agent(
-  batchCommandPrompt(steps),
-  stageOpts('cli', { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }),
-)
-const merge = parseBatchResult(mergeRaw, steps)
+const merge = await runBatch(steps, stageOpts('cli', { label: `merge${a.batchTag}`, phase: 'Merge', model: model('fast') }))
 if (merge.missing) log(`Merge${a.batchTag}: ${describeFailure(merge, 'merge batch')}`)
 
 // The outcome is what the merge STEP reported, never what we were asked to

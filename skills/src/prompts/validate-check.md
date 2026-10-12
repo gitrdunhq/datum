@@ -18,6 +18,7 @@ STEPS:
    corresponding passing tests. If an AC has no test → flag as a gap.
 
 Report tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3.
+lint_fixes holds only the repo-relative paths of files you changed, one path per entry, with no notes; anything you left alone or want to explain goes nowhere in this output.
 
 INPUTS
 Working directory: {{wt}}

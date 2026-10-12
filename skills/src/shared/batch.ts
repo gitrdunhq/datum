@@ -129,6 +129,11 @@ export function setBatchRoot(root: string): void {
   batchRoot = typeof root === 'string' ? root.trim() : ''
 }
 
+/** The root last recorded by setBatchRoot ('' when none). */
+export function getBatchRoot(): string {
+  return batchRoot
+}
+
 /** The unwrapped step runner (what the heredoc carries). */
 export function innerBatchScript(steps: BatchStep[]): string {
   validateBatchSteps(steps)
@@ -182,6 +187,7 @@ export function batchCommandPrompt(steps: BatchStep[]): string {
     `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. ` +
     'Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, ' +
     'do not message anyone, do not summarise or explain — this prompt is the whole task. ' +
+    'Never author a step row yourself; if you cannot run the script, say so in prose instead. ' +
     'The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); ' +
     'a non-zero exit_code is data to return, not a problem to solve.\n\n' +
     (cacheKey ? `(inputs fingerprint ${cacheKey} — informational, do not act on it)\n\n` : '') +
@@ -240,6 +246,21 @@ export function parseBatchResult(raw: unknown, steps: BatchStep[]): BatchResult 
     }
     return { steps: [], failed: null, missing: true, refusal: prose }
   }
+  // wf_a3714853-a15 gate: a generic runner (agent types off) declined to run
+  // `datum gate refine --approve` on its own judgement and AUTHORED a step row
+  // for it — exit_code null, empty stdout, a "not_run: ..." stderr. That is
+  // the runner's prose wearing a row's shape: route it to the refusal retry
+  // (a fresh runner, once), never to "the gate exited without JSON".
+  const authored = arr.find((x) => {
+    if (!x || typeof x !== 'object') return false
+    const o = x as Record<string, unknown>
+    const noExit = o.exit_code === null || o.exit_code === undefined
+    const noOut = !String(o.stdout ?? '').trim()
+    return noExit && noOut && REFUSAL_RE.test(String(o.stderr ?? ''))
+  }) as Record<string, unknown> | undefined
+  if (authored) {
+    return { steps: [], failed: null, missing: true, refusal: String(authored.stderr) }
+  }
   const results = arr.map(asStepResult).filter((r): r is BatchStepResult => r !== null)
   // "[]" is an empty reply, not a batch that ran nothing (wf_d80acceb-e3e
   // boot: the host refused the script and the runner answered with []).
@@ -296,7 +317,7 @@ export function stepStdout(r: BatchResult, name: string): string | null {
 
 /** One-line summary of a failed step for log/error messages. */
 /** A runner reply that reads as a host permission refusal (elonchesd wf_2bf3cc14-899). */
-export const REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i
+export const REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute)|not_run|did not run|needs? to approve)\b/i
 
 /** Does a runner's prose reply read as a host permission refusal? */
 export function isRunnerRefusal(reply: string): boolean {

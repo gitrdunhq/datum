@@ -1,0 +1,72 @@
+{
+  "task_id": "DAT-15",
+  "slug": "runner-nested-workflow",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/runner-nesting.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify workflow({ name: 'child' }) with skillsDirs [dirA, dirB], wh",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_workflow_name_child_with_skillsdirs_dira_dirb_where_both_con",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-15 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_workflow_name_child_with_skillsdirs_dira_dirb_where_both_con \u2192 skills/src/runtime/runner-nesting.test.ts\n\nimport pytest\n\n\nclass TestDAT15AC1:\n    def test_ac1_workflow_name_child_with_skillsdirs_dira_dirb_where_both_con(self):\n        \"\"\"\n        PROP-001: workflow({ name: 'child' }) with skillsDirs [dirA, dirB], where both contain chi\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/runner-nesting.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify workflow({ name: 'missing' }) rejects with an Error whose me",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_workflow_name_missing_rejects_with_an_error_whose_message_st",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-15 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_workflow_name_missing_rejects_with_an_error_whose_message_st \u2192 skills/src/runtime/runner-nesting.test.ts\n\nimport pytest\n\n\nclass TestDAT15AC2:\n    def test_ac2_workflow_name_missing_rejects_with_an_error_whose_message_st(self):\n        \"\"\"\n        PROP-002: workflow({ name: 'missing' }) rejects with an Error whose message starts 'workfl\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/runner-nesting.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify workflow({ scriptPath: p }) loads p regardless of skillsDirs",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_workflow_scriptpath_p_loads_p_regardless_of_skillsdirs",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-15 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_workflow_scriptpath_p_loads_p_regardless_of_skillsdirs \u2192 skills/src/runtime/runner-nesting.test.ts\n\nimport pytest\n\n\nclass TestDAT15AC3:\n    def test_ac3_workflow_scriptpath_p_loads_p_regardless_of_skillsdirs(self):\n        \"\"\"\n        PROP-003: workflow({ scriptPath: p }) loads p regardless of skillsDirs\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/runner-nesting.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The child receives the args passed to workflow() as its `arg",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_the_child_receives_the_args_passed_to_workflow_as_its_args_g",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-15 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_the_child_receives_the_args_passed_to_workflow_as_its_args_g \u2192 skills/src/runtime/runner-nesting.test.ts\n\nimport pytest\n\n\nclass TestDAT15AC4:\n    def test_ac4_the_child_receives_the_args_passed_to_workflow_as_its_args_g(self):\n        \"\"\"\n        PROP-004: The child receives the args passed to workflow() as its `args` global, and its r\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/runner-nesting.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify With concurrency { m1: 1 }, a parent request and a child req",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_with_concurrency_m1_1_a_parent_request_and_a_child_request_o",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-15 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_with_concurrency_m1_1_a_parent_request_and_a_child_request_o \u2192 skills/src/runtime/runner-nesting.test.ts\n\nimport pytest\n\n\nclass TestDAT15AC5:\n    def test_ac5_with_concurrency_m1_1_a_parent_request_and_a_child_request_o(self):\n        \"\"\"\n        PROP-005: With concurrency { m1: 1 }, a parent request and a child request on m1 never ove\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

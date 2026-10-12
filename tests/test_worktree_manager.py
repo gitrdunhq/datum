@@ -669,6 +669,11 @@ class TestMergeLaneBranches:
             _git(["commit", "-q", "-m", f"{lane} edits shared.txt"], cwd=wt)
             _git(["worktree", "remove", "--force", str(wt)], cwd=repo)
         _git(["checkout", "epic/test"], cwd=repo)
+        # A datum repo ignores .datum/ (datum init writes the rule); without it
+        # the report dir itself makes the "clean again" check below fail on
+        # any machine whose global gitignore does not happen to list .datum/.
+        with open(repo / ".git" / "info" / "exclude", "a") as fh:
+            fh.write(".datum/\n")
         report_dir = repo / ".datum" / "runs" / "r1"
 
         with pytest.raises(LaneMergeError) as exc:

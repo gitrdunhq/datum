@@ -50,6 +50,9 @@ def test_parse_metadata_raises_on_malformed_json_instead_of_returning_none():
 def test_list_sub_issues_surfaces_malformed_metadata_instead_of_silently_dropping_it(
     monkeypatch,
 ):
+    # Repo resolution shells out to `gh repo view`; stub it with the API call
+    # so the test does not need an authenticated gh and a GitHub remote.
+    monkeypatch.setattr("datum.github_issues.require_repo", lambda: "owner/repo")
     monkeypatch.setattr(
         "datum.github_issues._gh_check",
         lambda *a, **k: json.dumps(

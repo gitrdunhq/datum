@@ -8,6 +8,9 @@ BANNER="// @generated — DO NOT EDIT. Source: skills/src/"
 
 MODE="${1:-build}"
 
+# GNU sed takes -i with no argument; BSD/macOS sed needs -i ''. Detect once.
+if sed --version >/dev/null 2>&1; then SED_INPLACE=(sed -i); else SED_INPLACE=(sed -i ''); fi
+
 # ── Type check ──
 echo "==> Type checking..."
 npx tsc -p "$SKILLS_DIR/tsconfig.json"
@@ -35,7 +38,7 @@ for entry in $ENTRY_POINTS; do
 
   # ── Post-process ──
   # 1. Fix var→export const meta, var→return, remove ESM export block
-  sed -i '' \
+  "${SED_INPLACE[@]}" \
     -e 's/^var meta = /export const meta = /' \
     -e 's/^var __workflowResult = /return /' \
     -e '/^export {$/,/^};$/d' \
@@ -68,6 +71,22 @@ with open(sys.argv[2], 'w') as f:
 
   echo "    $basename.js: OK"
 done
+
+# ── Runner bundle (Node entry, no workflow post-processing) ──
+RUNNER_ENTRY="$SRC_DIR/runtime/runner.ts"
+RUNNER_OUT="$OUT_DIR/runtime/runner.js"
+mkdir -p "$OUT_DIR/runtime"
+runner_tmp=$(mktemp)
+npx esbuild "$RUNNER_ENTRY" \
+  --bundle \
+  --format=esm \
+  --platform=node \
+  --loader:.md=text \
+  --outfile="$runner_tmp" \
+  --log-level=warning
+{ printf '%s\n' "${BANNER}runtime/runner.ts"; cat "$runner_tmp"; } > "$RUNNER_OUT"
+rm -f "$runner_tmp"
+echo "    runtime/runner.js: OK"
 
 # ── Verify ──
 if [ "$MODE" = "--verify" ] || [ "$MODE" = "build" ]; then
@@ -105,6 +124,11 @@ if [ "$MODE" = "--verify" ] || [ "$MODE" = "build" ]; then
       FAIL=1
     fi
   done
+
+  if ! head -1 "$RUNNER_OUT" | grep -q '@generated'; then
+    echo "    FAIL: runtime/runner.js — missing @generated banner"
+    FAIL=1
+  fi
 
   if [ "$FAIL" -eq 0 ]; then
     echo "    All outputs verified."

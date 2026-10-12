@@ -55,6 +55,8 @@ import {
   integrationVerifyCmd,
   structuralDeliverableSteps,
   structuralDeliverablesFromSteps,
+  isDigestRelayError,
+  digestRetryPrompt,
 } from './lane-steps'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
@@ -2150,5 +2152,48 @@ describe('RUNTIME_ARTIFACT_READ_RE names repo-root reads, not fixture roots', ()
       '    config_path = repo_root / ".datum" / "config.json"',
       '    (tmp_path / ".datum").mkdir()',
     ]) expect(line, line).not.toMatch(re)
+  })
+})
+
+describe('lane plan digest relay retry (wf_17d9c5ea-ecb)', () => {
+  it('names a digest mismatch as a transport error worth one retry', () => {
+    // Catches: a runner that inserted "test_command":"npx vitest run" into a
+    // Python lane's digest halting Act with no retry, or a retry on errors
+    // that a second runner cannot fix.
+    expect(isDigestRelayError('lane_plan_digest_mismatch: p digest — expected 7383 bytes / blob a, got 7415 bytes / blob b — the runner did not return the digest verbatim')).toBe(true)
+    expect(isDigestRelayError('lane_plan_digest_too_large: p is 99999 bytes')).toBe(false)
+    expect(isDigestRelayError('lane_plan_digest_failed: datum lane-plan-digest exited 2')).toBe(false)
+    expect(isDigestRelayError('')).toBe(false)
+  })
+
+  it('the retry prompt is the same batch with a distinct suffix, so the replay cache cannot return the bad relay', () => {
+    // Catches: a retry whose prompt equals attempt 1 being served from the
+    // Workflow replay cache with the same corrupted stdout.
+    const p = 'Run exactly this script ...'
+    const r = digestRetryPrompt(p)
+    expect(r.startsWith(p)).toBe(true)
+    expect(r).not.toBe(p)
+    expect(r).toContain('byte for byte')
+  })
+})
+
+describe('RUNTIME_ARTIFACT_READ_RE stays inside one path expression (DAT-19, wf_4c2c9deb-a1f)', () => {
+  const re = new RegExp(RUNTIME_ARTIFACT_READ_RE)
+  it('does not match a .resolve() on one side of a comparison and a fixture .datum on the other', () => {
+    // Catches: RED failed red_reads_runtime_artifact on an assertion that
+    // compares a CLI flag with the test's own tmp_path config, because the
+    // `.resolve()` arm reached across `==` and `(` into the fixture path.
+    for (const line of [
+      '    assert Path(repo.flag(call, "--config")).resolve() == (repo.root / ".datum" / "config.json").resolve()',
+      '    assert out.resolve() == (tmp_path / ".datum")',
+    ]) expect(line, line).not.toMatch(re)
+  })
+  it('still matches a repo-root read written in one expression', () => {
+    // Catches: the narrowing losing the reads #499 exists to stop.
+    for (const line of [
+      'p = Path(__file__).resolve().parents[1] / ".datum" / "state.db"',
+      'cfg = Path(__file__).resolve() / ".datum"',
+      'const p = join(process.cwd(), ".datum", "pipeline-state.json")',
+    ]) expect(line, line).toMatch(re)
   })
 })

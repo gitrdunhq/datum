@@ -1,7 +1,7 @@
 import { model } from './models'
 import { utf8ByteLength } from './utf8'
 import { stageOpts, isReadOnlyAgentType } from './agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
+import { batchCommandPrompt, batchScript, getBatchRoot, BATCH_TOOL_TIMEOUT_MS, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
 import { worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
 // ── Rate-limit resilient agent wrapper ──────────────────────────────────────
@@ -86,11 +86,10 @@ export async function verifyCommitIndependently(
     { name: 'log', command: `git -C ${q(wt)} log --format="%H %s" ${range}`, tolerant: true },
     { name: 'status', command: `git -C ${q(wt)} status --porcelain -- ${files.map(q).join(' ')}`, tolerant: true },
   ]
-  const raw = await agent(
-    batchCommandPrompt(steps),
+  const result = await runBatch(
+    steps,
     stageOpts('cli', { label: `verify-commit:${taskId}:${stage}`, model: model('fast') }),
   )
-  const result = parseBatchResult(raw, steps)
   if (result.missing) return { committed: false, detail: `independent check returned no result (${describeFailure(result, 'verify-commit')})` }
   return parseCommitVerification(stepStdout(result, 'log'), stepStdout(result, 'status'), commitPrefix, stage)
 }
@@ -168,10 +167,11 @@ export async function resilientAgent<T = unknown>(
     // have written, so its retry needs no guard; a writer's retry keeps it.
     if (attempt < maxRetries && opts?.worktree && !isReadOnlyAgentType(opts.agentType)) {
       const guardSteps = worktreeDirtySteps(opts.worktree)
-      const guard = worktreeDirtyFromSteps(parseBatchResult(
-        await agentFn(batchCommandPrompt(guardSteps), stageOpts('cli', { label: 'retry-guard', model: 'haiku' })),
-        guardSteps,
-      ))
+      const guard = worktreeDirtyFromSteps(
+        // retry:false: the guard's unknown state aborts the retry below; a
+        // second runner call here would only delay that abort.
+        await runBatch(guardSteps, { ...stageOpts('cli', { label: 'retry-guard', model: 'haiku' }), retry: false }, { agentFn, logFn }),
+      )
       if (!guard.known) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : 'returned null'} and the worktree state is unknown (${guard.detail}) — aborting retry to prevent duplicate writes`)
         return lastResult
@@ -210,6 +210,47 @@ export async function resilientAgent<T = unknown>(
 export interface RunBatchDeps {
   agentFn?: (prompt: string, opts?: AgentOpts) => Promise<unknown>
   logFn?: (message: string) => void
+  /** Non-LLM shell primitive; wins over the ambient global `shell`. */
+  shell?: ShellFn
+}
+
+// The one shell signature: the runner (runtime/runner.ts), nodeShell
+// (runtime/shell.ts) and the sandbox global (sandbox.d.ts) all use it (ARCH-002).
+export type ShellResult = { exit_code: number; stdout: string; stderr: string }
+export type ShellFn = (script: string, opts: { cwd: string; timeoutMs: number }) => Promise<ShellResult>
+
+/** The shell seam: deps.shell, else the ambient global, else none. */
+function resolveShell(deps?: RunBatchDeps): ShellFn | null {
+  if (deps?.shell) return deps.shell
+  const g = (globalThis as { shell?: ShellFn }).shell
+  return typeof g === 'function' ? g : null
+}
+
+/** Batch cwd: the recorded batch root, else args.repoRoot, else the host's working directory. */
+function shellCwd(): string {
+  const root = getBatchRoot()
+  if (root) return root
+  const a = (globalThis as { args?: { repoRoot?: unknown } }).args
+  if (a && typeof a.repoRoot === 'string' && a.repoRoot) return a.repoRoot
+  // The sandbox has no `process`; the static platform-global tripwire bans a
+  // direct reference, so the host's cwd is read off globalThis when present.
+  const proc = (globalThis as { process?: { cwd?: () => string } }).process
+  return typeof proc?.cwd === 'function' ? proc.cwd() : '.'
+}
+
+async function runBatchViaShell(shellFn: ShellFn, steps: BatchStep[]): Promise<BatchResult> {
+  let out: ShellResult
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` }
+  }
+  const result = parseBatchResult(out.stdout, steps)
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` }
+  }
+  return result
 }
 
 /**
@@ -222,16 +263,28 @@ export interface RunBatchDeps {
  */
 export const LARGE_BATCH_BYTES = 8 * 1024
 
-export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string }, deps?: RunBatchDeps): Promise<BatchResult> {
+export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string; retryMarker?: string; retry?: boolean; idempotent?: boolean }, deps?: RunBatchDeps): Promise<BatchResult> {
+  const shellFn = resolveShell(deps)
+  if (shellFn) return runBatchViaShell(shellFn, steps)
   const agentFn = deps?.agentFn ?? agent
   const logFn = deps?.logFn ?? log
-  const prompt = batchCommandPrompt(steps)
+  // retryMarker is runBatch's own option (a distinct prompt, so a resumed run
+  // re-asks instead of replaying a cached answer); the runner never sees it as an opt.
+  // retry:false skips the runner-side retries below: a caller with its own
+  // retry loop (resilientAgent's guard) takes the first reply as the answer.
+  // idempotent: the batch only reads, so re-running it is safe even when a
+  // prose reply may mean the runner already ran it (see the last branch).
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts
+  opts = agentOpts
+  const script = batchCommandPrompt(steps)
+  const prompt = retryMarker ? `${script}\n\n${retryMarker}` : script
   const promptBytes = utf8ByteLength(prompt)
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model('balanced') && opts.model !== model('deep')) {
     logFn(`[runBatch] ${opts.label || 'batch'}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`)
     opts = { ...opts, model: model('balanced') }
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps)
+  if (retry === false) return result
   const label = opts.label || 'batch'
   const retryOpts = { ...opts, label: `${label}:retry` }
   // One retry, whatever the runner-side cause. Each is a failure of the
@@ -284,6 +337,14 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     // retry; a real missing root or tool says so again and that is terminal.
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner (a guard row is not trusted until it repeats)`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps)
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    // DAT-11 and DAT-18 (run 20261012): the ownership-check runner replied
+    // with the diff's bare file list instead of the JSON array, and the lane
+    // failed on that one slip. A prose reply is not retried by default: the
+    // runner may already have run the script, and a commit or merge must not
+    // run twice. A read-only batch opts in and gets one fresh runner.
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) — retrying once with a fresh runner`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps)
   }
   return result
 }

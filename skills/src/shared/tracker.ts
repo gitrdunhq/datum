@@ -16,7 +16,7 @@ import { stageOpts } from './agent-types'
 import { runBatch } from './agents'
 import { model } from './models'
 import { parseAgentJson } from './utils'
-import { batchCommandPrompt, parseBatchResult, stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'
+import { parseBatchResult, stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'
 
 export type TrackerStage = 'queued' | 'red' | 'green' | 'done' | 'failed' | 'skipped'
 

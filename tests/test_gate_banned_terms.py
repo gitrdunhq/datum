@@ -63,3 +63,28 @@ def test_scan_is_scoped_to_requirements_section_only():
 def test_no_requirements_section_returns_no_errors():
     spec = "## Summary\n\nSomething.\n"
     assert check_banned_terms(spec) == []
+
+
+def test_conditional_term_inside_inline_code_is_an_identifier_not_prose():
+    # Catches: the scanner flagging the tier name `fast` inside a code span
+    # ("`{ fast, balanced, deep }`") as a vague requirement; identifiers in
+    # backticks are code, not a claim about speed.
+    spec = (
+        "## Requirements\n\n"
+        "- R6.1 `readRuntimeConfig(cfg)` returns `{ kind, models: { fast, balanced, deep } }` "
+        "and maps the literal `haiku` to `fast`.\n\n"
+        "## Failure Modes\n\n"
+    )
+    assert check_banned_terms(spec) == []
+
+
+def test_conditional_term_outside_inline_code_on_a_code_line_still_fails():
+    # Catches: stripping code spans also swallowing the prose around them.
+    spec = (
+        "## Requirements\n\n"
+        "- R1 `lookup()` must be fast.\n\n"
+        "## Failure Modes\n\n"
+    )
+    errors = check_banned_terms(spec)
+    assert len(errors) == 1
+    assert "fast" in errors[0]

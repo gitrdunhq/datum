@@ -1,0 +1,4 @@
+{
+  "kinds": ["fake", "pi"],
+  "unavailable": ["pi"]
+}

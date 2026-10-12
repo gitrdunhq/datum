@@ -1,9 +1,8 @@
 import { model, type ModelName } from './shared/models'
-import { runCommandPrompt } from './shared/boot'
 import { resilientAgent, runBatch, verifyCommitIndependently, parseCommitVerification } from './shared/agents'
 import { updateStage, getIssueId } from './shared/tracker'
 import { stageOpts, configureAgentTypes, deterministicChecks } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure } from './shared/batch'
 import {
   laneIntakeSteps,
   postRedSteps,
@@ -135,7 +134,7 @@ async function verifyFileOwnership(
   // be told to run the diff and RETURN a JSON list of the changed paths — a
   // typed-back list that could drop a path and hide a real violation.
   const steps = ownershipCheckSteps(wt, since)
-  const result = await runBatch(steps, stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }))
+  const result = await runBatch(steps, { ...stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }), idempotent: true })
 
   // A missing result is a named tooling failure, never a clean check — the
   // ownership-check agent crashed, was skipped, or returned nothing parseable.
@@ -1942,10 +1941,20 @@ const dagResults: (LaneOutcome | null)[] = await parallel<LaneOutcome>(
         // not a regex over a runner's echo, which could say "done" after a
         // conflict and leave the worktree mid-merge for RED to run on.
         const depMergeStepList = depMergeSteps(wt, depBranches)
-        const depMerge = depMergeFromSteps(parseBatchResult(
-          await resilientAgent(batchCommandPrompt(depMergeStepList), stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' })),
-          depMergeStepList,
-        ), depBranches)
+        // runBatch retries refusals and empty results but lets a thrown agent()
+        // escape. A throw must not leave the thunk: depResolvers[taskId] would
+        // never run and in-batch dependents would hang on depPromises[taskId].
+        // Fail the lane with the dep_merge_failed prefix triage already knows.
+        let depMerge: { ok: boolean; error: string }
+        try {
+          // resilientAgent as the runner (COV-3): a throw or null reply is retried
+          // with backoff, and an unregistered agent type falls back, before the
+          // lane fails. Re-merging an already-merged dependency is a no-op.
+          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts('cli', { label: `dep-merge:${taskId}`, model: 'haiku' }), { agentFn: resilientAgent }), depBranches)
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e)
+          depMerge = { ok: false, error: `dep_merge_failed: could not merge [${depBranches.join(', ')}] — runner threw: ${reason}` }
+        }
         if (!depMerge.ok) {
           log(`[${taskId}] ${depMerge.error}`)
           const failResult: LaneOutcome = { task_id: taskId, status: 'failed', stage: 'CRASH', error: depMerge.error }

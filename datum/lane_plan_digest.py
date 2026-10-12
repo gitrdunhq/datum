@@ -80,6 +80,52 @@ def dumps_digest(digest: dict) -> str:
     )
 
 
+def check_integration_lanes_scheduled(plan: dict, plan_path: Path) -> None:
+    """Every invariant in the epic's PROPERTIES.md has an integration lane.
+
+    Properties schedules integration lanes (`datum lane-plan --properties`)
+    only after its gate passes inside the workflow. A gate fixed and passed
+    by hand, then `datum go --start-from act`, skipped that step and Act ran
+    a plan without them (self-hosted run 20261012: 19 invariant lanes never
+    built, nothing said so). Every Act start digests the plan, so the check
+    lives here and fails closed with the scheduling command.
+    """
+    properties = plan_path.parent / "PROPERTIES.md"
+    if not properties.is_file():
+        return
+    from datum.integration_invariants import (
+        IntegrationInvariantError,
+        parse_integration_invariants,
+    )
+
+    try:
+        invariants = parse_integration_invariants(
+            properties.read_text(encoding="utf-8")
+        )
+    except IntegrationInvariantError as exc:
+        raise DigestError(
+            f"integration_invariants_malformed: {properties}: {exc}"
+        ) from exc
+    if not invariants:
+        return
+    scheduled: set[str] = set()
+    for lane in (plan.get("lanes") or {}).values():
+        if isinstance(lane, dict) and lane.get("kind") == "integration":
+            scheduled.update(str(i) for i in lane.get("invariants") or [])
+    missing = [inv["id"] for inv in invariants if inv["id"] not in scheduled]
+    if not missing:
+        return
+    epic = plan_path.parent
+    raise DigestError(
+        f"integration_lanes_unscheduled: {', '.join(missing)} in {properties} "
+        f"have no integration lane in {plan_path} — schedule them with "
+        f"`datum lane-plan --input {epic}/tasks.json --output {plan_path} "
+        f"--md-output {epic}/TASKS.md --properties {properties}`, commit "
+        f"lane-plan.json and TASKS.md, run `datum gate plan`, then "
+        f"`datum go --start-from act`"
+    )
+
+
 def digest_plan_file(plan_path: Path) -> str:
     if not plan_path.is_file():
         raise DigestError(f"lane plan not found: {plan_path}")
@@ -97,4 +143,6 @@ def digest_plan_file(plan_path: Path) -> str:
         raise DigestError(
             f"git hash-object failed for {plan_path}: {sha.stderr.strip()}"
         )
-    return dumps_digest(build_digest(plan, sha.stdout.strip()))
+    digest = build_digest(plan, sha.stdout.strip())
+    check_integration_lanes_scheduled(plan, plan_path)
+    return dumps_digest(digest)

@@ -5,6 +5,12 @@ export const meta = {
   phases: [{ title: "Setup" }]
 };
 
+// assets/runtime-kinds.json
+var runtime_kinds_default = {
+  kinds: ["fake", "pi"],
+  unavailable: ["pi"]
+};
+
 // skills/src/shared/models.ts
 var DEFAULT_TIERS = {
   fast: "haiku",
@@ -15,6 +21,7 @@ var activeTiers = { ...DEFAULT_TIERS };
 function model(tier) {
   return activeTiers[tier];
 }
+var RUNTIME_KINDS = runtime_kinds_default.kinds;
 
 // skills/src/shared/utils.ts
 function findMatchingBracketEnd(text, start) {
@@ -217,6 +224,22 @@ function utf8Encode(s) {
   }
   return out;
 }
+function utf8ByteLength(s) {
+  let bytes = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 128) bytes += 1;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
+      const d = s.charCodeAt(i + 1);
+      if (d >= 56320 && d <= 57343) {
+        bytes += 4;
+        i++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 // skills/src/shared/batch.ts
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -261,6 +284,9 @@ var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
 }
+function getBatchRoot() {
+  return batchRoot;
+}
 function innerBatchScript(steps2) {
   validateBatchSteps(steps2);
   for (const s of steps2) {
@@ -292,7 +318,7 @@ function setBatchCacheKey(key) {
 var BATCH_TOOL_TIMEOUT_MS = 6e5;
 var TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i;
 function batchCommandPrompt(steps2) {
-  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
+  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. Never author a step row yourself; if you cannot run the script, say so in prose instead. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
 
 ` + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
 
@@ -330,6 +356,16 @@ function parseBatchResult(raw, steps2) {
     }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
+  const authored = arr.find((x) => {
+    if (!x || typeof x !== "object") return false;
+    const o = x;
+    const noExit = o.exit_code === null || o.exit_code === void 0;
+    const noOut = !String(o.stdout ?? "").trim();
+    return noExit && noOut && REFUSAL_RE.test(String(o.stderr ?? ""));
+  });
+  if (authored) {
+    return { steps: [], failed: null, missing: true, refusal: String(authored.stderr) };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
@@ -362,7 +398,10 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute)|not_run|did not run|needs? to approve)\b/i;
+function isRunnerRefusal(reply) {
+  return REFUSAL_RE.test(reply);
+}
 function describeFailure(r, label) {
   if (r.missing) {
     if (r.corrupt) return `${label}: batch_script_corrupt \u2014 the runner did not run the script it was given (${r.corrupt})`;
@@ -377,6 +416,105 @@ function describeFailure(r, label) {
   if (!r.failed) return `${label}: ok`;
   const tail = (r.failed.stderr || r.failed.stdout).trim().split("\n").slice(-5).join("\n");
   return `${label}: step "${r.failed.name}" exited ${r.failed.exit_code}${tail ? ` \u2014 ${tail}` : ""}`;
+}
+
+// skills/src/shared/agents.ts
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps2) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps2), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps2);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
+var LARGE_BATCH_BYTES = 8 * 1024;
+async function runBatch(steps2, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps2);
+  const agentFn = deps?.agentFn ?? agent;
+  const logFn = deps?.logFn ?? log;
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps2);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
+  const promptBytes = utf8ByteLength(prompt);
+  if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
+    logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
+    opts = { ...opts, model: model("balanced") };
+  }
+  let result = parseBatchResult(await agentFn(prompt, opts), steps2);
+  if (retry === false) return result;
+  const label = opts.label || "batch";
+  const retryOpts = { ...opts, label: `${label}:retry` };
+  if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_permission_denied on attempt 1 ("${result.refusal.replace(/\s+/g, " ").slice(0, 120)}") \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner refused this batch`, retryOpts), steps2);
+  } else if (result.missing && result.corrupt) {
+    logFn(`[runBatch] ${label}: batch_script_corrupt on attempt 1 (${result.corrupt}) \u2014 retrying once on the balanced model`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner mistyped this script; copy it exactly`, { ...retryOpts, model: model("balanced") }), steps2);
+  } else if (result.missing && !result.refusal && !result.scriptError) {
+    logFn(`[runBatch] ${label}: runner_empty_result on attempt 1 (the runner returned nothing parseable) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner returned nothing; return the script's stdout`, retryOpts), steps2);
+  } else if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying with a fresh runner (up to two retries)`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 3 \u2014 the previous runner's shell refused to execute the script; run it again`, retryOpts), steps2);
+    if (result.missing && result.scriptError?.startsWith("batch_script_failed")) {
+      logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 2 \u2014 last retry with a fresh runner`);
+      result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 3 of 3 \u2014 two runners' shells refused to execute the script; run it again`, { ...opts, label: `${label}:retry2` }), steps2);
+    }
+  } else if (result.missing && result.scriptError?.startsWith("batch_truncated")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's reply was cut before the JSON array closed; return the script's stdout complete and unabridged, nothing else`, retryOpts), steps2);
+  } else if (result.missing && result.scriptError?.startsWith("batch_timeout")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with the timeout instruction repeated`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner's shell cut the script short; call the Bash tool with timeout 600000 and let the script finish`, retryOpts), steps2);
+  } else if (result.missing && /^batch_(root_missing|tool_missing)/.test(result.scriptError || "")) {
+    logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 \u2014 retrying once with a fresh runner (a guard row is not trusted until it repeats)`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps2);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps2);
+  }
+  return result;
 }
 
 // skills/src/shared/context-relay.ts
@@ -531,11 +669,7 @@ var steps = setupSteps({
   laneIds: a.batchLaneIds,
   lanePlanPath: a.lanePlanPath
 });
-var setupRaw = await agent(
-  batchCommandPrompt(steps),
-  stageOpts("cli", { label: `setup${a.batchTag}`, phase: "Setup", model: model("fast") })
-);
-var setup = parseBatchResult(setupRaw, steps);
+var setup = await runBatch(steps, stageOpts("cli", { label: `setup${a.batchTag}`, phase: "Setup", model: model("fast") }));
 var rootWtInfo = parseAgentJson(stepStdout(setup, "root-wt") || "", {});
 var rootWt = rootWtInfo.root;
 if (!rootWt) throw new Error(`Failed to create root worktree for ${a.batchRunId} (${describeFailure(setup, "setup")})`);

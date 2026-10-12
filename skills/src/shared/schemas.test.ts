@@ -21,3 +21,33 @@ describe('every schema that declares read_witness requires it', () => {
     expect((s as { required: readonly string[] }).required).toContain('read_witness')
   })
 })
+
+// DAT-14 AC1/AC9: the stage result schema requires every field the runner and
+// the lanes read, and types the two new ones.
+describe('STAGE_RESULT_SCHEMA required fields and property types', () => {
+  it('AC1: required lists the six fields in order', () => {
+    expect([...schemas.STAGE_RESULT_SCHEMA.required]).toEqual([
+      'success',
+      'tests_pass',
+      'committed',
+      'read_witness',
+      'files_written',
+      'test_exit_code',
+    ])
+  })
+
+  it('AC1: files_written is an array and test_exit_code is an integer', () => {
+    expect(schemas.STAGE_RESULT_SCHEMA.properties.files_written.type).toBe('array')
+    expect(schemas.STAGE_RESULT_SCHEMA.properties.test_exit_code.type).toBe('integer')
+  })
+
+  it('AC1: REFLECT_SCHEMA and SKEPTIC_SCHEMA still require read_witness', () => {
+    expect([...schemas.REFLECT_SCHEMA.required]).toContain('read_witness')
+    expect([...schemas.SKEPTIC_SCHEMA.required]).toContain('read_witness')
+  })
+
+  it('AC9: the other schemas keep their required lists', () => {
+    expect([...schemas.REFLECT_SCHEMA.required]).toEqual(['reasoning', 'score', 'read_witness'])
+    expect([...schemas.SKEPTIC_SCHEMA.required]).toEqual(['bugs_found', 'confidence', 'verdict', 'read_witness'])
+  })
+})

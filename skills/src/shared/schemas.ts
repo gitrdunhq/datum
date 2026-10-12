@@ -14,7 +14,7 @@ export const STAGE_RESULT_SCHEMA = {
     files_written: { type: 'array', items: { type: 'string' } },
     success: { type: 'boolean' },
     tests_pass: { type: 'boolean' },
-    test_exit_code: { type: 'number' },
+    test_exit_code: { type: 'integer' },
     test_errors: { type: 'array', items: { type: 'string' } },
     test_output: { type: 'string' },
     committed: { type: 'boolean' },
@@ -30,7 +30,9 @@ export const STAGE_RESULT_SCHEMA = {
   // read_witness is required: a structured answer drops optional fields
   // (#341 task-011 twice, the #516 probes: 7 of 9 answers omitted it) and the
   // runner reads it. A stage with nothing deferred returns {}.
-  required: ['success', 'tests_pass', 'committed', 'read_witness'],
+  // files_written and test_exit_code are read by the runner too, so a reply
+  // that omits them is schema-invalid and gets one tier-up retry.
+  required: ['success', 'tests_pass', 'committed', 'read_witness', 'files_written', 'test_exit_code'],
 } as const
 
 export const REFLECT_SCHEMA = {

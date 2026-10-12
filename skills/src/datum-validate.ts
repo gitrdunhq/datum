@@ -2,9 +2,9 @@ import { renderPrompt, parseValidateArgs, evaluateMainSync, testRunCommand } fro
 import type { MainSyncResult } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode, buildVerifyVerdict } from './shared/lane-steps'
-import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles } from './shared/validate-steps'
+import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles, lintFixPaths } from './shared/validate-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
 import { runBatch } from './shared/agents'
@@ -116,7 +116,7 @@ const check = checkResult as ValidateCheck | null
 // commitFilesSteps (a failed commit is a named halt), then confirm no
 // tracked file is still dirty — a fix the agent applied but did not report
 // would otherwise slip through the same way.
-const lintFixes: string[] = Array.from(new Set((check?.lint_fixes || []).filter((f): f is string => typeof f === 'string' && f.trim().length > 0).map((f) => f.trim())))
+const lintFixes: string[] = lintFixPaths(check?.lint_fixes || [], (entry) => log(`lint_fixes entry is not a repo path, not committed: ${entry.slice(0, 200)}`))
 let lintCommitError = ''
 if (mainSync.ok && lintFixes.length > 0) {
   const lintCommitSteps = commitFilesSteps({ wt: '.', files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? '' : 's'}` })
@@ -138,11 +138,9 @@ const dirty = !mainSync.ok || lintCommitError ? { known: true, files: [], detail
 // The batch also PRODUCES .datum/last-test-signal.json from the same shell
 // (`datum gate validate` consumes it — it had no producer before).
 const verifySteps = validateVerifySteps(testCommand, '.', buildCommand || null)
-const verifyRaw = !mainSync.ok ? null : await agent(
-  batchCommandPrompt(verifySteps),
-  stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }),
-)
-const verifyResult = parseBatchResult(verifyRaw, verifySteps)
+const verifyResult = !mainSync.ok
+  ? parseBatchResult(null, verifySteps)
+  : await runBatch(verifySteps, stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }))
 const testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, 'test-verify')) : null
 const testsPassed = testExit === 0
 

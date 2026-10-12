@@ -1,0 +1,86 @@
+{
+  "task_id": "DAT-20",
+  "slug": "token-metrics-jsonl-collector",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify Given metrics.jsonl lines for agent_type 'datum-red' (prompt",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_given_metrics_jsonl_lines_for_agent_type_datum_red_prompt_10",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_given_metrics_jsonl_lines_for_agent_type_datum_red_prompt_10 \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC1:\n    def test_ac1_given_metrics_jsonl_lines_for_agent_type_datum_red_prompt_10(self):\n        \"\"\"\n        PROP-001: Given metrics.jsonl lines for agent_type 'datum-red' (prompt 100, completion 10,\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify per_stage keys are label prefixes (text before the first ':'",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_per_stage_keys_are_label_prefixes_text_before_the_first_with",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_per_stage_keys_are_label_prefixes_text_before_the_first_with \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC2:\n    def test_ac2_per_stage_keys_are_label_prefixes_text_before_the_first_with(self):\n        \"\"\"\n        PROP-002: per_stage keys are label prefixes (text before the first ':') with the same four\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify cached_share['datum-red'] == 0.4 (rounded to 4 decimals), an",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_cached_share_datum_red_0_4_rounded_to_4_decimals_and_cached",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_cached_share_datum_red_0_4_rounded_to_4_decimals_and_cached \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC3:\n    def test_ac3_cached_share_datum_red_0_4_rounded_to_4_decimals_and_cached(self):\n        \"\"\"\n        PROP-003: cached_share['datum-red'] == 0.4 (rounded to 4 decimals), and cached_share['datu\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify A missing metrics.jsonl yields per_agent_type == {}, per_sta",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_a_missing_metrics_jsonl_yields_per_agent_type_per_stage_and",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_a_missing_metrics_jsonl_yields_per_agent_type_per_stage_and \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC4:\n    def test_ac4_a_missing_metrics_jsonl_yields_per_agent_type_per_stage_and(self):\n        \"\"\"\n        PROP-004: A missing metrics.jsonl yields per_agent_type == {}, per_stage == {} and cached_\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify A malformed line 3 makes the collector exit non-zero with a ",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_a_malformed_line_3_makes_the_collector_exit_non_zero_with_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_a_malformed_line_3_makes_the_collector_exit_non_zero_with_a \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC5:\n    def test_ac5_a_malformed_line_3_makes_the_collector_exit_non_zero_with_a(self):\n        \"\"\"\n        PROP-005: A malformed line 3 makes the collector exit non-zero with a message containing '\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "tests/test_closeout_token_metrics_jsonl.py",
+      "kind": "pytest",
+      "purpose": "Verify The existing tests in tests/test_closeout_collectors.py and ",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_the_existing_tests_in_tests_test_closeout_collectors_py_and",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-20 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_the_existing_tests_in_tests_test_closeout_collectors_py_and \u2192 tests/test_closeout_token_metrics_jsonl.py\n\nimport pytest\n\n\nclass TestDAT20AC6:\n    def test_ac6_the_existing_tests_in_tests_test_closeout_collectors_py_and(self):\n        \"\"\"\n        PROP-006: The existing tests in tests/test_closeout_collectors.py and tests/test_closeout_\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "datum/closeout/collect_token_metrics.py": "#!/usr/bin/env python3\n\nimport json\nfrom pathlib import Path\n\n\ndef main() -> None:\n    ...\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

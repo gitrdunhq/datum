@@ -126,3 +126,29 @@ def _isolate_local_llm_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr(
         local_llm, "METRICS_PATH", tmp_path / ".datum" / "local-llm-metrics.jsonl"
     )
+
+
+@pytest.fixture
+def caliper_clean(monkeypatch):
+    """Stub the external `caliper` gate (agent_loop's post-GREEN review) as a
+    clean run: exit 0 and an empty findings list at --output. Only that one
+    command is intercepted; every other subprocess.run goes to the real one.
+    Without this, green- and refactor-phase agent_loop tests escalate with
+    caliper_gate_failed on any machine where caliper is not installed."""
+    import subprocess
+
+    real_run = subprocess.run
+
+    def fake_run(args, *a, **kw):
+        if isinstance(args, (list, tuple)) and list(args[:3]) == ["uv", "run", "caliper"]:
+            argv = list(args)
+            if "--output" in argv:
+                from pathlib import Path as _P
+
+                out = _P(argv[argv.index("--output") + 1])
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text("[]")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return real_run(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)

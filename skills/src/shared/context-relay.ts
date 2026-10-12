@@ -19,7 +19,7 @@
 // construction, no relay to verify.
 // tested-by: skills/src/shared/context-relay.test.ts
 
-import { stepStdout, batchCommandPrompt, type BatchResult, type BatchStep } from './batch'
+import { stepStdout, type BatchResult, type BatchStep } from './batch'
 import { utf8ByteLength, utf8Encode } from './utf8'
 import { gitBlobSha } from './sha1'
 
@@ -143,7 +143,7 @@ export interface RelayedContext {
   files: Record<string, ContextFile>
   warnings: string[]
   /** Inline files whose relayed bytes did not verify: deferred, and the
-   *  caller's cue to re-fetch once (contextInlineRetryPrompt + mergeRelayRetry). */
+   *  caller's cue to re-fetch once (CONTEXT_INLINE_RETRY_MARKER + mergeRelayRetry). */
   mismatched: string[]
 }
 
@@ -216,10 +216,7 @@ export function contextFromRelay(probe: BatchResult, inline: BatchResult | null,
   return { branch, epicDir, files, warnings, mismatched }
 }
 
-/** The second inline attempt: same script, a distinct prompt (a cache miss on resume). */
-export function contextInlineRetryPrompt(steps: BatchStep[]): string {
-  return `${batchCommandPrompt(steps)}\n\n# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`
-}
+export const CONTEXT_INLINE_RETRY_MARKER = "# attempt 2 of 2 — the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte"
 
 /**
  * Fold a re-fetch into the first relay: a file that mismatched on attempt 1

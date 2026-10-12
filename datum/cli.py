@@ -172,6 +172,11 @@ def lane_plan_cmd(
         "--properties",
         help="PROPERTIES.md whose Integration Invariants become task-INT lanes",
     ),
+    renumber: bool = typer.Option(
+        False,
+        "--renumber",
+        help="Rewrite placeholder task-NNN ids to PREFIX-n before building (fresh epics only; ignored with --validate)",
+    ),
 ):
     """Builds lane-plan.json and TASKS.md from tasks.json."""
     import sys
@@ -182,6 +187,8 @@ def lane_plan_cmd(
     args = ["lane_plan.py"]
     if validate:
         args.append("--validate")
+    if renumber:
+        args.append("--renumber")
     args.extend(
         ["--input", input_file, "--output", output_file, "--md-output", md_output]
     )
@@ -729,6 +736,13 @@ def init(
     # moved checkout or an upgraded datum never leaves stale hook paths.
     installed = install_agent_types(Path.cwd(), package_root)
     config.update(installed.as_config())
+    # Files on disk are not agent types the running harness has loaded (a
+    # session started outside the repo, or before this init, has none). The
+    # operator's agent_types_disabled switch is never rewritten here, and it
+    # keeps agent_types false through every later init, including the one the
+    # Act phase runs mid-pipeline.
+    if config.get("agent_types_disabled") is True:
+        config["agent_types"] = False
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     if not json_output:
@@ -2213,13 +2227,21 @@ def worktrees_merge(
     ``report`` and ``error`` and exits 1, so the workflow can demote only
     the lane that did not land and say why.
     """
-    from datum.worktree_manager import LaneMergeError, merge_lane_branches
+    from datum.worktree_manager import (
+        LaneMergeError,
+        merge_lane_branches,
+        regenerate_command_from_config,
+    )
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
     report_dir = Path(".datum") / "runs" / run_id if run_id.strip() else None
     try:
         result = merge_lane_branches(
-            epic_branch, order, commit_message, report_dir=report_dir
+            epic_branch,
+            order,
+            commit_message,
+            report_dir=report_dir,
+            regenerate_command=regenerate_command_from_config(),
         )
     except LaneMergeError as exc:
         typer.echo(json.dumps(exc.payload()))
@@ -3112,6 +3134,47 @@ def gitnexus_analyze(ctx: typer.Context):
 
     res = subprocess.run(["npx", "gitnexus", "analyze"] + ctx.args)
     raise typer.Exit(res.returncode)
+
+
+workflow_app = typer.Typer(name="workflow", help="Run workflow bundles.")
+app.add_typer(workflow_app)
+
+
+@workflow_app.command(name="run")
+def workflow_run_cmd(
+    name: str,
+    args: Path = typer.Option(..., "--args", help="JSON args file."),
+    config: Path = typer.Option(Path(".datum/config.json"), "--config"),
+):
+    """Run workflow bundle NAME via the host-side runner."""
+    from datum.workflow_run import run_workflow
+
+    raise typer.Exit(run_workflow(name, args, config))
+
+
+metrics_app = typer.Typer(name="metrics", help="Per-call token metrics.")
+app.add_typer(metrics_app)
+
+
+@metrics_app.command(name="import-workflow")
+def metrics_import_workflow_cmd(
+    dirs: list[Path] = typer.Argument(..., help="Workflow transcript dirs (each holds journal.jsonl)."),
+    run_id: str = typer.Option(..., "--run-id", help="Run whose metrics.jsonl receives the lines"),
+):
+    """Write .datum/runs/<run-id>/metrics.jsonl lines from hosted Workflow
+    transcripts, one per subagent, so closeout counts hosted tokens."""
+    from datum.run_ids import RUN_ID_RE
+    from datum.workflow_metrics import WorkflowImportError, import_workflow_dirs
+
+    if not RUN_ID_RE.match(run_id):
+        typer.echo(json.dumps({"ok": False, "error": f"run_id_invalid: {run_id!r}"}))
+        raise typer.Exit(code=2)
+    try:
+        result = import_workflow_dirs(run_id, dirs, Path.cwd())
+    except WorkflowImportError as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}))
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps(result))
 
 
 def main():

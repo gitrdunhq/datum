@@ -1,0 +1,734 @@
+{
+  "schema_version": "1.0.0",
+  "total_lanes": 20,
+  "topological_order": [
+    "DAT-10",
+    "DAT-1",
+    "DAT-2",
+    "DAT-3",
+    "DAT-4",
+    "DAT-5",
+    "DAT-6",
+    "DAT-7",
+    "DAT-8",
+    "DAT-9",
+    "DAT-11",
+    "DAT-12",
+    "DAT-13",
+    "DAT-14",
+    "DAT-15",
+    "DAT-16",
+    "DAT-17",
+    "DAT-18",
+    "DAT-19",
+    "DAT-20"
+  ],
+  "file_ownership": {
+    "skills/src/shared/sandbox.d.ts": "DAT-1",
+    "skills/src/shared/batch.ts": "DAT-1",
+    "skills/src/shared/agents.ts": "DAT-1",
+    "skills/src/shared/agents-shell.test.ts": "DAT-1",
+    "skills/src/shared/context-relay.ts": "DAT-2",
+    "skills/src/shared/agents.test.ts": "DAT-2",
+    "skills/src/shared/agents-cli-runbatch.test.ts": "DAT-2",
+    "skills/src/datum-tdd-act-lane.ts": "DAT-3",
+    "skills/src/datum-tdd-act-lane-depmerge.test.ts": "DAT-3",
+    "skills/src/datum-tdd-act-lane.test.ts": "DAT-3",
+    "skills/src/datum-go.ts": "DAT-4",
+    "skills/src/datum-awake.ts": "DAT-4",
+    "skills/src/datum-go-runbatch.test.ts": "DAT-4",
+    "skills/src/datum-tdd-act.ts": "DAT-5",
+    "skills/src/datum-tdd-act-setup.ts": "DAT-5",
+    "skills/src/datum-tdd-act-merge.ts": "DAT-5",
+    "skills/src/datum-tdd-act-docs.ts": "DAT-5",
+    "skills/src/act-entry-runbatch.test.ts": "DAT-5",
+    "skills/src/datum-validate.ts": "DAT-6",
+    "skills/src/datum-closeout.ts": "DAT-6",
+    "skills/src/datum-review.ts": "DAT-6",
+    "skills/src/shared/main-sync-steps.test.ts": "DAT-6",
+    "skills/src/validate-closeout-runbatch.test.ts": "DAT-6",
+    "skills/src/datum-closeout.test.ts": "DAT-6",
+    "skills/src/datum-validate.test.ts": "DAT-6",
+    "skills/src/datum-plan.ts": "DAT-7",
+    "skills/src/datum-plan.test.ts": "DAT-7",
+    "skills/src/datum-properties.ts": "DAT-8",
+    "skills/src/datum-refine.ts": "DAT-8",
+    "skills/src/datum-properties.test.ts": "DAT-8",
+    "skills/src/datum-refine.test.ts": "DAT-8",
+    "skills/src/properties-refine-runbatch.test.ts": "DAT-8",
+    "skills/src/shared/context-relay.test.ts": "DAT-9",
+    "skills/src/shared/tracker.ts": "DAT-9",
+    "skills/src/shared/agent-types-ordering.test.ts": "DAT-9",
+    "skills/src/shared/runbatch-only.test.ts": "DAT-9",
+    "skills/src/shared/lane-steps.ts": "DAT-9",
+    "skills/src/shared/models.ts": "DAT-10",
+    "skills/src/shared/models-runtime-config.test.ts": "DAT-10",
+    "skills/src/runtime/executor.ts": "DAT-11",
+    "skills/src/runtime/fake-executor.ts": "DAT-11",
+    "skills/src/runtime/runner.ts": "DAT-11",
+    "skills/src/runtime/runner-core.test.ts": "DAT-11",
+    "skills/src/runtime/fake-executor.test.ts": "DAT-11",
+    "skills/src/runtime/semaphore.ts": "DAT-12",
+    "skills/src/runtime/semaphore.test.ts": "DAT-12",
+    "skills/src/runtime/runner-semaphore.test.ts": "DAT-12",
+    "skills/src/runtime/metrics.ts": "DAT-13",
+    "skills/src/runtime/metrics.test.ts": "DAT-13",
+    "skills/src/shared/schemas.ts": "DAT-14",
+    "skills/src/shared/schemas.test.ts": "DAT-14",
+    "skills/src/runtime/validate.ts": "DAT-14",
+    "skills/src/runtime/runner-stage-output.test.ts": "DAT-14",
+    "skills/src/runtime/runner-nesting.test.ts": "DAT-15",
+    "skills/src/shared/agent-types.ts": "DAT-16",
+    "skills/src/runtime/runner-cli-guard.test.ts": "DAT-16",
+    "skills/src/runtime/shell.ts": "DAT-17",
+    "skills/src/runtime/fixtures/fixture-go.js": "DAT-17",
+    "skills/src/runtime/fixtures/fixture-child.js": "DAT-17",
+    "skills/src/runtime/runner.test.ts": "DAT-17",
+    "scripts/build-workflows.sh": "DAT-18",
+    "skills/src/runtime/runner-main.test.ts": "DAT-18",
+    "tests/test_build_runner_bundle.py": "DAT-18",
+    "datum/workflow_run.py": "DAT-19",
+    "datum/cli.py": "DAT-19",
+    "tests/test_workflow_run_cli.py": "DAT-19",
+    "datum/closeout/collect_token_metrics.py": "DAT-20",
+    "tests/test_closeout_token_metrics_jsonl.py": "DAT-20"
+  },
+  "lanes": {
+    "DAT-10": {
+      "id": "DAT-10",
+      "title": "readRuntimeConfig pure parser in models.ts",
+      "files": [
+        "skills/src/shared/models.ts",
+        "skills/src/shared/models-runtime-config.test.ts"
+      ],
+      "acceptance_criteria": [
+        "readRuntimeConfig({ runtime: { kind: 'fake', models: { fast: 'f', balanced: 'b', deep: 'd' } } }) returns { kind: 'fake', models: { fast: 'f', balanced: 'b', deep: 'd' }, concurrency: {}, priority: 'batch', client: 'datum' }",
+        "An explicit priority 'interactive' and client 'x' are returned unchanged",
+        "readRuntimeConfig({ runtime: { kind: 'bogus', models } }) throws an Error whose message is 'runtime_kind_unknown: bogus'",
+        "A runtime block missing models.balanced throws 'runtime_models_missing: balanced' (Q4 default: no invented models)",
+        "concurrency { m1: 0 }, { m1: 1.5 } or { m1: -2 } throws 'runtime_concurrency_invalid: m1'",
+        "An exported helper concurrencyFor(rc, 'unknown-model') returns 1",
+        "readRuntimeConfig({}) (no runtime block) throws 'runtime_block_missing', and the function never invents models (Q5 default)",
+        "kind 'pi' is accepted by the parser. Rejecting it is the CLI's job (Q5)",
+        "readRuntimeConfig does no I/O: it is a pure function of its argument"
+      ],
+      "red_note": "In the new vitest file skills/src/shared/models-runtime-config.test.ts, import readRuntimeConfig and concurrencyFor from './models' and assert the exact returned object for the minimal valid block, the defaults (priority 'batch', client 'datum', concurrency lookup 1), and each named error message via toThrow('runtime_kind_unknown: bogus') and the others. This fails because neither function exists. Record Q4 and Q5 provisional defaults in the test names.",
+      "introduces_stubs": false,
+      "estimated_loc": 110,
+      "depends_on": [],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "read-runtime-config",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-1": {
+      "id": "DAT-1",
+      "title": "Shell seam in runBatch plus getBatchRoot accessor",
+      "files": [
+        "skills/src/shared/sandbox.d.ts",
+        "skills/src/shared/batch.ts",
+        "skills/src/shared/agents.ts",
+        "skills/src/shared/agents-shell.test.ts"
+      ],
+      "acceptance_criteria": [
+        "sandbox.d.ts declares `shell?(script: string, opts: { cwd: string; timeoutMs: number }): Promise<{ exit_code: number; stdout: string; stderr: string }>` as an optional global, and `npx tsc -p skills/tsconfig.json` exits 0",
+        "getBatchRoot() is exported from skills/src/shared/batch.ts and returns the value last passed to setBatchRoot('/x/repo'), which is '/x/repo'",
+        "runBatch(steps, opts, { shell, agentFn }) with a fake shell that returns exit_code 0 and a 3-row JSON array on stdout returns a BatchResult with 3 parsed steps. agentFn is called 0 times and batchCommandPrompt is not invoked",
+        "The shell is called exactly once per runBatch call with script === batchScript(steps), opts.cwd === getBatchRoot() and opts.timeoutMs === 600000 (BATCH_TOOL_TIMEOUT_MS)",
+        "With an empty batch root, opts.cwd falls back to args.repoRoot, then to process.cwd()",
+        "deps.shell takes precedence over globalThis.shell: when both are set, only deps.shell is called",
+        "A shell that rejects with Error('boom') makes runBatch return missing: true with scriptError starting 'batch_shell_threw: boom'. agentFn is called 0 times and there is no retry",
+        "A shell returning exit_code 3, unparseable stdout and stderr 'x'.repeat(500) makes runBatch return missing: true with scriptError === 'batch_shell_exit_3: ' + 'x'.repeat(200). agentFn is called 0 times",
+        "With no deps.shell and no globalThis.shell, runBatch sends the same prompt text to agentFn as before, and the existing agents.test.ts retry-path tests pass unchanged"
+      ],
+      "red_note": "In a new vitest file skills/src/shared/agents-shell.test.ts, call runBatch with deps { shell: fakeShell, agentFn: vi.fn() }. Assert parsed step count 3, agentFn.mock.calls.length === 0, and the exact script/cwd/timeoutMs passed to fakeShell (compare against batchScript(steps)). Add negative cases for a rejecting shell (batch_shell_threw:) and for a non-zero exit with junk stdout (batch_shell_exit_<code>: plus the first 200 chars of stderr). Add a getBatchRoot round-trip test, a precedence test (deps.shell over globalThis.shell; set and delete the global in try/finally), and a no-shell test that asserts the agentFn prompt equals batchCommandPrompt(steps). All of these fail today because RunBatchDeps has no shell and getBatchRoot does not exist.",
+      "introduces_stubs": false,
+      "estimated_loc": 160,
+      "depends_on": [
+        "DAT-10"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "runbatch-shell-seam",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-2": {
+      "id": "DAT-2",
+      "title": "verifyCommitIndependently and the retry-guard go through runBatch, with a retry-marker option",
+      "files": [
+        "skills/src/shared/agents.ts",
+        "skills/src/shared/context-relay.ts",
+        "skills/src/shared/agents.test.ts",
+        "skills/src/shared/agents-cli-runbatch.test.ts"
+      ],
+      "acceptance_criteria": [
+        "verifyCommitIndependently calls runBatch with label `verify-commit:<taskId>:<stage>` and model model('fast'). The source slice between `export async function verifyCommitIndependently` and `export interface ResilientAgentDeps` contains `runBatch(` and no `batchCommandPrompt(`",
+        "resilientAgent's dirty-worktree guard calls runBatch(guardSteps, stageOpts('cli', { label: 'retry-guard', model: 'haiku' }), { agentFn, logFn }), so an injected deps.agentFn still receives the guard call in tests",
+        "With a fake shell installed via globalThis.shell, verifyCommitIndependently('task-001', '/wt', ['a.ts'], 'feat', 'green') returns committed: true when the shell's log row contains a matching commit, and the agent global is called 0 times",
+        "runBatch(steps, { label: 'x', retryMarker: CONTEXT_INLINE_RETRY_MARKER }, { agentFn }) with no shell sends a prompt equal to contextInlineRetryPrompt(steps) as it was before the change",
+        "CONTEXT_INLINE_RETRY_MARKER === '# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script\\'s output verbatim, every byte'",
+        "With a shell present, retryMarker is ignored and the shell receives batchScript(steps)",
+        "The agents.test.ts pin at line 272 now asserts `runBatch(` instead of `batchCommandPrompt(` inside verifyCommitIndependently and still asserts the log is bounded (`..HEAD` or `-n <n>`)"
+      ],
+      "red_note": "In the new vitest file skills/src/shared/agents-cli-runbatch.test.ts, install a fake globalThis.shell (restore it in afterEach) and a vi.fn agent global. Assert that verifyCommitIndependently reaches the shell and calls agent 0 times. Drive resilientAgent with a worktree and deps.agentFn returning null, and assert the guard call goes through runBatch: with a shell it calls the shell, and without one it calls agentFn with a prompt equal to batchCommandPrompt(guardSteps). Assert the retryMarker prompt equals the old contextInlineRetryPrompt(steps) text byte for byte. Update the source-text pin in agents.test.ts (around line 272) to the runBatch form. Keep contextInlineRetryPrompt exported and working: task-009 removes it only after its callers move.",
+      "introduces_stubs": false,
+      "estimated_loc": 140,
+      "depends_on": [
+        "DAT-1"
+      ],
+      "file_conflict_with": {
+        "skills/src/shared/agents.ts": "DAT-1"
+      },
+      "stage": "queued",
+      "slug": "agents-cli-calls-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-3": {
+      "id": "DAT-3",
+      "title": "Lane dep-merge goes through runBatch",
+      "files": [
+        "skills/src/datum-tdd-act-lane.ts",
+        "skills/src/datum-tdd-act-lane-depmerge.test.ts",
+        "skills/src/datum-tdd-act-lane.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-tdd-act-lane.ts source contains `runBatch(depMergeStepList` and contains no `batchCommandPrompt(` call",
+        "datum-tdd-act-lane.ts no longer imports batchCommandPrompt from './shared/batch' or runCommandPrompt from './shared/boot'",
+        "The dep-merge call keeps label `dep-merge:${taskId}` and model 'haiku'",
+        "The dep-merge result is still a BatchResult and its failure handling (describeFailure / stepResult) is unchanged. The one pin in datum-tdd-act-lane.test.ts (~:601) that asserts /depMergeFromSteps\\(parseBatchResult\\(/ asserts /depMergeFromSteps\\(await runBatch\\(/ instead; nothing else in that file changes, and datum-tdd-act-lane.test.ts, calls.test.ts and integration.test.ts pass",
+        "`npx tsc -p skills/tsconfig.json` exits 0"
+      ],
+      "red_note": "In the new vitest file skills/src/datum-tdd-act-lane-depmerge.test.ts, read datum-tdd-act-lane.ts as source text. Assert it contains `runBatch(depMergeStepList` with `label: \\`dep-merge:${taskId}\\`` and model 'haiku', has no `batchCommandPrompt(` call, and does not import runCommandPrompt. This fails today because line 1946 wraps batchCommandPrompt in resilientAgent. Do not edit the generated skills/datum-tdd-act-lane.js. The label assertion must match the label exactly as written, `label: \\`dep-merge:${taskId}\\``, including the `}` inside the template literal (a capture such as `\\{([^}]*)\\}` stops at that brace and can never match; anchor on the literal label text instead). Also update the pin in skills/src/datum-tdd-act-lane.test.ts (~:601) from depMergeFromSteps(parseBatchResult( to depMergeFromSteps(await runBatch( and confirm it fails today.",
+      "introduces_stubs": false,
+      "estimated_loc": 40,
+      "depends_on": [
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "lane-dep-merge-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-4": {
+      "id": "DAT-4",
+      "title": "datum-go act-start and preflight checks go through runBatch",
+      "files": [
+        "skills/src/datum-go.ts",
+        "skills/src/datum-awake.ts",
+        "skills/src/datum-go-runbatch.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-go.ts contains no `batchCommandPrompt(` and no `runCommandPrompt(` call, and imports neither symbol",
+        "The act-start dispatch is `runBatch(actStart, ...)` and keeps its existing label",
+        "preflight-tool-check and preflight-gitignore are each a runBatch call over a one-element BatchStep array whose command is the same command string runCommandPrompt received before (for example `datum gitignore-check --fix` when yolo is set)",
+        "A preflight step with exit_code != 0 still produces the same halt and log message as before. This is exercised by a pure helper or source pin in the test",
+        "setBatchCacheKey and setBatchRoot still precede the first runBatch call in datum-go.ts",
+        "datum-awake.ts no longer imports batchCommandPrompt, and `npx tsc -p skills/tsconfig.json` exits 0",
+        "The existing datum-go.test.ts passes"
+      ],
+      "red_note": "In the new vitest file skills/src/datum-go-runbatch.test.ts, read datum-go.ts and datum-awake.ts as source text. Assert: no `batchCommandPrompt(` or `runCommandPrompt(` call in datum-go.ts; `runBatch(actStart` is present; the gitignore-check and preflight tool-check commands appear inside runBatch step arrays; the index of the first setBatchRoot( is less than the index of the first runBatch(; datum-awake.ts has no batchCommandPrompt import. All of these fail today.",
+      "introduces_stubs": false,
+      "estimated_loc": 90,
+      "depends_on": [
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "go-cli-calls-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-5": {
+      "id": "DAT-5",
+      "title": "datum-tdd-act, setup and merge datum-cli calls go through runBatch",
+      "files": [
+        "skills/src/datum-tdd-act.ts",
+        "skills/src/datum-tdd-act-setup.ts",
+        "skills/src/datum-tdd-act-merge.ts",
+        "skills/src/datum-tdd-act-docs.ts",
+        "skills/src/act-entry-runbatch.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-tdd-act.ts, datum-tdd-act-setup.ts and datum-tdd-act-merge.ts contain no `batchCommandPrompt(` call and no batchCommandPrompt import",
+        "datum-tdd-act.ts dispatches `runBatch(actStart`, datum-tdd-act-setup.ts dispatches `runBatch(steps` and datum-tdd-act-merge.ts dispatches `runBatch(steps`, each with its original label",
+        "datum-tdd-act-docs.ts no longer imports batchCommandPrompt",
+        "setBatchCacheKey and setBatchRoot precede the first runBatch call in each of the three bundles",
+        "The existing datum-tdd-act.test.ts and datum-tdd-act-merge.test.ts pass, and `npx tsc -p skills/tsconfig.json` exits 0"
+      ],
+      "red_note": "In the new vitest file skills/src/act-entry-runbatch.test.ts, read the four sources as text and assert the runBatch forms named in the ACs, the absence of `batchCommandPrompt` (call and import), and that setBatchRoot( comes before the first runBatch(. This fails today because each file calls agent(batchCommandPrompt(...)).",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "act-entry-cli-calls-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-6": {
+      "id": "DAT-6",
+      "title": "datum-validate and datum-closeout datum-cli calls go through runBatch",
+      "files": [
+        "skills/src/datum-validate.ts",
+        "skills/src/datum-closeout.ts",
+        "skills/src/datum-review.ts",
+        "skills/src/shared/main-sync-steps.test.ts",
+        "skills/src/validate-closeout-runbatch.test.ts",
+        "skills/src/datum-closeout.test.ts",
+        "skills/src/datum-validate.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-validate.ts contains `runBatch(verifySteps` and no `batchCommandPrompt(` call or import",
+        "datum-closeout.ts contains `runBatch(collectSteps` and `runBatch(archiveSteps`, and no `batchCommandPrompt(` call or import",
+        "datum-review.ts no longer imports batchCommandPrompt",
+        "main-sync-steps.test.ts line ~233 asserts the absence of any `batchCommandPrompt(` call in datum-validate.ts instead of the old `agent(batchCommandPrompt(syncSteps)` pin, and the test passes",
+        "The three source-text pins that assert the old call shape are updated to the runBatch shape and nothing else in those files changes: datum-closeout.test.ts asserts /runBatch\\(collectSteps/ where it asserted /batchCommandPrompt\\(collectSteps\\)/ and /runBatch\\(archiveSteps/ where it asserted /batchCommandPrompt\\(archiveSteps\\)/; datum-validate.test.ts asserts /runBatch\\(verifySteps/ where it asserted /batchCommandPrompt\\(/; both files then pass, and `npx tsc -p skills/tsconfig.json` exits 0"
+      ],
+      "red_note": "In the new vitest file skills/src/validate-closeout-runbatch.test.ts, read datum-validate.ts, datum-closeout.ts and datum-review.ts as text. Assert the runBatch(verifySteps / collectSteps / archiveSteps forms and the absence of batchCommandPrompt (call and import). This fails today. Update the existing pin in main-sync-steps.test.ts to the new form in the same lane.",
+      "introduces_stubs": false,
+      "estimated_loc": 70,
+      "depends_on": [
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "validate-closeout-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-7": {
+      "id": "DAT-7",
+      "title": "datum-plan context-inline retries go through runBatch with the retry marker",
+      "files": [
+        "skills/src/datum-plan.ts",
+        "skills/src/datum-plan.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-plan.ts contains no `contextInlineRetryPrompt(` call and does not import contextInlineRetryPrompt",
+        "Both retry sites call runBatch with label 'read-context-files:retry', model model('fast') and retryMarker CONTEXT_INLINE_RETRY_MARKER. The :82 site keeps bootstrapOpts('cli', ...) and the :143 site keeps stageOpts('cli', ...)",
+        "The retry result is still merged with mergeRelayRetry",
+        "datum-plan.test.ts's pin 'retries with contextInlineRetryPrompt and merges with mergeRelayRetry' is updated to assert the runBatch + CONTEXT_INLINE_RETRY_MARKER form and passes",
+        "`npx tsc -p skills/tsconfig.json` exits 0"
+      ],
+      "red_note": "Edit the pin in skills/src/datum-plan.test.ts (around line 556) so it expects `runBatch(` with `retryMarker: CONTEXT_INLINE_RETRY_MARKER` and no `contextInlineRetryPrompt(` in datum-plan.ts. It must fail against the current source before GREEN. Depends on task-002 for the retryMarker option and the constant.",
+      "introduces_stubs": false,
+      "estimated_loc": 40,
+      "depends_on": [
+        "DAT-2",
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "plan-context-retry-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-8": {
+      "id": "DAT-8",
+      "title": "datum-properties and datum-refine context-inline retries go through runBatch",
+      "files": [
+        "skills/src/datum-properties.ts",
+        "skills/src/datum-refine.ts",
+        "skills/src/datum-properties.test.ts",
+        "skills/src/datum-refine.test.ts",
+        "skills/src/properties-refine-runbatch.test.ts"
+      ],
+      "acceptance_criteria": [
+        "datum-properties.ts and datum-refine.ts contain no `contextInlineRetryPrompt(` call and do not import it",
+        "Each file calls runBatch(inlineSteps, stageOpts('cli', { label: 'read-context-files:retry', model: model('fast'), retryMarker: CONTEXT_INLINE_RETRY_MARKER })) or an equivalent with the same label, model and marker, and still merges with mergeRelayRetry",
+        "The pins in datum-properties.test.ts (~:194) and datum-refine.test.ts (~:256) assert the new form and pass",
+        "`npx tsc -p skills/tsconfig.json` exits 0"
+      ],
+      "red_note": "Write a new vitest file skills/src/properties-refine-runbatch.test.ts with one test function per acceptance criterion (at least 4): AC1 reads datum-properties.ts and datum-refine.ts as source and asserts neither contains `contextInlineRetryPrompt(` nor imports it; AC2 asserts each file contains a runBatch( call with label 'read-context-files:retry', model('fast') and CONTEXT_INLINE_RETRY_MARKER, and still calls mergeRelayRetry; AC3 asserts the pins in datum-properties.test.ts and datum-refine.test.ts reference runBatch( and not contextInlineRetryPrompt(; AC4 runs `npx tsc -p skills/tsconfig.json` with a 60 s timeout and asserts exit 0. Also update the 'retries with contextInlineRetryPrompt' pins in skills/src/datum-properties.test.ts (~:194) and skills/src/datum-refine.test.ts (~:256) to expect `runBatch(` with the CONTEXT_INLINE_RETRY_MARKER marker and no contextInlineRetryPrompt( call. Confirm every new test and both pins fail against the current sources.",
+      "introduces_stubs": false,
+      "estimated_loc": 50,
+      "depends_on": [
+        "DAT-2",
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "properties-refine-context-retry-runbatch",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-9": {
+      "id": "DAT-9",
+      "title": "Repo-wide guard: batchCommandPrompt only in batch.ts and agents.ts",
+      "files": [
+        "skills/src/shared/context-relay.ts",
+        "skills/src/shared/context-relay.test.ts",
+        "skills/src/shared/tracker.ts",
+        "skills/src/shared/agent-types-ordering.test.ts",
+        "skills/src/shared/runbatch-only.test.ts",
+        "skills/src/datum-plan.ts",
+        "skills/src/datum-properties.ts",
+        "skills/src/datum-refine.ts",
+        "skills/src/shared/lane-steps.ts",
+        "skills/src/datum-plan.test.ts",
+        "skills/src/shared/agents-cli-runbatch.test.ts"
+      ],
+      "acceptance_criteria": [
+        "A vitest scanning skills/src/**/*.ts (excluding *.test.ts) finds `batchCommandPrompt` only in skills/src/shared/batch.ts and skills/src/shared/agents.ts",
+        "The same scan finds `runCommandPrompt` and `contextInlineRetryPrompt` only in boot.ts, context-relay.ts and agents.ts (with contextInlineRetryPrompt removed entirely, it appears nowhere outside tests)",
+        "context-relay.ts still exports CONTEXT_INLINE_RETRY_MARKER, and context-relay.test.ts's contextInlineRetryPrompt case is rewritten to assert the marker text",
+        "tracker.ts no longer imports batchCommandPrompt",
+        "agent-types-ordering.test.ts pins only on runBatch( as the first batch dispatch (no batchCommandPrompt fallback), and it passes for every datum-*.ts script with setBatchCacheKey and setBatchRoot before the first runBatch",
+        "`npx tsc -p skills/tsconfig.json` exits 0, and `npx vitest run skills/src` passes except the known zsh failure in batch.test.ts",
+        "The leftover references outside the allowed set are gone: the unused batchCommandPrompt imports in datum-plan.ts, datum-properties.ts and datum-refine.ts, and the batchCommandPrompt mention in the header comment of shared/lane-steps.ts. datum-plan.test.ts (~:367) no longer expects /batchCommandPrompt/ in datum-plan.ts, and shared/agents-cli-runbatch.test.ts (~:174) builds its expected retry prompt as `${batchCommandPrompt(steps)}\\n\\n${CONTEXT_INLINE_RETRY_MARKER}` instead of calling contextInlineRetryPrompt; nothing else in those two test files changes"
+      ],
+      "red_note": "The new vitest skills/src/shared/runbatch-only.test.ts walks skills/src recursively with node:fs. It collects every non-test .ts file that mentions batchCommandPrompt, runCommandPrompt or contextInlineRetryPrompt and asserts the exact allowed file sets from R2.4. It must fail now because context-relay.ts and tracker.ts still reference batchCommandPrompt. Rewrite the context-relay.test.ts case that imports contextInlineRetryPrompt so it asserts CONTEXT_INLINE_RETRY_MARKER instead. This lane runs last among the conversion lanes because removing contextInlineRetryPrompt earlier would break the plan, properties and refine sources. Also update skills/src/datum-plan.test.ts (~:367) so it no longer expects /batchCommandPrompt/ in datum-plan.ts, and skills/src/shared/agents-cli-runbatch.test.ts (~:174) so its expected retry prompt is `${batchCommandPrompt(steps)}\\n\\n${CONTEXT_INLINE_RETRY_MARKER}` rather than a contextInlineRetryPrompt(...) call (GREEN's diagnosis from run wf_f4cdc102-9b4).",
+      "introduces_stubs": false,
+      "estimated_loc": 90,
+      "depends_on": [
+        "DAT-2",
+        "DAT-3",
+        "DAT-4",
+        "DAT-5",
+        "DAT-6",
+        "DAT-7",
+        "DAT-8",
+        "DAT-1"
+      ],
+      "file_conflict_with": {
+        "skills/src/shared/context-relay.ts": "DAT-2",
+        "skills/src/datum-plan.ts": "DAT-7",
+        "skills/src/datum-properties.ts": "DAT-8",
+        "skills/src/datum-refine.ts": "DAT-8",
+        "skills/src/datum-plan.test.ts": "DAT-7",
+        "skills/src/shared/agents-cli-runbatch.test.ts": "DAT-2"
+      },
+      "stage": "queued",
+      "slug": "runbatch-only-guard",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-11": {
+      "id": "DAT-11",
+      "title": "runBundle core with StageExecutor interface and FakeExecutor",
+      "files": [
+        "skills/src/runtime/executor.ts",
+        "skills/src/runtime/fake-executor.ts",
+        "skills/src/runtime/runner.ts",
+        "skills/src/runtime/runner-core.test.ts",
+        "skills/src/runtime/fake-executor.test.ts"
+      ],
+      "acceptance_criteria": [
+        "runBundle({ bundlePath, args, executor, shell, skillsDirs, log, runtime, repoRoot }) resolves with the bundle's top-level return value for a bundle containing `export const meta = {...}` and a top-level `return 42`",
+        "Inside a bundle, typeof agent/parallel/pipeline/phase/log/workflow/shell === 'function' and typeof args/budget === 'object'",
+        "parallel([ok1, reject, ok2]) starts all three thunks before awaiting any (the FakeExecutor records 3 starts while held), returns [x, null, y] in input order",
+        "pipeline(['a','b','c'], s1, s2) runs s1 then s2 per item with each stage receiving the previous stage's result. An item whose s1 rejects yields null and s2 is not called for it (Q2 default)",
+        "phase('p') and log('l') each call opts.log exactly once. budget.total === null, budget.remaining() === null, and budget.spent() equals the sum of prompt_tokens + completion_tokens over replies",
+        "agent(prompt, { model: 'fast-id', label: 'x' }) sends a StageRequest with model equal to the resolved tier id, prompt unchanged and opts.label 'x', and returns parseAgentJson(reply.text)",
+        "FakeExecutor answers with the first script entry whose labelPrefix prefixes req.opts.label, otherwise the default reply. requests records { startedAt, endedAt } in call order",
+        "FakeExecutor.hold('h') then 3 'h\u2026' requests gives 3 recorded starts and 0 ends, and release('h') gives 3 ends",
+        "The runner source contains no assignment to Math.random, and `grep -rn \"fetch(\\|http\\|net\\.\" skills/src/runtime --include=*.ts` outside tests and fixtures is empty"
+      ],
+      "red_note": "runner-core.test.ts writes small post-processed bundle strings to a temp dir (node:fs mkdtempSync) and calls runBundle with a FakeExecutor and a vi.fn shell. It asserts the return value, the typeof of each global, parallel ordering and null mapping, pipeline per-item stage order and null skipping, budget values, and the StageRequest model resolution. fake-executor.test.ts covers prefix matching, default reply, request timestamps and hold/release (3 starts, 0 ends, then 3 ends). Both fail because skills/src/runtime/ does not exist. No contract file exists yet for StageExecutor: it is created here in executor.ts. workflow() is a stub that rejects 'workflow_not_implemented' until task-015, and agent goes straight to the executor until semaphores land in task-012.",
+      "introduces_stubs": true,
+      "estimated_loc": 330,
+      "depends_on": [
+        "DAT-1",
+        "DAT-10"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "runner-core-fake-executor",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-12": {
+      "id": "DAT-12",
+      "title": "Per-model semaphores with agentType affinity and client/priority headers",
+      "files": [
+        "skills/src/runtime/semaphore.ts",
+        "skills/src/runtime/runner.ts",
+        "skills/src/runtime/semaphore.test.ts",
+        "skills/src/runtime/runner-semaphore.test.ts"
+      ],
+      "acceptance_criteria": [
+        "With concurrency { m1: 2 } and 5 held requests for m1, the FakeExecutor never records more than 2 in flight at once, and all 5 finish after release",
+        "A model with no concurrency entry runs 1 request at a time",
+        "With waiters [A1, B1, A2] queued and a finishing request of agentType A, start order is A1, A2, B1",
+        "With no waiter matching the finished request's agentType, the earliest-arrived waiter starts next",
+        "Every recorded request has headers { 'X-Client': 'datum', 'X-Priority': 'batch' } under the default runtime config",
+        "Over 50 queued requests the in-flight count never exceeds concurrency[model]",
+        "Semaphore bookkeeping for 1,000 queued requests against a FakeExecutor finishes with mean per-request overhead under 5 ms"
+      ],
+      "red_note": "semaphore.test.ts unit-tests the semaphore directly. It covers the max-in-flight counter, FIFO order, and the [A1,B1,A2] case with an A release giving A1,A2,B1. runner-semaphore.test.ts runs a bundle that fires 5 parallel agent() calls on a held model through runBundle and asserts the max concurrent count from FakeExecutor.requests timestamps, plus the exact X-Client/X-Priority headers. It also covers the 50-request bound and the 1,000-request overhead under 5 ms. These fail because no semaphore exists and requests carry no headers.",
+      "introduces_stubs": false,
+      "estimated_loc": 220,
+      "depends_on": [
+        "DAT-11",
+        "DAT-10"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "runner-model-semaphores",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-13": {
+      "id": "DAT-13",
+      "title": "Per-call metrics.jsonl sink",
+      "files": [
+        "skills/src/runtime/metrics.ts",
+        "skills/src/runtime/runner.ts",
+        "skills/src/runtime/metrics.test.ts"
+      ],
+      "acceptance_criteria": [
+        "Each executed request appends exactly one line whose keys are exactly ['ts','run_id','label','agent_type','model','prompt_tokens','completion_tokens','cached_tokens','prefill_ms','decode_ms','queue_wait_ms','wall_ms','attempt','outcome']",
+        "A reply with no usage and no timings writes 0 for prompt_tokens, completion_tokens, cached_tokens, prefill_ms and decode_ms",
+        "runId is args.runId when it is a non-empty string. Otherwise it is the runner start time formatted as YYYYMMDD-HHMMSS in UTC (deriveRunId(new Date(Date.UTC(2026,9,12,5,7,9))) === '20261012-050709'). The directory is created when absent",
+        "queue_wait_ms measures agent() entry to semaphore acquisition (a request held behind another on concurrency 1 shows queue_wait_ms > 0), and wall_ms measures acquisition to reply",
+        "An executor that throws Error('down') writes a line with outcome 'error' and the agent() call rejects with 'down'",
+        "A valid reply writes outcome 'ok' with attempt 1 (Q6 default)",
+        "An unwritable runs directory makes the call reject with the filesystem error (no silent drop)",
+        "No line contains the prompt text or reply text"
+      ],
+      "red_note": "metrics.test.ts runs runBundle against a temp repoRoot with a FakeExecutor. It reads .datum/runs/<runId>/metrics.jsonl, then asserts Object.keys of each line equals the exact list in order, the zero-fill, the runId derivation (pure helper with a fixed Date), queue_wait_ms > 0 for a queued request, the 'error' outcome plus rejection, an unwritable-dir rejection (chmod 0o500 on the runs dir), and that the prompt string does not appear in the file. These fail because no metrics sink exists.",
+      "introduces_stubs": false,
+      "estimated_loc": 180,
+      "depends_on": [
+        "DAT-12",
+        "DAT-11"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "runner-metrics-jsonl",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-14": {
+      "id": "DAT-14",
+      "title": "Stage output schema validation with one tier-up retry",
+      "files": [
+        "skills/src/shared/schemas.ts",
+        "skills/src/shared/schemas.test.ts",
+        "skills/src/runtime/validate.ts",
+        "skills/src/runtime/runner.ts",
+        "skills/src/runtime/runner-stage-output.test.ts"
+      ],
+      "acceptance_criteria": [
+        "STAGE_RESULT_SCHEMA.required equals ['success','tests_pass','committed','read_witness','files_written','test_exit_code'], properties.files_written.type === 'array' and properties.test_exit_code.type === 'integer'. REFLECT_SCHEMA.required and SKEPTIC_SCHEMA.required still include 'read_witness'",
+        "validateAgainstSchema(STAGE_RESULT_SCHEMA, { success: true }) returns every missing field name, and a value { test_exit_code: 1.5 } is reported as wrongly typed integer. Types string, number, integer, boolean, array and object are all checked",
+        "A schema-invalid fast-tier reply logs 'stage_output_invalid: <label>: <fields>', writes one metrics line with outcome 'invalid' and attempt 1, and retries with model equal to the balanced tier id and attempt 2",
+        "A schema-invalid reply on retry returns null and leaves two metrics lines, both with outcome 'invalid'",
+        "A schema-invalid deep-tier reply is not retried: exactly one request is recorded and the result is null",
+        "When balanced and deep share a model id, an invalid balanced reply logs 'stage_output_invalid: <label>: no distinct higher tier' and returns null with no retry (Q4 default). A model id not in the models map, including 'haiku', is treated as fast",
+        "A reply that parseAgentJson cannot parse takes the invalid path",
+        "agent() without opts.schema returns the parsed value with no validation",
+        "schemas.test.ts pins the updated required lists, and assertReadWitness on the hosted path is unchanged"
+      ],
+      "red_note": "Extend schemas.test.ts to pin the six required STAGE_RESULT_SCHEMA fields and the files_written/test_exit_code property types. runner-stage-output.test.ts covers validateAgainstSchema directly and drives runBundle with FakeExecutor scripts for: invalid then valid (two requests, different models, attempt 1 then 2), invalid twice (null, two 'invalid' lines), a deep miss (one request), shared-model tiers (the 'no distinct higher tier' log), and a 'haiku' model treated as fast. These fail because the schema lacks the fields and the runner has no validator. Lane prompts that produce StageResult may need the two new fields. If a hosted test breaks on them, note it in the PR rather than widening scope.",
+      "introduces_stubs": false,
+      "estimated_loc": 260,
+      "depends_on": [
+        "DAT-13",
+        "DAT-11",
+        "DAT-10"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "stage-output-tier-up",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-15": {
+      "id": "DAT-15",
+      "title": "Nested workflow() resolution sharing executor, shell, semaphores and metrics",
+      "files": [
+        "skills/src/runtime/runner.ts",
+        "skills/src/runtime/runner-nesting.test.ts"
+      ],
+      "acceptance_criteria": [
+        "workflow({ name: 'child' }) with skillsDirs [dirA, dirB], where both contain child.js, runs dirA/child.js",
+        "workflow({ name: 'missing' }) rejects with an Error whose message starts 'workflow_not_found: missing' and contains both dirA and dirB",
+        "workflow({ scriptPath: p }) loads p regardless of skillsDirs",
+        "The child receives the args passed to workflow() as its `args` global, and its return value resolves the parent's await",
+        "With concurrency { m1: 1 }, a parent request and a child request on m1 never overlap (shared semaphore map), and child requests are written to the same metrics.jsonl"
+      ],
+      "red_note": "runner-nesting.test.ts writes parent and child bundle strings into two temp skills dirs. It asserts first-dir-wins resolution, the exact workflow_not_found message listing both directories, args passthrough, child result embedding, no overlap on a concurrency-1 model across parent and child (from FakeExecutor timestamps), and a single shared metrics file. This fails because workflow() is the task-011 stub.",
+      "introduces_stubs": false,
+      "estimated_loc": 120,
+      "depends_on": [
+        "DAT-14",
+        "DAT-12",
+        "DAT-13",
+        "DAT-11"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "runner-nested-workflow",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-16": {
+      "id": "DAT-16",
+      "title": "Reject datum-cli agent() calls with cli_call_bypassed_runbatch and force agent types on",
+      "files": [
+        "skills/src/runtime/runner.ts",
+        "skills/src/shared/agent-types.ts",
+        "skills/src/runtime/runner-cli-guard.test.ts"
+      ],
+      "acceptance_criteria": [
+        "Inside runBundle, agent('p', { agentType: 'datum-cli', label: 'leak' }) rejects with an Error whose message starts 'cli_call_bypassed_runbatch' and contains 'leak'",
+        "For that call the FakeExecutor records 0 requests and metrics.jsonl gains 0 lines",
+        "With globalThis.datumRuntime = { agentTypes: true }, readAgentTypeConfig({ agent_types: false }).agentTypes === true, and after configureAgentTypes, stageOpts('cli', { label: 'x' }).agentType === 'datum-cli'",
+        "Without the override, readAgentTypeConfig({ agent_types: false }).agentTypes === false (hosted path unchanged), and the existing agent-types.test.ts passes",
+        "runBundle removes the override when the bundle settles, whether it resolves or rejects"
+      ],
+      "red_note": "runner-cli-guard.test.ts runs a bundle that calls agent with agentType 'datum-cli'. It asserts the rejection message prefix and label, zero FakeExecutor requests and no metrics line. It then unit-tests readAgentTypeConfig and stageOpts with and without globalThis.datumRuntime (reset with resetAgentTypesForTests and delete the global in afterEach), and checks that runBundle clears the override after a rejecting bundle. This fails because the runner forwards every call and agent-types.ts has no override. Q9 mechanism: a globalThis.datumRuntime flag. The bundled copy of agent-types.ts reads globals, not the runner's module instance.",
+      "introduces_stubs": false,
+      "estimated_loc": 110,
+      "depends_on": [
+        "DAT-15",
+        "DAT-9",
+        "DAT-11",
+        "DAT-13"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "runner-cli-call-guard",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-17": {
+      "id": "DAT-17",
+      "title": "Real subprocess shell and end-to-end fixture bundles",
+      "files": [
+        "skills/src/runtime/shell.ts",
+        "skills/src/runtime/fixtures/fixture-go.js",
+        "skills/src/runtime/fixtures/fixture-child.js",
+        "skills/src/runtime/runner.test.ts"
+      ],
+      "acceptance_criteria": [
+        "nodeShell('printf ok', { cwd: tmp, timeoutMs: 5000 }) resolves { exit_code: 0, stdout: 'ok', stderr: '' }, and a script exceeding timeoutMs rejects with a message containing 'timeout'",
+        "fixture-go.js and fixture-child.js start with `export const meta`, use a top-level `return`, and contain no `import`",
+        "runBundle on fixture-go.js with FakeExecutor and nodeShell returns an object deep-equal to the expected parent result, with the child result embedded, the literal 'fixture-shell-ok' from the shell step and null in the rejected thunk's slot",
+        "FakeExecutor.requests.map(r => r.opts.label) equals the expected label list in order",
+        "metrics.jsonl under the temp repo root has exactly one line per recorded request",
+        "The same file covers cli_call_bypassed_runbatch, workflow_not_found, a schema-invalid reply with a successful tier-up, a schema-invalid reply failing twice (null, two 'invalid' lines) and a deep miss (one request)"
+      ],
+      "red_note": "skills/src/runtime/runner.test.ts copies the fixtures into a temp skills dir, runs runBundle with nodeShell and a scripted FakeExecutor, and asserts the exact result object, the label list, the metrics line count and each negative path from R10.4. It fails because shell.ts and the fixtures do not exist. The fixtures are plain .js outside tsc (no allowJs). They must not import anything and must parse the shell stdout inline with JSON.parse, mirroring parseBatchResult's row shape { step, exit_code, stdout }.",
+      "introduces_stubs": false,
+      "estimated_loc": 280,
+      "depends_on": [
+        "DAT-16",
+        "DAT-11",
+        "DAT-1"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "runner-e2e-fixture-shell",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-18": {
+      "id": "DAT-18",
+      "title": "Node entry for runner and second esbuild call in build-workflows.sh",
+      "files": [
+        "skills/src/runtime/runner.ts",
+        "scripts/build-workflows.sh",
+        "skills/src/runtime/runner-main.test.ts",
+        "tests/test_build_runner_bundle.py"
+      ],
+      "acceptance_criteria": [
+        "main(['--bundle', b, '--args', a, '--config', c, '--repo-root', r, '--skills-dir', d]) on a bundle returning {ok:1} writes '{\"ok\":1}' to stdout and returns exit code 0",
+        "A bundle that throws Error('bad') makes main return 1 and write 'bad' to stderr",
+        "bash scripts/build-workflows.sh produces skills/runtime/runner.js whose first line starts with '// @generated \u2014 DO NOT EDIT. Source: skills/src/', and the script's verify stage fails if that banner is missing",
+        "The datum-* loop's meta/return post-processing is not applied to runner.js, and existing bundles are byte-identical apart from changes in their own sources",
+        "package.json dependencies are unchanged"
+      ],
+      "red_note": "skills/src/runtime/runner-main.test.ts calls the exported main(argv, io) with injected stdout and stderr writers against temp bundle, args and config files. It asserts the exact stdout JSON, exit 0 and exit 1 with the stderr message. tests/test_build_runner_bundle.py (pytest) runs `bash scripts/build-workflows.sh` via subprocess with an argv list (no shell=True) and a timeout. It asserts skills/runtime/runner.js exists with the @generated banner on line 1 and does not start with `export const meta`. Both fail today. skills/runtime/runner.js is a generated file: never list or hand-edit it, the build produces it.",
+      "introduces_stubs": false,
+      "estimated_loc": 160,
+      "depends_on": [
+        "DAT-17",
+        "DAT-16",
+        "DAT-11",
+        "DAT-10"
+      ],
+      "file_conflict_with": {
+        "skills/src/runtime/runner.ts": "DAT-11"
+      },
+      "stage": "queued",
+      "slug": "runner-node-entry-build",
+      "kind": "behavioral",
+      "test_command": "npx vitest run"
+    },
+    "DAT-19": {
+      "id": "DAT-19",
+      "title": "datum workflow run <name> command",
+      "files": [
+        "datum/workflow_run.py",
+        "datum/cli.py",
+        "tests/test_workflow_run_cli.py"
+      ],
+      "acceptance_criteria": [
+        "`datum workflow run fixture --args a.json` with a stub runner printing '{\"r\":1}' prints {\"r\":1} on stdout and exits 0",
+        "A runner that exits 1 with 'boom' on stderr makes the command exit 1 with 'boom' on stderr",
+        "Exit 2 with a message on stderr for each of: bundle found in neither directory, args file missing, args file not JSON, config with no runtime block, runtime.kind unknown ('runtime_kind_unknown: <kind>'), and runtime.kind 'pi' ('runtime_kind_unavailable: pi', Q5 default)",
+        "The runner is spawned via subprocess with a list argv (no shell=True, no os.system) and an explicit timeout",
+        "The bundle lookup prefers .datum/skills/<name>.js over <skills_dir>/<name>.js",
+        "The datum/cli.py addition is under 15 lines, and tests/test_cli_flag_contract.py passes unchanged",
+        "pyproject.toml dependencies are unchanged"
+      ],
+      "red_note": "tests/test_workflow_run_cli.py uses typer.testing.CliRunner (or subprocess) in a tmp_path repo with .datum/config.json and .datum/skills/<name>.js. It points the command at a stub runner, a tiny node or python script injected via a module-level runner-path seam in workflow_run.py, so tests do not need a built runner.js. It asserts stdout JSON and exit 0, exit 1 with stderr passthrough, and one test per exit-2 cause with its exact message. It fails because there is no `workflow` sub-app. The runner argv contract (--bundle/--args/--config/--repo-root/--skills-dir) comes from task-018.",
+      "introduces_stubs": false,
+      "estimated_loc": 200,
+      "depends_on": [
+        "DAT-18",
+        "DAT-11"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "workflow-run-cli",
+      "kind": "behavioral",
+      "test_command": "uv run pytest -x -q tests/test_workflow_run_cli.py"
+    },
+    "DAT-20": {
+      "id": "DAT-20",
+      "title": "Collector reads metrics.jsonl for per-agent-type, per-stage and cached-share totals",
+      "files": [
+        "datum/closeout/collect_token_metrics.py",
+        "tests/test_closeout_token_metrics_jsonl.py"
+      ],
+      "acceptance_criteria": [
+        "Given metrics.jsonl lines for agent_type 'datum-red' (prompt 100, completion 10, cached 40) and 'datum-green' (prompt 0), per_agent_type['datum-red'] == {calls: 1, prompt_tokens: 100, completion_tokens: 10, cached_tokens: 40}",
+        "per_stage keys are label prefixes (text before the first ':') with the same four totals",
+        "cached_share['datum-red'] == 0.4 (rounded to 4 decimals), and cached_share['datum-green'] == 0.0 when prompt_tokens is 0",
+        "A missing metrics.jsonl yields per_agent_type == {}, per_stage == {} and cached_share == {} with exit 0, and the existing status semantics are unchanged",
+        "A malformed line 3 makes the collector exit non-zero with a message containing 'line 3'",
+        "The existing tests in tests/test_closeout_collectors.py and tests/test_closeout_cli.py pass unchanged, and per_phase output is unchanged"
+      ],
+      "red_note": "tests/test_closeout_token_metrics_jsonl.py (pytest) builds a tmp repo with .datum/runs/<runId>/metrics.jsonl, using the exact key set produced by task-013. It runs the collector as a module via subprocess with an argv list and a timeout, then asserts the exact per_agent_type, per_stage and cached_share dicts, the empty-dict case for a missing file with exit 0, and the non-zero exit naming 'line 3' for a malformed line. These fail because the collector reads only SQLite today.",
+      "introduces_stubs": false,
+      "estimated_loc": 150,
+      "depends_on": [
+        "DAT-13"
+      ],
+      "file_conflict_with": {},
+      "stage": "queued",
+      "slug": "token-metrics-jsonl-collector",
+      "kind": "behavioral",
+      "test_command": "uv run pytest -x -q tests/test_closeout_token_metrics_jsonl.py"
+    }
+  }
+}

@@ -4,6 +4,9 @@
   "private": true,
   "description": "DATUM TDD pipeline — TypeScript workflow scripts transpiled via esbuild",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "bash scripts/build-workflows.sh",
     "check": "bash scripts/build-workflows.sh --check"

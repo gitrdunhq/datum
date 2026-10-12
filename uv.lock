@@ -113,6 +113,7 @@ tui = [
 [package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -138,6 +139,7 @@ provides-extras = ["memory", "rag", "tui"]
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = "==6.165.10" },
+    { name = "jsonschema", specifier = ">=4" },
     { name = "pytest", specifier = ">=9.0" },
 ]
 

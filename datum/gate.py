@@ -350,6 +350,8 @@ def _term_re(term: str) -> re.Pattern:
     )
 
 
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+
 _BLOCKING_PATTERNS = [
     (cat, term, _term_re(term))
     for cat, terms in _BANNED_TERMS_BLOCKING.items()
@@ -514,6 +516,37 @@ def _requirement_ids(text: str) -> set[str]:
     return {m.group(1).upper() for m in _REQUIREMENT_ID_RE.finditer(text or "")}
 
 
+def _split_table_cells(line: str) -> list[str]:
+    """Cells of one markdown table row. A pipe inside a `code span` or written
+    as \\| is cell content, not a column break (review iteration 3 quoted the
+    regex `not_run|did not run|...` and shifted every later column)."""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    cells: list[str] = []
+    cur: list[str] = []
+    in_code = False
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body) and body[i + 1] == "|":
+            cur.append("|")
+            i += 2
+            continue
+        if ch == "`":
+            in_code = not in_code
+        if ch == "|" and not in_code:
+            cells.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    cells.append("".join(cur).strip())
+    return cells
+
+
 def review_report_rows(content: str) -> list[dict[str, str]]:
     """The report's finding rows as {id, severity, file, line, key} in report
     order. `key` is '' for a report without a Key column (pre-key reports)."""
@@ -523,7 +556,7 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
         line = raw.strip()
         if not line.startswith("|"):
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = _split_table_cells(line)
         if not header_cols and cells and cells[0].lower() == "id":
             header_cols = [c.lower() for c in cells]
             continue
@@ -534,9 +567,24 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
         def cell(
             name: str, header_cols: list[str] = header_cols, cells: list[str] = cells
         ) -> str:
-            if name in header_cols and header_cols.index(name) < len(cells):
-                return cells[header_cols.index(name)]
-            return ""
+            # A bare pipe in the free text (description, suggestion) adds
+            # cells: columns before the free text are read from the start,
+            # columns after it from the end, and the extra cells belong to
+            # the description (run 20261012-150046: ARCH-001's key was read
+            # from prose and its accept was recorded under the id).
+            if name not in header_cols:
+                return ""
+            i = header_cols.index(name)
+            extra = len(cells) - len(header_cols)
+            free = [header_cols.index(c) for c in ("description", "suggestion") if c in header_cols]
+            if extra > 0 and free:
+                if i > max(free):
+                    i += extra
+                elif name == "description":
+                    return " | ".join(cells[i : i + extra + 1])
+                elif i in free:
+                    i += extra
+            return cells[i] if i < len(cells) else ""
 
         key = cell("key")
         rows.append(
@@ -649,15 +697,19 @@ def check_banned_terms(spec_content: str) -> list[str]:
         stripped = line.strip()
         if not stripped:
             continue
-        has_measure = any(rx.search(stripped) for rx in _MEASURE_PATTERNS)
+        # Inline code spans are identifiers, not prose: `{ fast, balanced,
+        # deep }` is a tier map, not a claim about speed. Scan the prose only;
+        # the reported excerpt keeps the original line.
+        prose = _INLINE_CODE_RE.sub(" ", stripped)
+        has_measure = any(rx.search(prose) for rx in _MEASURE_PATTERNS)
         for _cat, term, rx in _BLOCKING_PATTERNS:
-            if rx.search(stripped):
+            if rx.search(prose):
                 errors.append(
                     f"SPEC.md Requirements uses unreviewable term {term!r}: {stripped[:80]!r}"
                 )
         if not has_measure:
             for _cat, term, rx in _CONDITIONAL_PATTERNS:
-                if rx.search(stripped):
+                if rx.search(prose):
                     errors.append(
                         f"SPEC.md Requirements uses {term!r} with no stated measure: {stripped[:80]!r}"
                     )
@@ -1371,6 +1423,75 @@ def gate_deepen(yolo: bool, config: dict) -> None:
     pass_gate("Deepen gate passed")
 
 
+_PROPERTY_CATEGORIES = frozenset(
+    {
+        "SAFETY",
+        "LIVENESS",
+        "INVARIANT",
+        "BOUNDARY",
+        "IDEMPOTENT",
+        "ORDERING",
+        "ISOLATION",
+        "PERFORMANCE",
+        "SECURITY",
+        "OBSERVABILITY",
+        "COMPATIBILITY",
+    }
+)
+
+
+def _lane_token_re() -> re.Pattern:
+    from datum.id_pattern import LANE_ID_PATTERN
+
+    body = LANE_ID_PATTERN.removeprefix("^").removesuffix("$")
+    return re.compile(r"(?<![A-Za-z0-9_-])(" + body + r")(?![A-Za-z0-9_-])")
+
+
+_SEPARATOR_RE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
+
+
+def _table_cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def has_task_references(content: str) -> bool:
+    """True when PROPERTIES.md cites at least one lane id (any shape).
+
+    Lane ids are task-NNN, task-INT-N or a repo prefix such as DAT-142
+    (datum.id_pattern). When a markdown table has a column whose header starts
+    with "Task", only that column is read, so property ids such as SAFETY-001
+    (which match the six-letter prefix arm) never count. Without such a table,
+    any lane-shaped token whose prefix is not a property category counts.
+    """
+    token = _lane_token_re()
+    lines = content.splitlines()
+    saw_task_column = False
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            continue
+        # A header row is the one directly above a |---| separator; a data
+        # cell that happens to start with "Task" ("Task IDs are unique") is not.
+        if i + 1 >= len(lines) or not _SEPARATOR_RE.match(lines[i + 1].strip()):
+            continue
+        header = [c.lower() for c in _table_cells(line)]
+        col = next((j for j, c in enumerate(header) if c.startswith("task")), None)
+        if col is None:
+            continue
+        saw_task_column = True
+        for row in lines[i + 2 :]:
+            if not row.lstrip().startswith("|"):
+                break
+            cells = _table_cells(row)
+            if col < len(cells) and token.search(cells[col]):
+                return True
+    if saw_task_column:
+        return False
+    return any(
+        m.group(1).rsplit("-", 1)[0] not in _PROPERTY_CATEGORIES
+        for m in token.finditer(content)
+    )
+
+
 def gate_properties(yolo: bool, config: dict) -> None:
     props_path = resolve_artifact("PROPERTIES.md")
     if not props_path.exists():
@@ -1396,7 +1517,7 @@ def gate_properties(yolo: bool, config: dict) -> None:
         fail(f"PROPERTIES.md missing categories: {missing}")
 
     # Check traceability table exists
-    if "task-" not in content.lower() and "task_" not in content.lower():
+    if not has_task_references(content):
         fail("PROPERTIES.md missing traceability table (no task references found)")
 
     if not has_integration_invariants_section(content):

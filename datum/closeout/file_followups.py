@@ -42,6 +42,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from datum.models.follow_up_schema import FollowUpIssue
+from datum.run_ids import run_id_arg
 
 # Extensions that plausibly name a real source/doc/config file — narrow on
 # purpose so ordinary prose ("e.g.", "18.20.1") never matches (#453).
@@ -101,7 +102,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id", type=run_id_arg, required=True)
     parser.add_argument("--tracker", default="auto")
     # Only findings at or above this severity open tracker issues; the rest
     # stay in the run manifest (caliper: keep the tracker quiet, keep the data).

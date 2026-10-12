@@ -1,0 +1,122 @@
+{
+  "task_id": "DAT-10",
+  "slug": "read-runtime-config",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify readRuntimeConfig({ runtime: { kind: 'fake', models: { fast:",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_readruntimeconfig_runtime_kind_fake_models_fast_f_balanced_b",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_readruntimeconfig_runtime_kind_fake_models_fast_f_balanced_b \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC1:\n    def test_ac1_readruntimeconfig_runtime_kind_fake_models_fast_f_balanced_b(self):\n        \"\"\"\n        PROP-001: readRuntimeConfig({ runtime: { kind: 'fake', models: { fast: 'f', balanced: 'b',\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify An explicit priority 'interactive' and client 'x' are return",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_an_explicit_priority_interactive_and_client_x_are_returned_u",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_an_explicit_priority_interactive_and_client_x_are_returned_u \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC2:\n    def test_ac2_an_explicit_priority_interactive_and_client_x_are_returned_u(self):\n        \"\"\"\n        PROP-002: An explicit priority 'interactive' and client 'x' are returned unchanged\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify readRuntimeConfig({ runtime: { kind: 'bogus', models } }) th",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_readruntimeconfig_runtime_kind_bogus_models_throws_an_error",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_readruntimeconfig_runtime_kind_bogus_models_throws_an_error \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC3:\n    def test_ac3_readruntimeconfig_runtime_kind_bogus_models_throws_an_error(self):\n        \"\"\"\n        PROP-003: readRuntimeConfig({ runtime: { kind: 'bogus', models } }) throws an Error whose \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A runtime block missing models.balanced throws 'runtime_mode",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_a_runtime_block_missing_models_balanced_throws_runtime_model",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_a_runtime_block_missing_models_balanced_throws_runtime_model \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC4:\n    def test_ac4_a_runtime_block_missing_models_balanced_throws_runtime_model(self):\n        \"\"\"\n        PROP-004: A runtime block missing models.balanced throws 'runtime_models_missing: balanced\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify concurrency { m1: 0 }, { m1: 1.5 } or { m1: -2 } throws 'run",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_concurrency_m1_0_m1_1_5_or_m1_2_throws_runtime_concurrency_i",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_concurrency_m1_0_m1_1_5_or_m1_2_throws_runtime_concurrency_i \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC5:\n    def test_ac5_concurrency_m1_0_m1_1_5_or_m1_2_throws_runtime_concurrency_i(self):\n        \"\"\"\n        PROP-005: concurrency { m1: 0 }, { m1: 1.5 } or { m1: -2 } throws 'runtime_concurrency_inv\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify An exported helper concurrencyFor(rc, 'unknown-model') retur",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_an_exported_helper_concurrencyfor_rc_unknown_model_returns_1",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_an_exported_helper_concurrencyfor_rc_unknown_model_returns_1 \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC6:\n    def test_ac6_an_exported_helper_concurrencyfor_rc_unknown_model_returns_1(self):\n        \"\"\"\n        PROP-006: An exported helper concurrencyFor(rc, 'unknown-model') returns 1\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify readRuntimeConfig({}) (no runtime block) throws 'runtime_blo",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_readruntimeconfig_no_runtime_block_throws_runtime_block_miss",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_readruntimeconfig_no_runtime_block_throws_runtime_block_miss \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC7:\n    def test_ac7_readruntimeconfig_no_runtime_block_throws_runtime_block_miss(self):\n        \"\"\"\n        PROP-007: readRuntimeConfig({}) (no runtime block) throws 'runtime_block_missing', and the\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify kind 'pi' is accepted by the parser. Rejecting it is the CLI",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_kind_pi_is_accepted_by_the_parser_rejecting_it_is_the_cli_s",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_kind_pi_is_accepted_by_the_parser_rejecting_it_is_the_cli_s \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC8:\n    def test_ac8_kind_pi_is_accepted_by_the_parser_rejecting_it_is_the_cli_s(self):\n        \"\"\"\n        PROP-008: kind 'pi' is accepted by the parser. Rejecting it is the CLI's job (Q5)\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC9",
+      "path": "skills/src/shared/models-runtime-config.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify readRuntimeConfig does no I/O: it is a pure function of its ",
+      "property_id": "PROP-009",
+      "function_name": "test_ac9_readruntimeconfig_does_no_i_o_it_is_a_pure_function_of_its_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-10 AC9 \u2014 PROP-009\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC9 \u2192 test_ac9_readruntimeconfig_does_no_i_o_it_is_a_pure_function_of_its_a \u2192 skills/src/shared/models-runtime-config.test.ts\n\nimport pytest\n\n\nclass TestDAT10AC9:\n    def test_ac9_readruntimeconfig_does_no_i_o_it_is_a_pure_function_of_its_a(self):\n        \"\"\"\n        PROP-009: readRuntimeConfig does no I/O: it is a pure function of its argument\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-009\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/models.ts": "export type ModelTier = 'fast' | 'balanced' | 'deep'\nexport type ModelName = string\n\nconst DEFAULT_TIERS: Record<ModelTier, string> = {\n}\n\nlet activeTiers: Record<ModelTier, string> = { ...DEFAULT_TIERS }\n\nexport function setModelTiers(tiers: Partial<Record<ModelTier, string>>): void {\n  activeTiers = { ...DEFAULT_TIERS, ...tiers }\n}\n\nexport function model(tier: ModelTier): string {\n}\n\nexport const ROUTE_PHASES = {\n} as const\n\nexport type Route = keyof typeof ROUTE_PHASES\nexport type Phase = 'refine' | 'plan' | 'properties' | 'act' | 'validate' | 'review' | 'closeout'\nexport const PHASES: readonly Phase[] = ['refine', 'plan', 'properties', 'act', 'validate', 'review', 'closeout'] as const\n\nexport type TddStage = 'RED' | 'GREEN' | 'REFACTOR'\nexport type FailureStage = TddStage | 'MERGE' | 'SKIPPED' | 'UNKNOWN' | 'CRASH'\n\n// 'blocked' = never dispatched because a dependency failed or was itself blocked;\n// carries the root-cause lane in error. Distinct from 'skipped' (dep never ran).\nexport type LaneStatus = 'completed' | 'failed' | 'skipped' | 'blocked'\nexport type Severity = 'critical' | 'high' | 'medium' | 'low'\n\nexport type SkepticVerdict = 'PASS' | 'FRAGILE' | 'BROKEN'\nexport type ReviewDomain = 'Security' | 'Performance' | 'Architecture' | 'Correctness'\n\nexport type AmbiguityLevel = 'high' | 'medium' | 'low' | 'trivial'\nexport type RiskLevel = 'low' | 'medium' | 'high'\nexport type TriageCategory = 'workflow-bug' | 'lane-plan' | 'agent-behavior' | 'infrastructure' | 'test-quality'\n\nexport const DEFAULT_CONFIG = {\n}\n\n/**\nexport function mergeConfig(\n): Record<string, unknown> {\n  const g = globalCfg && typeof globalCfg === 'object' ? globalCfg : {}\n  const r = repoCfg && typeof repoCfg === 'object' ? repoCfg : {}\n\n    merged.models = { ...gModels, ...rModels }\n\n}\n\nexport function skillPath(skillsDir: string, name: string): string {\n}\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

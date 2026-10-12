@@ -1,0 +1,74 @@
+{
+  "task_id": "DAT-16",
+  "slug": "runner-cli-call-guard",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/runner-cli-guard.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Inside runBundle, agent('p', { agentType: 'datum-cli', label",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_inside_runbundle_agent_p_agenttype_datum_cli_label_leak_reje",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-16 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_inside_runbundle_agent_p_agenttype_datum_cli_label_leak_reje \u2192 skills/src/runtime/runner-cli-guard.test.ts\n\nimport pytest\n\n\nclass TestDAT16AC1:\n    def test_ac1_inside_runbundle_agent_p_agenttype_datum_cli_label_leak_reje(self):\n        \"\"\"\n        PROP-001: Inside runBundle, agent('p', { agentType: 'datum-cli', label: 'leak' }) rejects \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/runner-cli-guard.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify For that call the FakeExecutor records 0 requests and metric",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_for_that_call_the_fakeexecutor_records_0_requests_and_metric",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-16 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_for_that_call_the_fakeexecutor_records_0_requests_and_metric \u2192 skills/src/runtime/runner-cli-guard.test.ts\n\nimport pytest\n\n\nclass TestDAT16AC2:\n    def test_ac2_for_that_call_the_fakeexecutor_records_0_requests_and_metric(self):\n        \"\"\"\n        PROP-002: For that call the FakeExecutor records 0 requests and metrics.jsonl gains 0 line\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/runner-cli-guard.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify With globalThis.datumRuntime = { agentTypes: true }, readAge",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_with_globalthis_datumruntime_agenttypes_true_readagenttypeco",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-16 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_with_globalthis_datumruntime_agenttypes_true_readagenttypeco \u2192 skills/src/runtime/runner-cli-guard.test.ts\n\nimport pytest\n\n\nclass TestDAT16AC3:\n    def test_ac3_with_globalthis_datumruntime_agenttypes_true_readagenttypeco(self):\n        \"\"\"\n        PROP-003: With globalThis.datumRuntime = { agentTypes: true }, readAgentTypeConfig({ agent\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/runner-cli-guard.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify Without the override, readAgentTypeConfig({ agent_types: fal",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_without_the_override_readagenttypeconfig_agent_types_false_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-16 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_without_the_override_readagenttypeconfig_agent_types_false_a \u2192 skills/src/runtime/runner-cli-guard.test.ts\n\nimport pytest\n\n\nclass TestDAT16AC4:\n    def test_ac4_without_the_override_readagenttypeconfig_agent_types_false_a(self):\n        \"\"\"\n        PROP-004: Without the override, readAgentTypeConfig({ agent_types: false }).agentTypes ===\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/runner-cli-guard.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify runBundle removes the override when the bundle settles, whet",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_runbundle_removes_the_override_when_the_bundle_settles_wheth",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-16 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_runbundle_removes_the_override_when_the_bundle_settles_wheth \u2192 skills/src/runtime/runner-cli-guard.test.ts\n\nimport pytest\n\n\nclass TestDAT16AC5:\n    def test_ac5_runbundle_removes_the_override_when_the_bundle_settles_wheth(self):\n        \"\"\"\n        PROP-005: runBundle removes the override when the bundle settles, whether it resolves or r\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/agent-types.ts": "// agent-types.ts \u2014 one table mapping pipeline stage kinds to the custom\n// subagent definitions in agents/datum-*.md (#368).\n//\n// Every agent() call in the lane/setup/merge/docs scripts goes through\n// stageOpts() so the mapping lives in exactly one place. The `agent_types`\n// config switch (default true) turns the whole thing off for runtimes that\n// have no agentType support (the OpenAI-compatible workflow runtime);\n// `hooks_installed` (written by `datum init`, default false) reports whether\n// the PreToolUse hooks the datum-red/green/refactor definitions reference\n// are actually materialised in the consumer repo.\n//\n// Pure module state \u2014 no sandbox globals \u2014 so vitest covers it directly.\n// Each compiled workflow bundle carries its own copy of this state, so every\n// script must call configureAgentTypes() from its own config/args.\n// tested-by: skills/src/shared/agent-types.test.ts\n\nexport type StageKind =\n\nexport const AGENT_TYPE_TABLE: Readonly<Record<StageKind, string>> = {\n}\n\n/**\nconst READ_ONLY_STAGES: readonly StageKind[] = ['skeptic', 'review', 'reflect', 'reader', 'quality', 'cli']\nconst READ_ONLY_AGENT_TYPES: ReadonlySet<string> = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]))\n\nexport function isReadOnlyAgentType(agentType: string | undefined): boolean {\n  return typeof agentType === 'string' && READ_ONLY_AGENT_TYPES.has(agentType)\n}\n\nexport interface AgentTypeConfig {\n}\n\nconst state: AgentTypeConfig = { agentTypes: true, hooksInstalled: false }\n// Nothing may route through stageOpts() until a script has said where its\n// switches come from. The old default (\"on\") let the very first agent()\n// call of a script \u2014 the config read \u2014 go out with agentType 'datum-cli'\n// in a repo whose config said `agent_types: false` (agents not registered\n// until the Claude Code session restarts), killing the run before the\n// switch was ever read.\nlet configured = false\n\n/** Test seam: forget the switches so ordering tests start unconfigured. */\nexport function resetAgentTypesForTests(): void {\n  state.agentTypes = true\n  state.hooksInstalled = false\n  configured = false\n}\n\n/** Read the two switches out of a raw .datum/config.json object. */\nexport function readAgentTypeConfig(cfg: unknown): AgentTypeConfig {\n  const o = (cfg && typeof cfg === 'object' ? cfg : {}) as Record<string, unknown>\n    hooksInstalled: o.hooks_installed === true,\n}\n\nexport function configureAgentTypes(opts: Partial<AgentTypeConfig>): void {\n  configured = true\n}\n\nexport function hooksInstalled(): boolean {\n}\n\n/**\nexport function deterministicChecks(): boolean {\n}\n\n/** Build agent() opts for a stage: `extra` plus the table's agentType (when enabled). */\nexport function stageOpts<T extends AgentOpts>(stage: StageKind, extra: T = {} as T): T & { agentType?: string } {\n}\n\n/**\nexport function bootstrapOpts<T extends AgentOpts>(stage: StageKind, extra: T = {} as T): T & { agentType?: string } {\n}\n\n/** Current config as a plain object, for passing to child workflows via args. */\nexport function agentTypeArgs(): AgentTypeConfig {\n}\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

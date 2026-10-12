@@ -1,6 +1,6 @@
 // lane-steps.ts — the step lists behind every batched datum-cli call in the
 // Act pipeline (#368 item C). Pure builders: the lane/setup/merge/go scripts
-// hand these to batchCommandPrompt() and evaluate the results themselves.
+// hand these to runBatch() and evaluate the results themselves.
 // Keeping the lists here (not inline in the sandbox scripts) is what lets
 // vitest assert their order, tolerance and contents directly.
 // tested-by: skills/src/shared/lane-steps.test.ts
@@ -275,7 +275,10 @@ export function testExitCode(stdout: string | null | undefined): number | null {
  *  A lowercase `repo_root` is not in the list: in a test it is a tmp_path
  *  fixture, and a lane whose subject is `.datum/config.json` reads it
  *  legitimately (monotonic-task-ids task-008). */
-export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\)).{0,80}['"/]\\.datum(/|['"])`
+// The gap may not cross `=` or `(`: a repo-root anchor and a `.datum` on the
+// two sides of a comparison are two expressions (DAT-19: `x.resolve() ==
+// (tmp_root / ".datum" ...)` compared a flag with the test's own fixture).
+export const RUNTIME_ARTIFACT_READ_RE = `(REPO_ROOT|ROOT_DIR|__dirname|process\\.cwd\\(\\)|parents\\[[0-9]+\\]|\\.resolve\\(\\))[^=(]{0,80}['"/]\\.datum(/|['"])`
 
 export function postRedSteps(o: PostRedOpts): BatchStep[] {
   const steps: BatchStep[] = []
@@ -1021,6 +1024,27 @@ export function lanePlanDigestFromSteps(
     return { ...none, error: `lane_plan_digest_unparseable: ${planPath} digest did not parse as {lanes, topological_order}` }
   }
   return { ok: true, digest, error: '' }
+}
+
+/**
+ * A digest whose bytes or blob sha differ from what the batch measured is a
+ * relay error by the runner, not a bad plan (wf_17d9c5ea-ecb: the runner
+ * inserted "test_command":"npx vitest run" into a Python lane). A fresh
+ * runner can fix that; too-large, unparseable or a failed digest command
+ * cannot be fixed by asking again.
+ */
+export function isDigestRelayError(error: string): boolean {
+  return typeof error === 'string' && error.startsWith('lane_plan_digest_mismatch:')
+}
+
+/** The act-start digest retry's suffix, passed to runBatch as retryMarker
+ *  so the Workflow replay cache cannot serve attempt 1's corrupted reply
+ *  back and the runner is told what went wrong (COV-1). */
+export const DIGEST_RETRY_MARKER = "# attempt 2 of 2 — the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing"
+
+/** Attempt 2's prompt: the same batch plus DIGEST_RETRY_MARKER. */
+export function digestRetryPrompt(prompt: string): string {
+  return `${prompt}\n\n${DIGEST_RETRY_MARKER}`
 }
 
 /** The digest's spec_hash for a lane — the marker comparison key. Never computed from a relayed lane. */
