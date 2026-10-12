@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Collect token usage metrics from state.json model log."""
+"""Collect token usage metrics: state.db token_metrics rows when a producer
+wrote them, else .datum/runs/<run>/metrics.jsonl (the runner's per-call sink,
+or `datum metrics import-workflow` on the hosted path)."""
 
 import json
 import sys
@@ -147,7 +149,25 @@ def main() -> None:
     # table this collector reads (elonchesd epic-2: every closeout said 0
     # tokens while the Workflow tool had reported ~9.6M). Say so by name so
     # collate carries it as a collector warning; the real producer is #459.
-    if not model_log:
+    jsonl_calls = sum(t["calls"] for t in per_agent_type.values())
+    if not model_log and jsonl_calls:
+        # No state.db rows, but the runner (or `datum metrics import-workflow`
+        # on the hosted path) wrote per-call lines: those are the totals.
+        total_input = sum(t["prompt_tokens"] for t in per_agent_type.values())
+        total_output = sum(t["completion_tokens"] for t in per_agent_type.values())
+        data = {
+            "collected": True,
+            "source": "metrics.jsonl",
+            "total_input": total_input,
+            "total_output": total_output,
+            "total": total_input + total_output,
+            "per_phase": {},
+            "per_model": {},
+            "per_agent_type": per_agent_type,
+            "per_stage": per_stage,
+            "cached_share": cached_share,
+        }
+    elif not model_log:
         if not db_path.exists():
             reason = f"no state.db at .datum/runs/{args.run_id}/state.db or .datum/state.db (no producer writes one)"
         elif db_error:
@@ -170,6 +190,7 @@ def main() -> None:
     else:
         data = {
             "collected": True,
+            "source": "state.db",
             "total_input": total_input,
             "total_output": total_output,
             "total": total_input + total_output,

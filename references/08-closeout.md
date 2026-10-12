@@ -95,6 +95,12 @@ When a collector (`collect_tasks.py`, `collect_token_metrics.py`) has nothing to
 
 The last three come from `.datum/runs/<run_id>/metrics.jsonl`, the per-call log the bundle runner writes (see docs/FLOW.md, "Shell seam and the bundle runner"). They are independent of `state.db`: when that file or its `token_metrics` rows are missing, the `no_state_available` result still carries them. A missing `metrics.jsonl` yields three empty objects. A malformed line (invalid JSON, not an object, or a missing `label`, `agent_type` or integer token field) fails the collector with exit 1 and `{"ok": false, "code": "invalid_metrics_line", "message": "metrics.jsonl line <n>: ..."}` on stderr; it is never skipped silently.
 
+When `state.db` has no `token_metrics` rows but `metrics.jsonl` has calls, the collector reports `collected: true` with `source: "metrics.jsonl"` and the totals summed from those lines (`total_input` is prompt tokens, cache reads and writes included). With `state.db` rows the totals come from there, `source: "state.db"`.
+
+On the hosted path (Claude Code's Workflow tool) nothing writes `metrics.jsonl`. Before closeout, import the run's workflow transcripts: `datum metrics import-workflow --run-id <RUN_ID> <dir> [<dir> ...]`, where each dir holds a workflow's `journal.jsonl` and `agent-*.jsonl` (Claude Code keeps them under `~/.claude/projects/<project>/<session>/subagents/workflows/wf_*`). One line per subagent: label from the journal, agent type from its `meta.json`, prompt tokens = uncached + cache writes + cache reads over its messages (each message counted once), cached tokens = cache reads, wall time from its first to last turn, outcome `error` when the journal has no result for it; timings the transcripts lack are 0. Re-running skips agents already imported (`metrics-imported.json`).
+
+`collect_brief_defects.py` adds one defect per lane named in every commit that changed the epic's `tasks.json` after the commit that created it (`surfaced_by_stage: "plan_amendment"`): a brief that had to be amended by hand is a brief defect even when no stage recorded one.
+
 ## Closeout-specific findings (surfaced in RETRO, not failures)
 
 - Solved problem with no test coverage → high-severity follow-up

@@ -3152,6 +3152,31 @@ def workflow_run_cmd(
     raise typer.Exit(run_workflow(name, args, config))
 
 
+metrics_app = typer.Typer(name="metrics", help="Per-call token metrics.")
+app.add_typer(metrics_app)
+
+
+@metrics_app.command(name="import-workflow")
+def metrics_import_workflow_cmd(
+    dirs: list[Path] = typer.Argument(..., help="Workflow transcript dirs (each holds journal.jsonl)."),
+    run_id: str = typer.Option(..., "--run-id", help="Run whose metrics.jsonl receives the lines"),
+):
+    """Write .datum/runs/<run-id>/metrics.jsonl lines from hosted Workflow
+    transcripts, one per subagent, so closeout counts hosted tokens."""
+    from datum.run_ids import RUN_ID_RE
+    from datum.workflow_metrics import WorkflowImportError, import_workflow_dirs
+
+    if not RUN_ID_RE.match(run_id):
+        typer.echo(json.dumps({"ok": False, "error": f"run_id_invalid: {run_id!r}"}))
+        raise typer.Exit(code=2)
+    try:
+        result = import_workflow_dirs(run_id, dirs, Path.cwd())
+    except WorkflowImportError as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}))
+        raise typer.Exit(code=1) from None
+    typer.echo(json.dumps(result))
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
