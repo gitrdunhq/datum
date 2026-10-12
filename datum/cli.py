@@ -736,6 +736,13 @@ def init(
     # moved checkout or an upgraded datum never leaves stale hook paths.
     installed = install_agent_types(Path.cwd(), package_root)
     config.update(installed.as_config())
+    # Files on disk are not agent types the running harness has loaded (a
+    # session started outside the repo, or before this init, has none). The
+    # operator's agent_types_disabled switch is never rewritten here, and it
+    # keeps agent_types false through every later init, including the one the
+    # Act phase runs mid-pipeline.
+    if config.get("agent_types_disabled") is True:
+        config["agent_types"] = False
 
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     if not json_output:
