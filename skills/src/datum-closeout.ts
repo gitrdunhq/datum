@@ -7,7 +7,7 @@ import { closeoutCollectSteps } from './shared/lane-steps'
 import { closeoutArchiveSteps } from './shared/lane-steps'
 import { housekeepSteps, housekeepFromSteps } from './shared/lane-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, stepStdout, describeFailure } from './shared/batch'
 import type { CloseoutArgs } from './shared/types'
 import { withPreamble } from './shared/prompts'
 
@@ -50,11 +50,7 @@ setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
 phase('Collect')
 
 const collectSteps = closeoutCollectSteps({ runId })
-const collectRaw = await agent(
-  batchCommandPrompt(collectSteps),
-  bootstrapOpts('cli', { label: 'closeout-collect', model: model('fast') }),
-)
-const collectResult = parseBatchResult(collectRaw, collectSteps)
+const collectResult = await runBatch(collectSteps, bootstrapOpts('cli', { label: 'closeout-collect', model: model('fast') }))
 
 // Every collector step is tolerant, so the batch itself reads as "ok" even
 // when collectors exited 1; the failures are collected here so the halt
@@ -167,11 +163,7 @@ else log(`Closeout artifacts committed (${synthCommit.sha})`)
 // whether the archive succeeded.
 
 const archiveSteps = closeoutArchiveSteps({ runId: rid, branch, epicDir })
-const archiveRaw = await agent(
-  batchCommandPrompt(archiveSteps),
-  stageOpts('cli', { label: 'closeout-archive', model: model('fast') }),
-)
-const archiveResult = parseBatchResult(archiveRaw, archiveSteps)
+const archiveResult = await runBatch(archiveSteps, stageOpts('cli', { label: 'closeout-archive', model: model('fast') }))
 
 // Follow-ups (synthesis manifest + Act's skeptic minority findings): say what was filed.
 const filedRaw = stepStdout(archiveResult, 'file-followups')

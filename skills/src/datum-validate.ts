@@ -2,7 +2,7 @@ import { renderPrompt, parseValidateArgs, evaluateMainSync, testRunCommand } fro
 import type { MainSyncResult } from './shared/utils'
 import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
+import { setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode, buildVerifyVerdict } from './shared/lane-steps'
 import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles } from './shared/validate-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
@@ -138,11 +138,9 @@ const dirty = !mainSync.ok || lintCommitError ? { known: true, files: [], detail
 // The batch also PRODUCES .datum/last-test-signal.json from the same shell
 // (`datum gate validate` consumes it — it had no producer before).
 const verifySteps = validateVerifySteps(testCommand, '.', buildCommand || null)
-const verifyRaw = !mainSync.ok ? null : await agent(
-  batchCommandPrompt(verifySteps),
-  stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }),
-)
-const verifyResult = parseBatchResult(verifyRaw, verifySteps)
+const verifyResult = !mainSync.ok
+  ? parseBatchResult(null, verifySteps)
+  : await runBatch(verifySteps, stageOpts('cli', { label: 'validate-verify', phase: 'Validate', model: model('fast') }))
 const testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, 'test-verify')) : null
 const testsPassed = testExit === 0
 

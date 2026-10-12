@@ -34,8 +34,8 @@ describe('datum-closeout — deterministic collect (#368 follow-up)', () => {
   it('builds the collect batch from closeoutCollectSteps, not an LLM-relayed prompt', () => {
     expect(src).toContain("import { closeoutCollectSteps } from './shared/lane-steps'")
     expect(src).toMatch(/closeoutCollectSteps\(/)
-    expect(src).toMatch(/batchCommandPrompt\(collectSteps\)/)
-    expect(src).toMatch(/parseBatchResult\(/)
+    expect(src).toMatch(/runBatch\(collectSteps/)
+    expect(src).toMatch(/(?:const|let) collectResult\b/)
   })
 
   it('logs every collector that exited non-zero, by name', () => {
@@ -73,8 +73,8 @@ describe('datum-closeout — deterministic archive (#368 follow-up)', () => {
     const synthIdx = src.lastIndexOf('closeoutSynthTemplate')
     const archiveStepsIdx = src.indexOf('closeoutArchiveSteps(')
     expect(archiveStepsIdx).toBeGreaterThan(synthIdx)
-    expect(src).toMatch(/batchCommandPrompt\(archiveSteps\)/)
-    expect(src).toMatch(/parseBatchResult\(archiveRaw, archiveSteps\)/)
+    expect(src).toMatch(/runBatch\(archiveSteps/)
+    expect(src).toMatch(/(?:const|let) archiveResult\b/)
   })
 
   it('logs every archive step that exited non-zero, by name', () => {
