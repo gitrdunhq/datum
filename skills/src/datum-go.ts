@@ -409,7 +409,7 @@ if (shouldRun('properties', 2)) {
   // Properties' gate verdict used to be ignored here entirely.
   if (!lastResult.gatePassed) {
     haltedAt = 'properties'
-    log(`Properties gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Review PROPERTIES.md, then: datum go --start-from act`)
+    log(`Properties gate ${lastResult.gateNeedsHuman ? 'held' : 'FAILED'}: ${lastResult.gateMessage || 'needs review'}. Review PROPERTIES.md and pass \`datum gate properties\`; if it has Integration Invariants, schedule their lanes with \`datum lane-plan --input <epic>/tasks.json --output <epic>/lane-plan.json --md-output <epic>/TASKS.md --properties <epic>/PROPERTIES.md\` and commit both files (Act start refuses a plan without them: integration_lanes_unscheduled); then: datum go --start-from act`)
   } else {
     log('Properties complete')
     await markPhaseComplete('properties')
