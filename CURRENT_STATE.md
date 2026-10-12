@@ -100,7 +100,9 @@ between R4 AC3's literal wording and Assumption 8's addendum — not a defect,
 just an unclear cross-reference worth tidying).
 
 <!-- review-decisions:start -->
-No review decisions recorded yet; `datum review-accept` will update this line.
+## Review Decisions
+
+- ACCEPT f9b971da (CORR-001 skills/src/shared/batch.ts:190): Intentional operator fix outside this epic's runner scope, committed on the epic branch while dogfooding (60ba20a). With agent types off, a generic batch runner declined a step and AUTHORED a row for it (exit_code null, not_run stderr), which parseBatchResult read as a real failure. The authored-row branch routes that to the existing one-retry refusal path, and the prompt sentence tells the runner never to author a row. Both are pinned by tests in batch.test.ts. R1.5's byte-identical prompt rule exists so the runner work does not change the hosted path by accident; this change is deliberate and fixes a hosted-path defect. Reverting it would bring the fabricated-row failure back.
 <!-- review-decisions:end -->
 
 `brief_defects`: none reported (empty array). `platform`/`lane_tools`: not
