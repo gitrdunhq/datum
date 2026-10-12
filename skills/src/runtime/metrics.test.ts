@@ -116,8 +116,8 @@ describe('runBundle metrics sink', () => {
       executor,
       args: { runId: 'run-keys' },
       body: `
-        await agent('first prompt', { label: 'k-1', model: 'm1', agentType: 'coder' })
-        await agent('second prompt', { label: 'k-2', model: 'm1', agentType: 'coder' })
+        await agent('first prompt', { label: 'k-1', model: 'm1', agentType: 'datum-green' })
+        await agent('second prompt', { label: 'k-2', model: 'm1', agentType: 'datum-green' })
         return 'done'
       `,
     })
@@ -127,7 +127,7 @@ describe('runBundle metrics sink', () => {
     expect(lines[0].label).toBe('k-1')
     expect(lines[1].label).toBe('k-2')
     expect(lines[0].run_id).toBe('run-keys')
-    expect(lines[0].agent_type).toBe('coder')
+    expect(lines[0].agent_type).toBe('datum-green')
     expect(lines[0].model).toBe('m1')
     expect(lines[0].prompt_tokens).toBe(11)
     expect(lines[0].completion_tokens).toBe(7)

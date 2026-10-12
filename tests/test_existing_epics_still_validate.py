@@ -35,6 +35,27 @@ def _all_epic_tasks_files() -> list[Path]:
     return sorted(EPICS_ROOT.glob("*/*/tasks.json"))
 
 
+def _first_committed_ids(tasks_path: Path, repo: Path | None = None) -> list[str] | None:
+    """Task ids in the commit that first added tasks_path, or None when the
+    file has no committed history (untracked, or git unavailable)."""
+    import subprocess
+
+    cwd = repo or tasks_path.parent
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+        rel = str(tasks_path.resolve().relative_to(Path(top).resolve()))
+        sha = subprocess.run(
+            ["git", "log", "--diff-filter=A", "--format=%H", "--", rel],
+            cwd=top, capture_output=True, text=True, check=True,
+        ).stdout.split()
+        if not sha:
+            return None
+        blob = subprocess.run(["git", "show", f"{sha[-1]}:{rel}"], cwd=top, capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        return None
+    return [t.get("id", "") for t in _task_list(json.loads(blob))]
+
+
 def _task_list(raw) -> list[dict]:
     if isinstance(raw, dict):
         return raw.get("tasks", [])
@@ -108,9 +129,17 @@ class TestExistingEpicsStillValidate:
             )
 
     def test_ac2_no_committed_tasks_json_has_migrated_to_a_prefix_dash_number_id(self):
+        # "Migrated" means an epic first committed with task-N ids that now
+        # carries <PREFIX>-N ids. An epic born after monotonic ids shipped is
+        # committed with <PREFIX>-N from its first commit (the first real one:
+        # docs/epics/claude/datum-workflow-person-nmxqz4), and that is the
+        # feature working, not a migration.
         prefix_id = re.compile(r"^[A-Z]{2,3}-\d+$")
         offenders = []
         for tasks_path in _all_epic_tasks_files():
+            first = _first_committed_ids(tasks_path)
+            if first is None or any(prefix_id.match(i) for i in first):
+                continue
             raw = json.loads(tasks_path.read_text())
             for task in _task_list(raw):
                 task_id = task.get("id", "")
@@ -119,3 +148,22 @@ class TestExistingEpicsStillValidate:
         assert (
             offenders == []
         ), f"found migrated <PREFIX>-N ids in committed tasks.json files: {offenders}"
+
+    def test_ac2_an_epic_born_with_task_ids_and_rewritten_to_prefix_ids_is_caught(self, tmp_path):
+        # Catches: the born-with-prefix exemption also exempting a real
+        # migration (first commit task-N, working copy DAT-N).
+        import subprocess
+
+        repo = tmp_path / "r"
+        epic = repo / "docs" / "epics" / "x" / "e1"
+        epic.mkdir(parents=True)
+        run = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+        run("init", "-q", "-b", "main")
+        run("config", "user.email", "t@example.com")
+        run("config", "user.name", "T")
+        run("config", "core.hooksPath", "/dev/null")
+        (epic / "tasks.json").write_text(json.dumps([{"id": "task-001"}]))
+        run("add", ".")
+        run("commit", "-q", "-m", "init")
+        (epic / "tasks.json").write_text(json.dumps([{"id": "DAT-1"}]))
+        assert _first_committed_ids(epic / "tasks.json", repo=repo) == ["task-001"]
