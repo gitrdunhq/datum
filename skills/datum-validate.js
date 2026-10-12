@@ -181,10 +181,14 @@ var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cl
 var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
+function runtimeForcesAgentTypes() {
+  const rt = globalThis.datumRuntime;
+  return typeof rt === "object" && rt !== null && rt.agentTypes === true;
+}
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
-    agentTypes: o.agent_types !== false,
+    agentTypes: o.agent_types !== false || runtimeForcesAgentTypes(),
     hooksInstalled: o.hooks_installed === true
   };
 }
@@ -363,6 +367,9 @@ function shellQuote(s) {
 var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
+}
+function getBatchRoot() {
+  return batchRoot;
 }
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
@@ -757,17 +764,52 @@ function mainSyncFromSteps(result, noMergeMain2) {
 }
 
 // skills/src/shared/agents.ts
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps);
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
   const promptBytes = utf8ByteLength(prompt);
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
     logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (retry === false) return result;
   const label = opts.label || "batch";
   const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
@@ -811,6 +853,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps);
   }
   return result;
 }
@@ -965,11 +1012,7 @@ if (mainSync.ok && lintFixes.length > 0) {
 }
 var dirty = !mainSync.ok || lintCommitError ? { known: true, files: [], detail: "" } : trackedDirtyFiles(await runBatch(trackedDirtySteps("."), stageOpts("cli", { label: "tracked-dirty", model: model("fast") })));
 var verifySteps = validateVerifySteps(testCommand, ".", buildCommand || null);
-var verifyRaw = !mainSync.ok ? null : await agent(
-  batchCommandPrompt(verifySteps),
-  stageOpts("cli", { label: "validate-verify", phase: "Validate", model: model("fast") })
-);
-var verifyResult = parseBatchResult(verifyRaw, verifySteps);
+var verifyResult = !mainSync.ok ? parseBatchResult(null, verifySteps) : await runBatch(verifySteps, stageOpts("cli", { label: "validate-verify", phase: "Validate", model: model("fast") }));
 var testExit = mainSync.ok ? testExitCode(stepStdout(verifyResult, "test-verify")) : null;
 var testsPassed = testExit === 0;
 log(`Tests: ${testsPassed ? "PASS" : "FAIL"} (independent run exit=${testExit === null ? "n/a" : testExit}; agent self-report tests_pass=${!!check?.tests_pass}, ${check?.test_count || "?"} tests)`);

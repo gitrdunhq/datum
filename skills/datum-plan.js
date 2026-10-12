@@ -202,10 +202,14 @@ var READ_ONLY_STAGES = ["skeptic", "review", "reflect", "reader", "quality", "cl
 var READ_ONLY_AGENT_TYPES = new Set(READ_ONLY_STAGES.map((s) => AGENT_TYPE_TABLE[s]));
 var state = { agentTypes: true, hooksInstalled: false };
 var configured = false;
+function runtimeForcesAgentTypes() {
+  const rt = globalThis.datumRuntime;
+  return typeof rt === "object" && rt !== null && rt.agentTypes === true;
+}
 function readAgentTypeConfig(cfg) {
   const o = cfg && typeof cfg === "object" ? cfg : {};
   return {
-    agentTypes: o.agent_types !== false,
+    agentTypes: o.agent_types !== false || runtimeForcesAgentTypes(),
     hooksInstalled: o.hooks_installed === true
   };
 }
@@ -385,6 +389,9 @@ var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
 }
+function getBatchRoot() {
+  return batchRoot;
+}
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
   for (const s of steps) {
@@ -560,17 +567,52 @@ function commitFilesFromSteps(result) {
 }
 
 // skills/src/shared/agents.ts
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps);
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
   const promptBytes = utf8ByteLength(prompt);
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
     logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (retry === false) return result;
   const label = opts.label || "batch";
   const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
@@ -614,6 +656,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps);
   }
   return result;
 }
@@ -780,11 +827,7 @@ function contextFromRelay(probe, inline, plan) {
   });
   return { branch, epicDir: epicDir2, files, warnings, mismatched };
 }
-function contextInlineRetryPrompt(steps) {
-  return `${batchCommandPrompt(steps)}
-
-# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte`;
-}
+var CONTEXT_INLINE_RETRY_MARKER = "# attempt 2 of 2 \u2014 the previous runner returned one of these files with bytes missing; copy the script's output verbatim, every byte";
 function mergeRelayRetry(first, second) {
   const files = { ...first.files };
   const warnings = [...first.warnings];
@@ -1213,10 +1256,7 @@ if (relayPlan.inline.length > 0) {
 var ctx = contextFromRelay(readBatch, inlineBatch, relayPlan);
 if (ctx.mismatched.length > 0) {
   log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(", ")} \u2014 re-fetching once with a fresh runner`);
-  const retryBatch = parseBatchResult(
-    await agent(contextInlineRetryPrompt(inlineSteps), bootstrapOpts("cli", { label: "read-context-files:retry", model: model("fast") })),
-    inlineSteps
-  );
+  const retryBatch = await runBatch(inlineSteps, bootstrapOpts("cli", { label: "read-context-files:retry", model: model("fast"), retryMarker: CONTEXT_INLINE_RETRY_MARKER }));
   ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan));
 }
 for (const warning of ctx.warnings) log(`read-context: ${warning}`);
@@ -1253,10 +1293,7 @@ if (contextFilesList.length > 0) {
   let cf = contextFromRelay(cfProbe, cfInline, cfPlan);
   if (cf.mismatched.length > 0) {
     log(`context_files: context_relay_mismatch on ${cf.mismatched.join(", ")} \u2014 re-fetching once with a fresh runner`);
-    const cfRetry = parseBatchResult(
-      await agent(contextInlineRetryPrompt(cfInlineSteps), stageOpts("cli", { label: "read-context-files:retry", model: model("fast") })),
-      cfInlineSteps
-    );
+    const cfRetry = await runBatch(cfInlineSteps, stageOpts("cli", { label: "read-context-files:retry", model: model("fast"), retryMarker: CONTEXT_INLINE_RETRY_MARKER }));
     cf = mergeRelayRetry(cf, contextFromRelay(cfProbe, cfRetry, cfPlan));
   }
   for (const warning of cf.warnings) contextFilesWarnings.push(warning);

@@ -553,6 +553,9 @@ var batchRoot = "";
 function setBatchRoot(root) {
   batchRoot = typeof root === "string" ? root.trim() : "";
 }
+function getBatchRoot() {
+  return batchRoot;
+}
 function innerBatchScript(steps) {
   validateBatchSteps(steps);
   for (const s of steps) {
@@ -812,11 +815,10 @@ async function verifyCommitIndependently(taskId, wt, files, commitPrefix, stage,
     { name: "log", command: `git -C ${q4(wt)} log --format="%H %s" ${range}`, tolerant: true },
     { name: "status", command: `git -C ${q4(wt)} status --porcelain -- ${files.map(q4).join(" ")}`, tolerant: true }
   ];
-  const raw = await agent(
-    batchCommandPrompt(steps),
+  const result = await runBatch(
+    steps,
     stageOpts("cli", { label: `verify-commit:${taskId}:${stage}`, model: model("fast") })
   );
-  const result = parseBatchResult(raw, steps);
   if (result.missing) return { committed: false, detail: `independent check returned no result (${describeFailure(result, "verify-commit")})` };
   return parseCommitVerification(stepStdout(result, "log"), stepStdout(result, "status"), commitPrefix, stage);
 }
@@ -852,10 +854,11 @@ async function resilientAgent(prompt, opts, deps) {
     }
     if (attempt < maxRetries && opts?.worktree && !isReadOnlyAgentType(opts.agentType)) {
       const guardSteps = worktreeDirtySteps(opts.worktree);
-      const guard = worktreeDirtyFromSteps(parseBatchResult(
-        await agentFn(batchCommandPrompt(guardSteps), stageOpts("cli", { label: "retry-guard", model: "haiku" })),
-        guardSteps
-      ));
+      const guard = worktreeDirtyFromSteps(
+        // retry:false: the guard's unknown state aborts the retry below; a
+        // second runner call here would only delay that abort.
+        await runBatch(guardSteps, { ...stageOpts("cli", { label: "retry-guard", model: "haiku" }), retry: false }, { agentFn, logFn })
+      );
       if (!guard.known) {
         logFn(`[resilientAgent] attempt ${attempt + 1} ${threw ? `threw: ${caughtMessage}` : "returned null"} and the worktree state is unknown (${guard.detail}) \u2014 aborting retry to prevent duplicate writes`);
         return lastResult;
@@ -874,17 +877,52 @@ async function resilientAgent(prompt, opts, deps) {
   }
   return lastResult;
 }
+function resolveShell(deps) {
+  if (deps?.shell) return deps.shell;
+  const g = globalThis.shell;
+  return typeof g === "function" ? g : null;
+}
+function shellCwd() {
+  const root = getBatchRoot();
+  if (root) return root;
+  const a2 = globalThis.args;
+  if (a2 && typeof a2.repoRoot === "string" && a2.repoRoot) return a2.repoRoot;
+  const proc = globalThis.process;
+  return typeof proc?.cwd === "function" ? proc.cwd() : ".";
+}
+async function runBatchViaShell(shellFn, steps) {
+  let out;
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` };
+  }
+  const result = parseBatchResult(out.stdout, steps);
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` };
+  }
+  return result;
+}
 var LARGE_BATCH_BYTES = 8 * 1024;
 async function runBatch(steps, opts, deps) {
+  const shellFn = resolveShell(deps);
+  if (shellFn) return runBatchViaShell(shellFn, steps);
   const agentFn = deps?.agentFn ?? agent;
   const logFn = deps?.logFn ?? log;
-  const prompt = batchCommandPrompt(steps);
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts;
+  opts = agentOpts;
+  const script = batchCommandPrompt(steps);
+  const prompt = retryMarker ? `${script}
+
+${retryMarker}` : script;
   const promptBytes = utf8ByteLength(prompt);
   if (promptBytes > LARGE_BATCH_BYTES && opts.model !== model("balanced") && opts.model !== model("deep")) {
     logFn(`[runBatch] ${opts.label || "batch"}: ${promptBytes}-byte script routed to the balanced model (over ${LARGE_BATCH_BYTES} bytes, a fast-runner transcription slip is likely)`);
     opts = { ...opts, model: model("balanced") };
   }
   let result = parseBatchResult(await agentFn(prompt, opts), steps);
+  if (retry === false) return result;
   const label = opts.label || "batch";
   const retryOpts = { ...opts, label: `${label}:retry` };
   if (result.missing && result.refusal && isRunnerRefusal(result.refusal)) {
@@ -928,6 +966,11 @@ async function runBatch(steps, opts, deps) {
     result = parseBatchResult(await agentFn(`${prompt}
 
 # attempt 2 of 2 \u2014 run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps);
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) \u2014 retrying once with a fresh runner`);
+    result = parseBatchResult(await agentFn(`${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps);
   }
   return result;
 }
@@ -1596,7 +1639,7 @@ var STAGE_RESULT_SCHEMA = {
     files_written: { type: "array", items: { type: "string" } },
     success: { type: "boolean" },
     tests_pass: { type: "boolean" },
-    test_exit_code: { type: "number" },
+    test_exit_code: { type: "integer" },
     test_errors: { type: "array", items: { type: "string" } },
     test_output: { type: "string" },
     committed: { type: "boolean" },
@@ -1612,7 +1655,9 @@ var STAGE_RESULT_SCHEMA = {
   // read_witness is required: a structured answer drops optional fields
   // (#341 task-011 twice, the #516 probes: 7 of 9 answers omitted it) and the
   // runner reads it. A stage with nothing deferred returns {}.
-  required: ["success", "tests_pass", "committed", "read_witness"]
+  // files_written and test_exit_code are read by the runner too, so a reply
+  // that omits them is schema-invalid and gets one tier-up retry.
+  required: ["success", "tests_pass", "committed", "read_witness", "files_written", "test_exit_code"]
 };
 var REFLECT_SCHEMA = {
   type: "object",
@@ -1774,7 +1819,7 @@ setBatchCacheKey(cfg.configFingerprint || "");
 setBatchRoot(cfg.repoRoot || "");
 async function verifyFileOwnership2(taskId, wt, stage, allowedFiles, forbiddenFiles, since) {
   const steps = ownershipCheckSteps(wt, since);
-  const result = await runBatch(steps, stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }));
+  const result = await runBatch(steps, { ...stageOpts("cli", { label: `ownership-check:${taskId}:${stage}`, phase: "Act", model: model("fast") }), idempotent: true });
   if (result.missing) {
     return {
       ok: false,
@@ -2996,10 +3041,13 @@ var dagResults = await parallel(
       if (typeof wt === "string" && wt.startsWith("/")) {
         const depBranches = inBatchDeps.map((d) => `${cfg.epicBranch}--${d}`);
         const depMergeStepList = depMergeSteps(wt, depBranches);
-        const depMerge = depMergeFromSteps(parseBatchResult(
-          await resilientAgent(batchCommandPrompt(depMergeStepList), stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })),
-          depMergeStepList
-        ), depBranches);
+        let depMerge;
+        try {
+          depMerge = depMergeFromSteps(await runBatch(depMergeStepList, stageOpts("cli", { label: `dep-merge:${taskId}`, model: "haiku" })), depBranches);
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e);
+          depMerge = { ok: false, error: `dep_merge_failed: could not merge [${depBranches.join(", ")}] \u2014 runner threw: ${reason}` };
+        }
         if (!depMerge.ok) {
           log(`[${taskId}] ${depMerge.error}`);
           const failResult = { task_id: taskId, status: "failed", stage: "CRASH", error: depMerge.error };

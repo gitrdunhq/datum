@@ -134,7 +134,7 @@ async function verifyFileOwnership(
   // be told to run the diff and RETURN a JSON list of the changed paths — a
   // typed-back list that could drop a path and hide a real violation.
   const steps = ownershipCheckSteps(wt, since)
-  const result = await runBatch(steps, stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }))
+  const result = await runBatch(steps, { ...stageOpts('cli', { label: `ownership-check:${taskId}:${stage}`, phase: 'Act', model: model('fast') }), idempotent: true })
 
   // A missing result is a named tooling failure, never a clean check — the
   // ownership-check agent crashed, was skipped, or returned nothing parseable.

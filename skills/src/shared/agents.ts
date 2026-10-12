@@ -261,7 +261,7 @@ async function runBatchViaShell(shellFn: ShellFn, steps: BatchStep[]): Promise<B
  */
 export const LARGE_BATCH_BYTES = 8 * 1024
 
-export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string; retryMarker?: string; retry?: boolean }, deps?: RunBatchDeps): Promise<BatchResult> {
+export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string; retryMarker?: string; retry?: boolean; idempotent?: boolean }, deps?: RunBatchDeps): Promise<BatchResult> {
   const shellFn = resolveShell(deps)
   if (shellFn) return runBatchViaShell(shellFn, steps)
   const agentFn = deps?.agentFn ?? agent
@@ -270,7 +270,9 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
   // re-asks instead of replaying a cached answer); the runner never sees it as an opt.
   // retry:false skips the runner-side retries below: a caller with its own
   // retry loop (resilientAgent's guard) takes the first reply as the answer.
-  const { retryMarker, retry, ...agentOpts } = opts
+  // idempotent: the batch only reads, so re-running it is safe even when a
+  // prose reply may mean the runner already ran it (see the last branch).
+  const { retryMarker, retry, idempotent, ...agentOpts } = opts
   opts = agentOpts
   const script = batchCommandPrompt(steps)
   const prompt = retryMarker ? `${script}\n\n${retryMarker}` : script
@@ -333,6 +335,14 @@ export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: s
     // retry; a real missing root or tool says so again and that is terminal.
     logFn(`[runBatch] ${label}: ${result.scriptError} on attempt 1 — retrying once with a fresh runner (a guard row is not trusted until it repeats)`)
     result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — run the script exactly; if its guard prints a row, return that row, never one you wrote`, retryOpts), steps)
+  } else if (idempotent && result.missing && result.refusal && !result.scriptError && !isRunnerRefusal(result.refusal)) {
+    // DAT-11 and DAT-18 (run 20261012): the ownership-check runner replied
+    // with the diff's bare file list instead of the JSON array, and the lane
+    // failed on that one slip. A prose reply is not retried by default: the
+    // runner may already have run the script, and a commit or merge must not
+    // run twice. A read-only batch opts in and gets one fresh runner.
+    logFn(`[runBatch] ${label}: runner_no_json on attempt 1 (idempotent batch) — retrying once with a fresh runner`)
+    result = parseBatchResult(await agentFn(`${prompt}\n\n# attempt 2 of 2 — the previous runner replied with text instead of the script's JSON array; return the script's stdout exactly, nothing else`, retryOpts), steps)
   }
   return result
 }

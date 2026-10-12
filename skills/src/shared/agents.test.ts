@@ -551,3 +551,44 @@ describe('runBatch — one retry on a truncated step array (batch_truncated)', (
     expect(describeFailure(r, 'post-red')).toMatch(/batch_truncated/)
   })
 })
+
+describe('runBatch — idempotent batches retry a prose reply once (DAT-11, DAT-18 ownership-check)', () => {
+  const steps = [{ name: 'ownership', command: 'git diff --name-only HEAD~1' }]
+  const arr = JSON.stringify([{ name: 'ownership', exit_code: 0, stdout: 'skills/src/a.test.ts\n', stderr: '' }])
+
+  it('re-sends an idempotent batch once when the runner replied with bare stdout instead of the JSON array', async () => {
+    // Catches: a read-only check failing its lane on one runner slip
+    // ("runner_no_json", reply was the diff's file list) with no retry.
+    const prompts: string[] = []
+    const labels: string[] = []
+    let n = 0
+    const r = await runBatch(steps, { label: 'ownership-check:T1:RED', idempotent: true }, {
+      agentFn: async (prompt, opts) => { prompts.push(prompt); labels.push(opts?.label || ''); return ++n === 1 ? 'skills/src/a.test.ts tests/test_b.py' : arr },
+      logFn: () => undefined,
+    })
+    expect(r.missing).toBe(false)
+    expect(r.steps[0].stdout).toBe('skills/src/a.test.ts\n')
+    expect(labels).toEqual(['ownership-check:T1:RED', 'ownership-check:T1:RED:retry'])
+    expect(prompts[1]).toContain('attempt 2 of 2')
+  })
+
+  it('never passes the idempotent flag through to the runner', async () => {
+    // Catches: an unknown option leaking into the agent call options.
+    const seen: unknown[] = []
+    await runBatch(steps, { label: 'x', idempotent: true }, { agentFn: async (_p, opts) => { seen.push(opts); return arr }, logFn: () => undefined })
+    expect(seen[0]).not.toHaveProperty('idempotent')
+  })
+
+  it('a second prose reply is returned missing and named runner_no_json; non-idempotent batches still never retry prose', async () => {
+    // Catches: an unbounded retry, and the opt-in leaking to batches that
+    // may have side effects (a commit or merge a prose reply may already have run).
+    let calls = 0
+    const r = await runBatch(steps, { label: 'x', idempotent: true }, { agentFn: async () => { calls++; return 'just some files' }, logFn: () => undefined })
+    expect(calls).toBe(2)
+    expect(r.missing).toBe(true)
+    expect(describeFailure(r, 'x')).toMatch(/^x: runner_no_json/)
+    let plain = 0
+    await runBatch(steps, { label: 'y' }, { agentFn: async () => { plain++; return 'just some files' }, logFn: () => undefined })
+    expect(plain).toBe(1)
+  })
+})
