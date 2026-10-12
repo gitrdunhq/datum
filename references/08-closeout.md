@@ -89,6 +89,11 @@ When a collector (`collect_tasks.py`, `collect_token_metrics.py`) has nothing to
 - Per-lane breakdown
 - Comparison to prior epic: total delta, per-LOC delta
 - Lane-tools ROI: used vs. added this epic
+- Per-agent-type totals (`per_agent_type`): calls, prompt, completion and cached tokens per `agent_type`
+- Per-stage totals (`per_stage`): the same counts grouped by the label prefix before the first `:` (`red:DAT-1` counts under `red`)
+- Cached share (`cached_share`): per agent type, `cached_tokens / prompt_tokens` rounded to four places, `0.0` when no prompt tokens
+
+The last three come from `.datum/runs/<run_id>/metrics.jsonl`, the per-call log the bundle runner writes (see docs/FLOW.md, "Shell seam and the bundle runner"). They are independent of `state.db`: when that file or its `token_metrics` rows are missing, the `no_state_available` result still carries them. A missing `metrics.jsonl` yields three empty objects. A malformed line (invalid JSON, not an object, or a missing `label`, `agent_type` or integer token field) fails the collector with exit 1 and `{"ok": false, "code": "invalid_metrics_line", "message": "metrics.jsonl line <n>: ..."}` on stderr; it is never skipped silently.
 
 ## Closeout-specific findings (surfaced in RETRO, not failures)
 
