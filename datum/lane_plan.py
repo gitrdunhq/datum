@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -666,6 +667,171 @@ def validate_lane_files_not_generated(lanes: dict, repo_root: Path) -> list[str]
     return errors
 
 
+_PIN_TEST_NAME_RE = re.compile(
+    r"(^test_.*\.py$|_test\.py$|\.(test|spec)\.(ts|tsx|js|mjs|cjs)$|_test\.go$)"
+)
+_PIN_SKIP_DIRS = {
+    "node_modules",
+    ".git",
+    ".venv",
+    "venv",
+    ".worktrees",
+    "dist",
+    "build",
+}
+# A call that reads a file's text: readFileSync/readFile (Node), read_text/
+# read_bytes/open (Python), os.ReadFile (Go).
+_PIN_READ_RE = re.compile(
+    r"\b(readFileSync|readFile|read_text|read_bytes|open|ReadFile)\("
+)
+# A path built next to the test: join(__dirname, ...), resolve(__dirname, ...),
+# Path(__file__)... — the read may come on a later line through a variable.
+_PIN_PATH_RE = re.compile(
+    r"(join|resolve)\(\s*__dirname|Path\(__file__\)|ROOT\s*/|REPO\s*/"
+)
+_PIN_LITERAL_RE = re.compile(r"""(['"`])([^'"`\n$]+)\1""")
+
+
+def _pin_test_files(repo_root: Path) -> list[str]:
+    """Repo-relative test files, tracked ones via git when it is a repo."""
+    try:
+        r = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        listed = r.stdout.splitlines() if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        listed = None
+    if listed is None:
+        listed = [
+            p.relative_to(repo_root).as_posix()
+            for p in repo_root.rglob("*")
+            if p.is_file()
+            and not _PIN_SKIP_DIRS.intersection(p.relative_to(repo_root).parts)
+        ]
+    return sorted(
+        rel
+        for rel in listed
+        if _PIN_TEST_NAME_RE.search(Path(rel).name)
+        and not _PIN_SKIP_DIRS.intersection(Path(rel).parts)
+    )
+
+
+def _pinned_paths(test_rel: str, text: str, targets: set[str]) -> set[str]:
+    """Which of `targets` (repo-relative) the test reads as text.
+
+    A line counts when it calls a read function, or builds a path next to
+    the test in a file that reads somewhere. Its quoted literals are taken
+    as path segments: every run of literals that ends in a target's
+    basename is resolved against the test's directory and the repo root.
+    """
+    if not _PIN_READ_RE.search(text):
+        return set()
+    by_name: dict[str, set[str]] = {}
+    for t in targets:
+        by_name.setdefault(Path(t).name, set()).add(t)
+    test_dir = os.path.dirname(test_rel)
+    found: set[str] = set()
+    for line in text.splitlines():
+        if not (_PIN_READ_RE.search(line) or _PIN_PATH_RE.search(line)):
+            continue
+        literals = [m.group(2) for m in _PIN_LITERAL_RE.finditer(line)]
+        for i, lit in enumerate(literals):
+            wanted = by_name.get(lit.rsplit("/", 1)[-1])
+            if not wanted:
+                continue
+            for start in range(i, -1, -1):
+                joined = "/".join(literals[start : i + 1])
+                for base in (test_dir, ""):
+                    cand = os.path.normpath(os.path.join(base, joined)).replace(
+                        os.sep, "/"
+                    )
+                    if cand in wanted:
+                        found.add(cand)
+    return found
+
+
+def attach_source_pin_tests(
+    lanes: dict, ownership: dict, repo_root: Path | str
+) -> list[str]:
+    """Find existing tests that read a lane file's source text.
+
+    datum self-hosted run 20261012: two lanes rewrote files whose text an
+    existing test asserted on, under criteria saying existing tests pass
+    unchanged, and no lane owned the test. An unowned pin test in the same
+    language as the lane joins that lane's files (and file_ownership); a
+    pin owned by another lane, pinning several lanes, or in another
+    language is a warning naming both sides. Every pin found is recorded
+    on the lane as `source_pins` {test: [lane files it reads]}.
+
+    Only files that already exist are checked: no existing test can pin a
+    file the lane creates. Mutates `lanes` and `ownership`; returns
+    warnings.
+    """
+    repo_root = Path(repo_root)
+    file_lane: dict[str, str] = {}
+    for lid, lane in lanes.items():
+        for f in lane.get("files", []):
+            if (repo_root / f).is_file() and not _PIN_TEST_NAME_RE.search(Path(f).name):
+                file_lane.setdefault(f, lid)
+    if not file_lane:
+        return []
+    targets = set(file_lane)
+
+    pins: dict[str, dict[str, list[str]]] = {}  # test -> lane -> files
+    for test_rel in _pin_test_files(repo_root):
+        try:
+            text = (repo_root / test_rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for f in sorted(_pinned_paths(test_rel, text, targets)):
+            pins.setdefault(test_rel, {}).setdefault(file_lane[f], []).append(f)
+
+    warnings: list[str] = []
+    for test_rel, by_lane in pins.items():
+        for lid, files in by_lane.items():
+            lanes[lid].setdefault("source_pins", {})[test_rel] = files
+        pinned = ", ".join(
+            f"{lid} ({', '.join(files)})" for lid, files in by_lane.items()
+        )
+        owner = ownership.get(test_rel) or next(
+            (lid for lid, lane in lanes.items() if test_rel in lane.get("files", [])),
+            None,
+        )
+        if owner is not None:
+            others = [lid for lid in by_lane if lid != owner]
+            if others:
+                warnings.append(
+                    f"{test_rel} reads the source text of lane {pinned} but lane "
+                    f"{owner} owns it — make {', '.join(others)} depend on {owner} "
+                    f"or move the test, or GREEN fails on the pinned text"
+                )
+            continue
+        if len(by_lane) > 1:
+            warnings.append(
+                f"{test_rel} reads the source text of lanes {pinned} and no lane "
+                f"owns it — give it to one lane and order the others after it"
+            )
+            continue
+        lid = next(iter(by_lane))
+        lane_lang = infer_lane_language(lanes[lid].get("files", []))
+        test_lang = infer_lane_language([test_rel])
+        if lane_lang is not None and test_lang is not None and test_lang != lane_lang:
+            warnings.append(
+                f"{test_rel} ({test_lang}) reads the source text of lane {pinned} "
+                f"({lane_lang}); the lane's test command will not run it — add "
+                f"it to the lane with its own test_command or update it by hand"
+            )
+            continue
+        lanes[lid]["files"] = [*lanes[lid].get("files", []), test_rel]
+        ownership[test_rel] = lid
+    return warnings
+
+
 def _renumbered_prefix_and_start(
     sorted_ids: list[str],
 ) -> tuple[str | None, int | None]:
@@ -977,6 +1143,12 @@ def main() -> None:
         properties_path=args.properties,
     )
 
+    # Existing tests that read a lane file's source text join that lane, or
+    # are named when another lane owns them (self-hosted run 20261012).
+    pin_warnings = attach_source_pin_tests(
+        lane_plan["lanes"], lane_plan["file_ownership"], Path(".")
+    )
+
     # Preflight (#307): fail fast, before a single agent-token is spent, if
     # any lane's effective test_command clearly can't run its own file scope.
     generated_errors = validate_lane_files_not_generated(
@@ -1027,7 +1199,16 @@ def main() -> None:
         "tasks_md": args.md_output,
         "total_lanes": lane_plan["total_lanes"],
     }
-    all_warnings = list(read_edge_warnings) + list(lane_plan.get("warnings", []))
+    source_pins = {
+        lid: lane["source_pins"]
+        for lid, lane in lane_plan["lanes"].items()
+        if lane.get("source_pins")
+    }
+    if source_pins:
+        result["source_pins"] = source_pins
+    all_warnings = (
+        list(read_edge_warnings) + list(lane_plan.get("warnings", [])) + pin_warnings
+    )
     if all_warnings:
         result["warnings"] = all_warnings
     print(json.dumps(result))
