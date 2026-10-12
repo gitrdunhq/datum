@@ -1091,7 +1091,7 @@ var configFingerprint = typeof a.configFingerprint === "string" ? a.configFinger
 if (!configFingerprint) log(NO_FINGERPRINT_WARNING);
 setBatchCacheKey(configFingerprint);
 setBatchRoot(typeof a.repoRoot === "string" ? a.repoRoot : "");
-var bootBatch = await runBatch(bootSteps(), bootstrapOpts("cli", { label: "boot", model: model("fast") }));
+var bootBatch = await runBatch(bootSteps(), { ...bootstrapOpts("cli", { label: "boot", model: model("fast") }), idempotent: true });
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, "boot"));
 var boot = bootFromSteps(bootBatch);
 setBatchRoot(boot.repoRoot);
@@ -1133,7 +1133,7 @@ var toolCheckResult = await runBatch(
     tolerant: true,
     command: preflightCd + `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
   }],
-  stageOpts("cli", { label: "preflight-tool-check", model: model("fast") })
+  { ...stageOpts("cli", { label: "preflight-tool-check", model: model("fast") }), idempotent: true }
 );
 var toolStep = stepResult(toolCheckResult, "tool-check");
 if (!toolStep || toolStep.exit_code !== 0 && !toolStep.stdout.trim()) {
@@ -1150,7 +1150,7 @@ if (!toolCheck.ok) {
 }
 var gitignoreResult = await runBatch(
   [{ name: "gitignore-check", tolerant: true, command: `datum gitignore-check${yolo ? " --fix" : ""}` }],
-  stageOpts("cli", { label: "preflight-gitignore", model: model("fast") })
+  { ...stageOpts("cli", { label: "preflight-gitignore", model: model("fast") }), idempotent: true }
 );
 var gitignoreStep = stepResult(gitignoreResult, "gitignore-check");
 if (!gitignoreStep || gitignoreStep.exit_code !== 0 && !gitignoreStep.stdout.trim()) {

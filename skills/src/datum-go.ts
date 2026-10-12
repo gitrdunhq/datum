@@ -99,7 +99,7 @@ setBatchCacheKey(configFingerprint)
 // The boot batch is what measures the root; until then the launcher's value
 // (if any) applies, and '' means "wherever the runner starts".
 setBatchRoot(typeof a.repoRoot === 'string' ? a.repoRoot : '')
-const bootBatch = await runBatch(bootSteps(), bootstrapOpts('cli', { label: 'boot', model: model('fast') }))
+const bootBatch = await runBatch(bootSteps(), { ...bootstrapOpts('cli', { label: 'boot', model: model('fast') }), idempotent: true })
 if (bootBatch.missing) throw new Error(describeFailure(bootBatch, 'boot'))
 const boot = bootFromSteps(bootBatch)
 // elonchesd: every batch of this run and of every child starts at the root
@@ -191,7 +191,7 @@ const toolCheckResult = await runBatch(
       `if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else ` +
       `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; fi`,
   }],
-  stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }),
+  { ...stageOpts('cli', { label: 'preflight-tool-check', model: model('fast') }), idempotent: true },
 )
 // A step that did not run, or exited non-zero with no stdout, is a runner
 // failure and halts; a non-zero exit that still printed its JSON verdict
@@ -225,7 +225,7 @@ if (!toolCheck.ok) {
 // tokens on a run that would fail at merge time.
 const gitignoreResult = await runBatch(
   [{ name: 'gitignore-check', tolerant: true, command: `datum gitignore-check${yolo ? ' --fix' : ''}` }],
-  stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }),
+  { ...stageOpts('cli', { label: 'preflight-gitignore', model: model('fast') }), idempotent: true },
 )
 const gitignoreStep = stepResult(gitignoreResult, 'gitignore-check')
 if (!gitignoreStep || (gitignoreStep.exit_code !== 0 && !gitignoreStep.stdout.trim())) {
