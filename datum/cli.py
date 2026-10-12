@@ -2227,13 +2227,21 @@ def worktrees_merge(
     ``report`` and ``error`` and exits 1, so the workflow can demote only
     the lane that did not land and say why.
     """
-    from datum.worktree_manager import LaneMergeError, merge_lane_branches
+    from datum.worktree_manager import (
+        LaneMergeError,
+        merge_lane_branches,
+        regenerate_command_from_config,
+    )
 
     order = [lid.strip() for lid in lane_order.split(",") if lid.strip()]
     report_dir = Path(".datum") / "runs" / run_id if run_id.strip() else None
     try:
         result = merge_lane_branches(
-            epic_branch, order, commit_message, report_dir=report_dir
+            epic_branch,
+            order,
+            commit_message,
+            report_dir=report_dir,
+            regenerate_command=regenerate_command_from_config(),
         )
     except LaneMergeError as exc:
         typer.echo(json.dumps(exc.payload()))

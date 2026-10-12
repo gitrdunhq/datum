@@ -575,6 +575,7 @@ class LaneMergeError(RuntimeError):
         sha: str,
         conflict_files: list[str] | None = None,
         report: str = "",
+        regenerate_failed: bool = False,
     ) -> None:
         super().__init__(message)
         self.failed_lane = failed_lane
@@ -583,9 +584,10 @@ class LaneMergeError(RuntimeError):
         self.sha = sha
         self.conflict_files = list(conflict_files or [])
         self.report = report
+        self.regenerate_failed = regenerate_failed
 
-    def payload(self) -> dict[str, str | list[str]]:
-        return {
+    def payload(self) -> dict[str, str | bool | list[str]]:
+        out: dict[str, str | bool | list[str]] = {
             "sha": self.sha,
             "merged": list(self.merged),
             "already_merged": list(self.already_merged),
@@ -594,6 +596,47 @@ class LaneMergeError(RuntimeError):
             "report": self.report,
             "error": str(self),
         }
+        if self.regenerate_failed:
+            out["regenerate_failed"] = True
+        return out
+
+
+REGENERATE_TIMEOUT_S = 900
+
+
+def _porcelain_paths(repo_root: Path) -> dict[str, str]:
+    """{path: porcelain status line} for every changed or untracked path."""
+    out = _git(
+        ["status", "--porcelain", "--untracked-files=all", "-z"],
+        cwd=repo_root,
+        check=False,
+    ).stdout
+    entries: dict[str, str] = {}
+    parts = out.split("\0")
+    i = 0
+    while i < len(parts):
+        entry = parts[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        entries[entry[3:]] = entry[:2]
+        if entry[0] in "RC":
+            i += 1  # the rename source follows as its own field
+    return entries
+
+
+def regenerate_command_from_config(config_path: Path | None = None) -> str | None:
+    """`regenerate_command` from .datum/config.json: a shell command that
+    rebuilds generated files from their sources (datum itself:
+    `bash scripts/build-workflows.sh`). None when unset or unreadable."""
+    path = config_path or Path(".datum/config.json")
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text()).get("regenerate_command")
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
 def merge_lane_branches(
@@ -603,8 +646,21 @@ def merge_lane_branches(
     *,
     repo_root: Path | None = None,
     report_dir: Path | None = None,
+    regenerate_command: str | None = None,
 ) -> dict[str, str | list[str]]:
     """Squash-merge all completed lane branches into the epic branch.
+
+    ``regenerate_command`` (``regenerate_command`` in .datum/config.json)
+    runs once after every lane has landed, when at least one brought new
+    changes. The paths it creates or changes are folded into the same
+    merge commit and listed under ``regenerated``; files that were already
+    dirty or untracked before it ran are left alone. If it fails, its
+    edits to tracked files are discarded, the lanes stay landed in one
+    commit, and LaneMergeError (``failed_lane`` empty,
+    ``regenerate_failed``) names the command, exit and output tail. Lanes
+    edit sources, never generated files (validate_lane_files_not_generated),
+    so without this the epic branch carried stale bundles (self-hosted run
+    20261012).
 
     ``report_dir`` (the run directory) receives
     ``merge-conflict-<lane>.json`` — the conflicted paths and git's own
@@ -863,12 +919,66 @@ def merge_lane_branches(
             merged.append(lane_id)
             any_new_changes = True
 
+    regenerated: list[str] = []
+    if regenerate_command and any_new_changes:
+        before = _porcelain_paths(repo_root)
+        try:
+            regen = subprocess.run(
+                ["bash", "-c", regenerate_command],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=REGENERATE_TIMEOUT_S,
+                check=False,
+            )
+            failure = (
+                None
+                if regen.returncode == 0
+                else f"exit {regen.returncode}: "
+                + "\n".join(
+                    (regen.stdout + "\n" + regen.stderr).strip().splitlines()[-10:]
+                )
+            )
+        except subprocess.TimeoutExpired:
+            failure = f"timed out after {REGENERATE_TIMEOUT_S}s"
+        except OSError as exc:
+            failure = f"could not start: {exc}"
+        after = _porcelain_paths(repo_root)
+        touched = sorted(p for p, st in after.items() if before.get(p) != st)
+        if failure is not None:
+            # Undo only what the command touched (never the operator's own
+            # dirty files): tracked paths back to the last lane's tmp
+            # commit, new files removed. The lanes stay and fold.
+            for rel in touched:
+                if after[rel] == "??":
+                    (repo_root / rel).unlink(missing_ok=True)
+                else:
+                    _git(["checkout", "HEAD", "--", rel], cwd=repo_root, check=False)
+            sha = fold_into_one_commit()
+            raise LaneMergeError(
+                f"regenerate_command {regenerate_command!r} failed ({failure}). "
+                f"Lanes {', '.join(merged)} landed as {sha[:12]}; generated files "
+                "on the epic branch are stale — run the command, commit its "
+                "output, then continue.",
+                failed_lane="",
+                merged=merged,
+                already_merged=already_merged,
+                sha=sha,
+                regenerate_failed=True,
+            )
+        regenerated = touched
+        if regenerated:
+            _git(["add", "-A", "--", *regenerated], cwd=repo_root)
+
     sha = fold_into_one_commit()
-    return {
+    result: dict[str, str | list[str]] = {
         "sha": sha,
         "merged": merged,
         "already_merged": already_merged,
     }
+    if regenerate_command:
+        result["regenerated"] = regenerated
+    return result
 
 
 def cleanup_run_worktrees(
