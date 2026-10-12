@@ -704,6 +704,14 @@ function lanePlanDigestFromSteps(result, planPath) {
   }
   return { ok: true, digest, error: "" };
 }
+function isDigestRelayError(error) {
+  return typeof error === "string" && error.startsWith("lane_plan_digest_mismatch:");
+}
+function digestRetryPrompt(prompt) {
+  return `${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing`;
+}
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
   if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
@@ -1227,11 +1235,12 @@ if (shouldRun("act", 3)) {
         taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`
       })
     });
+    const actStartPrompt = batchCommandPrompt(actStart);
     const actStartRaw = await agent(
-      batchCommandPrompt(actStart),
+      actStartPrompt,
       stageOpts("cli", { label: "act-start", phase: "Act", model: model("fast") })
     );
-    const actStartResult = parseBatchResult(actStartRaw, actStart);
+    let actStartResult = parseBatchResult(actStartRaw, actStart);
     const info = parseAgentJson(stepStdout(actStartResult, "bootstrap") || "", { epicBranch: "" });
     const epicBranch = info.epicBranch;
     const runId = (stepStdout(actStartResult, "timestamp") || "").trim();
@@ -1241,6 +1250,14 @@ if (shouldRun("act", 3)) {
     const skeletonDir = `docs/epics/${epicBranch}/skeletons`;
     const epicDir = `docs/epics/${epicBranch}`;
     const lanePlanPath = resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
+    const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
+    if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
+      log(`[act-start] ${firstDigest.error} \u2014 retrying once with a fresh runner`);
+      actStartResult = parseBatchResult(
+        await agent(digestRetryPrompt(actStartPrompt), stageOpts("cli", { label: "act-start:retry", phase: "Act", model: model("fast") })),
+        actStart
+      );
+    }
     const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
     if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);
     const lanePlan = digestResult.digest;

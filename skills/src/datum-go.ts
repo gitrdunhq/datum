@@ -2,7 +2,7 @@ import type { LanePlanDigest, LaneOutcome, SetupResult, LaneResult, MergeResult,
 import { buildWaves, packWaves, parseAgentJson, parseAgentJsonStrict, resolveLanePlanPath, epicSlug } from './shared/utils'
 import { laneStateReadScript } from './shared/prompts'
 import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
-import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps } from './shared/lane-steps'
+import { actStartSteps, lanePlanDigestFromSteps, digestSpecHash, cleanupSteps, isDigestRelayError, digestRetryPrompt } from './shared/lane-steps'
 import { laneEventSteps } from './shared/events-steps'
 import { runBatch } from './shared/agents'
 import { model, setModelTiers, PHASES, DEFAULT_CONFIG, type Phase, type Route } from './shared/models'
@@ -434,11 +434,12 @@ if (shouldRun('act', 3)) {
       epicBranch: '$__eb', epicSlug: '', taskIdsSpace: `$(jq -r '.topological_order[]' "$__plan")`,
     }),
   })
+  const actStartPrompt = batchCommandPrompt(actStart)
   const actStartRaw = await agent(
-    batchCommandPrompt(actStart),
+    actStartPrompt,
     stageOpts('cli', { label: 'act-start', phase: 'Act', model: model('fast') }),
   )
-  const actStartResult = parseBatchResult(actStartRaw, actStart)
+  let actStartResult = parseBatchResult(actStartRaw, actStart)
   // Safe: an unparseable result leaves epicBranch === '', which the throw
   // immediately below already catches — the {epicBranch:''} default never
   // gets acted on as though it were a real, resolved branch.
@@ -462,6 +463,17 @@ if (shouldRun('act', 3)) {
   // (wf_5791e11f-693). The scheduler runs on the compact digest
   // `datum lane-plan-digest` wrote in the act-start batch, byte-verified
   // (wc -c + git hash-object); each lane fetches its own full spec at intake.
+  // A runner that changed the digest in relay (wf_17d9c5ea-ecb inserted a
+  // test_command into a Python lane) gets one fresh runner. The act-start
+  // batch is safe to re-run: init is idempotent and the rest only reads.
+  const firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
+  if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
+    log(`[act-start] ${firstDigest.error} — retrying once with a fresh runner`)
+    actStartResult = parseBatchResult(
+      await agent(digestRetryPrompt(actStartPrompt), stageOpts('cli', { label: 'act-start:retry', phase: 'Act', model: model('fast') })),
+      actStart,
+    )
+  }
   const digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath)
   if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error)
   const lanePlan: LanePlanDigest = digestResult.digest

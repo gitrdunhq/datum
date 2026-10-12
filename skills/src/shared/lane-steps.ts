@@ -1023,6 +1023,23 @@ export function lanePlanDigestFromSteps(
   return { ok: true, digest, error: '' }
 }
 
+/**
+ * A digest whose bytes or blob sha differ from what the batch measured is a
+ * relay error by the runner, not a bad plan (wf_17d9c5ea-ecb: the runner
+ * inserted "test_command":"npx vitest run" into a Python lane). A fresh
+ * runner can fix that; too-large, unparseable or a failed digest command
+ * cannot be fixed by asking again.
+ */
+export function isDigestRelayError(error: string): boolean {
+  return typeof error === 'string' && error.startsWith('lane_plan_digest_mismatch:')
+}
+
+/** Attempt 2's prompt: the same batch plus a suffix, so the Workflow replay
+ *  cache cannot serve attempt 1's corrupted reply back. */
+export function digestRetryPrompt(prompt: string): string {
+  return `${prompt}\n\n# attempt 2 of 2 — the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing`
+}
+
 /** The digest's spec_hash for a lane — the marker comparison key. Never computed from a relayed lane. */
 export function digestSpecHash(digest: LanePlanDigest, taskId: string): string {
   const lane = digest.lanes[taskId]

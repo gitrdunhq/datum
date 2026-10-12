@@ -696,6 +696,14 @@ function lanePlanDigestFromSteps(result, planPath) {
   }
   return { ok: true, digest, error: "" };
 }
+function isDigestRelayError(error) {
+  return typeof error === "string" && error.startsWith("lane_plan_digest_mismatch:");
+}
+function digestRetryPrompt(prompt) {
+  return `${prompt}
+
+# attempt 2 of 2 \u2014 the previous runner changed the digest-cat stdout; return every step's stdout byte for byte, adding, removing and correcting nothing`;
+}
 function digestSpecHash(digest, taskId) {
   const lane = digest.lanes[taskId];
   if (!lane) throw new Error(`lane_plan_digest_unparseable: lane ${taskId} is not in the digest`);
@@ -888,8 +896,9 @@ var actStart = actStartSteps({
   })
 });
 if (!epicBranch && !a.yolo) throw new Error('args.epicBranch is required. Pass {epicBranch, runId} or "yolo" to auto-detect.');
+var actStartPrompt = batchCommandPrompt(actStart);
 var actStartRaw = await agent(
-  batchCommandPrompt(actStart),
+  actStartPrompt,
   stageOpts("cli", { label: "act-start", phase: "Topology", model: model("fast") })
 );
 var actStartResult = parseBatchResult(actStartRaw, actStart);
@@ -901,6 +910,14 @@ var epicDir = `docs/epics/${epicBranch}`;
 var lanePlanPath = a.lanePlanPath || resolveLanePlanPath(epicDir, stepStdout(actStartResult, "resolve") || "");
 var skeletonDir = `docs/epics/${epicBranch}/skeletons`;
 phase("Topology");
+var firstDigest = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
+if (!firstDigest.ok && isDigestRelayError(firstDigest.error)) {
+  log(`[act-start] ${firstDigest.error} \u2014 retrying once with a fresh runner`);
+  actStartResult = parseBatchResult(
+    await agent(digestRetryPrompt(actStartPrompt), stageOpts("cli", { label: "act-start:retry", phase: "Topology", model: model("fast") })),
+    actStart
+  );
+}
 var digestResult = lanePlanDigestFromSteps(actStartResult, lanePlanPath);
 if (!digestResult.ok || !digestResult.digest) throw new Error(digestResult.error);
 var lanePlan = digestResult.digest;
