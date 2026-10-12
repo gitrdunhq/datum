@@ -58,7 +58,7 @@ class Repo:
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     """tmp repo: .datum/config.json (valid fake runtime), a.json, local bundle, stub runner."""
-    import datum.workflow_run as workflow_run
+    from datum import workflow_run
 
     r = Repo(tmp_path)
     (tmp_path / ".datum").mkdir()
