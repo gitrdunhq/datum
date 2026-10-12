@@ -516,6 +516,37 @@ def _requirement_ids(text: str) -> set[str]:
     return {m.group(1).upper() for m in _REQUIREMENT_ID_RE.finditer(text or "")}
 
 
+def _split_table_cells(line: str) -> list[str]:
+    """Cells of one markdown table row. A pipe inside a `code span` or written
+    as \\| is cell content, not a column break (review iteration 3 quoted the
+    regex `not_run|did not run|...` and shifted every later column)."""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    cells: list[str] = []
+    cur: list[str] = []
+    in_code = False
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body) and body[i + 1] == "|":
+            cur.append("|")
+            i += 2
+            continue
+        if ch == "`":
+            in_code = not in_code
+        if ch == "|" and not in_code:
+            cells.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    cells.append("".join(cur).strip())
+    return cells
+
+
 def review_report_rows(content: str) -> list[dict[str, str]]:
     """The report's finding rows as {id, severity, file, line, key} in report
     order. `key` is '' for a report without a Key column (pre-key reports)."""
@@ -525,7 +556,7 @@ def review_report_rows(content: str) -> list[dict[str, str]]:
         line = raw.strip()
         if not line.startswith("|"):
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = _split_table_cells(line)
         if not header_cols and cells and cells[0].lower() == "id":
             header_cols = [c.lower() for c in cells]
             continue
