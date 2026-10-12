@@ -309,7 +309,7 @@ function setBatchCacheKey(key) {
 var BATCH_TOOL_TIMEOUT_MS = 6e5;
 var TIMEOUT_RE = /timed out after|"error"\s*:\s*"timeout"|Command timed out/i;
 function batchCommandPrompt(steps) {
-  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
+  return `Run exactly this script with the Bash tool in ONE invocation, with the Bash tool's timeout parameter ${BATCH_TOOL_TIMEOUT_MS} (the script may run a whole test suite; the default two minutes is too short), and return only its stdout, nothing else. Do not run the steps one at a time, do not retry or "fix" a failing step, do not ask for clarification, do not message anyone, do not summarise or explain \u2014 this prompt is the whole task. Never author a step row yourself; if you cannot run the script, say so in prose instead. The script prints one JSON array (one object per step: name, exit_code, stdout, stderr); a non-zero exit_code is data to return, not a problem to solve.
 
 ` + (cacheKey ? `(inputs fingerprint ${cacheKey} \u2014 informational, do not act on it)
 
@@ -347,6 +347,16 @@ function parseBatchResult(raw, steps) {
     }
     return { steps: [], failed: null, missing: true, refusal: prose };
   }
+  const authored = arr.find((x) => {
+    if (!x || typeof x !== "object") return false;
+    const o = x;
+    const noExit = o.exit_code === null || o.exit_code === void 0;
+    const noOut = !String(o.stdout ?? "").trim();
+    return noExit && noOut && REFUSAL_RE.test(String(o.stderr ?? ""));
+  });
+  if (authored) {
+    return { steps: [], failed: null, missing: true, refusal: String(authored.stderr) };
+  }
   const results = arr.map(asStepResult).filter((r) => r !== null);
   if (results.length === 0) return { steps: [], failed: null, missing: true };
   if (results.length === 1 && results[0].name === "__script" && results[0].exit_code !== 0) {
@@ -379,7 +389,7 @@ function stepStdout(r, name) {
   const s = stepResult(r, name);
   return s ? s.stdout : null;
 }
-var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute))\b/i;
+var REFUSAL_RE = /\b(permission|denied|blocked|classifier|not allowed|refused?|unable to (?:run|execute)|can(?:no|')t (?:run|execute)|not_run|did not run|needs? to approve)\b/i;
 function isRunnerRefusal(reply) {
   return REFUSAL_RE.test(reply);
 }

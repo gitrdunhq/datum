@@ -14,6 +14,7 @@ import {
   setBatchCacheKey,
   setBatchRoot,
   parseBatchResult,
+  isRunnerRefusal,
   stepStdout,
   stepResult,
   describeFailure,
@@ -542,5 +543,36 @@ describe('batch_truncated: a step array cut before it closes is a named runner f
     const r = parseBatchResult('I ran it and the output was [nothing] useful.', steps)
     expect(r.scriptError).toBeUndefined()
     expect(describeFailure(r, 'x')).toMatch(/runner_no_json/)
+  })
+})
+
+
+describe('a runner that declines a step on its own judgement (wf_a3714853-a15 gate)', () => {
+  const steps = [{ name: 'gate', command: 'datum gate refine --approve', tolerant: true }]
+
+  it('routes an authored not_run row to the refusal retry instead of a gate failure', () => {
+    // Catches: a fabricated row {exit_code: null, stdout: "", stderr: "not_run: ..."}
+    // being coerced to exit 1 and read as "datum gate exited without JSON".
+    const reply = JSON.stringify([{ name: 'gate', exit_code: null, stdout: '', stderr: 'not_run: the step runs `datum gate refine --approve`, which would record a gate approval. A person needs to approve the refine gate.' }])
+    const r = parseBatchResult(reply, steps)
+    expect(r.missing).toBe(true)
+    expect(r.steps).toEqual([])
+    expect(r.refusal).toContain('not_run')
+    expect(isRunnerRefusal(r.refusal as string)).toBe(true)
+  })
+
+  it('keeps a real row with a numeric exit code and stdout as a step result', () => {
+    // Catches: the authored-row check swallowing a genuine gate reply.
+    const reply = JSON.stringify([{ name: 'gate', exit_code: 1, stdout: '{"passed": false, "message": "x"}', stderr: '' }])
+    const r = parseBatchResult(reply, steps)
+    expect(r.missing).toBe(false)
+    expect(r.steps[0].exit_code).toBe(1)
+  })
+
+  it('tells the runner never to author a step row, so a decline arrives as prose', () => {
+    // Catches: a generic runner (agent types off) inventing a row for a step
+    // it did not run, which hides the decline from the refusal retry.
+    const p = batchCommandPrompt(steps)
+    expect(p).toContain('Never author a step row yourself')
   })
 })
