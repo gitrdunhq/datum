@@ -17,6 +17,7 @@ from pathlib import Path
 
 # Module-level seam: tests point this at a stub runner.
 RUNNER_PATH: Path = Path(__file__).resolve().parent.parent / "skills" / "runtime" / "runner.js"
+PACKAGE_SKILLS_DIR: Path = Path(__file__).resolve().parent.parent / "skills"
 RUNNER_TIMEOUT_SECONDS = 3600
 RUNTIME_KINDS = ("fake", "pi")
 UNAVAILABLE_KINDS = ("pi",)  # Q5 default: declared but not implemented yet
@@ -68,7 +69,16 @@ def build_argv(name: str, args_file: Path, config_file: Path) -> list[str]:
     dirs = [repo_root / ".datum" / "skills"]
     skills_dir = config.get("skills_dir")
     if isinstance(skills_dir, str) and skills_dir:
-        dirs.append(Path(skills_dir))
+        second = Path(skills_dir)
+    else:
+        # SPEC R9.2: with no skills_dir in config, find the package's bundles
+        # the way datum init does (in place for the datum repo itself, else
+        # materialised under .datum/skills).
+        from datum import skills_materialize
+
+        second = Path(skills_materialize.resolve_skills_dir(repo_root, PACKAGE_SKILLS_DIR))
+    if second.resolve() not in [d.resolve() for d in dirs]:
+        dirs.append(second)
     bundle = _find_bundle(name, dirs)
     argv = [
         "node", str(RUNNER_PATH),
