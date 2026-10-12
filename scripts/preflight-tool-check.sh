@@ -19,7 +19,11 @@ set -euo pipefail
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-DIRECT_URL=$(find "$HOME/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1)
+# No uv tool install (or no HOME) is the normal case on a dev box: find exits
+# non-zero on a missing directory and, under pipefail + errexit, that used to
+# kill the script with exit 1 and no JSON on stdout (datum-go then failed boot
+# with agent_output_unparseable). Default both to empty instead.
+DIRECT_URL=$(find "${HOME:-/nonexistent}/.local/share/uv/tools/datum" -name direct_url.json 2>/dev/null | head -1 || true)
 if [ -z "$DIRECT_URL" ]; then
   echo '{"ok":true,"note":"no uv tool editable install found, skipping check"}'
   exit 0
