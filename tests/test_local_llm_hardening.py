@@ -1,3 +1,11 @@
+import importlib.util
+
+import pytest
+
+# mlx_lm (MLX) installs only on Apple Silicon. These tests exercise the in-process
+# MLX backend itself, so they run where it imports and are skipped, by name, elsewhere.
+requires_mlx = pytest.mark.skipif(importlib.util.find_spec("mlx_lm") is None, reason="mlx_lm (Apple Silicon only) is not installed")
+
 from unittest.mock import MagicMock, patch
 
 from datum.local_llm import DEFAULTS, check_context_budget
@@ -74,6 +82,7 @@ def test_sampling_params_none_is_empty():
     assert _sampling_params(None) == {}
 
 
+@requires_mlx
 def test_multi_turn_uses_prompt_cache():
     from datum.local_llm import multi_turn_phase
 
@@ -869,6 +878,7 @@ def _inprocess_patches(clock, stream_fn):
     )
 
 
+@requires_mlx
 def test_inprocess_deadline_exceeded_midstream_truncates_and_stops():
     """Deadline blown mid-stream → stops promptly, returns partial text
     flagged as truncated via abort_reason, escalated=True."""
@@ -895,6 +905,7 @@ def test_inprocess_deadline_exceeded_midstream_truncates_and_stops():
     assert result["time_s"] == 6.0
 
 
+@requires_mlx
 def test_inprocess_generous_budget_returns_full_output():
     """Budget never exceeded → full output, no abort, not escalated."""
     import contextlib
@@ -916,6 +927,7 @@ def test_inprocess_generous_budget_returns_full_output():
     assert len(yielded) == 5
 
 
+@requires_mlx
 def test_inprocess_no_max_time_means_no_deadline():
     """max_time_s=None → no deadline enforcement, however slow the stream."""
     import contextlib
@@ -944,6 +956,7 @@ def test_inprocess_no_max_time_means_no_deadline():
 # conftest fixture redirects datum.local_llm.METRICS_PATH to tmp_path.
 
 
+@requires_mlx
 def test_metrics_cannot_leak_into_real_repo(request, tmp_path, monkeypatch):
     """Issue #107 regression: a metric-writing path run from the repo root
     with no DATUM_PROJECT_DIR — i.e. a test that forgets per-module chdir

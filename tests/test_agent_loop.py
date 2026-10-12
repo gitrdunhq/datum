@@ -12,6 +12,9 @@ from unittest.mock import patch
 
 import pytest
 
+# The post-GREEN caliper gate shells out to an external tool; see conftest.caliper_clean.
+pytestmark = pytest.mark.usefixtures("caliper_clean")
+
 from datum.agent_loop import (
     _build_decide_prompt,
     _build_system_prompt,

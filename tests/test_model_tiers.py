@@ -1,5 +1,13 @@
 """Tests for get_model_for_phase two-tier model routing and KV cache config."""
 
+import importlib.util
+
+import pytest
+
+# mlx_lm (MLX) installs only on Apple Silicon. These tests exercise the in-process
+# MLX backend itself, so they run where it imports and are skipped, by name, elsewhere.
+requires_mlx = pytest.mark.skipif(importlib.util.find_spec("mlx_lm") is None, reason="mlx_lm (Apple Silicon only) is not installed")
+
 from unittest.mock import MagicMock, patch
 
 from datum.local_llm import DEFAULTS, get_model_for_phase
@@ -81,6 +89,7 @@ def test_kv_defaults_are_set():
     assert DEFAULTS["max_kv_size"] == 32768
 
 
+@requires_mlx
 def test_kv_bits_none_disables_quantization():
     # When kv_bits is None no kv_bits/kv_group_size kwargs should reach stream_generate.
     config = {**_TWO_TIER_CONFIG, "kv_bits": None, "max_kv_size": None}
@@ -104,6 +113,7 @@ def test_kv_bits_none_disables_quantization():
     assert "max_kv_size" not in kwargs
 
 
+@requires_mlx
 def test_kv_kwargs_passed_to_stream_generate():
     # When kv_bits and max_kv_size are set they must reach stream_generate.
     mock_stream = MagicMock(return_value=iter([]))
