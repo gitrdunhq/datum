@@ -26,9 +26,15 @@ export interface StageUsage {
   cached_tokens: number
 }
 
+export interface StageTimings {
+  prefill_ms: number
+  decode_ms: number
+}
+
 export interface StageReply {
   text: string
   usage?: StageUsage
+  timings?: StageTimings
 }
 
 export interface StageExecutor {
