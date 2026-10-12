@@ -50,4 +50,4 @@ tests/Unit/
 .tokensave
 
 # Node dev dependencies (vitest, esbuild, typescript)
-node_modules/
+node_modules
