@@ -1067,9 +1067,10 @@ if (globalCfg.models && typeof globalCfg.models === "object") {
   setModelTiers(globalCfg.models);
   log(`Model tiers: fast=${model("fast")}, balanced=${model("balanced")}, deep=${model("deep")}`);
 }
+var preflightCd = boot.repoRoot ? `cd "${boot.repoRoot.replace(/(["\\$`])/g, "\\$1")}" && ` : "";
 var toolCheckText = await agent(
   runCommandPrompt(
-    `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
+    preflightCd + `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) \u2014 skipping self-hosted install check"}'; fi`
   ),
   stageOpts("cli", { label: "preflight-tool-check", model: model("fast") })
 );

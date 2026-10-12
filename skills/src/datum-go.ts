@@ -175,8 +175,13 @@ if (globalCfg.models && typeof globalCfg.models === 'object') {
 // unreliable for the agent to reproduce faithfully (#378 follow-up — a
 // semantically-correct inline script still misbehaved when actually run by
 // the agent). A short, plain command gives it far less to mangle.
+// The runner's cwd is not necessarily the repo (a session started one level
+// above the checkout failed here with "not a git repository"): cd to the root
+// the boot batch measured first, the same root every runBatch call uses.
+const preflightCd = boot.repoRoot ? `cd "${boot.repoRoot.replace(/(["\\$`])/g, '\\$1')}" && ` : ''
 const toolCheckText = await agent(
   runCommandPrompt(
+    preflightCd +
     `SCRIPT="$(git rev-parse --show-toplevel)/scripts/preflight-tool-check.sh" && ` +
     `if [ -f "$SCRIPT" ]; then bash "$SCRIPT"; else ` +
     `echo '{"ok":true,"note":"invoking repo is not the datum repo itself (external orchestration target) — skipping self-hosted install check"}'; fi`,

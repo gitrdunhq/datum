@@ -8,6 +8,9 @@ BANNER="// @generated — DO NOT EDIT. Source: skills/src/"
 
 MODE="${1:-build}"
 
+# GNU sed takes -i with no argument; BSD/macOS sed needs -i ''. Detect once.
+if sed --version >/dev/null 2>&1; then SED_INPLACE=(sed -i); else SED_INPLACE=(sed -i ''); fi
+
 # ── Type check ──
 echo "==> Type checking..."
 npx tsc -p "$SKILLS_DIR/tsconfig.json"
@@ -35,7 +38,7 @@ for entry in $ENTRY_POINTS; do
 
   # ── Post-process ──
   # 1. Fix var→export const meta, var→return, remove ESM export block
-  sed -i '' \
+  "${SED_INPLACE[@]}" \
     -e 's/^var meta = /export const meta = /' \
     -e 's/^var __workflowResult = /return /' \
     -e '/^export {$/,/^};$/d' \
