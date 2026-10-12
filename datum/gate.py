@@ -350,6 +350,8 @@ def _term_re(term: str) -> re.Pattern:
     )
 
 
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+
 _BLOCKING_PATTERNS = [
     (cat, term, _term_re(term))
     for cat, terms in _BANNED_TERMS_BLOCKING.items()
@@ -649,15 +651,19 @@ def check_banned_terms(spec_content: str) -> list[str]:
         stripped = line.strip()
         if not stripped:
             continue
-        has_measure = any(rx.search(stripped) for rx in _MEASURE_PATTERNS)
+        # Inline code spans are identifiers, not prose: `{ fast, balanced,
+        # deep }` is a tier map, not a claim about speed. Scan the prose only;
+        # the reported excerpt keeps the original line.
+        prose = _INLINE_CODE_RE.sub(" ", stripped)
+        has_measure = any(rx.search(prose) for rx in _MEASURE_PATTERNS)
         for _cat, term, rx in _BLOCKING_PATTERNS:
-            if rx.search(stripped):
+            if rx.search(prose):
                 errors.append(
                     f"SPEC.md Requirements uses unreviewable term {term!r}: {stripped[:80]!r}"
                 )
         if not has_measure:
             for _cat, term, rx in _CONDITIONAL_PATTERNS:
-                if rx.search(stripped):
+                if rx.search(prose):
                     errors.append(
                         f"SPEC.md Requirements uses {term!r} with no stated measure: {stripped[:80]!r}"
                     )
