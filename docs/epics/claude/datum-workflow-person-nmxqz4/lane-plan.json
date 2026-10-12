@@ -46,6 +46,8 @@
     "skills/src/datum-review.ts": "DAT-6",
     "skills/src/shared/main-sync-steps.test.ts": "DAT-6",
     "skills/src/validate-closeout-runbatch.test.ts": "DAT-6",
+    "skills/src/datum-closeout.test.ts": "DAT-6",
+    "skills/src/datum-validate.test.ts": "DAT-6",
     "skills/src/datum-plan.ts": "DAT-7",
     "skills/src/datum-plan.test.ts": "DAT-7",
     "skills/src/datum-properties.ts": "DAT-8",
@@ -273,14 +275,16 @@
         "skills/src/datum-closeout.ts",
         "skills/src/datum-review.ts",
         "skills/src/shared/main-sync-steps.test.ts",
-        "skills/src/validate-closeout-runbatch.test.ts"
+        "skills/src/validate-closeout-runbatch.test.ts",
+        "skills/src/datum-closeout.test.ts",
+        "skills/src/datum-validate.test.ts"
       ],
       "acceptance_criteria": [
         "datum-validate.ts contains `runBatch(verifySteps` and no `batchCommandPrompt(` call or import",
         "datum-closeout.ts contains `runBatch(collectSteps` and `runBatch(archiveSteps`, and no `batchCommandPrompt(` call or import",
         "datum-review.ts no longer imports batchCommandPrompt",
         "main-sync-steps.test.ts line ~233 asserts the absence of any `batchCommandPrompt(` call in datum-validate.ts instead of the old `agent(batchCommandPrompt(syncSteps)` pin, and the test passes",
-        "The existing datum-validate.test.ts and datum-closeout.test.ts pass, and `npx tsc -p skills/tsconfig.json` exits 0"
+        "The three source-text pins that assert the old call shape are updated to the runBatch shape and nothing else in those files changes: datum-closeout.test.ts asserts /runBatch\\(collectSteps/ where it asserted /batchCommandPrompt\\(collectSteps\\)/ and /runBatch\\(archiveSteps/ where it asserted /batchCommandPrompt\\(archiveSteps\\)/; datum-validate.test.ts asserts /runBatch\\(verifySteps/ where it asserted /batchCommandPrompt\\(/; both files then pass, and `npx tsc -p skills/tsconfig.json` exits 0"
       ],
       "red_note": "In the new vitest file skills/src/validate-closeout-runbatch.test.ts, read datum-validate.ts, datum-closeout.ts and datum-review.ts as text. Assert the runBatch(verifySteps / collectSteps / archiveSteps forms and the absence of batchCommandPrompt (call and import). This fails today. Update the existing pin in main-sync-steps.test.ts to the new form in the same lane.",
       "introduces_stubs": false,
