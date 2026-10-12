@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { runBatch, verifyCommitIndependently, resilientAgent, type RunBatchDeps } from './agents'
 import { batchScript, batchCommandPrompt, setBatchRoot } from './batch'
 import { worktreeDirtySteps } from './commit-steps'
-import { CONTEXT_INLINE_RETRY_MARKER, contextInlineRetryPrompt } from './context-relay'
+import { CONTEXT_INLINE_RETRY_MARKER } from './context-relay'
 import { configureAgentTypes } from './agent-types'
 import { model } from './models'
 
@@ -171,7 +171,7 @@ describe('runBatch retryMarker option', () => {
     )
   })
 
-  it('with no shell, retryMarker makes the prompt equal contextInlineRetryPrompt(steps) byte for byte (AC4)', async () => {
+  it('with no shell, retryMarker makes the prompt equal batchCommandPrompt(steps) plus the marker byte for byte (AC4)', async () => {
     const prompts: string[] = []
     const opts: WithMarker = { label: 'x', retryMarker: CONTEXT_INLINE_RETRY_MARKER }
 
@@ -181,7 +181,7 @@ describe('runBatch retryMarker option', () => {
     })
 
     expect(r.missing).toBe(false)
-    expect(prompts).toEqual([contextInlineRetryPrompt(steps)])
+    expect(prompts).toEqual([`${batchCommandPrompt(steps)}\n\n${CONTEXT_INLINE_RETRY_MARKER}`])
     expect(prompts[0]).not.toBe(batchCommandPrompt(steps))
     expect(prompts[0]).toBe(`${batchCommandPrompt(steps)}\n\n${CONTEXT_INLINE_RETRY_MARKER}`)
   })

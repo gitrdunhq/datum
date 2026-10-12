@@ -1,6 +1,6 @@
 // lane-steps.ts — the step lists behind every batched datum-cli call in the
 // Act pipeline (#368 item C). Pure builders: the lane/setup/merge/go scripts
-// hand these to batchCommandPrompt() and evaluate the results themselves.
+// hand these to runBatch() and evaluate the results themselves.
 // Keeping the lists here (not inline in the sandbox scripts) is what lets
 // vitest assert their order, tolerance and contents directly.
 // tested-by: skills/src/shared/lane-steps.test.ts

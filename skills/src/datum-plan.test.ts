@@ -364,7 +364,7 @@ describe('determinism fix — config read is a deterministic batch, not an LLM r
   it('imports configReadSteps/configFromSteps from shared/config-steps and batch helpers from shared/batch', () => {
     expect(datumPlanSrc).toMatch(/import\s*\{[^}]*configReadSteps[^}]*configFromSteps[^}]*\}\s*from\s*'\.\/shared\/config-steps'/)
     expect(datumPlanSrc).toMatch(/import\s*\{[^}]*\}\s*from\s*'\.\/shared\/batch'/)
-    expect(datumPlanSrc).toMatch(/batchCommandPrompt/)
+    expect(datumPlanSrc).not.toMatch(/batchCommandPrompt/)
     expect(datumPlanSrc).toMatch(/parseBatchResult/)
   })
 

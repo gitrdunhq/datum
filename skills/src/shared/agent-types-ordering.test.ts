@@ -19,13 +19,9 @@ const srcDir = join(__dirname, '..')
 const scripts = readdirSync(srcDir)
   .filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))
 
-/** The first batch dispatch: runBatch( or a direct batchCommandPrompt( — whichever comes first. */
+/** The first batch dispatch: runBatch( — every batch goes through it. */
 function firstBatchIndex(src: string): number {
-  const a = firstCallIndex(src, 'runBatch')
-  const b = firstCallIndex(src, 'batchCommandPrompt')
-  if (a === -1) return b
-  if (b === -1) return a
-  return Math.min(a, b)
+  return firstCallIndex(src, 'runBatch')
 }
 
 function firstCallIndex(src: string, fn: string): number {
@@ -58,9 +54,9 @@ describe('configureAgentTypes runs before the first stageOpts in every top-level
 
 // Same ordering discipline for the resume cache key: every script that runs
 // batches must stamp the inputs fingerprint (setBatchCacheKey) before its
-// first batchCommandPrompt, or a resumed run replays stale file reads and
+// first runBatch, or a resumed run replays stale file reads and
 // stale gate verdicts (see batch.test.ts).
-describe('setBatchCacheKey runs before the first batchCommandPrompt in every script', () => {
+describe('setBatchCacheKey runs before the first runBatch in every script', () => {
   for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
     it(file, () => {
       const src = readFileSync(join(srcDir, file), 'utf8')
@@ -68,7 +64,7 @@ describe('setBatchCacheKey runs before the first batchCommandPrompt in every scr
       if (firstBatch === -1) return
       const keyAt = firstCallIndex(src, 'setBatchCacheKey')
       expect(keyAt, `${file}: never calls setBatchCacheKey`).not.toBe(-1)
-      expect(keyAt, `${file}: first batchCommandPrompt( at ${firstBatch} precedes setBatchCacheKey( at ${keyAt}`).toBeLessThan(firstBatch)
+      expect(keyAt, `${file}: first runBatch( at ${firstBatch} precedes setBatchCacheKey( at ${keyAt}`).toBeLessThan(firstBatch)
     })
   }
 })
@@ -92,9 +88,9 @@ describe('child scripts configure from the parent switches before any read', () 
 })
 
 // And for the repo root: every script that runs batches records the root the
-// parent measured at boot (setBatchRoot) before its first batchCommandPrompt,
+// parent measured at boot (setBatchRoot) before its first runBatch,
 // so a runner whose cwd drifted still runs every batch at the repo root.
-describe('setBatchRoot runs before the first batchCommandPrompt in every script', () => {
+describe('setBatchRoot runs before the first runBatch in every script', () => {
   for (const file of readdirSync(srcDir).filter((f) => /^datum-.*\.ts$/.test(f) && !f.endsWith('.test.ts'))) {
     it(file, () => {
       const src = readFileSync(join(srcDir, file), 'utf8')
@@ -102,7 +98,7 @@ describe('setBatchRoot runs before the first batchCommandPrompt in every script'
       if (firstBatch === -1) return
       const rootAt = firstCallIndex(src, 'setBatchRoot')
       expect(rootAt, `${file}: never calls setBatchRoot`).not.toBe(-1)
-      expect(rootAt, `${file}: first batchCommandPrompt( at ${firstBatch} precedes setBatchRoot( at ${rootAt}`).toBeLessThan(firstBatch)
+      expect(rootAt, `${file}: first runBatch( at ${firstBatch} precedes setBatchRoot( at ${rootAt}`).toBeLessThan(firstBatch)
     })
   }
 })
