@@ -1377,6 +1377,75 @@ def gate_deepen(yolo: bool, config: dict) -> None:
     pass_gate("Deepen gate passed")
 
 
+_PROPERTY_CATEGORIES = frozenset(
+    {
+        "SAFETY",
+        "LIVENESS",
+        "INVARIANT",
+        "BOUNDARY",
+        "IDEMPOTENT",
+        "ORDERING",
+        "ISOLATION",
+        "PERFORMANCE",
+        "SECURITY",
+        "OBSERVABILITY",
+        "COMPATIBILITY",
+    }
+)
+
+
+def _lane_token_re() -> re.Pattern:
+    from datum.id_pattern import LANE_ID_PATTERN
+
+    body = LANE_ID_PATTERN.removeprefix("^").removesuffix("$")
+    return re.compile(r"(?<![A-Za-z0-9_-])(" + body + r")(?![A-Za-z0-9_-])")
+
+
+_SEPARATOR_RE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
+
+
+def _table_cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def has_task_references(content: str) -> bool:
+    """True when PROPERTIES.md cites at least one lane id (any shape).
+
+    Lane ids are task-NNN, task-INT-N or a repo prefix such as DAT-142
+    (datum.id_pattern). When a markdown table has a column whose header starts
+    with "Task", only that column is read, so property ids such as SAFETY-001
+    (which match the six-letter prefix arm) never count. Without such a table,
+    any lane-shaped token whose prefix is not a property category counts.
+    """
+    token = _lane_token_re()
+    lines = content.splitlines()
+    saw_task_column = False
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            continue
+        # A header row is the one directly above a |---| separator; a data
+        # cell that happens to start with "Task" ("Task IDs are unique") is not.
+        if i + 1 >= len(lines) or not _SEPARATOR_RE.match(lines[i + 1].strip()):
+            continue
+        header = [c.lower() for c in _table_cells(line)]
+        col = next((j for j, c in enumerate(header) if c.startswith("task")), None)
+        if col is None:
+            continue
+        saw_task_column = True
+        for row in lines[i + 2 :]:
+            if not row.lstrip().startswith("|"):
+                break
+            cells = _table_cells(row)
+            if col < len(cells) and token.search(cells[col]):
+                return True
+    if saw_task_column:
+        return False
+    return any(
+        m.group(1).rsplit("-", 1)[0] not in _PROPERTY_CATEGORIES
+        for m in token.finditer(content)
+    )
+
+
 def gate_properties(yolo: bool, config: dict) -> None:
     props_path = resolve_artifact("PROPERTIES.md")
     if not props_path.exists():
@@ -1402,7 +1471,7 @@ def gate_properties(yolo: bool, config: dict) -> None:
         fail(f"PROPERTIES.md missing categories: {missing}")
 
     # Check traceability table exists
-    if "task-" not in content.lower() and "task_" not in content.lower():
+    if not has_task_references(content):
         fail("PROPERTIES.md missing traceability table (no task references found)")
 
     if not has_integration_invariants_section(content):
