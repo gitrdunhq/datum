@@ -129,6 +129,11 @@ export function setBatchRoot(root: string): void {
   batchRoot = typeof root === 'string' ? root.trim() : ''
 }
 
+/** The root last recorded by setBatchRoot ('' when none). */
+export function getBatchRoot(): string {
+  return batchRoot
+}
+
 /** The unwrapped step runner (what the heredoc carries). */
 export function innerBatchScript(steps: BatchStep[]): string {
   validateBatchSteps(steps)

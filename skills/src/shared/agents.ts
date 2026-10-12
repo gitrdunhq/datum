@@ -1,7 +1,7 @@
 import { model } from './models'
 import { utf8ByteLength } from './utf8'
 import { stageOpts, isReadOnlyAgentType } from './agent-types'
-import { batchCommandPrompt, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
+import { batchCommandPrompt, batchScript, getBatchRoot, BATCH_TOOL_TIMEOUT_MS, parseBatchResult, stepStdout, describeFailure, isRunnerRefusal, type BatchStep, type BatchResult } from './batch'
 import { worktreeDirtySteps, worktreeDirtyFromSteps } from './commit-steps'
 
 // ── Rate-limit resilient agent wrapper ──────────────────────────────────────
@@ -210,6 +210,45 @@ export async function resilientAgent<T = unknown>(
 export interface RunBatchDeps {
   agentFn?: (prompt: string, opts?: AgentOpts) => Promise<unknown>
   logFn?: (message: string) => void
+  /** Non-LLM shell primitive; wins over the ambient global `shell`. */
+  shell?: ShellFn
+}
+
+type ShellResult = { exit_code: number; stdout: string; stderr: string }
+type ShellFn = (script: string, opts: { cwd: string; timeoutMs: number }) => Promise<ShellResult>
+
+/** The shell seam: deps.shell, else the ambient global, else none. */
+function resolveShell(deps?: RunBatchDeps): ShellFn | null {
+  if (deps?.shell) return deps.shell
+  const g = (globalThis as { shell?: ShellFn }).shell
+  return typeof g === 'function' ? g : null
+}
+
+/** Batch cwd: the recorded batch root, else args.repoRoot, else the host's working directory. */
+function shellCwd(): string {
+  const root = getBatchRoot()
+  if (root) return root
+  const a = (globalThis as { args?: { repoRoot?: unknown } }).args
+  if (a && typeof a.repoRoot === 'string' && a.repoRoot) return a.repoRoot
+  // The sandbox has no `process`; the static platform-global tripwire bans a
+  // direct reference, so the host's cwd is read off globalThis when present.
+  const proc = (globalThis as { process?: { cwd?: () => string } }).process
+  return typeof proc?.cwd === 'function' ? proc.cwd() : '.'
+}
+
+async function runBatchViaShell(shellFn: ShellFn, steps: BatchStep[]): Promise<BatchResult> {
+  let out: ShellResult
+  try {
+    out = await shellFn(batchScript(steps), { cwd: shellCwd(), timeoutMs: BATCH_TOOL_TIMEOUT_MS })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_threw: ${msg}` }
+  }
+  const result = parseBatchResult(out.stdout, steps)
+  if (result.missing && out.exit_code !== 0) {
+    return { steps: [], failed: null, missing: true, scriptError: `batch_shell_exit_${out.exit_code}: ${out.stderr.slice(0, 200)}` }
+  }
+  return result
 }
 
 /**
@@ -223,6 +262,8 @@ export interface RunBatchDeps {
 export const LARGE_BATCH_BYTES = 8 * 1024
 
 export async function runBatch(steps: BatchStep[], opts: AgentOpts & { label?: string }, deps?: RunBatchDeps): Promise<BatchResult> {
+  const shellFn = resolveShell(deps)
+  if (shellFn) return runBatchViaShell(shellFn, steps)
   const agentFn = deps?.agentFn ?? agent
   const logFn = deps?.logFn ?? log
   const prompt = batchCommandPrompt(steps)

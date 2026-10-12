@@ -31,3 +31,9 @@ declare const budget: {
   spent(): number
   remaining(): number
 }
+
+// Non-LLM shell primitive. Optional: hosts that do not provide it leave the
+// global undefined and runBatch falls back to a runner subagent.
+declare var shell:
+  | ((script: string, opts: { cwd: string; timeoutMs: number }) => Promise<{ exit_code: number; stdout: string; stderr: string }>)
+  | undefined
