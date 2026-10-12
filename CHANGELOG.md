@@ -2,6 +2,74 @@
 
 All notable changes to DATUM are documented here.
 
+## [Workflow Runner Core] — 2026-10-12 (run 20261012-150046)
+
+### Added
+
+Epic `docs/epics/claude/datum-workflow-person-nmxqz4/` ("Workflow runner core: run
+datum bundles outside Claude Code") merged at
+`5db34d5c497e23da23940b1c7fa00415948640db`. 20/20 tasks completed
+(`say_do_ratio` 1.0, 0 `failed_terminal`), lanes `DAT-1`..`DAT-20`. `git` block:
+63 commits, +13139/-316 LOC (net +12823) across 154 files, no `base_sha_fallback`
+warning.
+
+- `datum workflow run <name> --args <file> [--config <path>]` runs a datum bundle
+  on the host through a compiled runner (`skills/runtime/runner.js`, a second
+  esbuild target in `scripts/build-workflows.sh`) instead of Claude Code's
+  Workflow tool.
+- `skills/src/runtime/`: `runBundle` (sandbox globals, nested `workflow()`
+  loading), the `StageExecutor` interface, a `FakeExecutor` (the only executor
+  shipped), per-model semaphores with agent-type affinity and `X-Client` /
+  `X-Priority` headers, a per-call `metrics.jsonl` sink, stage-output schema
+  validation with one tier-up retry, a `cli_call_bypassed_runbatch` guard, and a
+  subprocess `nodeShell`, with end-to-end fixture bundles.
+- `readRuntimeConfig()` in `skills/src/shared/models.ts` reads the new
+  `.datum/config.json` `runtime` block.
+- Optional `shell` global in `sandbox.d.ts`; `runBatch` runs `batchScript(steps)`
+  through it and skips the model when one is present.
+- `datum closeout-collect-token-metrics` reads `metrics.jsonl` and adds
+  `per_agent_type`, `per_stage` and `cached_share`.
+- `datum lane-plan` finds existing tests that pin a lane's source text; worktree
+  merge commits regenerate generated files.
+
+### Changed
+
+- Every `datum-cli` call in the bundles (`datum-go`, `datum-tdd-act*`,
+  `datum-validate`, `datum-closeout`, and the context-inline retries in
+  `datum-plan`, `datum-properties`, `datum-refine`) now goes through `runBatch`;
+  a repo-wide test pins `batchCommandPrompt` to `shared/batch.ts` and
+  `shared/agents.ts`.
+- `STAGE_RESULT_SCHEMA`, `REFLECT_SCHEMA` and `SKEPTIC_SCHEMA` require
+  `read_witness` (and `files_written` / `test_exit_code` for the stage result).
+- Hosted-path batch handling changed deliberately (review CORR-001, accepted in
+  `REVIEW-RESPONSE.md`): a new `batchCommandPrompt` sentence, an authored-row
+  branch in `parseBatchResult` and a wider `REFUSAL_RE`, pinned in `batch.test.ts`.
+
+### Fixed
+
+- `datum/gate.py`: vague-term and banned-term scans ignore inline code spans; the
+  properties traceability check accepts every lane id shape; review report cells
+  keep pipes that sit in code spans or are escaped.
+- `datum init` with `agent_types_disabled` keeps agent types off; `lane-plan`
+  forwards `--renumber`.
+- `skills/`: a runner-authored `not_run` row is treated as a refusal and retried
+  once; act-start, boot and preflight batches retry once on a prose reply or a
+  changed lane plan digest; lint fixes are committed by path.
+- `datum act` refuses a plan that dropped PROPERTIES.md's integration lanes.
+- `datum workflow run` finds package bundles through `resolve_skills_dir`;
+  `scripts/preflight-tool-check.sh` exits 0 with JSON when no `uv tool install`
+  exists; `build-workflows.sh` works with GNU sed.
+- The Python test suite is hermetic outside the owner's workstation.
+
+### Known gaps (open, tracked for follow-up)
+
+- Review gate: `REVIEW-REPORT.md` lists 22 findings; only CORR-001 has a recorded
+  decision (ACCEPT). Open medium findings: SEC-001 (`runId` path traversal),
+  PERF-001 (`nodeShell` unbounded output buffers), PERF-002 (shell batches bypass
+  the semaphores), ARCH-001 (`MetricsOutcome` lacks `invalid`).
+- `token_metrics` still fails to collect (`no_state_available`): no `state.db`
+  producer exists.
+
 ## [Monotonic Task Ids] — 2026-09-08 (run 20260908-052437)
 
 ### Added
