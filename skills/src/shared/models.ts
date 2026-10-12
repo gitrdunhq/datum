@@ -93,3 +93,63 @@ export function skillPath(skillsDir: string, name: string): string {
   if (skillsDir) return `${skillsDir}/${name}.js`
   return `skills/${name}.js`
 }
+
+export type RuntimeKind = 'fake' | 'pi'
+export type RuntimePriority = 'batch' | 'interactive'
+
+export interface RuntimeConfig {
+  kind: RuntimeKind
+  models: Record<ModelTier, string>
+  concurrency: Record<string, number>
+  priority: RuntimePriority
+  client: string
+}
+
+const RUNTIME_KINDS: readonly string[] = ['fake', 'pi']
+const RUNTIME_TIERS: readonly ModelTier[] = ['fast', 'balanced', 'deep']
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Pure parser over the parsed `.datum/config.json` object. No I/O, no
+ * invented models: a missing block or tier fails fast with a named error.
+ * `kind: 'pi'` parses here; rejecting it is the CLI's job.
+ */
+export function readRuntimeConfig(parsedConfig: Record<string, unknown> | null | undefined): RuntimeConfig {
+  const block = parsedConfig && isRecord(parsedConfig) ? parsedConfig.runtime : undefined
+  if (!isRecord(block)) throw new Error('runtime_block_missing')
+
+  const kind = block.kind
+  if (typeof kind !== 'string' || !RUNTIME_KINDS.includes(kind)) {
+    throw new Error(`runtime_kind_unknown: ${String(kind)}`)
+  }
+
+  const rawModels = isRecord(block.models) ? block.models : {}
+  const models = {} as Record<ModelTier, string>
+  for (const tier of RUNTIME_TIERS) {
+    const id = rawModels[tier]
+    if (typeof id !== 'string' || id === '') throw new Error(`runtime_models_missing: ${tier}`)
+    models[tier] = id
+  }
+
+  const concurrency: Record<string, number> = {}
+  if (isRecord(block.concurrency)) {
+    for (const [modelId, n] of Object.entries(block.concurrency)) {
+      if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
+        throw new Error(`runtime_concurrency_invalid: ${modelId}`)
+      }
+      concurrency[modelId] = n
+    }
+  }
+
+  const priority: RuntimePriority = block.priority === 'interactive' ? 'interactive' : 'batch'
+  const client = typeof block.client === 'string' && block.client !== '' ? block.client : 'datum'
+
+  return { kind: kind as RuntimeKind, models, concurrency, priority, client }
+}
+
+export function concurrencyFor(rc: RuntimeConfig, modelId: string): number {
+  return Object.prototype.hasOwnProperty.call(rc.concurrency, modelId) ? rc.concurrency[modelId] : 1
+}
