@@ -31,16 +31,22 @@ CFG = {
 
 def _think(texts):
     it = iter(texts)
-    return lambda prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None: {
-        "text": next(it),
-        "tokens": 10,
-        "time_s": 0.1,
-    }
+    return (
+        lambda prompt, model_id, max_tokens, system=None, sampling=None, max_time_s=None: {
+            "text": next(it),
+            "tokens": 10,
+            "time_s": 0.1,
+        }
+    )
 
 
 def _decide(decisions):
     it = iter(decisions)
-    return lambda prompt, model_id, max_time_s=None: {"data": next(it), "tokens": 5, "time_s": 0.05}
+    return lambda prompt, model_id, max_time_s=None: {
+        "data": next(it),
+        "tokens": 5,
+        "time_s": 0.05,
+    }
 
 
 def _exec(tool_call, mt_config):
@@ -59,7 +65,11 @@ class Caliper:
         real = subprocess.run
 
         def fake(args, *a, **kw):
-            if isinstance(args, (list, tuple)) and list(args[:3]) == ["uv", "run", "caliper"]:
+            if isinstance(args, (list, tuple)) and list(args[:3]) == [
+                "uv",
+                "run",
+                "caliper",
+            ]:
                 self.calls += 1
                 kind, payload = self.behaviours.pop(0)
                 out = Path(list(args)[list(args).index("--output") + 1])
@@ -69,7 +79,9 @@ class Caliper:
                     out.write_text(payload)
                     return subprocess.CompletedProcess(list(args), 0, "", "")
                 if kind == "exit":
-                    return subprocess.CompletedProcess(list(args), payload, "", "caliper said no")
+                    return subprocess.CompletedProcess(
+                        list(args), payload, "", "caliper said no"
+                    )
                 if kind == "no-output":
                     return subprocess.CompletedProcess(list(args), 0, "", "")
                 raise AssertionError(kind)
@@ -135,15 +147,31 @@ def test_unparseable_output_fails_closed(monkeypatch):
     assert r["reason"].startswith("caliper_gate_failed: invalid json output:")
 
 
-def test_a_high_finding_rejects_done_and_the_next_clean_review_lets_it_finish(monkeypatch):
+def test_a_high_finding_rejects_done_and_the_next_clean_review_lets_it_finish(
+    monkeypatch,
+):
     # Catches: a HIGH finding ignored, or treated as terminal instead of
     # being fed back for a fix.
-    high = json.dumps([{"severity": "HIGH", "plugin": "gitleaks", "message": "token in source", "file": "a.py", "line": 3}])
+    high = json.dumps(
+        [
+            {
+                "severity": "HIGH",
+                "plugin": "gitleaks",
+                "message": "token in source",
+                "file": "a.py",
+                "line": 3,
+            }
+        ]
+    )
     cal = Caliper(monkeypatch, [("write", high), ("write", "[]")])
     r = _run("act_green", ["done", "done again"], [DONE, DONE])
     assert cal.calls == 2
     assert r["escalated"] is False
-    rejected = [s for s in r["steps"] if "CALIPER REVIEW REJECTED COMPLETION" in str(s.get("observation", ""))]
+    rejected = [
+        s
+        for s in r["steps"]
+        if "CALIPER REVIEW REJECTED COMPLETION" in str(s.get("observation", ""))
+    ]
     assert len(rejected) == 1
     assert "[HIGH] gitleaks: token in source" in rejected[0]["observation"]
     assert "File: a.py:3" in rejected[0]["observation"]
@@ -151,7 +179,12 @@ def test_a_high_finding_rejects_done_and_the_next_clean_review_lets_it_finish(mo
 
 def test_medium_and_low_findings_do_not_block(monkeypatch):
     # Catches: the severity filter blocking on anything below HIGH.
-    findings = json.dumps([{"severity": "medium", "plugin": "complexity", "message": "long"}, {"severity": "LOW", "plugin": "x", "message": "y"}])
+    findings = json.dumps(
+        [
+            {"severity": "medium", "plugin": "complexity", "message": "long"},
+            {"severity": "LOW", "plugin": "x", "message": "y"},
+        ]
+    )
     Caliper(monkeypatch, [("write", findings)])
     r = _run("act_green", ["done"], [DONE])
     assert r["escalated"] is False
