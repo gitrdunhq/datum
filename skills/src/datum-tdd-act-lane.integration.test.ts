@@ -166,7 +166,10 @@ const cliCalls = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-c
 const runnerLabels = (calls: Call[]) => calls.filter((c) => c.agentType === 'datum-cli').map((c) => c.label.split(':')[0])
 
 describe('task-002 — integration lanes are RED-only and decided on the independent verify', () => {
-  it('AC1: Lane accepts kind: "integration" and expect_tests_pass without a cast (tsc -p skills/tsconfig.json, which includes this file, must exit 0)', () => {
+  // A full `tsc -p` takes 4 to 5 s on its own; vitest's 5 s default made
+  // this fail under a parallel suite run while passing alone (DAT-10 GREEN,
+  // wf_22063d11-8e8). The budget fits the compile it runs, not the default.
+  it('AC1: Lane accepts kind: "integration" and expect_tests_pass without a cast (tsc -p skills/tsconfig.json, which includes this file, must exit 0)', { timeout: 60_000 }, () => {
     let stderr = ''
     let exitCode = 0
     try {
