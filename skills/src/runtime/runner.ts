@@ -118,6 +118,11 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   }
 
   const agent = async (prompt: string, agentOpts: StageOpts = {}): Promise<unknown> => {
+    // datum-cli stages are shell work that belongs to runBatch; a model call
+    // typed that way is a leak. Rejected before any executor or metrics I/O.
+    if (agentOpts.agentType === 'datum-cli') {
+      throw new Error(`cli_call_bypassed_runbatch: agent() call '${agentOpts.label ?? ''}' has agentType datum-cli`)
+    }
     const model = resolveModel(runtime, agentOpts.model)
     const schema = agentOpts.schema
     if (schema === undefined) {
@@ -198,5 +203,12 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     return execute(stripMetaExport(readFileSync(path, 'utf8')), childArgs)
   }
 
-  return execute(rootSource, args)
+  // Force agent types on for the bundle (see agent-types.ts); always removed
+  // when the bundle settles.
+  ;(globalThis as Record<string, unknown>).datumRuntime = { agentTypes: true }
+  try {
+    return await execute(rootSource, args)
+  } finally {
+    delete (globalThis as Record<string, unknown>).datumRuntime
+  }
 }

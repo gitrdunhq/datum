@@ -89,11 +89,19 @@ export function resetAgentTypesForTests(): void {
   configured = false
 }
 
+// The runner sets globalThis.datumRuntime = { agentTypes: true } for the span
+// of a bundle. A bundled copy of this module cannot see the runner's module
+// instance, so the override is a plain global flag.
+function runtimeForcesAgentTypes(): boolean {
+  const rt = (globalThis as Record<string, unknown>).datumRuntime
+  return typeof rt === 'object' && rt !== null && (rt as { agentTypes?: unknown }).agentTypes === true
+}
+
 /** Read the two switches out of a raw .datum/config.json object. */
 export function readAgentTypeConfig(cfg: unknown): AgentTypeConfig {
   const o = (cfg && typeof cfg === 'object' ? cfg : {}) as Record<string, unknown>
   return {
-    agentTypes: o.agent_types !== false,
+    agentTypes: o.agent_types !== false || runtimeForcesAgentTypes(),
     hooksInstalled: o.hooks_installed === true,
   }
 }
