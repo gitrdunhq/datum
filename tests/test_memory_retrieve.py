@@ -21,6 +21,17 @@ from pathlib import Path
 
 import pytest
 
+import datum.memory.retrieve as _retrieve_mod
+
+
+@pytest.fixture(autouse=True)
+def _no_process_rlimit(monkeypatch):
+    # Catches: retrieve_context lowering RLIMIT_AS (hard limit included) on the
+    # pytest process itself; once applied it cannot be raised again and every
+    # later test that forks git or opens sqlite fails with ENOMEM / disk I/O.
+    monkeypatch.setattr(_retrieve_mod, "_enforce_memory_limit", lambda: None)
+
+
 from datum.memory.retrieve import (
     MAX_OUTPUT_CHARS,
     _cosine_topk,
