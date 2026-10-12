@@ -1,0 +1,108 @@
+{
+  "batch": true,
+  "language": "python",
+  "tasks_processed": 20,
+  "output_dir": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons",
+  "tasks": {
+    "DAT-10": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-10.json",
+      "skeleton_count": 9,
+      "framework": "pytest"
+    },
+    "DAT-1": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-1.json",
+      "skeleton_count": 9,
+      "framework": "pytest"
+    },
+    "DAT-2": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-2.json",
+      "skeleton_count": 7,
+      "framework": "pytest"
+    },
+    "DAT-3": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-3.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-4": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-4.json",
+      "skeleton_count": 7,
+      "framework": "pytest"
+    },
+    "DAT-5": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-5.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-6": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-6.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-7": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-7.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-8": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-8.json",
+      "skeleton_count": 4,
+      "framework": "pytest"
+    },
+    "DAT-9": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-9.json",
+      "skeleton_count": 6,
+      "framework": "pytest"
+    },
+    "DAT-11": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-11.json",
+      "skeleton_count": 9,
+      "framework": "pytest"
+    },
+    "DAT-12": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-12.json",
+      "skeleton_count": 7,
+      "framework": "pytest"
+    },
+    "DAT-13": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-13.json",
+      "skeleton_count": 8,
+      "framework": "pytest"
+    },
+    "DAT-14": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-14.json",
+      "skeleton_count": 9,
+      "framework": "pytest"
+    },
+    "DAT-15": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-15.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-16": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-16.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-17": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-17.json",
+      "skeleton_count": 6,
+      "framework": "pytest"
+    },
+    "DAT-18": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-18.json",
+      "skeleton_count": 5,
+      "framework": "pytest"
+    },
+    "DAT-19": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-19.json",
+      "skeleton_count": 7,
+      "framework": "pytest"
+    },
+    "DAT-20": {
+      "path": "docs/epics/claude/datum-workflow-person-nmxqz4/skeletons/preflight-DAT-20.json",
+      "skeleton_count": 6,
+      "framework": "pytest"
+    }
+  }
+}

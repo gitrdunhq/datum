@@ -1,0 +1,122 @@
+{
+  "task_id": "DAT-14",
+  "slug": "stage-output-tier-up",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify STAGE_RESULT_SCHEMA.required equals ['success','tests_pass',",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_stage_result_schema_required_equals_success_tests_pass_commi",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_stage_result_schema_required_equals_success_tests_pass_commi \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC1:\n    def test_ac1_stage_result_schema_required_equals_success_tests_pass_commi(self):\n        \"\"\"\n        PROP-001: STAGE_RESULT_SCHEMA.required equals ['success','tests_pass','committed','read_wi\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify validateAgainstSchema(STAGE_RESULT_SCHEMA, { success: true }",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_validateagainstschema_stage_result_schema_success_true_retur",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_validateagainstschema_stage_result_schema_success_true_retur \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC2:\n    def test_ac2_validateagainstschema_stage_result_schema_success_true_retur(self):\n        \"\"\"\n        PROP-002: validateAgainstSchema(STAGE_RESULT_SCHEMA, { success: true }) returns every miss\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A schema-invalid fast-tier reply logs 'stage_output_invalid:",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_a_schema_invalid_fast_tier_reply_logs_stage_output_invalid_l",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_a_schema_invalid_fast_tier_reply_logs_stage_output_invalid_l \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC3:\n    def test_ac3_a_schema_invalid_fast_tier_reply_logs_stage_output_invalid_l(self):\n        \"\"\"\n        PROP-003: A schema-invalid fast-tier reply logs 'stage_output_invalid: <label>: <fields>',\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A schema-invalid reply on retry returns null and leaves two ",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_a_schema_invalid_reply_on_retry_returns_null_and_leaves_two",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_a_schema_invalid_reply_on_retry_returns_null_and_leaves_two \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC4:\n    def test_ac4_a_schema_invalid_reply_on_retry_returns_null_and_leaves_two(self):\n        \"\"\"\n        PROP-004: A schema-invalid reply on retry returns null and leaves two metrics lines, both \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A schema-invalid deep-tier reply is not retried: exactly one",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_a_schema_invalid_deep_tier_reply_is_not_retried_exactly_one",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_a_schema_invalid_deep_tier_reply_is_not_retried_exactly_one \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC5:\n    def test_ac5_a_schema_invalid_deep_tier_reply_is_not_retried_exactly_one(self):\n        \"\"\"\n        PROP-005: A schema-invalid deep-tier reply is not retried: exactly one request is recorded\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify When balanced and deep share a model id, an invalid balanced",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_when_balanced_and_deep_share_a_model_id_an_invalid_balanced",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_when_balanced_and_deep_share_a_model_id_an_invalid_balanced \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC6:\n    def test_ac6_when_balanced_and_deep_share_a_model_id_an_invalid_balanced(self):\n        \"\"\"\n        PROP-006: When balanced and deep share a model id, an invalid balanced reply logs 'stage_o\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC7",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A reply that parseAgentJson cannot parse takes the invalid p",
+      "property_id": "PROP-007",
+      "function_name": "test_ac7_a_reply_that_parseagentjson_cannot_parse_takes_the_invalid_p",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC7 \u2014 PROP-007\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC7 \u2192 test_ac7_a_reply_that_parseagentjson_cannot_parse_takes_the_invalid_p \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC7:\n    def test_ac7_a_reply_that_parseagentjson_cannot_parse_takes_the_invalid_p(self):\n        \"\"\"\n        PROP-007: A reply that parseAgentJson cannot parse takes the invalid path\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-007\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC8",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify agent() without opts.schema returns the parsed value with no",
+      "property_id": "PROP-008",
+      "function_name": "test_ac8_agent_without_opts_schema_returns_the_parsed_value_with_no_v",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC8 \u2014 PROP-008\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC8 \u2192 test_ac8_agent_without_opts_schema_returns_the_parsed_value_with_no_v \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC8:\n    def test_ac8_agent_without_opts_schema_returns_the_parsed_value_with_no_v(self):\n        \"\"\"\n        PROP-008: agent() without opts.schema returns the parsed value with no validation\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-008\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC9",
+      "path": "skills/src/shared/schemas.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify schemas.test.ts pins the updated required lists, and assertR",
+      "property_id": "PROP-009",
+      "function_name": "test_ac9_schemas_test_ts_pins_the_updated_required_lists_and_assertre",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-14 AC9 \u2014 PROP-009\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC9 \u2192 test_ac9_schemas_test_ts_pins_the_updated_required_lists_and_assertre \u2192 skills/src/shared/schemas.test.ts\n\nimport pytest\n\n\nclass TestDAT14AC9:\n    def test_ac9_schemas_test_ts_pins_the_updated_required_lists_and_assertre(self):\n        \"\"\"\n        PROP-009: schemas.test.ts pins the updated required lists, and assertReadWitness on the ho\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-009\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/schemas.ts": "export const WRITE_RESULT_SCHEMA = {\n} as const\n\nexport const STAGE_RESULT_SCHEMA = {\n} as const\n\nexport const REFLECT_SCHEMA = {\n} as const\n\n// Review lens result. A schema, not a \"return raw JSON\" instruction: the\n// correctness lens answered in markdown and Review halted on a strict parse\n// with no retry (elonchesd wf_22ad6b36-dec). StructuredOutput validates at\n// the tool layer and the model retries on mismatch.\nexport const REVIEW_LENS_SCHEMA = {\n} as const\n\nexport const SKEPTIC_SCHEMA = {\n} as const\n\nexport const TRIAGE_SCHEMA = {\n} as const\n\n// Validate's one substantive agent call. A schema for the same reason\n// REVIEW_LENS_SCHEMA is one (see above): it was the last LLM call in the\n// pipeline still answering a prose \"return raw JSON only\" instruction\n// through parseAgentJson's fallback. Every field here has a reader in\n// datum-validate.ts; the retired `committed_fixes`/`commit_sha` asked for a\n// receipt for a commit no step instructs.\nexport const VALIDATE_CHECK_SCHEMA = {\n} as const\n\nexport const REFACTOR_CHECK_SCHEMA = {\n} as const\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}

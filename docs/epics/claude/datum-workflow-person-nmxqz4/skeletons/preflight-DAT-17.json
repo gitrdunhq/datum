@@ -1,0 +1,84 @@
+{
+  "task_id": "DAT-17",
+  "slug": "runner-e2e-fixture-shell",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify nodeShell('printf ok', { cwd: tmp, timeoutMs: 5000 }) resolv",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_nodeshell_printf_ok_cwd_tmp_timeoutms_5000_resolves_exit_cod",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_nodeshell_printf_ok_cwd_tmp_timeoutms_5000_resolves_exit_cod \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC1:\n    def test_ac1_nodeshell_printf_ok_cwd_tmp_timeoutms_5000_resolves_exit_cod(self):\n        \"\"\"\n        PROP-001: nodeShell('printf ok', { cwd: tmp, timeoutMs: 5000 }) resolves { exit_code: 0, s\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify fixture-go.js and fixture-child.js start with `export const ",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_fixture_go_js_and_fixture_child_js_start_with_export_const_m",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_fixture_go_js_and_fixture_child_js_start_with_export_const_m \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC2:\n    def test_ac2_fixture_go_js_and_fixture_child_js_start_with_export_const_m(self):\n        \"\"\"\n        PROP-002: fixture-go.js and fixture-child.js start with `export const meta`, use a top-lev\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify runBundle on fixture-go.js with FakeExecutor and nodeShell r",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_runbundle_on_fixture_go_js_with_fakeexecutor_and_nodeshell_r",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_runbundle_on_fixture_go_js_with_fakeexecutor_and_nodeshell_r \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC3:\n    def test_ac3_runbundle_on_fixture_go_js_with_fakeexecutor_and_nodeshell_r(self):\n        \"\"\"\n        PROP-003: runBundle on fixture-go.js with FakeExecutor and nodeShell returns an object dee\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify FakeExecutor.requests.map(r => r.opts.label) equals the expe",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_fakeexecutor_requests_map_r_r_opts_label_equals_the_expected",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_fakeexecutor_requests_map_r_r_opts_label_equals_the_expected \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC4:\n    def test_ac4_fakeexecutor_requests_map_r_r_opts_label_equals_the_expected(self):\n        \"\"\"\n        PROP-004: FakeExecutor.requests.map(r => r.opts.label) equals the expected label list in o\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify metrics.jsonl under the temp repo root has exactly one line ",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_metrics_jsonl_under_the_temp_repo_root_has_exactly_one_line",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_metrics_jsonl_under_the_temp_repo_root_has_exactly_one_line \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC5:\n    def test_ac5_metrics_jsonl_under_the_temp_repo_root_has_exactly_one_line(self):\n        \"\"\"\n        PROP-005: metrics.jsonl under the temp repo root has exactly one line per recorded request\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/runtime/runner.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The same file covers cli_call_bypassed_runbatch, workflow_no",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_the_same_file_covers_cli_call_bypassed_runbatch_workflow_not",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-17 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_the_same_file_covers_cli_call_bypassed_runbatch_workflow_not \u2192 skills/src/runtime/runner.test.ts\n\nimport pytest\n\n\nclass TestDAT17AC6:\n    def test_ac6_the_same_file_covers_cli_call_bypassed_runbatch_workflow_not(self):\n        \"\"\"\n        PROP-006: The same file covers cli_call_bypassed_runbatch, workflow_not_found, a schema-in\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {},
+  "target_context": null,
+  "no_skeletons_reason": null
+}

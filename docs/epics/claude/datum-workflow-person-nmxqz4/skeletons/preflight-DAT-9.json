@@ -1,0 +1,87 @@
+{
+  "task_id": "DAT-9",
+  "slug": "runbatch-only-guard",
+  "language": "python",
+  "framework": "pytest",
+  "outputs": [
+    {
+      "ac_id": "AC1",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify A vitest scanning skills/src/**/*.ts (excluding *.test.ts) f",
+      "property_id": "PROP-001",
+      "function_name": "test_ac1_a_vitest_scanning_skills_src_ts_excluding_test_ts_finds_batc",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC1 \u2014 PROP-001\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC1 \u2192 test_ac1_a_vitest_scanning_skills_src_ts_excluding_test_ts_finds_batc \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC1:\n    def test_ac1_a_vitest_scanning_skills_src_ts_excluding_test_ts_finds_batc(self):\n        \"\"\"\n        PROP-001: A vitest scanning skills/src/**/*.ts (excluding *.test.ts) finds `batchCommandPr\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-001\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC2",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify The same scan finds `runCommandPrompt` and `contextInlineRet",
+      "property_id": "PROP-002",
+      "function_name": "test_ac2_the_same_scan_finds_runcommandprompt_and_contextinlineretryp",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC2 \u2014 PROP-002\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC2 \u2192 test_ac2_the_same_scan_finds_runcommandprompt_and_contextinlineretryp \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC2:\n    def test_ac2_the_same_scan_finds_runcommandprompt_and_contextinlineretryp(self):\n        \"\"\"\n        PROP-002: The same scan finds `runCommandPrompt` and `contextInlineRetryPrompt` only in bo\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-002\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC3",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify context-relay.ts still exports CONTEXT_INLINE_RETRY_MARKER, ",
+      "property_id": "PROP-003",
+      "function_name": "test_ac3_context_relay_ts_still_exports_context_inline_retry_marker_a",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC3 \u2014 PROP-003\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC3 \u2192 test_ac3_context_relay_ts_still_exports_context_inline_retry_marker_a \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC3:\n    def test_ac3_context_relay_ts_still_exports_context_inline_retry_marker_a(self):\n        \"\"\"\n        PROP-003: context-relay.ts still exports CONTEXT_INLINE_RETRY_MARKER, and context-relay.te\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-003\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC4",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify tracker.ts no longer imports batchCommandPrompt",
+      "property_id": "PROP-004",
+      "function_name": "test_ac4_tracker_ts_no_longer_imports_batchcommandprompt",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC4 \u2014 PROP-004\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC4 \u2192 test_ac4_tracker_ts_no_longer_imports_batchcommandprompt \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC4:\n    def test_ac4_tracker_ts_no_longer_imports_batchcommandprompt(self):\n        \"\"\"\n        PROP-004: tracker.ts no longer imports batchCommandPrompt\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-004\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC5",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify agent-types-ordering.test.ts pins only on runBatch( as the f",
+      "property_id": "PROP-005",
+      "function_name": "test_ac5_agent_types_ordering_test_ts_pins_only_on_runbatch_as_the_fi",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC5 \u2014 PROP-005\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC5 \u2192 test_ac5_agent_types_ordering_test_ts_pins_only_on_runbatch_as_the_fi \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC5:\n    def test_ac5_agent_types_ordering_test_ts_pins_only_on_runbatch_as_the_fi(self):\n        \"\"\"\n        PROP-005: agent-types-ordering.test.ts pins only on runBatch( as the first batch dispatch \n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-005\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    },
+    {
+      "ac_id": "AC6",
+      "path": "skills/src/shared/context-relay.test.ts",
+      "kind": "pytest",
+      "purpose": "Verify `npx tsc -p skills/tsconfig.json` exits 0, and `npx vitest r",
+      "property_id": "PROP-006",
+      "function_name": "test_ac6_npx_tsc_p_skills_tsconfig_json_exits_0_and_npx_vitest_run_sk",
+      "skeleton_written": false,
+      "content": "# Skeleton: DAT-9 AC6 \u2014 PROP-006\n# RED agent: fill in the assertion body. Do not rename this function or move this file.\n# Traceability: AC6 \u2192 test_ac6_npx_tsc_p_skills_tsconfig_json_exits_0_and_npx_vitest_run_sk \u2192 skills/src/shared/context-relay.test.ts\n\nimport pytest\n\n\nclass TestDAT9AC6:\n    def test_ac6_npx_tsc_p_skills_tsconfig_json_exits_0_and_npx_vitest_run_sk(self):\n        \"\"\"\n        PROP-006: `npx tsc -p skills/tsconfig.json` exits 0, and `npx vitest run skills/src` passe\n        \"\"\"\n        # Arrange\n\n        # Act\n\n        # Assert \u2014 prove PROP-006\n        raise NotImplementedError(\"RED agent: implement this assertion\")\n",
+      "implementation_required": true,
+      "skeleton_note": "preflight-only: content emitted in JSON, not written to disk"
+    }
+  ],
+  "impl_stubs": [],
+  "existing_api": {
+    "skills/src/shared/context-relay.ts": "// context-relay.ts \u2014 two-phase, budgeted relay of epic docs into scripts.\n//\n// Why two phases: a datum-cli batch is ONE bash invocation whose whole\n// stdout is ONE tool result. When that result exceeds the harness's spill\n// threshold (~25 KB) it is written to a file instead of the agent's\n// context, and a maxTurns:3 haiku runner cannot echo it \u2014 in dogfooding it\n// returned a fabricated JSON with the byte count rewritten to match\n// (caught by the byte check as context_relay_mismatch, so nothing silently\n// planned on a fake SPEC, but the run was blocked). No amount of chunking\n// inside the batch changes the size of that single result.\n//\n// So the relay never carries a large file. Phase 1 (contextProbeSteps)\n// reads only sizes and hashes; contextRelayPlan picks, greedily in order,\n// the files whose total fits CONTEXT_RELAY_BUDGET_BYTES; phase 2\n// (contextInlineSteps) cats exactly those and contextFromRelay\n// byte-verifies them. Everything else is DEFERRED: the consuming agent gets\n// the path and byte count (never the blob hash \u2014 that is the witness) and a mandatory instruction to\n// read the file with the Read tool (contextSlot) \u2014 exact bytes by\n// construction, no relay to verify.\n// tested-by: skills/src/shared/context-relay.test.ts\n\nimport { stepStdout, batchCommandPrompt, type BatchResult, type BatchStep } from './batch'\nimport { utf8ByteLength, utf8Encode } from './utf8'\nimport { gitBlobSha } from './sha1'\n\n/** Total bytes one inline batch may relay \u2014 well under the ~25 KB spill. */\nexport const CONTEXT_RELAY_BUDGET_BYTES = 16 * 1024\n\nconst NOT_FOUND_MARKER = '__DATUM_CTXFILE_NOT_FOUND__'\n\n/** Double-quote a path for bash; `$__eb` inside stays expandable on purpose. */\nfunction q(p: string): string {\n}\n\nexport interface ContextProbeOpts {\n}\n\nexport function contextProbeSteps(o: ContextProbeOpts): BatchStep[] {\n  const steps: BatchStep[] = [\n}\n\nexport interface ContextRelayPlan {\n}\n\nexport function contextRelayPlan(probe: BatchResult, files: string[], budget: number = CONTEXT_RELAY_BUDGET_BYTES): ContextRelayPlan {\n  const plan: ContextRelayPlan = { files, inline: [], deferred: [], missing: [], bytes: {}, sha: {}, budget }\n  let used = 0\n    const wcRaw = stepStdout(probe, `ctx-wc-${i}`)\n    const bytes = wcRaw === null ? NaN : parseInt(wcRaw.trim(), 10)\n    const sha = (stepStdout(probe, `ctx-sha-${i}`) || '').trim()\n      plan.bytes[relPath] = -1\n      plan.sha[relPath] = ''\n    plan.bytes[relPath] = bytes\n    plan.sha[relPath] = sha\n}\n\n/**\nexport function contextInlineSteps(inlineFiles: string[]): BatchStep[] {\n  const steps: BatchStep[] = [\n}\n\nexport interface ContextFile {\n}\n\nexport interface RelayedContext {\n}\n\n/**\nexport function contextFromRelay(probe: BatchResult, inline: BatchResult | null, plan: ContextRelayPlan): RelayedContext {\n  const branch = stepStdout(probe, 'branch') || ''\n  const epicDir = stepStdout(probe, 'epic-dir') || `docs/epics/${branch}`\n  const warnings: string[] = []\n  const mismatched: string[] = []\n\n\n    files[relPath] = { path: relPath, exists: false, inlined: false, bytes: -1, sha: '', content: null }\n    files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null }\n  const defer = (relPath: string, why: string): void => {\n    files[relPath] = { path: relPath, exists: true, inlined: false, bytes: plan.bytes[relPath], sha: plan.sha[relPath], content: null }\n    const raw = stepStdout(inline as BatchResult, `ctx-cat-${i}`)\n    const declaredRaw = stepStdout(inline as BatchResult, `ctx-wc-${i}`)\n    const declared = declaredRaw === null ? NaN : parseInt(declaredRaw.trim(), 10)\n    const expected = plan.bytes[relPath]\n    const sha = plan.sha[relPath]\n    let content = raw\n    let actual = utf8ByteLength(raw)\n      content = raw + '\\n'\n      actual = expected\n    files[relPath] = { path: relPath, exists: true, inlined: true, bytes: expected, sha, content }\n}\n\n/** The second inline attempt: same script, a distinct prompt (a cache miss on resume). */\nexport function contextInlineRetryPrompt(steps: BatchStep[]): string {\n}\n\n/**\nexport function mergeRelayRetry(first: RelayedContext, second: RelayedContext): RelayedContext {\n  const files = { ...first.files }\n  const warnings = [...first.warnings]\n  const mismatched: string[] = []\n    const retried = second.files[relPath]\n      files[relPath] = retried\n}\n\n/**\nexport function contextSlot(f: ContextFile): string {\n}\n\n/**\nexport function contextWitnessInstruction(files: ContextFile[]): string {\n  const deferred = files.filter((f) => f.exists && !f.inlined)\n  const entries = deferred\n}\n\nfunction extractWitnessMap(parsed: unknown): Record<string, unknown> {\n  const w = (parsed as Record<string, unknown>).read_witness\n}\n\n/**\n/** Shortest accepted witness prefix \u2014 git's own short-sha floor. The prompt asks for 12. */\nexport const WITNESS_MIN_HEX = 7\n\nexport interface ReadWitnessVerdict {\n}\n\n/** Length of the common leading run of two lowercase strings. */\nfunction commonPrefixLen(a: string, b: string): number {\n  let i = 0\n}\n\nexport function verifyReadWitness(\n): ReadWitnessVerdict {\n  const deferred = files.filter((f) => f.exists && !f.inlined)\n  const witness = extractWitnessMap(parsed)\n  const missing: string[] = []\n  const mismatched: string[] = []\n  const tooShort: string[] = []\n  const nearMiss: string[] = []\n  const candidates = [...Object.values(witness), ...Object.keys(witness)]\n  const hexValues = candidates.filter((v): v is string => typeof v === 'string' && /^[0-9a-f]+$/i.test(v))\n  const values = hexValues.filter((v) => v.length >= WITNESS_MIN_HEX)\n    const sha = f.sha.toLowerCase()\n    const keyed = witness[f.path]\n}\n\n/**\nexport function assertReadWitness(files: ContextFile[], parsed: unknown): ReadWitnessVerdict {\n  const result = verifyReadWitness(files, parsed)\n  const witness = extractWitnessMap(parsed)\n  const byPath = new Map(files.map((f) => [f.path, f]))\n  const badPath = (result.tooShort[0] ?? result.missing[0] ?? result.mismatched[0]) as string\n  const f = byPath.get(badPath)\n    const sha = (f ? f.sha : '').toLowerCase()\n    const short = Object.values(witness).find((v): v is string => typeof v === 'string' && v.length > 0 && sha.startsWith(v.toLowerCase())) || ''\n  const got = witness[badPath]\n  const gotStr = typeof got === 'string' && got.length > 0 ? got : 'missing'\n}\n\n/**\nexport function contextWitnessWrapInstruction(files: ContextFile[], key: string): string {\n  const base = contextWitnessInstruction(files)\n}\n\n/**\nexport function unwrapWitnessedArray(parsed: unknown, key: string): unknown[] | null {\n  const inner = (parsed as Record<string, unknown>)[key]\n}\n\n",
+    "skills/src/shared/tracker.ts": "/**\n\nimport { stageOpts } from './agent-types'\nimport { runBatch } from './agents'\nimport { model } from './models'\nimport { parseAgentJson } from './utils'\nimport { batchCommandPrompt, parseBatchResult, stepResult, describeFailure, type BatchResult, type BatchStep } from './batch'\n\nexport type TrackerStage = 'queued' | 'red' | 'green' | 'done' | 'failed' | 'skipped'\n\nexport interface PublishResult {\n}\n\n// Both tracker calls used to be a runner told to \"Run: datum plan-issues /\n// issue-stage\" and return the JSON \u2014 or, on failure, to INVENT\n// {\"error\": ...} / {\"ok\": false} itself. The CLI's exit code and stdout now\n// come from a batch step; the runner never authors the verdict. The tracker\n// stays non-critical (logged, never thrown).\n\nconst q = (s: string): string => `\"${s.replace(/([\"\\\\`$])/g, '\\\\$1')}\"`\n\nexport function publishSteps(lanePlanPath: string, epicTitle: string): BatchStep[] {\n}\n\nexport interface PublisherJson {\n}\n\nfunction tail(step: { stdout: string; stderr: string }): string {\n}\n\nexport function publishFromSteps(result: BatchResult): { ok: boolean; parsed: PublisherJson | null; error: string } {\n  const step = stepResult(result, 'publish')\n  const parsed = parseAgentJson<PublisherJson | null>(step.stdout || '', null)\n}\n\nexport function stageSteps(issueId: string, stage: TrackerStage, commitSha?: string): BatchStep[] {\n  const shaFlag = commitSha ? ` --commit ${commitSha}` : ''\n}\n\nexport function stageFromSteps(result: BatchResult): { ok: boolean; error: string } {\n  const step = stepResult(result, 'stage')\n  const parsed = parseAgentJson<{ ok?: boolean } | null>(step.stdout || '', null)\n}\n\nexport async function publishLanePlan(\n): Promise<PublishResult | null> {\n  const steps = publishSteps(lanePlanPath, epicTitle)\n  const publish = publishFromSteps(await runBatch(steps, stageOpts('cli', { label: 'publish-issues', model: model('fast') })))\n  const parsed = publish.parsed\n}\n\n/**\nexport async function updateStage(\n): Promise<boolean> {\n  const steps = stageSteps(issueId, stage, commitSha)\n  const outcome = stageFromSteps(await runBatch(steps, stageOpts('cli', { label: `tracker:${issueId}:${stage}`, model: model('fast') })))\n}\n\nexport function getIssueId(lanePlan: { lanes: Record<string, { github_issue?: number }> }, taskId: string): string {\n  const issue = lanePlan.lanes[taskId]?.github_issue\n}\n"
+  },
+  "target_context": null,
+  "no_skeletons_reason": null
+}
