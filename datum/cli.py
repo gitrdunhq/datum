@@ -3128,6 +3128,22 @@ def gitnexus_analyze(ctx: typer.Context):
     raise typer.Exit(res.returncode)
 
 
+workflow_app = typer.Typer(name="workflow", help="Run workflow bundles.")
+app.add_typer(workflow_app)
+
+
+@workflow_app.command(name="run")
+def workflow_run_cmd(
+    name: str,
+    args: Path = typer.Option(..., "--args", help="JSON args file."),
+    config: Path = typer.Option(Path(".datum/config.json"), "--config"),
+):
+    """Run workflow bundle NAME via the host-side runner."""
+    from datum.workflow_run import run_workflow
+
+    raise typer.Exit(run_workflow(name, args, config))
+
+
 def main():
     """Main entrypoint for the uv-managed script."""
     try:
