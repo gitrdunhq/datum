@@ -10,7 +10,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/gitrdunhq/datum/main/install
 
 This clones the repo, installs a `datum` CLI wrapper, and registers with all detected AI tools.
 
-**Prerequisites:** git, [uv](https://docs.astral.sh/uv/), Python >= 3.12
+**Prerequisites:** git, [uv](https://docs.astral.sh/uv/), Python >= 3.12. Developing datum itself (the TypeScript workflow sources) also needs Node >= 22; `.nvmrc` pins Node 24 LTS.
 
 After install, enable shell autocompletion:
 
