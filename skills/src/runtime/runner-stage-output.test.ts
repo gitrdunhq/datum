@@ -191,13 +191,16 @@ describe('runBundle schema-invalid replies', () => {
     expect(logs()).toContain('stage_output_invalid: stage-x: no distinct higher tier')
   })
 
-  it('AC6: a model id outside the models map, including haiku, is treated as fast and retried on balanced', async () => {
-    for (const id of ['haiku', 'some-unknown-model']) {
+  it('AC6: a model id outside the models map is treated as fast and retried on balanced; haiku is the fast tier itself', async () => {
+    // ARCH-001: haiku is the bundles' default name for the fast tier, so it
+    // now reaches the executor as the runtime fast id; an unknown literal
+    // still passes through and counts as fast.
+    for (const [id, first] of [['haiku', 'fast-id'], ['some-unknown-model', 'some-unknown-model']] as const) {
       const replies = [invalidReply, validReply]
       let i = 0
       const { executor, run } = setup([{ labelPrefix: 'stage-x', reply: () => replies[i++] }])
       expect(await run(call(id))).toEqual(VALID)
-      expect(executor.requests.map((r) => r.model)).toEqual([id, 'bal-id'])
+      expect(executor.requests.map((r) => r.model)).toEqual([first, 'bal-id'])
     }
   })
 

@@ -317,9 +317,14 @@ var TIERS = ["fast", "balanced", "deep"];
 function stripMetaExport(source) {
   return source.replace(/^export(\s+const\s+meta\b)/m, "$1");
 }
-function resolveModel(runtime, requested) {
+var DEFAULT_TIER_NAMES = { haiku: "fast", sonnet: "balanced", opus: "deep" };
+function resolveModel(runtime, requested, bundleTiers = {}) {
   if (requested === void 0) return runtime.models.balanced;
-  return TIERS.includes(requested) ? runtime.models[requested] : requested;
+  if (TIERS.includes(requested)) return runtime.models[requested];
+  if (Object.values(runtime.models).includes(requested)) return requested;
+  for (const tier of TIERS) if (bundleTiers[tier] === requested) return runtime.models[tier];
+  const byDefault = DEFAULT_TIER_NAMES[requested];
+  return byDefault ? runtime.models[byDefault] : requested;
 }
 async function runBundle(opts) {
   const { bundlePath, args, executor, shell, log, runtime } = opts;
@@ -330,13 +335,11 @@ async function runBundle(opts) {
   const addUsage = (u) => {
     if (u) spentTokens += u.prompt_tokens + u.completion_tokens;
   };
-  const gated = Object.keys(runtime.concurrency).length > 0;
   const semaphores = createModelSemaphores(runtime.concurrency);
   const headers = { "X-Client": runtime.client, "X-Priority": runtime.priority };
   const attempt = async (prompt, agentOpts, model, attemptNo, validate) => {
     const enteredAt = performance.now();
-    const release = gated ? await semaphores.acquire(model, agentOpts.agentType) : () => {
-    };
+    const release = await semaphores.acquire(model, agentOpts.agentType);
     const acquiredAt = performance.now();
     let reply;
     let failure;
@@ -370,14 +373,14 @@ async function runBundle(opts) {
     return { reply, valid };
   };
   const tierOf = (model) => {
-    for (const tier of TIERS) if (runtime.models[tier] === model) return tier;
+    for (const tier of [...TIERS].reverse()) if (runtime.models[tier] === model) return tier;
     return "fast";
   };
   const agent = async (prompt, agentOpts = {}) => {
     if (agentOpts.agentType === "datum-cli") {
       throw new Error(`cli_call_bypassed_runbatch: agent() call '${agentOpts.label ?? ""}' has agentType datum-cli`);
     }
-    const model = resolveModel(runtime, agentOpts.model);
+    const model = resolveModel(runtime, agentOpts.model, opts.bundleTiers);
     const schema = agentOpts.schema;
     if (schema === void 0) {
       const { reply } = await attempt(prompt, agentOpts, model, 1, void 0);
@@ -393,7 +396,10 @@ async function runBundle(opts) {
     if (first.valid) return parseAgentJson(first.reply.text, null);
     log(`stage_output_invalid: ${label}: ${lastProblems.join(", ")}`);
     const tier = tierOf(model);
-    if (tier === "deep") return null;
+    if (tier === "deep") {
+      if (runtime.models.fast === model || runtime.models.balanced === model) log(`stage_output_invalid: ${label}: no distinct higher tier`);
+      return null;
+    }
     const retryModel = runtime.models[tier === "fast" ? "balanced" : "deep"];
     if (retryModel === model) {
       log(`stage_output_invalid: ${label}: no distinct higher tier`);
@@ -445,11 +451,19 @@ async function runBundle(opts) {
     }
     return execute(stripMetaExport(readFileSync(path, "utf8")), childArgs);
   };
-  globalThis.datumRuntime = { agentTypes: true };
+  const g = globalThis;
+  const saved = { shell: g.shell, args: g.args, hadShell: "shell" in g, hadArgs: "args" in g };
+  g.datumRuntime = { agentTypes: true };
+  g.shell = shell;
+  g.args = args;
   try {
     return await execute(rootSource, args);
   } finally {
-    delete globalThis.datumRuntime;
+    delete g.datumRuntime;
+    if (saved.hadShell) g.shell = saved.shell;
+    else delete g.shell;
+    if (saved.hadArgs) g.args = saved.args;
+    else delete g.args;
   }
 }
 var MAIN_FLAGS = ["--bundle", "--args", "--config", "--repo-root", "--skills-dir"];
@@ -471,7 +485,9 @@ async function main(argv, io) {
   try {
     const flags = parseMainArgv(argv);
     const args = JSON.parse(readFileSync(flags["--args"][0], "utf8"));
-    const runtime = readRuntimeConfig(JSON.parse(readFileSync(flags["--config"][0], "utf8")));
+    const config = JSON.parse(readFileSync(flags["--config"][0], "utf8"));
+    const runtime = readRuntimeConfig(config);
+    const bundleTiers = typeof config.models === "object" && config.models !== null ? config.models : {};
     if (runtime.kind !== "fake") throw new Error(`runtime_kind_unsupported: ${runtime.kind}`);
     const result = await runBundle({
       bundlePath: flags["--bundle"][0],
@@ -482,7 +498,8 @@ async function main(argv, io) {
       log: (line) => io.stderr(`${line}
 `),
       runtime,
-      repoRoot: flags["--repo-root"][0]
+      repoRoot: flags["--repo-root"][0],
+      bundleTiers
     });
     io.stdout(`${JSON.stringify(result ?? null)}
 `);

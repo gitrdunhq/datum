@@ -32,6 +32,12 @@ export interface RunBundleOptions {
   log: (line: string) => void
   runtime: RuntimeConfig
   repoRoot: string
+  /** The tier table the bundles themselves use: .datum/config.json's
+   *  top-level `models` (each bundle has its own copy of shared/models.ts, so
+   *  setModelTiers here never reaches them). Their model('fast') arrives as
+   *  that value, or as the default haiku/sonnet/opus, and is mapped back to
+   *  the runtime id of the same tier (ARCH-001). */
+  bundleTiers?: Partial<Record<ModelTier, string>>
 }
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
@@ -45,9 +51,23 @@ function stripMetaExport(source: string): string {
   return source.replace(/^export(\s+const\s+meta\b)/m, '$1')
 }
 
-export function resolveModel(runtime: RuntimeConfig, requested: string | undefined): string {
+// The bundles' default tier names (shared/models.ts DEFAULT_TIERS).
+const DEFAULT_TIER_NAMES: Readonly<Record<string, ModelTier>> = { haiku: 'fast', sonnet: 'balanced', opus: 'deep' }
+
+/** The runtime model id for what a bundle asked for: a tier name, a runtime
+ *  id, a bundle-side tier value (config override, else haiku/sonnet/opus), or
+ *  an unknown literal, which passes through unchanged. */
+export function resolveModel(
+  runtime: RuntimeConfig,
+  requested: string | undefined,
+  bundleTiers: Partial<Record<ModelTier, string>> = {},
+): string {
   if (requested === undefined) return runtime.models.balanced
-  return TIERS.includes(requested) ? runtime.models[requested as ModelTier] : requested
+  if (TIERS.includes(requested)) return runtime.models[requested as ModelTier]
+  if (Object.values(runtime.models).includes(requested)) return requested
+  for (const tier of TIERS as readonly ModelTier[]) if (bundleTiers[tier] === requested) return runtime.models[tier]
+  const byDefault = DEFAULT_TIER_NAMES[requested]
+  return byDefault ? runtime.models[byDefault] : requested
 }
 
 export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
@@ -61,9 +81,9 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     if (u) spentTokens += u.prompt_tokens + u.completion_tokens
   }
 
-  // An empty concurrency map means no limits were configured, so calls are not
-  // gated; once any entry exists, unlisted models run one request at a time.
-  const gated = Object.keys(runtime.concurrency).length > 0
+  // Every call goes through the semaphore: a model with no concurrency entry,
+  // including every model when the map is empty, runs one request at a time
+  // (SPEC R6.4; PERF-001: an empty map used to switch the gate off).
   const semaphores = createModelSemaphores(runtime.concurrency)
   const headers = { 'X-Client': runtime.client, 'X-Priority': runtime.priority }
 
@@ -80,7 +100,7 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     validate: ((reply: StageReply) => boolean) | undefined,
   ): Promise<{ reply: StageReply; valid: boolean }> => {
     const enteredAt = performance.now()
-    const release = gated ? await semaphores.acquire(model, agentOpts.agentType) : () => {}
+    const release = await semaphores.acquire(model, agentOpts.agentType)
     const acquiredAt = performance.now()
     let reply: StageReply | undefined
     let failure: unknown
@@ -114,9 +134,10 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     return { reply, valid }
   }
 
-  // Tier of a resolved model id; ids outside the models map count as fast.
+  // Tier of a resolved model id; when tiers share an id the highest one is the
+  // current tier (SPEC R8.4, CORR-002); ids outside the models map count as fast.
   const tierOf = (model: string): ModelTier => {
-    for (const tier of TIERS as readonly ModelTier[]) if (runtime.models[tier] === model) return tier
+    for (const tier of [...TIERS].reverse() as ModelTier[]) if (runtime.models[tier] === model) return tier
     return 'fast'
   }
 
@@ -126,7 +147,7 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     if (agentOpts.agentType === 'datum-cli') {
       throw new Error(`cli_call_bypassed_runbatch: agent() call '${agentOpts.label ?? ''}' has agentType datum-cli`)
     }
-    const model = resolveModel(runtime, agentOpts.model)
+    const model = resolveModel(runtime, agentOpts.model, opts.bundleTiers)
     const schema = agentOpts.schema
     if (schema === undefined) {
       const { reply } = await attempt(prompt, agentOpts, model, 1, undefined)
@@ -142,7 +163,11 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     if (first.valid) return parseAgentJson<unknown>(first.reply.text, null)
     log(`stage_output_invalid: ${label}: ${lastProblems.join(', ')}`)
     const tier = tierOf(model)
-    if (tier === 'deep') return null
+    if (tier === 'deep') {
+      // A deep miss is never retried; say why when deep shares its id with a lower tier.
+      if (runtime.models.fast === model || runtime.models.balanced === model) log(`stage_output_invalid: ${label}: no distinct higher tier`)
+      return null
+    }
     const retryModel = runtime.models[tier === 'fast' ? 'balanced' : 'deep']
     if (retryModel === model) {
       log(`stage_output_invalid: ${label}: no distinct higher tier`)
@@ -206,13 +231,24 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     return execute(stripMetaExport(readFileSync(path, 'utf8')), childArgs)
   }
 
-  // Force agent types on for the bundle (see agent-types.ts); always removed
-  // when the bundle settles.
-  ;(globalThis as Record<string, unknown>).datumRuntime = { agentTypes: true }
+  // Force agent types on for the bundle (see agent-types.ts), and expose the
+  // shell and the run's args as globals: runBatch resolves its shell and cwd
+  // from globalThis (CORR-001: passed only as function parameters, every
+  // runBatch inside a real bundle fell back to the LLM runner). The previous
+  // values are restored when the bundle settles, so a nested run cannot leak.
+  const g = globalThis as Record<string, unknown>
+  const saved = { shell: g.shell, args: g.args, hadShell: 'shell' in g, hadArgs: 'args' in g }
+  g.datumRuntime = { agentTypes: true }
+  g.shell = shell
+  g.args = args
   try {
     return await execute(rootSource, args)
   } finally {
-    delete (globalThis as Record<string, unknown>).datumRuntime
+    delete g.datumRuntime
+    if (saved.hadShell) g.shell = saved.shell
+    else delete g.shell
+    if (saved.hadArgs) g.args = saved.args
+    else delete g.args
   }
 }
 
@@ -249,7 +285,9 @@ export async function main(argv: readonly string[], io: MainIo): Promise<number>
   try {
     const flags = parseMainArgv(argv)
     const args: unknown = JSON.parse(readFileSync(flags['--args'][0], 'utf8'))
-    const runtime = readRuntimeConfig(JSON.parse(readFileSync(flags['--config'][0], 'utf8')) as Record<string, unknown>)
+    const config = JSON.parse(readFileSync(flags['--config'][0], 'utf8')) as Record<string, unknown>
+    const runtime = readRuntimeConfig(config)
+    const bundleTiers = typeof config.models === 'object' && config.models !== null ? (config.models as Partial<Record<ModelTier, string>>) : {}
     if (runtime.kind !== 'fake') throw new Error(`runtime_kind_unsupported: ${runtime.kind}`)
     const result = await runBundle({
       bundlePath: flags['--bundle'][0],
@@ -260,6 +298,7 @@ export async function main(argv: readonly string[], io: MainIo): Promise<number>
       log: (line) => io.stderr(`${line}\n`),
       runtime,
       repoRoot: flags['--repo-root'][0],
+      bundleTiers,
     })
     io.stdout(`${JSON.stringify(result ?? null)}\n`)
     return 0

@@ -28,8 +28,15 @@ function bundle(body: string): string {
   return p
 }
 
+// These tests cover runBundle and parallel() semantics, not the per-model
+// gate, so each model gets room for the widest fan-out here (3). An empty
+// concurrency map would now run every model one at a time (PERF-001).
 const runtime = readRuntimeConfig({
-  runtime: { kind: 'fake', models: { fast: 'fast-id', balanced: 'bal-id', deep: 'deep-id' } },
+  runtime: {
+    kind: 'fake',
+    models: { fast: 'fast-id', balanced: 'bal-id', deep: 'deep-id' },
+    concurrency: { 'fast-id': 3, 'bal-id': 3, 'deep-id': 3 },
+  },
 })
 
 const DEFAULT_REPLY: StageReply = { text: '{}' }
