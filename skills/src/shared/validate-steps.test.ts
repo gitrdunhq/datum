@@ -109,3 +109,26 @@ describe('trackedDirtySteps / trackedDirtyFiles (#519)', () => {
     expect(failed.detail).toContain('not a git repository')
   })
 })
+
+describe('lintFixPaths — the lint_fixes list is paths, whatever the agent typed (wf_191a73e6-e61)', () => {
+  it('reduces each entry to its leading repo-relative path and drops notes that are not paths', async () => {
+    // Catches: Validate halting with "pathspec ... did not match any files"
+    // because the agent wrote "path: what I changed (ruff --fix)" entries and
+    // free-text notes into lint_fixes, and every entry went to git add whole.
+    const { lintFixPaths } = await import('./validate-steps')
+    const reported = [
+      'datum/closeout/collect_token_metrics.py: removed the I001 import-block formatting violation (ruff --fix)',
+      'tests/test_workflow_run_cli.py: PLR0402 changed `import datum.workflow_run as workflow_run` to `from datum import workflow_run` (ruff --fix)',
+      'Left alone on purpose: the remaining ruff findings in epic files (PLW1510, BLE001) are rules the repo already violates widely (632 findings repo-wide).',
+      'Full pytest suite re-run after the fixes: TEST_EXIT=0, 2725 passed',
+    ]
+    expect(lintFixPaths(reported)).toEqual(['datum/closeout/collect_token_metrics.py', 'tests/test_workflow_run_cli.py'])
+  })
+
+  it('keeps plain paths, strips quotes and backticks, dedupes, and refuses absolute or parent paths', async () => {
+    // Catches: over-eager filtering of the normal case, and a path that
+    // escapes the repo reaching git add.
+    const { lintFixPaths } = await import('./validate-steps')
+    expect(lintFixPaths(['src/a.ts', '`src/a.ts`', '"pkg/b.py"', 'Makefile', '/etc/passwd', '../x.py', 'a/../../b.py'])).toEqual(['src/a.ts', 'pkg/b.py', 'Makefile'])
+  })
+})

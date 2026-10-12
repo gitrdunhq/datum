@@ -653,6 +653,19 @@ function trackedDirtyFiles(result) {
   const files = (step.stdout || "").split("\n").filter((l) => l.trim().length > 0 && !l.startsWith("??")).map((l) => l.slice(3).trim()).map((path) => path.includes(" -> ") ? path.split(" -> ")[1] : path);
   return { known: true, files, detail: "" };
 }
+var LINT_PATH_RE = /^[A-Za-z0-9_.\-/]+$/;
+function lintFixPaths(entries) {
+  const out = [];
+  for (const e of entries) {
+    if (typeof e !== "string") continue;
+    const text = e.trim().replace(/^[`'"]+|[`'"]+$/g, "");
+    const head = LINT_PATH_RE.test(text) ? text : (/^([^\s:]+):\s/.exec(text)?.[1] ?? "").replace(/^[`'"]+|[`'"]+$/g, "");
+    if (!head || !LINT_PATH_RE.test(head)) continue;
+    if (head.startsWith("/") || head.split("/").includes("..")) continue;
+    if (!out.includes(head)) out.push(head);
+  }
+  return out;
+}
 
 // skills/src/shared/commit-steps.ts
 var q = (s) => `"${s.replace(/(["\\`$])/g, "\\$1")}"`;
@@ -890,7 +903,7 @@ function configFromSteps(result) {
 }
 
 // skills/src/prompts/validate-check.md
-var validate_check_default = "Validation agent. Confirm the integrated result meets the acceptance criteria the epic planned.\n\nYour tests_pass is diagnostics: the workflow re-runs the same suite itself and the verdict comes from that exit code, never from your self-report.\n\nSTEPS:\n1. Run the full test suite with exactly the command given as RUN below.\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run the configured test command through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Match the level the surrounding code operates at: do not add a check, a comment, a type annotation or a layer the neighboring code would not have.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReport tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3.\n\nINPUTS\nWorking directory: {{wt}}\nTASKS path: {{tasksPath}}\nConfigured test command: {{testCommand}}\nRUN: {{testRunCmd}}\n";
+var validate_check_default = "Validation agent. Confirm the integrated result meets the acceptance criteria the epic planned.\n\nYour tests_pass is diagnostics: the workflow re-runs the same suite itself and the verdict comes from that exit code, never from your self-report.\n\nSTEPS:\n1. Run the full test suite with exactly the command given as RUN below.\n   It writes the full output to a log file, prints the last 50 lines and then `TEST_EXIT=<code>`.\n   That code is the real exit status \u2014 never run the configured test command through a pipe into tail, a pipe masks the exit code.\n   tests_pass is true ONLY if TEST_EXIT is 0. If TEST_EXIT is not 0 \u2192 report immediately. Do not proceed.\n\n2. Run linter in check mode (detect from project: ruff, eslint, swiftlint, etc.)\n   If violations exist in files touched by this epic, auto-fix them.\n   Do NOT fix violations in untouched files.\n   Match the level the surrounding code operates at: do not add a check, a comment, a type annotation or a layer the neighboring code would not have.\n   Re-run tests after fixing.\n\n3. For each completed task in TASKS.md, verify its acceptance criteria have\n   corresponding passing tests. If an AC has no test \u2192 flag as a gap.\n\nReport tests_pass and test_count from step 1, lint_clean and lint_fixes from step 2, and ac_gaps from step 3.\nlint_fixes holds only the repo-relative paths of files you changed, one path per entry, with no notes; anything you left alone or want to explain goes nowhere in this output.\n\nINPUTS\nWorking directory: {{wt}}\nTASKS path: {{tasksPath}}\nConfigured test command: {{testCommand}}\nRUN: {{testRunCmd}}\n";
 
 // skills/src/shared/gate.ts
 function gateSteps(phase2, flags) {
@@ -1001,7 +1014,7 @@ ${renderPrompt(validate_check_default, {
   { label: "validate-check", model: model("balanced"), schema: VALIDATE_CHECK_SCHEMA }
 );
 var check = checkResult;
-var lintFixes = Array.from(new Set((check?.lint_fixes || []).filter((f) => typeof f === "string" && f.trim().length > 0).map((f) => f.trim())));
+var lintFixes = lintFixPaths(check?.lint_fixes || []);
 var lintCommitError = "";
 if (mainSync.ok && lintFixes.length > 0) {
   const lintCommitSteps = commitFilesSteps({ wt: ".", files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? "" : "s"}` });

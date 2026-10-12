@@ -4,7 +4,7 @@ import { model, DEFAULT_CONFIG } from './shared/models'
 import { stageOpts, bootstrapOpts, configureAgentTypes, readAgentTypeConfig } from './shared/agent-types'
 import { setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, describeFailure } from './shared/batch'
 import { testExitCode, buildVerifyVerdict } from './shared/lane-steps'
-import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles } from './shared/validate-steps'
+import { validateVerifySteps, trackedDirtySteps, trackedDirtyFiles, lintFixPaths } from './shared/validate-steps'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { mainSyncSteps, mainSyncFromSteps } from './shared/main-sync-steps'
 import { runBatch } from './shared/agents'
@@ -116,7 +116,7 @@ const check = checkResult as ValidateCheck | null
 // commitFilesSteps (a failed commit is a named halt), then confirm no
 // tracked file is still dirty — a fix the agent applied but did not report
 // would otherwise slip through the same way.
-const lintFixes: string[] = Array.from(new Set((check?.lint_fixes || []).filter((f): f is string => typeof f === 'string' && f.trim().length > 0).map((f) => f.trim())))
+const lintFixes: string[] = lintFixPaths(check?.lint_fixes || [])
 let lintCommitError = ''
 if (mainSync.ok && lintFixes.length > 0) {
   const lintCommitSteps = commitFilesSteps({ wt: '.', files: lintFixes, message: `validate: lint fixes in ${lintFixes.length} file${lintFixes.length === 1 ? '' : 's'}` })

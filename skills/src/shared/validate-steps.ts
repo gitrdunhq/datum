@@ -78,3 +78,26 @@ export function trackedDirtyFiles(result: BatchResult): TrackedDirtyResult {
     .map((path) => (path.includes(' -> ') ? path.split(' -> ')[1] : path))
   return { known: true, files, detail: '' }
 }
+
+const LINT_PATH_RE = /^[A-Za-z0-9_.\-/]+$/
+
+/**
+ * The validate-check agent's lint_fixes, reduced to repo-relative paths.
+ * An entry counts when it is a path, or a path followed by ": <note>"
+ * (wf_191a73e6-e61: "datum/closeout/x.py: removed the I001 ... (ruff --fix)");
+ * free-text notes ("Left alone on purpose: ...") are dropped. Absolute paths
+ * and paths with a `..` segment are refused. A real fix the agent failed to
+ * list is still caught afterwards by the tracked-dirty check.
+ */
+export function lintFixPaths(entries: unknown[]): string[] {
+  const out: string[] = []
+  for (const e of entries) {
+    if (typeof e !== 'string') continue
+    const text = e.trim().replace(/^[`'"]+|[`'"]+$/g, '')
+    const head = LINT_PATH_RE.test(text) ? text : (/^([^\s:]+):\s/.exec(text)?.[1] ?? '').replace(/^[`'"]+|[`'"]+$/g, '')
+    if (!head || !LINT_PATH_RE.test(head)) continue
+    if (head.startsWith('/') || head.split('/').includes('..')) continue
+    if (!out.includes(head)) out.push(head)
+  }
+  return out
+}
