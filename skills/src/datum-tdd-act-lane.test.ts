@@ -598,7 +598,7 @@ describe('in-batch dep merge is a batch with exit codes, not an LLM echo judged 
   it('builds depMergeSteps(wt, depBranches) and reads the verdict with depMergeFromSteps', () => {
     expect(start).toBeGreaterThan(-1)
     expect(block).toMatch(/depMergeSteps\(wt, depBranches\)/)
-    expect(block).toMatch(/depMergeFromSteps\(parseBatchResult\(/)
+    expect(block).toMatch(/depMergeFromSteps\(await runBatch\(/)
     expect(block).not.toMatch(/Run these commands in order/)
     expect(block).not.toMatch(/CONFLICT\|Automatic merge failed/)
   })

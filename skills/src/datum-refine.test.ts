@@ -253,8 +253,9 @@ describe('datum-refine — an already-complete refine is not regenerated; answer
 // deferred to the consuming agent, never a halt.
 describe('a mismatched inline relay is re-fetched once, then deferred', () => {
   const src = readFileSync(join(__dirname, 'datum-refine.ts'), 'utf8')
-  it('retries with contextInlineRetryPrompt and merges with mergeRelayRetry', () => {
-    expect(src).toMatch(/contextInlineRetryPrompt\(/)
+  it('retries with runBatch + CONTEXT_INLINE_RETRY_MARKER and merges with mergeRelayRetry', () => {
+    expect(src).not.toMatch(/contextInlineRetryPrompt\(/)
+    expect(src).toMatch(/runBatch\([^\n]*retryMarker: CONTEXT_INLINE_RETRY_MARKER/)
     expect(src).toMatch(/mergeRelayRetry\(/)
     expect(src).toMatch(/context_relay_mismatch on /)
   })

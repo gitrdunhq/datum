@@ -3,9 +3,9 @@ import { model } from './shared/models'
 import propertiesDeriveTemplate from './prompts/properties-derive.md'
 import { gateSteps, parseGateResult } from './shared/gate'
 import { runBatch } from './shared/agents'
-import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, parseBatchResult, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
+import { batchCommandPrompt, setBatchCacheKey, setBatchRoot, stepStdout, stepResult, describeFailure, type BatchResult } from './shared/batch'
 import { lanePlanCommand } from './shared/plan-steps'
-import { contextProbeSteps, contextRelayPlan, contextInlineSteps, contextInlineRetryPrompt, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
+import { contextProbeSteps, contextRelayPlan, contextInlineSteps, CONTEXT_INLINE_RETRY_MARKER, contextFromRelay, mergeRelayRetry, contextSlot, contextWitnessInstruction, assertReadWitness } from './shared/context-relay'
 import { commitFilesSteps, commitFilesFromSteps } from './shared/commit-steps'
 import { stageOpts, bootstrapOpts, configureAgentTypes } from './shared/agent-types'
 import type { PhaseArgs } from './shared/types'
@@ -76,10 +76,7 @@ let ctx = contextFromRelay(readBatch, inlineBatch, relayPlan)
 // mismatches is deferred to the consuming agent, never a halt.
 if (ctx.mismatched.length > 0) {
   log(`read-context: context_relay_mismatch on ${ctx.mismatched.join(', ')} — re-fetching once with a fresh runner`)
-  const retryBatch = parseBatchResult(
-    await agent(contextInlineRetryPrompt(inlineSteps), stageOpts('cli', { label: 'read-context-files:retry', model: model('fast') })),
-    inlineSteps,
-  )
+  const retryBatch = await runBatch(inlineSteps, stageOpts('cli', { label: 'read-context-files:retry', model: model('fast'), retryMarker: CONTEXT_INLINE_RETRY_MARKER }))
   ctx = mergeRelayRetry(ctx, contextFromRelay(readBatch, retryBatch, relayPlan))
 }
 for (const warning of ctx.warnings) log(`read-context: ${warning}`)

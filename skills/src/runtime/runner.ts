@@ -9,6 +9,7 @@ import type { StageExecutor, StageOpts, StageUsage } from './executor'
 import type { ModelTier, RuntimeConfig } from '../shared/models'
 import { setModelTiers } from '../shared/models'
 import { parseAgentJson } from '../shared/utils'
+import { createModelSemaphores } from './semaphore'
 
 export type ShellFn = (
   script: string,
@@ -52,13 +53,21 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     if (u) spentTokens += u.prompt_tokens + u.completion_tokens
   }
 
+  // An empty concurrency map means no limits were configured, so calls are not
+  // gated; once any entry exists, unlisted models run one request at a time.
+  const gated = Object.keys(runtime.concurrency).length > 0
+  const semaphores = createModelSemaphores(runtime.concurrency)
+  const headers = { 'X-Client': runtime.client, 'X-Priority': runtime.priority }
+
   const agent = async (prompt: string, agentOpts: StageOpts = {}): Promise<unknown> => {
-    const reply = await executor.execute({
-      prompt,
-      opts: agentOpts,
-      model: resolveModel(runtime, agentOpts.model),
-      headers: {},
-    })
+    const model = resolveModel(runtime, agentOpts.model)
+    const release = gated ? await semaphores.acquire(model, agentOpts.agentType) : () => {}
+    let reply
+    try {
+      reply = await executor.execute({ prompt, opts: agentOpts, model, headers: { ...headers } })
+    } finally {
+      release()
+    }
     addUsage(reply.usage)
     return parseAgentJson<unknown>(reply.text, null)
   }
