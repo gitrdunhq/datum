@@ -112,11 +112,11 @@ Convert the dep-merge call at datum-tdd-act-lane.ts:1946 from resilientAgent(bat
   - datum-tdd-act-lane.ts source contains `runBatch(depMergeStepList` and contains no `batchCommandPrompt(` call
   - datum-tdd-act-lane.ts no longer imports batchCommandPrompt from './shared/batch' or runCommandPrompt from './shared/boot'
   - The dep-merge call keeps label `dep-merge:${taskId}` and model 'haiku'
-  - The dep-merge result is still a BatchResult. Its failure handling (describeFailure / stepResult) is unchanged, and the existing datum-tdd-act-lane tests (test.ts, calls.test.ts, integration.test.ts) pass
+  - The dep-merge result is still a BatchResult and its failure handling (describeFailure / stepResult) is unchanged. The one pin in datum-tdd-act-lane.test.ts (~:601) that asserts /depMergeFromSteps\(parseBatchResult\(/ asserts /depMergeFromSteps\(await runBatch\(/ instead; nothing else in that file changes, and datum-tdd-act-lane.test.ts, calls.test.ts and integration.test.ts pass
   - `npx tsc -p skills/tsconfig.json` exits 0
-- **Files**: skills/src/datum-tdd-act-lane.ts, skills/src/datum-tdd-act-lane-depmerge.test.ts
+- **Files**: skills/src/datum-tdd-act-lane.ts, skills/src/datum-tdd-act-lane-depmerge.test.ts, skills/src/datum-tdd-act-lane.test.ts
 - **Depends on**: DAT-1
-- **RED Note**: In the new vitest file skills/src/datum-tdd-act-lane-depmerge.test.ts, read datum-tdd-act-lane.ts as source text. Assert it contains `runBatch(depMergeStepList` with `label: \`dep-merge:${taskId}\`` and model 'haiku', has no `batchCommandPrompt(` call, and does not import runCommandPrompt. This fails today because line 1946 wraps batchCommandPrompt in resilientAgent. Do not edit the generated skills/datum-tdd-act-lane.js.
+- **RED Note**: In the new vitest file skills/src/datum-tdd-act-lane-depmerge.test.ts, read datum-tdd-act-lane.ts as source text. Assert it contains `runBatch(depMergeStepList` with `label: \`dep-merge:${taskId}\`` and model 'haiku', has no `batchCommandPrompt(` call, and does not import runCommandPrompt. This fails today because line 1946 wraps batchCommandPrompt in resilientAgent. Do not edit the generated skills/datum-tdd-act-lane.js. The label assertion must match the label exactly as written, `label: \`dep-merge:${taskId}\``, including the `}` inside the template literal (a capture such as `\{([^}]*)\}` stops at that brace and can never match; anchor on the literal label text instead). Also update the pin in skills/src/datum-tdd-act-lane.test.ts (~:601) from depMergeFromSteps(parseBatchResult( to depMergeFromSteps(await runBatch( and confirm it fails today.
 - **Estimated LOC**: 40
 
 ## DAT-4: datum-go act-start and preflight checks go through runBatch
@@ -190,9 +190,9 @@ Replace agent(contextInlineRetryPrompt(inlineSteps), stageOpts('cli', { label: '
   - Each file calls runBatch(inlineSteps, stageOpts('cli', { label: 'read-context-files:retry', model: model('fast'), retryMarker: CONTEXT_INLINE_RETRY_MARKER })) or an equivalent with the same label, model and marker, and still merges with mergeRelayRetry
   - The pins in datum-properties.test.ts (~:194) and datum-refine.test.ts (~:256) assert the new form and pass
   - `npx tsc -p skills/tsconfig.json` exits 0
-- **Files**: skills/src/datum-properties.ts, skills/src/datum-refine.ts, skills/src/datum-properties.test.ts, skills/src/datum-refine.test.ts
+- **Files**: skills/src/datum-properties.ts, skills/src/datum-refine.ts, skills/src/datum-properties.test.ts, skills/src/datum-refine.test.ts, skills/src/properties-refine-runbatch.test.ts
 - **Depends on**: DAT-2, DAT-1
-- **RED Note**: Update the 'retries with contextInlineRetryPrompt' pins in skills/src/datum-properties.test.ts and skills/src/datum-refine.test.ts to expect `runBatch(` with the CONTEXT_INLINE_RETRY_MARKER marker and no contextInlineRetryPrompt( call. Confirm both fail against the current sources.
+- **RED Note**: Write a new vitest file skills/src/properties-refine-runbatch.test.ts with one test function per acceptance criterion (at least 4): AC1 reads datum-properties.ts and datum-refine.ts as source and asserts neither contains `contextInlineRetryPrompt(` nor imports it; AC2 asserts each file contains a runBatch( call with label 'read-context-files:retry', model('fast') and CONTEXT_INLINE_RETRY_MARKER, and still calls mergeRelayRetry; AC3 asserts the pins in datum-properties.test.ts and datum-refine.test.ts reference runBatch( and not contextInlineRetryPrompt(; AC4 runs `npx tsc -p skills/tsconfig.json` with a 60 s timeout and asserts exit 0. Also update the 'retries with contextInlineRetryPrompt' pins in skills/src/datum-properties.test.ts (~:194) and skills/src/datum-refine.test.ts (~:256) to expect `runBatch(` with the CONTEXT_INLINE_RETRY_MARKER marker and no contextInlineRetryPrompt( call. Confirm every new test and both pins fail against the current sources.
 - **Estimated LOC**: 50
 
 ## DAT-9: Repo-wide guard: batchCommandPrompt only in batch.ts and agents.ts
