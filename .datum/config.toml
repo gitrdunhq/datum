@@ -1,0 +1,225 @@
+[skill]
+version = "1.0.0"
+
+# ── Model Tiers ──────────────────────────────────────────────────────────────
+# DATUM references tiers (reasoning/standard/fast), never raw model IDs.
+# Set these to the model IDs available in your tool.
+#
+# Claude Code / opencode:
+#   reasoning = "claude-opus-4-7"
+#   standard  = "claude-sonnet-4-6"
+#   fast      = "claude-haiku-4-5-20251001"
+#
+# Codex (OpenAI):
+#   reasoning = "o3"
+#   standard  = "gpt-5.4"
+#   fast      = "o4-mini"
+#
+# Gemini CLI:
+#   reasoning = "gemini-2.5-pro"
+#   standard  = "gemini-2.5-pro"
+#   fast      = "gemini-2.5-flash"
+#
+# If your tool only has one model, set all three to it.
+[models]
+reasoning = "claude-opus-4-7"
+standard  = "claude-sonnet-4-6"
+fast      = "claude-haiku-4-5-20251001"
+
+# Per-phase tier assignments. Values are tier names, not model IDs.
+# Override any phase to a different tier for this repo.
+[models.phases]
+discovery             = "reasoning"
+refine                = "reasoning"
+plan                  = "reasoning"
+prior_art             = "standard"
+triage                = "fast"
+deepen                = "standard"
+properties            = "reasoning"
+architect             = "reasoning"
+act_skeleton          = "fast"
+act_red               = "standard"
+act_green             = "standard"
+act_refactor          = "standard"
+act_adversarial       = "reasoning"
+sidecar_security      = "standard"
+sidecar_docs          = "fast"
+validate              = "fast"
+review                = "reasoning"
+pr_comments_triage    = "reasoning"
+pr_comments_fix       = "standard"
+closeout_collectors   = "fast"
+closeout_synthesis    = "reasoning"
+
+# ── Gates ─────────────────────────────────────────────────────────────────────
+# "required" | "skippable_if_complete" | "skipped"
+[gates]
+refine_human_review     = "skippable_if_complete"
+plan_human_approval     = "required"
+prior_art_human_review  = "skippable_if_complete"
+properties_human_review = "skippable_if_complete"
+validate_human_review   = "skippable_if_complete"
+triage_human_approval   = "required"
+merge_human_approval    = "required"
+
+# ── Yolo ──────────────────────────────────────────────────────────────────────
+[yolo]
+hard_stops = [
+  "tests_red_after_3x_retry",
+  "hook_blocked_write",
+  "merge_conflict",
+  "git_push_rejected",
+  "schema_validation_failed",
+  "gitnexus_high_risk_unconfirmed",
+  "gitnexus_unavailable_high_change_volume",
+  "external_dependency_install_proposed",
+  "test_ratchet_violation",
+  "lane_tool_sandbox_violation",
+]
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+[pipeline]
+max_concurrent         = 7
+deepen_downshift       = true
+green_blindness_strict = true
+refactor_batched       = false
+green_max_turns        = 3
+stall_timeout_ms       = 300000
+max_retry_backoff_ms   = 300000
+stage_caps             = { RED = 7, GREEN = 7, REFACTOR = 5 }
+
+[pipeline.load_leveling]
+max_reasoning_tier_concurrent = 2
+max_standard_tier_concurrent  = 5
+balancing_strategy = "weighted_round_robin"
+
+[pipeline.hygiene]
+require_shine_step      = true
+delete_tmp_on_success   = true
+check_unused_imports    = true
+standardize_lane_tools  = true
+
+[pipeline.smed]
+enable_brief_caching         = true
+context_sharing_threshold    = 3
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+[git]
+branch_prefix = "datum/"
+tag_format    = "closeout-epic-{N}-{YYYYMMDD}"
+commit_per    = "stage"
+
+# ── GitNexus ──────────────────────────────────────────────────────────────────
+[gitnexus]
+enabled                    = true
+reindex_on_closeout        = true
+impact_required_phases     = ["plan", "act", "validate", "review"]
+risk_threshold_yolo_halt   = "high"
+heuristic_file_threshold   = 5
+heuristic_loc_threshold    = 200
+
+# ── Token Efficiency ─────────────────────────────────────────────────────────
+[token_efficiency]
+agent_tooling_agency              = true
+lane_tools_dir                    = "scripts/lane-tools/"
+require_tool_description          = true
+prefer_structured_tools_over_scan = true
+tooling_commits_count_against_retry = false
+
+# ── Flaky Tests ───────────────────────────────────────────────────────────────
+[flaky_tests]
+max_pending_before_halt = 3
+rerun_count             = 3
+pass_threshold          = 2
+
+# ── Closeout ──────────────────────────────────────────────────────────────────
+[closeout]
+commit_synthesis_to_main = true
+keep_closeout_data_local = true
+
+# ── Tool Primitives ──────────────────────────────────────────────────────────
+# How each tool spawns subagents. DATUM auto-detects the active tool.
+[tools]
+claude_code = { subagent = "Task",     slash = true  }
+codex       = { subagent = "task",     slash = true  }
+opencode    = { subagent = "agent",    slash = false }
+kiro        = { subagent = "spawn",    slash = false }
+gemini_cli  = { subagent = "subagent", slash = false }
+
+# ── Classification ───────────────────────────────────────────────────────────
+[classification]
+patch_max_loc        = 50
+patch_max_clusters   = 1
+system_min_clusters  = 6
+system_min_loc_with_api = 500
+
+# ── Local LLM (Beta) ─────────────────────────────────────────────────────────
+# Opt-in: route fast-tier tasks to local MLX model instead of Claude.
+# Requires: pip install datum[memory] (mlx + mlx-lm)
+# The retry ladder escalates to Claude if local inference fails.
+[local_llm]
+enabled      = false
+model        = "mlx-community/gemma-4-26b-a4b-it-4bit"
+max_tokens   = 8192
+context_window = 131072
+temperature  = 0.3
+phases       = ["triage", "act_skeleton", "act_red", "act_green", "act_refactor", "validate", "sidecar_docs", "sidecar_security", "closeout_collectors"]
+
+# ── Multi-Turn Orchestration ─────────────────────────────────────────────────
+# Enables multi-step reasoning loops for local LLM phases.
+# Gemma plans → executes steps → synthesizes, all locally.
+# Every parameter is overridable per-phase via [multi_turn.phase_overrides.<phase>].
+[multi_turn]
+enabled               = false          # master switch for multi-turn mode
+max_turns             = 5              # max reasoning turns before escalation (1-10)
+timeout_s             = 300            # total wall-clock budget for all turns
+turn_timeout_s        = 90             # max wall-clock per individual turn
+confidence_threshold  = 0.8            # exit early if agreement >= this (0.0-1.0)
+temperature_schedule  = "fixed"        # "fixed" | "rising" | "falling" | "u_curve"
+temperature_min       = 0.2            # floor for scheduled temperature
+temperature_max       = 0.7            # ceiling for scheduled temperature
+context_reserve_pct   = 20             # % of context window reserved for synthesis
+planning_turn         = true           # turn 0 produces a step plan (StepPlan schema)
+verification_turn     = true           # final turn synthesizes into phase schema
+two_pass              = true           # DCCD: freeform draft → grammar extraction (arxiv 2603.03305)
+consistency_samples   = 1              # N samples for majority voting (1 for speed, bump to 3 for critical phases)
+few_shot              = true           # inject example JSON in prompts (arxiv 2605.02363)
+phases                = []             # phases that use multi-turn (empty = none)
+enable_tool_execution = true           # allows the agent to execute read-only tools via lane_tools_runner
+enable_write_tools    = false          # DANGEROUS: allows write_to_file, replace_file_content (off by default)
+max_tool_turns        = 10             # maximum number of tool execution turns before forced escalation
+allowed_tools         = ["read_file", "list_dir", "grep_search", "run_command"] # default: read-only tools only
+allowed_write_dirs    = []             # array of extra allowed absolute paths if enable_write_tools is true
+
+[multi_turn.quality_gates]
+char_flood_pct        = 0.3            # max allowed percentage of a single character in the tail
+ngram_size            = 3              # n-gram size for repetition detection
+max_count             = 4              # max allowed repeating n-grams
+diversity_ratio       = 0.25           # minimum unique token ratio
+
+# Per-phase overrides. Any key from [multi_turn] can be overridden here.
+# Example: triage gets more turns and a rising temperature to explore options.
+[multi_turn.phase_overrides.triage]
+max_turns             = 3
+temperature_schedule  = "rising"
+confidence_threshold  = 0.7
+
+[multi_turn.phase_overrides.validate]
+max_turns             = 4
+planning_turn         = false
+verification_turn     = true
+confidence_threshold  = 0.9
+
+[multi_turn.phase_overrides.act_skeleton]
+max_turns             = 6
+timeout_s             = 420
+temperature_schedule  = "u_curve"
+
+# ── Stack Lock ────────────────────────────────────────────────────────────────
+[stack_lock]
+language                    = ""
+framework                   = ""
+package_manager             = ""
+test_framework              = ""
+database                    = ""
+never_suggest_alternatives  = false
