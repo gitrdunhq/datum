@@ -4,7 +4,8 @@
 // through the injected StageExecutor; the runner itself does no I/O besides
 // reading the bundle file.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { StageExecutor, StageOpts, StageReply, StageUsage } from './executor'
 import type { ModelTier, RuntimeConfig } from '../shared/models'
 import { setModelTiers } from '../shared/models'
@@ -48,7 +49,7 @@ export function resolveModel(runtime: RuntimeConfig, requested: string | undefin
 
 export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
   const { bundlePath, args, executor, shell, log, runtime } = opts
-  const source = stripMetaExport(readFileSync(bundlePath, 'utf8'))
+  const rootSource = stripMetaExport(readFileSync(bundlePath, 'utf8'))
   setModelTiers(runtime.models)
   const runId = resolveRunId(args, currentTime())
 
@@ -170,15 +171,32 @@ export async function runBundle(opts: RunBundleOptions): Promise<unknown> {
     )
 
   const phase = (title: string): void => log(`== ${title} ==`)
-  const workflow = async (): Promise<never> => {
-    throw new Error('workflow_not_implemented')
-  }
   const budget = {
     total: null as number | null,
     spent: () => spentTokens,
     remaining: () => null as number | null,
   }
 
-  const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'workflow', 'shell', 'args', 'budget', source)
-  return fn(agent, parallel, pipeline, phase, log, workflow, shell, args, budget)
+  // Child workflows run through the same agent/semaphores/metrics/shell
+  // closures as the parent; only `args` differs.
+  const execute = (source: string, scriptArgs: unknown): Promise<unknown> => {
+    const fn = new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'workflow', 'shell', 'args', 'budget', source)
+    return fn(agent, parallel, pipeline, phase, log, workflow, shell, scriptArgs, budget)
+  }
+
+  // A scriptPath wins over name; a name resolves to <dir>/<name>.js in the
+  // first skills dir that has it.
+  const workflow = async (ref: { name?: string; scriptPath?: string }, childArgs?: unknown): Promise<unknown> => {
+    let path: string | undefined = ref.scriptPath
+    if (path === undefined) {
+      const name = ref.name ?? ''
+      path = opts.skillsDirs.map((dir) => join(dir, `${name}.js`)).find((candidate) => existsSync(candidate))
+      if (path === undefined) {
+        throw new Error(`workflow_not_found: ${name} (searched: ${opts.skillsDirs.join(', ')})`)
+      }
+    }
+    return execute(stripMetaExport(readFileSync(path, 'utf8')), childArgs)
+  }
+
+  return execute(rootSource, args)
 }
